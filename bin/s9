@@ -16626,6 +16626,650 @@ def _wait_port_free(host, port, tries=20):
     return not _port_busy(host, port)
 
 
+# ------------------------------------------------- 상시 계기 (REQ-20260902-054)
+# "자꾸 api error 가 난다" 를 사후에 짐작하지 않기 위한 계기판이다. 사고가 난
+# 뒤에 남은 것이 하나도 없으면 회선이 끊긴 것인지, 저쪽 서버가 답을 안 준
+# 것인지, 이 기계가 임시 포트를 다 써 버린 것인지 영영 가릴 수 없다.
+#
+# 그래서 세 갈래를 **같은 타임라인에** 적는다 — 갈래를 나눈 것이 곧 판정이다:
+#   api  api.anthropic.com 전 구간 (DNS→TCP→TLS→HTTP). 실패한 단계가 곧 사유다.
+#   ctl  대조군. IP 로 바로 붙어 **DNS 를 건너뛴다** — 여기까지 죽으면 회선이고,
+#        여기는 살았는데 api 만 죽으면 저쪽이거나 이름 풀이다.
+#   dns  이름 풀이 단독. 풀린 IP 도 적는다 — 주소가 바뀐 것도 사건이다.
+# 여기에 국소 자원(부하·가용 메모리·TCP inuse/TIME_WAIT·임시 포트 여유)을 얹는다.
+# 동시 작업이 많을 때 밖으로 못 나가는 가장 흔한 사유가 임시 포트 고갈이라,
+# 그 수치가 없으면 "동시 작업 탓인가" 라는 물음에 아무도 답할 수 없다.
+#
+# 바깥 스케줄러(systemd/cron)는 이 저장소가 이미 배제했다(REQ-20260825-096).
+# 그러니 serve 감시자와 같은 방식으로 제 발로 선다 — setsid + double fork,
+# 잠금 하나로 멱등, 세션이 시작될 때마다 조용히 세운다. 기계가 재시작되면
+# 수집도 끊기지만, 그 공백은 **부팅 표식**으로 타임라인에 드러난다.
+METRICS_INTERVAL_SEC = 15      # 표본 주기. 사고는 초 단위로 오고 간다
+METRICS_KEEP_DAYS = 7          # 날 파일 보존 기간
+METRICS_TIMEOUT_SEC = 5.0      # 프로브 한 갈래의 상한
+METRICS_API_HOST = "api.anthropic.com"
+METRICS_CTL_IP = "1.1.1.1"     # 대조군: 이름 풀이 없이 닿는 자리
+METRICS_CTL_SNI = "cloudflare-dns.com"
+METRICS_SLOW_MS = 2000         # 이 위면 "닿긴 했는데 늦다" — timeout 의 전조
+METRICS_SLOW_FRAC = 0.2        # 창의 이 비율을 넘게 늦으면 판정을 느려짐으로
+
+
+def _metrics_paths(root=None):
+    d = os.path.join(root or ROOT, "state", "metrics")
+    return {"dir": d,
+            "lock": os.path.join(d, "collector.lock"),
+            "stop": os.path.join(d, "collector.stop"),
+            "err": os.path.join(d, "collector.err")}
+
+
+def _metrics_day_path(root=None, day=None):
+    d = _metrics_paths(root)["dir"]
+    day = day or datetime.date.today().isoformat()
+    return os.path.join(d, f"{day}.jsonl")
+
+
+METRICS_AT_FORMS = "now·지금 · 20:19 · 20:19:30 · 2026-09-02T20:19:00"
+
+
+def _metrics_at(at, now=None):
+    """`--at` 이 받는 말 (REQ-20260902-059).
+
+    이 명령은 **사고가 난 자리에서** 쓴다. 그때 사람이 가장 먼저 치는 낱말이
+    `now` 인데 그것이 안 통해 파이썬 트레이스백이 나왔다 — 계기가 사고를 하나
+    더 만든 셈이다. 그래서 받는 말을 넓히고, 못 알아들은 것에는 **스택이 아니라
+    받아들이는 형식**으로 답한다.
+
+    돌려주는 것은 tz 를 가진 datetime 이고, 못 알아들으면 ValueError 다
+    (부르는 쪽이 사람 말로 옮긴다)."""
+    base = now or datetime.datetime.now().astimezone()
+    if at is None:
+        return base
+    t = str(at).strip()
+    if not t or t.lower() in ("now", "지금", "현재"):
+        return base
+    # 시:분[:초] 만 적으면 오늘이다 — 사고를 보는 창은 대개 오늘 안이다.
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", t)
+    if m:
+        h, mi, sec = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
+        if h > 23 or mi > 59 or sec > 59:
+            raise ValueError(f"시각이 아니다: {t}")
+        return base.replace(hour=h, minute=mi, second=sec, microsecond=0)
+    try:
+        d = datetime.datetime.fromisoformat(t)
+    except ValueError:
+        raise ValueError(f"읽을 수 없는 시각: {t}")
+    return d if d.tzinfo else d.astimezone()
+
+
+def _boot_epoch():
+    """이 기계가 언제 켜졌나 (epoch 초). 표본마다 실어 두면 재시작 경계가
+    타임라인에서 저절로 보인다 — 값이 바뀐 지점이 곧 경계다."""
+    try:
+        with open("/proc/stat") as f:
+            for line in f:
+                if line.startswith("btime "):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        with open("/proc/uptime") as f:
+            return int(time.time() - float(f.read().split()[0]))
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def _probe(label, host, port=443, ip=None, sni=None, http_path=None,
+           timeout=METRICS_TIMEOUT_SEC):
+    """한 갈래를 **단계별로** 잰다. 실패하면 어느 단계에서 멈췄는지가 남는다 —
+    `stage` 하나가 회선·이름·저쪽을 가르는 근거 전부다."""
+    out = {"label": label, "ok": False, "stage": "dns" if ip is None else "tcp"}
+    t_all = time.monotonic()
+
+    def done():
+        # 어느 단계에서 끝났든 걸린 시간은 남는다 — 실패한 표본의 소요가
+        # 곧 "얼마나 기다리다 포기했나"이고, 그것이 timeout 판정의 재료다.
+        out["total_ms"] = round((time.monotonic() - t_all) * 1000, 1)
+        return out
+
+    addr = ip
+    if addr is None:
+        t = time.monotonic()
+        try:
+            infos = socket.getaddrinfo(host, port, socket.AF_INET,
+                                       socket.SOCK_STREAM)
+        except OSError as e:
+            out["dns_ms"] = round((time.monotonic() - t) * 1000, 1)
+            out["error"] = f"{type(e).__name__}: {e}"
+            return done()
+        out["dns_ms"] = round((time.monotonic() - t) * 1000, 1)
+        out["ips"] = sorted({i[4][0] for i in infos})
+        if not out["ips"]:
+            out["error"] = "no address"
+            return done()
+        addr = out["ips"][0]
+    out["ip"] = addr
+    out["stage"] = "tcp"
+    t = time.monotonic()
+    sock = None
+    try:
+        sock = socket.create_connection((addr, port), timeout=timeout)
+        out["tcp_ms"] = round((time.monotonic() - t) * 1000, 1)
+        out["stage"] = "tls"
+        t = time.monotonic()
+        import ssl as _ssl
+        ctx = _ssl.create_default_context()
+        wrapped = ctx.wrap_socket(sock, server_hostname=sni or host)
+        sock = wrapped
+        out["tls_ms"] = round((time.monotonic() - t) * 1000, 1)
+        if http_path:
+            out["stage"] = "http"
+            t = time.monotonic()
+            req = (f"HEAD {http_path} HTTP/1.1\r\nHost: {host}\r\n"
+                   "User-Agent: s9-metrics\r\nConnection: close\r\n\r\n")
+            sock.sendall(req.encode())
+            head = sock.recv(256).decode("latin-1", "replace")
+            out["http_ms"] = round((time.monotonic() - t) * 1000, 1)
+            first = head.split("\r\n", 1)[0]
+            out["status"] = first.split(" ")[1] if " " in first else ""
+            if not out["status"]:
+                out["error"] = "empty response"
+                raise OSError("empty response")
+        out["stage"] = "ok"
+        out["ok"] = True
+    except Exception as e:                    # 어떤 실패도 수집기를 죽이지 않는다
+        out["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        try:
+            if sock is not None:
+                sock.close()
+        except OSError:
+            pass
+    return done()
+
+
+def _read_first(path, cast=str, default=None):
+    try:
+        with open(path) as f:
+            return cast(f.read().strip().split()[0])
+    except (OSError, ValueError, IndexError):
+        return default
+
+
+def _sys_sample():
+    """국소 자원. 밖으로 못 나가는 사유가 이 기계 안에 있을 때 그 증거다."""
+    s = {}
+    try:
+        with open("/proc/loadavg") as f:
+            p = f.read().split()
+        s["load1"], s["load5"] = float(p[0]), float(p[1])
+        s["procs"] = p[3]
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        mem = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, _, v = line.partition(":")
+                if k in ("MemTotal", "MemAvailable"):
+                    mem[k] = int(v.split()[0]) // 1024
+        s["mem_total_mb"] = mem.get("MemTotal")
+        s["mem_avail_mb"] = mem.get("MemAvailable")
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        with open("/proc/net/sockstat") as f:
+            for line in f:
+                if line.startswith("TCP:"):
+                    p = line.split()
+                    s["tcp_inuse"] = int(p[2])
+                    s["tcp_orphan"] = int(p[4])
+                    s["tcp_tw"] = int(p[6])
+                elif line.startswith("sockets:"):
+                    s["sockets"] = int(line.split()[2])
+    except (OSError, ValueError, IndexError):
+        pass
+    # 임시 포트 여유 — 동시 호출이 많을 때 밖으로 못 나가는 가장 흔한 사유다.
+    try:
+        with open("/proc/sys/net/ipv4/ip_local_port_range") as f:
+            lo, hi = (int(x) for x in f.read().split()[:2])
+        s["ephemeral_total"] = hi - lo + 1
+    except (OSError, ValueError, IndexError):
+        pass
+    s["conntrack"] = _read_first("/proc/sys/net/netfilter/nf_conntrack_count",
+                                 int)
+    s["conntrack_max"] = _read_first("/proc/sys/net/netfilter/nf_conntrack_max",
+                                     int)
+    fdnr = None
+    try:
+        with open("/proc/sys/fs/file-nr") as f:
+            fdnr = int(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        pass
+    s["open_files"] = fdnr
+    return {k: v for k, v in s.items() if v is not None}
+
+
+def metrics_sample(root=None):
+    """표본 하나. 갈래 하나가 타임아웃해도 나머지는 그대로 남는다 —
+    부분 실패가 표본 전체를 삼키면 정작 사고 때의 기록이 비어 버린다."""
+    return {
+        "ts": now_iso(),
+        "boot": _boot_epoch(),
+        "net": {
+            "api": _probe("api", METRICS_API_HOST, http_path="/"),
+            "ctl": _probe("ctl", METRICS_CTL_IP, ip=METRICS_CTL_IP,
+                          sni=METRICS_CTL_SNI),
+            "dns": _probe_dns(METRICS_API_HOST),
+        },
+        "sys": _sys_sample(),
+    }
+
+
+def _probe_dns(host, timeout=METRICS_TIMEOUT_SEC):
+    """이름 풀이 단독. 풀린 주소가 바뀐 것도 사건이라 함께 적는다."""
+    out = {"label": "dns", "ok": False, "stage": "dns"}
+    t = time.monotonic()
+    try:
+        infos = socket.getaddrinfo(host, 443, socket.AF_INET,
+                                   socket.SOCK_STREAM)
+        out["ms"] = round((time.monotonic() - t) * 1000, 1)
+        out["ips"] = sorted({i[4][0] for i in infos})
+        out["ok"] = bool(out["ips"])
+        out["stage"] = "ok" if out["ok"] else "dns"
+    except Exception as e:
+        out["ms"] = round((time.monotonic() - t) * 1000, 1)
+        out["error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
+def _metrics_last_boot(root=None):
+    """그날 파일의 마지막 표본이 본 부팅 시각. 경계 판정의 왼쪽 값이다."""
+    for day in (datetime.date.today(),
+                datetime.date.today() - datetime.timedelta(days=1)):
+        path = _metrics_day_path(root, day.isoformat())
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                back = min(f.tell(), 64 * 1024)
+                f.seek(f.tell() - back)
+                lines = f.read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(rec, dict) and rec.get("boot"):
+                return int(rec["boot"])
+    return None
+
+
+def metrics_append(sample, root=None):
+    """표본 한 줄을 그날 파일에 덧붙인다. 부팅 시각이 직전과 다르면 **표식을
+    먼저** 둔다 — 재시작으로 생긴 공백과 진짜 단절을 구분하는 자리다."""
+    p = _metrics_paths(root)
+    os.makedirs(p["dir"], exist_ok=True)
+    path = _metrics_day_path(root)
+    lines = []
+    prev = _metrics_last_boot(root)
+    if sample.get("boot") and prev != sample["boot"]:
+        # prev 가 없으면 재시작이 아니라 **수집의 시작**이다. 둘을 같은 이름으로
+        # 적으면 첫 표본이 영원히 "기계가 재시작했다"로 읽힌다.
+        lines.append({"ts": sample["ts"], "event": "boot",
+                      "boot": sample["boot"], "prev_boot": prev,
+                      "first": prev is None,
+                      "note": ("계기가 여기서 시작됐다" if prev is None
+                               else "기계가 다시 떴다 — 앞의 공백은 수집 중단이다")})
+    lines.append(sample)
+    with open(path, "a", encoding="utf-8") as f:
+        for rec in lines:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return path
+
+
+def metrics_prune(root=None, keep_days=METRICS_KEEP_DAYS):
+    """보존 기간 밖의 날 파일을 지운다. 지운 파일 이름을 돌려준다."""
+    p = _metrics_paths(root)
+    cutoff = datetime.date.today() - datetime.timedelta(days=keep_days - 1)
+    gone = []
+    try:
+        names = os.listdir(p["dir"])
+    except OSError:
+        return gone
+    for name in names:
+        m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})\.jsonl", name)
+        if not m:
+            continue
+        try:
+            day = datetime.date.fromisoformat(m.group(1))
+        except ValueError:
+            continue
+        if day < cutoff:
+            try:
+                os.remove(os.path.join(p["dir"], name))
+                gone.append(name)
+            except OSError:
+                pass
+    return gone
+
+
+def _metrics_alive(root=None):
+    """돌고 있으면 그 pid, 아니면 None. serve 감시자와 같은 방식이되 **제
+    잠금만** 쓴다 — 남의 잠금·포트는 건드리지 않는다."""
+    p = _metrics_paths(root)
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    try:
+        os.makedirs(p["dir"], exist_ok=True)
+        f = open(p["lock"], "a+")
+    except OSError:
+        return None
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(f, fcntl.LOCK_UN)
+        return None
+    except OSError:
+        try:
+            f.seek(0)
+            return int(f.read().split()[0])
+        except (OSError, ValueError, IndexError):
+            return -1
+    finally:
+        f.close()
+
+
+def _metrics_lock(root=None):
+    p = _metrics_paths(root)
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    os.makedirs(p["dir"], exist_ok=True)
+    try:
+        f = open(p["lock"], "a+")
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return None
+    f.seek(0)
+    f.truncate()
+    f.write(f"{os.getpid()}\n")
+    f.flush()
+    return f
+
+
+def metrics_loop(root=None, interval=METRICS_INTERVAL_SEC, limit=None):
+    """수집기 본체. 어떤 표본이 상해도 다음 표본을 계속 뜬다."""
+    p = _metrics_paths(root)
+    n = 0
+    last_prune = 0.0
+    while True:
+        if os.path.exists(p["stop"]):
+            try:
+                os.remove(p["stop"])
+            except OSError:
+                pass
+            return "stop 요청"
+        try:
+            metrics_append(metrics_sample(root), root)
+        except Exception as e:
+            try:
+                with open(p["err"], "a", encoding="utf-8") as f:
+                    f.write(f"{now_iso()} {type(e).__name__}: {e}\n")
+            except OSError:
+                pass
+        n += 1
+        if limit is not None and n >= limit:
+            return f"{n} 표본"
+        if time.time() - last_prune > 3600:
+            metrics_prune(root)
+            last_prune = time.time()
+        time.sleep(interval)
+
+
+def _metrics_main(root=None, interval=METRICS_INTERVAL_SEC):
+    lock = _metrics_lock(root)
+    if lock is None:
+        return 0                 # 이미 누가 돌고 있다 — 조용히 물러난다
+    try:
+        metrics_loop(root, interval)
+    finally:
+        try:
+            lock.close()
+        except OSError:
+            pass
+    return 0
+
+
+def metrics_detach(root=None, interval=METRICS_INTERVAL_SEC):
+    """수집기를 세션에서 떼어 기동한다 (setsid + double fork). 이미 돌고 있으면
+    아무것도 하지 않는다 — 세션마다 불려도 안전해야 세션 시작에 걸 수 있다."""
+    if os.environ.get("S9_NO_METRICS"):
+        return False
+    if not hasattr(os, "fork"):
+        return False
+    if _metrics_alive(root) is not None:
+        return False
+    p = _metrics_paths(root)
+    try:
+        os.makedirs(p["dir"], exist_ok=True)
+        pid = os.fork()
+    except OSError:
+        return False
+    if pid:
+        os.waitpid(pid, 0)
+        return True
+    try:
+        os.setsid()
+    except OSError:
+        pass
+    try:
+        if os.fork():
+            os._exit(0)
+    except OSError:
+        os._exit(1)
+    try:
+        devnull = os.open(os.devnull, os.O_RDWR)
+        os.dup2(devnull, 0)
+        err = os.open(p["err"], os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        os.dup2(err, 1)
+        os.dup2(err, 2)
+        os.chdir(root or ROOT)
+    except OSError:
+        pass
+    try:
+        _metrics_main(root, interval)
+    except BaseException:
+        pass
+    os._exit(0)
+
+
+def metrics_read(root=None, since=None, until=None):
+    """[since, until] 창의 기록을 시간순으로. 날 파일을 넘나든다."""
+    p = _metrics_paths(root)
+    recs = []
+    try:
+        names = sorted(n for n in os.listdir(p["dir"])
+                       if re.fullmatch(r"\d{4}-\d{2}-\d{2}\.jsonl", n))
+    except OSError:
+        return recs
+    for name in names:
+        if since and name[:10] < since[:10]:
+            continue
+        if until and name[:10] > until[:10]:
+            continue
+        try:
+            with open(os.path.join(p["dir"], name), encoding="utf-8",
+                      errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    ts = rec.get("ts", "")
+                    if since and ts < since:
+                        continue
+                    if until and ts > until:
+                        continue
+                    recs.append(rec)
+        except OSError:
+            continue
+    return recs
+
+
+def metrics_verdict(recs):
+    """창 안의 표본으로 **어디가 상했나** 한 줄. 갈래를 나눠 적은 값이
+    여기서 판정이 된다 — 셋 다 죽었으면 회선, api 만 죽었으면 저쪽·이름 풀이,
+    밖은 멀쩡한데 국소 자원이 바닥이면 이 기계다."""
+    samples = [r for r in recs if "net" in r]
+    if not samples:
+        return {"verdict": "기록 없음", "n": 0}
+    def bad(key):
+        return [s for s in samples if not s["net"].get(key, {}).get("ok")]
+    api_bad, ctl_bad, dns_bad = bad("api"), bad("ctl"), bad("dns")
+    n = len(samples)
+    stages = {}
+    for s in api_bad:
+        st = s["net"]["api"].get("stage", "?")
+        stages[st] = stages.get(st, 0) + 1
+    tw = [s["sys"].get("tcp_tw", 0) for s in samples if "sys" in s]
+    boots = [r for r in recs
+             if r.get("event") == "boot" and not r.get("first")]
+    # 닿긴 했는데 늦은 표본 — request timeout 은 여기서 먼저 얼굴을 내민다
+    lat = sorted(s["net"]["api"].get("total_ms", 0) for s in samples
+                 if s["net"].get("api", {}).get("ok"))
+    slow = [x for x in lat if x >= METRICS_SLOW_MS]
+    p95 = lat[min(len(lat) - 1, int(len(lat) * 0.95))] if lat else None
+    slow_frac = (len(slow) / len(lat)) if lat else 0.0
+    if not api_bad and slow_frac >= METRICS_SLOW_FRAC:
+        verdict = (f"느려짐 — 닿기는 하는데 표본의 {slow_frac:.0%}가"
+                   f" {METRICS_SLOW_MS}ms 를 넘었다 (timeout 의 전조)")
+    elif not api_bad:
+        verdict = "밖으로 나가는 길은 이 창에서 멀쩡했다"
+    elif ctl_bad and dns_bad:
+        verdict = "회선 — 대조군·이름 풀이까지 함께 죽었다"
+    elif dns_bad and not ctl_bad:
+        verdict = "이름 풀이 — 대조군은 살았는데 주소를 못 얻었다"
+    elif not ctl_bad and not dns_bad:
+        verdict = "저쪽 — 회선·이름은 살았는데 api 만 답하지 않았다"
+    else:
+        verdict = "섞임 — 아래 단계별 횟수를 보라"
+    return {"verdict": verdict, "n": n,
+            "api_fail": len(api_bad), "ctl_fail": len(ctl_bad),
+            "dns_fail": len(dns_bad), "stages": stages,
+            "api_p95_ms": p95, "api_slow": len(slow),
+            "tw_max": max(tw) if tw else None,
+            "boots": len(boots)}
+
+
+def cmd_metrics(args):
+    root = ROOT
+    action = args.action or "status"
+    p = _metrics_paths(root)
+    if action == "start":
+        pid = _metrics_alive(root)
+        if pid is not None:
+            print(f"이미 수집 중 (pid {pid})")
+            return 0
+        metrics_detach(root, args.interval)
+        time.sleep(0.4)
+        pid = _metrics_alive(root)
+        print(f"수집 시작 (pid {pid})" if pid else "수집기를 띄우지 못했다")
+        return 0 if pid else 1
+    if action == "stop":
+        pid = _metrics_alive(root)
+        if pid is None:
+            print("수집 중이 아니다")
+            return 0
+        open(p["stop"], "w").close()
+        if pid > 0:
+            import signal as _sig
+            try:
+                os.kill(pid, _sig.SIGTERM)
+            except OSError:
+                pass
+        print(f"중지 요청 (pid {pid})")
+        return 0
+    if action == "sample":
+        s = metrics_sample(root)
+        path = metrics_append(s, root)
+        if args.json:
+            print(json.dumps(s, ensure_ascii=False))
+        else:
+            for k in ("api", "ctl", "dns"):
+                d = s["net"][k]
+                ms = d.get("total_ms", d.get("ms"))
+                mark = (f"ok {ms}ms" if d.get("ok")
+                        else f"실패({d.get('stage')}) {d.get('error','')}")
+                print(f"  {k:4} {mark}")
+            print(f"  sys  {json.dumps(s['sys'], ensure_ascii=False)}")
+            print(f"  → {path}")
+        return 0
+    if action == "report":
+        window = args.window
+        try:
+            base = _metrics_at(args.at)
+        except ValueError as e:
+            # main() 은 fn 의 반환을 보지 않는다 — 종료코드는 여기서 세운다.
+            print(f"{e} — 이렇게 적어라: {METRICS_AT_FORMS}", file=sys.stderr)
+            sys.exit(2)
+        lo = (base - datetime.timedelta(minutes=window)).isoformat(
+            timespec="seconds")
+        hi = (base + datetime.timedelta(minutes=window)).isoformat(
+            timespec="seconds")
+        recs = metrics_read(root, lo, hi)
+        v = metrics_verdict(recs)
+        if args.json:
+            print(json.dumps(v, ensure_ascii=False))
+            return 0
+        print(f"창 {lo} ~ {hi} — 표본 {v['n']}")
+        print(f"판정: {v['verdict']}")
+        if v.get("n"):
+            print(f"  실패 api {v['api_fail']} · 대조군 {v['ctl_fail']}"
+                  f" · 이름 {v['dns_fail']}")
+            if v.get("stages"):
+                print(f"  api 가 멈춘 단계: {v['stages']}")
+            if v.get("api_p95_ms") is not None:
+                print(f"  api 응답 p95 {v['api_p95_ms']}ms"
+                      f" · {METRICS_SLOW_MS}ms 초과 {v['api_slow']}건")
+            if v.get("tw_max") is not None:
+                print(f"  TIME_WAIT 최대 {v['tw_max']}")
+            if v.get("boots"):
+                print(f"  이 창 안에 기계 재시작 {v['boots']}회")
+        return 0
+    if action == "prune":
+        gone = metrics_prune(root)
+        print(f"지운 날 파일 {len(gone)}: {', '.join(gone) or '없음'}")
+        return 0
+    # status
+    pid = _metrics_alive(root)
+    path = _metrics_day_path(root)
+    n, last = 0, None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.strip():
+                    n += 1
+                    last = line
+    except OSError:
+        pass
+    last_ts = ""
+    if last:
+        try:
+            last_ts = json.loads(last).get("ts", "")
+        except ValueError:
+            pass
+    print(f"수집기: {'돌고 있다 (pid %s)' % pid if pid else '멈춰 있다'}")
+    print(f"오늘 표본 {n}건" + (f" · 마지막 {last_ts}" if last_ts else ""))
+    print(f"기록: {path}")
+    return 0
+
+
 # ------------------------------------------------------------- serve 감시자
 # REQ-20260825-096: serve 가 죽었을 때 (1) 사유를 사후에 알 수 없었고
 # (2) 아무도 되살리지 않았다. 외부 스케줄러(systemd/cron)는 사용자가 명시적으로
@@ -21259,6 +21903,21 @@ def main():
     stc.add_argument("--dir", action="store_true",
                      help="기록을 쓸 자리를 찍는다 (꺼져 있으면 아무것도 안 찍음)")
     stc.set_defaults(fn=cmd_stream)
+
+    mt = sub.add_parser("metrics",
+                        help="상시 계기 — 회선·이름 풀이·저쪽 응답과 국소 자원")
+    mt.add_argument("action", nargs="?",
+                    choices=["status", "start", "stop", "sample", "report",
+                             "prune"],
+                    default="status")
+    mt.add_argument("--interval", type=int, default=METRICS_INTERVAL_SEC,
+                    help="start: 표본 주기(초)")
+    mt.add_argument("--at", help="report: 볼 시각 — "
+                    "now·지금 / 20:19 / 20:19:30 / ISO (기본 지금)")
+    mt.add_argument("--window", type=int, default=10,
+                    help="report: 그 시각 앞뒤 분 (기본 10)")
+    mt.add_argument("--json", action="store_true")
+    mt.set_defaults(fn=cmd_metrics)
 
     sc = sub.add_parser("secret",
                         help="사용자별 비밀값 (보관·조회·명령에서 사용)")

@@ -284,6 +284,24 @@ def ensure_serve():
         pass  # 서버 기동 실패가 세션을 막으면 안 됨
 
 
+def ensure_metrics():
+    """상시 계기 보장 (REQ-20260902-054).
+
+    바깥 스케줄러를 쓰지 않기로 한 저장소라(REQ-20260825-096), 계기도 제 발로
+    선다. `s9 metrics start` 는 잠금 하나로 멱등이니 세션마다 불려도 둘째가
+    뜨지 않는다. 이 훅이 메우는 자리는 **기계가 재시작돼 수집기까지 사라진
+    경우**다 — 그 사이의 공백은 기록의 부팅 표식으로 드러난다."""
+    root = os.environ.get("S9_ROOT") or os.path.dirname(
+        os.path.dirname(os.path.realpath(__file__)))
+    try:
+        subprocess.Popen([S9, "metrics", "start"],
+                         stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         cwd=root, start_new_session=True)
+    except Exception:
+        pass  # 계기 기동 실패가 세션을 막으면 안 된다
+
+
 def main():
     if os.environ.get("S9_AUDIT", "").lower() == "off":
         return
@@ -344,6 +362,7 @@ def main():
     chat_ctx = ""
     if event == "start":
         ensure_serve()  # 대시보드가 죽어 있으면 세션 시작이 되살린다 (REQ-020)
+        ensure_metrics()  # 계기가 끊겨 있으면 여기서 다시 선다 (REQ-054)
         # 이 사람이 어느 머신에서 어느 OS 계정으로 일하는지 스스로 적는다
         # (REQ-20260827-066). 손으로 attach 할 때만 남기면 기록이 늘 뒤처진다.
         try:
