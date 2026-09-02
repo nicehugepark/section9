@@ -5681,16 +5681,127 @@ def streams_read_dirs(user=None):
     return [d for d in out if os.path.isdir(d)]
 
 
+# --------------------------------- streams 훑기의 범위 (REQ-20260902-004-62x6)
+# 024 가 `/proc` 전수 훑기를 치우자 드러난 다음 병목이다. `chat_target` 은
+# 바인딩을 전수로 돌며 후보마다 `chat_live` → `_binding_activity_paths` →
+# `streams_glob` 을 부르고, 그것이 **바인딩마다** streams 디렉토리를 훑었다
+# (실측: 한 요청에 73회 · 자리 두 곳이니 실제 훑기는 146회). 직렬로는 17ms
+# 지만 `/api/chat/target` 은 신선도 계약(C9/C18) 때문에 폴 스냅샷 게이트 밖에
+# 있어 동시 요청 수만큼 그대로 곱해진다 — 24동시에서 9.1초, 연결 거부 11건.
+#
+# 고침은 024 가 `/proc` 에 쓴 것과 **같은 두 겹**이다(새 발명이 아니다):
+# ① 요청 스코프 — 한 요청이 도는 동안만 파일 이름 목록을 나눠 쓰고 끝나면
+#    버린다. 목록은 언제나 그 요청이 시작된 뒤에 뜬 것이라 신선도 계약이
+#    구조적으로 산다. 문은 `Handler.handle_one_request` 한 곳이다.
+# ② 단일비행 — 동시에 겹친 훑기를 하나로 접는다. 대기자가 받는 목록은 자기가
+#    도착하기 직전에 뜬 것이라, 낡음의 상한이 훑기 한 번의 소요다.
+# 캐시하는 것은 **이름 목록뿐**이고 mtime 은 늘 새로 읽는다 — 「활동이 신선한가」
+# 는 이 캐시를 타지 않는다.
+_STREAMS_SCOPE = threading.local()
+_STREAMS_FLIGHT = {}        # 자리(dir) -> 그 자리의 훑기 상태
+_STREAMS_FLIGHT_COND = threading.Condition()
+_STREAMS_STAT = {"reads": 0, "inflight": 0, "max_inflight": 0, "shared": 0}
+
+
+class streams_scope:
+    """이 블록 안에서 streams 자리는 한 번만 훑는다 (REQ-20260902-004).
+
+    CLI·백그라운드 스레드는 이 문 밖이라 종전대로 매 호출 신선하다.
+    **오래 사는 요청(SSE)은 `streams_scope_reset()` 으로 바퀴마다 버려라.**
+    """
+
+    def __enter__(self):
+        self._prev = getattr(_STREAMS_SCOPE, "v", None)
+        _STREAMS_SCOPE.v = {}
+        return self
+
+    def __exit__(self, *exc):
+        _STREAMS_SCOPE.v = self._prev
+        return False
+
+
+def streams_scope_reset():
+    """스코프 안이라도 목록을 버린다 — 다음 조회가 다시 훑는다."""
+    v = getattr(_STREAMS_SCOPE, "v", None)
+    if v is not None:
+        v.clear()
+
+
+def streams_stat():
+    """계기 사본 — 훑기 총횟수·접힌 횟수·동시 진입 최고치 (REQ-20260902-004)."""
+    return {"reads": _STREAMS_STAT["reads"], "shared": _STREAMS_STAT["shared"],
+            "max_inflight": _STREAMS_STAT["max_inflight"]}
+
+
+def _streams_names_read(d):
+    """그 자리의 파일 이름 (오름차순). 못 읽으면 빈 목록 — 없는 자리는 흔하다."""
+    try:
+        return sorted(os.listdir(d))
+    except OSError:
+        return []
+
+
+def _streams_names_shared(d):
+    """겹친 훑기를 하나로 접은 실조회 — 계기도 여기 한 곳에서 센다.
+
+    훑기가 예외로 죽으면(`v is None`) 대기자는 갇히지 않고 스스로 훑는다 —
+    한 번의 실패가 목록을 영구히 비워 두면 생존 판정이 전부 거짓이 된다.
+    """
+    with _STREAMS_FLIGHT_COND:
+        st = _STREAMS_FLIGHT.setdefault(d, {"busy": False, "seq": 0, "v": None})
+        if st["busy"]:
+            seq = st["seq"]
+            while st["busy"] and st["seq"] == seq:
+                # 상한은 훑는 스레드가 죽었을 때의 탈출구 — 평시엔 notify 로 깬다
+                if not _STREAMS_FLIGHT_COND.wait(timeout=30):
+                    break
+            if st["seq"] != seq and st["v"] is not None:
+                _STREAMS_STAT["shared"] += 1
+                return st["v"]
+        st["busy"] = True
+        _STREAMS_STAT["reads"] += 1
+        _STREAMS_STAT["inflight"] += 1
+        _STREAMS_STAT["max_inflight"] = max(_STREAMS_STAT["max_inflight"],
+                                            _STREAMS_STAT["inflight"])
+    v = None
+    try:
+        v = _streams_names_read(d)
+        return v
+    finally:
+        with _STREAMS_FLIGHT_COND:
+            st.update({"busy": False, "v": v, "seq": st["seq"] + 1})
+            _STREAMS_STAT["inflight"] -= 1
+            _STREAMS_FLIGHT_COND.notify_all()
+
+
+def streams_names(d):
+    """그 자리의 파일 이름 — 요청 스코프 안에서는 훑기가 1회로 접힌다."""
+    scope = getattr(_STREAMS_SCOPE, "v", None)
+    if scope is not None:
+        v = scope.get(d)
+        if v is None:
+            v = scope[d] = _streams_names_shared(d)
+        return v
+    return _streams_names_shared(d)
+
+
 def streams_glob(pattern, user=None):
-    """읽는 자리 전체에서 pattern 에 맞는 파일 (새 자리가 앞선다)."""
-    import glob as _glob
+    """읽는 자리 전체에서 pattern 에 맞는 파일 (새 자리가 앞선다).
+
+    자리마다 glob 하지 않고 **한 번 뜬 이름 목록에서 고른다**
+    (REQ-20260902-004). 결과는 옛 구현과 글자 그대로 같아야 한다: 순서(새 자리
+    먼저 · 이름 오름차순), basename 중복 제거, 그리고 glob 이 그러듯 패턴이
+    `.` 로 시작하지 않으면 숨김 파일을 빼는 것까지.
+    """
+    import fnmatch
+    dot_ok = pattern.startswith(".")
     seen, out = set(), []
     for d in streams_read_dirs(user):
-        for p in sorted(_glob.glob(os.path.join(d, pattern))):
-            b = os.path.basename(p)
-            if b not in seen:
-                seen.add(b)
-                out.append(p)
+        for b in fnmatch.filter(streams_names(d), pattern):
+            if b in seen or (b.startswith(".") and not dot_ok):
+                continue
+            seen.add(b)
+            out.append(os.path.join(d, b))
     return out
 
 
@@ -18333,13 +18444,15 @@ def cmd_serve(args):
             `/proc` 을 한 번만 훑게 하는 문은 메서드(do_GET·do_POST…)가 아니라
             이 한 곳이어야 한다 — 나중에 붙는 메서드도 자동으로 지나야
             병목이 옆문으로 되돌아오지 않는다. 상한 판정과 같은 이유다.
+            **streams 자리 목록의 범위도 같은 문이다** (REQ-20260902-004) —
+            바인딩마다 streams 디렉토리를 훑던 것이 요청당 1회가 된다.
             """
             if self.idle_timeout and self.idle_timeout > 0:
                 try:
                     self.connection.settimeout(self.idle_timeout)
                 except OSError:
                     pass
-            with proc_scope():
+            with proc_scope(), streams_scope():
                 super().handle_one_request()
 
         def parse_request(self):
@@ -18613,7 +18726,11 @@ def cmd_serve(args):
                             # 몇 번 접었나(shared), 동시에 몇이 들어갔나
                             # (max_inflight). 이 병목의 재발은 스택 덤프를
                             # 뜨지 않고 이 세 숫자로 잡는다.
-                            "proc": proc_stat()})
+                            "proc": proc_stat(),
+                            # streams 자리 훑기 계기 (REQ-20260902-004) —
+                            # 같은 세 숫자, 같은 쓰임. 024 로 `/proc` 을
+                            # 치우자 여기가 다음 병목이었다.
+                            "streams": streams_stat()})
             elif parsed.path == "/api/serveguard":
                 # 대시보드가 왜 죽었는지를 대시보드 안에서 답한다
                 # (REQ-20260826-018). 명세는 그 문서의 decision 노트 —
@@ -18766,6 +18883,7 @@ def cmd_serve(args):
                         # 바퀴마다 버린다 (REQ-20260901-024). 안 버리면 긴
                         # 연결 하나가 5분 낡은 생존 판정을 들고 앉는다.
                         proc_scope_reset()
+                        streams_scope_reset()   # 같은 이유 (REQ-20260902-004)
                         if sse_retired(tok) or self._peer_gone():
                             break
                         d = stream_events(sid, after)
