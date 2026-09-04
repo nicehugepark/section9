@@ -125,6 +125,59 @@ class Reuse(unittest.TestCase):
         finally:
             shutil.rmtree(repo, ignore_errors=True)
 
+    def test_committing_does_not_change_the_fingerprint(self):
+        """**커밋은 지문을 바꾸지 않는다** (REQ-20260904-005).
+
+        예전 지문은 `HEAD 해시 + 미커밋 변경`이었다. 커밋은 파일 내용을 하나도
+        안 바꾸면서 HEAD 를 바꾸므로, 같은 나무인데 지문이 달라졌다 — 실측
+        2026-09-04: 한 무더기를 셋으로 나눠 커밋했더니 첫 커밋이 들어간 순간
+        방금 만든 전체 초록 기록이 무효가 되어 둘째·셋째가 각각 다시 시험을
+        물었다(40초 + 5분). 재사용이 「커밋 한 번에 한 번만」 듣는 셈이라
+        쪼개 넣을수록 손해였다.
+        """
+        import subprocess as _sp
+        repo = tempfile.mkdtemp(prefix="s9fpc-")
+        try:
+            _sp.run(["git", "init", "-q", repo], check=True)
+            _sp.run(["git", "-C", repo, "config", "user.email", "t@t"], check=True)
+            _sp.run(["git", "-C", repo, "config", "user.name", "t"], check=True)
+            for n in ("a.txt", "b.txt"):
+                with open(os.path.join(repo, n), "w", encoding="utf-8") as fh:
+                    fh.write(n)
+            before = self.m.tree_fingerprint(repo)
+            if before is None:
+                self.skipTest("git 을 못 읽는 자리")
+            _sp.run(["git", "-C", repo, "add", "a.txt"], check=True)
+            _sp.run(["git", "-C", repo, "commit", "-qm", "a"], check=True)
+            self.assertEqual(self.m.tree_fingerprint(repo), before,
+                             "커밋만 했는데 지문이 움직였다 — 쪼개 넣을수록 손해가 된다")
+            _sp.run(["git", "-C", repo, "add", "b.txt"], check=True)
+            _sp.run(["git", "-C", repo, "commit", "-qm", "b"], check=True)
+            self.assertEqual(self.m.tree_fingerprint(repo), before,
+                             "둘째 커밋에서 지문이 움직였다")
+        finally:
+            shutil.rmtree(repo, ignore_errors=True)
+
+    def test_document_only_changes_do_not_move_the_fingerprint(self):
+        """문서·상태는 시험 결과를 안 바꾸므로 지문에도 안 센다."""
+        import subprocess as _sp
+        repo = tempfile.mkdtemp(prefix="s9fpd-")
+        try:
+            _sp.run(["git", "init", "-q", repo], check=True)
+            os.makedirs(os.path.join(repo, "vault"), exist_ok=True)
+            with open(os.path.join(repo, "code.py"), "w", encoding="utf-8") as fh:
+                fh.write("x = 1")
+            before = self.m.tree_fingerprint(repo)
+            if before is None:
+                self.skipTest("git 을 못 읽는 자리")
+            with open(os.path.join(repo, "vault", "doc.md"), "w",
+                      encoding="utf-8") as fh:
+                fh.write("문서가 하나 늘었다")
+            self.assertEqual(self.m.tree_fingerprint(repo), before,
+                             "문서 하나에 전체 스위트가 다시 돌게 된다")
+        finally:
+            shutil.rmtree(repo, ignore_errors=True)
+
 
 class SingleFlight(unittest.TestCase):
     """② 단일비행 — 같은 선택이 돌고 있으면 두 번째는 기다린다."""

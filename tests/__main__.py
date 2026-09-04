@@ -163,25 +163,46 @@ def _selection_key(pats):
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
+# 지문에 안 세는 자리 — 문서·상태·사람 데이터는 시험 결과를 바꾸지 않는다.
+FP_SKIP = ("vault/", "state/", "docs/", "projects/", "users/", "index/",
+           ".git/")
+
+
 def tree_fingerprint(repo=None):
-    """지금 나무의 지문 — HEAD + 미커밋 변경. 못 재면 None(그러면 항상 돈다).
+    """지금 나무의 지문 — **파일 내용만으로** 잰다. 못 재면 None(늘 다시 돈다).
 
     보수 쪽으로 기운다: 모르면 **다시 돈다.** 안 돌고 통과로 세는 것보다
     한 번 더 도는 쪽이 싸다.
+
+    **커밋은 지문을 바꾸지 않는다** (REQ-20260904-005). 예전 지문은
+    `HEAD 해시 + 미커밋 변경`이었다. 그런데 커밋은 파일 내용을 하나도 안 바꾸면서
+    HEAD 를 바꾸고 그 파일들을 미커밋 목록에서 뺀다 — 즉 **같은 나무인데 지문이
+    달라진다.** 실측 2026-09-04: 한 무더기를 셋으로 나눠 커밋했더니, 첫 커밋이
+    들어간 순간 방금 만든 전체 초록 기록이 무효가 되어 둘째·셋째가 각각 다시
+    시험을 물었다(40초 + 5분). 재사용 계층이 「커밋 한 번에 한 번만」 듣는 셈이라
+    쪼개 넣을수록 손해였다.
+
+    그래서 git 의 이름(HEAD·스테이지 여부)을 아예 안 본다. 추적 대상과 추적 안 되는
+    새 파일의 **내용**만 센다 — 시험 결과를 정하는 것이 그것뿐이기 때문이다.
+    비용은 그 자리에 이미 적혀 있다(`_file_mark`): 300여 파일 6.6MB 를 읽어도 수십 ms.
     """
     import hashlib
     repo = repo or REPO
-    head = (_git(repo, "rev-parse", "HEAD") or "").strip()
-    porc = _git(repo, "status", "--porcelain")
-    if not head or porc is None:
+    # -c 추적 중 · -o 추적 안 되는 새 파일 · --exclude-standard .gitignore 존중.
+    listing = _git(repo, "ls-files", "-c", "-o", "--exclude-standard")
+    if listing is None:
         return None
-    h = hashlib.sha1((head + "\n").encode("utf-8"))
-    for ln in sorted(porc.splitlines()):
-        f = ln[3:].strip()
-        if not f or f.startswith(("vault/", "state/", "docs/", "projects/",
-                                  "users/")):
+    names = sorted({ln.strip() for ln in listing.splitlines() if ln.strip()})
+    h = hashlib.sha1(b"s9-tree-v2\n")
+    counted = 0
+    for f in names:
+        q = f.replace("\\", "/")
+        if q.startswith(FP_SKIP):
             continue
-        h.update(_file_mark(os.path.join(repo, f), f))
+        h.update(_file_mark(os.path.join(repo, f), q))
+        counted += 1
+    if not counted:
+        return None
     return h.hexdigest()
 
 
