@@ -522,5 +522,51 @@ class Metrics(unittest.TestCase):
         self.assertNotIn("time.sleep(interval)", src)
 
 
+class CrossingLoad(unittest.TestCase):
+    """계기가 경계-넘는 연결로 동적 포트에 얹는 부하 (REQ-20260904-012 · -020).
+
+    로컬 127.0.0.1 연결은 윈도우 중계를 안 거치지만, 계기의 api·ctl 은 밖으로
+    나가 경계를 넘고 그 매핑을 중계가 제 수명 동안 쥔다. 그래서 이 주기는
+    「사고를 얼마나 빨리 보나」와 「하루에 포트를 얼마나 태우나」의 맞바꿈이다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="s9mload-")
+        spec = importlib.util.spec_from_loader(
+            "s9mload", importlib.machinery.SourceFileLoader("s9mload", S9))
+        cls.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.m)
+
+    def test_l1_interval_is_a_ratchet_down(self):
+        """L1. 주기는 내려갈 때만 고친다 — 부하는 는 적이 없어야 한다.
+
+        올려야 하면(사고 감지를 더 빨리) 그 까닭을 여기 적어라. 지금 30 은
+        15 에서 내린 값이다(REQ-20260904-012: 15초면 하루 ~17,000 경계-넘기).
+        """
+        self.assertGreaterEqual(self.m.METRICS_INTERVAL_SEC, 30,
+                                "주기를 줄이면 포트 부하가 는다 — 까닭을 이 시험에 적어라")
+
+    def test_l2_peak_detection_is_independent_of_the_interval(self):
+        """L2. 봉우리는 주기와 무관하게 1초로 본다 — 주기를 늘려도 안 놓친다.
+
+        metrics_loop 이 표본과 표본 사이를 `min(1.0, left)` 로 훑으며 매초
+        `_peak_tick` 을 부른다. 이 구조가 없으면 주기를 늘리는 순간 봉우리가
+        통째로 사라진다(REQ-20260903-004 가 세운 것).
+        """
+        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin", "s9"), encoding="utf-8").read()
+        loop = src.split("def metrics_loop", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("_peak_tick()", loop)
+        self.assertIn("min(1.0, left)", loop,
+                      "표본 사이를 1초로 안 훑는다 — 주기를 늘리면 봉우리를 놓친다")
+
+    def test_l3_a_sample_opens_a_bounded_number_of_crossings(self):
+        """L3. 한 표본이 여는 경계-넘는 갈래는 유계다(api·ctl) — 늘면 이 수를 고쳐라."""
+        s = self.m.metrics_sample(self.tmp)
+        crossing = [k for k in s["net"] if k in ("api", "ctl")]
+        self.assertEqual(sorted(crossing), ["api", "ctl"],
+                         "밖으로 나가는 갈래가 바뀌었다 — 부하 계산을 다시 하라")
+
+
 if __name__ == "__main__":
     unittest.main()
