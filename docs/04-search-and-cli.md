@@ -17,10 +17,16 @@ LLM이든 사람이든 넓은 것부터 좁혀 들어간다. 각 단계의 출�
 CLI 없이도 동작하는 저수준 경로 (grep/jq 친화 설계의 이유):
 
 ```bash
-jq -c 'select(.status=="in-progress")' index/catalog.jsonl
+# catalog 는 base + 델타다 (REQ-20260902-035) — 합쳐 주는 문이 `index cat` 이다
+s9 index cat | jq -c 'select(.status=="in-progress")'
 grep -rl "키워드" vault/requests/2026/08/
 cat index/by-user/user1.md
 ```
+
+`index/catalog.jsonl` 만 읽으면 마지막 전량 재생성 이후의 문서가 빠진다 —
+파일 이름 대신 `s9 index cat` 을 쳐라. 안이 두 파일이든 셋이든 밖에서 읽는
+쪽은 그대로다. 델타의 `"_gone": true` 줄은 그 문서가 내려갔다는 묘비이고,
+`index cat` 은 그 줄을 이미 걷어낸 목록을 준다.
 
 ## CLI Reference
 
@@ -86,6 +92,24 @@ s9 new request --title T [--summary S] [--goal G] [--size S|M|L]
 
 vault 전체 스캔 → catalog.jsonl + index/by-* 재생성. 모든 쓰기 명령이
 자동 수행하므로 평소엔 불필요. 인덱스 의심 시 언제든 실행.
+
+### s9 now [--as NAME]
+
+지금 시각을 **재어서** 응답 머리 형식으로 낸다. 시간대는 `S9_TZ` > 사용자 설정
+`timezone` > 시스템 로컬 순으로 따르고, 라벨(`KST`·`EDT`)도 함께 따라간다.
+
+```
+$ s9 now
+2026-09-03 20:55:17 KST
+$ s9 now --as lead
+`[2026-09-03 20:55:18 KST - lead]`
+```
+
+에이전트는 **답을 쓰기 직전에** 이걸 불러 나온 줄을 그대로 머리에 놓는다.
+훅이 주입하는 값은 프롬프트가 *도착한* 때라, 도구를 여러 번 부른 턴에서는 그만큼
+과거를 가리킨다 — 읽는 사람에게는 재지 않고 지어낸 숫자로 보인다
+(REQ-20260903-013). `date` 로 대신하지 않는 이유는 그것이 개인 설정 `timezone` 을
+모르기 때문이다: 같은 물음에 답이 둘이면 언젠가 갈린다.
 
 ### s9 init
 
@@ -162,3 +186,30 @@ connection refused, 대시보드 접속 불가, 캡처 실패가 동시에 발�
 
 멀티 계정/머신/세션 audit의 핵심 — 각 Claude 세션 시작 시 이 변수들을
 설정해두면 모든 문서에 출처가 찍힌다.
+
+## 상시 계기 (`s9 metrics`)
+
+「밖으로 못 나갔다」와 「길은 열렸는데 답이 늦다」를 사후에 가르려면 사고
+전부터 재고 있어야 한다. 그래서 이 계기는 상시로 돈다.
+
+| 명령 | 하는 일 |
+|---|---|
+| `s9 metrics start` | 수집기를 세션에서 떼어 띄운다 (이미 돌고 있으면 아무것도 안 한다) |
+| `s9 metrics status` | 돌고 있나 · 오늘 표본 수 · 기록 파일 |
+| `s9 metrics stop` | 멈춘다 |
+| `s9 metrics sample` | 지금 한 번만 재서 보여 준다 |
+
+**밖으로 나간다는 사실을 먼저 적는다.** 수집기가 도는 동안 15초마다 바깥
+두 곳에 붙는다 — `api.anthropic.com`(dns→tcp→tls→http 전 구간)과
+`1.1.1.1`(이름 풀이를 건너뛴 대조군), 그리고 이름 풀이 단독. **보내는 것은
+없다**: 요청은 `HEAD / HTTP/1.1` 에 `Host` 와 `User-Agent: s9-metrics` 뿐이고
+자격증명·쿠키·쿼리는 붙지 않는다. 다만 **닿는다는 사실 자체**가 그 두 곳에
+15초 간격으로 남는다는 것은 알고 켜야 한다.
+
+- 끄기: `s9 metrics stop`
+- 아예 안 뜨게: `S9_NO_METRICS=1` (세션 시작 훅도 이 값을 보고 물러난다)
+
+기록은 `state/metrics/<날짜>.jsonl` 에 쌓이고 7일 뒤 지워진다. 담기는 것은
+`/proc` 집계값뿐이다 — loadavg·메모리 총량·소켓 통계·임시 포트 범위·
+conntrack·열린 파일 수. 프로세스 목록도 명령줄도 환경변수도 담지 않는다.
+`state/` 는 git 이 추적하지 않으므로 저장소로 새지 않는다.

@@ -6,7 +6,7 @@ role: admin
 emails: ["claude01.pfe@example.invalid"]
 github: nicehugepark
 os_accounts: ["sjpark1"]
-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-02T13:00:44+09:00"}]
+machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-04T14:04:12+09:00"}]
 ---
 
 ## Notes
@@ -147,3 +147,12 @@ machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpar
 - 2026-09-02T08:39:51+09:00 config pref_용어=(삭제) (by nicehugepark)
 - 2026-09-02T08:39:51+09:00 config pref_작업방식=(삭제) (by nicehugepark)
 - 2026-09-02T10:11:12+09:00 config last_model_choice=fable (by dashboard model change)
+- 2026-09-02T16:16:40+09:00 config pref_review=review 는 사람만 판정할 수 있는 것(취향·방향·외부 사실)에만 올린다. 리드가 스스로 판정할 수 있는 것은 사람에게 넘기지 말고 판정해 done/blocked 로 닫는다 — 리뷰가 쌓이면 작업 순서가 꼬인다 (by nicehugepark)
+- 2026-09-02T16:20:18+09:00 config pref_review=(삭제) (by nicehugepark)
+- 2026-09-02T17:49:47+09:00 config auto_resume_max_inflight=5 (by nicehugepark via dashboard)
+- 2026-09-02T17:49:49+09:00 config auto_resume_rush_reserve=5 (by nicehugepark via dashboard)
+- 2026-09-02T18:22:58+09:00 config auto_resume_max_inflight=2 (by nicehugepark via dashboard)
+- 2026-09-02T20:17:28+09:00 config ui_skin=cork (by nicehugepark via dashboard)
+- 2026-09-02T20:17:30+09:00 config ui_skin=field (by nicehugepark via dashboard)
+- 2026-09-02T20:17:33+09:00 config ui_skin=cobalt (by nicehugepark via dashboard)
+- 2026-09-03T10:51:00+09:00 config ui_skin=glass (by nicehugepark via dashboard)

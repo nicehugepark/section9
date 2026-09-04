@@ -25,6 +25,12 @@ ID: `{PREFIX}-{YYYYMMDD}-{NNN}-{fp}` (일 단위 3자리 시퀀스 + **머신 �
 같은 날 문서를 만들어도 파일명이 겹치지 않는다(REQ-20260825-006·031, docs/08 의
 옛 "ID 충돌 한계"는 이것으로 닫혔다). 2026-08-25 이전 문서 230건은 지문 없는
 `{PREFIX}-{YYYYMMDD}-{NNN}` 그대로이며 `resolve_id` 가 정확 일치를 우선한다.
+지문은 첫 사용 때 `users/<me>/config/local.json` 의 `machine_fp` 에 **고정**되어
+그 뒤 hostname·홈 경로가 바뀌어도 같은 값을 쓰고(우선순위 `S9_ORIGIN` > local.json >
+계산값), 동시에 추적 파일 `users/<me>/machines.json` 에 `{fp: {hostname, first_seen}}`
+로 등록된다. pull 뒤 `s9 index rebuild` 가 같은 지문을 다른 hostname 이 잡고 있으면
+경고하고, 그 머신의 `s9 new` 는 발번을 거부한다 — `S9_ORIGIN=<새 지문>` 이 해제다
+(REQ-20260902-027). 레거시 230건은 손대지 않는다.
 파일명 = `{ID}.md`, 경로 = `vault/{subdir}/{YYYY}/{MM}/{ID}.md`.
 ID 할당은 lockfile로 직렬화되어 멀티 세션에서도 충돌하지 않는다.
 

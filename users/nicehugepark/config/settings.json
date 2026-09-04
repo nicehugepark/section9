@@ -1,8 +1,9 @@
 {
- "ui_skin": "calm",
+ "ui_skin": "glass",
  "ui_tone": "system",
  "ui_density": "normal",
  "stream_mirror": "on",
  "timezone": "Asia/Seoul",
- "last_model_choice": "fable"
+ "last_model_choice": "fable",
+ "machine_fp": "62x6"
 }

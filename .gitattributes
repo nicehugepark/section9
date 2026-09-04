@@ -1,0 +1,5 @@
+# 문서는 의미로 합친다 (REQ-20260902-024) — 드라이버는 s9-install 이 등록한다:
+#   git config merge.s9doc.driver "<repo>/bin/s9 merge-doc %O %A %B"
+vault/**/*.md merge=s9doc
+users/*/profile.md merge=s9doc
+users/*/machines.json merge=s9doc

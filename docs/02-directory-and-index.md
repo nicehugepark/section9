@@ -12,7 +12,8 @@ section9/
 │   ├── sessions/YYYY/MM/*.md     # SES-*
 │   └── attachments/              # 첨부 파일 (refs_files가 가리킴)
 ├── index/                        # ★ 파생물 — 항상 재생성 가능
-│   ├── catalog.jsonl             # 기계용 master index
+│   ├── catalog.jsonl             # 기계용 master index (base)
+│   ├── catalog.jsonl.delta       # 그 뒤에 바뀐 행만 (증분 — 아래 참조)
 │   ├── by-user/{user}.md
 │   ├── by-status/{status}.md
 │   ├── by-project/{project}.md
@@ -35,7 +36,18 @@ project, parent, tags, created, updated, path.
 - LLM이 가장 적은 토큰으로 전체 상황을 파악하는 진입점.
   본문을 읽기 전에 catalog로 후보를 좁힌다.
 - `s9 ls` / `s9 search` 는 catalog만 읽는다 (본문 검색은 `--body`일 때만).
-- jq/grep으로도 직접 질의 가능: `jq -c 'select(.user=="user1")' index/catalog.jsonl`
+
+**catalog.jsonl 하나만 읽지 마라** (REQ-20260902-035). 쓰기마다 전량을 다시
+쓰지 않으려고, 갓 바뀐 행은 곁의 `catalog.jsonl.delta` 에 한 줄씩 덧붙는다.
+목록은 **base + 델타** 이고 그 둘을 합치는 자리는 `load_catalog()` 하나다.
+밖에서 그 목록을 얻는 문은 `s9 index cat` 하나다 — 파일 이름을 쓰지 마라:
+
+```bash
+s9 index cat | jq -c 'select(.user=="user1")'
+```
+
+델타의 `{"id": ..., "_gone": true}` 줄은 묘비다(지웠거나 옮겼다). 헷갈리면
+`s9 ls` 를 쓰거나 `s9 index rebuild` 로 접어라 — 접고 나면 base 가 전량이다.
 
 ### by-* md — 사람/LLM 브라우징용 복합 인덱스
 
@@ -58,10 +70,16 @@ project, parent, tags, created, updated, path.
 ## Rebuild 의미론
 
 - `s9 index rebuild` = vault 전체 스캔 → catalog.jsonl과 by-* 전부 삭제 후 재생성.
-- 모든 쓰기 명령(new/status/link)은 끝에 자동 rebuild를 수행한다.
-  Phase 1에서는 full rebuild(문서 수백 개까지는 충분히 빠름),
-  문서가 수천 개가 되면 incremental update로 전환 (Phase 4).
-- 인덱스가 의심되면 언제든 rebuild — 데이터 손실 위험 0.
+  델타는 이때 base 로 접히고 비워진다. 인덱스가 의심되면 언제든 이것 —
+  데이터 손실 위험 0.
+- **쓰기는 증분이다** (REQ-20260902-035). `write_doc` 경계 한 곳이 그 문서
+  행만 델타에 덧붙이므로, 상태 하나 바꾸는 비용이 문서 수를 따라가지 않는다.
+  델타가 200줄을 넘으면 스스로 접힌다.
+- **pull 뒤에도 증분이다.** `git diff --name-only <before> <after> -- vault`
+  로 바뀐 문서만 반영한다(`s9 index sync --since <rev>`). 기준 커밋을 못
+  얻거나 변경이 300건을 넘으면 전량으로 물러난다 — 인덱스는 파생물이라
+  **느려지는 쪽으로 물러나는 것**이 어긋난 채 빨라지는 것보다 낫다.
+- 대량 쓰기 구간(backfill·normalize)은 증분을 멈추고 끝에서 전량 한 번.
 
 ## 동시성 (멀티 세션/멀티 유저, 같은 파일시스템)
 

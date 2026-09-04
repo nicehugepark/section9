@@ -10,7 +10,7 @@ git이 머신 간 전송 계층이 된다.
 | vault/ | **track** | source of truth. 문서 1개 = 파일 1개라 충돌 면적 최소 |
 | users/*/streams/ | **ignore** | transcript 미러. 2026-08-27 에 이력에서 걷어내고(REQ-20260827-047) 사용자별 자리로 옮겼으며(-078) `SYNC_DATA_PATHS` 에서도 뺐다(-077, DOC-20260826-002 결론 B: 동기화 대상의 96%가 미러였다). 다른 머신에서 남의 스트림은 보이지 않는다 — 공유할지는 열린 결정(REQ-20260902-039) |
 | users/ | **track** | 사용자 레지스트리는 전 머신 공유. 단 `config/local.json`(비밀 위치·자율 실행 설정)은 ignore — 이 머신의 주인만 정한다(REQ-20260902-031) |
-| state/sessions/ | **track → 해제 예정** | 바인딩 키에 machine 이 있어 같은 파일을 쓸 일이 없다고 봤으나 코드는 남의 바인딩도 고쳐 쓰고(update_active_reqs·claim release) pid·절대경로가 다른 머신에서 오판을 만든다. DOC-20260902-001 D7 로 track 해제 결정(REQ-20260902-026) — "누가 무엇을 맡았나"는 문서의 lease 로 간다 |
+| state/sessions/ | **ignore** — 문서 lease 가 대체 | 2026-09-02 track 해제(REQ-20260902-026, DOC-20260902-001 D7). 바인딩 키에 machine 이 있어 같은 파일을 쓸 일이 없다고 봤으나 코드는 남의 바인딩도 고쳐 쓰고(update_active_reqs·claim release) pid·절대경로가 다른 머신에서 오판을 만들었다. 다른 머신이 알아야 할 "누가 무엇을 맡았나"는 문서 frontmatter 의 `lease`(REQ-20260902-020)가 나른다. `approvals_seen.json` 도 같은 폴더라 머신별이다 |
 | docs/, bin/, web/ | **track** | 설계 문서와 구현 자체 |
 | index/ | **ignore** | 파생물. 커밋하면 모든 머신의 모든 쓰기가 catalog.jsonl 한 파일에서 충돌 → pull 후 재생성 |
 | .s9.lock | **ignore** | 일시적 lock |

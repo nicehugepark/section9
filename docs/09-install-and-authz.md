@@ -57,6 +57,12 @@ claude hook 정의가 바뀐 경우 실행 중 세션에는 `/hooks` 리로드 �
 들어 있으면 같은 자리에서 막는다 (REQ-20260902-031·032).
 오프라인에서도 동작하는 실수 방지 장치.
 
+**역할의 진실은 GitHub 권한이다** (REQ-20260902-034) — `users/*/profile.md` 의 `role:` 은
+그 캐시다. 로컬 인가는 자기신고(S9_USER)라 인증이 아니므로, `s9 doctor` 의 「권한」 항목이
+profile 의 github 계정으로 collaborator permission 을 물어 admin↔admin · write/maintain↔member ·
+read/triage↔viewer 로 대조하고 어긋나면 경고한다. public 리포에 vault/ 가 track 돼 있으면
+같은 항목이 데이터 노출을 경고한다(데이터는 사설 인스턴스 리포로, docs/08).
+
 **B. GitHub 서버측 (우회 불가능한 최종 게이트)** — `.github/CODEOWNERS` 의
 `@OWNER` 를 실제 admin 계정으로 교체하고, main 브랜치에
 branch protection(PR 필수 + Code Owners 리뷰 필수)을 설정한다.
