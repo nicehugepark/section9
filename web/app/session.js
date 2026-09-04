@@ -35,7 +35,13 @@ const SESS_FOOT = `<div class="dlgsub">그 밖에</div>`
   + `＋ 여기서 세션 시작</button>`
   + `<p class="dlgs" style="margin-top:6px">새 터미널 창이 열리고 세션이`
   + ` 시작됩니다 — 몇 초 뒤 이 화면이 그 세션에 붙습니다.</p>`;
-function sessShape(d, cur){
+/* 목록을 기다리는 동안 빈 자리가 하는 말 (REQ-20260902-065). 「받는 중」과
+   「비어 있음」과 「서버가 죽었다」가 같은 빈 자리로 보이면 안 된다 — 이 화면이
+   다른 자리에서 이미 지키는 규율이고(supplyLine), 여기서는 그것이 곧 이 요청의
+   답이다: 창이 먼저 뜨는 대신, 아직 아무것도 없는 그 짧은 동안 화면이 자기가
+   무엇을 하는 중인지 스스로 말해야 한다. */
+const SESS_WAIT = "세션 목록을 받는 중이에요 — 잠시만요.";
+function sessShape(d, cur, waiting){
   /* 끝난 세션은 **지금 보고 있는 그것 하나만** 남긴다 (REQ-20260829-023).
      끝난 줄을 지우지 않는 이유는 하나였다 — 방금까지 보던 대상이 말없이
      사라지면 "내가 뭘 잘못했나"가 된다. 그 이유는 지금 붙어 있는 줄에만
@@ -47,23 +53,47 @@ function sessShape(d, cur){
   const somewhere = rows.some(r => r.live && r.sid !== cur);
   return {kind: "choose", cap: "세션",
     title: "이 화면이 어느 세션을 볼지 고릅니다",
-    desc: somewhere
+    /* 아직 받는 중이면 **없다고 말하지 않는다** — 갈 곳이 있는지 모르는데
+       없다고 적으면 화면이 모르는 것을 아는 척한다. 이 창이 무엇을 하는
+       자리인지만 말해 둔다(그 문장은 목록이 와도 그대로다). */
+    desc: waiting || somewhere
       ? "고른 세션의 출력과 대화가 여기 이어집니다. 세션 자체는 건드리지 않으니"
         + " 다시 눌러 돌아오면 그만입니다."
       : "지금 옮겨 갈 수 있는 세션이 없습니다 — 아래에서 새 세션을 시작할 수 있습니다.",
     sub: "세션",
     items: sessItems(rows, cur),
-    empty: d && Array.isArray(d.sessions) ? SESS_EMPTY
+    empty: waiting ? SESS_WAIT
+      : d && Array.isArray(d.sessions) ? SESS_EMPTY
       : "대시보드 서버가 다시 뜨는 중일 수 있습니다 — 잠시 뒤 다시 열어 주세요.",
     // 갈 곳이 있을 때는 안 세운다 — 서버가 어차피 거부하고(살아있는 세션이 있다),
     // 지금 할 수 있는 일이 둘로 보이면 무엇을 눌러야 할지가 흐려진다.
-    foot: somewhere ? "" : SESS_FOOT,
+    // 받는 중에도 안 세운다: 나가는 문은 갈 곳이 없다고 **확인된** 뒤의 것이다.
+    foot: waiting || somewhere ? "" : SESS_FOOT,
     cancel: "닫기"};
 }
 async function termSessionPick(T){
+  /* 창을 **먼저** 세운다 (REQ-20260902-065).
+
+     여태는 `/api/sessions` 를 받은 뒤에야 그렸다. 그 응답은 찬 캐시에서 1.5초고
+     (더운 캐시 0.04초, 스냅샷 TTL 은 2초다) — 2초 넘게 가만있다 누르면 매번 그
+     값을 치른다. 누른 사람에게 그 1.5초는 통째로 **아무 일도 안 일어남**이다:
+     "늦게 뜰 이유가 없을 거 같은데" 라고 사용자가 말한 그것이 이 자리였다.
+
+     근원은 서버가 느린 것이 아니라 **누름과 뜸 사이에 네트워크가 있는 것**이다.
+     그래서 창을 즉시 세우고 목록은 도착하는 대로 채운다. `/api/sessions` 를
+     빠르게 만드는 일은 그 다음이고, 빨라져도 찬 캐시는 남는다. */
+  let filling = false, closed = false;
+  s9dlg(sessShape(null, T.sid, true)).then(() => { if (!filling) closed = true; });
   // 한 번 끊긴 것을 「세션이 없다」로 옮기지 않는다 (REQ-20260901-013) —
   // 계정 창과 같은 결함이 이 옆자리에도 있었다.
   const d = await ccFetchTry("/api/sessions", 2500, "sessions");
+  // 기다리는 동안 사람이 닫았으면 되살리지 않는다 — 닫은 것을 다시 띄우는
+  // 화면은 제 말을 안 듣는 화면이다.
+  if (closed) return;
+  /* 다음 줄이 로딩 창을 **갈아 끼운다**. 그 닫힘은 사람이 닫은 것이 아니므로
+     먼저 표를 세워 둔다 — 이 구분이 없으면 목록이 도착할 때마다 스스로
+     "닫혔다"고 읽고 창이 영영 안 뜬다. */
+  filling = true;
   const picked = await s9dlg(sessShape(d, T.sid));
   if (!picked) return;
   if (picked.act === "wake"){ await sessionWake("", null, "세션"); return; }

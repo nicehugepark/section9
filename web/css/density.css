@@ -258,6 +258,11 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
    반올림이 갈릴 자리 자체가 생기지 않는다 — 표 선 두께만 보면 된다. */
 .grow .wlab.gcmd{font-family:var(--mono);font-size:12px;letter-spacing:.02em;
   cursor:default}
+/* 동기화 줄 (REQ-20260902-025) — 평소엔 물러난 글자, 밀리면 글자색만 오른다:
+   60초 넘으면 주황(review 색), 5분 넘으면 붉은(blocked 색). 면 없음. */
+.wfact.gsync{color:var(--muted)}
+.wfact.gsync.late{color:var(--c-review)}
+.wfact.gsync.stale{color:var(--c-blocked);font-weight:600}
 .grow .wlab{cursor:default}
 /* 상태 문장과 「지금 확인」은 한 줄에 선다. **문장 바로 뒤**에 붙인다 —
    둘째 칸이 1,100px 라 오른끝으로 밀면 눈이 700px 를 건너야 하고, 그 손잡이는

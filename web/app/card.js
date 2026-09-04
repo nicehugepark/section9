@@ -279,6 +279,204 @@ function stallState(r){
           face: r.live_kind === "spawn_failed" ? "dead" : "mild",
           reason: r.live_reason || ""};
 }
+
+/* ---- 누가 만들고 누가 맡았나 (REQ-20260902-021, DOC-20260902-001 §2 축1+2) ----
+
+   `user` 가 **담당자**로 재정의되면서(D2) 화면이 답해야 할 물음이 하나 늘었다:
+   배지의 이름이 만든 사람인가 맡은 사람인가. 둘이 갈리는 순간(재할당·에이전트
+   생성)부터 이름 하나로는 못 답한다.
+
+   **낱말은 우리 말로, 내부어는 화면에 안 낸다.** `lease`·`claim`·`takeover`·
+   `assignee` 는 사람이 터미널에 치는 낱말이 아니라 이 코드가 자기끼리 쓰는
+   말이다 — 화면을 닫고 그 일을 하려면 사람이 치는 것은 `s9 assign` 하나뿐이고,
+   그것마저 이 제품이 스스로 지은 이름이라 원어 보존 조항(pull·push)이 걸리지
+   않는다. 그래서 화면에는 「담당」·「만든이」·「이 컴퓨터로 가져오기」가 선다.
+
+   **역할 이름은 그대로 둔다** — `designer`·`ux-writer` 는 이 저장소의 문서
+   앞머리(`agents:`)와 위임 지시문에 같은 글자로 박힌 이름이라, 화면에서만
+   옮기면 "그게 그거인가"를 매번 이어 붙여야 한다(상태 이름 done·in-progress
+   가 한글로 안 서는 그 이유, REQ-20260828-007). 이름이 아닌 것 둘만 우리
+   말이다: `lead:*` → 「리드」(이 저장소의 한국어 산문이 이미 쓰는 말),
+   `worker:*` → 「백그라운드 작업」(REQ-20260902-005 확정어). */
+/* 만든 사람 — 필드가 없는 옛 문서는 `user`(생성자=담당자였다)로 읽는다.
+   서버의 `doc_creator` 와 **같은 규칙**이다: 읽는 규칙이 두 벌이면 카드와
+   CLI 가 다른 이름을 말한다 (D6 — 파일은 하나도 고치지 않고 읽을 때 맞춘다). */
+const docCreator = r => String((r && (r.creator || r.user)) || "");
+function originWho(r){
+  const a = String((r && r.origin_actor) || "");
+  if (!a) return "";
+  if (a.startsWith("sub:")) return a.slice(4);
+  if (a.startsWith("lead")) return "리드";
+  if (a.startsWith("worker")) return "백그라운드 작업";
+  return a;
+}
+/* 기원 한 조각 — 「사람이 직접」 · 「에이전트 designer」 · 「REQ-… 처리 중」.
+   **옛 문서는 아무것도 그리지 않는다**: origin 이 빈 값인 것은 "사람이 직접이
+   아니다"가 아니라 **모른다**이고, 모르는 것을 「기록 없음」이라고 적으면
+   화면이 없는 사실을 한 줄 만들어 낸다 (D6 — 지어내지 않는다). */
+function originBits(r, link){
+  const o = String((r && r.origin) || "");
+  if (!o) return [];
+  const who = originWho(r);
+  if (o === "human") return ["사람이 직접"];
+  const bits = [who ? (who === "리드" || who === "백그라운드 작업"
+                        ? who : `에이전트 ${who}`) : "에이전트"];
+  if (o === "derived" && r.origin_req)
+    bits.push(link ? `${dlink(r.origin_req, esc(shortId(r.origin_req)))} 처리 중`
+                   : `${esc(shortId(r.origin_req))} 처리 중`);
+  return bits;
+}
+/* 카드가 지는 몫은 **놀라운 사실 하나**다.
+
+   대안 셋을 재 봤다. ㉠ 카드에 「만든 사람 · 맡은 사람 · 기원」을 통째로 한 줄
+   — 카드마다 한 줄이 늘고, 그 줄의 대부분은 배지가 이미 말한 것을 되풀이한다
+   (s9-design 「카드 사실 줄」: 정상의 서술은 줄 자격이 없다). ㉡ 툴팁에만 —
+   손이 없는 사람에게는 없는 것과 같다. ㉢ **기존 메타 줄(.m)에 조각 하나**,
+   그것도 배지가 못 하는 말이 있을 때만. 채택은 ㉢ 이다: 새 줄 0, 새 층 0,
+   되돌릴 것 0. 온전한 한 줄은 문서 머리가 진다(훑는 자리와 읽는 자리의 몫이
+   다르다 — 작업 자리 칩이 카드에서 내려간 그 판단, REQ-20260829-030 4차).
+
+   배지가 못 하는 말은 둘뿐이다: 만든 사람이 담당자와 다르다 · 사람이 아닌
+   것이 만들었다. 둘 다 아니면 조각도 없다. */
+function lineageChip(r){
+  const creator = docCreator(r);
+  const owner = String((r && r.user) || "");
+  const o = String((r && r.origin) || "");
+  const who = (o && o !== "human") ? (originWho(r) || "에이전트")
+            : (creator && creator !== owner) ? creator : "";
+  if (!who) return "";
+  return `<span class="lin" title="${esc(lineageTell(r))}">`
+    + `<span class="lincap">만든이</span>${esc(who)}</span>`;
+}
+// 손 위의 글과 낭독기가 함께 읽는 한 문장 — 조각이 줄인 것을 여기서 다 말한다.
+function lineageTell(r){
+  const creator = docCreator(r);
+  const owner = String((r && r.user) || "");
+  const bits = [];
+  if (creator) bits.push(`만든 사람 ${creator}`);
+  if (owner) bits.push(`맡은 사람 ${owner}`);
+  const ob = originBits(r, false).map(x => x.replace(/<[^>]*>/g, ""));
+  return bits.concat(ob).join(" · ");
+}
+/* 문서 머리의 온전한 한 줄. 카드와 **같은 재료**(originBits)를 쓰므로 두 화면이
+   갈라질 자리가 없다 — 같은 사실을 두 함수가 지으면 한쪽만 고쳐진다. */
+function lineageRowHTML(r){
+  if (!r || r.type !== "request") return "";
+  const creator = docCreator(r), owner = String(r.user || "");
+  const cells = [];
+  if (creator) cells.push(`<span class="lincap">만든 사람</span>`
+    + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
+  if (owner) cells.push(`<span class="lincap">맡은 사람</span>`
+    + `<span class="badge" style="--ah:${tagHue(owner)}">${badgeFace(owner)}</span>`);
+  /* 기원은 **제 칸을 갖지 않는다** — 「만든 사람」 칸의 뒤에 붙는다.
+     따로 세우면 라벨 없는 조각(「리드 · REQ-014 처리 중」)이 줄 끝에 떠서,
+     그것이 누구의 무엇인지 말해 주는 것이 사라진다. 만든 계정과 그것을 쥔
+     손은 한 사실의 두 겹이니 한 칸이 맞다. 계정이 없는 옛 문서에서만 카드가
+     쓰는 그 낱말(「만든이」)로 홀로 선다 — 두 화면이 같은 값을 다르게 부르지
+     않게 한다. */
+  const ob = originBits(r, true);
+  if (ob.length){
+    if (creator) cells[0] += ` ${ob.join(" · ")}`;
+    else cells.push(`<span class="lincap">만든이</span>${ob.join(" · ")}`);
+  }
+  if (!cells.length) return "";
+  return `<div class="lineage">`
+    + cells.map(c => `<span class="lincell">${c}</span>`).join("") + `</div>`;
+}
+
+/* ---- 다른 컴퓨터가 쥔 요청 (REQ-20260902-021 · D1 이관 경로 (b)) ----------
+
+   문서에 적힌 리스는 「담당자 + 처음 집은 머신」이다. 다른 컴퓨터의 리스는
+   **벽시계만** 본다(pid·경로는 그 컴퓨터에서만 참) — 그래서 이 화면이 아는
+   것도 벽시계뿐이고, 말할 수 있는 것도 「저기서 진행 중」까지다.
+
+   **시계는 하나여야 한다.** 이 수(초)는 bin/s9 의 `DOC_LEASE_TTL` 과 같은
+   수다 — 갈라지면 화면이 「진행 중」이라 쓴 카드를 서버는 free 로 보고 워커를
+   띄운다. `SLOW_WIN` 이 서버의 STALLED_WIN 과 대조되는 것과 같은 규율이고,
+   대조는 tests/test_assign_screen.py 가 한다. */
+const LEASE_TTL = 1800;
+function leaseElsewhere(r){
+  // 진행 축의 사실이다 — 「진행 중」이라 말하려면 정말로 진행 중이어야 한다.
+  // 끝난 카드에 남은 리스는 30분 뒤 저절로 식지만, 그 30분 동안 done 열에
+  // 「어디서 진행 중」이 서면 그것은 거짓말이다.
+  if (!r || r.type !== "request" || r.status !== "in-progress") return null;
+  const l = r.lease || null;
+  if (!l || !l.machine) return null;
+  const mine = (window.__whoami || {}).machine || "";
+  if (!mine || l.machine === mine) return null;   // 제 자리는 남의 자리가 아니다
+  const t = Date.parse(l.renewed || l.since || "");
+  if (isNaN(t)) return null;
+  const age = Math.floor((Date.now() - t) / 1000);
+  if (age >= LEASE_TTL) return null;              // 만료 — 아무도 안 쥐고 있다
+  return {machine: l.machine, user: l.user || "", mins: Math.floor(age / 60)};
+}
+/* 「이 컴퓨터로 가져오기」는 **담당자 본인과 admin** 에게만 선다 (D1 (b)).
+   남에게는 손잡이가 없다 — 여기서 숨기는 것은 권한이 아니라 **뜻**이다:
+   남의 일을 내 컴퓨터로 끌어오는 것은 담당을 바꾸는 일이고, 그 길은 옆에
+   따로 있다(담당 바꾸기). 두 손잡이가 같은 일을 하면 사람은 어느 쪽이
+   되돌릴 수 있는 쪽인지 못 고른다. */
+function canTakeover(r){
+  const me = viewMe();
+  return !!me && (me === String((r && r.user) || "") || isAdmin());
+}
+function elsewhereRowHTML(r){
+  const e = leaseElsewhere(r);
+  if (!e) return "";
+  const when = e.mins < 1 ? "방금" : `${e.mins}분 전`;
+  const row = `<div class="rvpt elsew" title="이 요청은 ${esc(e.machine)} 에서`
+    + ` ${esc(when)}까지 움직였습니다 — 이 컴퓨터에서는 진행을 볼 수 없습니다">`
+    + `<span class="rvcap">다른 컴퓨터</span>${esc(e.machine)} 에서 진행 중`
+    + ` · ${esc(when)}</div>`;
+  if (!canTakeover(r)) return row;
+  /* 낱말 손잡이는 제 줄을 갖는다 — 「끝났는지 확인」이 세운 그 실측 규칙
+     (.deedrow.wordy): 좁은 칸에서 같은 줄에 세우면 문장이 잘려 버튼이 무엇에
+     대한 것인지 말하는 근거가 사라진다. */
+  return `<div class="deedrow wordy">` + row
+    + `<div class="acts"><button type="button" class="deed"`
+    + ` data-takeover="${esc(r.id)}"`
+    + ` title="이 요청의 진행을 이 컴퓨터로 옮깁니다 — ${esc(e.machine)} 는`
+    + ` 다음 차례에 손을 뗍니다">이 컴퓨터로 가져오기</button></div></div>`;
+}
+/* 담당 바꾸기 손잡이. **권한 없는 사람에게도 선다** — 숨기면 화면이 권한 판정을
+   한 벌 더 갖게 되고(서버와 갈라질 자리), 사람은 "왜 나는 못 하나"를 물을 데가
+   없다. 누르면 서버의 거부 문장이 그대로 뜬다: 문구는 한 벌이다. */
+/* 문서 화면의 「담당 바꾸기」는 **행동 띠**에 선다 (REQ-20260830-046 이 세운
+   자리: 행동은 한 무리에 모여 제목과 함께 붙박인다). 혈통 줄의 배지에 또
+   달지 않는다 — 한 화면에서 같은 행동에 손잡이가 둘이면 사람은 둘이 다른
+   일인지 먼저 의심한다. 카드에서는 반대다: 띠가 없으므로 배지가 곧 손잡이다.
+   낱말·길·창은 한 벌이라(assignDoc) 두 자리가 갈라질 데가 없다. */
+function assignBtnHTML(r){
+  if (!r || r.type !== "request" || TERMINAL.has(r.status)) return "";
+  return `<button type="button" class="deed asgn" data-assign="${esc(r.id)}"`
+    + ` title="이 요청을 맡을 사람을 바꿉니다">담당 바꾸기</button>`;
+}
+/* 카드의 담당 배지는 **그 자체가 손잡이**다 (직접 조작 — 바꿀 값을 누른다).
+
+   카드에 낱말 단추를 하나 더 세우지 않는 이유는 자리가 아니라 위계다: 카드의
+   결정은 「이 요청에 지금 무엇을 하나」 하나이고, 담당 바꾸기는 그 아래 급이다.
+   누를 수 있다는 것은 이 화면이 **이미 가진** 문법이 말한다 — 점선 밑줄
+   (`.wsat`·`.pname` 이 쓰는 그 밑줄) 하나뿐이고, 사람이 새로 배울 것은 없다.
+   요청이 아니거나 끝난 문서에서는 그냥 글자로 선다(없는 조작을 가리키지 않는다). */
+// 배지의 속 — 이니셜 링(calm 전용 마크)과 이름. 배지가 서는 자리 셋(카드 ·
+// 문서 머리의 만든 사람 · 맡은 사람)이 한 함수를 쓴다.
+/* 이름을 따로 감싸는 것은 **밑줄이 이름의 것이기 때문**이다 (REQ-20260902-021
+   반려). 단추 전체에 밑줄을 주면 calm 스킨의 이니셜 링(.av — 18px 원)
+   **밑으로도** 점선이 지나가, 원 아래 잘린 선이 깨진 그림처럼 보인다. 누를 수
+   있다고 말하는 것은 이름이지 마크가 아니다. */
+function badgeFace(u){
+  return `<i class="av">${esc(String(u).slice(0, 1).toUpperCase())}</i>`
+    + `<span class="bnm">${esc(u)}</span>`;
+}
+function ownerBadgeHTML(r){
+  const u = (r && r.user) || "?";
+  const face = badgeFace(u);
+  const st = ` style="--ah:${tagHue(u)}"`;
+  if (!r || r.type !== "request" || TERMINAL.has(r.status))
+    return `<span class="badge"${st}>${face}</span>`;
+  return `<button type="button" class="badge asgnb"${st}`
+    + ` data-assign="${esc(r.id)}"`
+    + ` title="맡은 사람 ${esc(u)} — 눌러서 담당을 바꿉니다">${face}</button>`;
+}
 /* 이 요청에 지금 **사람이 할 수 있는 일**을 짓는 한 함수 (REQ-20260828-041,
    REQ-20260829-024).
 
@@ -625,6 +823,15 @@ function holdForecastHTML(r){
    **손잡이는 여기서 나오지 않는다** — ▶·⏸ 는 id 줄의 벨트(deedBeltHTML)가 진다.
    이 함수가 돌려주는 것은 글자 줄뿐이고, 예외는 낱말 손잡이 한 갈래다. */
 function stallHTML(r){
+  /* **진행 축의 맨 위는 「다른 컴퓨터」다** (REQ-20260902-021).
+
+     아래 셋(중단 · 멈춤 · 오래 걸림)은 전부 **이 컴퓨터에 아무것도 없다**는
+     사실을 재는데, 다른 컴퓨터가 리스를 쥐고 있으면 그 없음의 까닭이 이미
+     밝혀져 있다. 그때 「멈춤 42분째 진전 없음」은 사실도 아니다 — 저쪽에서는
+     지금 돌고 있다. 축마다 한 줄이므로(s9-design 「카드 사실 줄」) 이 줄이
+     서면 아래 사다리는 서지 않는다. */
+  const elsew = elsewhereRowHTML(r);
+  if (elsew) return elsew;
   const stopped = stoppedRowHTML(r);
   if (stopped) return stopped;
   const st = stallState(r);
@@ -845,6 +1052,8 @@ function stallProbe(rows){
   driftProbe(rows);
   rvqProbe(rows);
   spawnProbe(rows);
+  leaseProbe(rows);
+  linProbe(rows);
   const m = /[?&]stall=(\d+)/.exec(location.search);
   if (!m || !Array.isArray(rows)) return rows;
   const mins = Math.max(1, Math.min(9999, +m[1] || 20));
@@ -916,6 +1125,52 @@ function spawnProbe(rows){
 
    그림을 따로 짓지 않는다 — 서버가 줬을 값(`worker`)을 행에 얹고, 그다음은
    평소 그리던 길(cardHTML → stallHTML → slowRowHTML)이 그대로 그린다. */
+/* ?lease=<분>[&leasepc=<이름>][&leasemine] — **다른 컴퓨터가 쥔 카드**를 진짜로
+   세운다 (REQ-20260902-021).
+
+   이 얼굴은 컴퓨터가 둘 있어야 성립한다 — 한 대에서는 캡처할 길이 아예 없다.
+   `?stall` 이 낸 그 선례를 그대로 따른다: 그림을 따로 짓지 않고, **서버가 줬을
+   값**(행의 `lease`)을 얹은 뒤 평소 그리던 길이 그대로 그리게 둔다. 만료
+   (`?lease=40`)와 신선(`?lease=12`)을 나란히 볼 수 있어야 「30분이 지나면
+   줄도 손잡이도 사라진다」가 눈으로 확인된다. `leasemine` 은 **제 컴퓨터의
+   리스**를 얹는다 — 그때는 아무 줄도 서지 않아야 한다(제 자리를 남의 자리로
+   그리지 않는다). */
+function leaseProbe(rows){
+  const m = /[?&]lease=(\d+)/.exec(location.search);
+  if (!m || !Array.isArray(rows)) return rows;
+  const mins = Math.max(0, Math.min(99999, +m[1] || 12));
+  const mine = /[?&]leasemine\b/.test(location.search);
+  const pc = (/[?&]leasepc=([\w.-]+)/.exec(location.search) || [])[1]
+    || "MACBOOK-AIR";
+  const here = (window.__whoami || {}).machine || "";
+  const at = new Date(Date.now() - mins * 60000).toISOString();
+  for (const r of rows){
+    if (r.type !== "request" || r.status !== "in-progress") continue;
+    r.lease = {user: r.user || "", machine: mine ? here : pc,
+               session: "0f1e2d3c", since: at, renewed: at};
+  }
+  return rows;
+}
+/* ?lin=<human|agent|derived>[&lincreator=<이름>] — 「만든이」 조각과 문서 머리의
+   혈통 줄을 세운다 (REQ-20260902-021). 옛 문서(origin 빈 값)가 아무것도 안
+   그리는지는 이 진단을 **안 켠** 화면이 그대로 답한다. */
+function linProbe(rows){
+  const m = /[?&]lin=(\w+)/.exec(location.search);
+  if (!m || !Array.isArray(rows)) return rows;
+  const o = m[1];
+  const cr = (/[?&]lincreator=([\w.-]+)/.exec(location.search) || [])[1] || "";
+  const CYCLE = ["sub:designer", "lead:claude-opus-5", "worker:auto-resume"];
+  let n = 0;
+  for (const r of rows){
+    if (r.type !== "request") continue;
+    r.origin = o;
+    r.origin_actor = o === "human" ? "" : CYCLE[n % CYCLE.length];
+    if (o === "derived") r.origin_req = r.parent || r.id;
+    if (cr) r.creator = cr;
+    n++;
+  }
+  return rows;
+}
 /* ?jobrow[=<분>] — 카드의 긴 잡 조각을 세운다 (REQ-20260830-022). */
 function jobRowProbe(rows){
   const m = /[?&]jobrow(?:=(\d+))?\b/.exec(location.search);
@@ -1586,8 +1841,20 @@ function cardHTML(r){
      같은 마크였고, 열 머리의 `멈춤 N` 과도 세는 대상이 어긋나 보였다. 이제
      stallState 가 연 문을 지난 행은 전부 사각(정지)으로 그린다: 죽음이 기록된
      것은 채운 사각, 아니면 속 빈 사각. */
+  /* 다른 컴퓨터가 쥔 요청의 점은 **모름(○)** 이다 (REQ-20260902-021).
+
+     새 얼굴을 만들지 않는다 — 일곱 얼굴은 두 축(모양 = 무엇이 붙어 있나 ·
+     채움 = 문서에 기록이 나가나)의 조합이고, 이 자리에서 참인 것은 정확히
+     「이 컴퓨터는 모른다」다: 저쪽 pid·경로는 여기서 뜻이 없고 벽시계만 읽힌다.
+     그래서 마크는 사다리 끝의 ○ 그대로 두고 **문장만** 참으로 바꾼다. 아래
+     사각(멈춤·죽음)으로 떨어지면 안 된다 — 저쪽에서는 돌고 있는데 여기서
+     멎었다고 그리는 것이라, 점과 줄이 서로 다른 말을 하기 시작한다. */
+  const elsewDot = leaseElsewhere(r);
   const liveDot = r.status === "in-progress"
-    ? (st && st.face === "dead"
+    ? (elsewDot
+         ? `<span class="livedot off" title="${esc(elsewDot.machine)} 에서 ${
+              elsewDot.mins < 1 ? "방금" : elsewDot.mins + "분 전"}까지 움직였습니다 — 이 컴퓨터에서는 진행을 볼 수 없습니다"></span>`
+       : st && st.face === "dead"
          ? `<span class="livedot dot-stopped" title="이 요청을 맡았던 일이 도중에 멎었습니다 — ${esc(st.reason||"까닭은 남아 있지 않습니다")}"></span>`
        : st
          ? `<span class="livedot dot-stopped mild" title="지금 이 요청을 담당하는 것이 없습니다 — 문서도 ${st.mins}분째 그대로입니다${esc(st.reason ? " — " + st.reason : "")}${r.live ? " — 이 요청을 만든 창은 아직 움직이고 있습니다" : ""}"></span>`
@@ -1622,7 +1889,7 @@ function cardHTML(r){
     <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${vh}<span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</div>
     <div class="t">${esc(r.title)}</div>
     <div class="m">
-      <span class="badge" style="--ah:${tagHue(r.user||"?")}"><i class="av">${esc((r.user||"?").slice(0,1).toUpperCase())}</i>${esc(r.user)}</span>
+      ${ownerBadgeHTML(r)}${lineageChip(r)}
       ${prioHTML(r)}
       ${r.size ? `<span class="size">${esc(r.size)}</span>` : ""}
       ${r.tdd ? `<span class="tdd${r.tdd.passed===r.tdd.total?" full":""}" title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">TDD ${r.tdd.passed}/${r.tdd.total}</span>` : ""}
@@ -1797,6 +2064,147 @@ async function postStatus(id, to, note, atts){
   }catch(e){
     s9dlg({kind:"alert", cap:"연결", title:"서버에 닿지 못했습니다",
       desc:"잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.", ok:"닫기"});
+  }
+}
+
+/* 열려 있는 판이 그 문서면 다시 그린다 — 부르는 자리가 둘(담당 바꾸기·가져오기)
+   이라 한 곳에 둔다. 다른 문서를 보고 있으면 아무 일도 하지 않는다. */
+function reloadShowing(id){
+  const v = document.getElementById("viewer");
+  if (v && v.dataset.showing === id) loadDoc(id, true, true);
+}
+/* ---- 담당 후보는 그 프로젝트의 사람이다 (REQ-20260902-064) ----------------
+
+   프로젝트에 참여하지 않은 사람까지 목록에 서던 것을 고친다. 판정은 한 줄이다 —
+   **담당 후보 = 그 프로젝트의 활성 멤버 중 관찰 계정이 아닌 사람.** 서버의
+   `do_assign` 이 같은 판정으로 거절하고, 화면은 그 거절이 뻔한 선택지를 손에
+   쥐여 주지 않을 뿐이다 (이 파일이 관찰 계정에 대해 이미 하던 그 일 — 판정을
+   새로 짓는 것이 아니라 서버가 이미 보낸 사실을 읽는다).
+
+   프로젝트가 **없는** 문서는 금지가 아니라 정책 부재다: 서버의 `project_can` 이
+   「미등록 프로젝트 = 정책 부재 → 강제 안 함」으로 세운 그 선을 그대로 따라
+   등록 사용자 전부가 후보다. 여기서 거꾸로 잠그면 프로젝트에 안 매인 요청은
+   아무도 못 맡는 문서가 된다.
+
+   시스템 admin 도 멤버가 아니면 후보가 아니다. admin 우회는 **바꾸는 사람**의
+   축(누가 담당을 옮길 수 있나)이지 **맡는 사람**의 축이 아니다 — 둘을 섞으면
+   "프로젝트에 없는 사람이 목록에 뜬다"가 관리자 얼굴로 그대로 돌아온다.
+
+   만료 판정도 화면이 다시 재지 않는다: `/api/projects` 가 멤버마다 실어 보내는
+   `active`(서버의 `member_active`)를 읽기만 한다. 날짜를 두 벌로 재면 어느 날
+   화면만 만료를 다르게 센다. */
+function assignPick(row){
+  const cur = String((row && row.user) || "");
+  const pool = (window.__users || [])
+    .filter(u => u.role !== "viewer");    // 관찰 계정은 담당을 맡지 않는다
+  const slug = String((row && row.project) || "").trim();
+  const pr = slug ? (window.__projects || []).find(
+    p => p.slug === slug || p.id === slug) : null;
+  let users = pool, desc = "";
+  let empty = "담당을 맡을 수 있는 계정이 없습니다 — Settings 에서 계정을 더하면 여기에 뜹니다.";
+  if (slug){
+    const name = pr ? (pr.title || slug) : slug;
+    /* 목록이 짧은 까닭을 창이 스스로 말한다 — 없는 이름을 찾다가 고장으로
+       읽는 자리다. 자리는 설명 줄(.dlgs)이지 라벨(.dlgsub)이 아니다:
+       라벨은 대문자로 눕는 자리라 프로젝트 이름을 일그러뜨린다(Section9 →
+       SECTION9). 이름을 담는 글자는 본문체로 선다. */
+    desc = `「${name}」 멤버만 담당을 맡습니다.`;
+    if (pr){
+      const mem = new Set((pr.members || [])
+        .filter(m => m.active).map(m => m.user));
+      users = pool.filter(u => mem.has(u.name));
+      empty = `「${name}」에 멤버가 없습니다 — Projects 탭에서 멤버를 더하면 여기에 뜹니다.`;
+    }else{
+      /* 목록을 못 받은 것과 멤버가 없는 것은 다른 화면이다 — 못 받은 자리에
+         「멤버가 없습니다」를 적으면 사람은 없는 사실을 고치러 간다. */
+      users = [];
+      empty = "프로젝트 목록을 받지 못했습니다 — 헤더의 다시 받기를 눌러 보세요.";
+    }
+  }
+  const items = users.map(u => ({key: u.name, label: u.name, cur: u.name === cur,
+                                 tag: u.display || "",
+                                 note: u.name === cur ? "지금 이것" : ""}));
+  /* 지금 맡은 사람은 멤버가 아니어도 목록에 남는다 (옛 문서·멤버에서 빠진 뒤).
+     창이 「지금 이것」을 두고 거짓말하면 누가 쥐고 있는지 알 길이 없다 —
+     골라 봐야 값이 안 바뀌므로 확인은 잠긴 채다(s9choose 의 idle). */
+  if (cur && !items.some(it => it.cur)){
+    const u = (window.__users || []).find(x => x.name === cur) || {};
+    items.unshift({key: cur, label: cur, cur: true,
+                   tag: u.display || "", note: "지금 이것"});
+  }
+  return {items, empty, desc};
+}
+/* ---- 담당을 바꾼다 (REQ-20260902-021) ------------------------------------
+
+   **판정도 문구도 서버 한 곳이다.** 화면은 고를 수 없는 것만 목록에서 뺀다
+   (관찰 계정·프로젝트 밖 — 서버가 어차피 거절하는 선택지를 손에 쥐여 주지
+   않는다: 위 `assignPick`). 권한은
+   화면이 재지 않는다: 손잡이는 누구에게나 서고, 못 하는 사람에게는 서버가 왜
+   못 하는지 한 문장으로 말한다. 여기서 권한 표를 한 벌 더 들면 서버와 갈리는
+   날 화면만 조용히 틀린 말을 하게 된다.
+
+   **되돌릴 수 있다.** 담당은 다시 바꾸면 되므로 확인 창을 겹쳐 세우지 않는다 —
+   한 창 안에서 고르고, 까닭 한 줄을 적어야 확인이 눌린다(빈 값은 벌주지 않고
+   버튼이 안 눌릴 뿐이다). 까닭은 문서 History 에 그대로 남는다. */
+async function assignDoc(id){
+  const r = catFind(id) || {};
+  const cur = String(r.user || "");
+  const {items, empty, desc} = assignPick(r);
+  const picked = await s9choose({cap: "담당",
+    ...dlgFor(id, "맡을 사람을 바꿉니다"),
+    sub: "누가 맡습니까", desc, items, empty,
+    reason: {label: "바꾸는 까닭", required: true,
+             placeholder: "한 줄이면 됩니다 — 문서 History 에 그대로 남습니다"},
+    pickNote: "맡을 사람",
+    confirm: {ok: "담당 바꾸기",
+              idle: "지금 맡은 사람 그대로입니다.",
+              say: it => `${it.key} 에게 넘깁니다. 이 컴퓨터가 쥐고 있던 진행도 함께 놓습니다.`},
+    cancel: "그만두기"});
+  if (!picked || !picked.key || picked.key === cur) return;
+  try{
+    const res = await fetch("/api/assign", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(withAs({id, user: picked.key, why: picked.why || ""}))});
+    const d = await res.json();
+    // 서버의 거부 문장을 **그대로** 옮긴다 — 문구를 두 벌로 만들지 않는다.
+    if (!d.ok){
+      s9dlg({kind: "alert", cap: "담당", doc: shortId(id),
+        title: "담당을 바꾸지 못했습니다", desc: String(d.error || ""), ok: "닫기"});
+      return;
+    }
+    refreshCatalog(true);
+    // 열려 있는 그 문서면 판도 함께 갱신한다 — 목록만 고치면 문서 머리의
+    // 「맡은 사람」이 옛 이름을 그대로 들고 있다 (boot.js·app.js 가 쓰는 그 길).
+    reloadShowing(id);
+  }catch(e){
+    s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.", ok: "닫기"});
+  }
+}
+/* ---- 진행을 이 컴퓨터로 (REQ-20260902-021 · D1 이관 경로 (b)) --------------
+
+   **성공에는 창을 세우지 않는다** (REQ-20260830-049 가 세운 규칙): 줄이 사라지고
+   카드가 이 컴퓨터의 것이 되는 것이 곧 답이다. 그 위에 판을 하나 더 세우면
+   창이 자기가 가리키는 카드를 가린다. 거절될 때만 서버의 사유를 그대로 옮긴다. */
+async function takeoverDoc(id){
+  try{
+    const res = await fetch("/api/claim_takeover", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(withAs({id}))});
+    const d = await res.json();
+    if (!d.ok){
+      s9dlg({kind: "alert", cap: "가져오지 않음", stop: false, doc: shortId(id),
+        title: "이 컴퓨터로 가져오지 못했습니다",
+        desc: String(d.error || ""), ok: "닫기"});
+      return;
+    }
+    refreshCatalog(true);
+    // 열려 있는 그 문서면 판도 함께 갱신한다 — 목록만 고치면 문서 머리의
+    // 「맡은 사람」이 옛 이름을 그대로 들고 있다 (boot.js·app.js 가 쓰는 그 길).
+    reloadShowing(id);
+  }catch(e){
+    s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.", ok: "닫기"});
   }
 }
 

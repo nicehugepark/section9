@@ -315,3 +315,10 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .backlinks .bl:hover{background:var(--accent-soft)}
 .backlinks .bl .id{font-family:var(--mono);font-size:10px;color:var(--faint);margin-right:10px}
 
+
+/* ?noscroll — 판 하나를 한 장에 담기 위해 안쪽 스크롤을 푼다
+   (REQ-20260902-051-62x6). 목록과 뷰어가 각자 스크롤하면 창을 키워도 캡처에는
+   접힌 윗부분만 들어온다. 화면 검증 규율이 그 판에서만 막히던 자리다.
+   진단·캡처 전용 스위치라 사람이 쓰는 화면은 그대로다. */
+[data-noscroll] .doclist,[data-noscroll] .viewer{max-height:none;overflow:visible}
+[data-noscroll] .docs{align-items:stretch}

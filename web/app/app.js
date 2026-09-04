@@ -89,9 +89,37 @@ async function refreshProjects(rerender){
     loadDoc(v.dataset.showing, true, true);
 }
 
+/* 전량을 받아야 하는 자리인가 (REQ-20260902-035 §4).
+
+   서버의 기본 창은 진행 중인 요청은 전부 싣고 나머지(닫힌 요청·세션·지식)는
+   최근 것만 싣는다 — 15초 벨트가 매번 전량을 끌면 문서가 늘수록 그 바이트가
+   함께 늘고, 보드는 어차피 하루 지난 완료를 화면에서 내린다
+   (REQ-20260827-057). 잘린 그 행을 **실제로 읽는** 화면에서만 전량을 부른다:
+   보드 밖의 탭(문서 목록·통계·감사)과, 문서를 펼쳐 둔 자리 — 축약 참조와
+   백링크가 옛 문서를 가리키기 때문이다.
+
+   **주소를 먼저 본다.** 첫 부팅은 카탈로그를 라우트보다 먼저 부른다 — 그때
+   `tab` 은 아직 기본값 "board" 라, `#docs` 로 바로 들어온 화면이 잘린 목록을
+   받아 문서 수를 419/929 로 적는다(실측). 다음 폴링이 15초 뒤에 고치지만,
+   그 15초 동안 화면은 **틀린 수를 사실처럼** 말한다. 해시가 가리키는 탭이
+   곧 갈 자리이므로 그것을 함께 본다.
+
+   깊은 링크로 들어온 첫 판은 뷰어도 아직 안 섰다. 그래서 열려는
+   문서(selectedDoc)도 함께 본다 — 안 보면 첫 판에서만 참조가 안 풀린다. */
+function catalogWantsAll(){
+  const hashTab = String(location.hash || "").replace(/^#\/?/, "")
+                        .split("/")[0];
+  if (hashTab && hashTab !== "board") return true;
+  if (tab !== "board") return true;
+  if (selectedDoc) return true;
+  const v = document.getElementById("viewer");
+  return !!(v && v.dataset.showing);
+}
+
 async function refreshCatalog(rerender){
   const fresh = await loadSupply("catalog", async () => {
-    const r = await fetch("/api/catalog?" + meQ());
+    const q = [meQ(), catalogWantsAll() ? "window=all" : ""].filter(Boolean);
+    const r = await fetch("/api/catalog?" + q.join("&"));
     const j = r.ok ? await r.json() : null;
     return Array.isArray(j) ? j : null;
   }, {tries: rerender ? 2 : 3});

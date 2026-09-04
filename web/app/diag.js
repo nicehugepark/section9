@@ -233,6 +233,11 @@
        listening:false, worker:false, model:"opus-5", account:"first@example.invalid",
        reqs:[], last:"2026-08-29T16:29:37+09:00"}]}, "02e5bc69"),
     sessnone: sessShape({sessions: []}, ""),
+    /* 목록이 오기 전의 얼굴 (REQ-20260902-065). 이 창은 이제 **먼저 뜨고**
+       목록을 뒤따라 받는데, 캐시가 더우면 그 처지가 40ms 만 보인다 — 손으로는
+       잡을 수 없는 화면이라 여기 세워 둔다. 빈 자리 셋(받는 중 · 고를 것이
+       없음 · 서버가 죽음)이 서로 다른 말을 하는지는 이 셋을 나란히 봐야 안다. */
+    sesswait: sessShape(null, "05dfaa02", true),
     // 고른 계정으로 세션을 시작한 뒤 — 창이 열린 얼굴·못 연 얼굴
     acctwake: wakeResultShape({ok:true, mode:"spawned"},
       "second@example.invalid", "계정"),
@@ -267,6 +272,22 @@
   if (m[1] === "wsat"){
     const t = setInterval(() => {
       const b = document.querySelector("[data-wsat]");
+      if (!b) return;
+      clearInterval(t); b.click();
+    }, 400);
+    setTimeout(() => clearInterval(t), 12000);
+    return;
+  }
+  /* ?dlg=assign — 담당 고르기 창을 **진짜로 연다** (REQ-20260902-021).
+
+     그림을 따로 짓지 않는다: 카드의 담당 배지를 실제로 눌러 사람이 여는 그
+     길(assignDoc)을 그대로 지난다 — 창을 짓는 함수만 부르면 진단으로 캡처해
+     고친 것이 사람이 보는 창이 아니게 된다(REQ-20260830-048 이 한 번 겪은 병).
+     목록은 등록 사용자에서 오므로 계정이 하나뿐인 기기에서는 「지금 이것」한
+     줄만 서고 확인이 잠긴 얼굴이 찍힌다 — 그것도 봐야 하는 얼굴이다. */
+  if (m[1] === "assign"){
+    const t = setInterval(() => {
+      const b = document.querySelector("[data-assign]");
       if (!b) return;
       clearInterval(t); b.click();
     }, 400);

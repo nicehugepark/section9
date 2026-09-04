@@ -473,13 +473,32 @@ async function loadDoc(id, bg, force){
      (.dgrp nowrap) — 좁은 폭에서 무리 가운데가 접히면 어느 단추가 어느 무리
      것인지 못 읽는다. */
   const polBtn = holdLockHTML(stallDoc);
+  /* 담당은 **제 무리**다 (REQ-20260902-021). 진행(지금 이 요청이 도나)·정책
+     (앞으로 자동으로 맡나)·판정(상태를 옮기나)과 다른 축이다 — 누가 맡나.
+     자리는 정책 뒤, 판정 앞: 「누가」가 정해진 다음에 「어디로」를 누른다.
+     행은 카탈로그가 아니라 **문서 자신**을 먹인다(색인에 아직 없는 새 문서). */
+  const asgBtn = assignBtnHTML(m);
   // 무리 사이만 헤어라인(.adiv)이 가른다 — 빈 무리는 가를 것도 없다.
   const docActs = `<div class="acts dacts">`
-    + [beltDoc, polBtn, transBtns, pickBtn].filter(Boolean)
+    + [beltDoc, polBtn, asgBtn, transBtns, pickBtn].filter(Boolean)
         .map(h => `<span class="dgrp">${h}</span>`)
         .join(`<span class="adiv"></span>`) + `</div>`;
   /* 예고 줄은 사실 줄 층의 맨 앞이다 — 행동 띠 바로 아래에서 단추(정책)와
      붙어 읽힌다. 관문은 holdForecastHTML 안의 holdLockHTML 하나다. */
+  /* 「만든 사람 · 맡은 사람 · 기원」 한 줄 (REQ-20260902-021).
+
+     **카드와 같은 함수**가 짓는다 — 카드는 조각 하나로 줄이고 여기는 온전한
+     한 줄이지만, 재료(originBits)와 낱말은 한 곳에서 나온다. 두 화면이 각자
+     문장을 지으면 한쪽만 고쳐진다(판정 단추가 세 번 반려된 그 모양).
+
+     자리는 행동 띠 **아래**, 사실 줄 **위**다: 이 줄이 말하는 것은 「지금 무엇을
+     하라」가 아니라 「이 문서가 누구의 것인가」라, 붙박이 띠에 얹으면 스크롤
+     내내 따라다니고 사실 줄 아래로 내리면 담당을 바꾸는 손잡이가 상태 이야기
+     뒤에 숨는다.
+
+     카탈로그 행이 아니라 **문서 자신(m)** 을 먹인다 — 색인에 아직 안 오른 새
+     문서에서도 서야 한다. */
+  const lineage = lineageRowHTML(m);
   const stallRow = holdForecastHTML(stallDoc) + stallHTML(stallDoc)
     + holdTellHTML(stallDoc);
   // review/blocked 문서: 판단 근거(전이 --note)가 본문 최하단 History에 묻힌다
@@ -584,7 +603,7 @@ async function loadDoc(id, bg, force){
     <h1 class="dtitle">${esc(m.title)}
       <span class="did" title="${esc(m.id)}">${esc(shortId(m.id))}</span>
       <span class="dst" style="--sc:${SCOLOR[m.status] || "var(--muted)"}">${esc(statusLabel(m))}</span>
-    </h1>${docActs}</div>${stallRow}${gate}
+    </h1>${docActs}</div>${lineage}${stallRow}${gate}
     ${meta}
     <div class="md">${md2html(d.body)}</div>${streamSec}
     <div class="backlinks" id="backlinks"></div>`;

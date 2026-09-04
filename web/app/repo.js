@@ -128,7 +128,8 @@ function repoPanelHTML(){
           <div class="wmsg" role="status" aria-live="polite" id="g-msg"></div>
         </div>
         <div class="gfiles" id="g-files"></div>
-        <div class="wfact" id="g-fact"></div></td></tr></table>
+        <div class="wfact" id="g-fact"></div>
+        <div class="wfact gsync" id="g-sync"></div></td></tr></table>
     <div class="cfg-h gname">GitHub 과 주고받기</div>
     <table class="metatbl wtbl grepo">
       ${gitHandRowHTML("pull")}${gitHandRowHTML("push")}</table>
@@ -214,6 +215,7 @@ function gitPaint(){
                               : "";
     fact.textContent = "";
     files.innerHTML = "";
+    gitSyncPaint(null);
   } else {
     ref.textContent = st.branch
       ? (st.upstream ? `${st.branch} → ${st.upstream}` : st.branch) : "";
@@ -229,8 +231,12 @@ function gitPaint(){
        「갈래」는 이미 화면에 있는 낱말이고(docs.js), merge·rebase 는 한 글자도
        쓰지 않는다: 화면이 고르지 않는 것을 이름으로 불러 주면 "화면이 안다"는
        뜻이 된다. */
-    fact.textContent = (st.ahead && st.behind) ? "갈래가 갈렸습니다." : "";
+    // 동기화 줄이 서는 자리(remote)에서는 그 줄이 갈림까지 말한다 — 같은 사실을
+    // 두 줄에 적지 않는다(REQ-20260902-025 캡처에서 실제로 두 번 섰다).
+    const syOn = st.sync && st.sync.mode === "remote" && st.sync.line;
+    fact.textContent = (st.ahead && st.behind && !syOn) ? "갈래가 갈렸습니다." : "";
     files.innerHTML = gitFilesHTML(st);
+    gitSyncPaint(st.sync);
   }
   const after = document.getElementById("g-after");
   if (after) after.innerHTML = gitAfterHTML();
@@ -240,6 +246,18 @@ function gitPaint(){
   if (rc) rc.setAttribute("aria-disabled", String(!!gitBusy));
   ["pull", "push"].forEach(gitHandPaint);
   gitNavPaint();
+}
+
+/* 동기화의 지금 — 「마지막 보냄 12초 전 · 받음 8초 전 · 대기 3건」
+   (REQ-20260902-025). 문장은 서버가 짓고 화면은 **글자색만** 고른다:
+   60초 넘게 밀리면 주황(late), 5분 넘으면 붉은(stale) 글자 — 면은 칠하지
+   않는다. 밖과 오가지 않는 자리(local)에는 서지 않는다. */
+function gitSyncPaint(sy){
+  const el = document.getElementById("g-sync");
+  if (!el) return;
+  const on = sy && sy.mode === "remote" && sy.line;
+  el.textContent = on ? sy.line : "";
+  el.className = "wfact gsync" + (on && sy.level ? " " + sy.level : "");
 }
 
 function gitNavPaint(){

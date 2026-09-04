@@ -493,6 +493,63 @@
    구분은 색보다 강한 것이 이미 한다: 캡션 낱말 · 버튼 낱말 · 점 모양. */
 .rvpt.held{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rvpt.held .rvcap{color:var(--c-inprogress)}
+/* 「다른 컴퓨터」 한 줄 (REQ-20260902-021). 새 층·새 색면 없이 같은 `.rvpt` 한
+   줄 문법을 그대로 입는다 — 그래야 열 몇 벌의 스킨이 따라온다.
+
+   **잉크는 in-progress 다.** 위의 셋(멈춤·오래 걸림·중단)과 같은 색인 이유는
+   나란히 설 일이 없기 때문이다: 이 줄이 서면 아래 사다리는 서지 않는다
+   (stallHTML). 나란히 서지 않는 것에 색 대비를 주면 색 하나를 더 배우게 할 뿐
+   이고, 이 줄이 말하는 것도 결국 **그 상태(in-progress)가 여기서는 안
+   나아간다**는 사실이다. blocked 의 빨강은 「막혔다」는 다른 뜻을 얹는데 —
+   막힌 것이 아니라 다른 자리에서 나아가는 중이다. 구분은 캡션 낱말이 한다. */
+/* 위의 셋과 달리 **자르지 않는다**. 그 셋이 자르는 것은 꼬리가 곁말이기
+   때문인데(「· 마지막 16:34」), 이 줄의 꼬리는 곁말이 아니라 요지다 —
+   「…에서 진행 중 · 12분 전」의 뒤를 자르면 남는 것은 컴퓨터 이름뿐이고,
+   그 이름이 무슨 뜻인지는 사라진다. 게다가 앞머리가 남의 컴퓨터 이름이라
+   길이를 이쪽에서 정할 수 없다. 좁은 칸에서는 두 줄로 접는다 — 카드가 이미
+   쓰는 문법이다(대기 사유가 세 줄까지 접힌다). 끊을 데가 없는 긴 이름만
+   글자 사이에서 접어 칸 밖으로 새지 않게 한다. */
+.rvpt.elsew{overflow-wrap:anywhere}
+.rvpt.elsew .rvcap{color:var(--c-inprogress)}
+/* ---- 누가 만들고 누가 맡았나 (REQ-20260902-021) --------------------------
+
+   **새 층을 만들지 않는다.** 카드에서는 이미 있는 메타 줄(.m)의 어휘 그대로 —
+   색면·테두리·좌측 띠 없는 mono 소형 글자다(.size·.tag 와 같은 급). 위계는
+   색이 아니라 잉크의 농도가 짓는다: 배지(--text) > 값(--muted) > 라벨(--faint).
+   라벨을 흐리게 두는 것은 「만든이」라는 낱말이 매번 새로 읽힐 것이 아니라
+   찾게 하는 표이기 때문이다 — 읽히는 것은 이름이다. */
+.lin{font-family:var(--mono);font-size:10px;letter-spacing:.02em;
+  color:var(--muted);white-space:nowrap}
+.lincap{color:var(--faint);margin-right:4px}
+/* 문서 머리의 온전한 한 줄. 셀 사이는 넓게(18px) 벌려 「라벨—값」 짝이 눈에
+   묶이게 한다 — 구분자 글리프(·)를 쓰지 않는 이유다: 간격이 이미 가른다.
+   좁은 폭에서는 셀 단위로 접힌다(짝의 가운데가 접히면 둘이 갈린다). */
+.lineage{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 18px;
+  margin:9px 0 0;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.lineage .lincell{display:inline-flex;align-items:baseline;gap:5px;min-width:0}
+.lineage .badge{font-size:11px}
+/* 카드의 담당 배지 = 손잡이 (직접 조작). 누를 수 있다는 것은 이 화면이 이미
+   가진 문법이 말한다 — `.wsat`·`.pname` 의 점선 밑줄 하나뿐이고, 배지 자신의
+   생김새(글꼴·색·둥글기)는 한 화소도 바뀌지 않는다. 새 표식을 발명하면 배울
+   것이 하나 더 늘 뿐이다. 밑줄은 글자보다 한 급 흐리다 — 있다는 것만 알리면
+   되고, 읽히는 것은 이름의 일이다. 색면·테두리는 주지 않는다.
+
+   **특이도를 일부러 낮게 둔다** (`button.asgnb` = 요소 1 + 클래스 1). 여기서
+   하는 일은 브라우저가 단추에 주는 기본 옷을 벗기는 것뿐이고, 배지의 생김새는
+   스킨이 정한다 — `[data-skin="calm"] .card .badge`(클래스 3)·`[data-skin="soft"]
+   .badge`(클래스 2)가 이 규칙을 이겨야 열 몇 벌의 스킨이 제 배지를 지킨다.
+   반대로 올리면 스킨마다 배지가 둘로 갈린다(s9-design 이 적어 둔 그 함정:
+   override 가 베이스와 동급이면 한쪽이 조용히 죽는다). */
+button.asgnb{font:inherit;color:inherit;background:none;border:0;
+  padding:4px 2px;margin:0 -2px;cursor:pointer;white-space:nowrap;
+  text-decoration:none}
+/* 밑줄은 **이름에만** 긋는다 (REQ-20260902-021 반려). 단추에 그으면 calm 의
+   이니셜 링 밑으로도 점선이 지나가 원 아래 잘린 선이 깨진 그림처럼 보인다. */
+button.asgnb .bnm{text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:3px;
+  text-decoration-color:color-mix(in srgb, currentColor 60%, transparent)}
+button.asgnb:hover .bnm{text-decoration-color:currentColor}
+button.asgnb:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 /* 세우는 중에는 눌리지 않는다 — 깨우기와 같은 규칙, 같은 잉크, 같은 잠금 표시.
    문서 머리의 행동 띠(.dacts)에 선 「중단해 두기」도 같은 얼굴이다: 종전엔
    `disabled` 가 브라우저 기본 흐림을 대신 주고 있어서 규칙이 없어도 눌린 티가

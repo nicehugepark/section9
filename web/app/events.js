@@ -185,6 +185,15 @@ document.addEventListener("click", e => {
      언젠가 한쪽만 고쳐진다. */
   const wa = evEl(e.target)?.closest("[data-wsat]");
   if (wa){ e.stopPropagation(); wsOpen(wa.dataset.wsat); return; }
+  /* 담당 손잡이 둘 (REQ-20260902-021) — 카드보다 **먼저** 잡는다. 담당 배지는
+     카드 안에 있고 「이 컴퓨터로 가져오기」는 사실 줄에 붙어 있어, 먼저 잡지
+     않으면 누르는 순간 문서가 열려 창이 그 뒤에서 뜬다. 카드 안의 손잡이는
+     카드가 아니라는 이 화면의 규칙 그대로다. 보드 카드와 문서 화면이 같은
+     길로 들어온다 — 두 자리가 각자 길을 가지면 한쪽만 고쳐진다. */
+  const asg = evEl(e.target)?.closest("[data-assign]");
+  if (asg){ e.stopPropagation(); assignDoc(asg.dataset.assign); return; }
+  const tko = evEl(e.target)?.closest("[data-takeover]");
+  if (tko){ e.stopPropagation(); takeoverDoc(tko.dataset.takeover); return; }
   /* 열려 있는 문서를 놓는 손잡이 — 문서를 여는 길보다 **먼저** 잡는다
      (REQ-20260829-012 → -20260831-007). 이제 이 손잡이는 고른 줄 **안**에 서므로
      먼저 잡히지 않으면 놓으려던 누름이 그 문서를 다시 여는 누름이 된다.

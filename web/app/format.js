@@ -170,6 +170,20 @@ async function setUIDim(d, v){
 
 (function initTheme(){ applyUISettings(null); })();  // 초기 적용 (whoami 로드 전)
 
+/* ?noscroll — **판 하나를 한 장에 담는 스위치** (REQ-20260902-051-62x6).
+   진단·헤드리스 캡처용이라 저장 경로에는 불관여다 (?nosse·?apifail 과 같은 어휘).
+
+   Settings 의 저장소 판처럼 목록·뷰어가 각자 안쪽 스크롤을 가지면, 창을 아무리
+   키워도 캡처에는 접힌 윗부분만 들어온다 — 화면 검증 규율(review 전 캡처)이
+   그 판에서만 막혔다. 안쪽 스크롤을 풀어 내용을 문서 흐름에 돌려주면 창 높이가
+   곧 캡처 높이가 된다. */
+(function initNoScroll(){
+  try{
+    if (/[?&]noscroll\b/.test(location.search))
+      document.documentElement.dataset.noscroll = "1";
+  }catch(e){}
+})();
+
 /* 신원 = 서버 파생 whoami (REQ-20260824-027) — me 셀렉터·localStorage s9me 폐기.
    대시보드는 127.0.0.1 전용: 브라우저 사용자 = 서버 기동 OS 계정이므로 클라이언트는
    신원을 보내지 않는다 (쓰기 actor·열람 격리 모두 서버가 파생). 유일한 예외는

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko" data-theme="system" data-skin="ledger" data-density="normal">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>담당 고르기 — 후보 대조표</title>
+<!-- 담당 고르기 창의 후보 목록을 한 장에 세운다 (REQ-20260902-064-62x6).
+
+     실데이터로는 이 갈래들이 한 자리에 모이지 않는다 — 멤버가 하나인 프로젝트와
+     0인 프로젝트가 동시에 있을 수 없고, 「프로젝트 목록을 못 받은 화면」은 부르지
+     않으면 오지 않는다. 그래서 재료(window.__users · window.__projects · catalog)만
+     지어 넣고 **사람이 여는 그 길(assignDoc)** 을 그대로 연다: 여기서 보는 창은
+     베낀 그림이 아니라 대시보드가 세우는 그 창이다 (verify-project.html 과 같은 규율).
+
+     ?case=1..7   그 갈래의 창을 열어 둔 채로 뜬다 (캡처용)
+     ?skin=ledger|calm|soft|glass|terminal|grid|slate|cobalt|field|cork
+     ?theme=system|paper|mist|carbon|graphite|phosphor
+     ?density=normal|compact                                              -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/header.css">
+<link rel="stylesheet" href="css/board.css">
+<link rel="stylesheet" href="css/docs.css">
+<link rel="stylesheet" href="css/project.css">
+<link rel="stylesheet" href="css/terminal.css">
+<link rel="stylesheet" href="css/graph.css">
+<link rel="stylesheet" href="css/responsive.css">
+<link rel="stylesheet" href="css/actions.css">
+<link rel="stylesheet" href="css/skins.css">
+<link rel="stylesheet" href="css/density.css">
+<link rel="stylesheet" href="css/calm.css">
+<link rel="stylesheet" href="css/tidy.css">
+<link rel="stylesheet" href="css/overlay.css">
+<style>
+body{padding:18px 22px}
+h1{font-size:15px;margin:0 0 4px}
+p.sub{color:var(--muted);font-size:11.5px;margin:0 0 16px}
+.case{border:1px solid var(--border);background:var(--panel);margin:0 0 10px}
+.case>h2{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);margin:0;font-weight:700;
+  padding:8px 12px;border-bottom:1px solid var(--hairline)}
+.case>.body{padding:10px 12px;display:flex;gap:14px;align-items:baseline;
+  flex-wrap:wrap}
+.want{font-size:12px}
+.want b{font-weight:600}
+.got{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.open{font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;background:none;border:1px solid var(--border);
+  color:var(--text);padding:4px 9px;cursor:pointer}
+.open:hover{background:var(--text);color:var(--panel)}
+</style></head><body>
+<h1>담당 고르기 — 후보 대조표</h1>
+<p class="sub">담당 후보는 그 프로젝트의 활성 멤버다 · 프로젝트가 없는 문서는 정책 부재(전부) · 못 받은 목록은 지어내지 않는다</p>
+<div id="out"></div>
+
+<!-- 조각의 순서는 껍데기(index.html)의 그것이다 — const → state → format →
+     card → dialog. 앞의 것이 뒤의 것을 초기화 전에 읽으면 그 자리에서 죽는다. -->
+<script src="app/const.js"></script>
+<script src="app/state.js"></script>
+<script src="app/format.js"></script>
+<script src="app/card.js"></script>
+<script src="app/dialog.js"></script>
+<script>
+const Q = new URLSearchParams(location.search);
+["skin", "theme", "density"].forEach(k => {
+  const v = Q.get(k);
+  if (v) document.documentElement.setAttribute("data-" + k, v);
+});
+
+/* ── mock 계정 — 서버 /api/users 의 모양 그대로 ── */
+const U_ALL = [
+  {name: "e7test",       role: "member", display: "E7 Test"},
+  {name: "nicehugepark", role: "admin",  display: ""},
+  {name: "user1",        role: "member", display: "User One"},
+  {name: "user2",        role: "member", display: ""},
+  {name: "eve",          role: "viewer", display: "관찰"},
+];
+/* ── mock 프로젝트 — 서버 /api/projects 의 모양 그대로.
+      `active` 는 서버(member_active)가 이미 판정해 실어 보내는 값이다. ── */
+const mem = (user, role, active) => ({user, role, since: "2026-08-23",
+                                      until: active ? "" : "2026-01-01", active});
+const PRJ = (slug, title, members) =>
+  ({id: "PRJ-" + slug, slug, title, status: "active", members,
+    member_active: members.filter(m => m.active).length,
+    member_total: members.length});
+
+const P_ONE  = PRJ("section9", "Section9 하네스 시스템",
+                   [mem("nicehugepark", "owner", true)]);
+const P_TWO  = PRJ("portal", "고객 포털",
+                   [mem("e7test", "maintainer", true), mem("user1", "contributor", true)]);
+const P_EXP  = PRJ("atlas", "아틀라스",
+                   [mem("nicehugepark", "owner", true), mem("user2", "contributor", false)]);
+const P_NONE = PRJ("empty", "빈 프로젝트", []);
+
+const REQ = (id, user, project) =>
+  ({id, type: "request", title: "증분 카탈로그 갱신", status: "in-progress",
+    user, creator: user, project, tags: [], relates: []});
+
+/* 갈래마다 [제목, 무엇이 옳은가, 재료]. `users`·`projects`·`row` 가 그 순간의
+   화면 재료이고, 창은 늘 같은 함수(assignDoc)가 연다. */
+const CASES = [
+  ["멤버 한 사람", "nicehugepark 한 줄 — 미참여 e7test·user1·user2 는 없다",
+   {users: U_ALL, projects: [P_ONE], row: REQ("REQ-20260902-035", "nicehugepark", "section9")}],
+  ["admin 도 멤버가 아니면 없다", "e7test·user1 두 줄 — admin nicehugepark 는 없다",
+   {users: U_ALL, projects: [P_TWO], row: REQ("REQ-20260902-036", "e7test", "portal")}],
+  ["만료된 멤버", "nicehugepark 한 줄 — 기한이 지난 user2 는 없다",
+   {users: U_ALL, projects: [P_EXP], row: REQ("REQ-20260902-037", "nicehugepark", "atlas")}],
+  ["프로젝트 미지정", "관찰 계정만 뺀 네 줄 — 정책 부재는 금지가 아니다",
+   {users: U_ALL, projects: [P_ONE, P_TWO], row: REQ("REQ-20260902-038", "user1", "")}],
+  ["지금 맡은 사람이 멤버가 아니다", "user1「지금 이것」 + nicehugepark",
+   {users: U_ALL, projects: [P_ONE], row: REQ("REQ-20260902-039", "user1", "section9")}],
+  ["멤버가 없는 프로젝트", "빈 목록 — Projects 탭에서 멤버를 더하라",
+   {users: U_ALL, projects: [P_NONE], row: REQ("REQ-20260902-040", "", "empty")}],
+  ["프로젝트 목록을 못 받았다", "빈 목록 — 헤더의 다시 받기 (없는 멤버를 지어내지 않는다)",
+   {users: U_ALL, projects: null, row: REQ("REQ-20260902-041", "", "section9")}],
+];
+
+/* 재료를 그 갈래의 것으로 갈아 끼운다 — 창을 여는 함수는 하나뿐이라 여기서
+   바뀌는 것은 화면이 서버에게 받은 것뿐이다. */
+function stage(i){
+  const c = CASES[i][2];
+  window.__users = c.users;
+  window.__projects = c.projects;
+  catalog = [c.row];
+  return c.row.id;
+}
+window.openCase = i => assignDoc(stage(i));
+// 시험이 읽는 자리 — 창을 열지 않고 후보만 재 온다(갈래 일곱을 한 번에).
+window.pickCase = i => { const id = stage(i); return assignPick(catFind(id)); };
+
+document.getElementById("out").innerHTML = CASES.map(([t, want], i) =>
+  `<div class="case" data-case="${i}"><h2>${esc(t)}</h2><div class="body">`
+  + `<span class="want">${esc(want)}</span>`
+  + `<span class="got" data-got="${i}"></span>`
+  + `<button type="button" class="open" data-open="${i}">창 열기</button>`
+  + `</div></div>`).join("");
+
+// 재 온 값을 줄마다 적어 둔다 — 창을 하나씩 열지 않고도 일곱을 함께 훑는다.
+CASES.forEach((_, i) => {
+  const p = window.pickCase(i);
+  document.querySelector(`[data-got="${i}"]`).textContent =
+    p.items.length ? p.items.map(it => it.key + (it.cur ? "(지금)" : "")).join(" · ")
+                   : "(빈 목록) " + p.empty;
+});
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-open]");
+  if (b) window.openCase(Number(b.dataset.open));
+});
+
+const auto = Number(Q.get("case") || 0);
+if (auto >= 1 && auto <= CASES.length) window.openCase(auto - 1);
+</script>
+</body></html>

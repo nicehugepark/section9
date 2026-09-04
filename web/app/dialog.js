@@ -484,6 +484,15 @@ function s9choose(o){
             + `<span class="on">${esc(it.note || (it.cur ? "지금 이것" : ""))}</span>`
             + `</button>`).join("") + `</div>`
         : `<p class="dlgs" style="margin-top:10px">${esc(o.empty || "고를 것이 없습니다.")}</p>`)
+    /* 고른 뒤에 한 줄 적을 자리 (REQ-20260902-021 담당 바꾸기).
+
+       판정 창(s9dlg prompt)의 사유 칸을 이 창에도 열되 **한 줄**이다: 담당을
+       바꾸는 까닭은 문서 History 에 한 줄로 남고, 세 줄짜리 상자는 쓰는 사람에게
+       "길게 써야 하나"를 묻는다. 빈 값은 벌주지 않는다 — 확인이 안 눌릴 뿐,
+       창을 다시 띄워 다그치지 않는다(이 파일이 이미 세운 규칙). */
+    + (o.reason ? `<div class="dlgsub">${esc(o.reason.label || "까닭")}</div>`
+        + `<input type="text" class="dlgin one" maxlength="200"`
+        + ` placeholder="${esc(o.reason.placeholder || "")}">` : "")
     // 누르면 무슨 일이 일어나는가 — 버튼 바로 위가 아니라 **고른 것 바로 아래**다.
     // 결정과 그 결과는 같은 덩이로 읽혀야 한다.
     + (cf ? `<div class="dlgsay"></div>` : "")
@@ -513,9 +522,12 @@ function s9choose(o){
   const no = dlg.querySelector(".dlgno");
   const yes = dlg.querySelector(".dlgyes");
   const say = dlg.querySelector(".dlgsay");
+  const rin = dlg.querySelector(".dlgin.one");
   return new Promise(resolve => {
     // 지금 값과 달라진 것이 하나라도 있나 — 두 축(줄·칩)을 함께 본다.
-    const dirty = () => sel !== curKey || (!!ch && chip !== (ch.cur || ""));
+    // 까닭이 **필수**면 그것까지 채워져야 무언가 일어날 수 있다.
+    const dirty = () => (sel !== curKey || (!!ch && chip !== (ch.cur || "")))
+      && !(o.reason && o.reason.required && !(rin && rin.value.trim()));
     const sync = () => {
       if (!cf) return;
       const d = dirty() && opts.length > 0;
@@ -563,6 +575,8 @@ function s9choose(o){
         e.preventDefault(); yes.click(); return;
       }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      // 까닭을 적는 중이면 ↑↓ 는 글자 사이를 도는 키다 — 목록으로 뛰어가지 않는다.
+      if (rin && document.activeElement === rin) return;
       if (!opts.length) return;
       e.preventDefault();
       const i = opts.indexOf(document.activeElement);
@@ -574,14 +588,17 @@ function s9choose(o){
     dlgClose = done;
     document.addEventListener("keydown", onKey, true);
     if (no) no.onclick = () => done(null);
-    if (yes) yes.onclick = () => done({key: sel, chip});
+    if (yes) yes.onclick = () => done({key: sel, chip,
+                                       why: rin ? rin.value.trim() : ""});
+    if (rin) rin.oninput = sync;
     dlg.querySelectorAll("[data-chip]").forEach(b => b.onclick = () => {
       chip = b.dataset.chip;
       dlg.querySelectorAll("[data-chip]").forEach(x => x.classList.toggle("sel", x === b));
       sync();
     });
     opts.forEach(b => b.onclick = cf ? () => pick(b.dataset.opt)
-                                     : () => done({key: b.dataset.opt, chip}));
+                                     : () => done({key: b.dataset.opt, chip,
+                                                   why: rin ? rin.value.trim() : ""}));
     /* 목록 밖의 행동은 이 창을 닫고 **부른 쪽에 넘긴다** — 되돌릴 수 없는
        것(자리 지우기)이면 부른 쪽이 거기서 한 번 묻는다. 확인을 두 겹으로
        쌓지 않는다. */

@@ -43,7 +43,9 @@ async function tidyFetch(){
   };
   const q = meQ() ? "&" + meQ() : "";
   [tidyArch, tidyTrash] = await Promise.all([
-    get("/api/catalog?archived=1" + q, j => Array.isArray(j) ? j : null),
+    // 보관함은 언제나 전량이다 — 치운 것을 보러 온 자리에 창을 씌우면
+    // 오래 전에 치운 문서가 목록에서 사라진다 (REQ-20260902-035 §4).
+    get("/api/catalog?archived=1&window=all" + q, j => Array.isArray(j) ? j : null),
     get("/api/trash?" + meQ(), j => Array.isArray(j?.rows) ? j.rows : null),
   ]);
   tidyLoadedAt = Date.now();

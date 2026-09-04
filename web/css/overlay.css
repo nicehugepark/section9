@@ -224,6 +224,10 @@
   color:var(--text);background:var(--bg);border:1px solid var(--border);
   border-radius:var(--r)}
 .dlgin:focus{outline:none;border-color:var(--text)}
+/* 한 줄짜리 까닭 칸 (REQ-20260902-021) — 상자 크기가 곧 "얼마나 쓰라는 말"이라,
+   History 에 한 줄로 남을 것을 세 줄 상자로 묻지 않는다. 재질은 위와 같다:
+   새 컴포넌트가 아니라 같은 옷의 다른 치수다. */
+.dlgin.one{min-height:0;margin-top:6px;resize:none}
 /* ③ 버튼 바닥 — 규칙선 위에 앉아 "여기서 끝난다"를 말한다 */
 .dlgfoot{display:flex;align-items:center;justify-content:space-between;gap:14px;
   padding:9px 16px 11px;border-top:1px solid var(--hairline)}
