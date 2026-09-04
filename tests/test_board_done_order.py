@@ -37,62 +37,33 @@ class BoardDoneOrder(unittest.TestCase):
                       cls.src, re.S)
         cls.loop = m.group(1) if m else ""
 
-    def test_b1_terminal_columns_sort_by_updated(self):
-        """B1. 끝난 컬럼은 갱신 시각으로 세운다 (이 요청의 전부)."""
-        self.assertTrue(self.loop, "보드 컬럼 루프를 찾지 못했다")
-        self.assertIn("TERMINAL.has(st)", self.loop,
-                      "끝난 컬럼을 따로 가르지 않는다")
-        self.assertIn("b.status_since || b.updated", self.loop,
-                      "카드가 보여주는 시각(status_since)으로 세우지 않는다")
-
-    def test_b1b_it_sorts_by_what_the_card_shows(self):
-        """B1b. 세우는 자와 **카드가 보여주는 시계**가 같아야 한다.
-
-        1차에서 `updated` 로 세웠다가 반려를 받았다. 그 필드는 노트·링크·인덱스
-        작업으로 계속 밀린다 — 21시간 전에 끝난 문서가 "오늘 10:07 갱신"이 되어
-        맨 위에 왔고, 카드는 여전히 "21h 30m"이라 적혀 있었다. **화면의 시계와
-        정렬의 자가 다르면 사용자에게는 정렬이 안 된 것으로 보이고, 그 말이 맞다.**
-
-        카드가 그리는 것은 `status_since`(그 상태가 된 때)다.
-        """
-        self.assertRegex(
-            self.src,
-            r'data-since="\$\{esc\(r\.status_since\)\}"',
-            "카드 시계가 status_since 가 아니다 — 정렬 기준을 다시 맞춰야 한다")
-        self.assertIn("b.status_since", self.loop)
-
-    def test_b2_it_uses_the_shared_terminal_set(self):
-        """B2. '끝났다'의 정의를 새로 쓰지 않고 이미 있는 것을 쓴다.
-
-        `done` 만 손으로 적으면 `cancelled` 가 빠지고, 그 순간 같은 질문에 두
-        가지 답이 생긴다 — 이 저장소가 오늘만 세 번 밟은 실패다.
-        """
-        self.assertRegex(
-            self.src, r'const TERMINAL = new Set\(\["done",\s*"cancelled"\]\)')
-        self.assertNotIn('st === "done"', self.loop,
-                         "끝난 상태를 손으로 다시 적었다")
-
-    def test_b3_live_columns_keep_priority(self):
-        """B3. 살아 있는 컬럼의 순서는 건드리지 않는다.
-
-        거기서는 "다음에 무엇을 할 것인가"가 여전히 유효한 질문이고, 우선순위
-        축을 만든 이유가 그것이다(REQ-20260826-005). 끝난 것을 고치다 살아 있는
-        것까지 뒤집으면 고침이 새 손실이 된다.
-        """
-        self.assertRegex(
-            self.src,
-            r"const workOrder = rows => \[\.\.\.rows\]\.sort\(\(a, b\) =>\s*"
-            r"\n\s*\(prioOf\(b\) - prioOf\(a\)\)")
-
-    def test_b4_the_original_list_is_not_mutated(self):
-        """B4. 원본 배열을 제자리에서 뒤집지 않는다.
-
-        `shown` 은 다른 계산(카운트·병목)이 함께 보는 배열이다. 제자리 정렬은
-        그 계산들이 보는 순서를 조용히 바꾼다.
-        """
-        self.assertIn("[...grp].sort(", self.loop,
-                      "복사본이 아니라 원본을 정렬한다")
-
+    def test_board_done_order(self):
+        """BoardDoneOrder 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("b1_terminal_columns_sort_by_updated"):
+            self.assertTrue(self.loop, "보드 컬럼 루프를 찾지 못했다")
+            self.assertIn("TERMINAL.has(st)", self.loop,
+                          "끝난 컬럼을 따로 가르지 않는다")
+            self.assertIn("b.status_since || b.updated", self.loop,
+                          "카드가 보여주는 시각(status_since)으로 세우지 않는다")
+        with self.subTest("b1b_it_sorts_by_what_the_card_shows"):
+            self.assertRegex(
+                self.src,
+                r'data-since="\$\{esc\(r\.status_since\)\}"',
+                "카드 시계가 status_since 가 아니다 — 정렬 기준을 다시 맞춰야 한다")
+            self.assertIn("b.status_since", self.loop)
+        with self.subTest("b2_it_uses_the_shared_terminal_set"):
+            self.assertRegex(
+                self.src, r'const TERMINAL = new Set\(\["done",\s*"cancelled"\]\)')
+            self.assertNotIn('st === "done"', self.loop,
+                             "끝난 상태를 손으로 다시 적었다")
+        with self.subTest("b3_live_columns_keep_priority"):
+            self.assertRegex(
+                self.src,
+                r"const workOrder = rows => \[\.\.\.rows\]\.sort\(\(a, b\) =>\s*"
+                r"\n\s*\(prioOf\(b\) - prioOf\(a\)\)")
+        with self.subTest("b4_the_original_list_is_not_mutated"):
+            self.assertIn("[...grp].sort(", self.loop,
+                          "복사본이 아니라 원본을 정렬한다")
 
 if __name__ == "__main__":
     unittest.main()

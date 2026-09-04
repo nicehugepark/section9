@@ -32,40 +32,33 @@ spec.loader.exec_module(s9)
 class SingleJudgment(unittest.TestCase):
     """actor_alive 는 judge_health 를 감쌀 뿐 자기 규칙을 갖지 않는다."""
 
-    def test_agrees_with_judge_health_on_every_input(self):
-        cases = []
-        for actor in ("sub:designer", "lead:claude-opus-5", "worker:auto",
-                      "wf:review", "이상한값"):
-            for age in (None, 0, 60, 179, 181, 3000):
-                for pid in (None, True, False):
-                    cases.append((actor, age, pid))
-        for actor, age, pid in cases:
-            state, _why = s9.judge_health(actor, age=age, pid_alive=pid)
-            self.assertEqual(s9.actor_alive(actor, age=age, pid_alive=pid),
-                             state == "alive",
-                             f"{actor} age={age} pid={pid} → {state}")
-
-    def test_recorded_result_wins(self):
-        """문서에 종결로 기록됐으면 관측이 그것을 뒤집지 않는다."""
-        self.assertFalse(s9.actor_alive("sub:designer", age=0, recorded="done"))
-        self.assertFalse(s9.actor_alive("sub:designer", age=0, recorded="failed"))
-
-    def test_window_comes_from_one_table(self):
-        """창 길이는 HEALTH_WIN 한 곳에서만 온다 — 화면이 자기 숫자를 갖지 않는다."""
-        win = s9.HEALTH_WIN["sub"]
-        self.assertTrue(s9.actor_alive("sub:designer", age=win - 1))
-        self.assertFalse(s9.actor_alive("sub:designer", age=win + 1))
-
-    def test_unknown_actor_is_not_alive(self):
-        """규격 밖 actor 를 살아 있다고 하면, 모르는 것이 도는 것으로 둔갑한다."""
-        self.assertFalse(s9.actor_alive("", age=0))
-        self.assertFalse(s9.actor_alive("garbage", age=0))
-
-    def test_never_raises(self):
-        """판정이 예외를 올리면 워처 스레드가 죽고 화면은 근거 없이 살아난다."""
-        for bad in (None, 123, [], {}):
-            s9.actor_alive(bad, age="x", pid_alive="y", log_line=None)
-
+    def test_single_judgment(self):
+        """actor_alive 는 judge_health 를 감쌀 뿐 자기 규칙을 갖지 않는다."""
+        with self.subTest("agrees_with_judge_health_on_every_input"):
+            cases = []
+            for actor in ("sub:designer", "lead:claude-opus-5", "worker:auto",
+                          "wf:review", "이상한값"):
+                for age in (None, 0, 60, 179, 181, 3000):
+                    for pid in (None, True, False):
+                        cases.append((actor, age, pid))
+            for actor, age, pid in cases:
+                state, _why = s9.judge_health(actor, age=age, pid_alive=pid)
+                self.assertEqual(s9.actor_alive(actor, age=age, pid_alive=pid),
+                                 state == "alive",
+                                 f"{actor} age={age} pid={pid} → {state}")
+        with self.subTest("recorded_result_wins"):
+            self.assertFalse(s9.actor_alive("sub:designer", age=0, recorded="done"))
+            self.assertFalse(s9.actor_alive("sub:designer", age=0, recorded="failed"))
+        with self.subTest("window_comes_from_one_table"):
+            win = s9.HEALTH_WIN["sub"]
+            self.assertTrue(s9.actor_alive("sub:designer", age=win - 1))
+            self.assertFalse(s9.actor_alive("sub:designer", age=win + 1))
+        with self.subTest("unknown_actor_is_not_alive"):
+            self.assertFalse(s9.actor_alive("", age=0))
+            self.assertFalse(s9.actor_alive("garbage", age=0))
+        with self.subTest("never_raises"):
+            for bad in (None, 123, [], {}):
+                s9.actor_alive(bad, age="x", pid_alive="y", log_line=None)
 
 class StripUsesTheSameRule(unittest.TestCase):
     """스트립(/api/agents)의 active 가 자기만의 180 을 들고 있지 않다."""

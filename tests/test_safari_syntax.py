@@ -160,36 +160,28 @@ def report(hits):
 class Syntax(unittest.TestCase):
     """S1·S2 — 사파리 15.6 이 못 읽는 문법이 조각에 없다."""
 
-    def test_s1_no_regex_lookbehind(self):
-        """가장 앞선 것부터 따로 묻는다 — 이것만이 파일을 통째로 죽인다.
-
-        `String.replaceAll` 이 없는 것은 그 함수만 죽지만, lookbehind 하나는
-        26조각 중 한 조각을 통째로 지운다. 그래서 같은 목록에 있어도 실패
-        메시지는 따로 받아야 한다.
-        """
-        bad = [h for h in sweep() if "lookbehind" in h[3]]
-        self.assertEqual(
-            bad, [],
-            "정규식 lookbehind 가 화면 조각에 있다 — 사파리 16.4 미만은 이것을 "
-            "문법 오류로 다뤄 **그 파일 전체를 실행하지 않는다**. 캡처 그룹으로 "
-            "바꾸거나 문자를 직접 훑어라:\n" + report(bad))
-
-    def test_s2_no_syntax_newer_than_safari_15(self):
-        bad = sweep()
-        self.assertEqual(
-            bad, [],
-            f"사파리 15.6 이 못 읽는 문법이 {len(bad)}건 있다. syntax 는 조각 "
-            "하나를 통째로, runtime 은 그 함수만 죽인다:\n" + report(bad))
-
-    def test_s3_the_exception_needs_a_reason(self):
-        """예외는 있을 수 있다 — 다만 이유 없이는 못 지나간다."""
-        marked = 'const X = /(?<=a)b/;   // safari-ok: 이유를 적은 자리'
-        bare = 'const X = /(?<=a)b/;'
-        self.assertTrue(ALLOW.search(marked), "이유를 적은 예외가 안 통한다")
-        self.assertFalse(ALLOW.search(bare), "이유 없는 줄이 예외로 새어 나간다")
-        self.assertFalse(ALLOW.search('const X = /(?<=a)b/;  // safari-ok:'),
-                         "표식만 달고 이유가 빈 줄이 지나간다")
-
+    def test_syntax(self):
+        """S1·S2 — 사파리 15.6 이 못 읽는 문법이 조각에 없다."""
+        with self.subTest("s1_no_regex_lookbehind"):
+            bad = [h for h in sweep() if "lookbehind" in h[3]]
+            self.assertEqual(
+                bad, [],
+                "정규식 lookbehind 가 화면 조각에 있다 — 사파리 16.4 미만은 이것을 "
+                "문법 오류로 다뤄 **그 파일 전체를 실행하지 않는다**. 캡처 그룹으로 "
+                "바꾸거나 문자를 직접 훑어라:\n" + report(bad))
+        with self.subTest("s2_no_syntax_newer_than_safari_15"):
+            bad = sweep()
+            self.assertEqual(
+                bad, [],
+                f"사파리 15.6 이 못 읽는 문법이 {len(bad)}건 있다. syntax 는 조각 "
+                "하나를 통째로, runtime 은 그 함수만 죽인다:\n" + report(bad))
+        with self.subTest("s3_the_exception_needs_a_reason"):
+            marked = 'const X = /(?<=a)b/;   // safari-ok: 이유를 적은 자리'
+            bare = 'const X = /(?<=a)b/;'
+            self.assertTrue(ALLOW.search(marked), "이유를 적은 예외가 안 통한다")
+            self.assertFalse(ALLOW.search(bare), "이유 없는 줄이 예외로 새어 나간다")
+            self.assertFalse(ALLOW.search('const X = /(?<=a)b/;  // safari-ok:'),
+                             "표식만 달고 이유가 빈 줄이 지나간다")
 
 class DocRenderChain(unittest.TestCase):
     """S4 — 문서 렌더가 왜 그 한 줄에 매여 있었는지를 시험이 기억한다."""
@@ -224,52 +216,42 @@ class DeadChunkSpeaks(unittest.TestCase):
     다음번엔 화면이 스스로 말해야 왕복이 한 번으로 끝난다.
     """
 
-    def test_s5_the_reporter_runs_first(self):
-        _, app = webasset.parts()
-        self.assertEqual(app[0], "oops.js",
-                         "알리는 조각이 맨 앞이 아니다 — 뒤의 조각이 죽는 것을 "
-                         "보려면 그전에 서 있어야 한다")
-
-    def test_s5b_the_reporter_cannot_die_of_syntax(self):
-        """알리는 조각만은 그 자신이 못 죽는 문법으로 쓴다.
-
-        문법으로 죽은 것을 알리는 파일이 문법으로 죽으면 알릴 사람이 없다.
-        그래서 이 파일은 ES5 다 — `const`/`let`/화살표/템플릿 리터럴도 안 쓴다.
-        (사파리 15 는 그것들을 다 읽지만, 이 파일의 하한은 '이 제품이 지원하는
-        브라우저'가 아니라 '어떤 브라우저든'이다.)
-        """
-        code = code_of("oops.js")
-        for pat, why in ((r"(?<![\w$.])(?:const|let)\s", "const/let"),
-                         (r"=>", "화살표 함수"),
-                         (r"`", "템플릿 리터럴"),
-                         (r"\.\.\.", "전개 연산자"),
-                         (r"\?\.", "옵셔널 체이닝"),
-                         (r"\?\?", "널 병합")):
-            self.assertIsNone(
-                re.search(pat, code),
-                f"web/app/oops.js 가 {why} 를 쓴다 — 알리는 조각은 ES5 여야 한다")
-
-    def test_s5c_the_reporter_leans_on_nothing(self):
-        """다른 조각의 함수를 부르지 않는다 — 없어진 것이 하필 그 조각일 수 있다."""
-        code = code_of("oops.js")
-        for fn in ("esc", "dlink", "linkifyIds", "md2html", "catFind", "shortId"):
-            self.assertFalse(
-                re.search(r"(?<![\w$.])" + fn + r"\s*\(", code),
-                f"oops.js 가 {fn}() 를 부른다 — 그 조각이 죽었을 때 알림도 "
-                "같이 죽는다 (자기 것으로 지어 써라)")
-
-    def test_s5d_it_says_what_died_and_what_the_browser_can_do(self):
-        src = read("oops.js")
-        for mark, why in (
-                ('addEventListener("error"', "오류를 안 듣는다"),
-                ('"error", function(e){', "오류 처리기가 없다"),
-                ("}, true);", "캡처 단계로 안 듣는다 — 자원 오류는 버블하지 않는다"),
-                ("userAgent", "어느 브라우저인지 안 적는다"),
-                ("(?<!a)b", "lookbehind 지원 여부를 직접 물어보지 않는다"),
-                ("[?&]oops", "멀쩡할 때 강제로 여는 길(?oops)이 없다 — '봤는데 "
-                             "아무것도 없었다'와 '안 봤다'를 구별할 수 없다")):
-            self.assertTrue(mark in src, f"web/app/oops.js: {why}")
-
+    def test_dead_chunk_speaks(self):
+        """S5 — 조각 하나가 죽으면 화면이 침묵하지 않는다."""
+        with self.subTest("s5_the_reporter_runs_first"):
+            _, app = webasset.parts()
+            self.assertEqual(app[0], "oops.js",
+                             "알리는 조각이 맨 앞이 아니다 — 뒤의 조각이 죽는 것을 "
+                             "보려면 그전에 서 있어야 한다")
+        with self.subTest("s5b_the_reporter_cannot_die_of_syntax"):
+            code = code_of("oops.js")
+            for pat, why in ((r"(?<![\w$.])(?:const|let)\s", "const/let"),
+                             (r"=>", "화살표 함수"),
+                             (r"`", "템플릿 리터럴"),
+                             (r"\.\.\.", "전개 연산자"),
+                             (r"\?\.", "옵셔널 체이닝"),
+                             (r"\?\?", "널 병합")):
+                self.assertIsNone(
+                    re.search(pat, code),
+                    f"web/app/oops.js 가 {why} 를 쓴다 — 알리는 조각은 ES5 여야 한다")
+        with self.subTest("s5c_the_reporter_leans_on_nothing"):
+            code = code_of("oops.js")
+            for fn in ("esc", "dlink", "linkifyIds", "md2html", "catFind", "shortId"):
+                self.assertFalse(
+                    re.search(r"(?<![\w$.])" + fn + r"\s*\(", code),
+                    f"oops.js 가 {fn}() 를 부른다 — 그 조각이 죽었을 때 알림도 "
+                    "같이 죽는다 (자기 것으로 지어 써라)")
+        with self.subTest("s5d_it_says_what_died_and_what_the_browser_can_do"):
+            src = read("oops.js")
+            for mark, why in (
+                    ('addEventListener("error"', "오류를 안 듣는다"),
+                    ('"error", function(e){', "오류 처리기가 없다"),
+                    ("}, true);", "캡처 단계로 안 듣는다 — 자원 오류는 버블하지 않는다"),
+                    ("userAgent", "어느 브라우저인지 안 적는다"),
+                    ("(?<!a)b", "lookbehind 지원 여부를 직접 물어보지 않는다"),
+                    ("[?&]oops", "멀쩡할 때 강제로 여는 길(?oops)이 없다 — '봤는데 "
+                                 "아무것도 없었다'와 '안 봤다'를 구별할 수 없다")):
+                self.assertTrue(mark in src, f"web/app/oops.js: {why}")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

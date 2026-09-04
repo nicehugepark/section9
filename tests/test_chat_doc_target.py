@@ -69,69 +69,70 @@ class ChatDocTarget(unittest.TestCase):
         return rid.split("-")[2]
 
     # N1. 전체 id 로 지목하면 그 문서다
-    def test_n1_full_id(self):
-        tgt, rest, err = self.m.chat_doc_target(f">{self.A} 이것도 같이")
-        self.assertEqual(tgt, self.A)
-        self.assertEqual(rest.strip(), "이것도 같이")
-        self.assertFalse(err)
+    def test_chat_doc_target(self):
+        """ChatDocTarget 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_full_id"):
+                tgt, rest, err = self.m.chat_doc_target(f">{self.A} 이것도 같이")
+                self.assertEqual(tgt, self.A)
+                self.assertEqual(rest.strip(), "이것도 같이")
+                self.assertFalse(err)
 
-    # N2. 세 자리 번호만 써도 진행 중 요청에서 찾는다 — 이게 '편하게' 다
-    def test_n2_short_number(self):
-        tgt, rest, _ = self.m.chat_doc_target(f"#{self.num(self.A)} 이것도")
-        self.assertEqual(tgt, self.A)
-        self.assertEqual(rest.strip(), "이것도")
+            # N2. 세 자리 번호만 써도 진행 중 요청에서 찾는다 — 이게 '편하게' 다
+        with self.subTest("n2_short_number"):
+                tgt, rest, _ = self.m.chat_doc_target(f"#{self.num(self.A)} 이것도")
+                self.assertEqual(tgt, self.A)
+                self.assertEqual(rest.strip(), "이것도")
 
-    # N3. 지목이 없으면 지금과 완전히 같다
-    def test_n3_plain_untouched(self):
-        tgt, rest, err = self.m.chat_doc_target("그냥 새 요청이다")
-        self.assertEqual((tgt, err), ("", ""))
-        self.assertEqual(rest, "그냥 새 요청이다")
+            # N3. 지목이 없으면 지금과 완전히 같다
+        with self.subTest("n3_plain_untouched"):
+                tgt, rest, err = self.m.chat_doc_target("그냥 새 요청이다")
+                self.assertEqual((tgt, err), ("", ""))
+                self.assertEqual(rest, "그냥 새 요청이다")
 
-    # B1. 없는 문서는 지목하지 않고 이유를 말한다
-    def test_b1_missing_refused(self):
-        tgt, rest, err = self.m.chat_doc_target(">REQ-19990101-001 어쩌구")
-        self.assertEqual(tgt, "")
-        self.assertIn("없다", err)
-        self.assertEqual(rest, ">REQ-19990101-001 어쩌구", "본문을 잃었다")
+            # B1. 없는 문서는 지목하지 않고 이유를 말한다
+        with self.subTest("b1_missing_refused"):
+                tgt, rest, err = self.m.chat_doc_target(">REQ-19990101-001 어쩌구")
+                self.assertEqual(tgt, "")
+                self.assertIn("없다", err)
+                self.assertEqual(rest, ">REQ-19990101-001 어쩌구", "본문을 잃었다")
 
-    # B2. 끝난 요청은 번호로 안 잡힌다 — 완료 목록까지 뒤지면 번호가 겹친다
-    def test_b2_done_not_matched_by_number(self):
-        tgt, _r, err = self.m.chat_doc_target(f"#{self.num(self.DONE)} 이것도")
-        self.assertEqual(tgt, "")
-        self.assertTrue(err)
+            # B2. 끝난 요청은 번호로 안 잡힌다 — 완료 목록까지 뒤지면 번호가 겹친다
+        with self.subTest("b2_done_not_matched_by_number"):
+                tgt, _r, err = self.m.chat_doc_target(f"#{self.num(self.DONE)} 이것도")
+                self.assertEqual(tgt, "")
+                self.assertTrue(err)
 
-    # B3. 지목만 있고 할 말이 없으면 평소대로 둔다
-    def test_b3_prefix_only(self):
-        tgt, rest, _ = self.m.chat_doc_target(f">{self.A}")
-        self.assertEqual(tgt, "")
-        self.assertEqual(rest, f">{self.A}")
+            # B3. 지목만 있고 할 말이 없으면 평소대로 둔다
+        with self.subTest("b3_prefix_only"):
+                tgt, rest, _ = self.m.chat_doc_target(f">{self.A}")
+                self.assertEqual(tgt, "")
+                self.assertEqual(rest, f">{self.A}")
 
-    # N4. 붙이면 문서에 남고, 새 문서는 생기지 않는다
-    def test_n4_appends_to_doc(self):
-        before = len(self.m.load_catalog())
-        self.m.chat_append_doc(self.A, "이것도 같이 해줘", "alice", "abcd1234")
-        self.assertIn("이것도 같이 해줘", self.cli("show", self.A))
-        self.assertEqual(len(self.m.load_catalog()), before,
-                         "지목했는데 새 문서가 생겼다")
+            # N4. 붙이면 문서에 남고, 새 문서는 생기지 않는다
+        with self.subTest("n4_appends_to_doc"):
+                before = len(self.m.load_catalog())
+                self.m.chat_append_doc(self.A, "이것도 같이 해줘", "alice", "abcd1234")
+                self.assertIn("이것도 같이 해줘", self.cli("show", self.A))
+                self.assertEqual(len(self.m.load_catalog()), before,
+                                 "지목했는데 새 문서가 생겼다")
 
-    # B4. 끝난 문서에 붙이면 그 사실을 알린다 — 조용히 묻히면 안 된다
-    def test_b4_done_warns(self):
-        warn = self.m.chat_append_doc(self.DONE, "이것도", "alice", "abcd1234")
-        self.assertIn("done", warn)
+            # B4. 끝난 문서에 붙이면 그 사실을 알린다 — 조용히 묻히면 안 된다
+        with self.subTest("b4_done_warns"):
+                warn = self.m.chat_append_doc(self.DONE, "이것도", "alice", "abcd1234")
+                self.assertIn("done", warn)
 
-    # N5. 화면이 집어 준 것이 앞머리 표기보다 우선한다
-    def test_n5_explicit_doc_wins(self):
-        src = open(S9, encoding="utf-8").read()
-        i = src.index("def chat_audit(text, sender, sid8, doc=")
-        seg = src[i:i + 1600]
-        self.assertIn("if doc:", seg)
-        self.assertIn("chat_doc_target", seg)
+            # N5. 화면이 집어 준 것이 앞머리 표기보다 우선한다
+        with self.subTest("n5_explicit_doc_wins"):
+                src = open(S9, encoding="utf-8").read()
+                i = src.index("def chat_audit(text, sender, sid8, doc=")
+                seg = src[i:i + 1600]
+                self.assertIn("if doc:", seg)
+                self.assertIn("chat_doc_target", seg)
 
-    # R1. 커맨드·경로로 시작하는 줄은 예전 그대로 audit 를 건너뛴다
-    def test_r1_command_untouched(self):
-        tgt, _r, err = self.m.chat_doc_target("/permissions")
-        self.assertEqual((tgt, err), ("", ""))
-
+            # R1. 커맨드·경로로 시작하는 줄은 예전 그대로 audit 를 건너뛴다
+        with self.subTest("r1_command_untouched"):
+            tgt, _r, err = self.m.chat_doc_target("/permissions")
+            self.assertEqual((tgt, err), ("", ""))
 
 if __name__ == "__main__":
     unittest.main()

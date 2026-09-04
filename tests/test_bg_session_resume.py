@@ -94,44 +94,30 @@ class BgSessionResume(unittest.TestCase):
         self.assertTrue(ok, "스폰 자체가 막혔다 — 테스트 전제가 깨졌다")
         return calls[0]
 
-    def test_dead_session_still_resumes(self):
-        """B1. 프로세스가 없으면 예전대로 --resume — 이 고침이 기존 승계를
-        망가뜨리지 않는다는 것이 절반의 요구다."""
-        doc, meta = self._req("resume-case")
-        argv = self._spawn(doc, meta, ["/usr/bin/python3 something-else"])
-        self.assertIn("--resume", argv, argv)
-        self.assertIn(FULLSID, argv, argv)
-
-    def test_bg_locked_session_spawns_fresh(self):
-        """B2. 그 세션 id 로 도는 프로세스가 있으면 resume 을 포기한다.
-
-        이게 이 REQ의 실사고다 — 예전에는 여기서 --resume 을 걸었고 워커가
-        "currently running as a background agent" 한 줄만 남기고 죽었다.
-        """
-        doc, meta = self._req("bg-locked-case")
-        argv = self._spawn(doc, meta, [
-            f"claude --session-id {FULLSID} --model claude-opus-5[1m]"])
-        self.assertNotIn("--resume", argv, argv)
-        self.assertNotIn(FULLSID, " ".join(map(str, argv)), argv)
-
-    def test_no_resume_is_recorded(self):
-        """B3. 포기했다는 사실이 로그에 남는다 — 조용히 새 세션으로 바꾸면
-        "왜 컨텍스트를 못 이어받았지"를 나중에 아무도 설명하지 못한다."""
-        with open(os.path.join(self.tmp, "state", "auto_resume",
-                               "spawn.log")) as f:
-            log = f.read()
-        self.assertIn("NO-RESUME", log, log)
-        self.assertIn("프로세스 생존", log, log)
-
-    def test_proc_alive_matches_full_id_only(self):
-        """B4. 판정은 세션 id 문자열로 한다 — 빈 id 는 언제나 False 다.
-        (빈 문자열이 아무 명령줄에나 매치돼 전부 '살아있음'이 되면, 이 고침이
-        resume 을 영영 못 쓰게 만든다.)"""
-        self.assertFalse(self.mod._session_proc_alive("", ["claude x"]))
-        self.assertFalse(self.mod._session_proc_alive(FULLSID, []))
-        self.assertTrue(self.mod._session_proc_alive(
-            FULLSID, [f"claude --session-id {FULLSID}"]))
-
+    def test_bg_session_resume(self):
+        """BgSessionResume 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("dead_session_still_resumes"):
+            doc, meta = self._req("resume-case")
+            argv = self._spawn(doc, meta, ["/usr/bin/python3 something-else"])
+            self.assertIn("--resume", argv, argv)
+            self.assertIn(FULLSID, argv, argv)
+        with self.subTest("bg_locked_session_spawns_fresh"):
+            doc, meta = self._req("bg-locked-case")
+            argv = self._spawn(doc, meta, [
+                f"claude --session-id {FULLSID} --model claude-opus-5[1m]"])
+            self.assertNotIn("--resume", argv, argv)
+            self.assertNotIn(FULLSID, " ".join(map(str, argv)), argv)
+        with self.subTest("no_resume_is_recorded"):
+            with open(os.path.join(self.tmp, "state", "auto_resume",
+                                   "spawn.log")) as f:
+                log = f.read()
+            self.assertIn("NO-RESUME", log, log)
+            self.assertIn("프로세스 생존", log, log)
+        with self.subTest("proc_alive_matches_full_id_only"):
+            self.assertFalse(self.mod._session_proc_alive("", ["claude x"]))
+            self.assertFalse(self.mod._session_proc_alive(FULLSID, []))
+            self.assertTrue(self.mod._session_proc_alive(
+                FULLSID, [f"claude --session-id {FULLSID}"]))
 
 if __name__ == "__main__":
     unittest.main()

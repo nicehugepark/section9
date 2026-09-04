@@ -79,9 +79,9 @@ class DocTidyTest(unittest.TestCase):
         return self.ok("ls", *extra)
 
     def catalog(self):
-        p = os.path.join(self.root, "index", "catalog.jsonl")
-        with open(p, encoding="utf-8") as f:
-            return [json.loads(l) for l in f if l.strip()]
+        # 병합된 목록은 `index cat` 만이 준다 (REQ-20260902-035).
+        return [json.loads(l) for l in self.ok("index", "cat").splitlines()
+                if l.strip()]
 
     # ---------------------------------------------------------------- S1
     def test_s1_archive_marks_and_records(self):

@@ -26,21 +26,20 @@ import tmproot  # noqa: E402
 class Naming(unittest.TestCase):
     """T5. 우리 것과 남의 것을 이름으로 가른다."""
 
-    def test_ours(self):
-        for n in ("s9gate-abc", "s9run-1234-xy", "s9hookstamp-q", "s9-portpool"):
-            self.assertTrue(tmproot.is_ours(n), n)
-
-    def test_not_ours(self):
-        for n in ("claude-1000", "snap-private-tmp", ".X11-unix",
-                  "systemd-private-abc-systemd-logind.service-ZG4TI0",
-                  "tmp1234", "pip-build-x"):
-            self.assertFalse(tmproot.is_ours(n), n)
-
-    def test_run_root_pid_parsed(self):
-        self.assertEqual(tmproot.run_root_pid("s9run-4242-abcd"), 4242)
-        self.assertIsNone(tmproot.run_root_pid("s9gate-abcd"))
-        self.assertIsNone(tmproot.run_root_pid("s9run-notapid-x"))
-
+    def test_naming(self):
+        """T5. 우리 것과 남의 것을 이름으로 가른다."""
+        with self.subTest("ours"):
+            for n in ("s9gate-abc", "s9run-1234-xy", "s9hookstamp-q", "s9-portpool"):
+                self.assertTrue(tmproot.is_ours(n), n)
+        with self.subTest("not_ours"):
+            for n in ("claude-1000", "snap-private-tmp", ".X11-unix",
+                      "systemd-private-abc-systemd-logind.service-ZG4TI0",
+                      "tmp1234", "pip-build-x"):
+                self.assertFalse(tmproot.is_ours(n), n)
+        with self.subTest("run_root_pid_parsed"):
+            self.assertEqual(tmproot.run_root_pid("s9run-4242-abcd"), 4242)
+            self.assertIsNone(tmproot.run_root_pid("s9gate-abcd"))
+            self.assertIsNone(tmproot.run_root_pid("s9run-notapid-x"))
 
 class Stale(unittest.TestCase):
     """T4. 무엇을 거두고 무엇을 남기는가 — 판정만 따로 시험한다."""
@@ -220,24 +219,23 @@ class Runner(unittest.TestCase):
                               capture_output=True, text=True, timeout=600,
                               cwd=os.path.dirname(HERE))
 
-    def test_a_real_run_leaves_nothing_behind_in_tmp(self):
-        before = set(os.listdir(tmproot.SYS_TMP))
-        r = self._run("tmp_leak_probe")
-        self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
-        after = set(os.listdir(tmproot.SYS_TMP))
-        new = {n for n in after - before if tmproot.is_ours(n)}
-        self.assertEqual(new, set(),
-                         f"실행이 /tmp 에 남긴 것: {sorted(new)}")
-
-    def test_runner_reports_what_it_reaped(self):
-        r = self._run("tmp_leak_probe")
-        self.assertIn("임시자리", r.stderr,
-                      "조용히 치웠다 — 무엇이 남았는지 알리지 않는다")
-
-    def test_subprocess_inherits_the_run_root(self):
-        r = self._run("tmp_leak_probe")
-        self.assertIn("PROBE-CHILD-INSIDE", r.stderr + r.stdout)
-
+    def test_runner(self):
+        """T2·T3·T6. 러너가 실제로 문을 닫는가 — 진짜로 돌려서 본다."""
+        with self.subTest("a_real_run_leaves_nothing_behind_in_tmp"):
+            before = set(os.listdir(tmproot.SYS_TMP))
+            r = self._run("tmp_leak_probe")
+            self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
+            after = set(os.listdir(tmproot.SYS_TMP))
+            new = {n for n in after - before if tmproot.is_ours(n)}
+            self.assertEqual(new, set(),
+                             f"실행이 /tmp 에 남긴 것: {sorted(new)}")
+        with self.subTest("runner_reports_what_it_reaped"):
+            r = self._run("tmp_leak_probe")
+            self.assertIn("임시자리", r.stderr,
+                          "조용히 치웠다 — 무엇이 남았는지 알리지 않는다")
+        with self.subTest("subprocess_inherits_the_run_root"):
+            r = self._run("tmp_leak_probe")
+            self.assertIn("PROBE-CHILD-INSIDE", r.stderr + r.stdout)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

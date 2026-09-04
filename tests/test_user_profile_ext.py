@@ -204,7 +204,9 @@ class TestRoleChangeIsAdminOnly(unittest.TestCase):
     def test_r5_reading_a_role_needs_no_admin(self):
         self.cli("user", "add", "root", expect=None)
         self.cli("user", "role", "root", "admin", user="root", expect=None)
-        self.cli("user", "add", "dave")
+        # 등록은 admin 이 한다 — 앞선 케이스가 남긴 관찰 계정(viewer)이 기본
+        # 사용자로 잡히면 등록 자체가 막힌다. 이 케이스가 묻는 것은 **읽기**다.
+        self.cli("user", "add", "dave", user="root")
         r = self.cli("user", "role", "root", user="dave")
         self.assertIn("admin", r.stdout)
 

@@ -142,7 +142,9 @@ class PriorityDoesNotLeadTheCard(_Src):
     def test_user_badge_comes_first(self):
         """메타 줄의 첫 칸은 담당자다 — 우선순위는 그 뒤."""
         self.assertLess(
-            self.card.index('class="badge"'), self.card.index("prioHTML(r)"),
+            # 담당자 칸이 ownerBadgeHTML 로 묶인 뒤로 카드 원문에는
+            # class="badge" 글자가 없다 — 계약(첫 칸이 담당자다)은 그대로다.
+            self.card.index("ownerBadgeHTML(r)"), self.card.index("prioHTML(r)"),
             "우선순위가 여전히 카드 메타 줄의 첫 칸이다")
 
     def test_still_ahead_of_size(self):

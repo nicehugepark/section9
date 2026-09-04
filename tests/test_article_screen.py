@@ -43,94 +43,81 @@ class ArticleScreen(unittest.TestCase):
 
     # ---------- ① 찾을 길 ----------
 
-    def test_it_has_a_place_in_the_type_bar(self):
-        """없으면 만든 글이 어디에도 없는 것과 같다."""
-        self.assertRegex(self.src, r'const TYPE_ORDER = \["request", "article"',
-                         "타입바에 아티클 자리가 없다")
-        self.assertIn('const groups = {request:[],article:[]', self.src,
-                      "목록이 아티클을 담을 자리를 만들지 않는다")
-        self.assertIn("<option>article</option>", self.src,
-                      "헤더 종류 필터에 아티클이 없다")
-        self.assertIn('article:"아티클"', self.src, "화면에 쓸 우리말 이름이 없다")
+    def test_article_screen(self):
+        """ArticleScreen 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("it_has_a_place_in_the_type_bar"):
+                self.assertRegex(self.src, r'const TYPE_ORDER = \["request", "article"',
+                                 "타입바에 아티클 자리가 없다")
+                self.assertIn('const groups = {request:[],article:[]', self.src,
+                              "목록이 아티클을 담을 자리를 만들지 않는다")
+                self.assertIn("<option>article</option>", self.src,
+                              "헤더 종류 필터에 아티클이 없다")
+                self.assertIn('article:"아티클"', self.src, "화면에 쓸 우리말 이름이 없다")
 
-    # ---------- ② 그래프 ----------
+            # ---------- ② 그래프 ----------
+        with self.subTest("graph_shows_it_and_new_types_arrive_switched_on"):
+                self.assertRegex(self.src, r'const GRAPH_TYPES = \["request", "article"',
+                                 "그래프가 아티클을 그리지 않는다")
+                self.assertIn('article:"var(--t-article)"', self.src, "타입색이 없다")
+                self.assertIn('article:"#6b21a8"', self.src, "토큰을 못 읽을 때의 대체색이 없다")
+                self.assertIn("const GTYPES_DEFAULT", self.src, "기본으로 켤 종류 목록이 없다")
+                self.assertIn("GTYPES_SEEN", self.src,
+                              "사용자가 끈 것과 '아직 있어 본 적 없는 것'을 가르지 않는다")
+                self.assertRegex(self.src,
+                                 r"GTYPES_DEFAULT\.forEach\(t => \{ if \(!GTYPES_SEEN\.has\(t\)\) gtypes\.add\(t\)",
+                                 "새 종류가 꺼진 채로 들어온다")
+                # 타입색은 모든 tone 에서 정의돼야 한다 — 하나라도 빠지면 그 톤에서 색이 없다
+                self.assertGreaterEqual(len(re.findall(r"--t-article:#", self.src)), 4,
+                                        "일부 톤에 아티클 색이 없다")
 
-    def test_graph_shows_it_and_new_types_arrive_switched_on(self):
-        """사용자가 끈 적 없는 종류가 꺼진 채로 있으면 안 된다."""
-        self.assertRegex(self.src, r'const GRAPH_TYPES = \["request", "article"',
-                         "그래프가 아티클을 그리지 않는다")
-        self.assertIn('article:"var(--t-article)"', self.src, "타입색이 없다")
-        self.assertIn('article:"#6b21a8"', self.src, "토큰을 못 읽을 때의 대체색이 없다")
-        self.assertIn("const GTYPES_DEFAULT", self.src, "기본으로 켤 종류 목록이 없다")
-        self.assertIn("GTYPES_SEEN", self.src,
-                      "사용자가 끈 것과 '아직 있어 본 적 없는 것'을 가르지 않는다")
-        self.assertRegex(self.src,
-                         r"GTYPES_DEFAULT\.forEach\(t => \{ if \(!GTYPES_SEEN\.has\(t\)\) gtypes\.add\(t\)",
-                         "새 종류가 꺼진 채로 들어온다")
-        # 타입색은 모든 tone 에서 정의돼야 한다 — 하나라도 빠지면 그 톤에서 색이 없다
-        self.assertGreaterEqual(len(re.findall(r"--t-article:#", self.src)), 4,
-                                "일부 톤에 아티클 색이 없다")
+            # ---------- ③④ 채팅에서 쓰기 ----------
+        with self.subTest("chat_can_start_an_article"):
+            send = self._fn("sendChat")
+            self.assertIn('as_type: "article"', send, "아티클로 보내지 않는다")
+            self.assertIn("function artToggle", self.src, "켜고 끄는 자리가 없다")
+            self.assertIn('id="cc-art"', self.src, "입력줄에 손잡이가 없다")
+            self.assertIn('aria-pressed', self.src, "켜졌는지 보조기술이 알 수 없다")
+        with self.subTest("article_and_doc_pick_are_exclusive"):
+            t = self._fn("artToggle")
+            self.assertIn("docTarget = null", t, "아티클을 켜도 집어 둔 문서가 남는다")
+            self.assertIn("TERM.target = null", t, "아티클을 켜도 에이전트 지목이 남는다")
+            self.assertIn("if (asArticle) artToggle(false)", self._fn("docPick"),
+                          "문서를 집어도 아티클 모드가 남는다")
+            send = self._fn("sendChat")
+            self.assertIn("!tgt && !dt && asArticle", send, "셋을 함께 보낸다")
+        with self.subTest("the_chip_says_which_of_the_three_is_standing"):
+                fn = self._fn("termTargetRender")
+                self.assertIn("새 아티클", fn, "아티클 모드일 때 아무 말도 없다")
+                self.assertIn("box.hidden = !t && !docTarget && !asArticle;", fn,
+                              "아무것도 안 걸렸는데 줄이 남거나, 걸렸는데 줄이 없다")
 
-    # ---------- ③④ 채팅에서 쓰기 ----------
+            # ---------- ⑤ 읽는 문서 ----------
+        with self.subTest("the_article_is_the_body_not_a_section"):
+                load = self._fn("loadDoc")
+                self.assertIn('m.type === "article" ? docSection(d.body, "Article")', load,
+                              "아티클 절을 본문으로 삼지 않는다")
+                self.assertIn('<article class="artdoc">', load, "읽는 글의 틀이 없다")
+                self.assertIn('<details class="artmeta">', load,
+                              "메타·이력을 접지 않는다 — 글보다 앞자리를 차지한다")
+                self.assertIn("docWithout(d.body", load, "원문·이력을 어디에도 남기지 않는다")
+                # 읽는 폭·행간은 요청 문서와 다르다
+                css = self._css()
+                self.assertRegex(css, r"\.artdoc\{[^}]*max-width:3[0-9]em",
+                                 "한 줄이 너무 길어 다음 줄 첫 글자를 못 찾는다")
+                self.assertRegex(css, r"\.artdoc \.artmd\{[^}]*line-height:1\.[89]",
+                                 "행간이 훑는 글 그대로다")
+                websrc.no_hex(self, css)
+            # ---------- ⑥ 절 경계 ----------
+        with self.subTest("section_boundaries_are_named_sections_only"):
+            self.assertIn('const DOC_SECTIONS = ["Original", "Article", "Notes", "History"]',
+                          self.src, "경계로 삼을 절 이름이 정해져 있지 않다")
+            at = self._fn("docSectionAt")
+            self.assertIn("DOC_SEC_RE.exec", at, "다음 경계를 이름으로 찾지 않는다")
+            self.assertNotRegex(at, r"/\^##\\s\+/m", "아무 ## 이나 경계로 삼는다")
+        with self.subTest("it_can_be_opened_without_hands"):
+                self.assertIn("[?&]art\\b", self.src, "아티클 모드를 세울 진단 파라미터가 없다")
 
-    def test_chat_can_start_an_article(self):
-        """서버가 받는 그 값으로 보낸다."""
-        send = self._fn("sendChat")
-        self.assertIn('as_type: "article"', send, "아티클로 보내지 않는다")
-        self.assertIn("function artToggle", self.src, "켜고 끄는 자리가 없다")
-        self.assertIn('id="cc-art"', self.src, "입력줄에 손잡이가 없다")
-        self.assertIn('aria-pressed', self.src, "켜졌는지 보조기술이 알 수 없다")
-
-    def test_article_and_doc_pick_are_exclusive(self):
-        """있는 문서에 붙이기 ≠ 새 글 시작. 같은 메시지로 둘 다일 수 없다."""
-        t = self._fn("artToggle")
-        self.assertIn("docTarget = null", t, "아티클을 켜도 집어 둔 문서가 남는다")
-        self.assertIn("TERM.target = null", t, "아티클을 켜도 에이전트 지목이 남는다")
-        self.assertIn("if (asArticle) artToggle(false)", self._fn("docPick"),
-                      "문서를 집어도 아티클 모드가 남는다")
-        send = self._fn("sendChat")
-        self.assertIn("!tgt && !dt && asArticle", send, "셋을 함께 보낸다")
-
-    def test_the_chip_says_which_of_the_three_is_standing(self):
-        """같은 줄에 세 종류가 번갈아 선다 — 무엇이 서 있는지 말해야 한다."""
-        fn = self._fn("termTargetRender")
-        self.assertIn("새 아티클", fn, "아티클 모드일 때 아무 말도 없다")
-        self.assertIn("box.hidden = !t && !docTarget && !asArticle;", fn,
-                      "아무것도 안 걸렸는데 줄이 남거나, 걸렸는데 줄이 없다")
-
-    # ---------- ⑤ 읽는 문서 ----------
-
-    def test_the_article_is_the_body_not_a_section(self):
-        """메타·이력이 글보다 앞자리를 차지하지 않는다."""
-        load = self._fn("loadDoc")
-        self.assertIn('m.type === "article" ? docSection(d.body, "Article")', load,
-                      "아티클 절을 본문으로 삼지 않는다")
-        self.assertIn('<article class="artdoc">', load, "읽는 글의 틀이 없다")
-        self.assertIn('<details class="artmeta">', load,
-                      "메타·이력을 접지 않는다 — 글보다 앞자리를 차지한다")
-        self.assertIn("docWithout(d.body", load, "원문·이력을 어디에도 남기지 않는다")
-        # 읽는 폭·행간은 요청 문서와 다르다
-        css = self._css()
-        self.assertRegex(css, r"\.artdoc\{[^}]*max-width:3[0-9]em",
-                         "한 줄이 너무 길어 다음 줄 첫 글자를 못 찾는다")
-        self.assertRegex(css, r"\.artdoc \.artmd\{[^}]*line-height:1\.[89]",
-                         "행간이 훑는 글 그대로다")
-        websrc.no_hex(self, css)
-    # ---------- ⑥ 절 경계 ----------
-
-    def test_section_boundaries_are_named_sections_only(self):
-        """아티클 본문은 제 소제목을 ## 로 쓴다 — '다음 ##' 으로 자르면 통째로 빈다."""
-        self.assertIn('const DOC_SECTIONS = ["Original", "Article", "Notes", "History"]',
-                      self.src, "경계로 삼을 절 이름이 정해져 있지 않다")
-        at = self._fn("docSectionAt")
-        self.assertIn("DOC_SEC_RE.exec", at, "다음 경계를 이름으로 찾지 않는다")
-        self.assertNotRegex(at, r"/\^##\\s\+/m", "아무 ## 이나 경계로 삼는다")
-
-    def test_it_can_be_opened_without_hands(self):
-        """헤드리스로 직접 보고 고칠 길."""
-        self.assertIn("[?&]art\\b", self.src, "아티클 모드를 세울 진단 파라미터가 없다")
-
-    # ---------- helpers ----------
+            # ---------- helpers ----------
 
     def _fn(self, name):
         return websrc.fn(self, self.src, name)

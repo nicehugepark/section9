@@ -276,6 +276,82 @@ class StreamsScope(unittest.TestCase):
             os.path.exists(p) and os.unlink(p)
 
 
+class TheGaugeCountsPerPlace(unittest.TestCase):
+    """계기는 «한 자리의 겹침»을 센다 — 전역 합이 아니다 (REQ-20260904-003).
+
+    실사고 2026-09-04: 계기가 전역 하나여서, 서로 **다른 두 자리**를 동시에
+    훑는 정상 동작이 `max_inflight = 2` 로 잡혔다. 단일비행은 자리마다
+    (`_STREAMS_FLIGHT` 가 d 로 갈려 있다) 접는 장치인데 계기만 전역이었다.
+    부하가 있을 때만 겹쳐서 「병렬에서만 붉다」로 보였고, 커밋을 막았다.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="s9gauge-")
+        self.m = s9mod(self.tmp, "gauge")
+        self.dirs = [os.path.join(self.tmp, "a"), os.path.join(self.tmp, "b")]
+        for d in self.dirs:
+            os.makedirs(d, exist_ok=True)
+            open(os.path.join(d, "x.jsonl"), "w").close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_two_different_places_at_once_are_not_a_violation(self):
+        """두 자리를 동시에 훑어도 계약 위반이 아니다."""
+        started = threading.Barrier(2)
+        real = self.m._streams_names_read
+        seen = []
+
+        def slow(d):
+            started.wait(10)        # 둘이 확실히 겹치게 한다
+            time.sleep(0.2)
+            seen.append(d)
+            return real(d)
+
+        self.m._streams_names_read = slow
+        try:
+            ts = [threading.Thread(target=self.m._streams_names_shared, args=(d,))
+                  for d in self.dirs]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join(20)
+        finally:
+            self.m._streams_names_read = real
+        self.assertEqual(sorted(seen), sorted(self.dirs), "둘이 겹치지 않았다")
+        self.assertLessEqual(
+            self.m._STREAMS_STAT["max_inflight"], 1,
+            "서로 다른 자리를 동시에 훑은 것이 단일비행 위반으로 잡혔다")
+
+    def test_the_same_place_at_once_is_folded(self):
+        """같은 자리는 접힌다 — 하나만 훑고 나머지는 그 값을 받는다."""
+        started = threading.Barrier(2)
+        real = self.m._streams_names_read
+        calls = []
+
+        def slow(d):
+            calls.append(d)
+            started.wait(10)
+            time.sleep(0.2)
+            return real(d)
+
+        self.m._streams_names_read = slow
+        try:
+            ts = [threading.Thread(target=self.m._streams_names_shared,
+                                   args=(self.dirs[0],)) for _ in range(2)]
+            ts[0].start()
+            time.sleep(0.05)        # 첫 훑기가 자리를 잡은 뒤에 둘째가 온다
+            ts[1].start()
+            started.wait(10)        # 첫 훑기를 놓아 준다
+            for t in ts:
+                t.join(20)
+        finally:
+            self.m._streams_names_read = real
+        self.assertEqual(len(calls), 1, f"같은 자리를 {len(calls)}번 훑었다")
+        self.assertGreaterEqual(self.m._STREAMS_STAT["shared"], 1,
+                                "접힌 것이 계기에 안 잡혔다")
+
+
 class StreamsScanServer(unittest.TestCase):
     """실서버로 잰다 — 한 요청이 streams 자리를 몇 번 훑는가."""
 
@@ -342,52 +418,51 @@ class StreamsScanServer(unittest.TestCase):
         return self.gauge()["reads"] - before
 
     # ---- S14. 계기가 있다 ------------------------------------------------
-    def test_s14_serveinfo_reports_the_gauge(self):
-        g = self.gauge()
-        for k in ("reads", "shared", "max_inflight"):
-            self.assertIn(k, g, g)
+    def test_streams_scan_server(self):
+        """실서버로 잰다 — 한 요청이 streams 자리를 몇 번 훑는가."""
+        with self.subTest("s14_serveinfo_reports_the_gauge"):
+                g = self.gauge()
+                for k in ("reads", "shared", "max_inflight"):
+                    self.assertIn(k, g, g)
 
-    # ---- S2/S3. 한 요청 = 자리마다 한 번의 훑기 (실서버) -----------------
-    def test_s2_chat_target_scans_once(self):
-        # 계기 델타에는 배경 스레드(워처·하트비트)의 훑기가 섞일 수 있으므로
-        # 여유를 준다. 고치기 전 이 값은 바인딩 수(40)의 두 배를 넘었다.
-        d = self.scans("/api/chat/target")
-        self.assertLessEqual(d, 4, f"/api/chat/target 한 요청이 {d}번 훑었다")
+            # ---- S2/S3. 한 요청 = 자리마다 한 번의 훑기 (실서버) -----------------
+        with self.subTest("s2_chat_target_scans_once"):
+            # 계기 델타에는 배경 스레드(워처·하트비트)의 훑기가 섞일 수 있으므로
+            # 여유를 준다. 고치기 전 이 값은 바인딩 수(40)의 두 배를 넘었다.
+            d = self.scans("/api/chat/target")
+            self.assertLessEqual(d, 4, f"/api/chat/target 한 요청이 {d}번 훑었다")
+        with self.subTest("s3_sessions_scans_once"):
+            d = self.scans("/api/sessions")
+            self.assertLessEqual(d, 4, f"/api/sessions 한 요청이 {d}번 훑었다")
+        with self.subTest("s3b_catalog_scans_once"):
+                d = self.scans("/api/catalog")
+                self.assertLessEqual(d, 4, f"/api/catalog 한 요청이 {d}번 훑었다")
 
-    def test_s3_sessions_scans_once(self):
-        d = self.scans("/api/sessions")
-        self.assertLessEqual(d, 4, f"/api/sessions 한 요청이 {d}번 훑었다")
+            # ---- S4. 동시 요청이 훑기를 곱하지 않는다 ----------------------------
+        with self.subTest("s4_concurrency_does_not_multiply"):
+                one = self.scans("/api/chat/target")
+                eight = self.scans("/api/chat/target", n=8)
+                self.assertLessEqual(eight, one + 8,
+                                     f"동시 8건이 훑기 {eight}번 — 동시성이 곱한다")
+                self.assertLessEqual(self.gauge()["max_inflight"], 1,
+                                     "동시 진입이 1을 넘었다 — 단일비행이 없다")
 
-    def test_s3b_catalog_scans_once(self):
-        d = self.scans("/api/catalog")
-        self.assertLessEqual(d, 4, f"/api/catalog 한 요청이 {d}번 훑었다")
-
-    # ---- S4. 동시 요청이 훑기를 곱하지 않는다 ----------------------------
-    def test_s4_concurrency_does_not_multiply(self):
-        one = self.scans("/api/chat/target")
-        eight = self.scans("/api/chat/target", n=8)
-        self.assertLessEqual(eight, one + 8,
-                             f"동시 8건이 훑기 {eight}번 — 동시성이 곱한다")
-        self.assertLessEqual(self.gauge()["max_inflight"], 1,
-                             "동시 진입이 1을 넘었다 — 단일비행이 없다")
-
-    # ---- S9. 신선도 계약: 요청마다 새로 뜬다 -----------------------------
-    def test_s9_new_stream_seen_next_request(self):
-        sid = "fresh999"
-        strd = os.path.join(self.tmp, "users", "alice", "streams")
-        with open(os.path.join(self.tmp, "state", "sessions",
-                               f"testbox__{sid}.json"), "w",
-                  encoding="utf-8") as f:
-            json.dump({"machine": "testbox", "session": sid, "user": "alice",
-                       "history": [], "active_reqs": []}, f)
-        r = json.loads(self.get(f"/api/chat/target?sid={sid}")[1])
-        self.assertFalse(r.get("live"), r)
-        open(os.path.join(strd, f"{sid}.jsonl"), "w").close()
-        r = json.loads(self.get(f"/api/chat/target?sid={sid}")[1])
-        self.assertTrue(r.get("live"),
-                        "새 스트림이 생겼는데 다음 요청이 여전히 죽었다고 "
-                        "말한다 — 목록 캐시가 요청을 넘어 살아 있다")
-
+            # ---- S9. 신선도 계약: 요청마다 새로 뜬다 -----------------------------
+        with self.subTest("s9_new_stream_seen_next_request"):
+            sid = "fresh999"
+            strd = os.path.join(self.tmp, "users", "alice", "streams")
+            with open(os.path.join(self.tmp, "state", "sessions",
+                                   f"testbox__{sid}.json"), "w",
+                      encoding="utf-8") as f:
+                json.dump({"machine": "testbox", "session": sid, "user": "alice",
+                           "history": [], "active_reqs": []}, f)
+            r = json.loads(self.get(f"/api/chat/target?sid={sid}")[1])
+            self.assertFalse(r.get("live"), r)
+            open(os.path.join(strd, f"{sid}.jsonl"), "w").close()
+            r = json.loads(self.get(f"/api/chat/target?sid={sid}")[1])
+            self.assertTrue(r.get("live"),
+                            "새 스트림이 생겼는데 다음 요청이 여전히 죽었다고 "
+                            "말한다 — 목록 캐시가 요청을 넘어 살아 있다")
 
 if __name__ == "__main__":
     unittest.main()

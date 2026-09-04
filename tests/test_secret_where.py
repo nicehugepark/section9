@@ -220,119 +220,120 @@ class WhereUI(unittest.TestCase):
         return self.src[i:self.src.index("if (whereBox){", i)]
 
     # N1. 두 칸이 나란히, 라디오로
-    def test_n1_two_cells_side_by_side(self):
-        mine = self._mine()
-        self.assertIn('id="sec-where"', mine, "둘 곳을 고르는 자리가 없다")
-        self.assertIn('role="radiogroup"', mine, "키보드로 고를 수 없다")
-        self.assertIn('data-w="internal"', mine)
-        self.assertIn('data-w="external"', mine)
-        self.assertIn("저장소 안", mine)
-        self.assertIn("저장소 밖", mine)
-        # 좌우로 세운다 — 위아래 목록이 아니라
-        css = self.src[self.src.index(".secwhere{"):self.src.index(".secwhy{")]
-        self.assertIn("display:flex", css, "두 칸이 좌우로 서지 않는다")
-        # 값 칸은 한 벌뿐이다 — 두 벌이면 옮길 때 값을 다시 친다
-        self.assertEqual(mine.count('id="sec-val"'), 1, "값 칸이 두 벌이다")
+    def test_where_u_i(self):
+        """좌우 두 칸 — "internal 항목이랑 좌우 형태로 같이 등록"."""
+        with self.subTest("n1_two_cells_side_by_side"):
+                mine = self._mine()
+                self.assertIn('id="sec-where"', mine, "둘 곳을 고르는 자리가 없다")
+                self.assertIn('role="radiogroup"', mine, "키보드로 고를 수 없다")
+                self.assertIn('data-w="internal"', mine)
+                self.assertIn('data-w="external"', mine)
+                self.assertIn("저장소 안", mine)
+                self.assertIn("저장소 밖", mine)
+                # 좌우로 세운다 — 위아래 목록이 아니라
+                css = self.src[self.src.index(".secwhere{"):self.src.index(".secwhy{")]
+                self.assertIn("display:flex", css, "두 칸이 좌우로 서지 않는다")
+                # 값 칸은 한 벌뿐이다 — 두 벌이면 옮길 때 값을 다시 친다
+                self.assertEqual(mine.count('id="sec-val"'), 1, "값 칸이 두 벌이다")
 
-    # N2. 고른 곳이 서버로 간다
-    def test_n2_the_choice_is_what_is_sent(self):
-        add = self.src[self.src.index("addBtn.addEventListener"):]
-        add = add[:add.index("// 엔터로도 넣는다")]
-        self.assertIn("where: secWhere", add, "고른 곳을 서버에 보내지 않는다")
-        # 어디에 넣었는지 알림이 말한다 — 넣고 나서도 확인이 되어야 한다
-        self.assertIn("WHERE_KO[res.where]", add,
-                      "어디에 넣었는지 서버가 말한 것을 쓰지 않는다")
+            # N2. 고른 곳이 서버로 간다
+        with self.subTest("n2_the_choice_is_what_is_sent"):
+                add = self.src[self.src.index("addBtn.addEventListener"):]
+                add = add[:add.index("// 엔터로도 넣는다")]
+                self.assertIn("where: secWhere", add, "고른 곳을 서버에 보내지 않는다")
+                # 어디에 넣었는지 알림이 말한다 — 넣고 나서도 확인이 되어야 한다
+                self.assertIn("WHERE_KO[res.where]", add,
+                              "어디에 넣었는지 서버가 말한 것을 쓰지 않는다")
 
-    # N3. 버튼이 목적지를 말한다 (동사+목적)
-    def test_n3_the_button_names_the_destination(self):
-        self.assertIn("＋ ${WHERE_KO[secWhere]}에 넣기", self._paint(),
-                      "버튼이 어디에 넣는지 말하지 않는다")
+            # N3. 버튼이 목적지를 말한다 (동사+목적)
+        with self.subTest("n3_the_button_names_the_destination"):
+                self.assertIn("＋ ${WHERE_KO[secWhere]}에 넣기", self._paint(),
+                              "버튼이 어디에 넣는지 말하지 않는다")
 
-    # B1. 못 쓰면 잠기고, 이유가 그 자리에 있다
-    def test_b1_locked_with_a_reason_in_place(self):
-        paint = self._paint()
-        self.assertIn('const canExt = st === "ok"', paint,
-                      "쓸 수 있는지를 서버 판정으로 정하지 않는다")
-        self.assertIn('if (!canExt) secWhere = "internal"', paint,
-                      "못 쓰는데 바깥이 골라진 채로 남는다")
-        self.assertIn("r.disabled = off", paint, "잠긴 칸을 고를 수 있다")
-        self.assertIn("EXTWHY[st]", paint, "왜 잠겼는지 말하지 않는다")
-        # 칸에는 짧은 이름, 아래 줄에는 문장 — 같은 말을 두 번 하지 않는다
-        self.assertIn("why[0]", paint, "칸이 짧은 상태 이름을 안 쓴다")
-        self.assertIn("esc(why[1])", paint, "아래 줄이 문장을 안 쓴다")
-        self.assertIn("경로부터 정해 주세요", paint, "다음 행동을 주지 않는다")
-        self.assertIn('id="sec-gopath"', paint, "경로 칸으로 데려가지 않는다")
-        why = self.src[self.src.index("const EXTWHY = {"):
-                       self.src.index("let secWhere")]
-        for state in ("unset:", "missing:", "inrepo:", "unknown:"):
-            self.assertIn(state, why, f"{state} 상태 문구가 없다")
+            # B1. 못 쓰면 잠기고, 이유가 그 자리에 있다
+        with self.subTest("b1_locked_with_a_reason_in_place"):
+                paint = self._paint()
+                self.assertIn('const canExt = st === "ok"', paint,
+                              "쓸 수 있는지를 서버 판정으로 정하지 않는다")
+                self.assertIn('if (!canExt) secWhere = "internal"', paint,
+                              "못 쓰는데 바깥이 골라진 채로 남는다")
+                self.assertIn("r.disabled = off", paint, "잠긴 칸을 고를 수 있다")
+                self.assertIn("EXTWHY[st]", paint, "왜 잠겼는지 말하지 않는다")
+                # 칸에는 짧은 이름, 아래 줄에는 문장 — 같은 말을 두 번 하지 않는다
+                self.assertIn("why[0]", paint, "칸이 짧은 상태 이름을 안 쓴다")
+                self.assertIn("esc(why[1])", paint, "아래 줄이 문장을 안 쓴다")
+                self.assertIn("경로부터 정해 주세요", paint, "다음 행동을 주지 않는다")
+                self.assertIn('id="sec-gopath"', paint, "경로 칸으로 데려가지 않는다")
+                why = self.src[self.src.index("const EXTWHY = {"):
+                               self.src.index("let secWhere")]
+                for state in ("unset:", "missing:", "inrepo:", "unknown:"):
+                    self.assertIn(state, why, f"{state} 상태 문구가 없다")
 
-    # B2. 판정은 서버 것 하나 — 화면이 다시 만들지 않는다
-    def test_b2_the_verdict_still_comes_from_the_server(self):
-        paint = self._paint()
-        self.assertIn("secData.external_state", paint)
-        for reinvented in ("isdir", "/api/fs", "exists("):
-            self.assertNotIn(reinvented, paint,
-                             f"화면이 판정을 다시 만든다: {reinvented}")
+            # B2. 판정은 서버 것 하나 — 화면이 다시 만들지 않는다
+        with self.subTest("b2_the_verdict_still_comes_from_the_server"):
+                paint = self._paint()
+                self.assertIn("secData.external_state", paint)
+                for reinvented in ("isdir", "/api/fs", "exists("):
+                    self.assertNotIn(reinvented, paint,
+                                     f"화면이 판정을 다시 만든다: {reinvented}")
 
-    # B3. 가려질 값은 **넣기 전에** 말한다
-    def test_b3_shadowing_is_said_before_it_happens(self):
-        add = self.src[self.src.index("addBtn.addEventListener"):]
-        add = add[:add.index("// 엔터로도 넣는다")]
-        i = add.index('kind: "confirm"')
-        self.assertLess(i, add.index('postJSONRaw("/api/secret/set"'),
-                        "넣고 나서 가려졌다고 말한다")
-        self.assertIn("저장소 안의 값이 쓰입니다", add,
-                      "어느 쪽이 이기는지 말하지 않는다")
-        self.assertIn('ok: "그래도 넣기"', add, "확인 버튼이 동사+목적이 아니다")
-        # 넣은 뒤에도 서버가 말한 사실을 그대로 전한다 (사이에 다른 세션이 넣었을 수 있다)
-        self.assertIn("res.shadowed", add, "서버가 말한 가려짐을 흘린다")
+            # B3. 가려질 값은 **넣기 전에** 말한다
+        with self.subTest("b3_shadowing_is_said_before_it_happens"):
+                add = self.src[self.src.index("addBtn.addEventListener"):]
+                add = add[:add.index("// 엔터로도 넣는다")]
+                i = add.index('kind: "confirm"')
+                self.assertLess(i, add.index('postJSONRaw("/api/secret/set"'),
+                                "넣고 나서 가려졌다고 말한다")
+                self.assertIn("저장소 안의 값이 쓰입니다", add,
+                              "어느 쪽이 이기는지 말하지 않는다")
+                self.assertIn('ok: "그래도 넣기"', add, "확인 버튼이 동사+목적이 아니다")
+                # 넣은 뒤에도 서버가 말한 사실을 그대로 전한다 (사이에 다른 세션이 넣었을 수 있다)
+                self.assertIn("res.shadowed", add, "서버가 말한 가려짐을 흘린다")
 
-    # B4. 목록이 가려진 줄을 표시한다
-    def test_b4_the_list_marks_the_shadowed_row(self):
-        fn = self.src[self.src.index("async function loadSecrets("):
-                      self.src.index("const secMsg =")]
-        self.assertIn("k.shadowed", fn, "가려진 줄이 표시되지 않는다")
-        self.assertIn("밖의 같은 이름은 가려짐", fn)
+            # B4. 목록이 가려진 줄을 표시한다
+        with self.subTest("b4_the_list_marks_the_shadowed_row"):
+                fn = self.src[self.src.index("async function loadSecrets("):
+                              self.src.index("const secMsg =")]
+                self.assertIn("k.shadowed", fn, "가려진 줄이 표시되지 않는다")
+                self.assertIn("밖의 같은 이름은 가려짐", fn)
 
-    # B5. 지울 때 어느 쪽인지 묻는 창이 말한다
-    def test_b5_removing_names_the_side(self):
-        rm = self.src[self.src.index("secList.addEventListener"):]
-        rm = rm[:rm.index("/* ?secdbg")]
-        self.assertIn("저장소 안과 밖 양쪽", rm, "양쪽에 있을 때를 말하지 않는다")
-        self.assertIn("에 있는 파일을 지웁니다", rm, "어디 것을 지우는지 말하지 않는다")
-        self.assertIn("res.places", rm, "무엇이 사라졌는지 서버 답을 안 쓴다")
+            # B5. 지울 때 어느 쪽인지 묻는 창이 말한다
+        with self.subTest("b5_removing_names_the_side"):
+                rm = self.src[self.src.index("secList.addEventListener"):]
+                rm = rm[:rm.index("/* ?secdbg")]
+                self.assertIn("저장소 안과 밖 양쪽", rm, "양쪽에 있을 때를 말하지 않는다")
+                self.assertIn("에 있는 파일을 지웁니다", rm, "어디 것을 지우는지 말하지 않는다")
+                self.assertIn("res.places", rm, "무엇이 사라졌는지 서버 답을 안 쓴다")
 
-    # F1. 잉크 언어 — 색면·라운드·그림자 없음, 색만으로 구분하지 않는다
-    def test_f1_ink_not_a_colour_field(self):
-        css = self.src[self.src.index(".secwlab{"):self.src.index(".cfg-h{")]
-        for m in re.finditer(r"background:([^;}]+)", css):
-            self.assertIn(m.group(1).strip(), ("none", "var(--panel)",
-                                               "var(--text)", "var(--bg)"),
-                          "배경에 색면을 깐다")
-        self.assertNotIn("border-left:", css, "세로 띠를 두른다")
-        self.assertNotIn("border-radius", css, "라운드를 쓴다")
-        self.assertNotIn("box-shadow", css, "그림자를 쓴다")
-        websrc.no_hex(self, css, "색을 하드코딩한다")
-        # 고른 칸은 색이 아니라 모양으로도 읽힌다
-        self.assertIn('el.querySelector(".wm").textContent = on ? "●" : "○"',
-                      self._paint(), "고른 칸이 색으로만 구분된다")
-        self.assertIn(".wopt.on{border-bottom-color:var(--text)}", css,
-                      "고른 칸이 잉크 밑줄로 서지 않는다")
+            # F1. 잉크 언어 — 색면·라운드·그림자 없음, 색만으로 구분하지 않는다
+        with self.subTest("f1_ink_not_a_colour_field"):
+                css = self.src[self.src.index(".secwlab{"):self.src.index(".cfg-h{")]
+                for m in re.finditer(r"background:([^;}]+)", css):
+                    self.assertIn(m.group(1).strip(), ("none", "var(--panel)",
+                                                       "var(--text)", "var(--bg)"),
+                                  "배경에 색면을 깐다")
+                self.assertNotIn("border-left:", css, "세로 띠를 두른다")
+                self.assertNotIn("border-radius", css, "라운드를 쓴다")
+                self.assertNotIn("box-shadow", css, "그림자를 쓴다")
+                websrc.no_hex(self, css, "색을 하드코딩한다")
+                # 고른 칸은 색이 아니라 모양으로도 읽힌다
+                self.assertIn('el.querySelector(".wm").textContent = on ? "●" : "○"',
+                              self._paint(), "고른 칸이 색으로만 구분된다")
+                self.assertIn(".wopt.on{border-bottom-color:var(--text)}", css,
+                              "고른 칸이 잉크 밑줄로 서지 않는다")
 
-    # F2. 손 없이 눌러 볼 길 — 그리고 진짜 비밀은 건드리지 않는다
-    def test_f2_it_can_be_exercised_without_hands(self):
-        self.assertIn("[?&]secwdbg", self.src, "손 없이 눌러 볼 길이 없다")
-        dbg = self.src[self.src.index("if (secList && /[?&]secwdbg/"):]
-        dbg = dbg[:dbg.index("/* ?extdbg")]
-        self.assertIn('const K = "S9DBG_WHERE"', dbg,
-                      "진단이 진짜 비밀을 건드릴 수 있다")
-        self.assertIn('host.querySelector("#sec-add").click()', dbg,
-                      "진짜 버튼을 누르지 않는다")
-        self.assertIn("dlg.querySelector(\".dlgyes\")", dbg,
-                      "확인 창을 실제로 지나지 않는다")
-        self.assertIn("되돌림", dbg, "넣어 본 것을 지우지 않는다")
-
+            # F2. 손 없이 눌러 볼 길 — 그리고 진짜 비밀은 건드리지 않는다
+        with self.subTest("f2_it_can_be_exercised_without_hands"):
+            self.assertIn("[?&]secwdbg", self.src, "손 없이 눌러 볼 길이 없다")
+            dbg = self.src[self.src.index("if (secList && /[?&]secwdbg/"):]
+            dbg = dbg[:dbg.index("/* ?extdbg")]
+            self.assertIn('const K = "S9DBG_WHERE"', dbg,
+                          "진단이 진짜 비밀을 건드릴 수 있다")
+            self.assertIn('host.querySelector("#sec-add").click()', dbg,
+                          "진짜 버튼을 누르지 않는다")
+            self.assertIn("dlg.querySelector(\".dlgyes\")", dbg,
+                          "확인 창을 실제로 지나지 않는다")
+            self.assertIn("되돌림", dbg, "넣어 본 것을 지우지 않는다")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

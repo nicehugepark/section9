@@ -65,64 +65,65 @@ class CatalogConditional(unittest.TestCase):
             return e.code, dict(e.headers), e.read()
 
     # T1. 200 응답에 ETag 와 Cache-Control: no-cache 가 있다
-    def test_t1_etag_and_no_cache(self):
-        code, hdr, body = self.get()
-        self.assertEqual(code, 200)
-        self.assertTrue(hdr.get("ETag", "").startswith('"'))
-        self.assertEqual(hdr.get("Cache-Control"), "no-cache")
-        self.assertTrue(json.loads(body))
+    def test_catalog_conditional(self):
+        """CatalogConditional 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("t1_etag_and_no_cache"):
+                code, hdr, body = self.get()
+                self.assertEqual(code, 200)
+                self.assertTrue(hdr.get("ETag", "").startswith('"'))
+                self.assertEqual(hdr.get("Cache-Control"), "no-cache")
+                self.assertTrue(json.loads(body))
 
-    # T2. 받은 ETag 로 재요청하면 304, 본문 없음
-    def test_t2_if_none_match_304(self):
-        _, hdr, _ = self.get()
-        code, hdr2, body = self.get(headers={"If-None-Match": hdr["ETag"]})
-        self.assertEqual(code, 304)
-        self.assertEqual(body, b"")
-        self.assertEqual(hdr2.get("ETag"), hdr["ETag"])
+            # T2. 받은 ETag 로 재요청하면 304, 본문 없음
+        with self.subTest("t2_if_none_match_304"):
+                _, hdr, _ = self.get()
+                code, hdr2, body = self.get(headers={"If-None-Match": hdr["ETag"]})
+                self.assertEqual(code, 304)
+                self.assertEqual(body, b"")
+                self.assertEqual(hdr2.get("ETag"), hdr["ETag"])
 
-    # T3. gzip 을 받는 클라이언트에게는 압축본 — 해제하면 동일, 더 작다
-    def test_t3_gzip(self):
-        _, _, plain = self.get()
-        code, hdr, z = self.get(headers={"Accept-Encoding": "gzip"})
-        self.assertEqual(code, 200)
-        self.assertEqual(hdr.get("Content-Encoding"), "gzip")
-        raw = gzip.GzipFile(fileobj=io.BytesIO(z)).read()
-        self.assertEqual(raw, plain)
-        self.assertLess(len(z), len(plain))
+            # T3. gzip 을 받는 클라이언트에게는 압축본 — 해제하면 동일, 더 작다
+        with self.subTest("t3_gzip"):
+                _, _, plain = self.get()
+                code, hdr, z = self.get(headers={"Accept-Encoding": "gzip"})
+                self.assertEqual(code, 200)
+                self.assertEqual(hdr.get("Content-Encoding"), "gzip")
+                raw = gzip.GzipFile(fileobj=io.BytesIO(z)).read()
+                self.assertEqual(raw, plain)
+                self.assertLess(len(z), len(plain))
 
-    # T4. 문서가 바뀌면 옛 ETag 로도 200 새 본문·새 ETag (지문 무효화 관통)
-    def test_t4_change_invalidates(self):
-        _, hdr, _ = self.get()
-        old = hdr["ETag"]
-        self.mkdoc("fresh-after-etag")
-        code, hdr2, body = self.get(headers={"If-None-Match": old})
-        self.assertEqual(code, 200)
-        self.assertNotEqual(hdr2.get("ETag"), old)
-        self.assertIn("fresh-after-etag", body.decode())
+            # T4. 문서가 바뀌면 옛 ETag 로도 200 새 본문·새 ETag (지문 무효화 관통)
+        with self.subTest("t4_change_invalidates"):
+                _, hdr, _ = self.get()
+                old = hdr["ETag"]
+                self.mkdoc("fresh-after-etag")
+                code, hdr2, body = self.get(headers={"If-None-Match": old})
+                self.assertEqual(code, 200)
+                self.assertNotEqual(hdr2.get("ETag"), old)
+                self.assertIn("fresh-after-etag", body.decode())
 
-    # T5. archived 뷰가 다르면 ETag 가 다르다 — 교차 304 오염 금지
-    def test_t5_view_separation(self):
-        _, h1, _ = self.get("/api/catalog")
-        _, h2, _ = self.get("/api/catalog?archived=1")
-        self.assertNotEqual(h1["ETag"], h2["ETag"])
-        code, _, _ = self.get("/api/catalog?archived=1",
-                              headers={"If-None-Match": h1["ETag"]})
-        self.assertEqual(code, 200)
+            # T5. archived 뷰가 다르면 ETag 가 다르다 — 교차 304 오염 금지
+        with self.subTest("t5_view_separation"):
+                _, h1, _ = self.get("/api/catalog")
+                _, h2, _ = self.get("/api/catalog?archived=1")
+                self.assertNotEqual(h1["ETag"], h2["ETag"])
+                code, _, _ = self.get("/api/catalog?archived=1",
+                                      headers={"If-None-Match": h1["ETag"]})
+                self.assertEqual(code, 200)
 
-    # T6. 불일치 If-None-Match 는 200 정상 본문
-    def test_t6_mismatch_full_body(self):
-        code, _, body = self.get(headers={"If-None-Match": '"nope"'})
-        self.assertEqual(code, 200)
-        self.assertTrue(json.loads(body))
+            # T6. 불일치 If-None-Match 는 200 정상 본문
+        with self.subTest("t6_mismatch_full_body"):
+                code, _, body = self.get(headers={"If-None-Match": '"nope"'})
+                self.assertEqual(code, 200)
+                self.assertTrue(json.loads(body))
 
-    # T7. Accept-Encoding 없는 클라이언트는 비압축 그대로 (기존 계약)
-    def test_t7_plain_client_unchanged(self):
-        code, hdr, body = self.get()
-        self.assertEqual(code, 200)
-        self.assertIsNone(hdr.get("Content-Encoding"))
-        self.assertEqual(int(hdr["Content-Length"]), len(body))
-        self.assertTrue(json.loads(body))
-
+            # T7. Accept-Encoding 없는 클라이언트는 비압축 그대로 (기존 계약)
+        with self.subTest("t7_plain_client_unchanged"):
+            code, hdr, body = self.get()
+            self.assertEqual(code, 200)
+            self.assertIsNone(hdr.get("Content-Encoding"))
+            self.assertEqual(int(hdr["Content-Length"]), len(body))
+            self.assertTrue(json.loads(body))
 
 if __name__ == "__main__":
     unittest.main()

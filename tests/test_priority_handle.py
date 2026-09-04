@@ -295,9 +295,9 @@ class DoorBehaviour(unittest.TestCase):
             return f.read()
 
     def catalog(self):
-        p = os.path.join(self.root, "index", "catalog.jsonl")
-        with open(p, encoding="utf-8") as f:
-            return [json.loads(l) for l in f if l.strip()]
+        # 파일이 아니라 문 (REQ-20260902-035) — 갓 쓴 행은 델타에 있다.
+        return [json.loads(l) for l in self.ok("index", "cat").splitlines()
+                if l.strip()]
 
     # ------------------------------------------------------------ 계약
     def test_change_is_recorded(self):
@@ -683,10 +683,11 @@ class RouteEndToEnd(unittest.TestCase):
         self.assertEqual(code, 200, res)
         self.assertEqual((res["ok"], res["old"], res["new"]), (True, 50, 90))
         # 색인까지 갔나 — 순서를 정하는 쪽이 읽는 곳은 문서가 아니라 이 줄이다.
-        p = os.path.join(self.tmp, "index", "catalog.jsonl")
-        with open(p, encoding="utf-8") as f:
-            row = [json.loads(x) for x in f if x.strip()
-                   and json.loads(x).get("id") == self.doc][0]
+        # 파일이 아니라 문으로 묻는다 (REQ-20260902-035).
+        row = [r for r in
+               (json.loads(x) for x in self.cli("index", "cat").splitlines()
+                if x.strip())
+               if r.get("id") == self.doc][0]
         self.assertEqual(row["priority"], 90)
 
     def test_bad_value_is_refused_with_a_reason(self):

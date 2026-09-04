@@ -25,6 +25,7 @@ import importlib.machinery
 import importlib.util
 import datetime
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -36,6 +37,8 @@ S9 = os.path.join(HERE, "..", "bin", "s9")
 class ArticleType(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls._saved = {k: os.environ.get(k)
+                      for k in ("S9_ROOT", "S9_MACHINE", "S9_USER")}
         cls.root = tempfile.mkdtemp(prefix="s9art-")
         os.environ["S9_ROOT"] = cls.root
         os.environ["S9_MACHINE"] = "boxA"
@@ -50,6 +53,26 @@ class ArticleType(unittest.TestCase):
         spec.loader.exec_module(cls.m)
 
     @classmethod
+    def tearDownClass(cls):
+        """바꾼 것을 돌려놓는다 (REQ-20260903-012).
+
+        `os.environ` 은 **이 프로세스 전체의 것**이다. 스위트는 문서 순서대로
+        한 프로세스 안에서 도니, 여기서 놓고 간 값은 뒤따르는 모든 파일이
+        물려받는다. 실제로 그랬다 — 여기 두고 간 `S9_USER=alice` 가 뒤의
+        test_jobfile 을 넘어뜨렸고, 그 파일은 홀로 돌리면 초록이라 원인이
+        보이지 않았다(문서 순서 15 → 114, 재현까지 두 시간).
+
+        홀로 초록인 붉음은 색보다 나쁘다 — 사람이 「알 수 없는 흔들림」으로
+        넘기게 되고, 그러면 스위트가 붉은 채로 굳는다.
+        """
+        for k, v in (cls._saved or {}).items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    @classmethod
     def cli(cls, *argv, inp=None, expect=0):
         r = subprocess.run([S9, *argv], input=inp, capture_output=True,
                            text=True, env=cls.env, timeout=30)
@@ -62,62 +85,63 @@ class ArticleType(unittest.TestCase):
                         "--user", "alice", "--body", body).split()[0]
 
     # N1. ART- 로 발번되고 articles/ 아래 놓인다
-    def test_n1_created(self):
-        aid = self.mk()
-        self.assertTrue(aid.startswith("ART-"), aid)
-        self.assertIn("type: article", self.cli("show", aid, "--meta"))
-        self.assertTrue(os.path.isfile(os.path.join(
-            self.root, "vault", "articles",
-            "%04d" % datetime.date.today().year,
-            "%02d" % datetime.date.today().month, aid + ".md")))
+    def test_article_type(self):
+        """ArticleType 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_created"):
+                aid = self.mk()
+                self.assertTrue(aid.startswith("ART-"), aid)
+                self.assertIn("type: article", self.cli("show", aid, "--meta"))
+                self.assertTrue(os.path.isfile(os.path.join(
+                    self.root, "vault", "articles",
+                    "%04d" % datetime.date.today().year,
+                    "%02d" % datetime.date.today().month, aid + ".md")))
 
-    # N2. 원문과 글 자리가 한 문서에 있다
-    def test_n2_original_and_article(self):
-        t = self.cli("show", self.mk(body="내가 물은 말"))
-        self.assertIn("## Original", t)
-        self.assertIn("내가 물은 말", t)
-        self.assertIn("## Article", t)
+            # N2. 원문과 글 자리가 한 문서에 있다
+        with self.subTest("n2_original_and_article"):
+                t = self.cli("show", self.mk(body="내가 물은 말"))
+                self.assertIn("## Original", t)
+                self.assertIn("내가 물은 말", t)
+                self.assertIn("## Article", t)
 
-    # N3. 상태는 published 고정 — 상태머신을 하나 더 만들지 않는다
-    def test_n3_published(self):
-        self.assertIn("status: published", self.cli("show", self.mk(), "--meta"))
+            # N3. 상태는 published 고정 — 상태머신을 하나 더 만들지 않는다
+        with self.subTest("n3_published"):
+                self.assertIn("status: published", self.cli("show", self.mk(), "--meta"))
 
-    # B1. 다른 타입에는 Article 절이 생기지 않는다
-    def test_b1_other_types_unchanged(self):
-        rid = self.cli("new", "request", "--title", "요청", "--summary", "s",
-                       "--goal", "g", "--size", "S", "--user", "alice",
-                       "--body", "x").split()[0]
-        self.assertNotIn("## Article", self.cli("show", rid))
+            # B1. 다른 타입에는 Article 절이 생기지 않는다
+        with self.subTest("b1_other_types_unchanged"):
+                rid = self.cli("new", "request", "--title", "요청", "--summary", "s",
+                               "--goal", "g", "--size", "S", "--user", "alice",
+                               "--body", "x").split()[0]
+                self.assertNotIn("## Article", self.cli("show", rid))
 
-    # N4. 채팅에서 대놓고 지목하면 시작된다 — 알아맞히지 않는다
-    def test_n4_chat_prefix(self):
-        for txt in ("아티클: WSL 루프백 벼랑에 대해",
-                    "article: 같은 주제 영문 표기"):
-            self.assertTrue(self.m.CHAT_ARTICLE_PREFIX.match(txt), txt)
+            # N4. 채팅에서 대놓고 지목하면 시작된다 — 알아맞히지 않는다
+        with self.subTest("n4_chat_prefix"):
+                for txt in ("아티클: WSL 루프백 벼랑에 대해",
+                            "article: 같은 주제 영문 표기"):
+                    self.assertTrue(self.m.CHAT_ARTICLE_PREFIX.match(txt), txt)
 
-    # B2. 평범한 말은 아티클로 새지 않는다
-    def test_b2_plain_not_article(self):
-        for txt in ("아티클이 있으면 좋겠다", "이 글은 article 이다", "그냥 요청"):
-            self.assertIsNone(self.m.CHAT_ARTICLE_PREFIX.match(txt), txt)
+            # B2. 평범한 말은 아티클로 새지 않는다
+        with self.subTest("b2_plain_not_article"):
+                for txt in ("아티클이 있으면 좋겠다", "이 글은 article 이다", "그냥 요청"):
+                    self.assertIsNone(self.m.CHAT_ARTICLE_PREFIX.match(txt), txt)
 
-    # B3. 지목만 있고 주제가 없으면 만들지 않는다
-    def test_b3_prefix_only(self):
-        src = open(S9, encoding="utf-8").read()
-        i = src.index("CHAT_ARTICLE_PREFIX.match(t)")
-        self.assertIn("if rest.strip():", src[i:i + 400],
-                      "주제 없이 빈 아티클이 생긴다")
+            # B3. 지목만 있고 주제가 없으면 만들지 않는다
+        with self.subTest("b3_prefix_only"):
+                src = open(S9, encoding="utf-8").read()
+                i = src.index("CHAT_ARTICLE_PREFIX.match(t)")
+                self.assertIn("if rest.strip():", src[i:i + 400],
+                              "주제 없이 빈 아티클이 생긴다")
 
-    # N5. API 가 명시 지정을 받는다 — 화면의 종류 선택이 붙을 자리
-    def test_n5_api_as_type(self):
-        src = open(S9, encoding="utf-8").read()
-        i = src.index('parsed.path == "/api/chat"')
-        self.assertIn('req.get("as_type")', src[i:i + 3200])
+            # N5. API 가 명시 지정을 받는다 — 화면의 종류 선택이 붙을 자리
+        with self.subTest("n5_api_as_type"):
+                src = open(S9, encoding="utf-8").read()
+                i = src.index('parsed.path == "/api/chat"')
+                self.assertIn('req.get("as_type")', src[i:i + 3200])
 
-    # R1. 기존 타입 목록이 줄지 않았다
-    def test_r1_types_kept(self):
-        for t in ("request", "knowledge", "session", "project", "question"):
-            self.assertIn(t, self.m.TYPES)
-
+            # R1. 기존 타입 목록이 줄지 않았다
+        with self.subTest("r1_types_kept"):
+            for t in ("request", "knowledge", "session", "project", "question"):
+                self.assertIn(t, self.m.TYPES)
 
 if __name__ == "__main__":
     unittest.main()

@@ -117,28 +117,29 @@ class LiveWorkerScope(unittest.TestCase):
             srv.wait(timeout=5)
 
     # N1. 워커가 재작업 중인 그 한 건만 직접 증거(초록)
-    def test_n1_worker_target_is_live(self):
-        r = self.rows[self.X]
-        self.assertTrue(r["live"], r)
-        self.assertEqual(r.get("live_kind"), "direct", r)
+    def test_live_worker_scope(self):
+        """LiveWorkerScope 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_worker_target_is_live"):
+                r = self.rows[self.X]
+                self.assertTrue(r["live"], r)
+                self.assertEqual(r.get("live_kind"), "direct", r)
 
-    # N2. 같은 바인딩에 남아 있던 다른 건은 초록이 아니다 — 간접까지만
-    def test_n2_left_behind_is_not_live(self):
-        r = self.rows[self.Y]
-        self.assertFalse(r["live"], r)
-        self.assertEqual(r.get("live_kind"), "session", r)
+            # N2. 같은 바인딩에 남아 있던 다른 건은 초록이 아니다 — 간접까지만
+        with self.subTest("n2_left_behind_is_not_live"):
+                r = self.rows[self.Y]
+                self.assertFalse(r["live"], r)
+                self.assertEqual(r.get("live_kind"), "session", r)
 
-    # B1. 워커가 아닌 보통 세션은 예전 그대로 — 등록한 병행 REQ 전부 직접
-    def test_b1_normal_session_unchanged(self):
-        for rid in (self.P, self.Q):
-            self.assertTrue(self.rows[rid]["live"], self.rows[rid])
+            # B1. 워커가 아닌 보통 세션은 예전 그대로 — 등록한 병행 REQ 전부 직접
+        with self.subTest("b1_normal_session_unchanged"):
+                for rid in (self.P, self.Q):
+                    self.assertTrue(self.rows[rid]["live"], self.rows[rid])
 
-    # B2. 워커인데 pid 를 어느 스폰 기록과도 못 맞추면 좁히지 않는다 —
-    #     모르는 것으로 표시를 지우지 않는다
-    def test_b2_unknown_worker_pid_not_narrowed(self):
-        for rid in (self.Z1, self.Z2):
-            self.assertTrue(self.rows[rid]["live"], self.rows[rid])
-
+            # B2. 워커인데 pid 를 어느 스폰 기록과도 못 맞추면 좁히지 않는다 —
+            #     모르는 것으로 표시를 지우지 않는다
+        with self.subTest("b2_unknown_worker_pid_not_narrowed"):
+            for rid in (self.Z1, self.Z2):
+                self.assertTrue(self.rows[rid]["live"], self.rows[rid])
 
 if __name__ == "__main__":
     unittest.main()

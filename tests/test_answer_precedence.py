@@ -88,48 +88,49 @@ class AnswerPrecedence(unittest.TestCase):
         return [c for c in calls if c[0][0] == "note"]
 
     # N1. 진행 중 REQ 가 있어도 질문이 걸려 있으면 답은 질문 문서로
-    def test_n1_question_wins_over_active_req(self):
-        calls = self.drive("REQ-20260826-017-62x6", "QST-20260826-001-zz99")
-        noted = self._notes(calls)
-        self.assertEqual(len(noted), 1, noted)
-        self.assertEqual(noted[0][0][1], "QST-20260826-001-zz99", noted)
-        self.assertIn("answer", noted[0][0], noted)
+    def test_answer_precedence(self):
+        """Stop 훅을 한 번 돌리고 (호출목록) 을 준다."""
+        with self.subTest("n1_question_wins_over_active_req"):
+                calls = self.drive("REQ-20260826-017-62x6", "QST-20260826-001-zz99")
+                noted = self._notes(calls)
+                self.assertEqual(len(noted), 1, noted)
+                self.assertEqual(noted[0][0][1], "QST-20260826-001-zz99", noted)
+                self.assertIn("answer", noted[0][0], noted)
 
-    # N2. 붙인 뒤 포인터를 비운다 — 다음 턴 응답이 지난 질문에 붙지 않게
-    def test_n2_pointer_consumed(self):
-        calls = self.drive("REQ-20260826-017-62x6", "QST-20260826-001-zz99")
-        self.assertIn(("bind", "last_qst", ""), [c[0] for c in calls])
+            # N2. 붙인 뒤 포인터를 비운다 — 다음 턴 응답이 지난 질문에 붙지 않게
+        with self.subTest("n2_pointer_consumed"):
+                calls = self.drive("REQ-20260826-017-62x6", "QST-20260826-001-zz99")
+                self.assertIn(("bind", "last_qst", ""), [c[0] for c in calls])
 
-    # B1. 질문이 없으면 예전 그대로 — 진행 중 REQ 에 response
-    def test_b1_no_question_keeps_request_capture(self):
-        calls = self.drive("REQ-20260826-017-62x6", "")
-        noted = self._notes(calls)
-        self.assertEqual(len(noted), 1, noted)
-        self.assertEqual(noted[0][0][1], "REQ-20260826-017-62x6", noted)
-        self.assertIn("response", noted[0][0], noted)
+            # B1. 질문이 없으면 예전 그대로 — 진행 중 REQ 에 response
+        with self.subTest("b1_no_question_keeps_request_capture"):
+                calls = self.drive("REQ-20260826-017-62x6", "")
+                noted = self._notes(calls)
+                self.assertEqual(len(noted), 1, noted)
+                self.assertEqual(noted[0][0][1], "REQ-20260826-017-62x6", noted)
+                self.assertIn("response", noted[0][0], noted)
 
-    # B2. 질문만 있고 REQ 가 없는 터미널 질문 턴도 예전 그대로
-    def test_b2_question_only_unchanged(self):
-        calls = self.drive("", "QST-20260826-001-zz99")
-        noted = self._notes(calls)
-        self.assertEqual(noted[0][0][1], "QST-20260826-001-zz99", noted)
-        self.assertIn("answer", noted[0][0], noted)
+            # B2. 질문만 있고 REQ 가 없는 터미널 질문 턴도 예전 그대로
+        with self.subTest("b2_question_only_unchanged"):
+                calls = self.drive("", "QST-20260826-001-zz99")
+                noted = self._notes(calls)
+                self.assertEqual(noted[0][0][1], "QST-20260826-001-zz99", noted)
+                self.assertIn("answer", noted[0][0], noted)
 
-    # B3. 질문 문서가 사라졌으면(삭제 등) 진행 중 REQ 로 물러난다 —
-    #     붙일 곳이 없다고 답을 통째로 버리면 지금 고치는 것과 같은 실패다
-    def test_b3_dead_question_falls_back_to_req(self):
-        calls = self.drive("REQ-20260826-017-62x6", "QST-20260826-999-zz99",
-                           note_rc=1)
-        noted = self._notes(calls)
-        self.assertEqual(len(noted), 2, noted)
-        self.assertEqual(noted[1][0][1], "REQ-20260826-017-62x6", noted)
-        self.assertIn("response", noted[1][0], noted)
+            # B3. 질문 문서가 사라졌으면(삭제 등) 진행 중 REQ 로 물러난다 —
+            #     붙일 곳이 없다고 답을 통째로 버리면 지금 고치는 것과 같은 실패다
+        with self.subTest("b3_dead_question_falls_back_to_req"):
+                calls = self.drive("REQ-20260826-017-62x6", "QST-20260826-999-zz99",
+                                   note_rc=1)
+                noted = self._notes(calls)
+                self.assertEqual(len(noted), 2, noted)
+                self.assertEqual(noted[1][0][1], "REQ-20260826-017-62x6", noted)
+                self.assertIn("response", noted[1][0], noted)
 
-    # R1. 붙일 곳이 아무것도 없으면 예전대로 조용히 물러난다
-    def test_r1_nothing_to_attach(self):
-        calls = self.drive("", "")
-        self.assertEqual(self._notes(calls), [])
-
+            # R1. 붙일 곳이 아무것도 없으면 예전대로 조용히 물러난다
+        with self.subTest("r1_nothing_to_attach"):
+            calls = self.drive("", "")
+            self.assertEqual(self._notes(calls), [])
 
 if __name__ == "__main__":
     unittest.main()

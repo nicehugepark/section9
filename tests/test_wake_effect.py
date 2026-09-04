@@ -149,144 +149,116 @@ class TheDeadWorkerReleasesTheWork(IsolatedVault):
         return [c for c in (meta.get("contributions") or [])
                 if c.get("result") == "running"]
 
-    def test_r3a_a_vanished_transcript_ends_the_claim(self):
-        """워크트리가 거둬지면 그 안 서브에이전트의 기록 자리가 통째로 사라진다."""
-        rid = self.new_req("기록 자리가 사라진 건")
-        self.s9("contrib", rid, "--actor", "sub:frontend-developer:a1dfeb13",
-                "--item", "화면", "--result", "running",
-                "--transcript", "/tmp/does-not-exist-worktree/x.output")
-        self.assertTrue(self._open_claims(rid))
-        self.s9("agents", "health", "--apply")
-        self.assertFalse(self._open_claims(rid),
-                         "좀비 클레임이 남아 다음 깨우기를 busy 로 막는다")
-
-    def test_r3b_a_dead_worker_pid_ends_the_claim(self):
-        """로그 0바이트 + pid 사망 — 16:36 rework 가 정확히 이 모양이었다."""
-        rid = self.new_req("워커가 즉사한 건")
-        p = self.claude()
-        p.kill()
-        p.wait(timeout=5)
-        self.marker(rid, pid=p.pid)
-        open(os.path.join(self.tmp, "state", "auto_resume",
-                          self.m.safe_name(rid) + ".log"), "w").close()
-        self.s9("contrib", rid, "--actor", "worker:auto-resume",
-                "--item", "재작업", "--result", "running")
-        self.s9("agents", "health", "--apply")
-        self.assertFalse(self._open_claims(rid),
-                         "죽은 워커의 기여가 running 으로 남았다")
-
-    def test_r3c_a_claim_with_no_signal_at_all_expires(self):
-        """신호가 하나도 없는 클레임도 유예 뒤에는 종결된다 — 영구 running 금지.
-
-        wake_reach w2 와 겹쳐 보이지만 층이 다르다: w2 는 judge_health 의
-        유예 경계(유닛), 여기는 health --apply 가 stalled 판정을 실제로
-        되써서 클레임을 닫는 통합 경로다. --apply 가 failed(r3a)만 되쓰고
-        stalled 를 건너뛰는 회귀는 이 시험만 잡는다 (REQ-20260830-029 정독)."""
-        rid = self.new_req("신호가 없는 건")
-        self.s9("contrib", rid, "--actor", "sub:designer:ab64fee2",
-                "--item", "손", "--result", "running")
-        path = self.m.find_path(rid)
-        meta, body = self.m.read_doc(path)
-        import datetime
-        old = (datetime.datetime.now() - datetime.timedelta(
-            seconds=self.m.UNKNOWN_GRACE + 600)).astimezone()
-        meta["contributions"][0]["started"] = old.isoformat(timespec="seconds")
-        meta["contributions"][0].pop("ended", None)
-        self.m.write_doc(path, meta, body)
-        self.m.rebuild_index(quiet=True)
-        self.s9("agents", "health", "--apply")
-        self.assertFalse(self._open_claims(rid),
-                         "신호 없는 클레임이 유예를 넘겨도 안 풀린다")
-
-    def test_r3d_applying_twice_is_stable(self):
-        """두 번 돌려도 running 이 되살아나지 않는다 — 되쓰기는 멱등해야 한다."""
-        rid = self.new_req("두 번 도는 건")
-        self.s9("contrib", rid, "--actor", "sub:qa:dddd4444", "--item", "검증",
-                "--result", "running", "--transcript", "/tmp/gone/x.output")
-        self.s9("agents", "health", "--apply")
-        self.s9("agents", "health", "--apply")
-        self.assertFalse(self._open_claims(rid))
-
-    def test_r4_after_the_claim_ends_wake_does_not_say_busy(self):
-        """좀비 클레임이 풀렸으면 그 REQ 는 다시 깨울 수 있어야 한다.
-
-        문서에 running 이 남아 있는 것과 그것을 클레임으로 **인정**하는 것은
-        다른 일이다. 라운드1이 뒤쪽을 고쳤으므로 여기서 확인할 것은 앞쪽이다 —
-        되쓰기까지 가야 다음 세션이 문서를 읽고 또 '진행 중'을 보지 않는다."""
-        rid = self.new_req("좀비를 푼 뒤 깨울 건")
-        self.s9("contrib", rid, "--actor", "sub:frontend-developer:a1dfeb13",
-                "--item", "화면", "--result", "running",
-                "--transcript", "/tmp/does-not-exist-worktree/x.output")
-        self.assertTrue(self._open_claims(rid), "전제 확인: 문서는 running 이다")
-        self.s9("agents", "health", "--apply")
-        self.assertFalse(self._open_claims(rid))
-        self.assertIsNone(self.m.delegated_running(rid))
-        self.age_doc(rid, self.m.STALLED_WIN + 300)
-        old = os.environ.get("S9_AUTO_RESUME_DISABLE")
-        os.environ["S9_AUTO_RESUME_DISABLE"] = "1"   # 진짜 워커는 띄우지 않는다
-        try:
-            res = self.m.wake_request(rid, actor="tester")
-        finally:
-            if old is None:
-                os.environ.pop("S9_AUTO_RESUME_DISABLE", None)
-            else:
-                os.environ["S9_AUTO_RESUME_DISABLE"] = old
-        self.assertNotEqual(res["action"], "busy", res["message"])
-        # 멈춤 판정까지 통과해 스폰 문 앞에 섰다는 것이 이 시나리오의 결론이다
-        self.assertEqual(res["action"], "disabled", res["message"])
-        self.assertEqual(res["mins"], 20)
-
+    def test_the_dead_worker_releases_the_work(self):
+        """R3~R4 — 죽음의 세 모양 어느 것도 영구 running 을 남기지 않는다."""
+        with self.subTest("r3a_a_vanished_transcript_ends_the_claim"):
+            rid = self.new_req("기록 자리가 사라진 건")
+            self.s9("contrib", rid, "--actor", "sub:frontend-developer:a1dfeb13",
+                    "--item", "화면", "--result", "running",
+                    "--transcript", "/tmp/does-not-exist-worktree/x.output")
+            self.assertTrue(self._open_claims(rid))
+            self.s9("agents", "health", "--apply")
+            self.assertFalse(self._open_claims(rid),
+                             "좀비 클레임이 남아 다음 깨우기를 busy 로 막는다")
+        with self.subTest("r3b_a_dead_worker_pid_ends_the_claim"):
+            rid = self.new_req("워커가 즉사한 건")
+            p = self.claude()
+            p.kill()
+            p.wait(timeout=5)
+            self.marker(rid, pid=p.pid)
+            open(os.path.join(self.tmp, "state", "auto_resume",
+                              self.m.safe_name(rid) + ".log"), "w").close()
+            self.s9("contrib", rid, "--actor", "worker:auto-resume",
+                    "--item", "재작업", "--result", "running")
+            self.s9("agents", "health", "--apply")
+            self.assertFalse(self._open_claims(rid),
+                             "죽은 워커의 기여가 running 으로 남았다")
+        with self.subTest("r3c_a_claim_with_no_signal_at_all_expires"):
+            rid = self.new_req("신호가 없는 건")
+            self.s9("contrib", rid, "--actor", "sub:designer:ab64fee2",
+                    "--item", "손", "--result", "running")
+            path = self.m.find_path(rid)
+            meta, body = self.m.read_doc(path)
+            import datetime
+            old = (datetime.datetime.now() - datetime.timedelta(
+                seconds=self.m.UNKNOWN_GRACE + 600)).astimezone()
+            meta["contributions"][0]["started"] = old.isoformat(timespec="seconds")
+            meta["contributions"][0].pop("ended", None)
+            self.m.write_doc(path, meta, body)
+            self.m.rebuild_index(quiet=True)
+            self.s9("agents", "health", "--apply")
+            self.assertFalse(self._open_claims(rid),
+                             "신호 없는 클레임이 유예를 넘겨도 안 풀린다")
+        with self.subTest("r3d_applying_twice_is_stable"):
+            rid = self.new_req("두 번 도는 건")
+            self.s9("contrib", rid, "--actor", "sub:qa:dddd4444", "--item", "검증",
+                    "--result", "running", "--transcript", "/tmp/gone/x.output")
+            self.s9("agents", "health", "--apply")
+            self.s9("agents", "health", "--apply")
+            self.assertFalse(self._open_claims(rid))
+        with self.subTest("r4_after_the_claim_ends_wake_does_not_say_busy"):
+            rid = self.new_req("좀비를 푼 뒤 깨울 건")
+            self.s9("contrib", rid, "--actor", "sub:frontend-developer:a1dfeb13",
+                    "--item", "화면", "--result", "running",
+                    "--transcript", "/tmp/does-not-exist-worktree/x.output")
+            self.assertTrue(self._open_claims(rid), "전제 확인: 문서는 running 이다")
+            self.s9("agents", "health", "--apply")
+            self.assertFalse(self._open_claims(rid))
+            self.assertIsNone(self.m.delegated_running(rid))
+            self.age_doc(rid, self.m.STALLED_WIN + 300)
+            old = os.environ.get("S9_AUTO_RESUME_DISABLE")
+            os.environ["S9_AUTO_RESUME_DISABLE"] = "1"   # 진짜 워커는 띄우지 않는다
+            try:
+                res = self.m.wake_request(rid, actor="tester")
+            finally:
+                if old is None:
+                    os.environ.pop("S9_AUTO_RESUME_DISABLE", None)
+                else:
+                    os.environ["S9_AUTO_RESUME_DISABLE"] = old
+            self.assertNotEqual(res["action"], "busy", res["message"])
+            # 멈춤 판정까지 통과해 스폰 문 앞에 섰다는 것이 이 시나리오의 결론이다
+            self.assertEqual(res["action"], "disabled", res["message"])
+            self.assertEqual(res["mins"], 20)
 
 class TheRunningWorkerIsNotStalled(IsolatedVault):
     """R5 + 016 패치 2 — 도는 워커와 죽은 워커를 화면·손잡이가 갈라 본다."""
 
-    def test_r5_a_dead_spawn_does_not_lock_the_handle(self):
-        """즉사한 워커의 마커가 창(600초) 동안 손잡이를 막으면 안 된다.
-
-        점은 이미 '멈춤(spawn_failed)'이라 그렸는데 `stall_mins` 는 마커에서 온
-        그 판정의 근거 시각을 못 읽어 15분 잣대를 그대로 썼다 — '멈췄다고 적혀
-        있는데 못 누르는 카드'가 여기서도 한 벌 더 만들어지고 있었다."""
-        rid = self.new_req("워커가 즉사한 건")
-        p = self.claude()
-        p.kill()
-        p.wait(timeout=5)
-        self.age_doc(rid, self.m.STALLED_DEAD_WIN + 120)   # 5분 — 15분엔 못 미친다
-        self.marker(rid, pid=p.pid, last=time.time() - 60)
-        r = self.row(rid)
-        self.assertEqual(r.get("live_kind"), "spawn_failed", r)
-        self.assertIsNotNone(r.get("stalled_mins"),
-                             "점은 멈춤인데 누를 것이 없다 — 그 조합이 반려였다")
-
-    def test_r5b_a_live_worker_past_the_amber_window_still_holds(self):
-        """10분을 넘겨 도는 워커가 '멈춤'으로 읽히면 깨우기가 곧 중복 스폰이다.
-
-        SPAWN_WIN(600초)과 쿨다운(600초)이 같아서, 앰버가 꺼지는 바로 그 순간
-        쿨다운이 풀린다 — 실사고의 재스폰 간격이 정확히 그 값이었다."""
-        rid = self.new_req("오래 도는 워커")
-        p = self.claude()
-        self.age_doc(rid, self.m.STALLED_WIN + 600)
-        self.marker(rid, pid=p.pid, last=time.time() - self.m.SPAWN_WIN - 120)
-        r = self.row(rid)
-        self.assertEqual(r.get("live_kind"), "spawned",
-                         "도는 워커가 화면에서 사라졌다")
-        self.assertIsNone(r.get("stalled_mins"),
-                          "도는 워커 위에 두 번째 손을 붙이라고 그린다")
-        res = self.m.wake_request(rid, actor="tester")
-        self.assertEqual(res["action"], "busy", res["message"])
-        # 이미 하고 있다는 말이 문장에 있어야 한다 (낱말은 REQ-20260830-007 에서
-        # `돌고 있다` → `진행하고 있습니다` 로 바뀌었다 — 사용자의 말로).
-        self.assertIn("진행", res["message"])
-
-    def test_r5c_a_hung_worker_eventually_lets_go(self):
-        """멎은 채 프로세스만 남은 워커를 한 시간 넘게 감추지 않는다."""
-        rid = self.new_req("멎은 워커")
-        p = self.claude()
-        self.age_doc(rid, self.m.STALLED_WIN + 600)
-        self.marker(rid, pid=p.pid, last=time.time() - self.m.WORKER_WIN - 60)
-        r = self.row(rid)
-        self.assertIsNotNone(r.get("stalled_mins"),
-                             "멎은 워커가 멈춤 표시를 영원히 감춘다")
-
+    def test_the_running_worker_is_not_stalled(self):
+        """R5 + 016 패치 2 — 도는 워커와 죽은 워커를 화면·손잡이가 갈라 본다."""
+        with self.subTest("r5_a_dead_spawn_does_not_lock_the_handle"):
+            rid = self.new_req("워커가 즉사한 건")
+            p = self.claude()
+            p.kill()
+            p.wait(timeout=5)
+            self.age_doc(rid, self.m.STALLED_DEAD_WIN + 120)   # 5분 — 15분엔 못 미친다
+            self.marker(rid, pid=p.pid, last=time.time() - 60)
+            r = self.row(rid)
+            self.assertEqual(r.get("live_kind"), "spawn_failed", r)
+            self.assertIsNotNone(r.get("stalled_mins"),
+                                 "점은 멈춤인데 누를 것이 없다 — 그 조합이 반려였다")
+        with self.subTest("r5b_a_live_worker_past_the_amber_window_still_holds"):
+            rid = self.new_req("오래 도는 워커")
+            p = self.claude()
+            self.age_doc(rid, self.m.STALLED_WIN + 600)
+            self.marker(rid, pid=p.pid, last=time.time() - self.m.SPAWN_WIN - 120)
+            r = self.row(rid)
+            self.assertEqual(r.get("live_kind"), "spawned",
+                             "도는 워커가 화면에서 사라졌다")
+            self.assertIsNone(r.get("stalled_mins"),
+                              "도는 워커 위에 두 번째 손을 붙이라고 그린다")
+            res = self.m.wake_request(rid, actor="tester")
+            self.assertEqual(res["action"], "busy", res["message"])
+            # 이미 하고 있다는 말이 문장에 있어야 한다 (낱말은 REQ-20260830-007 에서
+            # `돌고 있다` → `진행하고 있습니다` 로 바뀌었다 — 사용자의 말로).
+            self.assertIn("진행", res["message"])
+        with self.subTest("r5c_a_hung_worker_eventually_lets_go"):
+            rid = self.new_req("멎은 워커")
+            p = self.claude()
+            self.age_doc(rid, self.m.STALLED_WIN + 600)
+            self.marker(rid, pid=p.pid, last=time.time() - self.m.WORKER_WIN - 60)
+            r = self.row(rid)
+            self.assertIsNotNone(r.get("stalled_mins"),
+                                 "멎은 워커가 멈춤 표시를 영원히 감춘다")
 
 class TheBudgetsStaySeparate(IsolatedVault):
     """R6 — 워처가 하루치를 다 써도 사람의 손잡이는 산다 (살아 있는 카운터 모양)."""

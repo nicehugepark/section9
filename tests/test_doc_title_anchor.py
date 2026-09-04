@@ -53,142 +53,111 @@ class DocTitleAnchor(unittest.TestCase):
 
     # ---------- ① 제목이 붙는다 ----------
 
-    def test_the_title_sticks_to_the_top_of_the_pane(self):
-        """내려도 제목이 남는다 — 붙박이 어휘는 이 화면 것을 그대로 쓴다.
+    def test_doc_title_anchor(self):
+        """DocTitleAnchor 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("the_title_sticks_to_the_top_of_the_pane"):
+            rule = self._rule(r"\.viewer \.dhead")
+            self.assertIn("position:sticky", rule, "머리가 붙지 않는다")
+            self.assertIn("top:0", rule, "붙는 자리가 판 위가 아니다")
+            self.assertIn("background:var(--panel)", rule,
+                          "배경이 없으면 본문이 제목을 뚫고 지나간다")
+            self.assertIn("border-bottom:1px solid var(--hairline)", rule,
+                          "목록 붙박이와 다른 어휘를 쓴다")
+            # 마크업이 실제로 그 옷을 입는다 — 머리 안에 제목과 행동 띠가 함께 선다
+            self.assertIn('<h1 class="dtitle">', self.code, "제목 줄에 이름표가 없다")
+            self.assertIn('<div class="dhead">', self.code, "머리 덩어리가 없다")
+            self.assertIn('class="acts dacts"', self.code, "행동 띠가 머리에 없다")
+        with self.subTest("the_title_line_carries_name_number_and_state"):
+                self.assertRegex(self.code, r'class="did"', "문서 번호가 붙박이 줄에 없다")
+                self.assertRegex(self.code, r'class="dst"', "상태가 붙박이 줄에 없다")
+                did = self._rule(r"\.viewer \.dtitle \.did")
+                self.assertIn("var(--mono)", did, "번호가 이름처럼 보이지 않는다")
+                dst = self._rule(r"\.viewer \.dtitle \.dst")
+                self.assertIn("var(--mono)", dst, "상태가 이름처럼 보이지 않는다")
+                self.assertIn("color:var(--sc)", dst, "상태 잉크를 쓰지 않는다")
+                # 면은 깔지 않는다 — 색은 글자에만
+                self.assertNotRegex(dst, r"background\s*:", "상태를 색면으로 칠했다")
 
-        붙는 덩어리가 제목 한 줄에서 머리(.dhead = 제목 + 행동 띠)로 자랐다
-        (REQ-20260830-046 반려: "버튼의 위치가 너무 눈에 띄지 않는다" — 행동이
-        첫머리에만 있어 한 화면만 내리면 손에 남는 단추가 없었다). ①의 뜻
-        (내려도 잃지 않는다)은 그대로고, 잃지 않는 것이 제목에서 제목+행동으로
-        늘었다."""
-        rule = self._rule(r"\.viewer \.dhead")
-        self.assertIn("position:sticky", rule, "머리가 붙지 않는다")
-        self.assertIn("top:0", rule, "붙는 자리가 판 위가 아니다")
-        self.assertIn("background:var(--panel)", rule,
-                      "배경이 없으면 본문이 제목을 뚫고 지나간다")
-        self.assertIn("border-bottom:1px solid var(--hairline)", rule,
-                      "목록 붙박이와 다른 어휘를 쓴다")
-        # 마크업이 실제로 그 옷을 입는다 — 머리 안에 제목과 행동 띠가 함께 선다
-        self.assertIn('<h1 class="dtitle">', self.code, "제목 줄에 이름표가 없다")
-        self.assertIn('<div class="dhead">', self.code, "머리 덩어리가 없다")
-        self.assertIn('class="acts dacts"', self.code, "행동 띠가 머리에 없다")
+            # ---------- ② 한 줄 ----------
+        with self.subTest("only_one_line_sticks"):
+                dpath = self._rule(r"\.viewer \.dpath")
+                self.assertNotIn("position:sticky", dpath, "경로 줄까지 붙는다")
+                # 붙는 것은 판 안에서 이 한 줄뿐
+                stick = re.findall(r"\.viewer [^{]*\{[^}]*position:sticky", self.src)
+                self.assertEqual(len(stick), 1, "판 안에 붙는 줄이 둘 이상이다: %s" % stick)
 
-    def test_the_title_line_carries_name_number_and_state(self):
-        """무엇을 보고 있는지: 제목 · 번호 · 상태. 상태는 이름의 얼굴(mono)로."""
-        self.assertRegex(self.code, r'class="did"', "문서 번호가 붙박이 줄에 없다")
-        self.assertRegex(self.code, r'class="dst"', "상태가 붙박이 줄에 없다")
-        did = self._rule(r"\.viewer \.dtitle \.did")
-        self.assertIn("var(--mono)", did, "번호가 이름처럼 보이지 않는다")
-        dst = self._rule(r"\.viewer \.dtitle \.dst")
-        self.assertIn("var(--mono)", dst, "상태가 이름처럼 보이지 않는다")
-        self.assertIn("color:var(--sc)", dst, "상태 잉크를 쓰지 않는다")
-        # 면은 깔지 않는다 — 색은 글자에만
-        self.assertNotRegex(dst, r"background\s*:", "상태를 색면으로 칠했다")
+            # ---------- ③ 판 끝까지 ----------
+        with self.subTest("the_sticky_line_spans_the_pane_in_every_skin"):
+                rule = self._rule(r"\.viewer \.dhead")
+                self.assertIn("calc(-1 * var(--vpad))", rule, "음수 여백이 고정값이다")
+                self.assertIn("padding:8px var(--vpad)", rule, "안쪽 여백이 고정값이다")
+                # --vpad 를 바꾸는 곳은 여백을 바꾸는 곳과 같아야 한다
+                for sel in (r"\.viewer\{", r'\[data-skin="grid"\] \.viewer\{',
+                            r'\[data-density="compact"\] \.viewer\{'):
+                    m = re.search(sel + r"([^}]*)\}", self.src)
+                    self.assertIsNotNone(m, sel)
+                    self.assertIn("--vpad", m.group(1), "%s 가 --vpad 를 정하지 않는다" % sel)
+                    self.assertNotRegex(m.group(1), r"padding:\s*\d+px \d",
+                                        "%s 에 윗 여백이 남아 붙박이 줄 위로 본문이 스친다" % sel)
 
-    # ---------- ② 한 줄 ----------
+            # ---------- ④ 목록이 흔들리지 않는다 ----------
+        with self.subTest("the_list_order_freezes_while_reading"):
+                fn = self._fn("stableOrder")
+                self.assertIn("docRank", fn, "순위를 기억하지 않는다")
+                self.assertIn("refreeze", fn, "다시 얼릴 조건이 없다")
+                self.assertIn("docRankKey !== key", fn, "조건이 바뀌어도 얼음이 그대로다")
+                # 새 문서는 맨 위로 — 얼렸다고 새것을 묻어 두지 않는다
+                self.assertIn("!docRank.has(r.id)", fn, "새 문서를 알아보지 못한다")
+                self.assertIn("Math.min", fn, "새 문서가 맨 위로 오지 않는다")
+                # 목록은 이제 얼린 순서로 그린다
+                rd = self._fn("renderDocs")
+                self.assertIn("stableOrder(rows, okey, refreeze)", rd,
+                              "목록이 아직 매번 다시 정렬된다")
+                self.assertNotIn("recentOrder(rows)", rd,
+                                 "옛 정렬이 남아 있다 — 15초마다 다시 섞인다")
+                # 다시 어는 조건: 사람이 한 일뿐 (조건 서명 + Docs 화면 재진입)
+                # 판을 찾는 셀렉터에 주인 이름이 붙었다 (REQ-20260831-026 — 같은 셸을 쓰는
+                # 탭이 하나 더 섰다). 묻는 것은 여전히 "판이 이미 서 있나" 하나다.
+                self.assertRegex(rd, r"const refreeze = !\(\$\('#view \.docs\[data-pane=",
+                                 "배경 갱신에도 순서가 다시 언다")
+                for k in ("#f-user", "#f-project", "#f-tag", "mineActive()"):
+                    self.assertIn(k, rd[rd.index("const okey"):rd.index("const ordered")],
+                                  "조건 서명에 %s 가 빠졌다" % k)
 
-    def test_only_one_line_sticks(self):
-        """경로 줄은 붙지 않는다 — 두 겹이 쌓이면 읽을 자리를 먹는다."""
-        dpath = self._rule(r"\.viewer \.dpath")
-        self.assertNotIn("position:sticky", dpath, "경로 줄까지 붙는다")
-        # 붙는 것은 판 안에서 이 한 줄뿐
-        stick = re.findall(r"\.viewer [^{]*\{[^}]*position:sticky", self.src)
-        self.assertEqual(len(stick), 1, "판 안에 붙는 줄이 둘 이상이다: %s" % stick)
+            # ---------- ⑤ 지금 보는 문서 ----------
+        with self.subTest("the_open_document_is_marked_in_place"):
+            rd = self._fn("renderDocs")
+            self.assertNotIn("const pin = selectedDoc", rd, "고른 문서를 아직 뽑아낸다")
+            self.assertNotIn("rowHTML(pin)", rd, "뽑은 줄을 아직 맨 위에 세운다")
+            # 줄을 짓는 자리는 하나 — 두 벌이면 한 벌만 고쳐진다
+            self.assertEqual(rd.count('class="row${on ? " sel" : ""}"'), 1,
+                             "목록 행을 두 곳에서 짓는다")
+            # 표시는 잉크로. 색면도 세로 띠도 아니다. 쉼 얼굴에만 면이 없다 —
+            # `:not(:hover)` 를 빼면 이 규칙이 이웃과 같아야 할 hover 틴트까지 삼킨다.
+            sel = self._rule(r"\.doclist \.row\.sel:not\(:hover\)")
+            self.assertIn("background:none", sel, "선택 표시가 색면이다")
+            self.assertNotIn("inset", sel, "선택 표시가 세로 띠다")
+            self.assertRegex(self.src, r"\.doclist \.row\.sel \.id::before\{[^}]*content:\"●\"",
+                             "지금 이것이라는 표식이 없다")
+            self.assertRegex(self.src,
+                             r"\.doclist \.row\.sel>div:nth-child\(3\)\{[^}]*font-weight:650",
+                             "제목 무게로 구분하지 않는다")
+        with self.subTest("no_skin_puts_the_colour_field_or_side_bar_back"):
+                for m in re.finditer(r'\[data-skin="([a-z]+)"\][^{]*\.doclist \.row\.sel[^{]*\{([^}]*)\}',
+                                     self.src):
+                    skin, body = m.group(1), m.group(2)
+                    if skin in ("terminal", "glass"):
+                        continue
+                    self.assertNotRegex(body, r"inset \d", "%s 가 세로 띠를 되살렸다" % skin)
+                    self.assertNotRegex(body, r"background:(?!none)", "%s 가 색면을 되살렸다" % skin)
 
-    # ---------- ③ 판 끝까지 ----------
+            # ---------- 진단 ----------
+        with self.subTest("there_is_a_way_to_see_it_scrolled_without_hands"):
+                self.assertIn("vscroll", self.code, "내린 상태를 손 없이 세울 길이 없다")
+                self.assertIn("window.scrollTo", self.code,
+                              "판이 스스로 구르지 않는 스킨(soft)에서는 확인할 수 없다")
 
-    def test_the_sticky_line_spans_the_pane_in_every_skin(self):
-        """좌우 여백은 스킨·밀도마다 다르다 — 고정 픽셀로 적으면 어긋난다."""
-        rule = self._rule(r"\.viewer \.dhead")
-        self.assertIn("calc(-1 * var(--vpad))", rule, "음수 여백이 고정값이다")
-        self.assertIn("padding:8px var(--vpad)", rule, "안쪽 여백이 고정값이다")
-        # --vpad 를 바꾸는 곳은 여백을 바꾸는 곳과 같아야 한다
-        for sel in (r"\.viewer\{", r'\[data-skin="grid"\] \.viewer\{',
-                    r'\[data-density="compact"\] \.viewer\{'):
-            m = re.search(sel + r"([^}]*)\}", self.src)
-            self.assertIsNotNone(m, sel)
-            self.assertIn("--vpad", m.group(1), "%s 가 --vpad 를 정하지 않는다" % sel)
-            self.assertNotRegex(m.group(1), r"padding:\s*\d+px \d",
-                                "%s 에 윗 여백이 남아 붙박이 줄 위로 본문이 스친다" % sel)
-
-    # ---------- ④ 목록이 흔들리지 않는다 ----------
-
-    def test_the_list_order_freezes_while_reading(self):
-        """15초 갱신에 순서가 다시 섞이지 않는다."""
-        fn = self._fn("stableOrder")
-        self.assertIn("docRank", fn, "순위를 기억하지 않는다")
-        self.assertIn("refreeze", fn, "다시 얼릴 조건이 없다")
-        self.assertIn("docRankKey !== key", fn, "조건이 바뀌어도 얼음이 그대로다")
-        # 새 문서는 맨 위로 — 얼렸다고 새것을 묻어 두지 않는다
-        self.assertIn("!docRank.has(r.id)", fn, "새 문서를 알아보지 못한다")
-        self.assertIn("Math.min", fn, "새 문서가 맨 위로 오지 않는다")
-        # 목록은 이제 얼린 순서로 그린다
-        rd = self._fn("renderDocs")
-        self.assertIn("stableOrder(rows, okey, refreeze)", rd,
-                      "목록이 아직 매번 다시 정렬된다")
-        self.assertNotIn("recentOrder(rows)", rd,
-                         "옛 정렬이 남아 있다 — 15초마다 다시 섞인다")
-        # 다시 어는 조건: 사람이 한 일뿐 (조건 서명 + Docs 화면 재진입)
-        # 판을 찾는 셀렉터에 주인 이름이 붙었다 (REQ-20260831-026 — 같은 셸을 쓰는
-        # 탭이 하나 더 섰다). 묻는 것은 여전히 "판이 이미 서 있나" 하나다.
-        self.assertRegex(rd, r"const refreeze = !\(\$\('#view \.docs\[data-pane=",
-                         "배경 갱신에도 순서가 다시 언다")
-        for k in ("#f-user", "#f-project", "#f-tag", "mineActive()"):
-            self.assertIn(k, rd[rd.index("const okey"):rd.index("const ordered")],
-                          "조건 서명에 %s 가 빠졌다" % k)
-
-    # ---------- ⑤ 지금 보는 문서 ----------
-
-    def test_the_open_document_is_marked_in_place(self):
-        """**제자리에 두고**, 색면·세로 띠가 아니라 잉크로 표시한다.
-
-        전에는 맨 위에 못 박았다(REQ-20260828-009 → -20260829-012). 그 뽑아
-        올리기가 문서를 번갈아 고를 때마다 목록을 흔들었고(CDP 실측: A→B 로
-        옮길 때마다 두 무리 사이의 줄이 전부 한 칸씩 밀린다), 사용자가 걷어내라고
-        판정했다 (REQ-20260831-007). **표시가 잉크라는 결정은 그대로다** —
-        바뀐 것은 자리뿐이다.
-        """
-        rd = self._fn("renderDocs")
-        self.assertNotIn("const pin = selectedDoc", rd, "고른 문서를 아직 뽑아낸다")
-        self.assertNotIn("rowHTML(pin)", rd, "뽑은 줄을 아직 맨 위에 세운다")
-        # 줄을 짓는 자리는 하나 — 두 벌이면 한 벌만 고쳐진다
-        self.assertEqual(rd.count('class="row${on ? " sel" : ""}"'), 1,
-                         "목록 행을 두 곳에서 짓는다")
-        # 표시는 잉크로. 색면도 세로 띠도 아니다. 쉼 얼굴에만 면이 없다 —
-        # `:not(:hover)` 를 빼면 이 규칙이 이웃과 같아야 할 hover 틴트까지 삼킨다.
-        sel = self._rule(r"\.doclist \.row\.sel:not\(:hover\)")
-        self.assertIn("background:none", sel, "선택 표시가 색면이다")
-        self.assertNotIn("inset", sel, "선택 표시가 세로 띠다")
-        self.assertRegex(self.src, r"\.doclist \.row\.sel \.id::before\{[^}]*content:\"●\"",
-                         "지금 이것이라는 표식이 없다")
-        self.assertRegex(self.src,
-                         r"\.doclist \.row\.sel>div:nth-child\(3\)\{[^}]*font-weight:650",
-                         "제목 무게로 구분하지 않는다")
-
-    def test_no_skin_puts_the_colour_field_or_side_bar_back(self):
-        """스킨 override 가 색면·세로 띠를 되살리지 않는다.
-
-        terminal 의 인버스와 glass 의 반투명 틴트는 예외다 — 그 스킨이 선언한
-        재질(활성=인버스 비디오 · 유리)이라 s9-design 이 이미 그렇게 적어 두었다.
-        나머지는 그냥 강조 면이었다.
-        """
-        for m in re.finditer(r'\[data-skin="([a-z]+)"\][^{]*\.doclist \.row\.sel[^{]*\{([^}]*)\}',
-                             self.src):
-            skin, body = m.group(1), m.group(2)
-            if skin in ("terminal", "glass"):
-                continue
-            self.assertNotRegex(body, r"inset \d", "%s 가 세로 띠를 되살렸다" % skin)
-            self.assertNotRegex(body, r"background:(?!none)", "%s 가 색면을 되살렸다" % skin)
-
-    # ---------- 진단 ----------
-
-    def test_there_is_a_way_to_see_it_scrolled_without_hands(self):
-        """"내려가면 사라진다"가 결함이었으니 확인도 내려 본 화면이어야 한다."""
-        self.assertIn("vscroll", self.code, "내린 상태를 손 없이 세울 길이 없다")
-        self.assertIn("window.scrollTo", self.code,
-                      "판이 스스로 구르지 않는 스킨(soft)에서는 확인할 수 없다")
-
-    # ---------- helpers ----------
+            # ---------- helpers ----------
 
     def _fn(self, name):
         return websrc.fn(self, self.src, name)

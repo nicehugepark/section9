@@ -51,20 +51,18 @@ class PortVerdict(unittest.TestCase):
 
 
 class RecoverTarget(unittest.TestCase):
-    def test_relay_hoarder_identified(self):
-        t = doctor.relay_hoarder(win(15715, top_count=15709))
-        self.assertIsNotNone(t)
-        self.assertEqual(t["pid"], 31172)
-        self.assertTrue(t["is_known_relay"])
-
-    def test_user_app_never_a_target(self):
-        """크롬이 다 잡고 있어도 사용자 브라우저는 죽이지 않는다."""
-        self.assertIsNone(doctor.relay_hoarder(
-            win(15715, top_count=15709, name="chrome.exe", cmd="chrome.exe")))
-
-    def test_small_share_not_a_target(self):
-        self.assertIsNone(doctor.relay_hoarder(win(66, top_count=29)))
-
+    def test_recover_target(self):
+        """RecoverTarget 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("relay_hoarder_identified"):
+            t = doctor.relay_hoarder(win(15715, top_count=15709))
+            self.assertIsNotNone(t)
+            self.assertEqual(t["pid"], 31172)
+            self.assertTrue(t["is_known_relay"])
+        with self.subTest("user_app_never_a_target"):
+            self.assertIsNone(doctor.relay_hoarder(
+                win(15715, top_count=15709, name="chrome.exe", cmd="chrome.exe")))
+        with self.subTest("small_share_not_a_target"):
+            self.assertIsNone(doctor.relay_hoarder(win(66, top_count=29)))
 
 class Advice(unittest.TestCase):
     def base(self, **kw):

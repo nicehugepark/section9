@@ -82,49 +82,50 @@ class StreamsUntracked(unittest.TestCase):
     """이 리포의 지금 상태 — 인덱스와 HEAD 이력에 미러가 없어야 한다."""
 
     # N1. 지금 track 되는 파일 중 미러가 없다
-    def test_n1_index_has_no_mirror(self):
-        names = git("ls-files").stdout.splitlines()
-        self.assertEqual(_stream_paths(names), [],
-                         "미러가 인덱스에 있다 — 다음 커밋에 실린다")
+    def test_streams_untracked(self):
+        """이 리포의 지금 상태 — 인덱스와 HEAD 이력에 미러가 없어야 한다."""
+        with self.subTest("n1_index_has_no_mirror"):
+                names = git("ls-files").stdout.splitlines()
+                self.assertEqual(_stream_paths(names), [],
+                                 "미러가 인덱스에 있다 — 다음 커밋에 실린다")
 
-    # N2. HEAD 트리에도 없다
-    def test_n2_head_tree_has_no_mirror(self):
-        names = git("ls-tree", "-r", "--name-only", "HEAD").stdout.splitlines()
-        self.assertEqual(_stream_paths(names), [])
+            # N2. HEAD 트리에도 없다
+        with self.subTest("n2_head_tree_has_no_mirror"):
+                names = git("ls-tree", "-r", "--name-only", "HEAD").stdout.splitlines()
+                self.assertEqual(_stream_paths(names), [])
 
-    # N3. HEAD 에서 거슬러 올라간 **이력 전체**에도 없다.
-    #     재작성이 되돌려지거나(backup 브랜치 merge) 새로 실리면 여기서 걸린다.
-    def test_n3_history_has_no_mirror(self):
-        out = git("log", "--oneline", "--",
-                  "streams", "users/*/streams").stdout.strip()
-        self.assertEqual(out, "", f"이력에 미러를 담은 커밋이 있다:\n{out}")
+            # N3. HEAD 에서 거슬러 올라간 **이력 전체**에도 없다.
+            #     재작성이 되돌려지거나(backup 브랜치 merge) 새로 실리면 여기서 걸린다.
+        with self.subTest("n3_history_has_no_mirror"):
+                out = git("log", "--oneline", "--",
+                          "streams", "users/*/streams").stdout.strip()
+                self.assertEqual(out, "", f"이력에 미러를 담은 커밋이 있다:\n{out}")
 
-    # N4. 지금 자리와 옮겨 갈 자리 둘 다 ignore 다 —
-    #     옮기고 나서 막으면 옮긴 경로가 또 한 번 이력에 실린다
-    def test_n4_both_locations_ignored(self):
-        for rel in ("streams/abc.jsonl",
-                    "users/sjpark1/streams/abc.jsonl"):
-            with self.subTest(rel=rel):
-                self.assertEqual(git("check-ignore", "-q", rel).returncode, 0,
-                                 f"{rel} 이 ignore 밖이다")
+            # N4. 지금 자리와 옮겨 갈 자리 둘 다 ignore 다 —
+            #     옮기고 나서 막으면 옮긴 경로가 또 한 번 이력에 실린다
+        with self.subTest("n4_both_locations_ignored"):
+                for rel in ("streams/abc.jsonl",
+                            "users/sjpark1/streams/abc.jsonl"):
+                    with self.subTest(rel=rel):
+                        self.assertEqual(git("check-ignore", "-q", rel).returncode, 0,
+                                         f"{rel} 이 ignore 밖이다")
 
-    # B1. vault/users/projects 는 계속 track 한다 — 이 요청이 바꾼 것은
-    #     대화 원문 158MB 뿐이고, 하네스 기록 공개 판정(REQ-20260827-036)은 유효하다
-    def test_b1_vault_still_tracked(self):
-        for rel in ("vault", "users", "projects"):
-            with self.subTest(rel=rel):
-                if not os.path.isdir(os.path.join(ROOT, rel)):
-                    continue
-                n = len(git("ls-files", "--", rel).stdout.splitlines())
-                self.assertGreater(n, 0, f"{rel} 이 통째로 ignore 됐다")
+            # B1. vault/users/projects 는 계속 track 한다 — 이 요청이 바꾼 것은
+            #     대화 원문 158MB 뿐이고, 하네스 기록 공개 판정(REQ-20260827-036)은 유효하다
+        with self.subTest("b1_vault_still_tracked"):
+                for rel in ("vault", "users", "projects"):
+                    with self.subTest(rel=rel):
+                        if not os.path.isdir(os.path.join(ROOT, rel)):
+                            continue
+                        n = len(git("ls-files", "--", rel).stdout.splitlines())
+                        self.assertGreater(n, 0, f"{rel} 이 통째로 ignore 됐다")
 
-    # B2. 비밀값은 여전히 막혀 있다 (REQ-20260827-035) —
-    #     users/ 를 track 하므로 이 줄이 사라지면 그대로 올라간다
-    def test_b2_secrets_still_ignored(self):
-        self.assertEqual(
-            git("check-ignore", "-q", "users/sjpark1/secrets/token").returncode,
-            0)
-
+            # B2. 비밀값은 여전히 막혀 있다 (REQ-20260827-035) —
+            #     users/ 를 track 하므로 이 줄이 사라지면 그대로 올라간다
+        with self.subTest("b2_secrets_still_ignored"):
+            self.assertEqual(
+                git("check-ignore", "-q", "users/sjpark1/secrets/token").returncode,
+                0)
 
 class MirrorWriterStaysIgnored(unittest.TestCase):
     """미러 코드가 실제로 만드는 파일이 git 에 담기지 않는가.

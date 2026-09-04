@@ -74,135 +74,97 @@ class ReviewClamp(unittest.TestCase):
 
     # --- ① 카드 몫은 세 줄 ---
 
-    def test_review_point_body_has_its_own_span(self):
-        """확인 요청 본문은 캡션과 분리된 span 이다 — 캡션이 세 줄 중 한 줄을
-        먹으면 실제로 읽히는 것은 두 줄뿐이다."""
-        self.assertIn('class="rvtx"', self.rv,
-                      "확인 포인트 본문이 별도 span(.rvtx) 으로 싸이지 않았다")
-        self.assertIn('class="rvcap"', self.rv)
-        # 캡션이 클램프 박스 밖에 있어야 한다
-        self.assertLess(self.rv.index('class="rvcap"'), self.rv.index('class="rvtx"'))
+    def test_review_clamp(self):
+        """ReviewClamp 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("review_point_body_has_its_own_span"):
+            self.assertIn('class="rvtx"', self.rv,
+                          "확인 포인트 본문이 별도 span(.rvtx) 으로 싸이지 않았다")
+            self.assertIn('class="rvcap"', self.rv)
+            # 캡션이 클램프 박스 밖에 있어야 한다
+            self.assertLess(self.rv.index('class="rvcap"'), self.rv.index('class="rvtx"'))
+        with self.subTest("long_card_text_is_built_in_one_place"):
+            self.assertRegex(self.card, r"rvClamped\(\s*\"확인 요청\"\s*,\s*r\.review_point")
+            self.assertRegex(self.card, r"rvClamped\(\s*\"대기 사유\"\s*,\s*r\.block_reason")
+        with self.subTest("clamp_is_in_the_base_not_one_skin"):
+                body = css_rule(self.src, ".rvpt .rvtx")
+                self.assertIsNotNone(body, "베이스에 .rvpt .rvtx 클램프 규칙이 없다")
+                self.assertIn("line-clamp:3", body.replace(" ", ""),
+                              "확인 요청 본문이 세 줄로 접히지 않는다")
+                self.assertIn("overflow:hidden", body.replace(" ", ""))
 
-    def test_long_card_text_is_built_in_one_place(self):
-        """확인 요청과 대기 사유는 같은 종류의 글이다 — 한 함수로 지어야
-        한쪽만 고쳐져 blocked 카드가 문장 벽으로 남는 일이 없다."""
-        self.assertRegex(self.card, r"rvClamped\(\s*\"확인 요청\"\s*,\s*r\.review_point")
-        self.assertRegex(self.card, r"rvClamped\(\s*\"대기 사유\"\s*,\s*r\.block_reason")
+            # --- ③ 잘렸다는 사실을 카드가 말한다 ---
+        with self.subTest("card_offers_to_open_it_here"):
+            self.assertIn('class="rvmore"', self.rv,
+                          "잘린 글을 펴는 손잡이가 없다")
+            # 손잡이는 클램프 박스 **밖**이다 — 안에 넣으면 자기가 잘린다.
+            self.assertLess(self.rv.index("</div>"), self.rv.index('class="rvmore"'))
+        with self.subTest("the_handle_opens_in_place_not_in_another_tab"):
+            self.assertIn("data-expand", self.rv,
+                          "손잡이가 이 화면의 펼침 문법(data-expand)을 쓰지 않는다")
+            self.assertNotIn("data-doc-open", self.rv)
+            self.assertNotIn("docOpen", self.rv, "손잡이가 아직 문서로 건너뛴다")
+            self.assertNotIn("tab =", self.rv, "손잡이가 탭을 옮긴다")
+        with self.subTest("opening_survives_the_poll"):
+            self.assertRegex(self.card, r'expanded\.has\("rv:"',
+                             "열림이 다시 그리면 사라진다")
+        with self.subTest("the_opened_text_scrolls_inside_its_own_box"):
+            rules = [css for sel, css in _rules(self.src, ".rvpt.open .rvtx")]
+            self.assertTrue(rules, "펼친 글의 상자 규칙이 없다")
+            flat = " ".join(rules).replace(" ", "")
+            self.assertIn("max-height:", flat, "펼치면 카드가 끝없이 자란다")
+            self.assertIn("overflow:auto", flat, "천장을 씌우고 나머지를 잘라 버렸다")
+            self.assertIn("line-clamp:unset", flat, "펼쳤는데 세 줄 그대로다")
+        with self.subTest("the_opened_box_is_scrollable_by_keyboard"):
+            self.assertRegex(self.rv, r'tabindex="0"',
+                             "펼친 상자에 키보드가 닿지 않는다")
+            self.assertIn("aria-expanded", self.rv, "손잡이가 열림/닫힘을 말하지 않는다")
+        with self.subTest("the_open_card_can_be_seen_without_hands"):
+            self.assertIn("[?&]rvopen=", self.src, "펼친 카드를 세워 볼 길이 없다")
+        with self.subTest("the_handle_stays_while_open_so_it_can_be_closed"):
+            self.assertRegex(self.src, r"\.rvpt\.open\s*\+\s*\.rvmore\{",
+                             "열린 상태에서 손잡이가 사라져 접을 수 없다")
+        with self.subTest("more_handle_shows_only_when_actually_cut"):
+            hidden = css_rule(self.src, ".rvmore")
+            self.assertIsNotNone(hidden, ".rvmore 규칙이 없다")
+            self.assertIn("display:none", hidden.replace(" ", ""))
+            self.assertRegex(self.src, r"\.rvpt\.iscut\s*\+\s*\.rvmore\{",
+                             "잘린 경우에만 손잡이를 여는 규칙이 없다")
+        with self.subTest("more_handle_is_ink_not_a_filled_button"):
+            body = css_rule(self.src, ".rvmore")
+            flat = body.replace(" ", "")
+            self.assertIn("background:none", flat)
+            self.assertIn("border:0", flat)
+        with self.subTest("cut_is_measured_not_guessed"):
+            m = re.search(r"function markClamped\((.*?)\)\{(.+?)\n\}", self.src, re.S)
+            self.assertIsNotNone(m, "markClamped 실측 함수가 없다")
+            body = m.group(2)
+            self.assertIn("scrollHeight", body)
+            self.assertIn("clientHeight", body)
+            self.assertIn("iscut", body)
+            # 문턱은 px 상수가 아니라 줄 높이다 — 클램프가 자르면 최소 한 줄이
+            # 남는다. 1px 상수로 쟀더니 넓은 창에서 딱 세 줄로 끝난 대기 사유가
+            # (말줄임표도 없이) 잘렸다고 보고돼 손잡이가 붙었다.
+            self.assertIn("lineHeight", body,
+                          "잘림 문턱을 줄 높이로 잡지 않았다 — 반올림 오차가 손잡이를 띄운다")
+        with self.subTest("measure_runs_after_board_render_and_on_resize"):
+                m = re.search(r"function renderBoard\(rows\)\{(.+?)\n\}\n", self.src, re.S)
+                self.assertIsNotNone(m)
+                self.assertIn("markClamped", m.group(1), "보드를 그린 뒤 잘림을 재지 않는다")
+                self.assertRegex(self.src, r'addEventListener\("resize",\s*[^)]*[Cc]lamp',
+                                 "창 크기가 바뀔 때 잘림을 다시 재지 않는다")
 
-    def test_clamp_is_in_the_base_not_one_skin(self):
-        """세 줄 클램프는 베이스 CSS 에 있다 — 스킨이 열 벌이 넘는다."""
-        body = css_rule(self.src, ".rvpt .rvtx")
-        self.assertIsNotNone(body, "베이스에 .rvpt .rvtx 클램프 규칙이 없다")
-        self.assertIn("line-clamp:3", body.replace(" ", ""),
-                      "확인 요청 본문이 세 줄로 접히지 않는다")
-        self.assertIn("overflow:hidden", body.replace(" ", ""))
+            # --- ④ 호버로 펼치지 않는다 ---
+        with self.subTest("no_hover_expansion"):
+                for m in re.finditer(r"(?m)^([^\n{]*:hover[^\n{]*\.rvpt[^{]*)\{([^}]*)\}", self.src):
+                    self.assertNotIn("line-clamp:unset", m.group(2).replace(" ", ""),
+                                     "호버로 클램프를 푸는 규칙이 남아 있다: " + m.group(1).strip())
+                    self.assertNotIn("max-height:60em", m.group(2).replace(" ", ""),
+                                     "호버로 카드를 늘리는 규칙이 남아 있다: " + m.group(1).strip())
 
-    # --- ③ 잘렸다는 사실을 카드가 말한다 ---
-
-    def test_card_offers_to_open_it_here(self):
-        """잘렸을 때 펴는 손잡이가 카드에 있다."""
-        self.assertIn('class="rvmore"', self.rv,
-                      "잘린 글을 펴는 손잡이가 없다")
-        # 손잡이는 클램프 박스 **밖**이다 — 안에 넣으면 자기가 잘린다.
-        self.assertLess(self.rv.index("</div>"), self.rv.index('class="rvmore"'))
-
-    def test_the_handle_opens_in_place_not_in_another_tab(self):
-        """카드 전체가 이미 Docs 로 가는 손잡이다 — 같은 자리에 같은 목적지가
-        둘이면 하나는 없느니만 못하다 (REQ-20260829-009 반려)."""
-        self.assertIn("data-expand", self.rv,
-                      "손잡이가 이 화면의 펼침 문법(data-expand)을 쓰지 않는다")
-        self.assertNotIn("data-doc-open", self.rv)
-        self.assertNotIn("docOpen", self.rv, "손잡이가 아직 문서로 건너뛴다")
-        self.assertNotIn("tab =", self.rv, "손잡이가 탭을 옮긴다")
-
-    def test_opening_survives_the_poll(self):
-        """15초 폴링이 보드를 다시 그린다 — 열어 둔 것이 그때마다 접히면
-        읽던 자리를 잃는다. 이 화면이 이미 쓰는 기억(expanded)에 얹는다."""
-        self.assertRegex(self.card, r'expanded\.has\("rv:"',
-                         "열림이 다시 그리면 사라진다")
-
-    def test_the_opened_text_scrolls_inside_its_own_box(self):
-        """카드 높이에 **천장**이 있어야 열의 리듬이 서고, 승인·반려 버튼이
-        긴 글에 밀려 카드 밖으로 나가지 않는다."""
-        rules = [css for sel, css in _rules(self.src, ".rvpt.open .rvtx")]
-        self.assertTrue(rules, "펼친 글의 상자 규칙이 없다")
-        flat = " ".join(rules).replace(" ", "")
-        self.assertIn("max-height:", flat, "펼치면 카드가 끝없이 자란다")
-        self.assertIn("overflow:auto", flat, "천장을 씌우고 나머지를 잘라 버렸다")
-        self.assertIn("line-clamp:unset", flat, "펼쳤는데 세 줄 그대로다")
-
-    def test_the_opened_box_is_scrollable_by_keyboard(self):
-        """마우스 휠만 되는 상자는 키보드 사용자에게 잘린 글이다 (WCAG 2.1.1) —
-        이 저장소가 첨부 발췌(.attx.open)에서 이미 세운 규칙이다."""
-        self.assertRegex(self.rv, r'tabindex="0"',
-                         "펼친 상자에 키보드가 닿지 않는다")
-        self.assertIn("aria-expanded", self.rv, "손잡이가 열림/닫힘을 말하지 않는다")
-
-    def test_the_open_card_can_be_seen_without_hands(self):
-        """펼친 화면은 눌러야만 생긴다 — 헤드리스로 확인할 길이 있어야
-        "코드상 맞다"로 끝나지 않는다 (`?dlg=`·`?pick=` 의 선례)."""
-        self.assertIn("[?&]rvopen=", self.src, "펼친 카드를 세워 볼 길이 없다")
-
-    def test_the_handle_stays_while_open_so_it_can_be_closed(self):
-        """열어 놓고 접을 수 없으면 여는 것이 파괴적 행동이 된다."""
-        self.assertRegex(self.src, r"\.rvpt\.open\s*\+\s*\.rvmore\{",
-                         "열린 상태에서 손잡이가 사라져 접을 수 없다")
-
-    def test_more_handle_shows_only_when_actually_cut(self):
-        """안 잘린 한 줄짜리 확인 요청에 손잡이가 붙으면 그건 소음이다."""
-        hidden = css_rule(self.src, ".rvmore")
-        self.assertIsNotNone(hidden, ".rvmore 규칙이 없다")
-        self.assertIn("display:none", hidden.replace(" ", ""))
-        self.assertRegex(self.src, r"\.rvpt\.iscut\s*\+\s*\.rvmore\{",
-                         "잘린 경우에만 손잡이를 여는 규칙이 없다")
-
-    def test_more_handle_is_ink_not_a_filled_button(self):
-        """색면 금지 — 손잡이는 글자와 밑줄로만 (`+ N개 더 보기` 와 같은 문법)."""
-        body = css_rule(self.src, ".rvmore")
-        flat = body.replace(" ", "")
-        self.assertIn("background:none", flat)
-        self.assertIn("border:0", flat)
-
-    def test_cut_is_measured_not_guessed(self):
-        """잘림 여부는 스킨·밀도·열 폭에 따라 다르다 — 글자 수로 짐작하지 않고 실측한다."""
-        m = re.search(r"function markClamped\((.*?)\)\{(.+?)\n\}", self.src, re.S)
-        self.assertIsNotNone(m, "markClamped 실측 함수가 없다")
-        body = m.group(2)
-        self.assertIn("scrollHeight", body)
-        self.assertIn("clientHeight", body)
-        self.assertIn("iscut", body)
-        # 문턱은 px 상수가 아니라 줄 높이다 — 클램프가 자르면 최소 한 줄이
-        # 남는다. 1px 상수로 쟀더니 넓은 창에서 딱 세 줄로 끝난 대기 사유가
-        # (말줄임표도 없이) 잘렸다고 보고돼 손잡이가 붙었다.
-        self.assertIn("lineHeight", body,
-                      "잘림 문턱을 줄 높이로 잡지 않았다 — 반올림 오차가 손잡이를 띄운다")
-
-    def test_measure_runs_after_board_render_and_on_resize(self):
-        """카드를 다시 그리거나 창 폭이 바뀌면 잘림 여부도 바뀐다."""
-        m = re.search(r"function renderBoard\(rows\)\{(.+?)\n\}\n", self.src, re.S)
-        self.assertIsNotNone(m)
-        self.assertIn("markClamped", m.group(1), "보드를 그린 뒤 잘림을 재지 않는다")
-        self.assertRegex(self.src, r'addEventListener\("resize",\s*[^)]*[Cc]lamp',
-                         "창 크기가 바뀔 때 잘림을 다시 재지 않는다")
-
-    # --- ④ 호버로 펼치지 않는다 ---
-
-    def test_no_hover_expansion(self):
-        """마우스를 얹었다고 카드가 자라면 아래 카드가 통째로 밀린다 — 그리고
-        그 화면이 사용자가 신고한 화면이다."""
-        for m in re.finditer(r"(?m)^([^\n{]*:hover[^\n{]*\.rvpt[^{]*)\{([^}]*)\}", self.src):
-            self.assertNotIn("line-clamp:unset", m.group(2).replace(" ", ""),
-                             "호버로 클램프를 푸는 규칙이 남아 있다: " + m.group(1).strip())
-            self.assertNotIn("max-height:60em", m.group(2).replace(" ", ""),
-                             "호버로 카드를 늘리는 규칙이 남아 있다: " + m.group(1).strip())
-
-    # --- ⑤ 전문을 펴는 자리는 문서다 ---
-
-    def test_document_still_opens_the_full_text(self):
-        """카드가 자른 나머지는 문서 뷰어의 확인 요청 callout 이 편다."""
-        self.assertIn("gateNote", self.src)
-        self.assertIn('class="gate-b"', self.src)
-
+            # --- ⑤ 전문을 펴는 자리는 문서다 ---
+        with self.subTest("document_still_opens_the_full_text"):
+            self.assertIn("gateNote", self.src)
+            self.assertIn('class="gate-b"', self.src)
 
 if __name__ == "__main__":
     unittest.main()

@@ -138,14 +138,18 @@ class ClosedNeverSpawns(Base):
         """
         rid = self._closed("done")
         cat = self.m.CATALOG
-        with open(cat, encoding="utf-8") as f:
-            rows = [json.loads(l) for l in f if l.strip()]
+        # 병합된 목록을 base 로 눌러 담는다 (REQ-20260902-035) — base 파일만
+        # 읽으면 갓 쓴 행이 델타에 있어 손에 잡히지 않는다.
+        rows = self.m.load_catalog()
         for r in rows:
             if r.get("id") == rid:
                 r["status"] = "in-progress"      # 낡은 색인
         with open(cat, "w", encoding="utf-8") as f:
             for r in rows:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        # 증분 카탈로그(REQ-20260902-035)에서는 델타가 base 를 덮는다 —
+        # base 만 낡게 만들면 델타의 신선한 행이 이 시험을 무력하게 한다.
+        open(self.m.CATALOG_DELTA, "w").close()
         self.assertEqual(self.m.doc_status(rid), "in-progress",
                          "색인을 낡게 만들지 못했다 — 이 시험이 아무것도 안 묻는다")
         ok, out = self.spawn(rid, "rework")

@@ -71,40 +71,28 @@ class NormIsSound(unittest.TestCase):
         with open(cls.real, "w") as f:
             f.write("{}\n")
 
-    def test_a1_idempotent(self):
-        """두 번 정규화해도 같다 — 경계를 여러 번 지나도 값이 흔들리지 않는다."""
-        b = {"agent_transcript_path": list(self.real)}
-        once = self.m._norm_binding(dict(b))
-        twice = self.m._norm_binding(dict(once))
-        self.assertEqual(once, twice)
-
-    def test_a2_absent_key_is_not_invented(self):
-        """없던 키를 만들어 넣지 않는다 — 정규화가 데이터를 늘리면 안 된다."""
-        self.assertNotIn("agent_transcript_path",
-                         self.m._norm_binding({"session": "x"}))
-
-    def test_a3_non_string_junk_is_dropped(self):
-        """문자열 아닌 원소는 버린다 — 뒤에서 os.path 가 터진다."""
-        b = self.m._norm_binding(
-            {"agent_transcript_path": [None, 7, self.real, {"a": 1}]})
-        self.assertEqual(b["agent_transcript_path"], [self.real])
-
-    def test_a4_mixed_list_keeps_the_real_path(self):
-        """멀쩡한 경로 + 새어든 글자가 섞여 있으면 경로만 남는다."""
-        b = self.m._norm_binding(
-            {"agent_transcript_path": [self.real] + list("/tmp/x")})
-        self.assertEqual(b["agent_transcript_path"], [self.real])
-
-    def test_a5_write_boundary_is_the_only_writer(self):
-        """바인딩 파일에 쓰는 자리는 `write_binding` 하나뿐이다.
-
-        쓰기 경계가 하나여야 정규화가 새지 않는다. 두 번째 writer 가 생기면
-        이 결함이 그대로 되살아난다 — 실제로 그렇게 났다.
-        """
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        self.assertEqual(src.count("binding_path(binding[\"machine\"]"), 1)
-
+    def test_norm_is_sound(self):
+        """이미 서 있는 계약 — 회귀하면 안 되는 것들."""
+        with self.subTest("a1_idempotent"):
+            b = {"agent_transcript_path": list(self.real)}
+            once = self.m._norm_binding(dict(b))
+            twice = self.m._norm_binding(dict(once))
+            self.assertEqual(once, twice)
+        with self.subTest("a2_absent_key_is_not_invented"):
+            self.assertNotIn("agent_transcript_path",
+                             self.m._norm_binding({"session": "x"}))
+        with self.subTest("a3_non_string_junk_is_dropped"):
+            b = self.m._norm_binding(
+                {"agent_transcript_path": [None, 7, self.real, {"a": 1}]})
+            self.assertEqual(b["agent_transcript_path"], [self.real])
+        with self.subTest("a4_mixed_list_keeps_the_real_path"):
+            b = self.m._norm_binding(
+                {"agent_transcript_path": [self.real] + list("/tmp/x")})
+            self.assertEqual(b["agent_transcript_path"], [self.real])
+        with self.subTest("a5_write_boundary_is_the_only_writer"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            self.assertEqual(src.count("binding_path(binding[\"machine\"]"), 1)
 
 class DirectoriesAreNotTranscripts(unittest.TestCase):
     """H1. 존재 확인은 `isfile` 이어야 한다 — 디렉토리는 transcript 가 아니다."""
@@ -139,36 +127,20 @@ class ActivityPathsHaveOneBoundary(unittest.TestCase):
     def setUpClass(cls):
         cls.m, cls.tmp = _load("s9sweepC")
 
-    def test_h2a_split_binding_never_yields_root(self):
-        """정규화를 안 거친 바인딩을 넘겨도 `"/"` 가 나오지 않는다.
-
-        바인딩 파일을 `json.load` 로 직접 읽는 자리가 넷이다(rework_claimed ·
-        통지 팬아웃 · 카탈로그 live · 에이전트 대상 선택). 그 넷이 모두 이
-        함수를 지나므로, 방어를 여기 한 곳에 두면 넷이 함께 닫힌다.
-        """
-        paths = self.m._binding_activity_paths(
-            {"session": "junk", "agent_transcript_path": list("/tmp/없는것")})
-        self.assertNotIn("/", paths)
-
-    def test_h2b_no_scattered_isinstance_defense_remains(self):
-        """읽는 쪽에 흩어진 `isinstance(atp, list)` 방어가 남아 있으면 안 된다.
-
-        지금 소스에 두 벌 있다 — `_binding_activity_paths()` 와 카탈로그 live
-        판정이 같은 코드를 각자 들고 있다. 두 벌이면 한 벌만 고쳐진다.
-        """
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        self.assertEqual(src.count("isinstance(atp, list)"), 0)
-
-    def test_h2c_no_string_default_for_a_list_field(self):
-        """`b.get("agent_transcript_path", "")` — 리스트 필드에 문자열 기본값.
-
-        이 한 줄이 '이 필드는 두 뜻'이라는 자백이다. 기본값은 `[]` 여야 한다.
-        """
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        self.assertEqual(src.count('b.get("agent_transcript_path", "")'), 0)
-
+    def test_activity_paths_have_one_boundary(self):
+        """H2. 활동 경로 계산은 한 벌이어야 하고, 그 한 벌이 정규화를 태워야 한다."""
+        with self.subTest("h2a_split_binding_never_yields_root"):
+            paths = self.m._binding_activity_paths(
+                {"session": "junk", "agent_transcript_path": list("/tmp/없는것")})
+            self.assertNotIn("/", paths)
+        with self.subTest("h2b_no_scattered_isinstance_defense_remains"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            self.assertEqual(src.count("isinstance(atp, list)"), 0)
+        with self.subTest("h2c_no_string_default_for_a_list_field"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            self.assertEqual(src.count('b.get("agent_transcript_path", "")'), 0)
 
 class ActiveReqsHasTheSameTrap(unittest.TestCase):
     """H3. 형제 필드 `active_reqs` — 같은 함정, 더 큰 해."""
@@ -177,43 +149,29 @@ class ActiveReqsHasTheSameTrap(unittest.TestCase):
     def setUpClass(cls):
         cls.m, cls.tmp = _load("s9sweepD")
 
-    def test_h3a_string_becomes_a_list(self):
-        """문자열로 들어온 `active_reqs` 가 리스트로 모인다.
-
-        `s9 bind active_reqs REQ-X` 가 문자열을 넣는다. 그대로 두면 다음
-        `list(...)` 가 글자로 쪼갠다.
-        """
-        b = self.m._norm_binding({"active_reqs": "REQ-20260827-011-62x6"})
-        self.assertEqual(b["active_reqs"], ["REQ-20260827-011-62x6"])
-
-    def test_h3b_split_ids_are_rejoined(self):
-        """글자로 쪼개진 `active_reqs` 가 다시 붙는다."""
-        b = self.m._norm_binding(
-            {"active_reqs": list("REQ-20260827-011-62x6")})
-        self.assertEqual(b["active_reqs"], ["REQ-20260827-011-62x6"])
-
-    def test_h3c_claim_does_not_shatter_a_string(self):
-        """문자열 `active_reqs` 를 가진 바인딩에 클레임해도 상하지 않는다.
-
-        이것이 실제 해다 — 쪼개진 id 들이 `binding_req_ids` 로 흘러 클레임
-        판정이 깨지고, 워처가 같은 REQ에 워커를 중복 스폰한다.
-        """
-        m = self.m
-        os.makedirs(m.STATE, exist_ok=True)
-        with open(m.binding_path("testbox", "shatter"), "w",
-                  encoding="utf-8") as f:
-            json.dump({"machine": "testbox", "session": "shatter",
-                       "active_reqs": "REQ-20260827-011-62x6"}, f)
-        m._claim_req("testbox", "shatter", "REQ-20260827-012-62x6")
-        got = m.read_binding("testbox", "shatter")["active_reqs"]
-        self.assertTrue(all(len(x) > 1 for x in got), got)
-
-    def test_h3d_healthy_active_reqs_is_untouched(self):
-        """멀쩡한 목록은 건드리지 않는다 — 고침이 새 손실이 되면 안 된다."""
-        good = ["REQ-20260827-011-62x6", "REQ-20260827-012-62x6"]
-        b = self.m._norm_binding({"active_reqs": list(good)})
-        self.assertEqual(b["active_reqs"], good)
-
+    def test_active_reqs_has_the_same_trap(self):
+        """H3. 형제 필드 `active_reqs` — 같은 함정, 더 큰 해."""
+        with self.subTest("h3a_string_becomes_a_list"):
+            b = self.m._norm_binding({"active_reqs": "REQ-20260827-011-62x6"})
+            self.assertEqual(b["active_reqs"], ["REQ-20260827-011-62x6"])
+        with self.subTest("h3b_split_ids_are_rejoined"):
+            b = self.m._norm_binding(
+                {"active_reqs": list("REQ-20260827-011-62x6")})
+            self.assertEqual(b["active_reqs"], ["REQ-20260827-011-62x6"])
+        with self.subTest("h3c_claim_does_not_shatter_a_string"):
+            m = self.m
+            os.makedirs(m.STATE, exist_ok=True)
+            with open(m.binding_path("testbox", "shatter"), "w",
+                      encoding="utf-8") as f:
+                json.dump({"machine": "testbox", "session": "shatter",
+                           "active_reqs": "REQ-20260827-011-62x6"}, f)
+            m._claim_req("testbox", "shatter", "REQ-20260827-012-62x6")
+            got = m.read_binding("testbox", "shatter")["active_reqs"]
+            self.assertTrue(all(len(x) > 1 for x in got), got)
+        with self.subTest("h3d_healthy_active_reqs_is_untouched"):
+            good = ["REQ-20260827-011-62x6", "REQ-20260827-012-62x6"]
+            b = self.m._norm_binding({"active_reqs": list(good)})
+            self.assertEqual(b["active_reqs"], good)
 
 class StoredBindingsAreClean(unittest.TestCase):
     """이 워크스페이스에 실제로 남아 있는 데이터의 전수 확인.

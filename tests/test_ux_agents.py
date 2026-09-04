@@ -25,44 +25,45 @@ class TestUxAgents(unittest.TestCase):
             return f.read()
 
     # U1. 세 에이전트 모두 s9-design을 필수 스킬로 로드
-    def test_u1_skill_required(self):
-        for a in VISUAL:
-            txt = self._read(a)
-            self.assertIn("- **s9-design**", txt, a)
-            self.assertIn("필수 스킬", txt, a)
+    def test_test_ux_agents(self):
+        """TestUxAgents 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("u1_skill_required"):
+                for a in VISUAL:
+                    txt = self._read(a)
+                    self.assertIn("- **s9-design**", txt, a)
+                    self.assertIn("필수 스킬", txt, a)
 
-    # U2. 참조 계보가 정의에 명시된다 (요청: Apple·토스 참조)
-    def test_u2_reference_lineage(self):
-        for a in VISUAL:
-            txt = self._read(a)
-            self.assertIn("HIG", txt, a)
-            self.assertIn("토스", txt, a)
+            # U2. 참조 계보가 정의에 명시된다 (요청: Apple·토스 참조)
+        with self.subTest("u2_reference_lineage"):
+                for a in VISUAL:
+                    txt = self._read(a)
+                    self.assertIn("HIG", txt, a)
+                    self.assertIn("토스", txt, a)
 
-    # U3. 스킬이 실행 규칙을 담는다 — 원칙 이름만 나열하지 않는다
-    def test_u3_skill_actionable(self):
-        with open(SKILL, encoding="utf-8") as f:
-            s = f.read()
-        for key in ("빈 상태", "로딩", "에러", "prefers-reduced-motion",
-                    "4.5:1", "44", "되돌리기", "자가 점검"):
-            self.assertIn(key, s, key)
+            # U3. 스킬이 실행 규칙을 담는다 — 원칙 이름만 나열하지 않는다
+        with self.subTest("u3_skill_actionable"):
+                with open(SKILL, encoding="utf-8") as f:
+                    s = f.read()
+                for key in ("빈 상태", "로딩", "에러", "prefers-reduced-motion",
+                            "4.5:1", "44", "되돌리기", "자가 점검"):
+                    self.assertIn(key, s, key)
 
-    # U4. 스킬은 하나다 (REQ-20260825-082 판정: "굳이 2개로 나눌 이유가 없다").
-    #     ux-craft 디렉토리가 되살아나거나 정의가 그것을 가리키면 실패한다.
-    def test_u4_single_skill(self):
-        craft = os.path.join(HERE, "..", "harness", "claude", "skills", "ux-craft")
-        self.assertFalse(os.path.exists(craft), "ux-craft가 다시 생겼다")
-        for a in VISUAL:
-            self.assertNotIn("ux-craft", self._read(a), a)
+            # U4. 스킬은 하나다 (REQ-20260825-082 판정: "굳이 2개로 나눌 이유가 없다").
+            #     ux-craft 디렉토리가 되살아나거나 정의가 그것을 가리키면 실패한다.
+        with self.subTest("u4_single_skill"):
+                craft = os.path.join(HERE, "..", "harness", "claude", "skills", "ux-craft")
+                self.assertFalse(os.path.exists(craft), "ux-craft가 다시 생겼다")
+                for a in VISUAL:
+                    self.assertNotIn("ux-craft", self._read(a), a)
 
-    # U5. 흡수된 완성도 기준이 s9-design 안에 실제로 있다 — 이름만 합치고
-    #     내용이 빠지면 통합이 아니라 삭제다.
-    def test_u5_craft_content_absorbed(self):
-        with open(SKILL, encoding="utf-8") as f:
-            s = f.read()
-        for key in ("한 화면 한 결정", "prefers-reduced-motion", "4.5:1",
-                    "동사+목적", "자가 점검", "디자인 언어", "토큰"):
-            self.assertIn(key, s, key)
-
+            # U5. 흡수된 완성도 기준이 s9-design 안에 실제로 있다 — 이름만 합치고
+            #     내용이 빠지면 통합이 아니라 삭제다.
+        with self.subTest("u5_craft_content_absorbed"):
+            with open(SKILL, encoding="utf-8") as f:
+                s = f.read()
+            for key in ("한 화면 한 결정", "prefers-reduced-motion", "4.5:1",
+                        "동사+목적", "자가 점검", "디자인 언어", "토큰"):
+                self.assertIn(key, s, key)
 
 class TestNewSkin(unittest.TestCase):
     """새 스킨·톤 (REQ-20260825-062 재작업): 기존 화면을 손대는 대신 선택

@@ -40,66 +40,67 @@ class SecretApi(unittest.TestCase):
         cls.writer = cls.src[k:cls.src.index("def secret_remove(")]
 
     # N1. 목록은 키만 준다
-    def test_n1_keys_only(self):
-        self.assertIn('"key": k', self.listing)
-        self.assertNotIn("secret_value", self.listing,
-                         "목록이 값을 읽고 있다")
+    def test_secret_api(self):
+        """SecretApi 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_keys_only"):
+                self.assertIn('"key": k', self.listing)
+                self.assertNotIn("secret_value", self.listing,
+                                 "목록이 값을 읽고 있다")
 
-    # B1. 경로도 주지 않는다 — 값이 아니어도 필요 없는 것은 흘리지 않는다
-    def test_b1_no_paths(self):
-        self.assertIn('"where"', self.listing)
-        # 가려진 이름도 함께 — 목록에 안 나오는 것이 "사라졌다"로 읽히면 안 된다
-        self.assertIn('"shadowed"', self.listing)
-        self.assertNotIn("os.path.relpath(p0", self.listing)
-        self.assertNotIn('"path"', self.listing)
+            # B1. 경로도 주지 않는다 — 값이 아니어도 필요 없는 것은 흘리지 않는다
+        with self.subTest("b1_no_paths"):
+                self.assertIn('"where"', self.listing)
+                # 가려진 이름도 함께 — 목록에 안 나오는 것이 "사라졌다"로 읽히면 안 된다
+                self.assertIn('"shadowed"', self.listing)
+                self.assertNotIn("os.path.relpath(p0", self.listing)
+                self.assertNotIn('"path"', self.listing)
 
-    # N2. 넣을 때 값을 응답에 담지 않는다
-    def test_n2_set_echoes_key_only(self):
-        # 돌려주는 것은 키·둔 곳·가려짐뿐이다 — 값은 어디에도 없다
-        m = re.search(r'self\._json\(\{"ok": True, "key": key, "where": where,',
-                      self.setter)
-        self.assertIsNotNone(m, "set 응답이 키·둔 곳만 담지 않는다")
-        self.assertNotIn("val}", self.setter)
-        self.assertNotIn('"value"', self.setter.split("self._json")[-1])
+            # N2. 넣을 때 값을 응답에 담지 않는다
+        with self.subTest("n2_set_echoes_key_only"):
+                # 돌려주는 것은 키·둔 곳·가려짐뿐이다 — 값은 어디에도 없다
+                m = re.search(r'self\._json\(\{"ok": True, "key": key, "where": where,',
+                              self.setter)
+                self.assertIsNotNone(m, "set 응답이 키·둔 곳만 담지 않는다")
+                self.assertNotIn("val}", self.setter)
+                self.assertNotIn('"value"', self.setter.split("self._json")[-1])
 
-    # N3. **쓰는 자리는 한 곳** — 화면과 CLI 가 같은 함수를 지난다
-    def test_n3_one_place_writes(self):
-        self.assertIn("secret_write(actor, key, val, where)", self.setter,
-                      "API 가 파일을 직접 쓴다 — CLI 와 두 벌이 된다")
-        self.assertNotIn("os.open(", self.setter, "핸들러가 파일을 직접 연다")
-        cli = self.src[self.src.index("def cmd_secret("):]
-        cli = cli[:cli.index("# ------------------------------------------- 대화")]
-        self.assertIn("secret_write(user, key, val, secret_where(args))", cli,
-                      "CLI 가 다른 길로 쓴다")
+            # N3. **쓰는 자리는 한 곳** — 화면과 CLI 가 같은 함수를 지난다
+        with self.subTest("n3_one_place_writes"):
+                self.assertIn("secret_write(actor, key, val, where)", self.setter,
+                              "API 가 파일을 직접 쓴다 — CLI 와 두 벌이 된다")
+                self.assertNotIn("os.open(", self.setter, "핸들러가 파일을 직접 연다")
+                cli = self.src[self.src.index("def cmd_secret("):]
+                cli = cli[:cli.index("# ------------------------------------------- 대화")]
+                self.assertIn("secret_write(user, key, val, secret_where(args))", cli,
+                              "CLI 가 다른 길로 쓴다")
 
-    # N4. 바깥으로 못 쓸 때 **조용히 안으로 떨어뜨리지 않는다**
-    def test_n4_external_refusal_is_loud(self):
-        self.assertIn('if where == "external":', self.writer)
-        self.assertIn('if st != "ok":', self.writer)
-        self.assertIn("raise ValueError(SECRET_EXT_BLOCK", self.writer,
-                      "바깥을 못 쓰는데 막지 않는다")
+            # N4. 바깥으로 못 쓸 때 **조용히 안으로 떨어뜨리지 않는다**
+        with self.subTest("n4_external_refusal_is_loud"):
+                self.assertIn('if where == "external":', self.writer)
+                self.assertIn('if st != "ok":', self.writer)
+                self.assertIn("raise ValueError(SECRET_EXT_BLOCK", self.writer,
+                              "바깥을 못 쓰는데 막지 않는다")
 
-    # B2. 파일 권한을 좁힌다 — 같은 머신의 다른 계정이 읽으면 안 된다
-    def test_b2_permissions(self):
-        self.assertIn("0o700", self.writer)
-        self.assertIn("0o600", self.writer)
+            # B2. 파일 권한을 좁힌다 — 같은 머신의 다른 계정이 읽으면 안 된다
+        with self.subTest("b2_permissions"):
+                self.assertIn("0o700", self.writer)
+                self.assertIn("0o600", self.writer)
 
-    # B3. 키 형식을 가린다 — 경로를 벗어나는 이름을 받지 않는다
-    def test_b3_key_validated(self):
-        self.assertIn("SECRET_KEY_RE.fullmatch", self.writer)
-        import importlib.machinery, importlib.util
-        spec = importlib.util.spec_from_loader(
-            "s9_sec", importlib.machinery.SourceFileLoader("s9_sec", S9))
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-        for bad in ("../x", "a/b", "", "a b"):
-            self.assertIsNone(m.SECRET_KEY_RE.fullmatch(bad), bad)
-        self.assertIsNotNone(m.SECRET_KEY_RE.fullmatch("API_TOKEN"))
+            # B3. 키 형식을 가린다 — 경로를 벗어나는 이름을 받지 않는다
+        with self.subTest("b3_key_validated"):
+                self.assertIn("SECRET_KEY_RE.fullmatch", self.writer)
+                import importlib.machinery, importlib.util
+                spec = importlib.util.spec_from_loader(
+                    "s9_sec", importlib.machinery.SourceFileLoader("s9_sec", S9))
+                m = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(m)
+                for bad in ("../x", "a/b", "", "a b"):
+                    self.assertIsNone(m.SECRET_KEY_RE.fullmatch(bad), bad)
+                self.assertIsNotNone(m.SECRET_KEY_RE.fullmatch("API_TOKEN"))
 
-    # F1. 빈 값은 넣지 않는다 — 빈 비밀은 "지워졌나 안 넣었나"를 흐린다
-    def test_f1_empty_refused(self):
-        self.assertIn("빈 값은 저장하지 않는다", self.writer)
-
+            # F1. 빈 값은 넣지 않는다 — 빈 비밀은 "지워졌나 안 넣었나"를 흐린다
+        with self.subTest("f1_empty_refused"):
+            self.assertIn("빈 값은 저장하지 않는다", self.writer)
 
 if __name__ == "__main__":
     unittest.main()

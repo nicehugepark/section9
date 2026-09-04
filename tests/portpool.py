@@ -408,3 +408,80 @@ def describe_stray(p):
     port = _argv_port(p.get("argv") or [])
     where = p.get("root") or p.get("cwd") or "?"
     return f"pid {p.get('pid')} port {port} 작업공간 {where}"
+
+
+def urlopen_retry(target, timeout=5.0, tries=3, pause=0.3):
+    """붙자마자 끊기는 갈래를 여기서 한 번만 다시 건다 (REQ-20260904-003).
+
+    이 환경에는 연결이 서자마자 끊기는 갈래가 낮은 비율로 있다 — 윈도우 쪽
+    중계가 같은 자리를 함께 듣기 때문이다(REQ-20260902-006 이 지목했다).
+    `http.client` 는 그것을 `RemoteDisconnected` 로 올리는데, 그 예외는
+    `ConnectionResetError` 의 자식이라 아래 한 줄에 함께 걸린다.
+
+    **왜 파일마다가 아니라 여기인가.** 2026-09-04 하루에 같은 모양으로 셋이
+    넘어졌다(project_api · dashboard_chat · stream_live_ended). 셋 다 POST 에는
+    되걸기가 있고 GET 에는 없었다 — 비대칭이 매번 다른 파일을 넘어뜨렸다.
+    되걸기가 나뉘어 있으면 한쪽만 고쳐지고, 그 한쪽이 다음 사고가 된다.
+
+    반환: (status, 본문 문자열). HTTPError 는 되걸지 않는다 — 서버가 답을 준
+    것이라 다시 걸어도 같은 답이고, 그 답이 곧 시험이 보려던 것일 수 있다.
+    """
+    import urllib.error
+    import urllib.request
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(target, timeout=timeout) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode()
+        except (ConnectionError, urllib.error.URLError):
+            if attempt == tries - 1:
+                raise
+            time.sleep(pause)
+
+
+_URLOPEN_WRAPPED = False
+
+
+def install_urlopen_retry(tries=5, pause=0.3):
+    """`urllib.request.urlopen` 에 되걸기를 한 번 입힌다 (REQ-20260904-003).
+
+    **왜 파일마다가 아니라 여기인가.** WSL2 virtioproxy 에서는 중계가 연결을
+    대신 받고 곧 RST 를 던지는 갈래가 낮은 비율로 있다(`wait_server` 머리말의
+    그 관찰이고, REQ-20260902-006 이 9909 에서 지목한 것과 같은 뿌리다).
+    그래서 로컬 서버에 요청하는 시험은 부하가 걸릴 때 낮은 비율로 넘어진다.
+
+    2026-09-04 하루에 **네 파일이 차례로** 같은 모양으로 넘어졌다
+    (project_api → dashboard_chat → stream_live_ended → priority_handle).
+    실행마다 희생자가 바뀌니 파일을 하나씩 고치는 것은 끝이 없다 — 훑어보니
+    되걸기 없이 로컬 서버를 두드리는 시험이 **15개**였다. 그래서 자리를 하나로
+    한다.
+
+    `HTTPError` 는 되걸지 않는다 — 서버가 답을 준 것이고, 그 답이 곧 시험이
+    보려던 것일 수 있다(`URLError` 의 자식이라 순서가 중요하다). 서버가 정말
+    없으면 세 번 두드린 뒤 같은 예외가 그대로 오른다 — 판정은 안 바뀌고
+    조금 늦어질 뿐이다.
+    """
+    global _URLOPEN_WRAPPED
+    if _URLOPEN_WRAPPED:
+        return
+    import urllib.error
+    import urllib.request
+    real = urllib.request.urlopen
+
+    def retrying(*a, **kw):
+        for attempt in range(tries):
+            try:
+                return real(*a, **kw)
+            except urllib.error.HTTPError:
+                raise                      # 서버가 준 답이다 — 다시 걸지 않는다
+            except (ConnectionError, urllib.error.URLError):
+                if attempt == tries - 1:
+                    raise
+                # 물러서며 기다린다 — `wait_server` 와 같은 규율이다. 고장이
+                # 났을 때 같은 간격으로 계속 두드리면 그 두드림이 고장을
+                # 키운다(DOC-20260826-008 의 되먹임).
+                time.sleep(pause * (2 ** attempt))
+
+    urllib.request.urlopen = retrying
+    _URLOPEN_WRAPPED = True

@@ -50,134 +50,106 @@ class GraphLabels(unittest.TestCase):
 
     # ---------- ① dag 라고 게이트를 건너뛰지 않는다 ----------
 
-    def test_dag_no_longer_bypasses_the_label_gate(self):
-        """`|| graphLayout === "dag"` 한 조각이 안개의 원인이었다."""
-        self.assertNotRegex(
-            self.src, r'showLabel[\s\S]{0,200}graphLayout === "dag"',
-            '라벨 규칙이 dag 를 예외로 둔다 — 476개를 매 프레임 전부 그린다')
-        self.assertNotIn("const showLabel", self.src,
-                         "노드마다 자기 이름을 그리던 옛 규칙이 남아 있다")
+    def test_graph_labels(self):
+        """GraphLabels 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("dag_no_longer_bypasses_the_label_gate"):
+            self.assertNotRegex(
+                self.src, r'showLabel[\s\S]{0,200}graphLayout === "dag"',
+                '라벨 규칙이 dag 를 예외로 둔다 — 476개를 매 프레임 전부 그린다')
+            self.assertNotIn("const showLabel", self.src,
+                             "노드마다 자기 이름을 그리던 옛 규칙이 남아 있다")
+        with self.subTest("labels_are_drawn_after_every_node"):
+                d = self._fn("draw")
+                i_node = d.index("for (const n of drawOrder)")
+                i_lab = d.index("pickLabels(hov, nb)")
+                self.assertLess(i_node, i_lab, "이름을 점보다 먼저 그린다 — 점에 잘린다")
+                self.assertLess(d.index("picked.acc"), d.index("picked.hot"),
+                                "hover 이름이 채택 집합보다 먼저 그려진다 (맨 위여야 한다)")
 
-    def test_labels_are_drawn_after_every_node(self):
-        """40개로 줄여도 뒤에 그려진 점에 잘리면 소용이 없다."""
-        d = self._fn("draw")
-        i_node = d.index("for (const n of drawOrder)")
-        i_lab = d.index("pickLabels(hov, nb)")
-        self.assertLess(i_node, i_lab, "이름을 점보다 먼저 그린다 — 점에 잘린다")
-        self.assertLess(d.index("picked.acc"), d.index("picked.hot"),
-                        "hover 이름이 채택 집합보다 먼저 그려진다 (맨 위여야 한다)")
+            # ---------- ② 겹치지 않는 것만, 예산까지 ----------
+        with self.subTest("overlap_is_actually_measured"):
+            self.assertIn("ctx.measureText", self._fn("labWidth"),
+                          "라벨 폭을 재지 않는다 — 겹침을 판정할 수 없다")
+            self.assertRegex(self.src, r"const labHits = \(a, b\) =>[\s\S]{0,160}a\.x0 < b\.x1",
+                             "겹침 판정(사각형 교차)이 없다")
+            pick = self._fn("pickLabels")
+            self.assertIn("labHits(a, c)", pick, "채택 전에 겹침을 보지 않는다")
+            self.assertIn("acc.length >= LAB_BUDGET", pick, "예산 상한이 없다")
+            self.assertRegex(self.src, r"const LAB_BUDGET = \d+;", "예산 값이 없다")
+        with self.subTest("no_zoom_cliff"):
+            self.assertNotIn("st.tf.k > 0.75 && n.near > 0.45", self.src,
+                             "줌·깊이 절벽이 남아 있다 — 전체 보기에서 이름이 사라진다")
+        with self.subTest("off_screen_labels_are_culled"):
+            self.assertRegex(self._fn("pickLabels"),
+                             r"b\.x1 < 0 \|\| b\.x0 > W \|\| b\.y1 < 0 \|\| b\.y0 > H",
+                             "화면 밖 컬링이 없다")
+        with self.subTest("measure_text_is_cached_per_title"):
+            fn = self._fn("labWidth")
+            self.assertIn("labWCache", fn, "제목별 폭 기억이 없다")
+            self.assertIn("labWCache.set", fn)
+        with self.subTest("pick_runs_every_frame"):
+                self.assertIn("pickLabels(hov, nb)", self._fn("draw"),
+                              "그리는 자리에서 매번 고르지 않는다")
 
-    # ---------- ② 겹치지 않는 것만, 예산까지 ----------
+            # ---------- ③ 우선순위는 "지금 손이 가야 할 것" ----------
+        with self.subTest("priority_is_what_needs_a_hand_now"):
+                self.assertRegex(self.src, r"const labPri = n => \(n\.waiting \|\| 0\) \* 10",
+                                 "병목(미완료 파생)이 첫 자리가 아니다")
+                self.assertIn("LAB_ST[n.status]", self._src_of("labPri"),
+                              "진행 중·막힘·검토를 앞세우지 않는다")
+                self.assertIn("Math.sqrt(deg[n.id] || 0)", self._src_of("labPri"),
+                              "허브(연결 수)를 보지 않는다")
+                # n.near(문서 id 해시가 절반)로 이름을 고르던 옛 규칙이 돌아오지 않게
+                self.assertNotIn("n.near > 0.45", self.src,
+                                 "임의값(해시 섞인 깊이)이 다시 이름을 고른다")
 
-    def test_overlap_is_actually_measured(self):
-        """겹침 판정 코드가 어디에도 없었다 — 이제 사각형을 재서 겹치면 버린다."""
-        self.assertIn("ctx.measureText", self._fn("labWidth"),
-                      "라벨 폭을 재지 않는다 — 겹침을 판정할 수 없다")
-        self.assertRegex(self.src, r"const labHits = \(a, b\) =>[\s\S]{0,160}a\.x0 < b\.x1",
-                         "겹침 판정(사각형 교차)이 없다")
-        pick = self._fn("pickLabels")
-        self.assertIn("labHits(a, c)", pick, "채택 전에 겹침을 보지 않는다")
-        self.assertIn("acc.length >= LAB_BUDGET", pick, "예산 상한이 없다")
-        self.assertRegex(self.src, r"const LAB_BUDGET = \d+;", "예산 값이 없다")
+            # ---------- ④ 관성 ----------
+        with self.subTest("hysteresis_keeps_names_from_flickering"):
+            pick = self._fn("pickLabels")
+            self.assertRegex(pick, r"labPrev\.has\(n\.id\) \? 1e6 : 0",
+                             "관성이 없다 — 팬 중 이름이 깜빡인다")
+            self.assertIn("labPrev = ids", pick, "이번 프레임 채택을 기억하지 않는다")
+        with self.subTest("hover_names_dodge_each_other"):
+                pick = self._fn("pickLabels")
+                self.assertRegex(pick, r"for \(const dy of \[0, -\(2 \* rr \+ 21\)",
+                                 "hover 이름이 자리를 옮겨 보지 않는다 — 서로 포갠다")
+                self.assertIn("n.id === hov.id || !hot.some", pick,
+                              "얹은 노드 자신의 이름이 밀려날 수 있다")
 
-    def test_no_zoom_cliff(self):
-        """확대해야 이름이 나오는 절벽(k>0.75·near>0.45)을 없앤다.
+            # ---------- ⑤ 층 접기 ----------
+        with self.subTest("layers_wrap_instead_of_crushing_into_one_row"):
+            self.assertNotIn("const gap = Math.min(170, (W - 120) / Math.max(layer.length, 1));",
+                             self.src, "한 층을 반드시 한 줄에 우겨넣는 옛 계산이 남아 있다")
+            self.assertRegex(self.src, r"const DAG_GAP_MIN = (1[89]|2[0-6]);",
+                             "가로 간격 하한이 없거나 18~26px 밖이다")
+            self.assertIn("Math.floor(avail / DAG_GAP_MIN)", self.src, "줄바꿈 폭을 하한으로 정하지 않는다")
+            self.assertIn("yCur + r * DAG_ROW_H", self.src, "접힌 줄이 세로로 벌어지지 않는다")
+            self.assertNotIn("n.y = 70 + d * 105;", self.src,
+                             "층 세로 위치가 고정이다 — 접은 줄만큼 밀리지 않아 층이 포갠다")
+            self.assertRegex(self.src, r"yCur \+= \(rows - 1\) \* DAG_ROW_H \+ DAG_LAYER_H",
+                             "층 사이가 누적 오프셋이 아니다")
+        with self.subTest("dag_starts_at_fit"):
+            self.assertRegex(self.src,
+                             r'if \(graphLayout === "dag" && !graphTf\)\{[\s\S]{0,120}gFitTf\(\)',
+                             "dag 첫 화면이 전체 보기가 아니다")
+        with self.subTest("dag_layout_reads_as_layers"):
+                self.assertRegex(self.src,
+                                 r'const pfOf = n => graphLayout === "dag" \? 1 :',
+                                 "dag 에서도 깊이 시차가 곧은 줄을 휘게 한다")
 
-        그 절벽 때문에 force 는 전체 보기에서 이름이 0개였다 — dag 안개와
-        정확히 대칭인 실패다."""
-        self.assertNotIn("st.tf.k > 0.75 && n.near > 0.45", self.src,
-                         "줌·깊이 절벽이 남아 있다 — 전체 보기에서 이름이 사라진다")
+            # ---------- ⑥ 전후를 같은 자로 잰다 ----------
+        with self.subTest("diagnostic_handles"):
+                for h, why in (("glab", "잰 값을 판 위에 적는 손잡이"),
+                               ("glabraw", "거르기 전 대조군"),
+                               ("gdagraw", "접기 전 대조군"),
+                               ("glabnohys", "관성 없는 대조군"),
+                               ("gpan", "끄는 동안 갈리는지 재는 손잡이")):
+                    self.assertIn("[?&]%s" % h, self.src, "%s (?%s) 가 없다" % (why, h))
+                stat = self._fn("drawLabStat")
+                self.assertIn("겹침쌍", stat, "겹침쌍을 적지 않는다 — 0 임을 그림으로 못 보인다")
+                self.assertIn("교체/프레임", stat, "깜빡임을 적지 않는다")
 
-    def test_off_screen_labels_are_culled(self):
-        """화면 밖 이름이 예산을 먹으면 보이는 자리가 빈다."""
-        self.assertRegex(self._fn("pickLabels"),
-                         r"b\.x1 < 0 \|\| b\.x0 > W \|\| b\.y1 < 0 \|\| b\.y0 > H",
-                         "화면 밖 컬링이 없다")
-
-    def test_measure_text_is_cached_per_title(self):
-        """폰트가 고정이라 제목당 한 번이면 된다 — 줌마다 다시 재지 않는다."""
-        fn = self._fn("labWidth")
-        self.assertIn("labWCache", fn, "제목별 폭 기억이 없다")
-        self.assertIn("labWCache.set", fn)
-
-    def test_pick_runs_every_frame(self):
-        """0.1ms 를 아끼자고 '언제 무효화하나'라는 결함 표면을 사지 않는다."""
-        self.assertIn("pickLabels(hov, nb)", self._fn("draw"),
-                      "그리는 자리에서 매번 고르지 않는다")
-
-    # ---------- ③ 우선순위는 "지금 손이 가야 할 것" ----------
-
-    def test_priority_is_what_needs_a_hand_now(self):
-        """병목 → 진행 중·막힘·검토 → 허브 → 미완료."""
-        self.assertRegex(self.src, r"const labPri = n => \(n\.waiting \|\| 0\) \* 10",
-                         "병목(미완료 파생)이 첫 자리가 아니다")
-        self.assertIn("LAB_ST[n.status]", self._src_of("labPri"),
-                      "진행 중·막힘·검토를 앞세우지 않는다")
-        self.assertIn("Math.sqrt(deg[n.id] || 0)", self._src_of("labPri"),
-                      "허브(연결 수)를 보지 않는다")
-        # n.near(문서 id 해시가 절반)로 이름을 고르던 옛 규칙이 돌아오지 않게
-        self.assertNotIn("n.near > 0.45", self.src,
-                         "임의값(해시 섞인 깊이)이 다시 이름을 고른다")
-
-    # ---------- ④ 관성 ----------
-
-    def test_hysteresis_keeps_names_from_flickering(self):
-        """직전 프레임에 있던 이름을 정렬 맨 앞에."""
-        pick = self._fn("pickLabels")
-        self.assertRegex(pick, r"labPrev\.has\(n\.id\) \? 1e6 : 0",
-                         "관성이 없다 — 팬 중 이름이 깜빡인다")
-        self.assertIn("labPrev = ids", pick, "이번 프레임 채택을 기억하지 않는다")
-
-    def test_hover_names_dodge_each_other(self):
-        """dag 는 이웃이 같은 줄에 서므로 hover 이름이 그대로 쌓인다."""
-        pick = self._fn("pickLabels")
-        self.assertRegex(pick, r"for \(const dy of \[0, -\(2 \* rr \+ 21\)",
-                         "hover 이름이 자리를 옮겨 보지 않는다 — 서로 포갠다")
-        self.assertIn("n.id === hov.id || !hot.some", pick,
-                      "얹은 노드 자신의 이름이 밀려날 수 있다")
-
-    # ---------- ⑤ 층 접기 ----------
-
-    def test_layers_wrap_instead_of_crushing_into_one_row(self):
-        """하한 없는 간격이 352개를 2.84px 로 눌렀다 — 점부터 겹쳤다."""
-        self.assertNotIn("const gap = Math.min(170, (W - 120) / Math.max(layer.length, 1));",
-                         self.src, "한 층을 반드시 한 줄에 우겨넣는 옛 계산이 남아 있다")
-        self.assertRegex(self.src, r"const DAG_GAP_MIN = (1[89]|2[0-6]);",
-                         "가로 간격 하한이 없거나 18~26px 밖이다")
-        self.assertIn("Math.floor(avail / DAG_GAP_MIN)", self.src, "줄바꿈 폭을 하한으로 정하지 않는다")
-        self.assertIn("yCur + r * DAG_ROW_H", self.src, "접힌 줄이 세로로 벌어지지 않는다")
-        self.assertNotIn("n.y = 70 + d * 105;", self.src,
-                         "층 세로 위치가 고정이다 — 접은 줄만큼 밀리지 않아 층이 포갠다")
-        self.assertRegex(self.src, r"yCur \+= \(rows - 1\) \* DAG_ROW_H \+ DAG_LAYER_H",
-                         "층 사이가 누적 오프셋이 아니다")
-
-    def test_dag_starts_at_fit(self):
-        """접으면 판이 세로로 길어진다 — 배율 1 로 시작하면 윗층만 보인다."""
-        self.assertRegex(self.src,
-                         r'if \(graphLayout === "dag" && !graphTf\)\{[\s\S]{0,120}gFitTf\(\)',
-                         "dag 첫 화면이 전체 보기가 아니다")
-
-    def test_dag_layout_reads_as_layers(self):
-        """자리 자체가 뜻인 배치에 노드별 깊이 배율을 먹이면 줄이 휜다."""
-        self.assertRegex(self.src,
-                         r'const pfOf = n => graphLayout === "dag" \? 1 :',
-                         "dag 에서도 깊이 시차가 곧은 줄을 휘게 한다")
-
-    # ---------- ⑥ 전후를 같은 자로 잰다 ----------
-
-    def test_diagnostic_handles(self):
-        """캡처 한 장이 곧 증거가 되게 (?gshape 와 동형)."""
-        for h, why in (("glab", "잰 값을 판 위에 적는 손잡이"),
-                       ("glabraw", "거르기 전 대조군"),
-                       ("gdagraw", "접기 전 대조군"),
-                       ("glabnohys", "관성 없는 대조군"),
-                       ("gpan", "끄는 동안 갈리는지 재는 손잡이")):
-            self.assertIn("[?&]%s" % h, self.src, "%s (?%s) 가 없다" % (why, h))
-        stat = self._fn("drawLabStat")
-        self.assertIn("겹침쌍", stat, "겹침쌍을 적지 않는다 — 0 임을 그림으로 못 보인다")
-        self.assertIn("교체/프레임", stat, "깜빡임을 적지 않는다")
-
-    # ---------- 도구 ----------
+            # ---------- 도구 ----------
 
     def _fn(self, name):
         """그래프 조각 **안에서만** 찾는다 (REQ-20260829-027 이후).

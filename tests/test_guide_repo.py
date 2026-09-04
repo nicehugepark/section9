@@ -137,93 +137,89 @@ class TestGuideRepoSection(unittest.TestCase):
         cls.m_sec = _section(cls.md, MD_FROM, MD_TO)
 
     # ── ① 사유의 개수가 코드에 몇 개인가 ──────────────────────────────
-    def test_both_gate_has_exactly_seven(self):
-        """`git_can` 이 둘 다 잠그는 조건은 일곱이다.
+    def test_test_guide_repo_section(self):
+        """TestGuideRepoSection 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("both_gate_has_exactly_seven"):
+                tree = ast.parse(io.open(S9, encoding="utf-8").read())
+                fn = next(n for n in ast.walk(tree)
+                          if isinstance(n, ast.FunctionDef) and n.name == "git_can")
+                both = next(n.value for n in fn.body
+                            if isinstance(n, ast.Assign)
+                            and getattr(n.targets[0], "id", "") == "both")
+                self.assertIsInstance(both, ast.List)
+                self.assertEqual(len(both.elts), 7,
+                                 "둘 다 잠그는 사유가 7개가 아니다 — 가이드의 "
+                                 "「단추가 잠기는 이유」도 함께 고쳐야 한다")
 
-        여덟째가 생기면 여기서 먼저 깨진다 — 가이드가 일곱만 적은 채 낡는 것을
-        막는 자리. 세는 것은 주석이 아니라 **코드의 모양**(ast)이다.
-        """
-        tree = ast.parse(io.open(S9, encoding="utf-8").read())
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, ast.FunctionDef) and n.name == "git_can")
-        both = next(n.value for n in fn.body
-                    if isinstance(n, ast.Assign)
-                    and getattr(n.targets[0], "id", "") == "both")
-        self.assertIsInstance(both, ast.List)
-        self.assertEqual(len(both.elts), 7,
-                         "둘 다 잠그는 사유가 7개가 아니다 — 가이드의 "
-                         "「단추가 잠기는 이유」도 함께 고쳐야 한다")
+            # ── ② 일곱이 서버 문장과 가이드 두 벌에 함께 서 있는가 ────────────
+        with self.subTest("seven_reasons_match_server_and_both_guides"):
+            for name, over, proxy, frag in BOTH:
+                with self.subTest(name):
+                    can = S9MOD.git_can(_base_state(**over), proxy_for=proxy)
+                    self.assertFalse(can["pull"]["ok"], "%s: pull 이 열려 있다" % name)
+                    self.assertFalse(can["push"]["ok"], "%s: push 가 열려 있다" % name)
+                    self.assertIn(frag, can["pull"]["why"],
+                                  "%s: 서버 문장이 바뀌었다 — 가이드도 함께" % name)
+                    self.assertIn(frag, can["push"]["why"])
+                    self.assertIn(frag, self.h_sec, "%s: guide.html 에 없다" % name)
+                    self.assertIn(frag, self.m_sec, "%s: guide.md 에 없다" % name)
+        with self.subTest("one_sided_reasons_match_server_and_both_guides"):
+            for name, over, locked, open_side, frag in ONE_SIDED:
+                with self.subTest(name):
+                    can = S9MOD.git_can(_base_state(**over))
+                    self.assertFalse(can[locked]["ok"],
+                                     "%s: %s 가 열려 있다" % (name, locked))
+                    self.assertTrue(can[open_side]["ok"],
+                                    "%s: %s 까지 잠겼다" % (name, open_side))
+                    self.assertIn(frag, can[locked]["why"])
+                    self.assertIn(frag, self.h_sec, "%s: guide.html 에 없다" % name)
+                    self.assertIn(frag, self.m_sec, "%s: guide.md 에 없다" % name)
+        with self.subTest("network_timeout_number_is_the_code_number"):
+                n = S9MOD.GIT_NET_TIMEOUT
+                for label, sec in (("guide.html", self.h_sec), ("guide.md", self.m_sec)):
+                    self.assertIn("%d초" % n, sec,
+                                  "%s: 대기 시간이 코드(%d초)와 다르다" % (label, n))
 
-    # ── ② 일곱이 서버 문장과 가이드 두 벌에 함께 서 있는가 ────────────
-    def test_seven_reasons_match_server_and_both_guides(self):
-        for name, over, proxy, frag in BOTH:
-            with self.subTest(name):
-                can = S9MOD.git_can(_base_state(**over), proxy_for=proxy)
-                self.assertFalse(can["pull"]["ok"], "%s: pull 이 열려 있다" % name)
-                self.assertFalse(can["push"]["ok"], "%s: push 가 열려 있다" % name)
-                self.assertIn(frag, can["pull"]["why"],
-                              "%s: 서버 문장이 바뀌었다 — 가이드도 함께" % name)
-                self.assertIn(frag, can["push"]["why"])
-                self.assertIn(frag, self.h_sec, "%s: guide.html 에 없다" % name)
-                self.assertIn(frag, self.m_sec, "%s: guide.md 에 없다" % name)
+            # ── ③ 낱말 규율 ────────────────────────────────────────────────────
+        with self.subTest("word_discipline"):
+                for label, sec in (("guide.html", self.h_sec), ("guide.md", self.m_sec)):
+                    for bad in FORBIDDEN:
+                        self.assertNotIn(bad, sec,
+                                         "%s: 「%s」 — 원어로 세울 낱말이다" % (label, bad))
+                    for pat in FORBIDDEN_RE:
+                        self.assertIsNone(re.search(pat, sec),
+                                          "%s: /%s/ — 원어로 세울 낱말이다" % (label, pat))
+                    for word in VERBATIM:
+                        self.assertIn(word, sec, "%s: `%s` 가 없다" % (label, word))
+                    for word in NATIVE:
+                        self.assertIn(word, sec,
+                                      "%s: 「%s」 는 우리 말로 남는다 — 무차별 원어도 "
+                                      "결함이다" % (label, word))
 
-    def test_one_sided_reasons_match_server_and_both_guides(self):
-        for name, over, locked, open_side, frag in ONE_SIDED:
-            with self.subTest(name):
-                can = S9MOD.git_can(_base_state(**over))
-                self.assertFalse(can[locked]["ok"],
-                                 "%s: %s 가 열려 있다" % (name, locked))
-                self.assertTrue(can[open_side]["ok"],
-                                "%s: %s 까지 잠겼다" % (name, open_side))
-                self.assertIn(frag, can[locked]["why"])
-                self.assertIn(frag, self.h_sec, "%s: guide.html 에 없다" % name)
-                self.assertIn(frag, self.m_sec, "%s: guide.md 에 없다" % name)
-
-    def test_network_timeout_number_is_the_code_number(self):
-        """「90초 안에 답이 없거나」의 90 은 `GIT_NET_TIMEOUT` 이다."""
-        n = S9MOD.GIT_NET_TIMEOUT
-        for label, sec in (("guide.html", self.h_sec), ("guide.md", self.m_sec)):
-            self.assertIn("%d초" % n, sec,
-                          "%s: 대기 시간이 코드(%d초)와 다르다" % (label, n))
-
-    # ── ③ 낱말 규율 ────────────────────────────────────────────────────
-    def test_word_discipline(self):
-        for label, sec in (("guide.html", self.h_sec), ("guide.md", self.m_sec)):
-            for bad in FORBIDDEN:
-                self.assertNotIn(bad, sec,
-                                 "%s: 「%s」 — 원어로 세울 낱말이다" % (label, bad))
-            for pat in FORBIDDEN_RE:
-                self.assertIsNone(re.search(pat, sec),
-                                  "%s: /%s/ — 원어로 세울 낱말이다" % (label, pat))
-            for word in VERBATIM:
-                self.assertIn(word, sec, "%s: `%s` 가 없다" % (label, word))
-            for word in NATIVE:
-                self.assertIn(word, sec,
-                              "%s: 「%s」 는 우리 말로 남는다 — 무차별 원어도 "
-                              "결함이다" % (label, word))
-
-    # ── ④ 두 벌이 갈리지 않는가 ────────────────────────────────────────
-    def test_md_is_regenerated_from_html(self):
-        """`docs/guide.md` 는 파생물이다 — 재생성 결과와 글자까지 같아야 한다.
-
-        원본(html)만 고치고 `bin/s9-guide-md` 재실행을 잊으면 두 벌이 갈린다.
-        임시 디렉토리로 뽑아 비교하므로 저장소를 건드리지 않는다.
-        """
-        with tempfile.TemporaryDirectory(prefix="s9guidemd-") as tmp:
-            out = os.path.join(tmp, "guide.md")
-            r = subprocess.run([sys.executable, GEN, "--src", HTML,
-                                "--out", out],
-                               capture_output=True, text=True)
-            self.assertEqual(r.returncode, 0, r.stderr)
-            fresh = io.open(out, encoding="utf-8").read()
-        self.assertEqual(self.md, fresh,
-                         "docs/guide.md 가 web/guide.html 과 갈렸다 — "
-                         "`bin/s9-guide-md` 를 다시 돌려라")
-
-    def test_toc_has_the_section(self):
-        self.assertIn('href="#s-repo"', self.html,
-                      "좌측 목차에서 「저장소」 절로 갈 수 없다")
-
+            # ── ④ 두 벌이 갈리지 않는가 ────────────────────────────────────────
+        with self.subTest("md_is_regenerated_from_html"):
+            with tempfile.TemporaryDirectory(prefix="s9guidemd-") as tmp:
+                out = os.path.join(tmp, "guide.md")
+                r = subprocess.run([sys.executable, GEN, "--src", HTML,
+                                    "--out", out],
+                                   capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                fresh = io.open(out, encoding="utf-8").read()
+            self.assertEqual(self.md, fresh,
+                             "docs/guide.md 가 web/guide.html 과 갈렸다 — "
+                             "`bin/s9-guide-md` 를 다시 돌려라")
+        with self.subTest("tables_stay_tables"):
+            n_html = self.html.count("<table")
+            heads = [ln for ln in self.md.splitlines()
+                     if ln.startswith("|") and set(ln) <= set("| -")]
+            self.assertEqual(len(heads), n_html,
+                             "html 의 표 %d 개 중 md 에서 표로 선 것은 %d 개다"
+                             % (n_html, len(heads)))
+            self.assertIn("| 점 | 의미 | 해석 |", self.md,
+                          "3장 「실시간 신호 읽기」 표가 다시 뭉갰다")
+        with self.subTest("toc_has_the_section"):
+            self.assertIn('href="#s-repo"', self.html,
+                          "좌측 목차에서 「저장소」 절로 갈 수 없다")
 
 if __name__ == "__main__":
     unittest.main()

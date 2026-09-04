@@ -69,12 +69,11 @@ class TestDepEdges(unittest.TestCase):
         return m
 
     def catalog(self, rid):
-        with open(os.path.join(TMP, "index", "catalog.jsonl"),
-                  encoding="utf-8") as f:
-            for line in f:
-                row = json.loads(line)
-                if row["id"] == rid:
-                    return row
+        # 파일을 직접 열지 않는다 — 갓 쓴 행은 base 가 아니라 델타에 있다
+        # (증분 카탈로그, REQ-20260902-035). 병합된 관문만이 전량과 같다.
+        for row in mod.load_catalog():
+            if row["id"] == rid:
+                return row
         raise AssertionError(f"{rid} not in catalog")
 
     # D8 — 선행은 미완의 요청만이다 (REQ-20260830-036 실사고: 긴급 카드가

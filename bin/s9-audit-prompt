@@ -19,7 +19,28 @@ import re
 import subprocess
 import sys
 
+
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
 S9 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "s9")
+# `bin/s9` 를 부르는 argv (REQ-20260903-005). 경로 하나만 넘기면 **윈도우에서
+# 부를 수가 없다** — 그 판에는 shebang 이 없어 확장자 없는 스크립트가
+# `CreateProcess` 를 통과하지 못한다(WinError 193/2). 판을 갈라 분기하는 대신
+# 판에 기대는 것을 없앤다: 지금 도는 인터프리터로 그 파일을 연다. 리눅스·맥에서
+# 하던 일과 결과가 같고(같은 python3 가 같은 스크립트를 연다), 실행 권한 비트나
+# `env` 의 존재에도 기대지 않게 된다.
+S9_ARGV = [sys.executable, S9]
 TITLE_MAX = 24  # 임시 제목 — LLM이 20자 이내 명사구 제목으로 반드시 교체
 # 질문 문서의 제목은 질문 그 자체다 — 요청과 달리 명사구로 교체하지 않는다
 # (질문을 가장 정확히 가리키는 제목은 질문문이다). 그래서 절단만 넉넉히 둔다.
@@ -104,7 +125,11 @@ def _proc_backend():
 # 묻고 캐시한다 — 매번 물으면 열 번 프로세스를 띄운다.
 _WIN_ROWS = {}          # {pid: (실행 파일 이름, 부모 pid, 명령줄)}
 _WIN_READ = [False]
-WIN_PS_SCRIPT = ("Get-CimInstance Win32_Process | ForEach-Object { "
+# 첫 문장이 인코딩을 정한다 (REQ-20260903-005) — PowerShell 은 기본적으로
+# 콘솔 코드페이지로 쓴다. s9.WIN_PS_SCRIPT 의 로컬 복제.
+WIN_PS_SCRIPT = ("[Console]::OutputEncoding = "
+                 "[System.Text.Encoding]::UTF8; "
+                 "Get-CimInstance Win32_Process | ForEach-Object { "
                  "$c = $_.CommandLine; if (-not $c) { $c = $_.Name }; "
                  "[string]$_.ProcessId + ' ' + [string]$_.ParentProcessId "
                  "+ ' ' + $c }")
@@ -134,7 +159,8 @@ def _win_rows():
         try:
             out = subprocess.run([exe, "-NoProfile", "-NonInteractive",
                                   "-Command", WIN_PS_SCRIPT],
-                                 capture_output=True, text=True,
+                                 capture_output=True,
+                                     encoding="utf-8", errors="replace",
                                  timeout=25).stdout or ""
         except Exception:
             continue
@@ -151,9 +177,9 @@ def _proc_info(pid):
     """(실행 파일 이름, 부모 pid) — 모르면 ("", 0)."""
     if _proc_backend() == "proc":
         try:
-            with open(f"/proc/{pid}/comm") as f:
+            with open(f"/proc/{pid}/comm", encoding="utf-8") as f:
                 comm = f.read().strip()
-            with open(f"/proc/{pid}/status") as f:
+            with open(f"/proc/{pid}/status", encoding="utf-8") as f:
                 for ln in f:
                     if ln.startswith("PPid:"):
                         return comm, int(ln.split()[1])
@@ -167,7 +193,7 @@ def _proc_info(pid):
         return (r[0], r[1]) if r else ("", 0)
     try:
         out = subprocess.run(["ps", "-o", "ppid=,comm=", "-p", str(pid)],
-                             capture_output=True, text=True, timeout=5).stdout
+                             capture_output=True, encoding="utf-8", errors="replace", timeout=5).stdout
     except Exception:
         return "", 0
     c = out.strip().split(None, 1)
@@ -264,7 +290,8 @@ def _cmdlines():
         return [c for _, _, c in _win_rows().values()]
     try:
         r = subprocess.run(["ps", "-A", "-ww", "-o", "command="],
-                           capture_output=True, text=True, timeout=10)
+                           capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=10)
     except Exception:
         return []
     return (r.stdout or "").splitlines()
@@ -299,8 +326,8 @@ def pending_context(sid8, env=None):
             return ""
         alive = _tail_alive(f"inbox-{sid8}")
         # 커서(.seen) 전진 = 소비 — 이 호출은 프롬프트당 정확히 1회다
-        r = subprocess.run([S9, "inbox", "--sid", sid8], capture_output=True,
-                           text=True, env=env or os.environ, timeout=15)
+        r = subprocess.run([*S9_ARGV, "inbox", "--sid", sid8], capture_output=True,
+                           encoding="utf-8", errors="replace", env=env or os.environ, timeout=15)
         info = json.loads(r.stdout or "{}")
         size = int(info.get("size") or 0)
         pending = list(info.get("pending") or [])
@@ -387,8 +414,25 @@ def is_durable_question(text):
 
 
 def run(env, *argv, inp=None):
-    return subprocess.run([S9, *argv], input=inp, capture_output=True,
-                          text=True, env=env, timeout=15)
+    return subprocess.run([*S9_ARGV, *argv], input=inp, capture_output=True,
+                          encoding="utf-8", errors="replace", env=env, timeout=15)
+
+
+def session_role(env):
+    """이 세션 주체의 시스템 역할 — `s9 user current` → `s9 user role <name>`.
+    실패·미등록이면 ""(강제하지 않는다 — 기존 흐름 그대로)."""
+    try:
+        cur = run(env, "user", "current")
+        name = cur.stdout.strip().split()[0] if cur.returncode == 0 else ""
+        if not name or name.startswith("("):
+            return ""
+        out = run(env, "user", "role", name)
+        if out.returncode != 0:
+            return ""
+        m = re.search(r"role\s*=\s*(\w+)", out.stdout)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
 
 
 def prefs_context(env, who):
@@ -481,15 +525,31 @@ def now_stamp(env=None, who=None):
 def stamp_context(env=None, who=None):
     """응답 시각 헤딩 지시 (REQ-20260826-024). 규약은 PROTOCOL/에이전트 문서에
     있지만, **시각 자체는 주입하지 않으면 지어낼 수밖에 없다** — 그래서 매 턴
-    실제 값을 함께 준다. 규칙과 재료를 한 자리에 두어야 지켜진다."""
+    실제 값을 함께 준다. 규칙과 재료를 한 자리에 두어야 지켜진다.
+
+    다만 이 값은 **프롬프트가 도착한 때**다 (REQ-20260903-013). 모델이 도구를
+    스무 번 부르고 답을 쓰면 그만큼 과거를 적게 되고, 사용자 눈에는 재지 않고
+    지어낸 숫자로 보인다 — 실제로 같은 지적이 두 번 왔다. Stop 훅이 기록의
+    도장은 바로잡지만(REQ-20260826-038) 화면에 이미 나간 글자는 못 고친다.
+    그러니 값과 함께 **다시 재라는 지시와 재는 명령**을 준다.
+
+    「실측」 같은 딱지는 붙이지 않는다 (REQ-20260903-014). 정확하면 표시가
+    필요 없고, 표시는 그 값을 믿지 못할 때나 다는 것이다 — 딱지가 하는 일은
+    의심을 덮는 것뿐이라 값이 틀어져도 계속 붙어 있는다. 라벨이 말해야 하는
+    것은 「쟀다」가 아니라 **이 값이 무엇의 시각인가**다."""
     t, zone = now_stamp(env, who)
     t = f"{t} {zone}"
     # "해시 강조" = 커밋 해시가 받는 그 강조(인라인 코드) 라는 뜻이다.
     # 마크다운 제목(#)이 아니다 — 한 번 그렇게 읽어 `#` 이 화면에 그대로
     # 새어나왔다 (REQ-20260826-030 정정).
-    return (f"◈ 현재 시각 {t} — 이 응답은 반드시 "
-            f"`[{t} - lead]` 한 줄로 시작하라(백틱으로 감싼 인라인 코드 — "
+    return (f"◈ 이 턴이 도착한 시각 {t} — 이 응답은 반드시 "
+            f"`[{t} - lead]` 꼴의 한 줄로 시작하라(백틱으로 감싼 인라인 코드 — "
             f"커밋 해시와 같은 강조다. 마크다운 제목 `#` 은 붙이지 마라). "
+            f"**시각은 답을 쓰기 직전에 재라**: 도구를 한 번이라도 썼으면 "
+            f"`{S9} now --as lead` 를 실행해 나온 줄을 그대로 머리에 놓아라 — "
+            f"위 값은 프롬프트가 도착한 때라 그 사이 흐른 만큼 과거를 가리킨다. "
+            f"도구를 하나도 쓰지 않는 즉답이면 위 값이 곧 그 시각이다. "
+            f"어림짐작한 시각은 없느니만 못하다. "
             f"예외 없다(짧은 답·이어지는 답 포함). 이름은 리드가 직접 답할 때 "
             f"`lead`, 위임된 에이전트는 자기 역할명이다 — 누가 말하는지가 "
             f"보여야 위임 보고를 리드의 말과 구분할 수 있다. ")
@@ -624,6 +684,20 @@ def main():
     # 유휴 중 쌓인 대시보드 채팅 — 분류와 무관하게 이번 턴에서 소화시킨다
     pend = pending_context(session, env)
 
+    # 관찰 계정(viewer) 세션 (REQ-20260902-028): 자동 기록(REQ/QST/SES)을 만들지
+    # 않고, "실제 요청이면 s9 new 로 직접 등록하라"는 정정 유도도 내지 않는다 —
+    # 이 계정은 쓰지 못하므로 그 지시를 따르면 거부만 돌아온다. write_doc 가
+    # 어차피 막지만, 막힐 명령을 부르고 결과를 버리는 것은 "조용히 안 만드는"
+    # 것이 아니다. 시각 도장·개인 설정은 emit 이 늘 싣는다 — 여기도 예외 없다.
+    if session_role(env) == "viewer":
+        run(env, "last", "--pause")
+        emit(pend +
+            "[section9 audit] 이 세션의 주체는 관찰 계정(viewer)이다 — 요청·질문·"
+            "세션 문서를 만들지 않았다. 이 계정은 문서를 만들거나 고치지 못한다"
+            "(조회·검색·이력은 된다): `s9 new`·`status`·`note`·`assign` 을 부르지 "
+            "말고, 등록이 필요한 일이면 프로젝트 구성원이나 admin 에게 넘겨라.")
+        return
+
     if cls == "nothing":
         run(env, "log", f"note: {first_line[:40]}")
         run(env, "last", "--pause")  # 응답 캡처만 중지 — last_req는 유지(위임 캡처/스트림 활성 보존)
@@ -753,6 +827,12 @@ def main():
     sv = run(env, "serve-stale")
     stale_serve = ("" if sv.returncode != 0 or not sv.stdout.strip() else
                    f" ♻ {sv.stdout.strip()} ")
+    # 동기화가 5분 넘게 밀렸는가 (REQ-20260902-025) — 같은 멈춤에 1회만. 밀린
+    # 커밋은 이 세션의 문서가 남에게 안 보인다는 뜻인데, 그 사실은 여태
+    # state/sync.log 한 줄에만 있었다 — 리드는 로그를 안 본다.
+    sy = run(env, "sync", "--status", "--quiet")
+    sync_late = ("" if sy.returncode != 0 or not sy.stdout.strip() else
+                 f" ◈ 동기화 지연: {sy.stdout.strip()} ")
     # 미확인 승인 메모 — 질문·후속 지시가 담겼을 수 있다: 리드가 이번 턴에 소화 (1회 주입)
     ap = run(env, "approvals", "--quiet")
     approvals = ("" if ap.returncode != 0 or not ap.stdout.strip() else
@@ -794,7 +874,7 @@ def main():
     attnote = (f"첨부 {len(atts)}건이 body에 기록되었다. " if atts else "")
     emit(pend +
         f"[section9 audit] 이 프롬프트는 {doc_id} 로 자동 기록되었다 (Request 분류). {attnote}"
-        f"현재 요청 주체: {who}.{warn}{untitled}{approvals}{reopened}{loose}{stalled}{stale_serve}{blocked}{review}{wkwarn} "
+        f"현재 요청 주체: {who}.{warn}{untitled}{approvals}{reopened}{loose}{stalled}{stale_serve}{sync_late}{blocked}{review}{wkwarn} "
         f"이 세션에서 s9 를 호출할 때는 반드시 `S9_SESSION={session}` 을 앞에 붙여라. 규약: "
         f"(1) 제목은 원문 복사가 아니라 20자 이내의 이해하기 쉬운 명사구로 교체하라 — "
         f"`s9 set {doc_id} --title '...' --summary '...' --size S|M|L "

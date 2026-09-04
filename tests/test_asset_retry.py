@@ -55,106 +55,88 @@ class TheRetry(unittest.TestCase):
 
     # ---------- ① 짓는 곳은 하나 ----------
 
-    def test_pictures_are_built_in_one_place(self):
-        self.assertIn("function attImg(", self.src, "attImg() 이 없다")
-        self.assertEqual(self.src.count("const attImg"), 0,
-                         "md2html 안이 제 attImg 를 또 짓는다 — 그 그림은 "
-                         "실패해도 다시 걸지 않는다")
-        self.assertEqual(self.src.count('class="attimg"'), 1,
-                         "`<img class=attimg>` 를 짓는 자리가 둘 이상이다")
+    def test_the_retry(self):
+        """TheRetry 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("pictures_are_built_in_one_place"):
+                self.assertIn("function attImg(", self.src, "attImg() 이 없다")
+                self.assertEqual(self.src.count("const attImg"), 0,
+                                 "md2html 안이 제 attImg 를 또 짓는다 — 그 그림은 "
+                                 "실패해도 다시 걸지 않는다")
+                self.assertEqual(self.src.count('class="attimg"'), 1,
+                                 "`<img class=attimg>` 를 짓는 자리가 둘 이상이다")
 
-    # ---------- ② 자리는 미리 선다 ----------
+            # ---------- ② 자리는 미리 선다 ----------
+        with self.subTest("the_empty_seat_ships_with_the_picture"):
+            fn = self._fn("attImg")
+            self.assertIn("attbox", fn, "그림과 자리를 한 덩이로 내지 않는다")
+            self.assertIn('class="attmiss" hidden', fn,
+                          "못 받은 자리를 미리 세우지 않는다 — 실패한 순간 짓느라 "
+                          "깨진 아이콘이 한 프레임 지나간다")
+            # 되돌아올 주소를 그림이 들고 있어야 다시 걸 수 있다
+            self.assertIn("data-attd=", fn)
+            self.assertIn("data-attf=", fn)
+        with self.subTest("hidden_actually_hides"):
+                self.assertRegex(self.src, r"\.attbox \[hidden\]\{display:none\}",
+                                 "감춘 것이 실제로 감춰지지 않는다")
 
-    def test_the_empty_seat_ships_with_the_picture(self):
-        fn = self._fn("attImg")
-        self.assertIn("attbox", fn, "그림과 자리를 한 덩이로 내지 않는다")
-        self.assertIn('class="attmiss" hidden', fn,
-                      "못 받은 자리를 미리 세우지 않는다 — 실패한 순간 짓느라 "
-                      "깨진 아이콘이 한 프레임 지나간다")
-        # 되돌아올 주소를 그림이 들고 있어야 다시 걸 수 있다
-        self.assertIn("data-attd=", fn)
-        self.assertIn("data-attf=", fn)
+            # ---------- ③ 다시 건다 ----------
+        with self.subTest("it_backs_off_and_jitters"):
+            self.assertRegex(self.src, r"const ATT_BACKOFF = \[[\d, ]+\]",
+                             "백오프 표가 없다")
+            fn = self._fn("attFail")
+            self.assertIn("ATT_BACKOFF", fn, "재시도 간격이 없다")
+            self.assertIn("Math.random", fn,
+                          "지터가 없다 — 실패한 것들이 한꺼번에 다시 출발하면 "
+                          "같은 벼랑을 또 만난다")
+            self.assertRegex(fn, r"img\.src = attUrl", "다시 걸지 않는다")
+        with self.subTest("the_retry_url_differs"):
+            fn = self._fn("attUrl")
+            self.assertRegex(fn, r"&r=", "재시도 주소가 첫 주소와 같다 — 실패가 "
+                                         "캐시에 물리면 다시 걸어도 같은 답이 온다")
+        with self.subTest("it_listens_once_on_the_document"):
+                m = re.search(r'document\.addEventListener\("error",[\s\S]{0,200}?\}, true\)',
+                              self.src)
+                self.assertIsNotNone(m, "그림 실패를 문서에서 받지 않는다")
+                self.assertIn("attFail", m.group(0))
 
-    def test_hidden_actually_hides(self):
-        """`.attlink{display:inline-block}` 이 UA 의 `[hidden]` 보다 세다 —
-        명시하지 않으면 감췄다고 믿은 깨진 그림이 자리 위에 겹쳐 선다."""
-        self.assertRegex(self.src, r"\.attbox \[hidden\]\{display:none\}",
-                         "감춘 것이 실제로 감춰지지 않는다")
+            # ---------- ④ 사람의 자리 ----------
+        with self.subTest("the_last_resort_is_a_place_for_a_person"):
+            fn = self._fn("attMissHtml")
+            self.assertIn("attf", fn, "어느 그림인지 이름이 없다")
+            self.assertIn("data-attretry", fn, "다시 부를 손잡이가 없다")
+            self.assertIn("target=\"_blank\"", fn, "직접 열어 볼 길이 없다")
+            # 기다리는 중은 진행을 보여준다 — 가만한 문구는 멈춘 것으로 읽힌다
+            self.assertRegex(fn, r"ATT_BACKOFF\.length", "몇 번째인지 안 적는다")
+        with self.subTest("the_retry_button_is_outside_the_link"):
+                fn = self._fn("attImg")
+                i, j = fn.find("<a class="), fn.find("</a>")
+                self.assertGreater(j, i)
+                self.assertNotIn("attmiss", fn[i:j],
+                                 "못 받은 자리가 링크 안에 있다")
 
-    # ---------- ③ 다시 건다 ----------
+            # ---------- ⑤ 사람의 말 ----------
+        with self.subTest("it_speaks_plainly"):
+                fn = self._fn("attMissHtml")
+                for jargon in ("루프백", "SYN", "소켓", "ECONNREFUSED", "커넥션",
+                               "타임아웃", "리셋"):
+                    self.assertNotIn(jargon, fn, "내부 용어를 그대로 썼다: %s" % jargon)
+                self.assertIn("그림을 받지 못했습니다", fn, "무엇이 안 됐는지 안 말한다")
 
-    def test_it_backs_off_and_jitters(self):
-        self.assertRegex(self.src, r"const ATT_BACKOFF = \[[\d, ]+\]",
-                         "백오프 표가 없다")
-        fn = self._fn("attFail")
-        self.assertIn("ATT_BACKOFF", fn, "재시도 간격이 없다")
-        self.assertIn("Math.random", fn,
-                      "지터가 없다 — 실패한 것들이 한꺼번에 다시 출발하면 "
-                      "같은 벼랑을 또 만난다")
-        self.assertRegex(fn, r"img\.src = attUrl", "다시 걸지 않는다")
+            # ---------- ⑥ 손 없이 본다 ----------
+        with self.subTest("it_can_be_seen_without_hands"):
+                for p in ("attstat", "attfail", "attdead", "attslow"):
+                    self.assertIn(p, self.src, "진단 파라미터 %s 가 없다" % p)
 
-    def test_the_retry_url_differs(self):
-        fn = self._fn("attUrl")
-        self.assertRegex(fn, r"&r=", "재시도 주소가 첫 주소와 같다 — 실패가 "
-                                     "캐시에 물리면 다시 걸어도 같은 답이 온다")
-
-    def test_it_listens_once_on_the_document(self):
-        """error·load 는 거품처럼 올라오지 않는다 — 잡는 단계에서 한 번만 단다.
-        그림마다 손을 달면 문서를 다시 그릴 때마다 새로 달아야 한다."""
-        m = re.search(r'document\.addEventListener\("error",[\s\S]{0,200}?\}, true\)',
-                      self.src)
-        self.assertIsNotNone(m, "그림 실패를 문서에서 받지 않는다")
-        self.assertIn("attFail", m.group(0))
-
-    # ---------- ④ 사람의 자리 ----------
-
-    def test_the_last_resort_is_a_place_for_a_person(self):
-        fn = self._fn("attMissHtml")
-        self.assertIn("attf", fn, "어느 그림인지 이름이 없다")
-        self.assertIn("data-attretry", fn, "다시 부를 손잡이가 없다")
-        self.assertIn("target=\"_blank\"", fn, "직접 열어 볼 길이 없다")
-        # 기다리는 중은 진행을 보여준다 — 가만한 문구는 멈춘 것으로 읽힌다
-        self.assertRegex(fn, r"ATT_BACKOFF\.length", "몇 번째인지 안 적는다")
-
-    def test_the_retry_button_is_outside_the_link(self):
-        """`<a>` 안에 두면 누르는 순간 링크가 먼저 열린다."""
-        fn = self._fn("attImg")
-        i, j = fn.find("<a class="), fn.find("</a>")
-        self.assertGreater(j, i)
-        self.assertNotIn("attmiss", fn[i:j],
-                         "못 받은 자리가 링크 안에 있다")
-
-    # ---------- ⑤ 사람의 말 ----------
-
-    def test_it_speaks_plainly(self):
-        fn = self._fn("attMissHtml")
-        for jargon in ("루프백", "SYN", "소켓", "ECONNREFUSED", "커넥션",
-                       "타임아웃", "리셋"):
-            self.assertNotIn(jargon, fn, "내부 용어를 그대로 썼다: %s" % jargon)
-        self.assertIn("그림을 받지 못했습니다", fn, "무엇이 안 됐는지 안 말한다")
-
-    # ---------- ⑥ 손 없이 본다 ----------
-
-    def test_it_can_be_seen_without_hands(self):
-        for p in ("attstat", "attfail", "attdead", "attslow"):
-            self.assertIn(p, self.src, "진단 파라미터 %s 가 없다" % p)
-
-    # ---------- 큐를 두지 않은 근거 ----------
-
-    def test_the_measurement_is_written_down(self):
-        """다음 사람이 "큐를 얹지 그랬어"로 되돌리지 않게 재 본 것을 적어 둔다."""
-        i = self.src.find("const ATT_BACKOFF")
-        head = self.src[max(0, i - 2600):i]
-        self.assertIn("동시 상한", head, "큐를 재 본 기록이 없다")
-        self.assertRegex(head, r"19|재시도",
-                         "무엇을 얼마나 재 봤는지 적혀 있지 않다")
-
-    def test_there_is_no_queue(self):
-        """큐는 듣지 않는다(측정) — 게다가 브라우저가 이미 여섯으로 묶는다.
-        얹으면 같은 일을 두 번 하면서 첫 그림만 늦어진다."""
-        self.assertNotRegex(self.src, r"attQueue|attSem|ATT_MAX_INFLIGHT",
-                            "재 보고 두지 않기로 한 큐가 들어왔다")
-
+            # ---------- 큐를 두지 않은 근거 ----------
+        with self.subTest("the_measurement_is_written_down"):
+            i = self.src.find("const ATT_BACKOFF")
+            head = self.src[max(0, i - 2600):i]
+            self.assertIn("동시 상한", head, "큐를 재 본 기록이 없다")
+            self.assertRegex(head, r"19|재시도",
+                             "무엇을 얼마나 재 봤는지 적혀 있지 않다")
+        with self.subTest("there_is_no_queue"):
+            self.assertNotRegex(self.src, r"attQueue|attSem|ATT_MAX_INFLIGHT",
+                                "재 보고 두지 않기로 한 큐가 들어왔다")
 
 class ThePress(unittest.TestCase):
     """눌러서 되찾는다 (REQ-20260830-003 · 부모 REQ-20260829-019).
@@ -189,42 +171,33 @@ class ThePress(unittest.TestCase):
         self.assertIsNotNone(e, "그 처리기의 끝을 찾지 못했다")
         return self.src[s:e.end()]
 
-    def test_the_press_is_caught_where_it_is_thrown(self):
-        """잡는 단계(capture)에 달아야 한다 — 문서를 다시 그려도 손이 남는다."""
-        self.assertRegex(self._press(), r"\}, true\);\s*$",
-                         "다시 단추의 클릭을 잡는 단계에서 받지 않는다")
-
-    def test_the_press_does_not_open_the_link(self):
-        """단추는 링크 옆에 있다 — 누른 것이 링크로 흘러가면 새 탭이 먼저 열린다."""
-        fn = self._press()
-        self.assertIn("preventDefault()", fn, "기본 동작을 막지 않는다")
-        self.assertIn("stopPropagation()", fn, "누른 것이 위로 샌다")
-
-    def test_the_press_is_a_fresh_try(self):
-        """사람이 누른 것도 한 번의 시도다 — 시도 수를 되돌리고 새 주소로 부른다.
-
-        캐시에 물린 실패를 다시 부르면 눌러도 같은 답이 온다(`attUrl` 의 `r=`).
-        """
-        fn = self._press()
-        self.assertRegex(fn, r"dataset\.atttry\s*=", "시도 수를 되돌리지 않는다")
-        self.assertRegex(fn, r"src\s*=\s*attUrl\(", "다시 부르지 않는다")
-        self.assertRegex(fn, r'attUrl\(img,\s*"u"', "재시도 주소로 갈리지 않는다")
-
-    def test_the_harness_that_presses_it_is_kept(self):
-        """실제로 눌러 본 자리를 남긴다 — 없으면 다음 사람이 또 "수단이 없다"고 적는다."""
-        self.assertTrue(os.path.isfile(self.HARNESS),
-                        "눌러 보는 하니스가 없다: web/verify-attretry-click.html")
-        with open(self.HARNESS, encoding="utf-8") as f:
-            h = f.read()
-        self.assertIn("MouseEvent", h, "실제 이벤트를 던지지 않는다")
-        self.assertIn("elementFromPoint", h,
-                      "덮여 있는지(좌표 hit-test)를 보지 않는다")
-        self.assertIn("data-attretry", h, "그 단추를 누르지 않는다")
-        # 손대는 것은 **빗나가게 하던 표식** 하나뿐이다. 클릭 경로를 대신
-        # 실행해 버리면 "눌러 봤다"가 아니라 "함수를 불러 봤다"가 된다.
-        self.assertIn('removeAttribute("data-attbad")', h,
-                      "밀리던 것이 풀린 상황을 만들지 않는다")
-
+    def test_the_press(self):
+        """눌러서 되찾는다 (REQ-20260830-003 · 부모 REQ-20260829-019)."""
+        with self.subTest("the_press_is_caught_where_it_is_thrown"):
+            self.assertRegex(self._press(), r"\}, true\);\s*$",
+                             "다시 단추의 클릭을 잡는 단계에서 받지 않는다")
+        with self.subTest("the_press_does_not_open_the_link"):
+            fn = self._press()
+            self.assertIn("preventDefault()", fn, "기본 동작을 막지 않는다")
+            self.assertIn("stopPropagation()", fn, "누른 것이 위로 샌다")
+        with self.subTest("the_press_is_a_fresh_try"):
+            fn = self._press()
+            self.assertRegex(fn, r"dataset\.atttry\s*=", "시도 수를 되돌리지 않는다")
+            self.assertRegex(fn, r"src\s*=\s*attUrl\(", "다시 부르지 않는다")
+            self.assertRegex(fn, r'attUrl\(img,\s*"u"', "재시도 주소로 갈리지 않는다")
+        with self.subTest("the_harness_that_presses_it_is_kept"):
+            self.assertTrue(os.path.isfile(self.HARNESS),
+                            "눌러 보는 하니스가 없다: web/verify-attretry-click.html")
+            with open(self.HARNESS, encoding="utf-8") as f:
+                h = f.read()
+            self.assertIn("MouseEvent", h, "실제 이벤트를 던지지 않는다")
+            self.assertIn("elementFromPoint", h,
+                          "덮여 있는지(좌표 hit-test)를 보지 않는다")
+            self.assertIn("data-attretry", h, "그 단추를 누르지 않는다")
+            # 손대는 것은 **빗나가게 하던 표식** 하나뿐이다. 클릭 경로를 대신
+            # 실행해 버리면 "눌러 봤다"가 아니라 "함수를 불러 봤다"가 된다.
+            self.assertIn('removeAttribute("data-attbad")', h,
+                          "밀리던 것이 풀린 상황을 만들지 않는다")
 
 if __name__ == "__main__":
     unittest.main()

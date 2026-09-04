@@ -36,37 +36,33 @@ spec.loader.exec_module(guard)
 
 
 class CleanEnv(unittest.TestCase):
-    def test_git_vars_are_stripped(self):
-        dirty = {"PATH": "/usr/bin", "GIT_DIR": "/r/.git/worktrees/w",
-                 "GIT_INDEX_FILE": "/r/.git/worktrees/w/index",
-                 "GIT_WORK_TREE": "/r/w", "S9_USER": "keep"}
-        e = guard.clean_git_env(dirty)
-        for k in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
-            self.assertNotIn(k, e)
-        self.assertEqual(e["S9_USER"], "keep", "다른 환경까지 지우면 안 된다")
-        self.assertEqual(e["PATH"], "/usr/bin")
-
-    def test_every_known_git_var_is_listed(self):
-        """git 이 훅에 넘기는 것 중 자식이 물려받으면 안 되는 것들."""
-        for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
-                  "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"):
-            self.assertIn(k, guard.GIT_ENV_VARS)
-
-    def test_source_of_env_defaults_to_process(self):
-        os.environ["GIT_DIR"] = "/nowhere/.git"
-        try:
-            self.assertNotIn("GIT_DIR", guard.clean_git_env())
-        finally:
-            os.environ.pop("GIT_DIR", None)
-
-    def test_gate_passes_the_clean_env_to_the_test_run(self):
-        """계약이 코드에 실제로 걸려 있는가 — 함수만 있고 안 쓰면 소용없다."""
-        with open(GUARD, encoding="utf-8") as f:
-            src = f.read()
-        run = src[src.index("def staged_tests_gate"):]
-        run = run[:run.index("\ndef ")]
-        self.assertIn("env=clean_git_env()", run)
-
+    def test_clean_env(self):
+        """CleanEnv 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("git_vars_are_stripped"):
+            dirty = {"PATH": "/usr/bin", "GIT_DIR": "/r/.git/worktrees/w",
+                     "GIT_INDEX_FILE": "/r/.git/worktrees/w/index",
+                     "GIT_WORK_TREE": "/r/w", "S9_USER": "keep"}
+            e = guard.clean_git_env(dirty)
+            for k in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
+                self.assertNotIn(k, e)
+            self.assertEqual(e["S9_USER"], "keep", "다른 환경까지 지우면 안 된다")
+            self.assertEqual(e["PATH"], "/usr/bin")
+        with self.subTest("every_known_git_var_is_listed"):
+            for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                      "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"):
+                self.assertIn(k, guard.GIT_ENV_VARS)
+        with self.subTest("source_of_env_defaults_to_process"):
+            os.environ["GIT_DIR"] = "/nowhere/.git"
+            try:
+                self.assertNotIn("GIT_DIR", guard.clean_git_env())
+            finally:
+                os.environ.pop("GIT_DIR", None)
+        with self.subTest("gate_passes_the_clean_env_to_the_test_run"):
+            with open(GUARD, encoding="utf-8") as f:
+                src = f.read()
+            run = src[src.index("def staged_tests_gate"):]
+            run = run[:run.index("\ndef ")]
+            self.assertIn("env=clean_git_env()", run)
 
 class Reproduction(unittest.TestCase):
     """벗기지 않으면 진짜로 뒤집힌다 — 위험의 크기를 시험으로 고정한다."""

@@ -48,70 +48,40 @@ class NoteArgOrder(unittest.TestCase):
     def body(self):
         return self.cli("show", self.doc).stdout
 
-    def test_a1_option_before_text(self):
-        """A1. 옵션이 먼저 와도 본문이 기록된다 (사라진 노트들의 형태)."""
-        r = self.cli("note", self.doc, "--label", "response", "옵션이먼저온본문")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("옵션이먼저온본문", self.body())
-
-    def test_a2_text_before_option(self):
-        """A2. 예전 형태도 그대로 된다 — 고치면서 되던 것을 깨면 안 된다."""
-        r = self.cli("note", self.doc, "본문이먼저온것", "--label", "decision")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("본문이먼저온것", self.body())
-
-    def test_a3_label_is_not_eaten_as_text(self):
-        """A3. 옵션 값이 본문으로 빨려들지 않는다.
-
-        인자 재배치가 거칠면 `response` 라는 낱말이 본문이 되고 라벨이 빈다 —
-        노트는 남지만 무엇으로 남았는지가 틀어진다.
-        """
-        self.cli("note", self.doc, "--label", "response", "라벨검사본문")
-        body = self.body()
-        self.assertIn("response (by", body)
-        self.assertNotIn("### ", body.split("라벨검사본문")[0][-40:]
-                         .replace("response", ""))
-
-    def test_a4_failure_is_never_silent(self):
-        """A4. 본문이 아예 없으면 실패하고, 종료 코드로 그것을 말한다.
-
-        조용한 실패가 이 문서의 결함이었다 — 성공과 실패가 출력으로 구분돼야
-        한다.
-        """
-        r = self.cli("note", self.doc, "--label", "response")
-        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
-
-    def test_a6_the_same_trap_elsewhere_is_closed(self):
-        """A6. 같은 함정이 있던 다른 명령들도 막혔다 (REQ-20260827-004).
-
-        41 을 닫고 전수로 훑었더니 둘이 더 있었다. `resume` 이 특히 나빴다 —
-        무인 재개 경로라 **사람이 결과를 안 보는 자리**이고, 실패 메시지가
-        입력을 되비추므로 로그만으로는 성공과 구분되지 않는다.
-        """
-        r = self.cli("resume", "--cwd", "/tmp", "abcd1234", "이어서 해")
-        self.assertNotIn("unrecognized arguments", r.stdout + r.stderr)
-        r = self.cli("user", "--role", "admin", "add", "bob")
-        self.assertNotIn("unrecognized arguments", r.stdout + r.stderr)
-
-    def test_a7_the_rule_is_asked_of_the_parser(self):
-        """A7. 대상 목록을 손으로 관리하지 않는다 — 파서 자신에게 묻는다.
-
-        하드코딩한 명령 목록은 다음 서브명령이 추가되는 순간 낡는다. 그리고
-        그 낡음은 조용하다: 새 명령이 같은 함정에 빠져도 아무도 모른다.
-        목록을 없애는 것이 목록을 지키는 테스트를 쓰는 것보다 낫다.
-        """
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        self.assertIn("sub.choices.get(sys.argv[1])", src,
-                      "정규화가 파서에게 묻지 않는다")
-        self.assertNotIn('"note": {"--file"', src,
-                         "손으로 관리하는 명령 목록이 남아 있다")
-
-    def test_a5_log_has_the_same_trap_closed(self):
-        """A5. `s9 log` 도 같은 모양이라 같이 막았다."""
-        r = self.cli("log", "--session", "argordse", "옵션먼저로그")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-
+    def test_note_arg_order(self):
+        """NoteArgOrder 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("a1_option_before_text"):
+            r = self.cli("note", self.doc, "--label", "response", "옵션이먼저온본문")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("옵션이먼저온본문", self.body())
+        with self.subTest("a2_text_before_option"):
+            r = self.cli("note", self.doc, "본문이먼저온것", "--label", "decision")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("본문이먼저온것", self.body())
+        with self.subTest("a3_label_is_not_eaten_as_text"):
+            self.cli("note", self.doc, "--label", "response", "라벨검사본문")
+            body = self.body()
+            self.assertIn("response (by", body)
+            self.assertNotIn("### ", body.split("라벨검사본문")[0][-40:]
+                             .replace("response", ""))
+        with self.subTest("a4_failure_is_never_silent"):
+            r = self.cli("note", self.doc, "--label", "response")
+            self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        with self.subTest("a6_the_same_trap_elsewhere_is_closed"):
+            r = self.cli("resume", "--cwd", "/tmp", "abcd1234", "이어서 해")
+            self.assertNotIn("unrecognized arguments", r.stdout + r.stderr)
+            r = self.cli("user", "--role", "admin", "add", "bob")
+            self.assertNotIn("unrecognized arguments", r.stdout + r.stderr)
+        with self.subTest("a7_the_rule_is_asked_of_the_parser"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            self.assertIn("sub.choices.get(sys.argv[1])", src,
+                          "정규화가 파서에게 묻지 않는다")
+            self.assertNotIn('"note": {"--file"', src,
+                             "손으로 관리하는 명령 목록이 남아 있다")
+        with self.subTest("a5_log_has_the_same_trap_closed"):
+            r = self.cli("log", "--session", "argordse", "옵션먼저로그")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 if __name__ == "__main__":
     unittest.main()

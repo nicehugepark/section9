@@ -96,117 +96,97 @@ class FollowCore(unittest.TestCase):
 
     # ------------------------------------------------------------------ ④
 
-    def test_each_agent_carries_its_own_offset(self):
-        """따라가던 에이전트는 자기 offset 에서 이어 받는다."""
-        got = self.run_js("""
-        const subs = {a1:{off:512, type:"designer"}, a2:{off:0, type:"deep-diver"}};
-        const rows = [{id:"a1", show:true, type:"designer"},
-                      {id:"a2", show:true, type:"deep-diver"}];
-        console.log(JSON.stringify(subFollowPlan(subs, rows)
-          .map(p => [p.id, p.after, p.type])));
-        """)
-        self.assertEqual(got, [["a1", 512, "designer"], ["a2", 0, "deep-diver"]])
+    def test_follow_core(self):
+        """순수 로직을 실제로 돌려 본다 — 무엇을 물어볼지, 몇 줄이 새것인지."""
+        with self.subTest("each_agent_carries_its_own_offset"):
+            got = self.run_js("""
+            const subs = {a1:{off:512, type:"designer"}, a2:{off:0, type:"deep-diver"}};
+            const rows = [{id:"a1", show:true, type:"designer"},
+                          {id:"a2", show:true, type:"deep-diver"}];
+            console.log(JSON.stringify(subFollowPlan(subs, rows)
+              .map(p => [p.id, p.after, p.type])));
+            """)
+            self.assertEqual(got, [["a1", 512, "designer"], ["a2", 0, "deep-diver"]])
+        with self.subTest("a_new_agent_starts_from_the_beginning"):
+                got = self.run_js("""
+                console.log(JSON.stringify(
+                  subFollowPlan({}, [{id:"z", show:true, type:"ux-writer"}])));
+                """)
+                self.assertEqual(got[0]["after"], 0)
+                self.assertFalse(got[0]["tail"])
 
-    def test_a_new_agent_starts_from_the_beginning(self):
-        got = self.run_js("""
-        console.log(JSON.stringify(
-          subFollowPlan({}, [{id:"z", show:true, type:"ux-writer"}])));
-        """)
-        self.assertEqual(got[0]["after"], 0)
-        self.assertFalse(got[0]["tail"])
+            # ------------------------------------------------------------------ ⑤
+        with self.subTest("a_gone_agent_is_not_newly_followed"):
+            got = self.run_js("""
+            console.log(JSON.stringify(
+              subFollowPlan({}, [{id:"old", show:false, active:false, type:"designer"}])));
+            """)
+            self.assertEqual(got, [])
+        with self.subTest("a_followed_agent_gets_one_last_catch_up"):
+            got = self.run_js("""
+            const rows = [{id:"a1", show:false, active:false, type:"designer"}];
+            const first = subFollowPlan({a1:{off:9, type:"designer"}}, rows);
+            const after = subFollowPlan({a1:{off:12, type:"designer", tail:true}}, rows);
+            console.log(JSON.stringify([first.map(p => [p.id, p.after, p.tail]), after]));
+            """)
+            self.assertEqual(got[0], [["a1", 9, True]])
+            self.assertEqual(got[1], [], "닫은 에이전트를 계속 두드리면 틱마다 요청이 쌓인다")
+        with self.subTest("show_falls_back_to_active"):
+                got = self.run_js("""
+                console.log(JSON.stringify([
+                  subFollowPlan({}, [{id:"a", active:true}]).length,
+                  subFollowPlan({}, [{id:"b", active:false}]).length]));
+                """)
+                self.assertEqual(got, [1, 0])
 
-    # ------------------------------------------------------------------ ⑤
+            # ------------------------------------------------------------------ ③
+        with self.subTest("the_first_sight_of_an_agent_counts_as_nothing"):
+            got = self.run_js("""
+            console.log(JSON.stringify([subUnread(null, 300), subUnread(undefined, 7)]));
+            """)
+            self.assertEqual(got, [0, 0])
+        with self.subTest("the_count_accumulates_between_readings"):
+            got = self.run_js("""
+            let s = {off:1};                 // 이미 한 번 본 에이전트
+            s = {off:2, new: subUnread(s, 3)};
+            s = {off:3, new: subUnread(s, 4)};
+            s = {off:4, new: subUnread(s, 0)};
+            console.log(JSON.stringify(s.new));
+            """)
+            self.assertEqual(got, 7)
+        with self.subTest("reading_resets_the_count"):
+            got = self.run_js("""
+            const read = {off:9, new:0};     // 판을 열었다 닫은 직후
+            console.log(JSON.stringify(subUnread(read, 2)));
+            """)
+            self.assertEqual(got, 2)
+        with self.subTest("zero_says_nothing"):
+                got = self.run_js("""
+                console.log(JSON.stringify([subNewMark(0), subNewMark(1), subNewMark(120)]));
+                """)
+                self.assertEqual(got[0], "")
+                self.assertEqual(got[1], "새 1줄")
+                self.assertEqual(got[2], "새 99+줄", "세 자리 수가 스트립 행을 밀어낸다")
 
-    def test_a_gone_agent_is_not_newly_followed(self):
-        """스트립에서 내려간 에이전트를 처음부터 따라잡지 않는다."""
-        got = self.run_js("""
-        console.log(JSON.stringify(
-          subFollowPlan({}, [{id:"old", show:false, active:false, type:"designer"}])));
-        """)
-        self.assertEqual(got, [])
-
-    def test_a_followed_agent_gets_one_last_catch_up(self):
-        """따라가던 것은 내려간 뒤 **한 번** 더 받고 그것으로 닫는다."""
-        got = self.run_js("""
-        const rows = [{id:"a1", show:false, active:false, type:"designer"}];
-        const first = subFollowPlan({a1:{off:9, type:"designer"}}, rows);
-        const after = subFollowPlan({a1:{off:12, type:"designer", tail:true}}, rows);
-        console.log(JSON.stringify([first.map(p => [p.id, p.after, p.tail]), after]));
-        """)
-        self.assertEqual(got[0], [["a1", 9, True]])
-        self.assertEqual(got[1], [], "닫은 에이전트를 계속 두드리면 틱마다 요청이 쌓인다")
-
-    def test_show_falls_back_to_active(self):
-        """show 를 모르는 구버전 응답은 active 로 읽는다."""
-        got = self.run_js("""
-        console.log(JSON.stringify([
-          subFollowPlan({}, [{id:"a", active:true}]).length,
-          subFollowPlan({}, [{id:"b", active:false}]).length]));
-        """)
-        self.assertEqual(got, [1, 0])
-
-    # ------------------------------------------------------------------ ③
-
-    def test_the_first_sight_of_an_agent_counts_as_nothing(self):
-        """처음 본 에이전트는 기준선만 잡는다 — 과거를 "새 줄"이라 부르지 않는다."""
-        got = self.run_js("""
-        console.log(JSON.stringify([subUnread(null, 300), subUnread(undefined, 7)]));
-        """)
-        self.assertEqual(got, [0, 0])
-
-    def test_the_count_accumulates_between_readings(self):
-        """읽기 전까지는 쌓인다 — 틱마다 덮어쓰면 2.5초 안의 것만 보인다."""
-        got = self.run_js("""
-        let s = {off:1};                 // 이미 한 번 본 에이전트
-        s = {off:2, new: subUnread(s, 3)};
-        s = {off:3, new: subUnread(s, 4)};
-        s = {off:4, new: subUnread(s, 0)};
-        console.log(JSON.stringify(s.new));
-        """)
-        self.assertEqual(got, 7)
-
-    def test_reading_resets_the_count(self):
-        """읽은 뒤에는 0에서 다시 센다."""
-        got = self.run_js("""
-        const read = {off:9, new:0};     // 판을 열었다 닫은 직후
-        console.log(JSON.stringify(subUnread(read, 2)));
-        """)
-        self.assertEqual(got, 2)
-
-    def test_zero_says_nothing(self):
-        """없는 것을 "0줄"이라고 적지 않는다."""
-        got = self.run_js("""
-        console.log(JSON.stringify([subNewMark(0), subNewMark(1), subNewMark(120)]));
-        """)
-        self.assertEqual(got[0], "")
-        self.assertEqual(got[1], "새 1줄")
-        self.assertEqual(got[2], "새 99+줄", "세 자리 수가 스트립 행을 밀어낸다")
-
-    # ------------------------------------------------------------------ ②
-
-    def test_the_agent_view_backfill_is_bounded(self):
-        """처음 열 때 그리는 줄에 상한이 있다 — 하루 돈 에이전트의 전문을 통째로
-        그리면 여는 데 몇 초가 걸리고 지금 하는 말은 맨 아래에 있다."""
-        got = self.run_js("""
-        const many = Array.from({length: 900}, (_, i) => ({ts:"t", text:String(i)}));
-        const cut = subCap(many);
-        console.log(JSON.stringify(
-          [cut.length, cut[cut.length - 1].text, SUB_BACKFILL_MAX]));
-        """)
-        self.assertEqual(got[0], got[2])
-        self.assertLessEqual(got[0], 400)
-        self.assertEqual(got[1], "899", "상한은 **최근** 줄을 남긴다")
-
-    def test_missing_pieces_do_not_throw(self):
-        """빈 응답·없는 필드에도 터지지 않는다 — 화면이 멈추는 것이 최악이다."""
-        got = self.run_js("""
-        console.log(JSON.stringify([
-          subCap(null).length, subFollowPlan(null, null).length,
-          subFollowPlan({}, [null, {show:true}]).length,
-          subUnread(null, null), subUnread({new:1}, null), subNewMark(null) === ""]));
-        """)
-        self.assertEqual(got, [0, 0, 0, 0, 1, True])
-
+            # ------------------------------------------------------------------ ②
+        with self.subTest("the_agent_view_backfill_is_bounded"):
+            got = self.run_js("""
+            const many = Array.from({length: 900}, (_, i) => ({ts:"t", text:String(i)}));
+            const cut = subCap(many);
+            console.log(JSON.stringify(
+              [cut.length, cut[cut.length - 1].text, SUB_BACKFILL_MAX]));
+            """)
+            self.assertEqual(got[0], got[2])
+            self.assertLessEqual(got[0], 400)
+            self.assertEqual(got[1], "899", "상한은 **최근** 줄을 남긴다")
+        with self.subTest("missing_pieces_do_not_throw"):
+            got = self.run_js("""
+            console.log(JSON.stringify([
+              subCap(null).length, subFollowPlan(null, null).length,
+              subFollowPlan({}, [null, {show:true}]).length,
+              subUnread(null, null), subUnread({new:1}, null), subNewMark(null) === ""]));
+            """)
+            self.assertEqual(got, [0, 0, 0, 0, 1, True])
 
 class TheMainPaneStaysTheLeads(unittest.TestCase):
     """① main 판에 서브에이전트의 줄이 오지 않는다 (반려 사유)."""
@@ -215,37 +195,31 @@ class TheMainPaneStaysTheLeads(unittest.TestCase):
     def setUpClass(cls):
         cls.src = read(INDEX)
 
-    def test_attach_does_not_backfill_agent_files(self):
-        """세션에 붙을 때 에이전트 파일을 되돌려 그리지 않는다."""
-        m = re.search(r"async function termAttach\(T, nt\)\{[\s\S]*?\n\}", self.src)
-        self.assertTrue(m, "termAttach 를 못 찾았다")
-        body = m.group(0)
-        self.assertNotIn("/api/agentstream", body)
-        self.assertNotIn("subBackfillPlan", body)
-
-    def test_the_follow_tick_never_feeds_the_main_buffer(self):
-        """따라잡기 틱은 줄 수만 세고 본문을 main 버퍼에 넣지 않는다."""
-        m = re.search(r"const agNewTick = async \(\) => \{[\s\S]*?\n  \};", self.src)
-        self.assertTrue(m, "agNewTick 이 없다 — 신호가 없으면 누를 자리도 안 보인다")
-        body = m.group(0)
-        self.assertIn("subFollowPlan(T.subs", body)
-        self.assertIn("after=${p.after}", body)
-        self.assertIn("subUnread(", body)
-        self.assertNotIn("T.buf", body, "main 판은 리드의 판이다 (2차 반려 사유)")
-        self.assertNotIn("termScheduleFlush", body)
-        self.assertRegex(self.src, r"setInterval\(agNewTick, \d+\)")
-
-    def test_the_main_batch_is_not_reordered_by_the_agent_merge(self):
-        m = re.search(r"function termScheduleFlush\(T\)\{[\s\S]*?\n\}", self.src)
-        self.assertTrue(m)
-        self.assertNotIn("subOrder", m.group(0))
-
-    def test_the_open_view_is_not_double_counted(self):
-        """열어 둔 에이전트는 세지 않는다 — 읽고 있는 줄이 '새 줄'로 또 쌓이면
-        배지가 거짓말을 한다."""
-        m = re.search(r"const agNewTick = async \(\) => \{[\s\S]*?\n  \};", self.src)
-        self.assertIn("T.agv && T.agv.id === p.id", m.group(0))
-
+    def test_the_main_pane_stays_the_leads(self):
+        """① main 판에 서브에이전트의 줄이 오지 않는다 (반려 사유)."""
+        with self.subTest("attach_does_not_backfill_agent_files"):
+            m = re.search(r"async function termAttach\(T, nt\)\{[\s\S]*?\n\}", self.src)
+            self.assertTrue(m, "termAttach 를 못 찾았다")
+            body = m.group(0)
+            self.assertNotIn("/api/agentstream", body)
+            self.assertNotIn("subBackfillPlan", body)
+        with self.subTest("the_follow_tick_never_feeds_the_main_buffer"):
+            m = re.search(r"const agNewTick = async \(\) => \{[\s\S]*?\n  \};", self.src)
+            self.assertTrue(m, "agNewTick 이 없다 — 신호가 없으면 누를 자리도 안 보인다")
+            body = m.group(0)
+            self.assertIn("subFollowPlan(T.subs", body)
+            self.assertIn("after=${p.after}", body)
+            self.assertIn("subUnread(", body)
+            self.assertNotIn("T.buf", body, "main 판은 리드의 판이다 (2차 반려 사유)")
+            self.assertNotIn("termScheduleFlush", body)
+            self.assertRegex(self.src, r"setInterval\(agNewTick, \d+\)")
+        with self.subTest("the_main_batch_is_not_reordered_by_the_agent_merge"):
+            m = re.search(r"function termScheduleFlush\(T\)\{[\s\S]*?\n\}", self.src)
+            self.assertTrue(m)
+            self.assertNotIn("subOrder", m.group(0))
+        with self.subTest("the_open_view_is_not_double_counted"):
+            m = re.search(r"const agNewTick = async \(\) => \{[\s\S]*?\n  \};", self.src)
+            self.assertIn("T.agv && T.agv.id === p.id", m.group(0))
 
 class TheAgentPaneCarriesTheLog(unittest.TestCase):
     """②③ 말은 그 에이전트의 판에서 흐르고, main 에는 셈만 남는다."""
@@ -256,42 +230,31 @@ class TheAgentPaneCarriesTheLog(unittest.TestCase):
         cls.open = re.search(r"function termAgentOpen\(T, id\)\{[\s\S]*?\n\}",
                              cls.src).group(0)
 
-    def test_the_view_streams_that_agent(self):
-        """그 판이 에이전트 transcript 를 열고 이어 받는다."""
-        self.assertIn("/api/agentstream?session=", self.open)
-        self.assertIn("after=${T.agv.off}", self.open)
-        self.assertRegex(self.open, r"setInterval\(\(\) => \{ if \(!document\.hidden\) load\(\); \}, \d+\)")
-
-    def test_opening_bounds_the_first_draw_and_says_so(self):
-        """처음 열 때는 상한만큼 그리고, 자른 사실을 감추지 않는다."""
-        self.assertIn("subCap(all)", self.open)
-        self.assertIn("생략", self.open)
-
-    def test_opening_clears_the_count(self):
-        """여는 순간 그 에이전트의 셈은 읽은 것이 된다."""
-        self.assertIn("T.subs[id].new = 0", self.open)
-
-    def test_closing_keeps_the_place(self):
-        """닫을 때의 자리가 다음 셈의 기준선이다 — 읽은 줄이 되살아나지 않게."""
-        m = re.search(r"function termAgentClose\(T\)\{[\s\S]*?\n\}", self.src)
-        self.assertIn("s.off = T.agv.off", m.group(0))
-        self.assertIn("s.new = 0", m.group(0))
-
-    def test_the_strip_row_shows_the_count(self):
-        """스트립 행이 "새 N줄"을 말한다 — 색면이 아니라 글자로."""
-        m = re.search(r"function termAgentsRender\(T\)\{[\s\S]*?\n\}", self.src)
-        body = m.group(0)
-        self.assertIn("subNewMark(", body)
-        self.assertNotIn("background:var(--cc-green)", body)
-
-    def test_a_spawn_fills_the_strip_at_once(self):
-        """스폰 줄을 그린 순간 스트립을 맞춘다 — 누를 자리가 십 초 늦게 생기면
-        그 사이 사람은 로그를 볼 자리가 없다고 읽는다."""
-        m = re.search(r"function termAgentSpawn\(T, type, desc\)\{[\s\S]*?\n\}",
-                      self.src)
-        self.assertIn("T.agTick", m.group(0))
-        self.assertIn("setTimeout", m.group(0), "과거 줄을 되그릴 때 몰려 오므로 묶는다")
-
+    def test_the_agent_pane_carries_the_log(self):
+        """②③ 말은 그 에이전트의 판에서 흐르고, main 에는 셈만 남는다."""
+        with self.subTest("the_view_streams_that_agent"):
+            self.assertIn("/api/agentstream?session=", self.open)
+            self.assertIn("after=${T.agv.off}", self.open)
+            self.assertRegex(self.open, r"setInterval\(\(\) => \{ if \(!document\.hidden\) load\(\); \}, \d+\)")
+        with self.subTest("opening_bounds_the_first_draw_and_says_so"):
+            self.assertIn("subCap(all)", self.open)
+            self.assertIn("생략", self.open)
+        with self.subTest("opening_clears_the_count"):
+            self.assertIn("T.subs[id].new = 0", self.open)
+        with self.subTest("closing_keeps_the_place"):
+            m = re.search(r"function termAgentClose\(T\)\{[\s\S]*?\n\}", self.src)
+            self.assertIn("s.off = T.agv.off", m.group(0))
+            self.assertIn("s.new = 0", m.group(0))
+        with self.subTest("the_strip_row_shows_the_count"):
+            m = re.search(r"function termAgentsRender\(T\)\{[\s\S]*?\n\}", self.src)
+            body = m.group(0)
+            self.assertIn("subNewMark(", body)
+            self.assertNotIn("background:var(--cc-green)", body)
+        with self.subTest("a_spawn_fills_the_strip_at_once"):
+            m = re.search(r"function termAgentSpawn\(T, type, desc\)\{[\s\S]*?\n\}",
+                          self.src)
+            self.assertIn("T.agTick", m.group(0))
+            self.assertIn("setTimeout", m.group(0), "과거 줄을 되그릴 때 몰려 오므로 묶는다")
 
 class ScriptParses(unittest.TestCase):
     """화면 스크립트가 통째로 문법이 맞는가 — 이 판의 가장 나쁜 실패는 빈 화면이다."""

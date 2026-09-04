@@ -67,68 +67,55 @@ class TimezoneList(unittest.TestCase):
 
     # ---------- ① 저장을 판정하는 그 목록 ----------
 
-    def test_every_offered_name_is_a_name_this_server_can_store(self):
-        """고를 수 있는 이름은 전부 이 서버가 해석할 수 있어야 한다.
+    def test_timezone_list(self):
+        """서버가 내주는 목록 — 고르는 자리와 저장을 판정하는 자리의 단일 출처."""
+        with self.subTest("every_offered_name_is_a_name_this_server_can_store"):
+            import zoneinfo
+            for name in list(self.names)[:40] + list(self.legacy):
+                zoneinfo.ZoneInfo(name)   # 못 해석하면 여기서 터진다
+        with self.subTest("the_offered_list_is_the_full_tzdata_list"):
+                import zoneinfo
+                all_names = zoneinfo.available_timezones()
+                self.assertEqual(self.names | self.legacy,
+                                 all_names - {"Factory", "localtime"},
+                                 "서버 목록이 tzdata 와 다르다")
 
-        하나라도 어긋나면 "화면에 있는데 저장이 안 되는 이름"이 생긴다.
-        """
-        import zoneinfo
-        for name in list(self.names)[:40] + list(self.legacy):
-            zoneinfo.ZoneInfo(name)   # 못 해석하면 여기서 터진다
+            # ---------- ② 호환용 이름은 훑는 목록 밖 ----------
+        with self.subTest("the_gmt_plus_nine_trap_is_not_in_the_browsable_list"):
+                self.assertNotIn("Etc/GMT+9", self.names)
+                self.assertIn("Etc/GMT+9", self.legacy)
+                # 훑는 목록에는 `Etc/` 도 슬래시 없는 호환 이름도 없다
+                self.assertFalse([n for n in self.names if n.startswith("Etc/")])
+                self.assertFalse([n for n in self.names if "/" not in n])
+                for n in ("UTC", "EST", "GMT", "MST7MDT"):
+                    self.assertIn(n, self.legacy, "%s 가 훑는 목록에 섞였다" % n)
 
-    def test_the_offered_list_is_the_full_tzdata_list(self):
-        """몇 개만 골라 담지 않는다 — 내 도시가 없으면 이 칸은 쓸 수 없다."""
-        import zoneinfo
-        all_names = zoneinfo.available_timezones()
-        self.assertEqual(self.names | self.legacy,
-                         all_names - {"Factory", "localtime"},
-                         "서버 목록이 tzdata 와 다르다")
+            # ---------- ③ 파일 시스템 부산물 ----------
+        with self.subTest("factory_and_localtime_are_offered_nowhere"):
+                for junk in ("Factory", "localtime"):
+                    self.assertNotIn(junk, self.names)
+                    self.assertNotIn(junk, self.legacy)
 
-    # ---------- ② 호환용 이름은 훑는 목록 밖 ----------
+            # ---------- ⑤ 한 줄에 적을 것 ----------
+        with self.subTest("each_row_carries_only_a_name_and_the_offset_that_draws_its_clock"):
+                row = self.d["zones"][0]
+                self.assertEqual(set(row), {"name", "off"}, "줄에 군더더기가 붙었다")
+                self.assertIsInstance(row["off"], int)
+                seoul = [z for z in self.d["zones"] if z["name"] == "Asia/Seoul"][0]
+                self.assertEqual(seoul["off"], 540)
+                gmt9 = [z for z in self.d["legacy"] if z["name"] == "Etc/GMT+9"][0]
+                self.assertEqual(gmt9["off"], -540, "이름이 +9 인데 실제는 −9 — 이게 함정이다")
 
-    def test_the_gmt_plus_nine_trap_is_not_in_the_browsable_list(self):
-        """`Etc/GMT+9` 는 실제로 UTC−9 다 — 448개 사이에 두면 그게 함정이다."""
-        self.assertNotIn("Etc/GMT+9", self.names)
-        self.assertIn("Etc/GMT+9", self.legacy)
-        # 훑는 목록에는 `Etc/` 도 슬래시 없는 호환 이름도 없다
-        self.assertFalse([n for n in self.names if n.startswith("Etc/")])
-        self.assertFalse([n for n in self.names if "/" not in n])
-        for n in ("UTC", "EST", "GMT", "MST7MDT"):
-            self.assertIn(n, self.legacy, "%s 가 훑는 목록에 섞였다" % n)
-
-    # ---------- ③ 파일 시스템 부산물 ----------
-
-    def test_factory_and_localtime_are_offered_nowhere(self):
-        """시간대가 아니라 부산물이다 — 어떤 검색어로도 나오면 안 된다."""
-        for junk in ("Factory", "localtime"):
-            self.assertNotIn(junk, self.names)
-            self.assertNotIn(junk, self.legacy)
-
-    # ---------- ⑤ 한 줄에 적을 것 ----------
-
-    def test_each_row_carries_only_a_name_and_the_offset_that_draws_its_clock(self):
-        """오프셋은 화면에 적으라고 주는 값이 아니라 시계를 그리라고 주는 값이다."""
-        row = self.d["zones"][0]
-        self.assertEqual(set(row), {"name", "off"}, "줄에 군더더기가 붙었다")
-        self.assertIsInstance(row["off"], int)
-        seoul = [z for z in self.d["zones"] if z["name"] == "Asia/Seoul"][0]
-        self.assertEqual(seoul["off"], 540)
-        gmt9 = [z for z in self.d["legacy"] if z["name"] == "Etc/GMT+9"][0]
-        self.assertEqual(gmt9["off"], -540, "이름이 +9 인데 실제는 −9 — 이게 함정이다")
-
-    # ---------- ④ 모르는 이름은 거절 ----------
-
-    def test_an_unknown_zone_is_refused_instead_of_silently_falling_back(self):
-        """조용히 받아 두고 시각만 물러서는 것이 지금까지의 결함이었다."""
-        # 실제 호출은 등록 사용자가 필요하므로 검증 규칙을 그 함수에서 읽는다
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        fn = re.search(r"def do_user_config_set\([\s\S]*?\n\ndef ", src).group(0)
-        self.assertIn('key == "timezone"', fn, "시간대를 검증하지 않는다")
-        self.assertIn("zoneinfo.ZoneInfo(value)", fn,
-                      "목록을 만든 그 판정으로 저장을 막지 않는다")
-        self.assertIn("모르는 시간대입니다", fn, "거절 이유를 사람 말로 말하지 않는다")
-
+            # ---------- ④ 모르는 이름은 거절 ----------
+        with self.subTest("an_unknown_zone_is_refused_instead_of_silently_falling_back"):
+            # 실제 호출은 등록 사용자가 필요하므로 검증 규칙을 그 함수에서 읽는다
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            fn = re.search(r"def do_user_config_set\([\s\S]*?\n\ndef ", src).group(0)
+            self.assertIn('key == "timezone"', fn, "시간대를 검증하지 않는다")
+            self.assertIn("zoneinfo.ZoneInfo(value)", fn,
+                          "목록을 만든 그 판정으로 저장을 막지 않는다")
+            self.assertIn("모르는 시간대입니다", fn, "거절 이유를 사람 말로 말하지 않는다")
 
 class TimezoneCombo(unittest.TestCase):
     """화면 — 검색과 선택이 같은 자리에서 일어난다."""
@@ -153,131 +140,107 @@ class TimezoneCombo(unittest.TestCase):
 
     # ---------- ① 목록 출처 ----------
 
-    def test_the_list_comes_from_the_server_not_from_the_browser(self):
-        """브라우저 목록과 서버 목록이 다르면 저장과 화면이 갈린다."""
-        self.assertIn('fetch("/api/timezones")', self.code, "서버에 묻지 않는다")
-        self.assertNotIn("supportedValuesOf", self.code,
-                         "브라우저 목록을 쓴다 — 저장 검증과 출처가 갈린다")
+    def test_timezone_combo(self):
+        """화면 — 검색과 선택이 같은 자리에서 일어난다."""
+        with self.subTest("the_list_comes_from_the_server_not_from_the_browser"):
+                self.assertIn('fetch("/api/timezones")', self.code, "서버에 묻지 않는다")
+                self.assertNotIn("supportedValuesOf", self.code,
+                                 "브라우저 목록을 쓴다 — 저장 검증과 출처가 갈린다")
 
-    # ---------- ⑤ 한 줄에 적는 것 ----------
+            # ---------- ⑤ 한 줄에 적는 것 ----------
+        with self.subTest("a_row_says_the_name_and_what_time_it_is_there"):
+            row = self._fn("tzRowHTML")
+            self.assertIn("tzClock(it.off)", row, "줄에 지금 시각이 없다")
+            self.assertIn("지금", row)
+            # 오프셋은 **적지 않는다** — 시계를 그리는 값일 뿐이다
+            self.assertNotRegex(row, r"UTC[+-]|\+0?9:00", "줄에 오프셋을 적었다")
+        with self.subTest("the_clock_says_which_day_it_is_when_the_day_differs"):
+            fn = self._fn("tzClock")
+            self.assertIn("어제", fn)
+            self.assertIn("내일", fn)
+        with self.subTest("korean_names_are_search_words_not_labels"):
+                self.assertIn('"Asia/Seoul": "서울', self.code, "한국어 검색어가 없다")
+                self.assertGreaterEqual(len(re.findall(r'"[A-Za-z_]+/[A-Za-z_/]+": "',
+                                                       self.code)), 50,
+                                        "별칭표가 너무 얇다 — 한국어로 못 찾는다")
+                row = self._fn("tzRowHTML")
+                self.assertNotIn("TZ_ALIAS", row, "한국어를 목록에 적었다")
 
-    def test_a_row_says_the_name_and_what_time_it_is_there(self):
-        """이름 옆의 시계가 고르기 전에 틀린 것을 보여 준다."""
-        row = self._fn("tzRowHTML")
-        self.assertIn("tzClock(it.off)", row, "줄에 지금 시각이 없다")
-        self.assertIn("지금", row)
-        # 오프셋은 **적지 않는다** — 시계를 그리는 값일 뿐이다
-        self.assertNotRegex(row, r"UTC[+-]|\+0?9:00", "줄에 오프셋을 적었다")
+            # ---------- ② 함정은 직접 칠 때만 ----------
+        with self.subTest("an_offset_search_never_surfaces_the_gmt_trap"):
+            fn = self._fn("tzFilter")
+            self.assertIn("offq !== null", fn, "오프셋 질문을 따로 다루지 않는다")
+            self.assertIn("!legacy && z.off === offq", fn,
+                          "오프셋 검색이 호환용 이름을 끌어온다")
+        with self.subTest("an_unsigned_number_is_not_an_offset"):
+                fn = self._fn("tzOffQuery")
+                self.assertIn("^([+-])", fn, "부호 없는 숫자를 오프셋으로 읽는다")
 
-    def test_the_clock_says_which_day_it_is_when_the_day_differs(self):
-        """시각만 적으면 12시간 차이가 30분 차이로 읽힌다."""
-        fn = self._fn("tzClock")
-        self.assertIn("어제", fn)
-        self.assertIn("내일", fn)
+            # ---------- ⑥ 고르면 바로 저장 ----------
+        with self.subTest("picking_saves_at_once"):
+            fn = self._fn("tzSave")
+            self.assertIn('"/api/user/config"', fn, "저장하지 않는다")
+            self.assertIn('key: "timezone"', fn)
+            self.assertIn("저장했습니다 — 이제 ${val} 기준입니다.", fn,
+                          "알림이 무엇이 바뀌었는지 말하지 않는다")
+        with self.subTest("a_failed_save_puts_the_old_value_back_on_screen"):
+            fn = self._fn("tzSave")
+            self.assertIn("const prev = S.saved", fn)
+            self.assertIn("S.saved = prev; S.input.value = prev;", fn,
+                          "실패해도 새 값이 화면에 남는다")
+        with self.subTest("no_other_save_path_can_overwrite_the_picked_value"):
+                self.assertNotIn('#cf-timezone', self.code,
+                                 "옛 입력칸이 남아 있다 — 낡은 값이 다시 저장된다")
+                m = re.search(r"const sets = \[[\s\S]*?\];", self.code)
+                self.assertIsNotNone(m)
+                self.assertNotIn("timezone", m.group(0),
+                                 "설정 저장 버튼이 아직 timezone 을 함께 보낸다")
 
-    def test_korean_names_are_search_words_not_labels(self):
-        """목록의 절반만 한국어인 화면은 미완성으로 읽힌다."""
-        self.assertIn('"Asia/Seoul": "서울', self.code, "한국어 검색어가 없다")
-        self.assertGreaterEqual(len(re.findall(r'"[A-Za-z_]+/[A-Za-z_/]+": "',
-                                               self.code)), 50,
-                                "별칭표가 너무 얇다 — 한국어로 못 찾는다")
-        row = self._fn("tzRowHTML")
-        self.assertNotIn("TZ_ALIAS", row, "한국어를 목록에 적었다")
+            # ---------- ⑦ 키보드 ----------
+        with self.subTest("tab_closes_without_picking_and_enter_is_the_only_confirm"):
+            fn = self._fn("tzWire")
+            self.assertRegex(fn, r'e\.key === "Tab"\)\{\s*\n?\s*if \(S\.open\) tzClose\(true\)',
+                             "Tab 이 고르지 않고 닫히지 않는다")
+            self.assertIn('e.key === "Enter"', fn)
+            self.assertIn("tzPick(S.idx)", fn, "Enter 로 확정하지 않는다")
+            # 끝에서 멈춘다 — 순환하면 목록의 끝을 손으로 알 수 없다
+            self.assertIn("Math.min(S.idx + 1, S.items.length - 1)", fn)
+            self.assertIn("Math.max(S.idx - 1, 0)", fn)
+        with self.subTest("escape_closes_without_leaving_typed_text_behind"):
+                fn = self._fn("tzClose")
+                self.assertIn("if (restore) S.input.value = S.saved;", fn)
 
-    # ---------- ② 함정은 직접 칠 때만 ----------
+            # ---------- 비어 있을 때 ----------
+        with self.subTest("an_empty_setting_does_not_pretend_to_be_seoul"):
+            self.assertNotIn('placeholder="Asia/Seoul"', self.code,
+                             "빈 값에 거짓 예시를 흐리게 적었다 — 설정된 것처럼 읽힌다")
+            self.assertIn('placeholder="설정 안 함"', self.code)
+            fn = self._fn("tzNowRender")
+            self.assertIn("이 컴퓨터의 시간대를 따릅니다", fn,
+                          "물러서는 곳을 말하지 않는다")
+            # 서버가 실제 해석 값을 주기 전까지 그 이름을 함부로 적지 않는다
+            self.assertNotIn("KST", fn)
+        with self.subTest("a_name_this_server_does_not_know_says_so"):
+                fn = self._fn("tzNowRender")
+                self.assertIn("이 이름을 모릅니다", fn)
 
-    def test_an_offset_search_never_surfaces_the_gmt_trap(self):
-        """`+9` 로 물었는데 이름에 +9 가 박힌 UTC−9 가 맨 위로 오면 그게 함정이다."""
-        fn = self._fn("tzFilter")
-        self.assertIn("offq !== null", fn, "오프셋 질문을 따로 다루지 않는다")
-        self.assertIn("!legacy && z.off === offq", fn,
-                      "오프셋 검색이 호환용 이름을 끌어온다")
+            # ---------- 시계 ----------
+        with self.subTest("the_clock_stops_when_nobody_is_looking_and_when_the_pane_closes"):
+                fn = self._fn("tzTick")
+                self.assertIn("document.hidden", fn, "안 보이는데도 계속 돈다")
+                self.assertIn("tzStop()", fn, "판이 닫혀도 타이머가 남는다")
+                self.assertIn("setInterval(tzTick, 30000)", self.code, "갱신 주기가 다르다")
+                stop = self._fn("tzStop")
+                self.assertIn("clearInterval(tzTimer)", stop)
 
-    def test_an_unsigned_number_is_not_an_offset(self):
-        """`9` 는 이름의 조각일 수 있다 — 부호가 있을 때만 오프셋이다."""
-        fn = self._fn("tzOffQuery")
-        self.assertIn("^([+-])", fn, "부호 없는 숫자를 오프셋으로 읽는다")
+            # ---------- 시각 언어 ----------
+        with self.subTest("the_list_is_drawn_in_this_panel_s_own_vocabulary"):
+            on = self._rule(r"\.tzpop \.tzrow\.on")
+            self.assertIn("border-left-color:var(--text)", on, "고른 줄에 잉크 바가 없다")
+            pop = self._rule(r"\.tzpop")
+            self.assertNotIn("box-shadow", pop, "그림자를 썼다 — 이 판의 어휘가 아니다")
+            self.assertNotIn("border-radius", pop, "라운드를 썼다")
+            self.assertIn("border:1px solid var(--text)", pop)
+            # 이름은 식별자다 — 모노
+            self.assertIn("font-family:var(--mono)", self._rule(r"\.tzpop \.tzn"))
 
-    # ---------- ⑥ 고르면 바로 저장 ----------
-
-    def test_picking_saves_at_once(self):
-        fn = self._fn("tzSave")
-        self.assertIn('"/api/user/config"', fn, "저장하지 않는다")
-        self.assertIn('key: "timezone"', fn)
-        self.assertIn("저장했습니다 — 이제 ${val} 기준입니다.", fn,
-                      "알림이 무엇이 바뀌었는지 말하지 않는다")
-
-    def test_a_failed_save_puts_the_old_value_back_on_screen(self):
-        """실패했는데 새 값이 남아 있으면 화면이 거짓말을 한다."""
-        fn = self._fn("tzSave")
-        self.assertIn("const prev = S.saved", fn)
-        self.assertIn("S.saved = prev; S.input.value = prev;", fn,
-                      "실패해도 새 값이 화면에 남는다")
-
-    def test_no_other_save_path_can_overwrite_the_picked_value(self):
-        """`설정 저장` 이 렌더 시점의 낡은 값을 함께 보내면 방금 고른 값이 지워진다."""
-        self.assertNotIn('#cf-timezone', self.code,
-                         "옛 입력칸이 남아 있다 — 낡은 값이 다시 저장된다")
-        m = re.search(r"const sets = \[[\s\S]*?\];", self.code)
-        self.assertIsNotNone(m)
-        self.assertNotIn("timezone", m.group(0),
-                         "설정 저장 버튼이 아직 timezone 을 함께 보낸다")
-
-    # ---------- ⑦ 키보드 ----------
-
-    def test_tab_closes_without_picking_and_enter_is_the_only_confirm(self):
-        """시간대는 잘못 저장돼도 즉시 티가 안 나서 피해가 오래간다."""
-        fn = self._fn("tzWire")
-        self.assertRegex(fn, r'e\.key === "Tab"\)\{\s*\n?\s*if \(S\.open\) tzClose\(true\)',
-                         "Tab 이 고르지 않고 닫히지 않는다")
-        self.assertIn('e.key === "Enter"', fn)
-        self.assertIn("tzPick(S.idx)", fn, "Enter 로 확정하지 않는다")
-        # 끝에서 멈춘다 — 순환하면 목록의 끝을 손으로 알 수 없다
-        self.assertIn("Math.min(S.idx + 1, S.items.length - 1)", fn)
-        self.assertIn("Math.max(S.idx - 1, 0)", fn)
-
-    def test_escape_closes_without_leaving_typed_text_behind(self):
-        """저장된 값이 곧 이 칸의 값이다 — 친 글자가 남으면 화면이 거짓말한다."""
-        fn = self._fn("tzClose")
-        self.assertIn("if (restore) S.input.value = S.saved;", fn)
-
-    # ---------- 비어 있을 때 ----------
-
-    def test_an_empty_setting_does_not_pretend_to_be_seoul(self):
-        """흐린 `Asia/Seoul` 은 설정된 것처럼 읽히는데 실제로는 물러서 있었다."""
-        self.assertNotIn('placeholder="Asia/Seoul"', self.code,
-                         "빈 값에 거짓 예시를 흐리게 적었다 — 설정된 것처럼 읽힌다")
-        self.assertIn('placeholder="설정 안 함"', self.code)
-        fn = self._fn("tzNowRender")
-        self.assertIn("이 컴퓨터의 시간대를 따릅니다", fn,
-                      "물러서는 곳을 말하지 않는다")
-        # 서버가 실제 해석 값을 주기 전까지 그 이름을 함부로 적지 않는다
-        self.assertNotIn("KST", fn)
-
-    def test_a_name_this_server_does_not_know_says_so(self):
-        """저장은 됐는데 시각만 물러서 있는 상태를 화면이 실토해야 한다."""
-        fn = self._fn("tzNowRender")
-        self.assertIn("이 이름을 모릅니다", fn)
-
-    # ---------- 시계 ----------
-
-    def test_the_clock_stops_when_nobody_is_looking_and_when_the_pane_closes(self):
-        fn = self._fn("tzTick")
-        self.assertIn("document.hidden", fn, "안 보이는데도 계속 돈다")
-        self.assertIn("tzStop()", fn, "판이 닫혀도 타이머가 남는다")
-        self.assertIn("setInterval(tzTick, 30000)", self.code, "갱신 주기가 다르다")
-        stop = self._fn("tzStop")
-        self.assertIn("clearInterval(tzTimer)", stop)
-
-    # ---------- 시각 언어 ----------
-
-    def test_the_list_is_drawn_in_this_panel_s_own_vocabulary(self):
-        """색면도 세로 띠도 없다 — 고른 줄은 잉크 inset 바와 굵기로 말한다."""
-        on = self._rule(r"\.tzpop \.tzrow\.on")
-        self.assertIn("border-left-color:var(--text)", on, "고른 줄에 잉크 바가 없다")
-        pop = self._rule(r"\.tzpop")
-        self.assertNotIn("box-shadow", pop, "그림자를 썼다 — 이 판의 어휘가 아니다")
-        self.assertNotIn("border-radius", pop, "라운드를 썼다")
-        self.assertIn("border:1px solid var(--text)", pop)
-        # 이름은 식별자다 — 모노
-        self.assertIn("font-family:var(--mono)", self._rule(r"\.tzpop \.tzn"))

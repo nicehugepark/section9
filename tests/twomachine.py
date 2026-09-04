@@ -134,7 +134,8 @@ class TwoMachine:
         self.git("alpha", "init", "-q", "-b", "main")
         self._identity("alpha")
         # .gitignore 는 인스턴스 리포와 같은 것을 쓴다 — 무엇이 track 되는지
-        # (state/sessions 는 되고 index/·state/* 는 안 되는 것)가 곧 시험 대상이다.
+        # (vault/users 는 되고 index/·state/* — 세션 바인딩 포함 — 는 안 되는 것)가
+        # 곧 시험 대상이다 (REQ-20260902-026).
         mod = self.load_mod("alpha")
         with open(os.path.join(alpha, ".gitignore"), "w", encoding="utf-8") as f:
             f.write(mod.INSTANCE_TRACK_GITIGNORE)

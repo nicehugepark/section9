@@ -75,60 +75,61 @@ class TestCaptureTarget(unittest.TestCase):
         return head
 
     # N1. 승계 기록에 현 세션이 있으면 last_req 반환
-    def test_n1_owned_last_req(self):
-        out = self.cli("aaaa1111", "last", "--active").strip()
-        self.assertEqual(out, self.A)
+    def test_test_capture_target(self):
+        """TestCaptureTarget 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_owned_last_req"):
+                out = self.cli("aaaa1111", "last", "--active").strip()
+                self.assertEqual(out, self.A)
 
-    # N2. stale last_req(승계 이력에 현 세션 없음) → 빈 값 + 세션 로그 기록
-    def test_n2_stale_rejected(self):
-        self.write_binding({"machine": "testbox", "session": "bbbb2222",
-                            "user": "alice", "history": [],
-                            "last_req": self.A})
-        out = self.cli("bbbb2222", "last", "--active").strip()
-        self.assertEqual(out, "")
-        # 거부가 세션 로그(SES 문서)에 드러난다
-        b = self.binding("bbbb2222")
-        ses = b.get("ses_doc", "")
-        self.assertTrue(ses, b)
-        log = self.cli(None, "show", ses)
-        self.assertIn(self.A, log)
+            # N2. stale last_req(승계 이력에 현 세션 없음) → 빈 값 + 세션 로그 기록
+        with self.subTest("n2_stale_rejected"):
+                self.write_binding({"machine": "testbox", "session": "bbbb2222",
+                                    "user": "alice", "history": [],
+                                    "last_req": self.A})
+                out = self.cli("bbbb2222", "last", "--active").strip()
+                self.assertEqual(out, "")
+                # 거부가 세션 로그(SES 문서)에 드러난다
+                b = self.binding("bbbb2222")
+                ses = b.get("ses_doc", "")
+                self.assertTrue(ses, b)
+                log = self.cli(None, "show", ses)
+                self.assertIn(self.A, log)
 
-    # N3. stale last_req여도 현 세션이 승계한 active_req가 있으면 그쪽으로 폴백
-    def test_n3_active_req_fallback(self):
-        self.write_binding({"machine": "testbox", "session": "cccc3333",
-                            "user": "alice", "history": [],
-                            "last_req": self.A})
-        self.cli("cccc3333", "last", self.B, "--add")
-        out = self.cli("cccc3333", "last", "--active").strip()
-        self.assertEqual(out, self.B)
+            # N3. stale last_req여도 현 세션이 승계한 active_req가 있으면 그쪽으로 폴백
+        with self.subTest("n3_active_req_fallback"):
+                self.write_binding({"machine": "testbox", "session": "cccc3333",
+                                    "user": "alice", "history": [],
+                                    "last_req": self.A})
+                self.cli("cccc3333", "last", self.B, "--add")
+                out = self.cli("cccc3333", "last", "--active").strip()
+                self.assertEqual(out, self.B)
 
-    # N4. --add 클레임도 문서에 세션 승계를 스탬프한다
-    def test_n4_add_stamps_session(self):
-        self.cli("dddd4444", "last", self.B, "--add")
-        self.assertIn("dddd4444", self.doc_meta(self.B))
+            # N4. --add 클레임도 문서에 세션 승계를 스탬프한다
+        with self.subTest("n4_add_stamps_session"):
+                self.cli("dddd4444", "last", self.B, "--add")
+                self.assertIn("dddd4444", self.doc_meta(self.B))
 
-    # N5. session 스탬프가 아예 없는 구문서는 소유로 간주 (하위호환)
-    def test_n5_unstamped_doc_allowed(self):
-        c = self.cli(None, "new", "request", "--title", "legacy",
-                     "--summary", "t", "--goal", "t", "--size", "S",
-                     "--user", "alice", "--body", "x").split()[0]
-        self.write_binding({"machine": "testbox", "session": "eeee5555",
-                            "user": "alice", "history": [], "last_req": c})
-        out = self.cli("eeee5555", "last", "--active").strip()
-        self.assertEqual(out, c)
+            # N5. session 스탬프가 아예 없는 구문서는 소유로 간주 (하위호환)
+        with self.subTest("n5_unstamped_doc_allowed"):
+                c = self.cli(None, "new", "request", "--title", "legacy",
+                             "--summary", "t", "--goal", "t", "--size", "S",
+                             "--user", "alice", "--body", "x").split()[0]
+                self.write_binding({"machine": "testbox", "session": "eeee5555",
+                                    "user": "alice", "history": [], "last_req": c})
+                out = self.cli("eeee5555", "last", "--active").strip()
+                self.assertEqual(out, c)
 
-    # N8. capture_paused는 여전히 빈 값 (회귀)
-    def test_n8_paused_still_empty(self):
-        self.cli("aaaa1111", "last", "--pause")
-        out = self.cli("aaaa1111", "last", "--active").strip()
-        self.assertEqual(out, "")
-        self.cli("aaaa1111", "last", self.A)  # 원복
+            # N8. capture_paused는 여전히 빈 값 (회귀)
+        with self.subTest("n8_paused_still_empty"):
+                self.cli("aaaa1111", "last", "--pause")
+                out = self.cli("aaaa1111", "last", "--active").strip()
+                self.assertEqual(out, "")
+                self.cli("aaaa1111", "last", self.A)  # 원복
 
-    # N1b. 클레임이 전혀 없는 세션 → 빈 값 (기존 동작 유지)
-    def test_n1b_no_claim_empty(self):
-        out = self.cli("ffff6666", "last", "--active").strip()
-        self.assertEqual(out, "")
-
+            # N1b. 클레임이 전혀 없는 세션 → 빈 값 (기존 동작 유지)
+        with self.subTest("n1b_no_claim_empty"):
+            out = self.cli("ffff6666", "last", "--active").strip()
+            self.assertEqual(out, "")
 
 class TestDuplicateNote(unittest.TestCase):
     @classmethod
@@ -171,44 +172,44 @@ class TestDuplicateNote(unittest.TestCase):
             f.write(body[:hdrs[-1].start(1)] + new + body[hdrs[-1].end(1):])
 
     # N6. 동일 본문 2회 연속 → 두 번째는 억제, 문서에 1회만
-    def test_n6_duplicate_suppressed(self):
-        self.cli(None, "note", self.R, "완결 보고 본문", "--label", "response")
-        out = self.cli(None, "note", self.R, "완결 보고 본문",
-                       "--label", "response")
-        self.assertIn("suppress", out.lower())
-        doc = self.cli(None, "show", self.R)
-        self.assertEqual(doc.count("완결 보고 본문"), 1, doc)
+    def test_test_duplicate_note(self):
+        """TestDuplicateNote 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n6_duplicate_suppressed"):
+                self.cli(None, "note", self.R, "완결 보고 본문", "--label", "response")
+                out = self.cli(None, "note", self.R, "완결 보고 본문",
+                               "--label", "response")
+                self.assertIn("suppress", out.lower())
+                doc = self.cli(None, "show", self.R)
+                self.assertEqual(doc.count("완결 보고 본문"), 1, doc)
 
-    # N7. 다른 본문은 정상 append — 2건 모두 기록된다
-    def test_n7_distinct_appended(self):
-        r = self.mkreq("distinct")
-        self.cli(None, "note", r, "본문 하나")
-        self.cli(None, "note", r, "본문 둘")
-        doc = self.cli(None, "show", r)
-        self.assertIn("본문 하나", doc)
-        self.assertIn("본문 둘", doc)
-        self.assertEqual(self.entries(r), 2, doc)
+            # N7. 다른 본문은 정상 append — 2건 모두 기록된다
+        with self.subTest("n7_distinct_appended"):
+                r = self.mkreq("distinct")
+                self.cli(None, "note", r, "본문 하나")
+                self.cli(None, "note", r, "본문 둘")
+                doc = self.cli(None, "show", r)
+                self.assertIn("본문 하나", doc)
+                self.assertIn("본문 둘", doc)
+                self.assertEqual(self.entries(r), 2, doc)
 
-    # N7b. 억제 창(NOTE_DUP_WINDOW_SEC) 밖의 동일 본문은 과잉 차단하지 않는다 —
-    # 훅 재발화만 겨냥한 좁은 창이라는 설계 근거를 고정한다.
-    def test_n7b_same_text_outside_window_appended(self):
-        r = self.mkreq("stale-dup")
-        self.cli(None, "note", r, "재검증 완료")
-        self.age_last_note(r, 3600)
-        out = self.cli(None, "note", r, "재검증 완료")
-        self.assertNotIn("suppress", out.lower())
-        self.assertEqual(self.entries(r), 2, self.cli(None, "show", r))
+            # N7b. 억제 창(NOTE_DUP_WINDOW_SEC) 밖의 동일 본문은 과잉 차단하지 않는다 —
+            # 훅 재발화만 겨냥한 좁은 창이라는 설계 근거를 고정한다.
+        with self.subTest("n7b_same_text_outside_window_appended"):
+                r = self.mkreq("stale-dup")
+                self.cli(None, "note", r, "재검증 완료")
+                self.age_last_note(r, 3600)
+                out = self.cli(None, "note", r, "재검증 완료")
+                self.assertNotIn("suppress", out.lower())
+                self.assertEqual(self.entries(r), 2, self.cli(None, "show", r))
 
-    # N7c. 억제된 노트는 문서를 전혀 건드리지 않는다 (updated 포함)
-    def test_n7c_suppressed_leaves_doc_intact(self):
-        r = self.mkreq("intact")
-        self.cli(None, "note", r, "동일 보고")
-        before = open(self.doc_path(r), encoding="utf-8").read()
-        self.cli(None, "note", r, "동일 보고")
-        self.assertEqual(open(self.doc_path(r), encoding="utf-8").read(),
-                         before)
-
-
+            # N7c. 억제된 노트는 문서를 전혀 건드리지 않는다 (updated 포함)
+        with self.subTest("n7c_suppressed_leaves_doc_intact"):
+            r = self.mkreq("intact")
+            self.cli(None, "note", r, "동일 보고")
+            before = open(self.doc_path(r), encoding="utf-8").read()
+            self.cli(None, "note", r, "동일 보고")
+            self.assertEqual(open(self.doc_path(r), encoding="utf-8").read(),
+                             before)
 
 class TestSubagentCapture(unittest.TestCase):
     """SubagentStop 훅 캡처의 소유권 판정 (REQ-20260825-066 실측 2차).
@@ -263,29 +264,30 @@ class TestSubagentCapture(unittest.TestCase):
         json.dump(b, open(p, "w", encoding="utf-8"), ensure_ascii=False)
 
     # N9. 클레임하지 않은 id가 본문에 언급돼도 그 문서에는 기록하지 않는다
-    def test_n9_mention_is_not_ownership(self):
-        self.set_binding("104b4fe3", active_reqs=[self.MINE], last_req=self.MINE)
-        self.fire("104b4fe3", f"Checking note timestamps in {self.OTHER}.md")
-        self.assertEqual(self.notes(self.OTHER, "Checking note timestamps"), 0,
-                         self.cli(None, "show", self.OTHER))
-        log = self.session_log("104b4fe3")
-        self.assertIn("거부", log)
-        self.assertIn(self.OTHER, log)
+    def test_test_subagent_capture(self):
+        """SubagentStop 훅 캡처의 소유권 판정 (REQ-20260825-066 실측 2차)."""
+        with self.subTest("n9_mention_is_not_ownership"):
+                self.set_binding("104b4fe3", active_reqs=[self.MINE], last_req=self.MINE)
+                self.fire("104b4fe3", f"Checking note timestamps in {self.OTHER}.md")
+                self.assertEqual(self.notes(self.OTHER, "Checking note timestamps"), 0,
+                                 self.cli(None, "show", self.OTHER))
+                log = self.session_log("104b4fe3")
+                self.assertIn("거부", log)
+                self.assertIn(self.OTHER, log)
 
-    # N10. 언급된 id를 이 세션이 승계했으면(클레임 포인터가 없어도) 기록한다
-    def test_n10_owned_mention_recorded(self):
-        self.set_binding("104b4fe3", active_reqs=[], last_req="")  # 포인터 없이 스탬프만
-        self.fire("104b4fe3", f"{self.MINE} 구현을 마쳤다")
-        self.assertEqual(self.notes(self.MINE, "구현을 마쳤다"), 1,
-                         self.cli(None, "show", self.MINE))
+            # N10. 언급된 id를 이 세션이 승계했으면(클레임 포인터가 없어도) 기록한다
+        with self.subTest("n10_owned_mention_recorded"):
+                self.set_binding("104b4fe3", active_reqs=[], last_req="")  # 포인터 없이 스탬프만
+                self.fire("104b4fe3", f"{self.MINE} 구현을 마쳤다")
+                self.assertEqual(self.notes(self.MINE, "구현을 마쳤다"), 1,
+                                 self.cli(None, "show", self.MINE))
 
-    # N11. 언급이 없을 때의 last_req 폴백도 소유 확인을 거친다 (stale 차단)
-    def test_n11_stale_last_req_fallback_blocked(self):
-        self.set_binding("104b4fe3", active_reqs=[], last_req=self.OTHER)
-        self.fire("104b4fe3", "작업을 마쳤다는 보고", atype="staff-engineer")
-        self.assertEqual(self.notes(self.OTHER, "작업을 마쳤다는 보고"), 0,
-                         self.cli(None, "show", self.OTHER))
-
+            # N11. 언급이 없을 때의 last_req 폴백도 소유 확인을 거친다 (stale 차단)
+        with self.subTest("n11_stale_last_req_fallback_blocked"):
+            self.set_binding("104b4fe3", active_reqs=[], last_req=self.OTHER)
+            self.fire("104b4fe3", "작업을 마쳤다는 보고", atype="staff-engineer")
+            self.assertEqual(self.notes(self.OTHER, "작업을 마쳤다는 보고"), 0,
+                             self.cli(None, "show", self.OTHER))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

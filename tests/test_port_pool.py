@@ -16,16 +16,126 @@ WSL 로 들어오는 요청은 +0). portpool 모듈 머리말에 측정표가 �
 
 실행: python3 tests/ port_pool
 """
+import ast
 import os
 import re
 import socket
 import tempfile
 import time
+import textwrap
 import unittest
 
 import portpool
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# ---------- 연결을 여는 루프 (REQ-20260904-001) ----------
+#
+# 2026-09-04: 진단용으로 두었던 tests/test_long_lived_reset.py 가 전체 스위트에
+# 끌려들어 **WSL 을 통째로 먹통으로** 만들었다. 잠 없는 `while` 을 120초 돌며
+# 매 바퀴 연결 3개를 열었고(실측 초당 ~170) 윈도우 동적 포트 16,384개가 말랐다.
+#
+# 그때 아래 `test_no_tight_retry_loop` 가 이미 서 있었는데도 못 잡았다. 좁았던
+# 축이 정확히 셋이다:
+#   ① 루프 모양을 `for _ in range(N)` 하나만 알았다 — 시간으로 묶은 `while` 은 못 본다.
+#   ② 연결을 `create_connection` 이라는 **글자**로만 셌다 — `socket().connect()` 는 못 본다.
+#   ③ 연결이 헬퍼 함수 뒤에 있으면 루프 본문 글자에 안 보인다.
+#
+# 그래서 글자 대신 **나무(AST)** 를 본다. 세는 규칙 한 줄:
+# **연결을 열 수 있는 루프는 잠을 재우거나(백오프) 작게 묶여 있어야 한다.**
+#
+# 일부러 좁게 둔 곳: `for x in <이름>` 은 크기를 알 수 없어 걸지 않는다. 이 사고의
+# 해는 "끝을 모르는 반복"에서 왔고, 알 수 없는 것까지 걸면 오탐이 규율을 먼저 죽인다.
+
+TIGHT = 50                      # 이 이상 두드리면 촘촘하다
+CONNECT_CALLS = {"create_connection", "connect"}
+
+
+def _calls(node):
+    """이 나무 안에서 불리는 이름들 — `f()` 와 `x.f()` 를 함께."""
+    for n in ast.walk(node):
+        if isinstance(n, ast.Call):
+            f = n.func
+            if isinstance(f, ast.Attribute):
+                yield f.attr
+            elif isinstance(f, ast.Name):
+                yield f.id
+
+
+def connecting_names(tree):
+    """연결을 여는 함수 이름 전부 — 직접 여는 것에서 시작해 부르는 쪽으로 번진다.
+
+    `one()` 안에서 connect 하고 루프는 `one()` 만 부르는 모양(실제 사고의 모양)을
+    잡으려면 한 겹으로는 모자란다. 더 번지지 않을 때까지 돌린다.
+    """
+    funcs = {n.name: n for n in ast.walk(tree)
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    hot = {name for name, fn in funcs.items()
+           if CONNECT_CALLS & set(_calls(fn))}
+    changed = True
+    while changed:                              # 고정점까지
+        changed = False
+        for name, fn in funcs.items():
+            if name in hot:
+                continue
+            if hot & set(_calls(fn)):
+                hot.add(name)
+                changed = True
+    return hot
+
+
+def _may_connect(loop, hot):
+    return bool((CONNECT_CALLS | hot) & set(_calls(loop)))
+
+
+def _paced(loop):
+    """본문 어디서든 잠을 잔다 — except 안이어도 센다(대기 루프의 흔한 모양)."""
+    return "sleep" in set(_calls(loop))
+
+
+def _loop_cap(loop):
+    """이 루프가 최대 몇 바퀴인가. 셀 수 없으면 None.
+
+    `while` 은 언제나 None 이다 — 조건이 참인 동안이라는 말은 끝을 모른다는 뜻이다.
+    """
+    if not isinstance(loop, ast.For):
+        return None
+    it = loop.iter
+    if (isinstance(it, ast.Call) and isinstance(it.func, ast.Name)
+            and it.func.id == "range"):
+        nums = [a.value for a in it.args
+                if isinstance(a, ast.Constant) and isinstance(a.value, int)]
+        if len(nums) != len(it.args) or not nums:
+            return None
+        return nums[0] if len(nums) == 1 else max(nums[1] - nums[0], 0)
+    if isinstance(it, (ast.List, ast.Tuple, ast.Set)):
+        return len(it.elts)
+    return None
+
+
+def connection_loop_offenders(src, name="<mem>"):
+    """(파일:줄, 루프 모양) 목록 — 잠도 안 자고 끝도 모르는 연결 루프."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return []
+    hot = connecting_names(tree)
+    out = []
+    for n in ast.walk(tree):
+        if not isinstance(n, (ast.While, ast.For)):
+            continue
+        if not _may_connect(n, hot):
+            continue
+        cap = _loop_cap(n)
+        if cap is not None and cap < TIGHT:
+            continue                    # 몇 바퀴짜리는 고갈을 만들지 않는다
+        if cap is None and _paced(n):
+            continue                    # 끝은 몰라도 잠을 잔다면 백오프 대기다
+        # 셀 수 있는데 촘촘하면 잠을 자도 offender 다 — 예전 「0.1초 간격 400회」가
+        # 바로 그 모양이었고, 그때 고갈에 기름을 부은 것은 간격이 아니라 횟수였다.
+        shape = "while" if isinstance(n, ast.While) else f"for x{cap}"
+        out.append(f"{name}:{n.lineno} ({shape})")
+    return out
 
 
 class PoolRange(unittest.TestCase):
@@ -70,8 +180,18 @@ class BoundedReuse(unittest.TestCase):
         self.assertLessEqual(len(first | second), portpool.SLOT_SIZE)
 
     def test_allocated_port_is_usable(self):
+        """할당받은 자리에 **실서버와 같은 방식으로** 붙을 수 있다.
+
+        SO_REUSEADDR 없이 붙으면 안 된다 — 풀은 TIME_WAIT 자리를 일부러
+        '비어 있다'고 판정한다(_try_bind 의 근거: 실서버 HTTPServer 는
+        allow_reuse_address 로 그 자리를 다시 잡는다). 여기서만 더 엄한
+        기준으로 붙으면 스위트가 포트를 데울수록 이 시험이 붉어진다 —
+        2026-09-04 전체 실행 네 번이 전부 이 자리에서 넘어졌다
+        (Errno 98; 그때 18800 에 TIME_WAIT 27개, LISTEN 은 0개).
+        """
         port = portpool.free_port()
         srv = socket.socket()
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             srv.bind(("127.0.0.1", port))
             srv.listen(1)
@@ -167,7 +287,17 @@ class WaitBackoff(unittest.TestCase):
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
         try:
-            self.assertEqual(portpool.wait_server(port, timeout=10), 1)
+            # **몇 번째에 잡히느냐는 이 시험의 계약이 아니다** (REQ-20260904-003).
+            # 여기서 재는 것은 「응답하는 진짜 서버는 준비됨으로 잡힌다」이고,
+            # 그 반대쪽(듣기만 하는 소켓은 준비됨이 아니다)은 바로 아래 시험이
+            # 맡는다. 시도 횟수의 상한은 `test_full_timeout_stays_under_thirty_
+            # attempts` 가 따로 못박는다.
+            #
+            # `== 1` 은 「이 기계가 첫 시도 안에 뜬다」를 함께 재고 있었다 —
+            # 부하가 걸린 병렬 실행에서 5가 나와 붉었다(실측 2026-09-04).
+            n = portpool.wait_server(port, timeout=10)
+            self.assertGreaterEqual(n, 1)
+            self.assertLessEqual(n, 30, "백오프 예산을 넘겨 잡혔다")
         finally:
             srv.shutdown()
             srv.server_close()
@@ -216,6 +346,25 @@ class NoEphemeralBind(unittest.TestCase):
                     offenders.append(f"{name}:range({m.group(1)})")
         self.assertEqual(offenders, [], "wait_server() 를 써라 — "
                          "연결 시도 1회가 호스트 동적 포트 1개다: " + ", ".join(offenders))
+
+    def test_no_unpaced_connection_loop(self):
+        """잠도 안 자고 끝도 모르는 연결 루프 금지 (REQ-20260904-001).
+
+        `for range(N)` 만 보던 위 시험이 놓친 자리다 — 시간으로 묶은 `while`,
+        `socket().connect()`, 헬퍼 뒤에 숨은 연결 셋 다 여기서 걸린다.
+        """
+        offenders = []
+        for name in sorted(os.listdir(HERE)):
+            if not name.startswith("test_") or not name.endswith(".py"):
+                continue
+            with open(os.path.join(HERE, name), encoding="utf-8") as f:
+                offenders += connection_loop_offenders(f.read(), name)
+        self.assertEqual(
+            offenders, [],
+            "연결을 여는 루프는 wait_server() 처럼 잠을 재우거나 작게 묶어라 — "
+            "커넥션 1개가 호스트 동적 포트 1개이고, 마르면 WSL 이 먹통이 된다"
+            "(REQ-20260904-001 실측: 잠 없는 while 120초 = 2만 커넥션 > 16,384): "
+            + ", ".join(offenders))
 
     def test_server_tests_use_the_pool(self):
         """서버를 띄우는 테스트는 풀에서 포트를 받아야 한다."""
@@ -368,3 +517,195 @@ class StrayDashboardServers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConnectionLoopGate(unittest.TestCase):
+    """게이트 자신을 못박는다 (REQ-20260904-001).
+
+    소스를 훑는 게이트는 조용히 좁아진다 — 2026-09-04 사고가 그랬다. 무엇을
+    잡고 무엇을 놓아주는지를 여기서 값으로 고정한다.
+    """
+
+    def off(self, src):
+        return connection_loop_offenders(textwrap.dedent(src), "t.py")
+
+    # ---------- 잡아야 하는 것 ----------
+
+    def test_f1_time_bounded_while_is_caught(self):
+        """시간으로만 묶은 while — 실제 사고의 모양."""
+        self.assertTrue(self.off("""
+            def probe(port):
+                end = time.monotonic() + 120
+                while time.monotonic() < end:
+                    socket.create_connection(("127.0.0.1", port)).close()
+        """))
+
+    def test_f2_connection_behind_a_helper_is_caught(self):
+        """루프 본문에는 `one()` 밖에 없다 — 글자만 보면 안 보인다."""
+        self.assertTrue(self.off("""
+            def one(port):
+                s = socket.socket()
+                s.connect(("127.0.0.1", port))
+                s.close()
+
+            def probe(port):
+                while True:
+                    one(port)
+        """))
+
+    def test_f3_socket_connect_counts_as_a_connection(self):
+        """create_connection 만 연결인 게 아니다."""
+        self.assertTrue(self.off("""
+            def probe(port):
+                while True:
+                    s = socket.socket()
+                    s.connect(("127.0.0.1", port))
+        """))
+
+    def test_f4_message_names_the_file_line_and_the_shape(self):
+        got = self.off("""
+            def probe(port):
+                while True:
+                    socket.create_connection(("127.0.0.1", port))
+        """)
+        self.assertEqual(len(got), 1)
+        self.assertIn("t.py:", got[0])
+        self.assertIn("while", got[0])
+
+    def test_r1_the_old_tight_range_shape_still_falls(self):
+        """앞 시험이 잡던 모양을 새 문도 잡는다 — 좁아지지 않았다."""
+        # 옛 글자 게이트가 이 파일의 **예시**까지 범인으로 세지 않도록
+        # 리터럴 `range(400)` 을 소스에 남기지 않는다.
+        self.assertTrue(self.off("""
+            def probe(port):
+                for _ in range(%d):
+                    socket.create_connection(("127.0.0.1", port)).close()
+        """ % 400))
+
+    # ---------- 놓아줘야 하는 것 (오탐 0) ----------
+
+    def test_b1_a_waiting_loop_that_sleeps_passes(self):
+        """test_live_signal.py 의 실제 모양 — 잠을 자고 성공하면 나간다."""
+        self.assertEqual(self.off("""
+            def ready(addr):
+                deadline = time.time() + 20
+                while True:
+                    try:
+                        socket.create_connection(addr, 0.5).close()
+                        break
+                    except OSError:
+                        if time.time() > deadline:
+                            raise
+                        time.sleep(0.25)
+        """), [])
+
+    def test_b2_backoff_helper_passes(self):
+        """portpool.wait_server 의 모양 — 잠이 점점 길어진다."""
+        self.assertEqual(self.off("""
+            def wait(port):
+                delay = 0.02
+                while time.monotonic() < end:
+                    try:
+                        probe(port)
+                        return
+                    except OSError:
+                        time.sleep(delay)
+                        delay *= 1.6
+        """), [])
+
+    def test_b3_a_small_bounded_loop_passes(self):
+        """몇 개짜리 리터럴·range 는 고갈을 만들지 않는다."""
+        self.assertEqual(self.off("""
+            def check(port):
+                for path in ("/a", "/b", "/c"):
+                    socket.create_connection(("127.0.0.1", port)).close()
+                for _ in range(3):
+                    socket.create_connection(("127.0.0.1", port)).close()
+        """), [])
+
+    def test_b4_a_loop_that_never_connects_passes(self):
+        self.assertEqual(self.off("""
+            def count(rows):
+                while True:
+                    rows.pop()
+        """), [])
+
+
+class UrlopenRetryIsInstalledOnce(unittest.TestCase):
+    """되걸기는 한 자리에 있고, 서버가 준 답은 되걸지 않는다 (REQ-20260904-003).
+
+    2026-09-04 하루에 네 파일이 차례로 같은 모양으로 넘어졌다 — 되걸기가
+    POST 에만 있거나 아예 없어서다. 파일마다 고치면 실행마다 희생자가 바뀐다.
+    """
+
+    def setUp(self):
+        import urllib.request
+        self._real = urllib.request.urlopen
+        portpool._URLOPEN_WRAPPED = False
+
+    def tearDown(self):
+        import urllib.request
+        urllib.request.urlopen = self._real
+        portpool._URLOPEN_WRAPPED = False
+
+    def test_a_reset_is_retried(self):
+        import urllib.request
+        calls = []
+
+        def flaky(*a, **kw):
+            calls.append(1)
+            if len(calls) < 3:
+                raise ConnectionResetError("붙자마자 끊겼다")
+            return "ok"
+
+        urllib.request.urlopen = flaky
+        portpool.install_urlopen_retry(tries=3, pause=0)
+        self.assertEqual(urllib.request.urlopen(), "ok")
+        self.assertEqual(len(calls), 3)
+
+    def test_an_http_answer_is_not_retried(self):
+        """404 는 서버가 준 답이다 — 다시 걸면 시험이 보려던 것을 늦출 뿐이다."""
+        import urllib.error
+        import urllib.request
+        calls = []
+
+        def answered(*a, **kw):
+            calls.append(1)
+            raise urllib.error.HTTPError("u", 404, "no", {}, None)
+
+        urllib.request.urlopen = answered
+        portpool.install_urlopen_retry(tries=3, pause=0)
+        with self.assertRaises(urllib.error.HTTPError):
+            urllib.request.urlopen()
+        self.assertEqual(len(calls), 1, "서버가 준 답을 되걸었다")
+
+    def test_a_dead_server_still_raises(self):
+        """정말 없으면 세 번 뒤 같은 예외가 오른다 — 판정은 안 바뀐다."""
+        import urllib.request
+        calls = []
+
+        def dead(*a, **kw):
+            calls.append(1)
+            raise ConnectionRefusedError("아무도 없다")
+
+        urllib.request.urlopen = dead
+        portpool.install_urlopen_retry(tries=3, pause=0)
+        with self.assertRaises(ConnectionRefusedError):
+            urllib.request.urlopen()
+        self.assertEqual(len(calls), 3)
+
+    def test_installing_twice_does_not_stack(self):
+        """두 번 입히면 되걸기가 겹쳐 9번이 된다 — 한 번만 입는다."""
+        import urllib.request
+        calls = []
+
+        def dead(*a, **kw):
+            calls.append(1)
+            raise ConnectionRefusedError("아무도 없다")
+
+        urllib.request.urlopen = dead
+        portpool.install_urlopen_retry(tries=3, pause=0)
+        portpool.install_urlopen_retry(tries=3, pause=0)
+        with self.assertRaises(ConnectionRefusedError):
+            urllib.request.urlopen()
+        self.assertEqual(len(calls), 3, f"되걸기가 겹쳤다 ({len(calls)}회)")

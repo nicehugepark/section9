@@ -120,83 +120,84 @@ class TestAccessIsolation(unittest.TestCase):
         return {r["id"] for r in rows}
 
     # V1. me 셀렉터 후보 = 이 머신 등록 계정만
-    def test_v1_users_machine_scope(self):
-        code, d = self.get("/api/users", scope="machine")
-        self.assertEqual(code, 200)
-        names = {u["name"] for u in d["users"]}
-        self.assertEqual(names, {"boss", "alice", "bob"})
-        self.assertEqual(d.get("machine"), MACHINE)
-        # scope 미지정(Settings 사용자 관리)은 전체 유지
-        code, d = self.get("/api/users")
-        self.assertIn("remote", {u["name"] for u in d["users"]})
+    def test_test_access_isolation(self):
+        """TestAccessIsolation 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("v1_users_machine_scope"):
+                code, d = self.get("/api/users", scope="machine")
+                self.assertEqual(code, 200)
+                names = {u["name"] for u in d["users"]}
+                self.assertEqual(names, {"boss", "alice", "bob"})
+                self.assertEqual(d.get("machine"), MACHINE)
+                # scope 미지정(Settings 사용자 관리)은 전체 유지
+                code, d = self.get("/api/users")
+                self.assertIn("remote", {u["name"] for u in d["users"]})
 
-    # V2. 비멤버에게 프로젝트 문서 비가시
-    def test_v2_nonmember_hidden(self):
-        self.assertNotIn(self.px_doc, self.catalog_ids("bob"))
-        code, g = self.get("/api/graph", **{"as": "bob"})
-        self.assertEqual(code, 200)
-        self.assertNotIn(self.px_doc, {n["id"] for n in g["nodes"]})
-        for e in g["edges"]:
-            self.assertNotIn(self.px_doc, (e["from"], e["to"]))
-        code, s = self.get("/api/search", q="zebra-token-px", **{"as": "bob"})
-        self.assertEqual([r["id"] for r in s["results"]], [])
-        code, _ = self.get("/api/doc", id=self.px_doc, **{"as": "bob"})
-        self.assertEqual(code, 404)
-        code, _ = self.get("/api/reqstream", id=self.px_doc, **{"as": "bob"})
-        self.assertEqual(code, 404)
-        code, p = self.get("/api/projects", **{"as": "bob"})
-        self.assertNotIn("px", {x["slug"] for x in p["projects"]})
+            # V2. 비멤버에게 프로젝트 문서 비가시
+        with self.subTest("v2_nonmember_hidden"):
+                self.assertNotIn(self.px_doc, self.catalog_ids("bob"))
+                code, g = self.get("/api/graph", **{"as": "bob"})
+                self.assertEqual(code, 200)
+                self.assertNotIn(self.px_doc, {n["id"] for n in g["nodes"]})
+                for e in g["edges"]:
+                    self.assertNotIn(self.px_doc, (e["from"], e["to"]))
+                code, s = self.get("/api/search", q="zebra-token-px", **{"as": "bob"})
+                self.assertEqual([r["id"] for r in s["results"]], [])
+                code, _ = self.get("/api/doc", id=self.px_doc, **{"as": "bob"})
+                self.assertEqual(code, 404)
+                code, _ = self.get("/api/reqstream", id=self.px_doc, **{"as": "bob"})
+                self.assertEqual(code, 404)
+                code, p = self.get("/api/projects", **{"as": "bob"})
+                self.assertNotIn("px", {x["slug"] for x in p["projects"]})
 
-    # V2b. 비admin whoami 서버의 기본 시점 = 자기 자신 (as 없이도 격리 동작,
-    #      비admin의 as 는 무시되어 상승 불가)
-    def test_v2b_nonadmin_direct_view(self):
-        code, rows = self.get("/api/catalog", port=self.port_bob)
-        self.assertEqual(code, 200)
-        ids = {r["id"] for r in rows}
-        self.assertNotIn(self.px_doc, ids)
-        self.assertIn(self.solo_doc, ids)
-        code, rows = self.get("/api/catalog", port=self.port_bob,
-                              **{"as": "boss"})
-        self.assertNotIn(self.px_doc, {r["id"] for r in rows})
+            # V2b. 비admin whoami 서버의 기본 시점 = 자기 자신 (as 없이도 격리 동작,
+            #      비admin의 as 는 무시되어 상승 불가)
+        with self.subTest("v2b_nonadmin_direct_view"):
+                code, rows = self.get("/api/catalog", port=self.port_bob)
+                self.assertEqual(code, 200)
+                ids = {r["id"] for r in rows}
+                self.assertNotIn(self.px_doc, ids)
+                self.assertIn(self.solo_doc, ids)
+                code, rows = self.get("/api/catalog", port=self.port_bob,
+                                      **{"as": "boss"})
+                self.assertNotIn(self.px_doc, {r["id"] for r in rows})
 
-    # V3. 활성 멤버는 보인다
-    def test_v3_member_visible(self):
-        self.assertIn(self.px_doc, self.catalog_ids("alice"))
-        code, _ = self.get("/api/doc", id=self.px_doc, **{"as": "alice"})
-        self.assertEqual(code, 200)
-        code, s = self.get("/api/search", q="zebra-token-px", **{"as": "alice"})
-        self.assertIn(self.px_doc, {r["id"] for r in s["results"]})
-        code, p = self.get("/api/projects", **{"as": "alice"})
-        self.assertIn("px", {x["slug"] for x in p["projects"]})
+            # V3. 활성 멤버는 보인다
+        with self.subTest("v3_member_visible"):
+                self.assertIn(self.px_doc, self.catalog_ids("alice"))
+                code, _ = self.get("/api/doc", id=self.px_doc, **{"as": "alice"})
+                self.assertEqual(code, 200)
+                code, s = self.get("/api/search", q="zebra-token-px", **{"as": "alice"})
+                self.assertIn(self.px_doc, {r["id"] for r in s["results"]})
+                code, p = self.get("/api/projects", **{"as": "alice"})
+                self.assertIn("px", {x["slug"] for x in p["projects"]})
 
-    # V4. 시스템 admin 은 전부
-    def test_v4_admin_sees_all(self):
-        ids = self.catalog_ids("boss")
-        self.assertIn(self.px_doc, ids)
-        self.assertIn(self.solo_doc, ids)
-        code, p = self.get("/api/projects")
-        self.assertIn("px", {x["slug"] for x in p["projects"]})
+            # V4. 시스템 admin 은 전부
+        with self.subTest("v4_admin_sees_all"):
+                ids = self.catalog_ids("boss")
+                self.assertIn(self.px_doc, ids)
+                self.assertIn(self.solo_doc, ids)
+                code, p = self.get("/api/projects")
+                self.assertIn("px", {x["slug"] for x in p["projects"]})
 
-    # V5. 무소속 문서 = 작성자만
-    def test_v5_unassigned_author_only(self):
-        self.assertIn(self.solo_doc, self.catalog_ids("bob"))
-        self.assertNotIn(self.solo_doc, self.catalog_ids("alice"))
-        code, _ = self.get("/api/doc", id=self.solo_doc, **{"as": "alice"})
-        self.assertEqual(code, 404)
+            # V5. 무소속 문서 = 작성자만
+        with self.subTest("v5_unassigned_author_only"):
+                self.assertIn(self.solo_doc, self.catalog_ids("bob"))
+                self.assertNotIn(self.solo_doc, self.catalog_ids("alice"))
+                code, _ = self.get("/api/doc", id=self.solo_doc, **{"as": "alice"})
+                self.assertEqual(code, 404)
 
-    # V7. audit 이벤트는 해당 SES 문서 가시성 기준
-    def test_v7_audit_scoped(self):
-        code, d = self.get("/api/audit", **{"as": "alice"})
-        self.assertEqual(code, 200)
-        self.assertTrue(any("alice-private-event" in e["text"]
-                            for e in d["events"]))
-        code, d = self.get("/api/audit", **{"as": "bob"})
-        self.assertFalse(any("alice-private-event" in e["text"]
-                             for e in d["events"]))
-        code, d = self.get("/api/audit")
-        self.assertTrue(any("alice-private-event" in e["text"]
-                            for e in d["events"]))
-
+            # V7. audit 이벤트는 해당 SES 문서 가시성 기준
+        with self.subTest("v7_audit_scoped"):
+            code, d = self.get("/api/audit", **{"as": "alice"})
+            self.assertEqual(code, 200)
+            self.assertTrue(any("alice-private-event" in e["text"]
+                                for e in d["events"]))
+            code, d = self.get("/api/audit", **{"as": "bob"})
+            self.assertFalse(any("alice-private-event" in e["text"]
+                                 for e in d["events"]))
+            code, d = self.get("/api/audit")
+            self.assertTrue(any("alice-private-event" in e["text"]
+                                for e in d["events"]))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -59,13 +59,15 @@ class TestFixtureRoundTrip(unittest.TestCase):
         self.assertEqual(fx.head("alpha"), fx.head("beta"))
         self.assertEqual(fx.head("alpha"), fx.head())
 
-    def test_s2_bindings_travel_and_claude_is_never_spawned(self):
-        """state/sessions 는 track 돼 상대 머신에 보이고, fake_spawn 은 claude 만 삼킨다."""
+    def test_s2_bindings_stay_home_and_claude_is_never_spawned(self):
+        """state/sessions 는 track 해제(REQ-20260902-026) — alpha 의 바인딩은
+        sync→pull 뒤에도 beta 에 오지 않는다. fake_spawn 은 claude 만 삼킨다."""
         fx = self.fx
         fx.sync("alpha")
         fx.pull("beta")
-        self.assertTrue(os.path.isfile(fx.binding_file("beta", "alpha", A_SESS)),
-                        "alpha 의 세션 바인딩이 beta 의 state/sessions 에 없다")
+        self.assertFalse(os.path.isfile(fx.binding_file("beta", "alpha", A_SESS)),
+                         "alpha 의 세션 바인딩이 beta 의 state/sessions 에 실려 왔다 "
+                         "— track 해제가 풀렸다 (.gitignore 또는 SYNC_DATA_PATHS)")
         with fx.fake_spawn():
             r = subprocess.run(["git", "--version"], capture_output=True,
                                text=True)
@@ -122,7 +124,8 @@ class TestReworkWatcherAcrossMachines(unittest.TestCase):
         self.assertIn(X, b.get("active_reqs") or [])
         fx.sync("beta")
         fx.pull("alpha")
-        self.assertTrue(os.path.isfile(fx.binding_file("alpha", "beta", B_SESS)))
+        # 바인딩은 오지 않는다(REQ-20260902-026) — alpha 가 아는 것은 문서뿐이다
+        self.assertFalse(os.path.isfile(fx.binding_file("alpha", "beta", B_SESS)))
         self.assertEqual(fx.doc("alpha", X)[0].get("session"), B_SESS)
         fx.clear_spawn_marks("alpha")
         spawned, calls = fx.tick("alpha", grace=0)
@@ -264,6 +267,10 @@ class TestBindingCollisionAcrossMachines(unittest.TestCase):
         fx.write_binding_file("alpha", b)
         fx.sync("alpha")
         fx.pull("beta")
+        # track 해제(REQ-20260902-026) 뒤로 바인딩은 git 으로 오지 않는다. 그래도
+        # 해제 전에 실려 온 잔재가 beta 디스크에 남아 있을 수 있다 — 그 잔재를
+        # 그대로 놓아 017(남의 바인딩은 판정에 쓰지 않는다)의 회귀를 지킨다.
+        fx.write_binding_file("beta", b)
 
     @classmethod
     def tearDownClass(cls):

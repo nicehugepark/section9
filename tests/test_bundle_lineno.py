@@ -74,54 +74,53 @@ class Remap(unittest.TestCase):
     TABLE = [["app/oops.js", 5], ["app/const.js", 191], ["app/card.js", 402]]
 
     # B1 — 이 요청의 전부: 묶음의 줄이 조각의 이름과 줄이 된다
-    def test_b1_a_bundle_line_becomes_a_part_line(self):
-        w = self.where(self.TABLE, "app/all.js", 200)
-        self.assertEqual(w["file"], "app/const.js",
-                         "표가 있는데도 어느 조각인지 말하지 못한다")
-        self.assertEqual(w["line"], 9,
-                         "조각 안에서의 줄이 아니라 통째 파일의 줄을 말한다")
+    def test_remap(self):
+        """표를 손에 쥐여 주고 되돌리게 한다."""
+        with self.subTest("b1_a_bundle_line_becomes_a_part_line"):
+            w = self.where(self.TABLE, "app/all.js", 200)
+            self.assertEqual(w["file"], "app/const.js",
+                             "표가 있는데도 어느 조각인지 말하지 못한다")
+            self.assertEqual(w["line"], 9,
+                             "조각 안에서의 줄이 아니라 통째 파일의 줄을 말한다")
+        with self.subTest("b1b_the_last_part_reaches_to_the_end"):
+                w = self.where(self.TABLE, "app/all.js", 9999)
+                self.assertEqual(w["file"], "app/card.js")
+                self.assertEqual(w["line"], 9999 - 402)
 
-    def test_b1b_the_last_part_reaches_to_the_end(self):
-        """마지막 조각은 끝나는 줄이 표에 없다 — 그래도 그 조각의 것이다."""
-        w = self.where(self.TABLE, "app/all.js", 9999)
-        self.assertEqual(w["file"], "app/card.js")
-        self.assertEqual(w["line"], 9999 - 402)
+            # B2 — 표보다 앞(머리말·표 자신)은 묶음의 자리다
+        with self.subTest("b2_the_header_is_not_anyones_part"):
+                w = self.where(self.TABLE, "app/all.js", 3)
+                self.assertEqual(w["file"], "app/all.js",
+                                 "머리말에서 난 오류를 남의 조각 탓으로 돌린다")
+                self.assertEqual(w["line"], 3)
 
-    # B2 — 표보다 앞(머리말·표 자신)은 묶음의 자리다
-    def test_b2_the_header_is_not_anyones_part(self):
-        w = self.where(self.TABLE, "app/all.js", 3)
-        self.assertEqual(w["file"], "app/all.js",
-                         "머리말에서 난 오류를 남의 조각 탓으로 돌린다")
-        self.assertEqual(w["line"], 3)
+            # B3 — 낱개로 되돌린 뒤의 오류는 이미 조각 이름이다. 건드리면 거짓이 된다
+        with self.subTest("b3_a_real_part_is_left_alone"):
+                w = self.where(self.TABLE, "app/card.js", 12)
+                self.assertEqual(w["file"], "app/card.js")
+                self.assertEqual(w["line"], 12)
 
-    # B3 — 낱개로 되돌린 뒤의 오류는 이미 조각 이름이다. 건드리면 거짓이 된다
-    def test_b3_a_real_part_is_left_alone(self):
-        w = self.where(self.TABLE, "app/card.js", 12)
-        self.assertEqual(w["file"], "app/card.js")
-        self.assertEqual(w["line"], 12)
+            # B4 — 표가 없어도 죽지 않는다 (옛 서버가 내준 묶음, 또는 표가 망가진 경우)
+        with self.subTest("b4_no_table_no_lie"):
+                for table in (None, [], "망가짐", [["app/card.js"]], [[None, "x"]]):
+                    w = self.where(table, "app/all.js", 1234)
+                    self.assertEqual(w["file"], "app/all.js",
+                                     f"표가 {table!r} 인데 조각 이름을 지어낸다")
+                    self.assertEqual(w["line"], 1234)
 
-    # B4 — 표가 없어도 죽지 않는다 (옛 서버가 내준 묶음, 또는 표가 망가진 경우)
-    def test_b4_no_table_no_lie(self):
-        for table in (None, [], "망가짐", [["app/card.js"]], [[None, "x"]]):
-            w = self.where(table, "app/all.js", 1234)
-            self.assertEqual(w["file"], "app/all.js",
-                             f"표가 {table!r} 인데 조각 이름을 지어낸다")
-            self.assertEqual(w["line"], 1234)
+            # B5 — 줄 번호가 없는 오류(자원 실패)는 되돌릴 근거가 없다
+        with self.subTest("b5_without_a_line_there_is_nothing_to_undo"):
+                w = self.where(self.TABLE, "app/all.js", 0)
+                self.assertEqual(w["file"], "app/all.js",
+                                 "묶음을 통째로 못 받은 것을 첫 조각 탓으로 돌린다")
 
-    # B5 — 줄 번호가 없는 오류(자원 실패)는 되돌릴 근거가 없다
-    def test_b5_without_a_line_there_is_nothing_to_undo(self):
-        w = self.where(self.TABLE, "app/all.js", 0)
-        self.assertEqual(w["file"], "app/all.js",
-                         "묶음을 통째로 못 받은 것을 첫 조각 탓으로 돌린다")
-
-    # B6 — 되돌린 것을 실제로 쓰는가. 떼어 낸 함수만 맞고 화면은 그대로면 헛일이다
-    def test_b6_the_guard_actually_uses_it(self):
-        m = re.search(r"remap\(base\(e\.filename\), e\.lineno \|\| 0\)", self.oops)
-        self.assertTrue(m, "remap() 이 있으나 오류를 그리는 자리에서 부르지 않는다 — "
-                           "그러면 붉은 상자는 여전히 app/all.js 를 말한다")
-        self.assertIn("__S9_BUNDLE", self.oops,
-                      "지킴이가 서버의 표를 읽지 않는다")
-
+            # B6 — 되돌린 것을 실제로 쓰는가. 떼어 낸 함수만 맞고 화면은 그대로면 헛일이다
+        with self.subTest("b6_the_guard_actually_uses_it"):
+            m = re.search(r"remap\(base\(e\.filename\), e\.lineno \|\| 0\)", self.oops)
+            self.assertTrue(m, "remap() 이 있으나 오류를 그리는 자리에서 부르지 않는다 — "
+                               "그러면 붉은 상자는 여전히 app/all.js 를 말한다")
+            self.assertIn("__S9_BUNDLE", self.oops,
+                          "지킴이가 서버의 표를 읽지 않는다")
 
 class AgainstTheRealBundle(unittest.TestCase):
     """짐작한 표가 아니라 **서버가 지금 내는 표**로 되돌려 본다.

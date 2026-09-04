@@ -20,34 +20,26 @@ MODULE_TMP = tempfile.mkdtemp(prefix="s9probe-")
 
 
 class Probe(unittest.TestCase):
-    def test_leak_is_contained_by_the_run_root(self):
+    def test_probe(self):
         """일부러 안 지운다 — 러너가 거두는지가 시험 대상이다."""
-        d = tempfile.mkdtemp(prefix="s9gate-")
-        self.assertTrue(os.path.isdir(d))
-        if not LEAK:
-            os.rmdir(d)
-
-    def test_module_level_dir_is_inside_the_run_root(self):
-        """import 시점에 만든 자리도 지금의 임시 루트 안이어야 한다.
-
-        러너가 루트를 discovery 뒤에 세우면 이 자리는 /tmp 에 생기고, 실행
-        중인 지금의 루트와 부모가 어긋난다 — 그게 곧 문 밖에 샜다는 뜻이다.
-        """
-        self.assertTrue(os.path.isdir(MODULE_TMP))
-        self.assertEqual(os.path.realpath(os.path.dirname(MODULE_TMP)),
-                         os.path.realpath(tempfile.gettempdir()),
-                         "모듈 수준 임시 자리가 실행 루트 밖에 생겼다")
-
-    def test_child_process_sees_the_same_temp_root(self):
-        """하위 프로세스도 같은 자리를 쓴다 — TMPDIR 로 전달된다."""
-        root = os.path.realpath(tempfile.gettempdir())
-        out = subprocess.run(
-            [sys.executable, "-c",
-             "import tempfile;print(tempfile.gettempdir())"],
-            capture_output=True, text=True, timeout=60).stdout.strip()
-        self.assertEqual(os.path.realpath(out), root)
-        sys.stderr.write("PROBE-CHILD-INSIDE\n")
-
+        with self.subTest("leak_is_contained_by_the_run_root"):
+            d = tempfile.mkdtemp(prefix="s9gate-")
+            self.assertTrue(os.path.isdir(d))
+            if not LEAK:
+                os.rmdir(d)
+        with self.subTest("module_level_dir_is_inside_the_run_root"):
+            self.assertTrue(os.path.isdir(MODULE_TMP))
+            self.assertEqual(os.path.realpath(os.path.dirname(MODULE_TMP)),
+                             os.path.realpath(tempfile.gettempdir()),
+                             "모듈 수준 임시 자리가 실행 루트 밖에 생겼다")
+        with self.subTest("child_process_sees_the_same_temp_root"):
+            root = os.path.realpath(tempfile.gettempdir())
+            out = subprocess.run(
+                [sys.executable, "-c",
+                 "import tempfile;print(tempfile.gettempdir())"],
+                capture_output=True, text=True, timeout=60).stdout.strip()
+            self.assertEqual(os.path.realpath(out), root)
+            sys.stderr.write("PROBE-CHILD-INSIDE\n")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

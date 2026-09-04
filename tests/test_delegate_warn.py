@@ -75,33 +75,31 @@ class Base(unittest.TestCase):
 
 
 class TheWarning(Base):
-    def test_d1_declared_delegation_is_silent(self):
-        r = self.hook(f"{self.num} 화면 몫")
-        self.assertEqual(r.returncode, 0)
-        self.assertIsNone(self.block_reason(r),
-                          "지명이 풀렸는데 경고가 났다 — 늑대 소년이 된다")
-        # 종전 등록 경로 회귀(D5): 지명된 문서에 기여가 남았다
-        body = self.cli("show", self.rid)
-        self.assertIn("designer", body, "위임 등록(contrib)이 사라졌다")
-
-    def test_d2_undeclared_delegation_warns(self):
-        r = self.hook("화면을 다듬는 잡일")     # 번호도 id 도 없다
-        self.assertEqual(r.returncode, 0, "경고가 훅을 실패로 만들면 안 된다")
-        reason = self.block_reason(r)
-        self.assertIsNotNone(reason, "지명 없는 위임에 경고가 없다")
-        self.assertIn("지명", reason)
-
-    def test_d3_the_warning_says_what_to_do(self):
-        reason = self.block_reason(self.hook("잡일")) or ""
-        self.assertIn("s9 claim", reason, "바로잡는 명령이 없다")
-        self.assertIn("description", reason, "다음부터 어떻게 하는지가 없다")
-
-    def test_d4_audit_off_is_silent(self):
-        r = self.hook("잡일", env_extra={"S9_AUDIT": "off"})
-        self.assertEqual(r.returncode, 0)
-        self.assertEqual((r.stdout or "").strip(), "",
-                         "S9_AUDIT=off 인데 출력이 있다")
-
+    def test_the_warning(self):
+        """TheWarning 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("d1_declared_delegation_is_silent"):
+            r = self.hook(f"{self.num} 화면 몫")
+            self.assertEqual(r.returncode, 0)
+            self.assertIsNone(self.block_reason(r),
+                              "지명이 풀렸는데 경고가 났다 — 늑대 소년이 된다")
+            # 종전 등록 경로 회귀(D5): 지명된 문서에 기여가 남았다
+            body = self.cli("show", self.rid)
+            self.assertIn("designer", body, "위임 등록(contrib)이 사라졌다")
+        with self.subTest("d2_undeclared_delegation_warns"):
+            r = self.hook("화면을 다듬는 잡일")     # 번호도 id 도 없다
+            self.assertEqual(r.returncode, 0, "경고가 훅을 실패로 만들면 안 된다")
+            reason = self.block_reason(r)
+            self.assertIsNotNone(reason, "지명 없는 위임에 경고가 없다")
+            self.assertIn("지명", reason)
+        with self.subTest("d3_the_warning_says_what_to_do"):
+            reason = self.block_reason(self.hook("잡일")) or ""
+            self.assertIn("s9 claim", reason, "바로잡는 명령이 없다")
+            self.assertIn("description", reason, "다음부터 어떻게 하는지가 없다")
+        with self.subTest("d4_audit_off_is_silent"):
+            r = self.hook("잡일", env_extra={"S9_AUDIT": "off"})
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual((r.stdout or "").strip(), "",
+                             "S9_AUDIT=off 인데 출력이 있다")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

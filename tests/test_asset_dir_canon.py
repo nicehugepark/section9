@@ -63,64 +63,65 @@ class AssetDirCanon(unittest.TestCase):
         return r.stdout.strip()
 
     # N1. 짧은 id 로 불러도 정식 id 폴더를 준다.
-    def test_n1_short_id_gives_canonical_dir(self):
-        self.assertNotEqual(self.short, self.rid, "시험 전제가 깨졌다")
-        self.assertEqual(os.path.basename(self.m.doc_asset_dir(self.short)),
-                         self.rid,
-                         "부른 사람의 문자열이 폴더 이름이 된다 — "
-                         "한 문서의 첨부가 두 폴더로 갈린다")
+    def test_asset_dir_canon(self):
+        """AssetDirCanon 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_short_id_gives_canonical_dir"):
+                self.assertNotEqual(self.short, self.rid, "시험 전제가 깨졌다")
+                self.assertEqual(os.path.basename(self.m.doc_asset_dir(self.short)),
+                                 self.rid,
+                                 "부른 사람의 문자열이 폴더 이름이 된다 — "
+                                 "한 문서의 첨부가 두 폴더로 갈린다")
 
-    # N2. 정식 id 로 부르면 그대로.
-    def test_n2_canonical_id_unchanged(self):
-        self.assertEqual(os.path.basename(self.m.doc_asset_dir(self.rid)),
-                         self.rid)
+            # N2. 정식 id 로 부르면 그대로.
+        with self.subTest("n2_canonical_id_unchanged"):
+                self.assertEqual(os.path.basename(self.m.doc_asset_dir(self.rid)),
+                                 self.rid)
 
-    # B1. 문서가 없으면 "" — 기존 계약.
-    def test_b1_missing_doc_is_empty(self):
-        self.assertEqual(self.m.doc_asset_dir("REQ-20260101-999"), "")
+            # B1. 문서가 없으면 "" — 기존 계약.
+        with self.subTest("b1_missing_doc_is_empty"):
+                self.assertEqual(self.m.doc_asset_dir("REQ-20260101-999"), "")
 
-    # B2. 이미 갈린 폴더를 합치고 본문 참조도 고쳐 쓴다.
-    def test_b2_merge_moves_files_and_rewrites_body(self):
-        path = self.m.locate(self.rid)
-        legacy = os.path.join(os.path.dirname(path), "assets", self.short)
-        os.makedirs(legacy, exist_ok=True)
-        with open(os.path.join(legacy, "a.png"), "wb") as f:
-            f.write(b"A")
-        meta, body = self.m.read_doc(path)
-        self.m.write_doc(path, meta,
-                         body + f"\n[Image: assets/{self.short}/a.png]\n")
+            # B2. 이미 갈린 폴더를 합치고 본문 참조도 고쳐 쓴다.
+        with self.subTest("b2_merge_moves_files_and_rewrites_body"):
+                path = self.m.locate(self.rid)
+                legacy = os.path.join(os.path.dirname(path), "assets", self.short)
+                os.makedirs(legacy, exist_ok=True)
+                with open(os.path.join(legacy, "a.png"), "wb") as f:
+                    f.write(b"A")
+                meta, body = self.m.read_doc(path)
+                self.m.write_doc(path, meta,
+                                 body + f"\n[Image: assets/{self.short}/a.png]\n")
 
-        moved = self.m.merge_legacy_asset_dirs()
-        self.assertGreaterEqual(len(moved), 1, "합친 것이 없다")
+                moved = self.m.merge_legacy_asset_dirs()
+                self.assertGreaterEqual(len(moved), 1, "합친 것이 없다")
 
-        canon = self.m.doc_asset_dir(self.rid)
-        self.assertTrue(os.path.isfile(os.path.join(canon, "a.png")),
-                        "파일이 정식 폴더로 안 왔다")
-        self.assertFalse(os.path.isdir(legacy), "짧은 폴더가 남았다")
-        _m2, body2 = self.m.read_doc(path)
-        self.assertIn(f"assets/{self.rid}/a.png", body2,
-                      "본문 참조를 안 고쳤다 — 파일만 옮기면 화면이 깨진다")
-        self.assertNotIn(f"assets/{self.short}/a.png", body2)
+                canon = self.m.doc_asset_dir(self.rid)
+                self.assertTrue(os.path.isfile(os.path.join(canon, "a.png")),
+                                "파일이 정식 폴더로 안 왔다")
+                self.assertFalse(os.path.isdir(legacy), "짧은 폴더가 남았다")
+                _m2, body2 = self.m.read_doc(path)
+                self.assertIn(f"assets/{self.rid}/a.png", body2,
+                              "본문 참조를 안 고쳤다 — 파일만 옮기면 화면이 깨진다")
+                self.assertNotIn(f"assets/{self.short}/a.png", body2)
 
-    # B3. 같은 이름이 양쪽에 있으면 **덮지 않는다** — 첨부 소실 금지.
-    def test_b3_name_clash_never_overwrites(self):
-        path = self.m.locate(self.rid)
-        canon = self.m.doc_asset_dir(self.rid, make=True)
-        with open(os.path.join(canon, "clash.png"), "wb") as f:
-            f.write(b"CANON")
-        legacy = os.path.join(os.path.dirname(path), "assets", self.short)
-        os.makedirs(legacy, exist_ok=True)
-        with open(os.path.join(legacy, "clash.png"), "wb") as f:
-            f.write(b"LEGACY")
+            # B3. 같은 이름이 양쪽에 있으면 **덮지 않는다** — 첨부 소실 금지.
+        with self.subTest("b3_name_clash_never_overwrites"):
+            path = self.m.locate(self.rid)
+            canon = self.m.doc_asset_dir(self.rid, make=True)
+            with open(os.path.join(canon, "clash.png"), "wb") as f:
+                f.write(b"CANON")
+            legacy = os.path.join(os.path.dirname(path), "assets", self.short)
+            os.makedirs(legacy, exist_ok=True)
+            with open(os.path.join(legacy, "clash.png"), "wb") as f:
+                f.write(b"LEGACY")
 
-        self.m.merge_legacy_asset_dirs()
+            self.m.merge_legacy_asset_dirs()
 
-        with open(os.path.join(canon, "clash.png"), "rb") as f:
-            self.assertEqual(f.read(), b"CANON", "정식 폴더의 파일을 덮었다")
-        kept = [n for n in os.listdir(canon) if n.startswith("clash")]
-        self.assertEqual(len(kept), 2,
-                         f"겹친 파일이 사라졌다: {kept}")
-
+            with open(os.path.join(canon, "clash.png"), "rb") as f:
+                self.assertEqual(f.read(), b"CANON", "정식 폴더의 파일을 덮었다")
+            kept = [n for n in os.listdir(canon) if n.startswith("clash")]
+            self.assertEqual(len(kept), 2,
+                             f"겹친 파일이 사라졌다: {kept}")
 
 if __name__ == "__main__":
     unittest.main()

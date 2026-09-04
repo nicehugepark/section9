@@ -50,79 +50,79 @@ class ReviewFamilyPure(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     # ---- S1. 정상: 성분 묶음·선행 우선 정렬·판정 짝 ----------------------
-    def test_s1_component_order_and_prior(self):
-        a = row("REQ-20260831-901-aaaa", created="2026-08-31T01:00:00+09:00")
-        b = row("REQ-20260831-902-bbbb", created="2026-08-31T03:00:00+09:00",
-                parent="REQ-20260831-901-aaaa")
-        c = row("REQ-20260831-903-cccc", created="2026-08-31T04:00:00+09:00",
-                relates=["REQ-20260831-902-bbbb"])
-        d = row("REQ-20260831-904-dddd", created="2026-08-31T02:00:00+09:00")
-        rows = [c, d, a, b]
-        self.m.review_family(rows)
-        self.assertNotIn("review_prior", a)
-        self.assertEqual(b["review_prior"], [a["id"]])
-        self.assertEqual(c["review_prior"], [a["id"], b["id"]])
-        # 사전식 오름차순만으로: 묶음(a,b,c) 인접 — 사이에 낀 d(02시) 가
-        # 묶음을 가르지 않는다 (선두 created 가 묶음 전체의 자리)
-        order = sorted(rows, key=lambda r: r["review_order"])
-        self.assertEqual([r["id"] for r in order],
-                         [a["id"], b["id"], c["id"], d["id"]])
+    def test_review_family_pure(self):
+        """S1~S4: 순수 계산 — 행 dict 만으로 동작(행당 디스크 읽기 없음의 증명)."""
+        with self.subTest("s1_component_order_and_prior"):
+                a = row("REQ-20260831-901-aaaa", created="2026-08-31T01:00:00+09:00")
+                b = row("REQ-20260831-902-bbbb", created="2026-08-31T03:00:00+09:00",
+                        parent="REQ-20260831-901-aaaa")
+                c = row("REQ-20260831-903-cccc", created="2026-08-31T04:00:00+09:00",
+                        relates=["REQ-20260831-902-bbbb"])
+                d = row("REQ-20260831-904-dddd", created="2026-08-31T02:00:00+09:00")
+                rows = [c, d, a, b]
+                self.m.review_family(rows)
+                self.assertNotIn("review_prior", a)
+                self.assertEqual(b["review_prior"], [a["id"]])
+                self.assertEqual(c["review_prior"], [a["id"], b["id"]])
+                # 사전식 오름차순만으로: 묶음(a,b,c) 인접 — 사이에 낀 d(02시) 가
+                # 묶음을 가르지 않는다 (선두 created 가 묶음 전체의 자리)
+                order = sorted(rows, key=lambda r: r["review_order"])
+                self.assertEqual([r["id"] for r in order],
+                                 [a["id"], b["id"], c["id"], d["id"]])
 
-    # ---- S2. 정상: 낡음 신호 — 파생·relates 만, 우산 방향은 오탐 아님 ----
-    def test_s2_stale_signal(self):
-        rv = row("REQ-20260831-911-aaaa")
-        kid = row("REQ-20260831-912-bbbb", status="in-progress",
-                  parent="REQ-20260831-911-aaaa")
-        rel = row("REQ-20260831-913-cccc", status="in-progress",
-                  relates=["REQ-20260831-911-aaaa"])
-        # 우산-자식 정상 흐름: review 의 parent 가 in-progress — 낡음 아님
-        umb = row("REQ-20260831-914-dddd", status="in-progress")
-        child = row("REQ-20260831-915-eeee",
-                    parent="REQ-20260831-914-dddd")
-        # 비요청 타입은 무시
-        doc = row("DOC-20260831-901-ffff", status="in-progress",
-                  rtype="knowledge", relates=["REQ-20260831-911-aaaa"])
-        rows = [rv, kid, rel, umb, child, doc]
-        self.m.review_family(rows)
-        self.assertEqual(rv["review_stale"], [kid["id"], rel["id"]])
-        self.assertNotIn("review_stale", child)
+            # ---- S2. 정상: 낡음 신호 — 파생·relates 만, 우산 방향은 오탐 아님 ----
+        with self.subTest("s2_stale_signal"):
+            rv = row("REQ-20260831-911-aaaa")
+            kid = row("REQ-20260831-912-bbbb", status="in-progress",
+                      parent="REQ-20260831-911-aaaa")
+            rel = row("REQ-20260831-913-cccc", status="in-progress",
+                      relates=["REQ-20260831-911-aaaa"])
+            # 우산-자식 정상 흐름: review 의 parent 가 in-progress — 낡음 아님
+            umb = row("REQ-20260831-914-dddd", status="in-progress")
+            child = row("REQ-20260831-915-eeee",
+                        parent="REQ-20260831-914-dddd")
+            # 비요청 타입은 무시
+            doc = row("DOC-20260831-901-ffff", status="in-progress",
+                      rtype="knowledge", relates=["REQ-20260831-911-aaaa"])
+            rows = [rv, kid, rel, umb, child, doc]
+            self.m.review_family(rows)
+            self.assertEqual(rv["review_stale"], [kid["id"], rel["id"]])
+            self.assertNotIn("review_stale", child)
+        with self.subTest("s2b_stale_via_review_side_relates"):
+                # 옛 문서 호환: relates 가 review 쪽에만 적혀 있어도 잡는다
+                rv = row("REQ-20260831-921-aaaa",
+                         relates=["REQ-20260831-922-bbbb"])
+                ip = row("REQ-20260831-922-bbbb", status="in-progress")
+                rows = [rv, ip]
+                self.m.review_family(rows)
+                self.assertEqual(rv["review_stale"], [ip["id"]])
 
-    def test_s2b_stale_via_review_side_relates(self):
-        # 옛 문서 호환: relates 가 review 쪽에만 적혀 있어도 잡는다
-        rv = row("REQ-20260831-921-aaaa",
-                 relates=["REQ-20260831-922-bbbb"])
-        ip = row("REQ-20260831-922-bbbb", status="in-progress")
-        rows = [rv, ip]
-        self.m.review_family(rows)
-        self.assertEqual(rv["review_stale"], [ip["id"]])
+            # ---- S3. 경계: 간선 없음·단독·비review·끊긴 간선·자기참조 ------------
+        with self.subTest("s3_solo_and_ignored_edges"):
+                solo = row("REQ-20260831-931-aaaa",
+                           parent="REQ-19990101-999-zzzz",   # 카탈로그 밖 — 무시
+                           relates=["REQ-20260831-931-aaaa"])  # 자기참조 — 무시
+                ipro = row("REQ-20260831-932-bbbb", status="in-progress")
+                rows = [solo, ipro]
+                self.m.review_family(rows)
+                self.assertIn("review_order", solo)
+                self.assertNotIn("review_prior", solo)
+                self.assertNotIn("review_stale", solo)
+                for k in ("review_order", "review_prior", "review_stale"):
+                    self.assertNotIn(k, ipro)   # review 아닌 행은 무장식
 
-    # ---- S3. 경계: 간선 없음·단독·비review·끊긴 간선·자기참조 ------------
-    def test_s3_solo_and_ignored_edges(self):
-        solo = row("REQ-20260831-931-aaaa",
-                   parent="REQ-19990101-999-zzzz",   # 카탈로그 밖 — 무시
-                   relates=["REQ-20260831-931-aaaa"])  # 자기참조 — 무시
-        ipro = row("REQ-20260831-932-bbbb", status="in-progress")
-        rows = [solo, ipro]
-        self.m.review_family(rows)
-        self.assertIn("review_order", solo)
-        self.assertNotIn("review_prior", solo)
-        self.assertNotIn("review_stale", solo)
-        for k in ("review_order", "review_prior", "review_stale"):
-            self.assertNotIn(k, ipro)   # review 아닌 행은 무장식
-
-    # ---- S4. 경계: 순환 간선에도 유한 종료·정렬 안정 ---------------------
-    def test_s4_cycle_terminates(self):
-        a = row("REQ-20260831-941-aaaa", created="2026-08-31T01:00:00+09:00",
-                parent="REQ-20260831-942-bbbb",
-                relates=["REQ-20260831-942-bbbb"])
-        b = row("REQ-20260831-942-bbbb", created="2026-08-31T02:00:00+09:00",
-                parent="REQ-20260831-941-aaaa",
-                relates=["REQ-20260831-941-aaaa"])
-        rows = [b, a]
-        self.m.review_family(rows)      # 예외 없이 끝나야 한다
-        self.assertNotIn("review_prior", a)
-        self.assertEqual(b["review_prior"], [a["id"]])
-
+            # ---- S4. 경계: 순환 간선에도 유한 종료·정렬 안정 ---------------------
+        with self.subTest("s4_cycle_terminates"):
+            a = row("REQ-20260831-941-aaaa", created="2026-08-31T01:00:00+09:00",
+                    parent="REQ-20260831-942-bbbb",
+                    relates=["REQ-20260831-942-bbbb"])
+            b = row("REQ-20260831-942-bbbb", created="2026-08-31T02:00:00+09:00",
+                    parent="REQ-20260831-941-aaaa",
+                    relates=["REQ-20260831-941-aaaa"])
+            rows = [b, a]
+            self.m.review_family(rows)      # 예외 없이 끝나야 한다
+            self.assertNotIn("review_prior", a)
+            self.assertEqual(b["review_prior"], [a["id"]])
 
 class ReworkEnvelope(unittest.TestCase):
     """S5: _spawn_rework 봉투 — 후행 목록과 파급 판정 지시."""

@@ -56,33 +56,24 @@ class LabelSkipsTheStamp(unittest.TestCase):
                     "서버 안쪽에만 있으면 시험이 그것을 못 본다")
         cls.fn = staticmethod(fn)   # 클래스에 그냥 매달면 self 가 딸려 들어간다
 
-    def test_the_stamp_alone_yields_nothing(self):
-        """도장만 있는 응답은 라벨이 없다 — 시각을 '하는 일'로 적지 않는다."""
-        self.assertEqual(self.fn(STAMP), "")
-
-    def test_the_line_after_the_stamp_wins(self):
-        """도장 다음의 뜻 있는 줄이 라벨이다."""
-        self.assertEqual(self.fn(f"{STAMP}\n\n원인과 경계가 잡혔다. 계약을 먼저 잠근다."),
-                         "원인과 경계가 잡혔다. 계약을 먼저 잠근다.")
-
-    def test_a_stamp_with_text_on_the_same_line(self):
-        """도장 뒤에 같은 줄로 이어 쓴 경우도 도장은 버린다."""
-        self.assertEqual(self.fn(f"{STAMP} Red(8). 구현한다."), "Red(8). 구현한다.")
-
-    def test_plain_text_is_untouched(self):
-        """도장이 없으면 첫 줄 그대로 — 흔한 경우를 망치지 않는다."""
-        self.assertEqual(self.fn("이제 실브라우저로 본다.\n둘째 줄"),
-                         "이제 실브라우저로 본다.")
-
-    def test_it_is_bounded(self):
-        """한 줄 자리다 — 문단이 통째로 들어가면 스트립이 무너진다."""
-        self.assertLessEqual(len(self.fn("가" * 400)), 70)
-
-    def test_empty_is_empty(self):
-        for s in ("", "   ", "\n\n"):
-            with self.subTest(repr(s)):
-                self.assertEqual(self.fn(s), "")
-
+    def test_label_skips_the_stamp(self):
+        """L1. 라벨이 시각 도장을 말하지 않는다."""
+        with self.subTest("the_stamp_alone_yields_nothing"):
+            self.assertEqual(self.fn(STAMP), "")
+        with self.subTest("the_line_after_the_stamp_wins"):
+            self.assertEqual(self.fn(f"{STAMP}\n\n원인과 경계가 잡혔다. 계약을 먼저 잠근다."),
+                             "원인과 경계가 잡혔다. 계약을 먼저 잠근다.")
+        with self.subTest("a_stamp_with_text_on_the_same_line"):
+            self.assertEqual(self.fn(f"{STAMP} Red(8). 구현한다."), "Red(8). 구현한다.")
+        with self.subTest("plain_text_is_untouched"):
+            self.assertEqual(self.fn("이제 실브라우저로 본다.\n둘째 줄"),
+                             "이제 실브라우저로 본다.")
+        with self.subTest("it_is_bounded"):
+            self.assertLessEqual(len(self.fn("가" * 400)), 70)
+        with self.subTest("empty_is_empty"):
+            for s in ("", "   ", "\n\n"):
+                with self.subTest(repr(s)):
+                    self.assertEqual(self.fn(s), "")
 
 class QuietIsNotGone(unittest.TestCase):
     """L2·L3·L4. 조용함과 사라짐은 다른 일이다."""
@@ -93,53 +84,42 @@ class QuietIsNotGone(unittest.TestCase):
         with open(INDEX, encoding="utf-8") as f:
             cls.src = f.read()
 
-    def test_the_death_window_is_untouched(self):
-        """L4. 죽음의 잣대는 그대로다 — 넓히면 죽은 것이 살아 보인다."""
-        self.assertEqual(self.m.HEALTH_WIN["sub"], 180,
-                         "살아있음의 창을 넓혔다 — REQ-20260825-089 의 사고로 "
-                         "되돌아가는 길이다. 넓혀야 할 것은 화면에서 지우는 잣대다")
-
-    def test_there_is_a_separate_keep_window(self):
-        """L2·L3. 지우는 잣대가 따로 있고, 잰 값에서 나왔다."""
-        keep = getattr(self.m, "AGENT_KEEP_SEC", None)
-        self.assertIsNotNone(keep, "AGENT_KEEP_SEC 이 없다")
-        self.assertGreater(keep, self.m.HEALTH_WIN["sub"],
-                           "지우는 잣대가 죽음의 잣대보다 좁으면 아무 의미가 없다")
-        self.assertGreaterEqual(keep, 600,
-                                "측정: 침묵의 99.98%가 600초 안이다. 그보다 좁으면 "
-                                "일하는 에이전트의 행이 계속 사라진다")
-
-    def test_the_row_carries_quiet_and_show(self):
-        """행이 스스로 말한다 — 화면이 자기 숫자를 들면 헬스체크와 갈린다."""
-        i = self.src.find("srvAgents")
-        self.assertGreaterEqual(i, 0)
-        for key in ("quiet", "show"):
-            self.assertRegex(self.src, r"\ba\.%s\b" % key,
-                             f"화면이 {key} 를 읽지 않는다")
-
-    def test_the_strip_no_longer_filters_on_active_alone(self):
-        """L2. `active` 만으로 거르면 조용한 순간마다 행이 사라진다."""
-        m = re.search(r"const srv = \(T\.srvAgents \|\| \[\]\)\.filter\("
-                      r"(.+?)\)", self.src)
-        self.assertIsNotNone(m, "스트립 필터를 찾지 못했다")
-        self.assertNotEqual(m.group(1).strip(), "a => a.active",
-                            "여전히 active 만 본다 — 180초 침묵마다 행이 사라진다")
-        self.assertIn("show", m.group(1), "지우는 잣대(show)를 보지 않는다")
-
-    def test_quiet_is_said_out_loud(self):
-        """조용하다는 사실이 행에 적힌다 — 안 적히면 멈춘 것과 구별이 안 된다."""
-        self.assertRegex(self.src, r'AGENT_QUIET_MARK\s*=\s*"[^"]+"',
-                         "조용함을 말하는 낱말이 없다")
-
-    def test_the_target_chip_is_released_on_the_same_rule(self):
-        """회귀: 지목 해제도 같은 잣대를 쓴다 — 갈리면 조용해진 순간에 지목이
-        풀렸다가 다시 붙는다."""
-        m = re.search(r"termTargetClear\(T, \"대상이 종료돼[\s\S]{0,80}", self.src)
-        self.assertIsNotNone(m, "지목 자동 해제 자리를 찾지 못했다")
-        blk = self.src[max(0, self.src.find("T.srvAgentsOk && T.target") - 40):]
-        self.assertIn("a.show", blk[:400],
-                      "지목 해제가 여전히 active 만 본다")
-
+    def test_quiet_is_not_gone(self):
+        """L2·L3·L4. 조용함과 사라짐은 다른 일이다."""
+        with self.subTest("the_death_window_is_untouched"):
+            self.assertEqual(self.m.HEALTH_WIN["sub"], 180,
+                             "살아있음의 창을 넓혔다 — REQ-20260825-089 의 사고로 "
+                             "되돌아가는 길이다. 넓혀야 할 것은 화면에서 지우는 잣대다")
+        with self.subTest("there_is_a_separate_keep_window"):
+            keep = getattr(self.m, "AGENT_KEEP_SEC", None)
+            self.assertIsNotNone(keep, "AGENT_KEEP_SEC 이 없다")
+            self.assertGreater(keep, self.m.HEALTH_WIN["sub"],
+                               "지우는 잣대가 죽음의 잣대보다 좁으면 아무 의미가 없다")
+            self.assertGreaterEqual(keep, 600,
+                                    "측정: 침묵의 99.98%가 600초 안이다. 그보다 좁으면 "
+                                    "일하는 에이전트의 행이 계속 사라진다")
+        with self.subTest("the_row_carries_quiet_and_show"):
+            i = self.src.find("srvAgents")
+            self.assertGreaterEqual(i, 0)
+            for key in ("quiet", "show"):
+                self.assertRegex(self.src, r"\ba\.%s\b" % key,
+                                 f"화면이 {key} 를 읽지 않는다")
+        with self.subTest("the_strip_no_longer_filters_on_active_alone"):
+            m = re.search(r"const srv = \(T\.srvAgents \|\| \[\]\)\.filter\("
+                          r"(.+?)\)", self.src)
+            self.assertIsNotNone(m, "스트립 필터를 찾지 못했다")
+            self.assertNotEqual(m.group(1).strip(), "a => a.active",
+                                "여전히 active 만 본다 — 180초 침묵마다 행이 사라진다")
+            self.assertIn("show", m.group(1), "지우는 잣대(show)를 보지 않는다")
+        with self.subTest("quiet_is_said_out_loud"):
+            self.assertRegex(self.src, r'AGENT_QUIET_MARK\s*=\s*"[^"]+"',
+                             "조용함을 말하는 낱말이 없다")
+        with self.subTest("the_target_chip_is_released_on_the_same_rule"):
+            m = re.search(r"termTargetClear\(T, \"대상이 종료돼[\s\S]{0,80}", self.src)
+            self.assertIsNotNone(m, "지목 자동 해제 자리를 찾지 못했다")
+            blk = self.src[max(0, self.src.find("T.srvAgentsOk && T.target") - 40):]
+            self.assertIn("a.show", blk[:400],
+                          "지목 해제가 여전히 active 만 본다")
 
 class TheScreenKeepsMoving(unittest.TestCase):
     """L5·L6. 리드가 조용해도 화면은 서브에이전트를 따라 움직인다."""

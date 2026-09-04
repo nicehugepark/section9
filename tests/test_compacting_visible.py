@@ -40,81 +40,68 @@ class CompactingVisible(unittest.TestCase):
 
     # ---------- ① 보인다 ----------
 
-    def test_the_server_flag_reaches_the_screen(self):
-        """서버가 주는 compacting 이 화면까지 온다."""
-        self.assertIn("termCompactSync(T, !!nt.compacting)", self.src,
-                      "서버 신호를 화면에 연결하지 않았다")
-        fn = self._fn("termCompactSync")
-        self.assertIn("컨텍스트 압축 중", fn, "무슨 일이 도는지 말하지 않는다")
+    def test_compacting_visible(self):
+        """CompactingVisible 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("the_server_flag_reaches_the_screen"):
+            self.assertIn("termCompactSync(T, !!nt.compacting)", self.src,
+                          "서버 신호를 화면에 연결하지 않았다")
+            fn = self._fn("termCompactSync")
+            self.assertIn("컨텍스트 압축 중", fn, "무슨 일이 도는지 말하지 않는다")
+        with self.subTest("it_stands_where_the_silence_happens"):
+                self.assertRegex(self.src, r'<div class="ccwaitline cccompact" id="cc-compact"',
+                                 "응답 대기 줄과 같은 어휘를 쓰지 않는다")
+                # 붙박이 줄이라 타임라인을 비울 때 함께 쓸려 나가면 안 된다
+                self.assertIn("n !== w && n !== c", self._fn("termClearOut"),
+                              "타임라인을 비울 때 압축 줄까지 지운다")
 
-    def test_it_stands_where_the_silence_happens(self):
-        """침묵이 생기는 자리 — 출력 판 끝에 선다."""
-        self.assertRegex(self.src, r'<div class="ccwaitline cccompact" id="cc-compact"',
-                         "응답 대기 줄과 같은 어휘를 쓰지 않는다")
-        # 붙박이 줄이라 타임라인을 비울 때 함께 쓸려 나가면 안 된다
-        self.assertIn("n !== w && n !== c", self._fn("termClearOut"),
-                      "타임라인을 비울 때 압축 줄까지 지운다")
+            # ---------- ② live 를 덮지 않는다 ----------
+        with self.subTest("it_does_not_take_over_the_live_badge"):
+                st = self._fn("termStatus")
+                # live 라벨을 정하는 자리에 compacting 이 끼어들지 않는다
+                m = re.search(r'lv\.textContent = [^\n]*', st)
+                self.assertIsNotNone(m)
+                self.assertNotIn("압축", m.group(0), "live 자리를 압축이 빼앗았다")
+                self.assertNotIn("compact", m.group(0))
+                self.assertIn('id="cc-cmpk"', self.src, "상태줄에 따로 설 자리가 없다")
 
-    # ---------- ② live 를 덮지 않는다 ----------
+            # ---------- ③ 색만으로 가르지 않는다 ----------
+        with self.subTest("word_not_only_colour"):
+                fn = self._fn("termCompactSync")
+                self.assertIn("압축 중", fn, "상태줄에 낱말이 없다")
+                css = self._css()
+                blk = ";".join(re.findall(r"\.cc(?:compact|cmpk)[^{]*\{([^}]*)\}", css))
+                websrc.no_hex(self, blk)
+                for v in re.findall(r"(?:background|color|border-color)\s*:\s*([^;}\n]+)", blk):
+                    self.assertRegex(v.strip(), r"^var\(--cc-[a-z]+\)$",
+                                     "터미널 팔레트 토큰 밖의 색: %s" % v)
 
-    def test_it_does_not_take_over_the_live_badge(self):
-        """압축 중에도 세션은 살아 있다 — live 자리를 빼앗지 않는다."""
-        st = self._fn("termStatus")
-        # live 라벨을 정하는 자리에 compacting 이 끼어들지 않는다
-        m = re.search(r'lv\.textContent = [^\n]*', st)
-        self.assertIsNotNone(m)
-        self.assertNotIn("압축", m.group(0), "live 자리를 압축이 빼앗았다")
-        self.assertNotIn("compact", m.group(0))
-        self.assertIn('id="cc-cmpk"', self.src, "상태줄에 따로 설 자리가 없다")
+            # ---------- ④ 흐른다 ----------
+        with self.subTest("elapsed_ticks_every_second"):
+                fn = self._fn("termCompactSync")
+                self.assertIn("fmtElapsed", fn, "경과를 보여 주지 않는다")
+                self.assertRegex(fn, r"setInterval\([\s\S]*?, 1000\)",
+                                 "대상 감시 박자(5초)로 적으면 오히려 굳어 보인다")
+                self.assertIn("ccspin", fn, "돌고 있다는 표시가 없다")
 
-    # ---------- ③ 색만으로 가르지 않는다 ----------
+            # ---------- ⑤ 끝나면 사라진다 ----------
+        with self.subTest("it_leaves_no_trace_when_done"):
+            fn = self._fn("termCompactSync")
+            self.assertRegex(fn, r"if \(!on\)\{[\s\S]*?clearInterval\(T\.compactT\)",
+                             "끝나도 타이머가 계속 돈다")
+            self.assertRegex(fn, r'box\.hidden = true; box\.innerHTML = ""',
+                             "끝나도 줄이 남는다")
+            self.assertIn("termCompactSync(T, false)", self._fn("termStatus"),
+                          "대상이 사라져도 압축 중이라고 말한다")
+        with self.subTest("it_can_be_opened_without_hands"):
+            self.assertIn("compacting/.test(location.search)", self._fn("termCompactSync"),
+                          "손 없이 압축 상태를 세울 진단 파라미터가 없다")
+        with self.subTest("it_does_not_yank_the_reader_around"):
+                fn = self._fn("termCompactSync")
+                self.assertIn("termAtBottom(out)", fn, "따라갈지 말지를 다른 잣대로 판단한다")
+                self.assertRegex(fn, r"if \(wasBottom && out\) out\.scrollTop",
+                                 "바닥에 있든 없든 끌어내린다")
 
-    def test_word_not_only_colour(self):
-        """색약·흑백 인쇄에서도 읽혀야 한다 — 낱말을 함께 적는다."""
-        fn = self._fn("termCompactSync")
-        self.assertIn("압축 중", fn, "상태줄에 낱말이 없다")
-        css = self._css()
-        blk = ";".join(re.findall(r"\.cc(?:compact|cmpk)[^{]*\{([^}]*)\}", css))
-        websrc.no_hex(self, blk)
-        for v in re.findall(r"(?:background|color|border-color)\s*:\s*([^;}\n]+)", blk):
-            self.assertRegex(v.strip(), r"^var\(--cc-[a-z]+\)$",
-                             "터미널 팔레트 토큰 밖의 색: %s" % v)
-
-    # ---------- ④ 흐른다 ----------
-
-    def test_elapsed_ticks_every_second(self):
-        """정적인 문구는 멈춘 것처럼 읽힌다 — 초는 초로 센다."""
-        fn = self._fn("termCompactSync")
-        self.assertIn("fmtElapsed", fn, "경과를 보여 주지 않는다")
-        self.assertRegex(fn, r"setInterval\([\s\S]*?, 1000\)",
-                         "대상 감시 박자(5초)로 적으면 오히려 굳어 보인다")
-        self.assertIn("ccspin", fn, "돌고 있다는 표시가 없다")
-
-    # ---------- ⑤ 끝나면 사라진다 ----------
-
-    def test_it_leaves_no_trace_when_done(self):
-        """끝나면 줄도 표시도 타이머도 남지 않는다."""
-        fn = self._fn("termCompactSync")
-        self.assertRegex(fn, r"if \(!on\)\{[\s\S]*?clearInterval\(T\.compactT\)",
-                         "끝나도 타이머가 계속 돈다")
-        self.assertRegex(fn, r'box\.hidden = true; box\.innerHTML = ""',
-                         "끝나도 줄이 남는다")
-        self.assertIn("termCompactSync(T, false)", self._fn("termStatus"),
-                      "대상이 사라져도 압축 중이라고 말한다")
-
-    def test_it_can_be_opened_without_hands(self):
-        """헤드리스로 직접 보고 고칠 길 (?usagecard·?dlg·?ccjump 와 동형)."""
-        self.assertIn("compacting/.test(location.search)", self._fn("termCompactSync"),
-                      "손 없이 압축 상태를 세울 진단 파라미터가 없다")
-
-    def test_it_does_not_yank_the_reader_around(self):
-        """위로 올려 읽는 중이면 화면을 끌어내리지 않는다."""
-        fn = self._fn("termCompactSync")
-        self.assertIn("termAtBottom(out)", fn, "따라갈지 말지를 다른 잣대로 판단한다")
-        self.assertRegex(fn, r"if \(wasBottom && out\) out\.scrollTop",
-                         "바닥에 있든 없든 끌어내린다")
-
-    # ---------- helpers ----------
+            # ---------- helpers ----------
 
     def _fn(self, name):
         return websrc.fn(self, self.src, name)

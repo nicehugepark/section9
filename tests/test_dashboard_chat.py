@@ -83,11 +83,20 @@ class TestDashboardChat(unittest.TestCase):
             req = urllib.request.Request(
                 url, data=json.dumps(payload).encode(), method="POST",
                 headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=5) as r:
-                return r.status, json.loads(r.read().decode())
-        except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read().decode())
+        # 붙자마자 끊기는 갈래가 낮은 비율로 있다 — 윈도우 쪽 중계가 그 자리를
+        # 함께 듣는다(REQ-20260902-006). 되걸지 않으면 스위트가 길어질 때
+        # `RemoteDisconnected` 로 넘어지고, 홀로는 늘 초록이라 원인이 안 보인다
+        # (실측 2026-09-04, 전체 실행 중 1회). (REQ-20260903-012)
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    return r.status, json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+                return e.code, json.loads(e.read().decode())
+            except (ConnectionError, urllib.error.URLError):
+                if attempt == 2:
+                    raise
+                time.sleep(0.3)
 
     def inbox(self, sid):
         p = os.path.join(self.tmp, "state", "terminal", f"inbox-{sid}.jsonl")

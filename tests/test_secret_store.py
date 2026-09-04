@@ -48,10 +48,13 @@ class SecretStore(unittest.TestCase):
         return os.path.join(self.root, "users", "alice", "secrets", key)
 
     def set_external_path(self):
+        # 비밀 위치 키는 추적되지 않는 자리(local.json)에만 산다
+        # (REQ-20260902-031) — settings.json 에 적으면 user_config 가
+        # 읽지 않는다. 원격이 밀어 넣을 수 있는 칸에 두지 않기 위해서다.
         cfg = os.path.join(self.root, "users", "alice", "config")
         os.makedirs(cfg, exist_ok=True)
         import json
-        p = os.path.join(cfg, "settings.json")
+        p = os.path.join(cfg, "local.json")
         d = {}
         if os.path.exists(p):
             with open(p, encoding="utf-8") as f:

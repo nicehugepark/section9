@@ -134,103 +134,104 @@ class TestWhoami(unittest.TestCase):
             return f.read()
 
     # W1. whoami 파생: 등록 계정 매칭 / 미등록 표시
-    def test_w1_whoami_derivation(self):
-        code, d = self.get("alice", "/api/whoami")
-        self.assertEqual(code, 200)
-        self.assertEqual(d["user"], "alice")
-        self.assertTrue(d["registered"])
-        self.assertEqual(d["role"], "member")
-        self.assertEqual(d["machine"], MACHINE)
-        code, d = self.get("boss", "/api/whoami")
-        self.assertEqual(d["user"], "boss")
-        self.assertEqual(d["role"], "admin")
-        code, d = self.get("stranger", "/api/whoami")
-        self.assertEqual(code, 200)
-        self.assertEqual(d["user"], "stranger77")
-        self.assertFalse(d["registered"])
-        self.assertEqual(d["role"], "")
+    def test_test_whoami(self):
+        """TestWhoami 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("w1_whoami_derivation"):
+                code, d = self.get("alice", "/api/whoami")
+                self.assertEqual(code, 200)
+                self.assertEqual(d["user"], "alice")
+                self.assertTrue(d["registered"])
+                self.assertEqual(d["role"], "member")
+                self.assertEqual(d["machine"], MACHINE)
+                code, d = self.get("boss", "/api/whoami")
+                self.assertEqual(d["user"], "boss")
+                self.assertEqual(d["role"], "admin")
+                code, d = self.get("stranger", "/api/whoami")
+                self.assertEqual(code, 200)
+                self.assertEqual(d["user"], "stranger77")
+                self.assertFalse(d["registered"])
+                self.assertEqual(d["role"], "")
 
-    # W2. attach 로밍: os_accounts 추가 후 그 OS 계정이 alice 로 파생
-    def test_w2_attach_roaming(self):
-        self.assertIn("osacct9", self.profile("alice"))
-        self.assertIn(MACHINE, self.profile("alice"))
-        code, d = self.get("roam", "/api/whoami")
-        self.assertEqual(code, 200)
-        self.assertEqual(d["user"], "alice")
-        self.assertTrue(d["registered"])
+            # W2. attach 로밍: os_accounts 추가 후 그 OS 계정이 alice 로 파생
+        with self.subTest("w2_attach_roaming"):
+                self.assertIn("osacct9", self.profile("alice"))
+                self.assertIn(MACHINE, self.profile("alice"))
+                code, d = self.get("roam", "/api/whoami")
+                self.assertEqual(code, 200)
+                self.assertEqual(d["user"], "alice")
+                self.assertTrue(d["registered"])
 
-    # W2b. user add 시 현재 OS 계정 자동 기록
-    def test_w2b_add_records_os_account(self):
-        self.assertIn("carolacct", self.profile("carol"))
-        # 미등록 계정 attach 는 거부
-        r = self.cli("user", "attach", "ghost", user="osacct9", expect=None)
-        self.assertNotEqual(r.returncode, 0)
+            # W2b. user add 시 현재 OS 계정 자동 기록
+        with self.subTest("w2b_add_records_os_account"):
+                self.assertIn("carolacct", self.profile("carol"))
+                # 미등록 계정 attach 는 거부
+                r = self.cli("user", "attach", "ghost", user="osacct9", expect=None)
+                self.assertNotEqual(r.returncode, 0)
 
-    # W3. 쓰기 actor 는 서버 whoami — 클라이언트 user 파라미터 무시
-    def test_w3_write_actor_ignores_client_user(self):
-        # alice 서버에 user:boss 스푸핑 → History 는 alice 로 기록
-        code, res = self.post("alice", "/api/status",
-                              {"id": self.px_doc, "to": "in-progress",
-                               "note": "spoof-check", "user": "boss"})
-        self.assertEqual(code, 200, res)
-        code, d = self.get("boss", "/api/doc", id=self.px_doc)
-        line = [l for l in d["body"].splitlines() if "spoof-check" in l][0]
-        self.assertIn("(by alice)", line)
-        self.assertNotIn("boss", line)
-        # 인가에도 스푸핑 불가: px 멤버 조작을 user:alice(owner) 로 위장해도
-        # actor=stranger77(미등록) 기준으로 거부
-        code, res = self.post("stranger", "/api/project/member",
-                              {"slug": "px", "member": "bob",
-                               "role": "viewer", "user": "alice"})
-        self.assertEqual(code, 400, res)
+            # W3. 쓰기 actor 는 서버 whoami — 클라이언트 user 파라미터 무시
+        with self.subTest("w3_write_actor_ignores_client_user"):
+                # alice 서버에 user:boss 스푸핑 → History 는 alice 로 기록
+                code, res = self.post("alice", "/api/status",
+                                      {"id": self.px_doc, "to": "in-progress",
+                                       "note": "spoof-check", "user": "boss"})
+                self.assertEqual(code, 200, res)
+                code, d = self.get("boss", "/api/doc", id=self.px_doc)
+                line = [l for l in d["body"].splitlines() if "spoof-check" in l][0]
+                self.assertIn("(by alice)", line)
+                self.assertNotIn("boss", line)
+                # 인가에도 스푸핑 불가: px 멤버 조작을 user:alice(owner) 로 위장해도
+                # actor=stranger77(미등록) 기준으로 거부
+                code, res = self.post("stranger", "/api/project/member",
+                                      {"slug": "px", "member": "bob",
+                                       "role": "viewer", "user": "alice"})
+                self.assertEqual(code, 400, res)
 
-    # W4. as 대리/미리보기 — admin 만
-    def test_w4_admin_as(self):
-        # GET: admin 서버에서 as=bob → bob 시점 (solo 보임, px 숨김)
-        ids = self.catalog_ids("boss", **{"as": "bob"})
-        self.assertIn(self.solo_doc, ids)
-        self.assertNotIn(self.px_doc, ids)
-        # GET: 비admin 의 as 는 무시 — alice 시점 유지 (solo 안 보임)
-        ids = self.catalog_ids("alice", **{"as": "bob"})
-        self.assertNotIn(self.solo_doc, ids)
-        # GET: 구모델 ?me= 는 무시 — alice 서버에서 me=boss 로도 solo 비가시
-        ids = self.catalog_ids("alice", me="boss")
-        self.assertNotIn(self.solo_doc, ids)
-        # POST: admin as=alice → actor 는 alice 로 기록
-        code, res = self.post("boss", "/api/status",
-                              {"id": self.px_doc, "to": "review",
-                               "note": "proxy-check", "as": "alice"})
-        self.assertEqual(code, 200, res)
-        code, d = self.get("boss", "/api/doc", id=self.px_doc)
-        line = [l for l in d["body"].splitlines() if "proxy-check" in l][0]
-        self.assertIn("(by alice)", line)
-        # POST: 비admin 의 as 는 400
-        code, res = self.post("alice", "/api/status",
-                              {"id": self.px_doc, "to": "done",
-                               "as": "boss"})
-        self.assertEqual(code, 400, res)
-        # POST: 미등록 as 는 admin 이라도 400
-        code, res = self.post("boss", "/api/status",
-                              {"id": self.px_doc, "to": "done",
-                               "as": "ghost"})
-        self.assertEqual(code, 400, res)
+            # W4. as 대리/미리보기 — admin 만
+        with self.subTest("w4_admin_as"):
+                # GET: admin 서버에서 as=bob → bob 시점 (solo 보임, px 숨김)
+                ids = self.catalog_ids("boss", **{"as": "bob"})
+                self.assertIn(self.solo_doc, ids)
+                self.assertNotIn(self.px_doc, ids)
+                # GET: 비admin 의 as 는 무시 — alice 시점 유지 (solo 안 보임)
+                ids = self.catalog_ids("alice", **{"as": "bob"})
+                self.assertNotIn(self.solo_doc, ids)
+                # GET: 구모델 ?me= 는 무시 — alice 서버에서 me=boss 로도 solo 비가시
+                ids = self.catalog_ids("alice", me="boss")
+                self.assertNotIn(self.solo_doc, ids)
+                # POST: admin as=alice → actor 는 alice 로 기록
+                code, res = self.post("boss", "/api/status",
+                                      {"id": self.px_doc, "to": "review",
+                                       "note": "proxy-check", "as": "alice"})
+                self.assertEqual(code, 200, res)
+                code, d = self.get("boss", "/api/doc", id=self.px_doc)
+                line = [l for l in d["body"].splitlines() if "proxy-check" in l][0]
+                self.assertIn("(by alice)", line)
+                # POST: 비admin 의 as 는 400
+                code, res = self.post("alice", "/api/status",
+                                      {"id": self.px_doc, "to": "done",
+                                       "as": "boss"})
+                self.assertEqual(code, 400, res)
+                # POST: 미등록 as 는 admin 이라도 400
+                code, res = self.post("boss", "/api/status",
+                                      {"id": self.px_doc, "to": "done",
+                                       "as": "ghost"})
+                self.assertEqual(code, 400, res)
 
-    # W5. 격리·개인화가 whoami 기준 — 미등록 whoami(정책 부재)는 비강제 유지
-    def test_w5_whoami_based_isolation(self):
-        ids = self.catalog_ids("alice")
-        self.assertIn(self.px_doc, ids)       # 멤버 가시
-        self.assertNotIn(self.solo_doc, ids)  # 무소속 타인 문서 비가시
-        self.assertIn(self.solo_doc, self.catalog_ids("boss"))  # admin 전부
-        # 미등록 서버 계정 = 정책 부재 → 비강제 (기존 원칙 유지)
-        self.assertIn(self.px_doc, self.catalog_ids("stranger"))
-        # 개인화 쓰기: alice 서버에서 타인(bob) 설정 변경은 거부, 본인은 허용
-        code, res = self.post("alice", "/api/user/config",
-                              {"name": "bob", "key": "ui_skin", "value": "glass"})
-        self.assertEqual(code, 400, res)
-        code, res = self.post("alice", "/api/user/config",
-                              {"name": "alice", "key": "ui_skin", "value": "glass"})
-        self.assertEqual(code, 200, res)
-
+            # W5. 격리·개인화가 whoami 기준 — 미등록 whoami(정책 부재)는 비강제 유지
+        with self.subTest("w5_whoami_based_isolation"):
+            ids = self.catalog_ids("alice")
+            self.assertIn(self.px_doc, ids)       # 멤버 가시
+            self.assertNotIn(self.solo_doc, ids)  # 무소속 타인 문서 비가시
+            self.assertIn(self.solo_doc, self.catalog_ids("boss"))  # admin 전부
+            # 미등록 서버 계정 = 정책 부재 → 비강제 (기존 원칙 유지)
+            self.assertIn(self.px_doc, self.catalog_ids("stranger"))
+            # 개인화 쓰기: alice 서버에서 타인(bob) 설정 변경은 거부, 본인은 허용
+            code, res = self.post("alice", "/api/user/config",
+                                  {"name": "bob", "key": "ui_skin", "value": "glass"})
+            self.assertEqual(code, 400, res)
+            code, res = self.post("alice", "/api/user/config",
+                                  {"name": "alice", "key": "ui_skin", "value": "glass"})
+            self.assertEqual(code, 200, res)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

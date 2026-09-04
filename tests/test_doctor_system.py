@@ -32,62 +32,58 @@ spec.loader.exec_module(doctor)
 class BootVerdict(unittest.TestCase):
     """D1. 부트가 사용자 세션 창을 놓치는지를 본다."""
 
-    def test_no_systemd_is_ok(self):
-        v = doctor.boot_verdict({"init": "init", "userspace_sec": None,
-                                 "user_session_failed": False})
-        self.assertEqual(v["level"], "ok")
-        self.assertIn("systemd", v["line"])
-
-    def test_slow_boot_grades(self):
-        def lvl(sec):
-            return doctor.boot_verdict(
-                {"init": "systemd", "userspace_sec": sec,
-                 "user_session_failed": False})["level"]
-        self.assertEqual(lvl(3.0), "ok")
-        self.assertEqual(lvl(10.0), "warn")
-        self.assertEqual(lvl(29.9), "warn")
-        self.assertEqual(lvl(30.0), "critical")
-        self.assertEqual(lvl(76.9), "critical")
-
-    def test_user_session_failure_is_critical_regardless(self):
-        v = doctor.boot_verdict({"init": "systemd", "userspace_sec": 2.0,
-                                 "user_session_failed": True})
-        self.assertEqual(v["level"], "critical")
-        self.assertIn("사용자 세션", v["line"])
-
-    def test_unknown_when_timing_unavailable(self):
-        v = doctor.boot_verdict({"init": "systemd", "userspace_sec": None,
-                                 "user_session_failed": False})
-        self.assertEqual(v["level"], "unknown")
-
-    def test_slow_boot_advice_names_the_symptom(self):
-        v = doctor.boot_verdict({"init": "systemd", "userspace_sec": 76.9,
-                                 "user_session_failed": False})
-        # 고갈과 지문이 겹친다는 사실 자체가 조치의 핵심이다
-        self.assertTrue(v["advice"])
-        self.assertIn("부트", v["advice"])
-
+    def test_boot_verdict(self):
+        """D1. 부트가 사용자 세션 창을 놓치는지를 본다."""
+        with self.subTest("no_systemd_is_ok"):
+            v = doctor.boot_verdict({"init": "init", "userspace_sec": None,
+                                     "user_session_failed": False})
+            self.assertEqual(v["level"], "ok")
+            self.assertIn("systemd", v["line"])
+        with self.subTest("slow_boot_grades"):
+            def lvl(sec):
+                return doctor.boot_verdict(
+                    {"init": "systemd", "userspace_sec": sec,
+                     "user_session_failed": False})["level"]
+            self.assertEqual(lvl(3.0), "ok")
+            self.assertEqual(lvl(10.0), "warn")
+            self.assertEqual(lvl(29.9), "warn")
+            self.assertEqual(lvl(30.0), "critical")
+            self.assertEqual(lvl(76.9), "critical")
+        with self.subTest("user_session_failure_is_critical_regardless"):
+            v = doctor.boot_verdict({"init": "systemd", "userspace_sec": 2.0,
+                                     "user_session_failed": True})
+            self.assertEqual(v["level"], "critical")
+            self.assertIn("사용자 세션", v["line"])
+        with self.subTest("unknown_when_timing_unavailable"):
+            v = doctor.boot_verdict({"init": "systemd", "userspace_sec": None,
+                                     "user_session_failed": False})
+            self.assertEqual(v["level"], "unknown")
+        with self.subTest("slow_boot_advice_names_the_symptom"):
+            v = doctor.boot_verdict({"init": "systemd", "userspace_sec": 76.9,
+                                     "user_session_failed": False})
+            # 고갈과 지문이 겹친다는 사실 자체가 조치의 핵심이다
+            self.assertTrue(v["advice"])
+            self.assertIn("부트", v["advice"])
 
 class TmpVerdict(unittest.TestCase):
     """D2. /tmp 누적 — 부트마다 통째로 지워지는 자리라 비용이 여기서 난다."""
 
-    def test_entry_grades(self):
-        def lvl(n):
-            return doctor.tmp_verdict(
-                {"entries": n, "dir_bytes": 4096, "ours": 0})["level"]
-        self.assertEqual(lvl(20), "ok")
-        self.assertEqual(lvl(2001), "warn")
-        self.assertEqual(lvl(20001), "critical")
-
-    def test_grown_directory_is_reported_even_when_empty_now(self):
-        v = doctor.tmp_verdict({"entries": 19, "dir_bytes": 7860224,
-                                "ours": 13})
-        self.assertIn("누적", v["line"])
-
-    def test_small_directory_says_nothing_about_history(self):
-        v = doctor.tmp_verdict({"entries": 19, "dir_bytes": 4096, "ours": 0})
-        self.assertNotIn("누적", v["line"])
-
+    def test_tmp_verdict(self):
+        """D2. /tmp 누적 — 부트마다 통째로 지워지는 자리라 비용이 여기서 난다."""
+        with self.subTest("entry_grades"):
+            def lvl(n):
+                return doctor.tmp_verdict(
+                    {"entries": n, "dir_bytes": 4096, "ours": 0})["level"]
+            self.assertEqual(lvl(20), "ok")
+            self.assertEqual(lvl(2001), "warn")
+            self.assertEqual(lvl(20001), "critical")
+        with self.subTest("grown_directory_is_reported_even_when_empty_now"):
+            v = doctor.tmp_verdict({"entries": 19, "dir_bytes": 7860224,
+                                    "ours": 13})
+            self.assertIn("누적", v["line"])
+        with self.subTest("small_directory_says_nothing_about_history"):
+            v = doctor.tmp_verdict({"entries": 19, "dir_bytes": 4096, "ours": 0})
+            self.assertNotIn("누적", v["line"])
 
 class DiskVerdict(unittest.TestCase):
     """D3. 디스크 — 조용히 차면 s9 는 쓰기부터 죽는다."""
@@ -107,91 +103,97 @@ class DiskVerdict(unittest.TestCase):
 class ServeVerdict(unittest.TestCase):
     """D4. '포트가 열려 있다' 와 '실제로 답한다' 는 다른 사실이다."""
 
-    def test_listening_but_mute_is_critical(self):
-        v = doctor.serve_verdict({"listening": True, "responds": False,
-                                  "latency": None, "port": 9909})
-        self.assertEqual(v["level"], "critical")
-
-    def test_not_running_is_warn_not_critical(self):
-        # s9 serve stop 으로 일부러 내린 상태가 있다 — 고장이 아니다
-        v = doctor.serve_verdict({"listening": False, "responds": False,
-                                  "latency": None, "port": 9909})
-        self.assertEqual(v["level"], "warn")
-
-    def test_slow_response_is_warn(self):
-        self.assertEqual(doctor.serve_verdict(
-            {"listening": True, "responds": True, "latency": 2.5,
-             "port": 9909})["level"], "warn")
-        self.assertEqual(doctor.serve_verdict(
-            {"listening": True, "responds": True, "latency": 0.1,
-             "port": 9909})["level"], "ok")
-
+    def test_serve_verdict(self):
+        """D4. '포트가 열려 있다' 와 '실제로 답한다' 는 다른 사실이다."""
+        with self.subTest("listening_but_mute_is_critical"):
+            v = doctor.serve_verdict({"listening": True, "responds": False,
+                                      "latency": None, "port": 9909})
+            self.assertEqual(v["level"], "critical")
+        with self.subTest("not_running_is_warn_not_critical"):
+            # s9 serve stop 으로 일부러 내린 상태가 있다 — 고장이 아니다
+            v = doctor.serve_verdict({"listening": False, "responds": False,
+                                      "latency": None, "port": 9909})
+            self.assertEqual(v["level"], "warn")
+        with self.subTest("slow_response_is_warn"):
+            self.assertEqual(doctor.serve_verdict(
+                {"listening": True, "responds": True, "latency": 2.5,
+                 "port": 9909})["level"], "warn")
+            self.assertEqual(doctor.serve_verdict(
+                {"listening": True, "responds": True, "latency": 0.1,
+                 "port": 9909})["level"], "ok")
 
 class HooksVerdict(unittest.TestCase):
     """D5. 감사 훅과 커밋 게이트가 빠지면 기록이 조용히 끊긴다."""
 
-    def test_missing_hooks_are_named(self):
-        v = doctor.hooks_verdict({"claude_missing": ["Stop", "SessionStart"],
-                                  "git_hook": True})
-        self.assertEqual(v["level"], "warn")
-        self.assertIn("Stop", v["line"])
+    def test_hooks_verdict(self):
+        """D5. 감사 훅과 커밋 게이트가 빠지면 기록이 조용히 끊긴다."""
+        with self.subTest("missing_hooks_are_named"):
+            v = doctor.hooks_verdict({"claude_missing": ["Stop", "SessionStart"],
+                                      "git_hook": True})
+            self.assertEqual(v["level"], "warn")
+            self.assertIn("Stop", v["line"])
+        with self.subTest("missing_git_hook_is_named"):
+            v = doctor.hooks_verdict({"claude_missing": [], "git_hook": False})
+            self.assertEqual(v["level"], "warn")
+            self.assertIn("pre-commit", v["line"])
+        with self.subTest("all_present_is_ok"):
+            v = doctor.hooks_verdict({"claude_missing": [], "git_hook": True})
+            self.assertEqual(v["level"], "ok")
+        with self.subTest("hooks_dir_asked_of_git"):
+            d = doctor.git_hooks_dir(os.path.join(HERE, ".."))
+            self.assertTrue(d)
+            self.assertTrue(os.path.isabs(d), d)
 
-    def test_missing_git_hook_is_named(self):
-        v = doctor.hooks_verdict({"claude_missing": [], "git_hook": False})
-        self.assertEqual(v["level"], "warn")
-        self.assertIn("pre-commit", v["line"])
-
-    def test_all_present_is_ok(self):
-        v = doctor.hooks_verdict({"claude_missing": [], "git_hook": True})
-        self.assertEqual(v["level"], "ok")
-
-    def test_hooks_dir_asked_of_git(self):
-        """워크트리는 .git 이 파일이다 — 경로를 짓지 말고 git 에게 묻는다."""
-        d = doctor.git_hooks_dir(os.path.join(HERE, ".."))
-        self.assertTrue(d)
-        self.assertTrue(os.path.isabs(d), d)
-
+    def test_deps_verdict(self):
+        """D6. 없으면 죽는 것과 그 기능만 죽는 것을 가른다."""
+        with self.subTest("all_present_is_ok"):
+            v = doctor.hooks_verdict({"claude_missing": [], "git_hook": True})
+            self.assertEqual(v["level"], "ok")
 
 class RepoVerdict(unittest.TestCase):
     """D5b. 커밋을 못 받는 저장소는 커밋 시점에야 드러난다 — 미리 본다."""
 
-    def test_bare_flag_on_a_real_worktree_is_critical(self):
-        v = doctor.repo_verdict({"is_bare": True, "worktree_ok": False,
-                                 "branch": "", "worktrees": 3})
-        self.assertEqual(v["level"], "critical")
-        self.assertIn("core.bare", v["line"])
-        self.assertIn("core.bare false", v["advice"])
-
-    def test_no_worktree_is_critical(self):
-        self.assertEqual(doctor.repo_verdict(
-            {"is_bare": False, "worktree_ok": False, "branch": "",
-             "worktrees": 0})["level"], "critical")
-
-    def test_healthy_repo_names_branch(self):
-        v = doctor.repo_verdict({"is_bare": False, "worktree_ok": True,
-                                 "branch": "main", "worktrees": 3})
-        self.assertEqual(v["level"], "ok")
-        self.assertIn("main", v["line"])
-
+    def test_repo_verdict(self):
+        """D5b. 커밋을 못 받는 저장소는 커밋 시점에야 드러난다 — 미리 본다."""
+        with self.subTest("bare_flag_on_a_real_worktree_is_critical"):
+            v = doctor.repo_verdict({"is_bare": True, "worktree_ok": False,
+                                     "branch": "", "worktrees": 3})
+            self.assertEqual(v["level"], "critical")
+            self.assertIn("core.bare", v["line"])
+            self.assertIn("core.bare false", v["advice"])
+        with self.subTest("no_worktree_is_critical"):
+            self.assertEqual(doctor.repo_verdict(
+                {"is_bare": False, "worktree_ok": False, "branch": "",
+                 "worktrees": 0})["level"], "critical")
+        with self.subTest("healthy_repo_names_branch"):
+            v = doctor.repo_verdict({"is_bare": False, "worktree_ok": True,
+                                     "branch": "main", "worktrees": 3})
+            self.assertEqual(v["level"], "ok")
+            self.assertIn("main", v["line"])
 
 class DepsVerdict(unittest.TestCase):
     """D6. 없으면 죽는 것과 그 기능만 죽는 것을 가른다."""
 
-    def test_required_missing_is_critical(self):
-        v = doctor.deps_verdict({"missing_required": ["git"],
-                                 "missing_optional": []})
-        self.assertEqual(v["level"], "critical")
-        self.assertIn("git", v["line"])
+    def test_hooks_verdict(self):
+        """D5. 감사 훅과 커밋 게이트가 빠지면 기록이 조용히 끊긴다."""
+        with self.subTest("all_present_is_ok"):
+            self.assertEqual(doctor.deps_verdict(
+                {"missing_required": [], "missing_optional": []})["level"], "ok")
 
-    def test_optional_missing_is_warn(self):
-        v = doctor.deps_verdict({"missing_required": [],
-                                 "missing_optional": ["chrome"]})
-        self.assertEqual(v["level"], "warn")
-
-    def test_all_present_is_ok(self):
-        self.assertEqual(doctor.deps_verdict(
-            {"missing_required": [], "missing_optional": []})["level"], "ok")
-
+    def test_deps_verdict(self):
+        """D6. 없으면 죽는 것과 그 기능만 죽는 것을 가른다."""
+        with self.subTest("required_missing_is_critical"):
+            v = doctor.deps_verdict({"missing_required": ["git"],
+                                     "missing_optional": []})
+            self.assertEqual(v["level"], "critical")
+            self.assertIn("git", v["line"])
+        with self.subTest("optional_missing_is_warn"):
+            v = doctor.deps_verdict({"missing_required": [],
+                                     "missing_optional": ["chrome"]})
+            self.assertEqual(v["level"], "warn")
+        with self.subTest("all_present_is_ok"):
+            self.assertEqual(doctor.deps_verdict(
+                {"missing_required": [], "missing_optional": []})["level"], "ok")
 
 class Overall(unittest.TestCase):
     """D7. 네트워크가 정상이어도 다른 곳이 아프면 '정상' 이라 말하지 않는다."""
@@ -201,40 +203,38 @@ class Overall(unittest.TestCase):
                 "orphan_test_servers": [], "windows_ports": {},
                 "system": system}
 
-    def test_healthy_everything_says_normal(self):
-        d = self._clean_net([{"key": "boot", "label": "부트", "level": "ok",
-                              "line": "부트: 빠름", "advice": None}])
-        out = "\n".join(doctor.advise(d))
-        self.assertIn("정상", out)
-
-    def test_system_fault_overrides_normal_verdict(self):
-        d = self._clean_net([
-            {"key": "boot", "label": "부트", "level": "critical",
-             "line": "부트: userspace 76.9초", "advice": "부트가 느리다"},
-            {"key": "tmp", "label": "/tmp", "level": "ok",
-             "line": "/tmp: 19개", "advice": None}])
-        out = "\n".join(doctor.advise(d))
-        self.assertNotIn("정상 —", out)
-        self.assertIn("부트", out)
-        self.assertIn("부트가 느리다", out)
-
-    def test_worst_level_is_named_first(self):
-        d = self._clean_net([
-            {"key": "tmp", "label": "/tmp", "level": "warn",
-             "line": "/tmp: 많다", "advice": "치워라"},
-            {"key": "disk", "label": "디스크", "level": "critical",
-             "line": "디스크: 96%", "advice": "비워라"}])
-        lines = doctor.advise(d)
-        joined = "\n".join(lines)
-        self.assertLess(joined.index("디스크"), joined.index("/tmp"))
-
-    def test_worst_level_helper(self):
-        self.assertEqual(doctor.worst_level(["ok", "warn", "critical"]),
-                         "critical")
-        self.assertEqual(doctor.worst_level(["ok", "unknown"]), "unknown")
-        self.assertEqual(doctor.worst_level(["ok", "ok"]), "ok")
-        self.assertEqual(doctor.worst_level([]), "ok")
-
+    def test_overall(self):
+        """D7. 네트워크가 정상이어도 다른 곳이 아프면 '정상' 이라 말하지 않는다."""
+        with self.subTest("healthy_everything_says_normal"):
+            d = self._clean_net([{"key": "boot", "label": "부트", "level": "ok",
+                                  "line": "부트: 빠름", "advice": None}])
+            out = "\n".join(doctor.advise(d))
+            self.assertIn("정상", out)
+        with self.subTest("system_fault_overrides_normal_verdict"):
+            d = self._clean_net([
+                {"key": "boot", "label": "부트", "level": "critical",
+                 "line": "부트: userspace 76.9초", "advice": "부트가 느리다"},
+                {"key": "tmp", "label": "/tmp", "level": "ok",
+                 "line": "/tmp: 19개", "advice": None}])
+            out = "\n".join(doctor.advise(d))
+            self.assertNotIn("정상 —", out)
+            self.assertIn("부트", out)
+            self.assertIn("부트가 느리다", out)
+        with self.subTest("worst_level_is_named_first"):
+            d = self._clean_net([
+                {"key": "tmp", "label": "/tmp", "level": "warn",
+                 "line": "/tmp: 많다", "advice": "치워라"},
+                {"key": "disk", "label": "디스크", "level": "critical",
+                 "line": "디스크: 96%", "advice": "비워라"}])
+            lines = doctor.advise(d)
+            joined = "\n".join(lines)
+            self.assertLess(joined.index("디스크"), joined.index("/tmp"))
+        with self.subTest("worst_level_helper"):
+            self.assertEqual(doctor.worst_level(["ok", "warn", "critical"]),
+                             "critical")
+            self.assertEqual(doctor.worst_level(["ok", "unknown"]), "unknown")
+            self.assertEqual(doctor.worst_level(["ok", "ok"]), "ok")
+            self.assertEqual(doctor.worst_level([]), "ok")
 
 class Shape(unittest.TestCase):
     """D8. 수집 결과의 모양 — 기계 판독이 항목을 셀 수 있어야 한다."""

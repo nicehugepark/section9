@@ -34,29 +34,23 @@ spec.loader.exec_module(s9)
 
 
 class CodeStamp(unittest.TestCase):
-    def test_stamp_reads_the_running_file(self):
-        st = s9.code_stamp()
-        self.assertTrue(st.get("size"), st)
-        self.assertTrue(st.get("mtime"), st)
-
-    def test_same_file_same_stamp(self):
-        self.assertEqual(s9.code_stamp(), s9.code_stamp())
-
-    def test_changed_file_changes_the_stamp(self):
-        """크기가 같아도 수정 시각이 바뀌면 다른 지문이어야 한다 —
-        같은 길이로 한 글자만 바꾼 수정이 흔하다."""
-        a = {"mtime": 100.0, "size": 10}
-        self.assertTrue(s9.code_is_stale(a, {"mtime": 101.0, "size": 10}))
-        self.assertTrue(s9.code_is_stale(a, {"mtime": 100.0, "size": 11}))
-        self.assertFalse(s9.code_is_stale(a, {"mtime": 100.0, "size": 10}))
-
-    def test_unknown_stamp_is_not_stale(self):
-        """읽을 수 없을 때 낡았다고 단정하지 않는다 — 근거 없는 경고는
-        곧 무시되고, 무시되기 시작하면 진짜일 때도 안 읽힌다."""
-        self.assertFalse(s9.code_is_stale({}, {"mtime": 1.0, "size": 2}))
-        self.assertFalse(s9.code_is_stale({"mtime": 1.0, "size": 2}, {}))
-        self.assertFalse(s9.code_is_stale(None, None))
-
+    def test_code_stamp(self):
+        """CodeStamp 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("stamp_reads_the_running_file"):
+            st = s9.code_stamp()
+            self.assertTrue(st.get("size"), st)
+            self.assertTrue(st.get("mtime"), st)
+        with self.subTest("same_file_same_stamp"):
+            self.assertEqual(s9.code_stamp(), s9.code_stamp())
+        with self.subTest("changed_file_changes_the_stamp"):
+            a = {"mtime": 100.0, "size": 10}
+            self.assertTrue(s9.code_is_stale(a, {"mtime": 101.0, "size": 10}))
+            self.assertTrue(s9.code_is_stale(a, {"mtime": 100.0, "size": 11}))
+            self.assertFalse(s9.code_is_stale(a, {"mtime": 100.0, "size": 10}))
+        with self.subTest("unknown_stamp_is_not_stale"):
+            self.assertFalse(s9.code_is_stale({}, {"mtime": 1.0, "size": 2}))
+            self.assertFalse(s9.code_is_stale({"mtime": 1.0, "size": 2}, {}))
+            self.assertFalse(s9.code_is_stale(None, None))
 
 class ServeInfoContract(unittest.TestCase):
     """엔드포인트가 판단에 필요한 것을 모두 담는다 — 사람이 '언제 뜬 서버가

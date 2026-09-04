@@ -40,52 +40,53 @@ class DocsRecentOrder(unittest.TestCase):
             cls.src = f.read()
 
     # N1. 최근순 정렬 규칙이 있다
-    def test_n1_recent_order_exists(self):
-        self.assertIn("const recentOrder", self.src)
-        m = re.search(r"const recentOrder = rows =>(.*?);\n", self.src, re.S)
-        self.assertIsNotNone(m)
-        body = m.group(1)
-        self.assertIn("updated", body)
-        self.assertNotIn("prioOf", body,
-                         "Docs 정렬에 우선순위가 섞였다 — 최근순이어야 한다")
+    def test_docs_recent_order(self):
+        """DocsRecentOrder 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_recent_order_exists"):
+                self.assertIn("const recentOrder", self.src)
+                m = re.search(r"const recentOrder = rows =>(.*?);\n", self.src, re.S)
+                self.assertIsNotNone(m)
+                body = m.group(1)
+                self.assertIn("updated", body)
+                self.assertNotIn("prioOf", body,
+                                 "Docs 정렬에 우선순위가 섞였다 — 최근순이어야 한다")
 
-    # N2. Docs 목록이 그것을 쓴다 — 다만 **얼려서** (REQ-20260828-009)
-    def test_n2_docs_uses_it(self):
-        m = re.search(r"async function renderDocs\(rows\)\{(.*?)\n\}\n",
-                      self.src, re.S)
-        self.assertIsNotNone(m)
-        self.assertIn("stableOrder(rows,", m.group(1),
-                      "Docs 목록이 정해진 순서를 쓰지 않는다")
-        self.assertNotIn("recentOrder(rows)", m.group(1),
-                         "목록이 매 렌더마다 다시 정렬한다 — 15초마다 발밑이 흔들린다")
-        # 얼린 순서의 **뿌리**는 여전히 최근순이다
-        f = re.search(r"function stableOrder\([^)]*\)\{(.*?)\n\}\n", self.src, re.S)
-        self.assertIsNotNone(f, "stableOrder 를 찾지 못했다")
-        self.assertIn("recentOrder(rows)", f.group(1),
-                      "처음 순위가 최근순이 아니다")
+            # N2. Docs 목록이 그것을 쓴다 — 다만 **얼려서** (REQ-20260828-009)
+        with self.subTest("n2_docs_uses_it"):
+                m = re.search(r"async function renderDocs\(rows\)\{(.*?)\n\}\n",
+                              self.src, re.S)
+                self.assertIsNotNone(m)
+                self.assertIn("stableOrder(rows,", m.group(1),
+                              "Docs 목록이 정해진 순서를 쓰지 않는다")
+                self.assertNotIn("recentOrder(rows)", m.group(1),
+                                 "목록이 매 렌더마다 다시 정렬한다 — 15초마다 발밑이 흔들린다")
+                # 얼린 순서의 **뿌리**는 여전히 최근순이다
+                f = re.search(r"function stableOrder\([^)]*\)\{(.*?)\n\}\n", self.src, re.S)
+                self.assertIsNotNone(f, "stableOrder 를 찾지 못했다")
+                self.assertIn("recentOrder(rows)", f.group(1),
+                              "처음 순위가 최근순이 아니다")
 
-    # B1. Board 는 그대로 우선순위 순이다 — 두 화면의 물음이 다르다
-    def test_b1_board_keeps_priority(self):
-        m = re.search(r"const workOrder = rows =>(.*?);\n", self.src, re.S)
-        self.assertIsNotNone(m)
-        self.assertIn("prioOf", m.group(1))
+            # B1. Board 는 그대로 우선순위 순이다 — 두 화면의 물음이 다르다
+        with self.subTest("b1_board_keeps_priority"):
+                m = re.search(r"const workOrder = rows =>(.*?);\n", self.src, re.S)
+                self.assertIsNotNone(m)
+                self.assertIn("prioOf", m.group(1))
 
-    # R1. 정렬은 한 자리에 모여 있다 — 목록 만드는 곳에서 새로 sort 하지 않는다
-    def test_r1_no_scattered_sort_in_docs(self):
-        m = re.search(r"async function renderDocs\(rows\)\{(.*?)\n\}\n",
-                      self.src, re.S)
-        self.assertNotIn(".sort(", m.group(1),
-                         "Docs 렌더 안에서 정렬을 새로 걸고 있다")
+            # R1. 정렬은 한 자리에 모여 있다 — 목록 만드는 곳에서 새로 sort 하지 않는다
+        with self.subTest("r1_no_scattered_sort_in_docs"):
+                m = re.search(r"async function renderDocs\(rows\)\{(.*?)\n\}\n",
+                              self.src, re.S)
+                self.assertNotIn(".sort(", m.group(1),
+                                 "Docs 렌더 안에서 정렬을 새로 걸고 있다")
 
-    # N3. 대시보드에서 못 도는 명령을 팔레트가 미리 말한다
-    def test_n3_cli_only_commands_listed(self):
-        m = re.search(r"const CC_BUILTINS = \[(.*?)\]\.map", self.src, re.S)
-        self.assertIsNotNone(m)
-        block = m.group(1)
-        for name in ("permissions", "hooks"):
-            self.assertIn(f'"{name}"', block,
-                          f"/{name} 이 CLI 전용 목록에 없다 — 채팅으로 전송된다")
-
+            # N3. 대시보드에서 못 도는 명령을 팔레트가 미리 말한다
+        with self.subTest("n3_cli_only_commands_listed"):
+            m = re.search(r"const CC_BUILTINS = \[(.*?)\]\.map", self.src, re.S)
+            self.assertIsNotNone(m)
+            block = m.group(1)
+            for name in ("permissions", "hooks"):
+                self.assertIn(f'"{name}"', block,
+                              f"/{name} 이 CLI 전용 목록에 없다 — 채팅으로 전송된다")
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,20 @@ import subprocess
 import sys
 
 
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main_worktree_root(root):
     """링크된 git 워크트리에서 실행돼도 **메인 저장소**를 돌려준다.
 
@@ -32,7 +46,8 @@ def main_worktree_root(root):
     """
     try:
         r = subprocess.run(["git", "-C", root, "rev-parse", "--git-common-dir"],
-                           capture_output=True, text=True, timeout=5)
+                           capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=5)
     except (OSError, subprocess.SubprocessError):
         return root
     common = (r.stdout or "").strip()
@@ -67,7 +82,7 @@ def say(msg):
 
 def install_dirs():
     import subprocess
-    subprocess.run([os.path.join(ROOT, "bin", "s9"), "init"],
+    subprocess.run([sys.executable, os.path.join(ROOT, "bin", "s9"), "init"],
                    capture_output=True, env={**os.environ, "S9_ROOT": ROOT})
     say(f"dirs OK: {ROOT}")
 
@@ -97,7 +112,8 @@ def git_hooks_dir(cwd):
     갇혀 있던 것에서 건졌다)."""
     try:
         r = subprocess.run(["git", "rev-parse", "--git-path", "hooks"],
-                           cwd=cwd, capture_output=True, text=True, timeout=10)
+                           cwd=cwd, capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=10)
     except Exception:
         return ""
     if r.returncode != 0 or not r.stdout.strip():
@@ -152,10 +168,18 @@ def install_git_hooks():
     for name, body in [("post-merge", sync), ("post-checkout", sync),
                        ("pre-commit", guard), ("post-commit", cnote)]:
         p = os.path.join(hooks_dir, name)
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write(body)
         os.chmod(p, os.stat(p).st_mode | stat.S_IEXEC | stat.S_IXGRP)
     say("git hooks OK: post-merge, post-checkout, pre-commit(guard), post-commit(기록)")
+    # 문서 병합 드라이버 (REQ-20260902-024) — .gitattributes 의 merge=s9doc 가
+    # 이 이름을 가리킨다. 훅과 같은 설치 경로·같은 한계(미설치 머신은 종전대로 충돌).
+    drv = f"{os.path.join(ROOT, 'bin', 's9')} merge-doc %O %A %B"
+    subprocess.run(["git", "config", "merge.s9doc.driver", drv], cwd=ROOT,
+                   capture_output=True)
+    subprocess.run(["git", "config", "merge.s9doc.name", "section9 document merge"],
+                   cwd=ROOT, capture_output=True)
+    say("merge driver OK: merge.s9doc → s9 merge-doc")
 
 
 def install_claude_hooks():
@@ -167,8 +191,16 @@ def install_claude_hooks():
     # {ROOT} 치환
     canonical = json.loads(json.dumps(canonical).replace("{ROOT}", ROOT))
     if os.name == "nt":
-        # 순수 Windows: bash 문법(2>/dev/null || true) 제거 + python 명시 실행.
+        # 순수 Windows: bash 문법(2>/dev/null || true) 제거 + 그 판의 진입점 실행.
         # 스크립트 자체가 fail-safe(항상 exit 0)라 리다이렉트 없이도 안전.
+        #
+        # 부르는 것은 `.cmd` 래퍼다 (REQ-20260903-005). 종전에는 `python "<script>"`
+        # 를 적었는데 두 가지가 틀렸다: ① 확장자 없는 스크립트는 `python` 이
+        # 있어야만 도는데 PATH 의 `python` 은 마이크로소프트 스토어의 **별칭
+        # 스텁**일 수 있고(아무것도 안 하고 9009 로 끝난다), ② 그 경로로 부르면
+        # 출력이 콘솔 코드페이지로 나가 한국어가 깨진다. 래퍼가 그 둘을 이미
+        # 푼다 — 인터프리터를 이름으로 고르고 UTF-8 을 강제한다. 훅마다 같은
+        # 판정을 되풀이하지 않는 자리이기도 하다.
         for entries in canonical.values():
             for e in entries:
                 for h in e.get("hooks", []):
@@ -177,7 +209,13 @@ def install_claude_hooks():
                     parts = cmd.split(" ", 1)
                     script = parts[0].replace("/", "\\")
                     args = (" " + parts[1]) if len(parts) > 1 else ""
-                    h["command"] = f'python "{script}"{args}'
+                    wrapper = script + ".cmd"
+                    if os.path.exists(wrapper):
+                        h["command"] = f'"{wrapper}"{args}'
+                    else:
+                        # 래퍼가 없는 도구는 인터프리터를 지금 이 자리에서
+                        # 확정해 적는다 — 이름으로 미루면 스텁을 집는다.
+                        h["command"] = f'"{sys.executable}" "{script}"{args}'
 
     settings_path = os.path.join(claude_home(), "settings.json")
     try:
@@ -259,7 +297,7 @@ def link_into(src_dir, dst_dir, label):
             import shutil
             if os.path.isdir(src):
                 shutil.copytree(src, dst)
-                open(os.path.join(dst, ".section9-copy"), "w").close()
+                open(os.path.join(dst, ".section9-copy"), "w", encoding="utf-8").close()
             else:
                 shutil.copy2(src, dst)
             say(f"  {label}: {name} (copy fallback) -> {dst}")
@@ -360,6 +398,12 @@ def managed_block(path, label):
 
 
 def install_other_harnesses():
+    # 이 저장소 자신의 CLAUDE.md 부터 (REQ-20260903-013). Claude Code 세션이
+    # 실제로 읽는 것은 PROTOCOL.md 가 아니라 이 파일이다 — 마커는 처음부터
+    # 박혀 있었는데 갱신하는 자리가 없어서, 규약을 고쳐도 `--agents-md` 를
+    # 손으로 부르기 전까지 세션에는 옛 글이 갔다. 원천을 고쳤는데 생성물이
+    # 안 따라오면 고친 것이 아니다.
+    managed_block(os.path.join(ROOT, "CLAUDE.md"), "claude")
     # 존재하는 하네스만 감지해 적용 (프로토콜 모드 — harness/README.md 매트릭스 참조)
     targets = [
         ("gemini", os.path.expanduser("~/.gemini"),
@@ -401,7 +445,7 @@ def start_dashboard():
     port = int(os.environ.get("S9_PORT") or 0)
     if not port:
         try:
-            with open(os.path.join(ROOT, "state", "port")) as f:
+            with open(os.path.join(ROOT, "state", "port"), encoding="utf-8") as f:
                 port = int(f.read().strip())
         except (OSError, ValueError):
             port = 9909
@@ -416,12 +460,22 @@ def start_dashboard():
         root = os.environ.get("S9_ROOT") or os.path.dirname(
             os.path.dirname(os.path.realpath(__file__)))
         os.makedirs(os.path.join(root, "state"), exist_ok=True)
-        lf = open(os.path.join(root, "state", "serve.log"), "a")
+        lf = open(os.path.join(root, "state", "serve.log"), "a", encoding="utf-8")
         # 감시자를 세운다 (REQ-20260825-096) — 감시자가 서버를 띄우고,
         # 죽으면 사유를 남기고 되살린다. 이미 감시 중이면 곧바로 물러난다.
-        subprocess.Popen([s9, "serve", "--supervise", "--port", str(port)],
-                         stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
-                         start_new_session=True)
+        # 인터프리터를 앞에 세운다 (REQ-20260903-005) — 윈도우에는 shebang 이
+        # 없어 확장자 없는 스크립트를 그대로 넘기면 안 뜬다. 세션에서 떼는
+        # 것도 판마다 이름이 다르므로 **있는 것만** 얹는다.
+        kw = {"stdin": subprocess.DEVNULL, "stdout": lf, "stderr": lf}
+        flags = 0
+        for nm in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
+            flags |= getattr(subprocess, nm, 0)
+        if flags:
+            kw["creationflags"] = flags
+        else:
+            kw["start_new_session"] = True
+        subprocess.Popen([sys.executable, s9, "serve", "--supervise",
+                          "--port", str(port)], **kw)
         say(f"대시보드 기동: http://127.0.0.1:{port}/ (감시 포함)")
     except Exception as e:
         say(f"대시보드 자동 기동 실패({e}) — 수동: ~/section9/bin/s9 serve")
@@ -431,5 +485,10 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        # 조용한 실패를 성공으로 돌려주지 않는다 (REQ-20260903-005). 예전에는
+        # `--quiet` 이면 0 으로 끝냈고, 그래서 네이티브 윈도우에서 설치가
+        # **한 줄 오류만 남기고 rc=0** 으로 끝났다 — 부르는 쪽에서는 깔린 것과
+        # 구분이 안 된다. 이 스크립트를 부르는 git 훅은 이미 `|| true` 로
+        # 감싸 있으니, 정직하게 실패를 알려도 훅이 멈추지 않는다.
         print(f"s9-install: {e}", file=sys.stderr)
-        sys.exit(0 if QUIET else 1)
+        sys.exit(1)

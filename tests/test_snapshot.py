@@ -55,67 +55,48 @@ class Snapshot(unittest.TestCase):
         except OSError:
             return []
 
-    def test_s1_overwritten_file_survives(self):
-        """S1. 떠 둔 뒤 통째로 덮여도 원본을 되살릴 수 있다.
-
-        이게 이 장치의 존재 이유다 — 커밋 전이라 git 으로는 못 살리는 상황.
-        """
-        rel = "tests/precious.py"
-        self.write(rel, "원본 15건\n")
-        self.mod.snapshot_dirty()
-        self.write(rel, "남이 덮어쓴 9건\n")      # 사고 재현
-        self.assertTrue(self.snaps(rel), "뜬 것이 없다")
-        self.mod.cmd_snapshot(type("A", (), {
-            "path": None, "restore": rel, "at": None, "now": False})())
-        with open(os.path.join(self.tmp, rel), encoding="utf-8") as f:
-            self.assertEqual(f.read(), "원본 15건\n")
-
-    def test_s2_restore_does_not_become_another_overwrite(self):
-        """S2. 되살리기 직전에 '지금 것'도 뜬다.
-
-        복구가 또 하나의 덮어쓰기가 되면 이 장치가 사고의 원인이 된다.
-        """
-        rel = "tests/precious.py"
-        self.assertTrue(any("남이 덮어쓴" in open(
-            os.path.join(self.tmp, "state", "snapshots",
-                         self.mod.safe_name(rel), h), encoding="utf-8").read()
-            for h in self.snaps(rel)),
-            "복구 전에 있던 내용이 어디에도 남지 않았다")
-
-    def test_s3_same_content_is_not_snapped_twice(self):
-        """S3. 내용이 그대로면 다시 뜨지 않는다 — 30초마다 도는 루프라
-        그러지 않으면 디스크가 같은 파일로 찬다."""
-        rel = "tests/stable.py"
-        self.write(rel, "변하지 않는다\n")
-        self.mod.snapshot_dirty()
-        n = len(self.snaps(rel))
-        self.mod.snapshot_dirty()
-        self.mod.snapshot_dirty()
-        self.assertEqual(len(self.snaps(rel)), n)
-
-    def test_s4_state_dir_is_not_snapped(self):
-        """S4. state/ 는 뜨지 않는다 — 스냅샷이 자기 자신을 뜨면 끝없이 부푼다."""
-        self.write("state/noise.txt", "x")
-        self.mod.snapshot_dirty()
-        self.assertEqual(self.snaps("state/noise.txt"), [])
-
-    def test_s5_huge_file_is_skipped(self):
-        """S5. 소스가 아닌 큰 파일은 건너뛴다 — 이 장치는 코드를 지키는
-        것이지 백업이 아니다."""
-        self.write("big.bin", "x" * (self.mod.SNAP_MAX_BYTES + 1))
-        self.mod.snapshot_dirty()
-        self.assertEqual(self.snaps("big.bin"), [])
-
-    def test_s6_watcher_carries_it(self):
-        """S6. 워처 루프가 실제로 이걸 부른다 — 사람이 기억해서 치는 명령이면
-        오늘 사고 넷 중 하나도 못 막았다."""
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        loop = src.split("def _rework_loop", 1)
-        self.assertEqual(len(loop), 2, "워처 루프를 찾지 못했다")
-        self.assertIn("snapshot_dirty()", loop[1][:1200],
-                      "워처가 스냅샷을 뜨지 않는다")
-
+    def test_snapshot(self):
+        """Snapshot 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("s1_overwritten_file_survives"):
+            rel = "tests/precious.py"
+            self.write(rel, "원본 15건\n")
+            self.mod.snapshot_dirty()
+            self.write(rel, "남이 덮어쓴 9건\n")      # 사고 재현
+            self.assertTrue(self.snaps(rel), "뜬 것이 없다")
+            self.mod.cmd_snapshot(type("A", (), {
+                "path": None, "restore": rel, "at": None, "now": False})())
+            with open(os.path.join(self.tmp, rel), encoding="utf-8") as f:
+                self.assertEqual(f.read(), "원본 15건\n")
+        with self.subTest("s2_restore_does_not_become_another_overwrite"):
+            rel = "tests/precious.py"
+            self.assertTrue(any("남이 덮어쓴" in open(
+                os.path.join(self.tmp, "state", "snapshots",
+                             self.mod.safe_name(rel), h), encoding="utf-8").read()
+                for h in self.snaps(rel)),
+                "복구 전에 있던 내용이 어디에도 남지 않았다")
+        with self.subTest("s3_same_content_is_not_snapped_twice"):
+            rel = "tests/stable.py"
+            self.write(rel, "변하지 않는다\n")
+            self.mod.snapshot_dirty()
+            n = len(self.snaps(rel))
+            self.mod.snapshot_dirty()
+            self.mod.snapshot_dirty()
+            self.assertEqual(len(self.snaps(rel)), n)
+        with self.subTest("s4_state_dir_is_not_snapped"):
+            self.write("state/noise.txt", "x")
+            self.mod.snapshot_dirty()
+            self.assertEqual(self.snaps("state/noise.txt"), [])
+        with self.subTest("s5_huge_file_is_skipped"):
+            self.write("big.bin", "x" * (self.mod.SNAP_MAX_BYTES + 1))
+            self.mod.snapshot_dirty()
+            self.assertEqual(self.snaps("big.bin"), [])
+        with self.subTest("s6_watcher_carries_it"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            loop = src.split("def _rework_loop", 1)
+            self.assertEqual(len(loop), 2, "워처 루프를 찾지 못했다")
+            self.assertIn("snapshot_dirty()", loop[1][:1200],
+                          "워처가 스냅샷을 뜨지 않는다")
 
 if __name__ == "__main__":
     unittest.main()

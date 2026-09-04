@@ -113,81 +113,82 @@ class TestAgentRelay(unittest.TestCase):
         os.utime(self.live_out, None)
 
     # A1. 정상 전송: 지목한 에이전트 id·타입이 수신함 줄에 실린다
-    def test_a1_targeted_line(self):
-        self.touch()
-        code, res = self.api("/api/chat", {"text": "그 스킨 먼저 봐줘",
-                                           "agent": "agentlive"})
-        self.assertEqual(code, 200, res)
-        line = self.inbox()[-1]
-        self.assertEqual(line["kind"], "chat")
-        self.assertEqual(line["agent"], "agentlive")
-        self.assertEqual(line["agent_type"], "designer")
+    def test_test_agent_relay(self):
+        """TestAgentRelay 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("a1_targeted_line"):
+                self.touch()
+                code, res = self.api("/api/chat", {"text": "그 스킨 먼저 봐줘",
+                                                   "agent": "agentlive"})
+                self.assertEqual(code, 200, res)
+                line = self.inbox()[-1]
+                self.assertEqual(line["kind"], "chat")
+                self.assertEqual(line["agent"], "agentlive")
+                self.assertEqual(line["agent_type"], "designer")
 
-    # A2. 대상 검증: 없는 id·멈춘 에이전트는 409, 수신함은 그대로
-    def test_a2_unavailable_refused(self):
-        self.touch()
-        before = len(self.inbox())
-        for bad in ("nosuchagent", "agentdead"):
-            code, res = self.api("/api/chat", {"text": "여보세요", "agent": bad})
-            self.assertEqual(code, 409, (bad, res))
-            self.assertEqual(res.get("error"), "agent-unavailable", res)
-            self.assertIn("리드", res.get("reason", ""))   # 폴백 안내
-        self.assertEqual(len(self.inbox()), before)
+            # A2. 대상 검증: 없는 id·멈춘 에이전트는 409, 수신함은 그대로
+        with self.subTest("a2_unavailable_refused"):
+                self.touch()
+                before = len(self.inbox())
+                for bad in ("nosuchagent", "agentdead"):
+                    code, res = self.api("/api/chat", {"text": "여보세요", "agent": bad})
+                    self.assertEqual(code, 409, (bad, res))
+                    self.assertEqual(res.get("error"), "agent-unavailable", res)
+                    self.assertIn("리드", res.get("reason", ""))   # 폴백 안내
+                self.assertEqual(len(self.inbox()), before)
 
-    # A3. 회귀: agent 없는 메시지는 기존대로 리드로 (필드도 없다)
-    def test_a3_plain_message_regression(self):
-        self.touch()
-        code, res = self.api("/api/chat", {"text": "리드에게 보내는 메시지"})
-        self.assertEqual(code, 200, res)
-        line = self.inbox()[-1]
-        self.assertNotIn("agent", line)
+            # A3. 회귀: agent 없는 메시지는 기존대로 리드로 (필드도 없다)
+        with self.subTest("a3_plain_message_regression"):
+                self.touch()
+                code, res = self.api("/api/chat", {"text": "리드에게 보내는 메시지"})
+                self.assertEqual(code, 200, res)
+                line = self.inbox()[-1]
+                self.assertNotIn("agent", line)
 
-    # A5. 감사: 지목 전송도 REQ로 기록된다 — 무기록 통로를 만들지 않는다
-    def test_a5_audited(self):
-        self.touch()
-        code, res = self.api("/api/chat", {
-            "text": "지목 전송도 요청으로 남아야 한다. 스킨 대비를 조정해줘",
-            "agent": "agentlive"})
-        self.assertEqual(code, 200, res)
-        self.assertTrue(res.get("req"), res)
-        self.assertEqual(self.inbox()[-1].get("req"), res["req"])
+            # A5. 감사: 지목 전송도 REQ로 기록된다 — 무기록 통로를 만들지 않는다
+        with self.subTest("a5_audited"):
+                self.touch()
+                code, res = self.api("/api/chat", {
+                    "text": "지목 전송도 요청으로 남아야 한다. 스킨 대비를 조정해줘",
+                    "agent": "agentlive"})
+                self.assertEqual(code, 200, res)
+                self.assertTrue(res.get("req"), res)
+                self.assertEqual(self.inbox()[-1].get("req"), res["req"])
 
-    # A4. 중계 규율: 세션 훅 안내에 중계·규율·폴백·감사 지시가 들어간다
-    def test_a4_hook_relay_directive(self):
-        r = subprocess.run(
-            [HOOK, "start"],
-            input=json.dumps({"session_id": "relayhook-full-session-id",
-                              "source": "startup"}),
-            capture_output=True, text=True,
-            env={**self.env, "S9_PORT": "1"}, timeout=20)
-        out = r.stdout
-        self.assertIn("agent 필드", out)
-        self.assertIn("SendMessage", out)
-        self.assertIn("하던 작업", out)     # 진행 중 작업 보호 규율
-        self.assertIn("종료", out)          # 대상 부재 안내
-        self.assertIn("--label response", out)   # 감사 기록
+            # A4. 중계 규율: 세션 훅 안내에 중계·규율·폴백·감사 지시가 들어간다
+        with self.subTest("a4_hook_relay_directive"):
+                r = subprocess.run(
+                    [HOOK, "start"],
+                    input=json.dumps({"session_id": "relayhook-full-session-id",
+                                      "source": "startup"}),
+                    capture_output=True, text=True,
+                    env={**self.env, "S9_PORT": "1"}, timeout=20)
+                out = r.stdout
+                self.assertIn("agent 필드", out)
+                self.assertIn("SendMessage", out)
+                self.assertIn("하던 작업", out)     # 진행 중 작업 보호 규율
+                self.assertIn("종료", out)          # 대상 부재 안내
+                self.assertIn("--label response", out)   # 감사 기록
 
-    # A6. 화면 계약: 전송 대상 칩과 해제 컨트롤이 존재한다
-    def test_a6_composer_target_ui(self):
-        with open(WEB, encoding="utf-8") as f:
-            html = f.read()
-        self.assertIn("cctarget", html)      # 대상 칩
-        self.assertIn("termTargetClear", html)   # 해제 컨트롤
+            # A6. 화면 계약: 전송 대상 칩과 해제 컨트롤이 존재한다
+        with self.subTest("a6_composer_target_ui"):
+                with open(WEB, encoding="utf-8") as f:
+                    html = f.read()
+                self.assertIn("cctarget", html)      # 대상 칩
+                self.assertIn("termTargetClear", html)   # 해제 컨트롤
 
-    # A7. 회귀: 지목(→ 버튼)과 열람(행 클릭)이 같은 스트립에서 서로를 삼키지
-    # 않는다 — 지목 처리가 행 열람보다 먼저 걸리고 전파를 멈춰야 한다.
-    def test_a7_target_and_viewer_coexist(self):
-        with open(WEB, encoding="utf-8") as f:
-            html = f.read()
-        i_t = html.find('closest("[data-target]")')
-        i_r = html.find('closest(".ccagrow")')
-        self.assertNotEqual(i_t, -1, "지목 버튼 핸들러가 없다")
-        self.assertNotEqual(i_r, -1, "에이전트 행 열람 핸들러가 없다")
-        self.assertLess(i_t, i_r, "지목이 열람보다 뒤면 → 클릭이 뷰어를 연다")
-        self.assertIn("stopPropagation", html[i_t:i_r])
-        # 대상이 활성 목록에서 사라지면 자동 해제 (칩이 유령으로 남지 않는다)
-        self.assertIn("termTargetClear(T,", html)
-
+            # A7. 회귀: 지목(→ 버튼)과 열람(행 클릭)이 같은 스트립에서 서로를 삼키지
+            # 않는다 — 지목 처리가 행 열람보다 먼저 걸리고 전파를 멈춰야 한다.
+        with self.subTest("a7_target_and_viewer_coexist"):
+            with open(WEB, encoding="utf-8") as f:
+                html = f.read()
+            i_t = html.find('closest("[data-target]")')
+            i_r = html.find('closest(".ccagrow")')
+            self.assertNotEqual(i_t, -1, "지목 버튼 핸들러가 없다")
+            self.assertNotEqual(i_r, -1, "에이전트 행 열람 핸들러가 없다")
+            self.assertLess(i_t, i_r, "지목이 열람보다 뒤면 → 클릭이 뷰어를 연다")
+            self.assertIn("stopPropagation", html[i_t:i_r])
+            # 대상이 활성 목록에서 사라지면 자동 해제 (칩이 유령으로 남지 않는다)
+            self.assertIn("termTargetClear(T,", html)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -32,54 +32,26 @@ class PortWarnNames(unittest.TestCase):
                       cls.src, re.S)
         cls.warn = m.group(1) if m else ""
 
-    def test_p1_the_warning_names_the_holder(self):
-        """P1. 가장 많이 쥔 프로세스를 이름과 pid 로 말한다."""
-        self.assertTrue(self.warn, "경고 분기를 찾지 못했다")
-        for f in ("top_name", "top_pid", "top_count"):
-            self.assertIn(f, self.warn, f"{f} 를 쓰지 않는다")
-
-    def test_p2_it_never_claims_a_share_it_cannot_know(self):
-        """P2. **모르는 것을 단언하지 않는다** (REQ-20260827-022 정정).
-
-        이 테스트는 원래 정반대를 요구했다 — "우리 몫이 몇 개인지 말하라".
-        그 요구가 틀렸다. 읽던 키(`sample`)를 `windows_ports()` 가 **만들지
-        않으므로** 그 값은 언제나 0이었고, 경고는 "우리 것은 0개다"라는 거짓을
-        매번 단언했다. 사용자가 "이 머신엔 section9밖에 없다"고 짚어 준 뒤에야
-        드러났고, 실제로 그 포트들은 우리 것이었다.
-
-        읽을 수 있었어도 답할 수 없는 질문이었다: WSL 이 포트를 호스트에
-        공개하면 소유자는 호스트 릴레이가 되므로, 소유자 값으로는 귀속을
-        가릴 수 없다.
-
-        **테스트가 거짓을 계약으로 굳히면 그 거짓이 회귀로 보호된다.**
-        """
-        # **주석이 아니라 실제로 찍히는 문장**을 본다. 처음엔 소스 블록을 통째로
-        # 훑었는데, 이 결함의 내력을 적어 둔 주석에 그 문구가 들어 있어 테스트가
-        # 헛되이 붉어졌다 — 계약은 코드가 하는 말이지 코드에 대한 설명이 아니다.
-        code = "\n".join(l for l in self.warn.splitlines()
-                         if not l.strip().startswith("#"))
-        self.assertNotIn('win.get("sample")', code, "없는 필드를 다시 읽는다")
-        self.assertNotIn("우리 것은", code, "알 수 없는 몫을 다시 단언한다")
-
-    def test_p3_it_survives_missing_fields(self):
-        """P3. doctor 가 그 값을 안 주면 조용히 예전처럼 말한다.
-
-        경고가 예외로 죽으면 감시자 틱이 함께 멈춘다 — 알리려던 것이 알림을
-        죽이면 안 된다.
-        """
-        self.assertIn('if win.get("top_name") and win.get("top_count")',
-                      self.warn, "필드가 없을 때의 갈래가 없다")
-
-    def test_p4_auto_recovery_threshold_is_untouched(self):
-        """P4. 자동 회수 문턱과 동작은 건드리지 않았다.
-
-        우리 것이 0개인 상황에서도 자동 회수는 옳다 — 남의 프로세스를 죽이지
-        않고 우리 쪽 누수를 줄여 여유를 만드는 마지막 안전망이다. 문구를
-        고치다 안전망을 흔들면 고침이 새 위험이 된다.
-        """
-        self.assertIn("if ratio >= PORT_GUARD_AUTO:", self.src)
-        self.assertIn('_doctor("--recover", "--yes")', self.src)
-
+    def test_port_warn_names(self):
+        """PortWarnNames 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("p1_the_warning_names_the_holder"):
+            self.assertTrue(self.warn, "경고 분기를 찾지 못했다")
+            for f in ("top_name", "top_pid", "top_count"):
+                self.assertIn(f, self.warn, f"{f} 를 쓰지 않는다")
+        with self.subTest("p2_it_never_claims_a_share_it_cannot_know"):
+            # **주석이 아니라 실제로 찍히는 문장**을 본다. 처음엔 소스 블록을 통째로
+            # 훑었는데, 이 결함의 내력을 적어 둔 주석에 그 문구가 들어 있어 테스트가
+            # 헛되이 붉어졌다 — 계약은 코드가 하는 말이지 코드에 대한 설명이 아니다.
+            code = "\n".join(l for l in self.warn.splitlines()
+                             if not l.strip().startswith("#"))
+            self.assertNotIn('win.get("sample")', code, "없는 필드를 다시 읽는다")
+            self.assertNotIn("우리 것은", code, "알 수 없는 몫을 다시 단언한다")
+        with self.subTest("p3_it_survives_missing_fields"):
+            self.assertIn('if win.get("top_name") and win.get("top_count")',
+                          self.warn, "필드가 없을 때의 갈래가 없다")
+        with self.subTest("p4_auto_recovery_threshold_is_untouched"):
+            self.assertIn("if ratio >= PORT_GUARD_AUTO:", self.src)
+            self.assertIn('_doctor("--recover", "--yes")', self.src)
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,13 +46,26 @@ def _jobfile():
 
 class Base(unittest.TestCase):
     def setUp(self):
+        # 걷어야 하는 것을 **하나라도 빠뜨리면** 이 파일은 홀로 초록이면서
+        # 스위트에서만 붉어진다 (REQ-20260903-012). 실제로 `S9_USER` 가 빠져
+        # 있었고, 앞서 돈 파일이 두고 간 그 값 하나에 J4 가 넘어갔다 —
+        # 문서를 만든 사람과 상태를 옮기는 사람이 갈리면 클레임이 안 서고,
+        # 클레임이 없으면 잡이 카드에 붙지 않는다.
+        #
+        # 뿌리는 여기가 아니라 `os.environ` 이 프로세스 전체의 것이라는 사실에
+        # 있다 — 그 구조를 고치는 일은 따로 세웠다. 이 파일이 할 수 있는 것은
+        # **자기 격리를 완결하는 것**이고, 그러면 누가 무엇을 두고 가든 흔들리지
+        # 않는다.
         self._saved = {k: os.environ.get(k)
                        for k in ("S9_ROOT", "S9_MACHINE", "S9_SESSION",
-                                 "S9_TESTS_NESTED")}
+                                 "S9_TESTS_NESTED", "S9_USER", "S9_JOB_REQ",
+                                 "S9_AUTO_RESUME")}
         self.root = tempfile.mkdtemp(prefix="s9jb-")
         os.environ["S9_ROOT"] = self.root
         os.environ["S9_MACHINE"] = "testbox"
         os.environ.pop("S9_SESSION", None)
+        for _k in ("S9_USER", "S9_JOB_REQ", "S9_AUTO_RESUME"):
+            os.environ.pop(_k, None)
         # 병렬 러너의 직렬 꼬리는 S9_TESTS_NESTED=1 환경에서 돈다 — 이 스위트가
         # 검사하는 것이 바로 그 스위치라, 물려받은 값을 걷어야 한다(안 걷으면
         # start() 가 전부 무음이 되어 다섯 건이 한꺼번에 빨개진다 — 실측).

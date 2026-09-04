@@ -129,66 +129,67 @@ class StalledClaim(unittest.TestCase):
         return self.cli(None, "stalled", *extra)
 
     # N1. 오래 멈춘 것이 뜬다
-    def test_n1_stalled_listed(self):
-        self.assertIn(self.A, self.stalled())
+    def test_stalled_claim(self):
+        """StalledClaim 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_stalled_listed"):
+                self.assertIn(self.A, self.stalled())
 
-    # N2. 방금 움직인 것은 안 뜬다 — 거짓 목록은 안 읽히는 목록이 된다
-    def test_n2_working_not_listed(self):
-        self.assertNotIn(self.B, self.stalled())
+            # N2. 방금 움직인 것은 안 뜬다 — 거짓 목록은 안 읽히는 목록이 된다
+        with self.subTest("n2_working_not_listed"):
+                self.assertNotIn(self.B, self.stalled())
 
-    # B4. 세션이 살아 있다는 것만으로는 넘어가지 않는다 (REQ-20260827-074).
-    #     리드 세션은 늘 살아 있고 여러 요청을 한꺼번에 클레임한다 — 그걸
-    #     증거로 쳤더니 리드가 잡아 놓고 손을 뗀 경우를 하나도 못 잡았다.
-    #     그게 이 장치가 겨냥한 바로 그 상황이었다.
-    #     판정이 사는 자리는 2026-08-28 에 `stall_mins()` 하나로 옮겨졌다
-    #     (REQ-20260828-036) — 화면이 옛 축에 남아 CLI 와 다른 말을 했기
-    #     때문이다. 그래서 여기서 보는 곳도 그 자리다.
-    def test_b4_live_session_is_not_evidence(self):
-        # 판정은 2026-08-29 에 `stall_verdict()` 로 한 번 더 옮겨졌다
-        # (REQ-20260829-036) — 멈춤 하나로 부르던 것이 셋(멈춤·대기·미상)이라
-        # 나뉘었기 때문이다. `stall_mins()` 는 그 함수의 껍데기다.
-        src = open(S9, encoding="utf-8").read()
-        i = src.index("def stall_verdict(")
-        seg = src[i:src.index("\ndef ", i + 10)]
-        self.assertNotIn('r.get("live_kind") in ("session"', seg,
-                         "세션 생존을 그 요청의 진전으로 치고 있다")
-        self.assertIn('r.get("updated")', seg,
-                      "진전의 시계로 문서 변경 시각을 쓰지 않는다")
+            # B4. 세션이 살아 있다는 것만으로는 넘어가지 않는다 (REQ-20260827-074).
+            #     리드 세션은 늘 살아 있고 여러 요청을 한꺼번에 클레임한다 — 그걸
+            #     증거로 쳤더니 리드가 잡아 놓고 손을 뗀 경우를 하나도 못 잡았다.
+            #     그게 이 장치가 겨냥한 바로 그 상황이었다.
+            #     판정이 사는 자리는 2026-08-28 에 `stall_mins()` 하나로 옮겨졌다
+            #     (REQ-20260828-036) — 화면이 옛 축에 남아 CLI 와 다른 말을 했기
+            #     때문이다. 그래서 여기서 보는 곳도 그 자리다.
+        with self.subTest("b4_live_session_is_not_evidence"):
+                # 판정은 2026-08-29 에 `stall_verdict()` 로 한 번 더 옮겨졌다
+                # (REQ-20260829-036) — 멈춤 하나로 부르던 것이 셋(멈춤·대기·미상)이라
+                # 나뉘었기 때문이다. `stall_mins()` 는 그 함수의 껍데기다.
+                src = open(S9, encoding="utf-8").read()
+                i = src.index("def stall_verdict(")
+                seg = src[i:src.index("\ndef ", i + 10)]
+                self.assertNotIn('r.get("live_kind") in ("session"', seg,
+                                 "세션 생존을 그 요청의 진전으로 치고 있다")
+                self.assertIn('r.get("updated")', seg,
+                              "진전의 시계로 문서 변경 시각을 쓰지 않는다")
 
-    # B1. 무인 워커가 도는 중이면 멈춘 것이 아니다
-    def test_b1_live_worker_not_stalled(self):
-        self.assertNotIn(self.E, self.stalled())
+            # B1. 무인 워커가 도는 중이면 멈춘 것이 아니다
+        with self.subTest("b1_live_worker_not_stalled"):
+                self.assertNotIn(self.E, self.stalled())
 
-    # B2. in-progress 가 아닌 것은 대상이 아니다
-    def test_b2_only_in_progress(self):
-        out = self.stalled()
-        self.assertNotIn(self.C, out)
-        self.assertNotIn(self.D, out)
+            # B2. in-progress 가 아닌 것은 대상이 아니다
+        with self.subTest("b2_only_in_progress"):
+                out = self.stalled()
+                self.assertNotIn(self.C, out)
+                self.assertNotIn(self.D, out)
 
-    # B3. 매 턴 주입이라 길면 노이즈다 — 기본 3건까지만 보인다
-    def test_b3_capped(self):
-        m = _load("s9_stall_mod", S9)
-        self.assertLessEqual(m.STALLED_SHOW, 5)
-        self.assertGreaterEqual(m.STALLED_SHOW, 1)
+            # B3. 매 턴 주입이라 길면 노이즈다 — 기본 3건까지만 보인다
+        with self.subTest("b3_capped"):
+                m = _load("s9_stall_mod", S9)
+                self.assertLessEqual(m.STALLED_SHOW, 5)
+                self.assertGreaterEqual(m.STALLED_SHOW, 1)
 
-    # F1. 판정을 두 번 만들지 않는다 — 대시보드와 같은 함수를 쓴다
-    def test_f1_single_judgment(self):
-        m = _load("s9_stall_mod2", S9)
-        self.assertTrue(callable(getattr(m, "catalog_with_live", None)),
-                        "live 판정이 모듈 최상위에 없다 — CLI 가 쓸 수 없다")
-        src = open(S9, encoding="utf-8").read()
-        i = src.index("def stalled_requests(")
-        self.assertIn("catalog_with_live", src[i:i + 1200],
-                      "stalled 이 live 판정을 다시 만들고 있다")
+            # F1. 판정을 두 번 만들지 않는다 — 대시보드와 같은 함수를 쓴다
+        with self.subTest("f1_single_judgment"):
+                m = _load("s9_stall_mod2", S9)
+                self.assertTrue(callable(getattr(m, "catalog_with_live", None)),
+                                "live 판정이 모듈 최상위에 없다 — CLI 가 쓸 수 없다")
+                src = open(S9, encoding="utf-8").read()
+                i = src.index("def stalled_requests(")
+                self.assertIn("catalog_with_live", src[i:i + 1200],
+                              "stalled 이 live 판정을 다시 만들고 있다")
 
-    # N3. 프롬프트 훅이 매 턴 주입한다 — 표식만으로는 약하다
-    def test_n3_hook_injects(self):
-        src = open(HOOK, encoding="utf-8").read()
-        self.assertIn('"stalled"', src, "훅이 stalled 를 부르지 않는다")
-        i = src.index('"stalled"')
-        self.assertIn("emit", src[i:i + 4000].replace("\n", " ") + "emit",
-                      "부르기만 하고 주입하지 않는다")
-
+            # N3. 프롬프트 훅이 매 턴 주입한다 — 표식만으로는 약하다
+        with self.subTest("n3_hook_injects"):
+            src = open(HOOK, encoding="utf-8").read()
+            self.assertIn('"stalled"', src, "훅이 stalled 를 부르지 않는다")
+            i = src.index('"stalled"')
+            self.assertIn("emit", src[i:i + 4000].replace("\n", " ") + "emit",
+                          "부르기만 하고 주입하지 않는다")
 
 if __name__ == "__main__":
     unittest.main()

@@ -44,35 +44,30 @@ class TheTag(unittest.TestCase):
         cls.m = _load()
         cls.fn = staticmethod(getattr(cls.m, "asset_etag", None))
 
-    def test_it_exists(self):
-        self.assertTrue(self.fn, "asset_etag() 이 없다")
-
-    def test_same_file_same_tag(self):
-        self.assertEqual(self.fn(S9), self.fn(S9))
-
-    def test_it_is_a_quoted_token(self):
-        """ETag 는 따옴표로 감싼 토큰이다 — 안 감싸면 브라우저가 무시한다."""
-        t = self.fn(S9)
-        self.assertTrue(t.startswith('"') and t.endswith('"'), t)
-        self.assertNotIn(" ", t)
-
-    def test_a_missing_file_has_no_tag(self):
-        self.assertEqual(self.fn("/nope/nope/nope"), "")
-
-    def test_it_moves_when_the_file_does(self):
-        """같은 이름으로 갈아 끼운 캡처가 옛 그림으로 남으면 안 된다."""
-        import tempfile
-        import time
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b"a" * 10)
-            p = f.name
-        self.addCleanup(os.remove, p)
-        first = self.fn(p)
-        time.sleep(0.01)
-        with open(p, "wb") as f:
-            f.write(b"b" * 20)          # 크기도 시각도 달라진다
-        self.assertNotEqual(first, self.fn(p))
-
+    def test_the_tag(self):
+        """같은 파일은 같은 표식, 바뀌면 다른 표식."""
+        with self.subTest("it_exists"):
+            self.assertTrue(self.fn, "asset_etag() 이 없다")
+        with self.subTest("same_file_same_tag"):
+            self.assertEqual(self.fn(S9), self.fn(S9))
+        with self.subTest("it_is_a_quoted_token"):
+            t = self.fn(S9)
+            self.assertTrue(t.startswith('"') and t.endswith('"'), t)
+            self.assertNotIn(" ", t)
+        with self.subTest("a_missing_file_has_no_tag"):
+            self.assertEqual(self.fn("/nope/nope/nope"), "")
+        with self.subTest("it_moves_when_the_file_does"):
+            import tempfile
+            import time
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                f.write(b"a" * 10)
+                p = f.name
+            self.addCleanup(os.remove, p)
+            first = self.fn(p)
+            time.sleep(0.01)
+            with open(p, "wb") as f:
+                f.write(b"b" * 20)          # 크기도 시각도 달라진다
+            self.assertNotEqual(first, self.fn(p))
 
 class TheResponse(unittest.TestCase):
     """첨부 응답만 캐시된다 — 다른 답까지 캐시하면 낡은 화면이 남는다."""
@@ -81,48 +76,41 @@ class TheResponse(unittest.TestCase):
     def setUpClass(cls):
         cls.src = open(S9, encoding="utf-8").read()
 
-    def test_the_default_is_still_no_store(self):
-        """`_send` 의 기본은 그대로다. 판·목록·상태를 캐시하면 사람이 옮긴
-        상태가 화면에 안 온다 — 첨부와는 성질이 다르다."""
-        i = self.src.find("def _send(self, code, ctype, data):")
-        self.assertGreater(i, 0)
-        self.assertIn('"Cache-Control", "no-store"', self.src[i:i + 400])
-
-    def test_assets_are_sent_through_their_own_door(self):
-        i = self.src.find('elif parsed.path == "/api/asset":')
-        self.assertGreater(i, 0)
-        blk = self.src[i:i + 1400]
-        self.assertIn("_send_asset", blk,
-                      "첨부가 여전히 no-store 로 나간다 — 다시 그릴 때마다 "
-                      "열다섯 장을 새로 부른다")
-
-    def test_the_asset_door_revalidates(self):
-        i = self.src.find("def _send_asset(")
-        self.assertGreater(i, 0, "_send_asset() 이 없다")
-        blk = self.src[i:i + 1600]
-        self.assertIn("If-None-Match", blk, "검증 요청을 읽지 않는다")
-        self.assertIn("304", blk, "안 바뀌었다고 답할 줄 모른다")
-        self.assertIn("ETag", blk)
-        self.assertIn("max-age", blk, "잠깐의 수명이 없다 — 매번 다시 묻는다")
-
-    def test_the_life_is_short_enough_to_notice_a_replaced_capture(self):
-        """같은 이름으로 다시 찍은 캡처가 오래 옛것으로 남으면 판정이 어긋난다."""
-        m = _load()
-        life = getattr(m, "ASSET_CACHE_SEC", None)
-        self.assertIsNotNone(life, "ASSET_CACHE_SEC 이 없다")
-        self.assertGreater(life, 0)
-        self.assertLessEqual(life, 600,
-                             "너무 길다 — 다시 찍은 캡처가 옛 그림으로 남는다")
-
-    def test_a_304_carries_no_body(self):
-        """본문을 실어 보내면 아낀 것이 없다."""
-        i = self.src.find("def _send_asset(")
-        blk = self.src[i:i + 1600]
-        j = blk.find("304")
-        self.assertGreater(j, 0)
-        self.assertNotIn("wfile.write", blk[j:j + 320],
-                         "304 에 본문을 실었다")
-
+    def test_the_response(self):
+        """첨부 응답만 캐시된다 — 다른 답까지 캐시하면 낡은 화면이 남는다."""
+        with self.subTest("the_default_is_still_no_store"):
+            i = self.src.find("def _send(self, code, ctype, data):")
+            self.assertGreater(i, 0)
+            self.assertIn('"Cache-Control", "no-store"', self.src[i:i + 400])
+        with self.subTest("assets_are_sent_through_their_own_door"):
+            i = self.src.find('elif parsed.path == "/api/asset":')
+            self.assertGreater(i, 0)
+            blk = self.src[i:i + 1400]
+            self.assertIn("_send_asset", blk,
+                          "첨부가 여전히 no-store 로 나간다 — 다시 그릴 때마다 "
+                          "열다섯 장을 새로 부른다")
+        with self.subTest("the_asset_door_revalidates"):
+            i = self.src.find("def _send_asset(")
+            self.assertGreater(i, 0, "_send_asset() 이 없다")
+            blk = self.src[i:i + 1600]
+            self.assertIn("If-None-Match", blk, "검증 요청을 읽지 않는다")
+            self.assertIn("304", blk, "안 바뀌었다고 답할 줄 모른다")
+            self.assertIn("ETag", blk)
+            self.assertIn("max-age", blk, "잠깐의 수명이 없다 — 매번 다시 묻는다")
+        with self.subTest("the_life_is_short_enough_to_notice_a_replaced_capture"):
+            m = _load()
+            life = getattr(m, "ASSET_CACHE_SEC", None)
+            self.assertIsNotNone(life, "ASSET_CACHE_SEC 이 없다")
+            self.assertGreater(life, 0)
+            self.assertLessEqual(life, 600,
+                                 "너무 길다 — 다시 찍은 캡처가 옛 그림으로 남는다")
+        with self.subTest("a_304_carries_no_body"):
+            i = self.src.find("def _send_asset(")
+            blk = self.src[i:i + 1600]
+            j = blk.find("304")
+            self.assertGreater(j, 0)
+            self.assertNotIn("wfile.write", blk[j:j + 320],
+                             "304 에 본문을 실었다")
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,7 +14,28 @@ import os
 import subprocess
 import sys
 
+
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
 S9 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "s9")
+# `bin/s9` 를 부르는 argv (REQ-20260903-005). 경로 하나만 넘기면 **윈도우에서
+# 부를 수가 없다** — 그 판에는 shebang 이 없어 확장자 없는 스크립트가
+# `CreateProcess` 를 통과하지 못한다(WinError 193/2). 판을 갈라 분기하는 대신
+# 판에 기대는 것을 없앤다: 지금 도는 인터프리터로 그 파일을 연다. 리눅스·맥에서
+# 하던 일과 결과가 같고(같은 python3 가 같은 스크립트를 연다), 실행 권한 비트나
+# `env` 의 존재에도 기대지 않게 된다.
+S9_ARGV = [sys.executable, S9]
 STOP_HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "s9-audit-response")
 
@@ -66,7 +87,11 @@ def _proc_backend():
 # 묻고 캐시한다 — 매번 물으면 열 번 프로세스를 띄운다.
 _WIN_ROWS = {}          # {pid: (실행 파일 이름, 부모 pid, 명령줄)}
 _WIN_READ = [False]
-WIN_PS_SCRIPT = ("Get-CimInstance Win32_Process | ForEach-Object { "
+# 첫 문장이 인코딩을 정한다 (REQ-20260903-005) — PowerShell 은 기본적으로
+# 콘솔 코드페이지로 쓴다. s9.WIN_PS_SCRIPT 의 로컬 복제.
+WIN_PS_SCRIPT = ("[Console]::OutputEncoding = "
+                 "[System.Text.Encoding]::UTF8; "
+                 "Get-CimInstance Win32_Process | ForEach-Object { "
                  "$c = $_.CommandLine; if (-not $c) { $c = $_.Name }; "
                  "[string]$_.ProcessId + ' ' + [string]$_.ParentProcessId "
                  "+ ' ' + $c }")
@@ -96,7 +121,8 @@ def _win_rows():
         try:
             out = subprocess.run([exe, "-NoProfile", "-NonInteractive",
                                   "-Command", WIN_PS_SCRIPT],
-                                 capture_output=True, text=True,
+                                 capture_output=True,
+                                     encoding="utf-8", errors="replace",
                                  timeout=25).stdout or ""
         except Exception:
             continue
@@ -113,9 +139,9 @@ def _proc_info(pid):
     """(실행 파일 이름, 부모 pid) — 모르면 ("", 0)."""
     if _proc_backend() == "proc":
         try:
-            with open(f"/proc/{pid}/comm") as f:
+            with open(f"/proc/{pid}/comm", encoding="utf-8") as f:
                 comm = f.read().strip()
-            with open(f"/proc/{pid}/status") as f:
+            with open(f"/proc/{pid}/status", encoding="utf-8") as f:
                 for ln in f:
                     if ln.startswith("PPid:"):
                         return comm, int(ln.split()[1])
@@ -129,7 +155,7 @@ def _proc_info(pid):
         return (r[0], r[1]) if r else ("", 0)
     try:
         out = subprocess.run(["ps", "-o", "ppid=,comm=", "-p", str(pid)],
-                             capture_output=True, text=True, timeout=5).stdout
+                             capture_output=True, encoding="utf-8", errors="replace", timeout=5).stdout
     except Exception:
         return "", 0
     c = out.strip().split(None, 1)
@@ -246,7 +272,7 @@ def _serve_port_wanted(root):
     돌려주고 부르는 쪽은 조용히 건너뛴다(훅은 시끄러우면 안 된다).
     쓰레기 S9_PORT 는 s9_port 와 같은 규율로 무시하고 규범 포트로 간다."""
     try:
-        with open(os.path.join(root, "state", "port")) as f:
+        with open(os.path.join(root, "state", "port"), encoding="utf-8") as f:
             canon = int(f.read().strip())
     except (OSError, ValueError):
         canon = 9909
@@ -276,8 +302,8 @@ def ensure_serve():
         return    # 남의 봉투 포트 — 규범 아닌 자리에는 세우지 않는다 (033)
     try:
         os.makedirs(os.path.join(root, "state"), exist_ok=True)
-        lf = open(os.path.join(root, "state", "serve.log"), "a")
-        subprocess.Popen([S9, "serve", "--supervise", "--port", str(port)],
+        lf = open(os.path.join(root, "state", "serve.log"), "a", encoding="utf-8")
+        subprocess.Popen([*S9_ARGV, "serve", "--supervise", "--port", str(port)],
                          stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
                          start_new_session=True)
     except Exception:
@@ -294,7 +320,7 @@ def ensure_metrics():
     root = os.environ.get("S9_ROOT") or os.path.dirname(
         os.path.dirname(os.path.realpath(__file__)))
     try:
-        subprocess.Popen([S9, "metrics", "start"],
+        subprocess.Popen([*S9_ARGV, "metrics", "start"],
                          stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          cwd=root, start_new_session=True)
@@ -325,7 +351,8 @@ def main():
                       + (f" [{data.get('trigger', '')}]"
                          if data.get("trigger") else "")]):
             try:
-                subprocess.run([S9, *argv], capture_output=True, text=True,
+                subprocess.run([*S9_ARGV, *argv], capture_output=True,
+                               encoding="utf-8", errors="replace",
                                env=env, timeout=10)
             except Exception:
                 pass
@@ -334,10 +361,10 @@ def main():
     tp = data.get("transcript_path")
     if tp and os.path.exists(tp):
         # live tail + resume용: 원본 경로·cwd를 바인딩에 기록
-        subprocess.run([S9, "bind", "transcript_path", tp],
-                       capture_output=True, text=True, env=env, timeout=10)
-        subprocess.run([S9, "bind", "cwd", data.get("cwd", "")],
-                       capture_output=True, text=True, env=env, timeout=10)
+        subprocess.run([*S9_ARGV, "bind", "transcript_path", tp],
+                       capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
+        subprocess.run([*S9_ARGV, "bind", "cwd", data.get("cwd", "")],
+                       capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
         # 세션 시작/종료 시 스트림 미러링 — 파일명=원본 basename(전체SID.jsonl).
         # 끄기 스위치와 증분 쓰기는 mirror() 안쪽(=매 턴 미러와 같은 코드)이 본다.
         mirror(tp)
@@ -347,14 +374,15 @@ def main():
     text = f"session {event}" + (f" [{detail}]" if detail else "")
     if cwd:
         text += f" cwd={cwd}"
-    subprocess.run([S9, "log", text], capture_output=True, text=True,
+    subprocess.run([*S9_ARGV, "log", text], capture_output=True,
+                   encoding="utf-8", errors="replace",
                    env=env, timeout=15)
 
     if event == "end":
         # 종료 세션은 채팅 자동 대상에서 제외 (REQ-20260824-032)
         try:
-            subprocess.run([S9, "bind", "ended", "1"],
-                           capture_output=True, text=True, env=env, timeout=10)
+            subprocess.run([*S9_ARGV, "bind", "ended", "1"],
+                           capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
         except Exception:
             pass
 
@@ -366,15 +394,15 @@ def main():
         # 이 사람이 어느 머신에서 어느 OS 계정으로 일하는지 스스로 적는다
         # (REQ-20260827-066). 손으로 attach 할 때만 남기면 기록이 늘 뒤처진다.
         try:
-            subprocess.run([S9, "user", "seen"], capture_output=True,
-                           text=True, env=env, timeout=10)
+            subprocess.run([*S9_ARGV, "user", "seen"], capture_output=True,
+                           encoding="utf-8", errors="replace", env=env, timeout=10)
         except Exception:
             pass
         # 프로젝트 에이전트 동기화 (REQ-20260824-038): projects/*/agents/*.md →
         # .claude/agents/<slug>--이름.md — 이 세션부터 네이티브 subagent로 로드된다
         try:
-            subprocess.run([S9, "project", "agents", "sync"],
-                           capture_output=True, text=True, env=env, timeout=15)
+            subprocess.run([*S9_ARGV, "project", "agents", "sync"],
+                           capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=15)
         except Exception:
             pass
         # 대시보드 채팅 수신함 (REQ-20260824-032): 세션별 inbox 파일을 만들어 두고
@@ -389,8 +417,8 @@ def main():
                                  f"inbox-{session}.jsonl")
             # 미처리 줄 + 다른 세션에 갇힌 고아 줄을 한 번에 (REQ-20260826-023).
             # 커서(.seen) 전진 = 소비이므로 호출은 정확히 1회여야 한다.
-            ib = subprocess.run([S9, "inbox", "--sid", session],
-                                capture_output=True, text=True, env=env,
+            ib = subprocess.run([*S9_ARGV, "inbox", "--sid", session],
+                                capture_output=True, encoding="utf-8", errors="replace", env=env,
                                 timeout=15)
             info = json.loads(ib.stdout or "{}")
             size = int(info.get("size") or 0)
@@ -476,7 +504,8 @@ def main():
         # 동일 세션 이중 접속 감지 (REQ-20260824-031): 같은 sid에 살아있는 기존
         # attach가 있으면 바인딩 공유(캡처 오귀속·클레임 충돌·이력 fork) 위험 경고
         try:
-            bd = subprocess.run([S9, "bind"], capture_output=True, text=True,
+            bd = subprocess.run([*S9_ARGV, "bind"], capture_output=True,
+                                encoding="utf-8", errors="replace",
                                 env=env, timeout=10)
             prev = (json.loads(bd.stdout or "{}") or {}).get("attach_pid")
             me_pid = _claude_pid()  # 조상 체인의 claude 프로세스
@@ -487,16 +516,17 @@ def main():
                     f"일으킬 수 있다 — 이 터미널에서는 작업하지 말고 종료한 뒤, 이어서 "
                     f"하려면 새 세션(`claude`)을 열어 digest로 승계하라. 사용자에게 이 "
                     f"사실을 첫 응답에서 알려라.")
-            subprocess.run([S9, "bind", "attach_pid", str(me_pid)],
-                           capture_output=True, text=True, env=env, timeout=10)
+            subprocess.run([*S9_ARGV, "bind", "attach_pid", str(me_pid)],
+                           capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
             # 정식 진입 마커(s9 code → S9_ENTRY=code)와 종료 플래그 해제 —
             # 채팅 자동 대상 선택 근거 (REQ-20260824-032)
             if os.environ.get("S9_ENTRY") == "code":
-                subprocess.run([S9, "bind", "entry", "code"],
-                               capture_output=True, text=True, env=env,
+                subprocess.run([*S9_ARGV, "bind", "entry", "code"],
+                               capture_output=True,
+                                   encoding="utf-8", errors="replace", env=env,
                                timeout=10)
-            subprocess.run([S9, "bind", "ended", ""],
-                           capture_output=True, text=True, env=env, timeout=10)
+            subprocess.run([*S9_ARGV, "bind", "ended", ""],
+                           capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
         except Exception:
             pass
 
@@ -505,7 +535,8 @@ def main():
     # 이중 접속 경고(dual_warn)는 resume에도 주입한다 (REQ-20260824-031).
     ctx = ""
     if event == "start" and detail != "resume":
-        dg = subprocess.run([S9, "digest"], capture_output=True, text=True,
+        dg = subprocess.run([*S9_ARGV, "digest"], capture_output=True,
+                            encoding="utf-8", errors="replace",
                             env=env, timeout=15)
         if dg.returncode == 0 and dg.stdout.strip():
             ctx = dg.stdout.strip()

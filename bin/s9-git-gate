@@ -36,6 +36,20 @@ import os
 import re
 import sys
 
+
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 BLOCK = [

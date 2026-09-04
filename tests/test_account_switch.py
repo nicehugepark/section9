@@ -132,35 +132,29 @@ class ItSticks(unittest.TestCase):
     def setUpClass(cls):
         cls.src = open(S9, encoding="utf-8").read()
 
-    def test_the_restart_loop_remembers_the_account(self):
-        """모델만 바꾼 재시작이 계정을 원래대로 되돌리면 안 된다 — 아무도
-        그러라고 말하지 않았다."""
-        i = self.src.find("m = _consume_restart_marker()")
-        self.assertGreater(i, 0)
-        blk = self.src[i:i + 1800]
-        self.assertNotIn('if m.get("account"):', blk,
-                         "마커에 계정이 있을 때만 env 를 건다 — 모델만 바꾸면 "
-                         "계정이 조용히 풀린다")
-        self.assertRegex(blk, r"acct\s*=|held|sticky",
-                         "직전에 고른 계정을 들고 있는 자리가 없다")
-
-    def test_going_home_is_expressible(self):
-        """기본 계정으로 돌아가는 것도 '고른 것'이다 — 빈 문자열(=변경 없음)과
-        구별되는 이름이 있어야 한다."""
-        m = _load()
-        self.assertTrue(getattr(m, "ACCOUNT_HOME_KEY", ""),
-                        "기본 계정을 가리키는 이름이 없다")
-        self.assertNotEqual(m.ACCOUNT_HOME_KEY, "")
-        r = m.restart_session("nope-nope", account=m.ACCOUNT_HOME_KEY)
-        self.assertFalse(r.get("ok"))   # 세션이 없으니 거부 — 인자는 통과했다
-
-    def test_the_profile_dir_is_not_created_for_home(self):
-        """기본 계정에 프로필 디렉토리를 만들면 유령 자리가 목록에 뜬다."""
-        i = self.src.find("m = _consume_restart_marker()")
-        blk = self.src[i:i + 1800]
-        self.assertIn("ACCOUNT_HOME_KEY", blk,
-                      "재시작 루프가 기본 계정을 알아보지 못한다")
-
+    def test_it_sticks(self):
+        """고른 계정은 다음 재시작을 넘어 남는다."""
+        with self.subTest("the_restart_loop_remembers_the_account"):
+            i = self.src.find("m = _consume_restart_marker()")
+            self.assertGreater(i, 0)
+            blk = self.src[i:i + 1800]
+            self.assertNotIn('if m.get("account"):', blk,
+                             "마커에 계정이 있을 때만 env 를 건다 — 모델만 바꾸면 "
+                             "계정이 조용히 풀린다")
+            self.assertRegex(blk, r"acct\s*=|held|sticky",
+                             "직전에 고른 계정을 들고 있는 자리가 없다")
+        with self.subTest("going_home_is_expressible"):
+            m = _load()
+            self.assertTrue(getattr(m, "ACCOUNT_HOME_KEY", ""),
+                            "기본 계정을 가리키는 이름이 없다")
+            self.assertNotEqual(m.ACCOUNT_HOME_KEY, "")
+            r = m.restart_session("nope-nope", account=m.ACCOUNT_HOME_KEY)
+            self.assertFalse(r.get("ok"))   # 세션이 없으니 거부 — 인자는 통과했다
+        with self.subTest("the_profile_dir_is_not_created_for_home"):
+            i = self.src.find("m = _consume_restart_marker()")
+            blk = self.src[i:i + 1800]
+            self.assertIn("ACCOUNT_HOME_KEY", blk,
+                          "재시작 루프가 기본 계정을 알아보지 못한다")
 
 class AddFromTheDashboard(unittest.TestCase):
     """계정 추가도 대시보드에서 시작된다."""
@@ -170,29 +164,25 @@ class AddFromTheDashboard(unittest.TestCase):
         cls.m = _load()
         cls.src = open(S9, encoding="utf-8").read()
 
-    def test_there_is_a_terminal_spawner_shared_with_wake(self):
-        """창을 여는 법은 한 곳에만 있다 — 두 곳이 각자 알면 한 곳만 고쳐진다."""
-        self.assertTrue(getattr(self.m, "spawn_terminal", None),
-                        "spawn_terminal() 이 없다")
-        i = self.src.find("def wake_session(")
-        self.assertGreater(i, 0)
-        self.assertIn("spawn_terminal", self.src[i:i + 2000],
-                      "wake_session 이 여전히 자기 창 열기를 따로 갖고 있다")
-
-    def test_add_opens_a_window_running_account_add(self):
-        os.environ["S9_WAKE_DRYRUN"] = "1"
-        self.addCleanup(os.environ.pop, "S9_WAKE_DRYRUN", None)
-        r = self.m.account_add_terminal()
-        self.assertTrue(r.get("ok"))
-        self.assertIn("account add", r.get("cmd", "") + r.get("inner", ""))
-
-    def test_a_manual_fallback_carries_the_command(self):
-        """창을 못 여는 환경이면 붙여 넣을 명령을 그대로 준다 — 막다른 길을
-        만들지 않는다."""
-        i = self.src.find("def account_add_terminal(")
-        self.assertGreater(i, 0)
-        self.assertIn("manual", self.src[i:i + 1200])
-
+    def test_add_from_the_dashboard(self):
+        """계정 추가도 대시보드에서 시작된다."""
+        with self.subTest("there_is_a_terminal_spawner_shared_with_wake"):
+            self.assertTrue(getattr(self.m, "spawn_terminal", None),
+                            "spawn_terminal() 이 없다")
+            i = self.src.find("def wake_session(")
+            self.assertGreater(i, 0)
+            self.assertIn("spawn_terminal", self.src[i:i + 2000],
+                          "wake_session 이 여전히 자기 창 열기를 따로 갖고 있다")
+        with self.subTest("add_opens_a_window_running_account_add"):
+            os.environ["S9_WAKE_DRYRUN"] = "1"
+            self.addCleanup(os.environ.pop, "S9_WAKE_DRYRUN", None)
+            r = self.m.account_add_terminal()
+            self.assertTrue(r.get("ok"))
+            self.assertIn("account add", r.get("cmd", "") + r.get("inner", ""))
+        with self.subTest("a_manual_fallback_carries_the_command"):
+            i = self.src.find("def account_add_terminal(")
+            self.assertGreater(i, 0)
+            self.assertIn("manual", self.src[i:i + 1200])
 
 class TheScreen(unittest.TestCase):
     """창이 계정을 말한다."""
@@ -218,21 +208,20 @@ class TheScreen(unittest.TestCase):
             out.append(self.src[i:i + 2600])
         return "\n".join(out)
 
-    def test_the_dialog_reads_the_accounts_api(self):
-        self.assertTrue("/api/accounts" in self.src,
-                        "창이 여전히 프로필 디렉토리 목록만 본다")
-
-    def test_the_current_row_is_marked(self):
-        blk = self._dialog()
-        self.assertRegex(blk, r"\.current\b", "지금 쓰는 계정에 표식이 없다")
-        self.assertRegex(blk, r"\.email\b", "메일이 아니라 자리 이름을 그린다")
-
-    def test_adding_an_account_is_offered(self):
-        self.assertIn('data-act="add"', self.src,
-                      "대시보드에서 계정을 더할 길이 없다")
-        self.assertIn("/api/account/add", self.src,
-                      "더하기 손잡이가 서버로 이어지지 않는다")
-
+    def test_the_screen(self):
+        """창이 계정을 말한다."""
+        with self.subTest("the_dialog_reads_the_accounts_api"):
+            self.assertTrue("/api/accounts" in self.src,
+                            "창이 여전히 프로필 디렉토리 목록만 본다")
+        with self.subTest("the_current_row_is_marked"):
+            blk = self._dialog()
+            self.assertRegex(blk, r"\.current\b", "지금 쓰는 계정에 표식이 없다")
+            self.assertRegex(blk, r"\.email\b", "메일이 아니라 자리 이름을 그린다")
+        with self.subTest("adding_an_account_is_offered"):
+            self.assertIn('data-act="add"', self.src,
+                          "대시보드에서 계정을 더할 길이 없다")
+            self.assertIn("/api/account/add", self.src,
+                          "더하기 손잡이가 서버로 이어지지 않는다")
 
 if __name__ == "__main__":
     unittest.main()

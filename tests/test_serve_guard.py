@@ -328,86 +328,87 @@ class GuardProcessTest(unittest.TestCase):
         return pids
 
     # S2(통합). 자식을 SIGKILL 하면 사유가 남고 서버가 되살아난다
-    def test_s2_kill_child_and_it_comes_back(self):
-        self._guard_or_skip(self.port)
-        pids = self._pids(self.port)
-        self.assertTrue(pids, "감시자가 서버를 띄우지 못했다")
-        os.kill(pids[0], signal.SIGKILL)
-        try:
-            wait_server(self.port)                 # 되살아날 때까지 (백오프 1s)
-        except RuntimeError:
-            self._guard_or_skip(self.port)         # 감시자부터 사라졌는가
-            raise
-        back = self._pids(self.port)
-        self.assertTrue(back and back[0] != pids[0],
-                        f"새 프로세스로 되살아나야 한다: {pids} -> {back}")
-        died = [r for r in self._records() if r["event"] == "died"]
-        self.assertTrue(died, "사망 기록이 없다")
-        self.assertEqual(died[-1]["reason"], "signal SIGKILL")
-
-    # 지난 중지 요청의 잔재가 새 감시자를 즉사시키지 않는다
-    def test_stale_stop_file_does_not_kill_new_guard(self):
-        port = free_port()
-        stop = os.path.join(self.root, "state", f"serve-guard.{port}.stop")
-        open(stop, "w").close()
-        try:
-            subprocess.run([S9, "serve", "--supervise", "--port", str(port)],
-                           capture_output=True, text=True, env=self.env,
-                           timeout=30)
-            wait_server(port)                  # 감시자가 살아 서버를 띄웠다
-            self.assertFalse(os.path.exists(stop), "잔재를 치우지 않았다")
-        finally:
-            subprocess.run([S9, "serve", "--stop-guard", "--port", str(port)],
-                           capture_output=True, env=self.env, timeout=15)
-            for pid in self._guard_pids(port) + self._pids(port):
+    def test_guard_process_test(self):
+        """실제로 떼어 놓고 돌린다 — 자식을 SIGKILL 해 되살아나는지까지."""
+        with self.subTest("s2_kill_child_and_it_comes_back"):
+                self._guard_or_skip(self.port)
+                pids = self._pids(self.port)
+                self.assertTrue(pids, "감시자가 서버를 띄우지 못했다")
+                os.kill(pids[0], signal.SIGKILL)
                 try:
-                    os.kill(pid, signal.SIGKILL)
-                except OSError:
-                    pass
+                    wait_server(self.port)                 # 되살아날 때까지 (백오프 1s)
+                except RuntimeError:
+                    self._guard_or_skip(self.port)         # 감시자부터 사라졌는가
+                    raise
+                back = self._pids(self.port)
+                self.assertTrue(back and back[0] != pids[0],
+                                f"새 프로세스로 되살아나야 한다: {pids} -> {back}")
+                died = [r for r in self._records() if r["event"] == "died"]
+                self.assertTrue(died, "사망 기록이 없다")
+                self.assertEqual(died[-1]["reason"], "signal SIGKILL")
 
-    # S5. 같은 포트로 두 번 --supervise 해도 감시자는 하나다.
-    #     (클래스가 띄운 감시자를 쓰지 않고 자기 포트로 새로 띄운다 — 다른
-    #      세션의 고아 회수(s9-doctor --sweep)가 풀 포트 프로세스를 거둬가는
-    #      바람에 "먼저 뜬 감시자"를 전제한 판정이 흔들린 적이 있다.)
-    def test_s5_supervisor_is_singleton(self):
-        port = free_port()
-        try:
-            first = subprocess.run([S9, "serve", "--supervise", "--port",
-                                    str(port)], capture_output=True, text=True,
-                                   env=self.env, timeout=30)
-            self.assertIn("감시 시작", first.stdout, first.stdout + first.stderr)
-            second = subprocess.run([S9, "serve", "--supervise", "--port",
-                                     str(port)], capture_output=True, text=True,
-                                    env=self.env, timeout=30)
-            self.assertIn("이미 감시 중", second.stdout,
-                          second.stdout + second.stderr)
-            self.assertEqual(len(self._guard_pids(port)), 1,
-                             "감시자가 둘 이상 떠 있다")
-        finally:
-            subprocess.run([S9, "serve", "--stop-guard", "--port", str(port)],
-                           capture_output=True, env=self.env, timeout=15)
-            for pid in self._guard_pids(port) + self._pids(port):
+            # 지난 중지 요청의 잔재가 새 감시자를 즉사시키지 않는다
+        with self.subTest("stale_stop_file_does_not_kill_new_guard"):
+                port = free_port()
+                stop = os.path.join(self.root, "state", f"serve-guard.{port}.stop")
+                open(stop, "w").close()
                 try:
-                    os.kill(pid, signal.SIGKILL)
-                except OSError:
-                    pass
+                    subprocess.run([S9, "serve", "--supervise", "--port", str(port)],
+                                   capture_output=True, text=True, env=self.env,
+                                   timeout=30)
+                    wait_server(port)                  # 감시자가 살아 서버를 띄웠다
+                    self.assertFalse(os.path.exists(stop), "잔재를 치우지 않았다")
+                finally:
+                    subprocess.run([S9, "serve", "--stop-guard", "--port", str(port)],
+                                   capture_output=True, env=self.env, timeout=15)
+                    for pid in self._guard_pids(port) + self._pids(port):
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                        except OSError:
+                            pass
 
-    # 감시자는 이 터미널 세션과 무관하게 산다 (setsid 로 분리된 세션)
-    def test_s5b_supervisor_is_detached(self):
-        pids = self._guard_or_skip(self.port)
-        out = subprocess.run(["ps", "-o", "sess=,ppid=", "-p", str(pids[0])],
-                             capture_output=True, text=True, timeout=10).stdout
-        sess, ppid = out.split()
-        self.assertNotEqual(int(sess), os.getsid(0),
-                            "감시자가 나를 띄운 세션에 그대로 남아 있다 — "
-                            "터미널이 닫히면 같이 죽는다")
-        self.assertNotEqual(int(ppid), self.launcher_pid,
-                            "감시자가 자기를 띄운 프로세스에 매달려 있다 — "
-                            "그 프로세스가 죽으면 같이 죽는다")
-        # 세션 리더가 **아니어야** 한다(double fork) — 리더면 나중에 제어
-        # 터미널이 붙을 수 있고, 그 터미널이 닫힐 때 SIGHUP 을 받는다.
-        self.assertNotEqual(int(sess), pids[0])
+            # S5. 같은 포트로 두 번 --supervise 해도 감시자는 하나다.
+            #     (클래스가 띄운 감시자를 쓰지 않고 자기 포트로 새로 띄운다 — 다른
+            #      세션의 고아 회수(s9-doctor --sweep)가 풀 포트 프로세스를 거둬가는
+            #      바람에 "먼저 뜬 감시자"를 전제한 판정이 흔들린 적이 있다.)
+        with self.subTest("s5_supervisor_is_singleton"):
+                port = free_port()
+                try:
+                    first = subprocess.run([S9, "serve", "--supervise", "--port",
+                                            str(port)], capture_output=True, text=True,
+                                           env=self.env, timeout=30)
+                    self.assertIn("감시 시작", first.stdout, first.stdout + first.stderr)
+                    second = subprocess.run([S9, "serve", "--supervise", "--port",
+                                             str(port)], capture_output=True, text=True,
+                                            env=self.env, timeout=30)
+                    self.assertIn("이미 감시 중", second.stdout,
+                                  second.stdout + second.stderr)
+                    self.assertEqual(len(self._guard_pids(port)), 1,
+                                     "감시자가 둘 이상 떠 있다")
+                finally:
+                    subprocess.run([S9, "serve", "--stop-guard", "--port", str(port)],
+                                   capture_output=True, env=self.env, timeout=15)
+                    for pid in self._guard_pids(port) + self._pids(port):
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                        except OSError:
+                            pass
 
+            # 감시자는 이 터미널 세션과 무관하게 산다 (setsid 로 분리된 세션)
+        with self.subTest("s5b_supervisor_is_detached"):
+            pids = self._guard_or_skip(self.port)
+            out = subprocess.run(["ps", "-o", "sess=,ppid=", "-p", str(pids[0])],
+                                 capture_output=True, text=True, timeout=10).stdout
+            sess, ppid = out.split()
+            self.assertNotEqual(int(sess), os.getsid(0),
+                                "감시자가 나를 띄운 세션에 그대로 남아 있다 — "
+                                "터미널이 닫히면 같이 죽는다")
+            self.assertNotEqual(int(ppid), self.launcher_pid,
+                                "감시자가 자기를 띄운 프로세스에 매달려 있다 — "
+                                "그 프로세스가 죽으면 같이 죽는다")
+            # 세션 리더가 **아니어야** 한다(double fork) — 리더면 나중에 제어
+            # 터미널이 붙을 수 있고, 그 터미널이 닫힐 때 SIGHUP 을 받는다.
+            self.assertNotEqual(int(sess), pids[0])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

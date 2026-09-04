@@ -108,28 +108,29 @@ class CodeBootstrap(unittest.TestCase):
         return json.loads(last)
 
     # N1. 인자 없이 부르면 기동 프롬프트가 마지막 인자로 붙는다
-    def test_n1_bootstrap_appended(self):
-        cmd = self.code()
-        self.assertTrue(cmd[-1].startswith(hook.BOOTSTRAP_MARK), cmd)
+    def test_code_bootstrap(self):
+        """`s9 code` 가 만드는 명령줄만 본다 (S9_CODE_DRYRUN — claude 는 안 뜬다)."""
+        with self.subTest("n1_bootstrap_appended"):
+                cmd = self.code()
+                self.assertTrue(cmd[-1].startswith(hook.BOOTSTRAP_MARK), cmd)
 
-    # N2. 그 줄은 수신 대기를 켜라고 말한다 — 기동의 목적이 그것이다
-    def test_n2_says_arm(self):
-        self.assertIn("수신함", self.code()[-1])
+            # N2. 그 줄은 수신 대기를 켜라고 말한다 — 기동의 목적이 그것이다
+        with self.subTest("n2_says_arm"):
+                self.assertIn("수신함", self.code()[-1])
 
-    # B1. 사용자가 자기 프롬프트를 줬으면 붙이지 않는다 — 위치 인자가 둘이 되면
-    #     claude 가 받아들이지 않는다. 사람의 말이 우선이다.
-    def test_b1_user_prompt_wins(self):
-        cmd = self.code("포트 상태 봐줘")
-        self.assertEqual(cmd[-1], "포트 상태 봐줘", cmd)
-        self.assertFalse(any(a.startswith(hook.BOOTSTRAP_MARK) for a in cmd),
-                         cmd)
+            # B1. 사용자가 자기 프롬프트를 줬으면 붙이지 않는다 — 위치 인자가 둘이 되면
+            #     claude 가 받아들이지 않는다. 사람의 말이 우선이다.
+        with self.subTest("b1_user_prompt_wins"):
+                cmd = self.code("포트 상태 봐줘")
+                self.assertEqual(cmd[-1], "포트 상태 봐줘", cmd)
+                self.assertFalse(any(a.startswith(hook.BOOTSTRAP_MARK) for a in cmd),
+                                 cmd)
 
-    # B2. 플래그만 준 경우는 프롬프트가 없는 것이다 — 기동 줄이 붙는다
-    def test_b2_flags_only_still_boots(self):
-        cmd = self.code("--permission-mode", "acceptEdits")
-        self.assertIn("acceptEdits", cmd)
-        self.assertTrue(cmd[-1].startswith(hook.BOOTSTRAP_MARK), cmd)
-
+            # B2. 플래그만 준 경우는 프롬프트가 없는 것이다 — 기동 줄이 붙는다
+        with self.subTest("b2_flags_only_still_boots"):
+            cmd = self.code("--permission-mode", "acceptEdits")
+            self.assertIn("acceptEdits", cmd)
+            self.assertTrue(cmd[-1].startswith(hook.BOOTSTRAP_MARK), cmd)
 
 class BootstrapTurnIsNotAsk(unittest.TestCase):
     """F1·F2·R1 — 기동 줄은 사용자의 요청이 아니다."""
@@ -153,23 +154,24 @@ class BootstrapTurnIsNotAsk(unittest.TestCase):
         return calls, out.getvalue()
 
     # F1. 카드를 만들지 않는다
-    def test_f1_no_card(self):
-        calls, _ = self._run_hook(hook.BOOTSTRAP_MARK + " 세션 기동")
-        self.assertFalse(any(a[0] == "new" for a in calls), calls)
+    def test_bootstrap_turn_is_not_ask(self):
+        """F1·F2·R1 — 기동 줄은 사용자의 요청이 아니다."""
+        with self.subTest("f1_no_card"):
+                calls, _ = self._run_hook(hook.BOOTSTRAP_MARK + " 세션 기동")
+                self.assertFalse(any(a[0] == "new" for a in calls), calls)
 
-    # F2. 감사 서문을 주입하지 않는다 — 세션 첫 화면을 훅 텍스트로 덮지 않는다.
-    #     (응답 형식 규율 한 줄은 어느 턴에나 붙는 전역 규칙이라 여기서도 남는다.)
-    def test_f2_no_audit_preamble(self):
-        _, printed = self._run_hook(hook.BOOTSTRAP_MARK + " 세션 기동")
-        self.assertNotIn("[section9 audit]", printed)
-        self.assertLess(len(printed), 1200, printed)
+            # F2. 감사 서문을 주입하지 않는다 — 세션 첫 화면을 훅 텍스트로 덮지 않는다.
+            #     (응답 형식 규율 한 줄은 어느 턴에나 붙는 전역 규칙이라 여기서도 남는다.)
+        with self.subTest("f2_no_audit_preamble"):
+                _, printed = self._run_hook(hook.BOOTSTRAP_MARK + " 세션 기동")
+                self.assertNotIn("[section9 audit]", printed)
+                self.assertLess(len(printed), 1200, printed)
 
-    # R1. 마커 없는 보통 프롬프트는 예전대로 — request 는 카드를 만든다
-    def test_r1_normal_prompt_still_audited(self):
-        calls, _ = self._run_hook(
-            "대시보드 헤더에 서버 상태 배너를 새로 만들어줘. 자리는 로고 오른쪽이다.")
-        self.assertTrue(any(a[0] == "new" for a in calls), calls)
-
+            # R1. 마커 없는 보통 프롬프트는 예전대로 — request 는 카드를 만든다
+        with self.subTest("r1_normal_prompt_still_audited"):
+            calls, _ = self._run_hook(
+                "대시보드 헤더에 서버 상태 배너를 새로 만들어줘. 자리는 로고 오른쪽이다.")
+            self.assertTrue(any(a[0] == "new" for a in calls), calls)
 
 if __name__ == "__main__":
     unittest.main()

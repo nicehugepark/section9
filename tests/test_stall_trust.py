@@ -184,216 +184,172 @@ class StallTrust(unittest.TestCase):
             json.dump(b, f)
 
     # ---- C7. 회귀: 진짜 멈춤은 여전히 멈춤이다 ---------------------------
-    def test_c7_real_stall_still_stalls(self):
-        self.clear_hands("lead1234")
-        v = self.verdict(self.A)
-        self.assertEqual(v["state"], "stalled", v)
-        self.assertGreaterEqual(v["mins"], 15)
-        self.assertEqual(self.m.stall_mins(self.row(self.A), time.time(),
-                                           self.m.STALLED_WIN), v["mins"],
-                         "stall_mins 가 stall_verdict 와 다른 답을 낸다 — "
-                         "판정이 두 벌이면 한 벌만 고쳐진다")
-
-    def test_c7b_live_delegation_is_attached(self):
-        self.clear_hands("lead1234")
-        self.cli("note", self.B, "붙었다", "--agent", "sub:designer:aaaa1111",
-                 "--item", "화면", "--result", "running", sess="lead1234")
-        self.backdate(self.B, 3600)
-        self.cli("index", "rebuild")
-        try:
-            v = self.verdict(self.B)
-            self.assertEqual(v["state"], "attached", v)
-            self.assertIsNone(v["mins"])
-        finally:
-            pass
-
-    # ---- C8. 도는 워커는 멈춤을 이긴다 (REQ-20260830-009) ----------------
-    def test_c8_a_running_worker_beats_the_stall_clock(self):
-        """실사고: 한 카드에 「멈춤 74분째 · 깨우기」와 「진행 중 자동 작업
-        0분째 · 세우기」가 함께 섰다. 사용자: "어떻게 이런상태가 존재할 수 있지?"
-
-        원인은 이 판정이 도는 워커를 `live_kind == "spawned"` 로만 알아본 것이다.
-        그 값은 **클레임 전**만 말한다 — 워커가 문서를 집는 순간 `direct` 로
-        덮인다. 그래서 세우기 줄은 `worker_running` 을 따로 부르는데 멈춤만
-        그 사실을 못 봤고, 결과로 **서버가 거절할 행동**(깨우기)이 손잡이로
-        그려졌다.
-
-        조용한 시간은 그대로 낸다 — 감추는 것은 이 함수가 금한 반대편 병이다.
-        """
-        self.clear_hands("lead1234")
-        r = dict(self.row(self.A))
-        base = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(base["state"], "stalled",
-                         "밑그림이 멈춤이 아니면 이 시험은 아무것도 안 잡는다")
-
-        r["live_kind"] = "direct"          # 워커가 문서를 집어 덮인 뒤
-        r["worker"] = {"pid": 179646, "age": 80}
-        v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(v["state"], "moving", v)
-        self.assertIsNone(v["mins"],
-                          "도는 동안에는 깨울 분(minutes)을 주지 않는다")
-        self.assertIsNotNone(v["quiet_mins"],
-                             "조용한 시간까지 감추면 반대편 병이다")
-
-    # ---- C2. 추정으로 붙인 손은 추정이라고 적힌다 ------------------------
-    def test_c2_guessed_hand_is_unassigned(self):
-        self.clear_hands("lead1234")
-        self.hand("lead1234", req=None, age=5)
-        hands = self.m.unassigned_hands()
-        self.assertEqual([h["session"] for h in hands], ["lead1234"],
-                         f"미상의 손이 목록에 없다: {hands}")
-
-    def test_c2b_named_hand_is_not_unassigned(self):
-        self.clear_hands("lead1234")
-        self.hand("lead1234", req=self.A, age=5)
-        self.assertEqual(self.m.unassigned_hands(), [],
-                         "지명으로 붙인 손까지 미상으로 세면 깨우기가 영영 "
-                         "막힌다 — 확정과 추정은 구별돼야 한다")
-
-    def test_c2d_legacy_hand_is_traced_through_the_document(self):
-        """이 필드가 생기기 전에 붙은 손은 **문서의 열린 기여**로 되짚는다.
-
-        안 그러면 배포 직후 한동안 모든 손이 미상이 되어, 실제로 귀속이 멀쩡한
-        요청까지 '미상' 으로 그려지고 깨우기가 통째로 막힌다."""
-        self.clear_hands("lead1234")
-        tp = self.hand("lead1234", req=None, age=5)
-        self.strip_agent_req("lead1234")       # 옛 바인딩 모양으로 되돌린다
-        self.assertTrue(self.m.unassigned_hands(),
-                        "되짚을 문서가 없는데 손이 안 세어졌다")
-        self.cli("note", self.B, "옛 손", "--agent", "sub:designer:bbbb2222",
-                 "--item", "화면", "--result", "running", "--transcript", tp,
-                 sess="lead1234")
-        self.cli("index", "rebuild")
-        self.assertEqual(self.m.unassigned_hands(), [],
-                         "문서가 이 손의 자리를 말하는데도 미상으로 센다")
-
-    def test_c2e_a_guess_stays_a_guess_even_with_a_document(self):
-        """추정으로 붙인 기여는 문서에도 running 으로 적힌다 — 그걸 근거로
-        확정으로 승격하면 `--guess` 가 아무 뜻도 없어진다."""
-        self.clear_hands("lead1234")
-        tp = self.hand("lead1234", req=None, age=5)   # req="" — 명시적 추정
-        self.cli("note", self.B, "추정으로 붙은 손", "--agent",
-                 "sub:designer:cccc3333", "--item", "화면", "--result",
-                 "running", "--transcript", tp, sess="lead1234")
-        self.cli("index", "rebuild")
-        self.assertTrue(self.m.unassigned_hands(),
-                        "추정이 문서 한 줄로 확정이 됐다")
-
-    def test_c2f_named_fresh_hand_is_attached(self):
-        """REQ-20260830-044 실사고: `s9 claim --agent-transcript` 로 지명 등록된
-        손이 한창 쓰는 중인데 그 카드가 「멈춤 44분째」로 섰다 — 지명 손은
-        unassigned 에서 빠지는 순간 판정 어디에도 안 실렸다. 지명 + 신선이면
-        attached 다. 화면 경로와 단독 호출이 같은 답을 내야 한다(c3b 원칙)."""
-        self.clear_hands("lead1234")
-        self.hand("lead1234", req=self.A, age=5)
-        try:
-            v = self.verdict(self.A)
-            self.assertEqual(v["state"], "attached", v)
-            self.assertEqual(self.live_row(self.A).get("stall_state"),
-                             "attached", "화면 경로가 단독 판정과 다른 답을 낸다")
-        finally:
+    def test_stall_trust(self):
+        """StallTrust 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("c7_real_stall_still_stalls"):
             self.clear_hands("lead1234")
+            v = self.verdict(self.A)
+            self.assertEqual(v["state"], "stalled", v)
+            self.assertGreaterEqual(v["mins"], 15)
+            self.assertEqual(self.m.stall_mins(self.row(self.A), time.time(),
+                                               self.m.STALLED_WIN), v["mins"],
+                             "stall_mins 가 stall_verdict 와 다른 답을 낸다 — "
+                             "판정이 두 벌이면 한 벌만 고쳐진다")
+        with self.subTest("c7b_live_delegation_is_attached"):
+                self.clear_hands("lead1234")
+                self.cli("note", self.B, "붙었다", "--agent", "sub:designer:aaaa1111",
+                         "--item", "화면", "--result", "running", sess="lead1234")
+                self.backdate(self.B, 3600)
+                self.cli("index", "rebuild")
+                try:
+                    v = self.verdict(self.B)
+                    self.assertEqual(v["state"], "attached", v)
+                    self.assertIsNone(v["mins"])
+                finally:
+                    pass
 
-    def test_c2c_stale_hand_is_not_counted(self):
-        """조용해진 손은 손이 아니다 — 천장 없는 보호는 교착의 다른 이름이다."""
-        self.clear_hands("lead1234")
-        self.hand("lead1234", req=None, age=self.m.AGENT_FRESH_SEC + 60)
-        self.assertEqual(self.m.unassigned_hands(), [])
+            # ---- C8. 도는 워커는 멈춤을 이긴다 (REQ-20260830-009) ----------------
+        with self.subTest("c8_a_running_worker_beats_the_stall_clock"):
+                self.clear_hands("lead1234")
+                r = dict(self.row(self.A))
+                base = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+                self.assertEqual(base["state"], "stalled",
+                                 "밑그림이 멈춤이 아니면 이 시험은 아무것도 안 잡는다")
 
-    # ---- C3. 미상의 손이 있으면 '멈춤' 이 아니라 '미상' -------------------
-    def test_c3_unknown_hand_blocks_the_stall_label(self):
-        self.clear_hands("lead1234")
-        self.hand("lead1234", req=None, age=5)
-        v = self.verdict(self.A)
-        self.assertEqual(v["state"], "unknown", v)
-        self.assertIsNone(self.m.stall_mins(self.row(self.A), time.time(),
-                                            self.m.STALLED_WIN),
-                          "일하는 손이 있을 수 있는데 '멈춤' 으로 그린다 — "
-                          "그 카드의 깨우기가 곧 두 번째 손이다")
-        self.assertGreaterEqual(v["quiet_mins"], 15,
-                                "조용한 시간까지 숨기면 안 된다 — 숨기는 것은 "
-                                "'한 일 없이 경보만 꺼진다' 의 반대편 병이다")
+                r["live_kind"] = "direct"          # 워커가 문서를 집어 덮인 뒤
+                r["worker"] = {"pid": 179646, "age": 80}
+                v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+                self.assertEqual(v["state"], "moving", v)
+                self.assertIsNone(v["mins"],
+                                  "도는 동안에는 깨울 분(minutes)을 주지 않는다")
+                self.assertIsNotNone(v["quiet_mins"],
+                                     "조용한 시간까지 감추면 반대편 병이다")
 
-    def test_c3b_cli_and_screen_agree(self):
-        """C6. 화면·CLI 가 같은 판정을 먹는다.
+            # ---- C2. 추정으로 붙인 손은 추정이라고 적힌다 ------------------------
+        with self.subTest("c2_guessed_hand_is_unassigned"):
+            self.clear_hands("lead1234")
+            self.hand("lead1234", req=None, age=5)
+            hands = self.m.unassigned_hands()
+            self.assertEqual([h["session"] for h in hands], ["lead1234"],
+                             f"미상의 손이 목록에 없다: {hands}")
+        with self.subTest("c2b_named_hand_is_not_unassigned"):
+            self.clear_hands("lead1234")
+            self.hand("lead1234", req=self.A, age=5)
+            self.assertEqual(self.m.unassigned_hands(), [],
+                             "지명으로 붙인 손까지 미상으로 세면 깨우기가 영영 "
+                             "막힌다 — 확정과 추정은 구별돼야 한다")
+        with self.subTest("c2d_legacy_hand_is_traced_through_the_document"):
+            self.clear_hands("lead1234")
+            tp = self.hand("lead1234", req=None, age=5)
+            self.strip_agent_req("lead1234")       # 옛 바인딩 모양으로 되돌린다
+            self.assertTrue(self.m.unassigned_hands(),
+                            "되짚을 문서가 없는데 손이 안 세어졌다")
+            self.cli("note", self.B, "옛 손", "--agent", "sub:designer:bbbb2222",
+                     "--item", "화면", "--result", "running", "--transcript", tp,
+                     sess="lead1234")
+            self.cli("index", "rebuild")
+            self.assertEqual(self.m.unassigned_hands(), [],
+                             "문서가 이 손의 자리를 말하는데도 미상으로 센다")
+        with self.subTest("c2e_a_guess_stays_a_guess_even_with_a_document"):
+            self.clear_hands("lead1234")
+            tp = self.hand("lead1234", req=None, age=5)   # req="" — 명시적 추정
+            self.cli("note", self.B, "추정으로 붙은 손", "--agent",
+                     "sub:designer:cccc3333", "--item", "화면", "--result",
+                     "running", "--transcript", tp, sess="lead1234")
+            self.cli("index", "rebuild")
+            self.assertTrue(self.m.unassigned_hands(),
+                            "추정이 문서 한 줄로 확정이 됐다")
+        with self.subTest("c2f_named_fresh_hand_is_attached"):
+            self.clear_hands("lead1234")
+            self.hand("lead1234", req=self.A, age=5)
+            try:
+                v = self.verdict(self.A)
+                self.assertEqual(v["state"], "attached", v)
+                self.assertEqual(self.live_row(self.A).get("stall_state"),
+                                 "attached", "화면 경로가 단독 판정과 다른 답을 낸다")
+            finally:
+                self.clear_hands("lead1234")
+        with self.subTest("c2c_stale_hand_is_not_counted"):
+                self.clear_hands("lead1234")
+                self.hand("lead1234", req=None, age=self.m.AGENT_FRESH_SEC + 60)
+                self.assertEqual(self.m.unassigned_hands(), [])
 
-        개정 (REQ-20260831-005): 미상의 손을 lead1234 가 아니라 클레임 없는
-        세션에 붙인다. 손의 transcript 는 그 세션의 활동이기도 해서, 클레임을
-        쥔 lead1234 에 붙이면 그 활동이 A 를 attached(맡은 세션이 일하는 중)로
-        만든다 — 그것대로 옳은 판정이고, '미상' 계약의 과녁(누구 것인지 모르는
-        손이 도는 동안 멈춤이라 단정하지 않는다)은 주인 없는 손으로 세운다."""
-        self.clear_hands("lead1234")
-        self.addCleanup(self.clear_hands, "orph9876")
-        self.hand("orph9876", req=None, age=5)
-        ids = [r["id"] for r in self.m.stalled_requests()]
-        self.assertNotIn(self.A, ids,
-                         "CLI 는 '멈췄다' 는데 화면은 '미상' 이다")
-        row = self.live_row(self.A)
-        self.assertEqual(row.get("stall_state"), "unknown", row)
-        self.assertIsNone(row.get("stalled_mins"))
+            # ---- C3. 미상의 손이 있으면 '멈춤' 이 아니라 '미상' -------------------
+        with self.subTest("c3_unknown_hand_blocks_the_stall_label"):
+            self.clear_hands("lead1234")
+            self.hand("lead1234", req=None, age=5)
+            v = self.verdict(self.A)
+            self.assertEqual(v["state"], "unknown", v)
+            self.assertIsNone(self.m.stall_mins(self.row(self.A), time.time(),
+                                                self.m.STALLED_WIN),
+                              "일하는 손이 있을 수 있는데 '멈춤' 으로 그린다 — "
+                              "그 카드의 깨우기가 곧 두 번째 손이다")
+            self.assertGreaterEqual(v["quiet_mins"], 15,
+                                    "조용한 시간까지 숨기면 안 된다 — 숨기는 것은 "
+                                    "'한 일 없이 경보만 꺼진다' 의 반대편 병이다")
+        with self.subTest("c3b_cli_and_screen_agree"):
+                self.clear_hands("lead1234")
+                self.addCleanup(self.clear_hands, "orph9876")
+                self.hand("orph9876", req=None, age=5)
+                ids = [r["id"] for r in self.m.stalled_requests()]
+                self.assertNotIn(self.A, ids,
+                                 "CLI 는 '멈췄다' 는데 화면은 '미상' 이다")
+                row = self.live_row(self.A)
+                self.assertEqual(row.get("stall_state"), "unknown", row)
+                self.assertIsNone(row.get("stalled_mins"))
 
-    # ---- C4. 겹쳐 띄우지 않는다 ------------------------------------------
-    def test_c4_wake_refuses_while_a_hand_may_be_attached(self):
-        # 미상의 손은 클레임 없는 세션에 — c3b 개정(REQ-20260831-005)과 같다.
-        self.clear_hands("lead1234")
-        self.addCleanup(self.clear_hands, "orph9876")
-        self.hand("orph9876", req=None, age=5)
-        res = self.m.wake_request(self.A, actor="tester")
-        self.assertFalse(res["ok"], res)
-        self.assertEqual(res["action"], "unknown", res)
-        self.assertTrue(res["message"].strip(),
-                        "거부만 주고 이유를 안 주면 사람은 버튼이 고장 났다고 읽는다")
+            # ---- C4. 겹쳐 띄우지 않는다 ------------------------------------------
+        with self.subTest("c4_wake_refuses_while_a_hand_may_be_attached"):
+                # 미상의 손은 클레임 없는 세션에 — c3b 개정(REQ-20260831-005)과 같다.
+                self.clear_hands("lead1234")
+                self.addCleanup(self.clear_hands, "orph9876")
+                self.hand("orph9876", req=None, age=5)
+                res = self.m.wake_request(self.A, actor="tester")
+                self.assertFalse(res["ok"], res)
+                self.assertEqual(res["action"], "unknown", res)
+                self.assertTrue(res["message"].strip(),
+                                "거부만 주고 이유를 안 주면 사람은 버튼이 고장 났다고 읽는다")
 
-    # ---- C5. 대기는 멈춤이 아니다 ----------------------------------------
-    def test_c5_waiting_is_carried_on_the_row(self):
-        self.clear_hands("lead1234")
-        self.m._wait_mark(self.C, "held",
-                          "REQ-20260829-024-62x6 가 bin/s9 를 잡고 있다",
-                          since=time.time() - 600)
-        try:
-            v = self.verdict(self.C)
-            self.assertEqual(v["state"], "waiting", v)
-            self.assertIsNone(self.m.stall_mins(self.row(self.C), time.time(),
-                                                self.m.STALLED_WIN))
-            row = self.live_row(self.C)
-            self.assertEqual(row.get("stall_state"), "waiting", row)
-            self.assertEqual(row.get("wait_kind"), "held", row)
-            self.assertIn("bin/s9", row.get("wait_why") or "")
-            self.assertGreaterEqual(row.get("wait_mins") or 0, 9)
-            self.assertGreaterEqual(row.get("quiet_mins") or 0, 15)
-        finally:
-            self.m._wait_clear(self.C)
+            # ---- C5. 대기는 멈춤이 아니다 ----------------------------------------
+        with self.subTest("c5_waiting_is_carried_on_the_row"):
+            self.clear_hands("lead1234")
+            self.m._wait_mark(self.C, "held",
+                              "REQ-20260829-024-62x6 가 bin/s9 를 잡고 있다",
+                              since=time.time() - 600)
+            try:
+                v = self.verdict(self.C)
+                self.assertEqual(v["state"], "waiting", v)
+                self.assertIsNone(self.m.stall_mins(self.row(self.C), time.time(),
+                                                    self.m.STALLED_WIN))
+                row = self.live_row(self.C)
+                self.assertEqual(row.get("stall_state"), "waiting", row)
+                self.assertEqual(row.get("wait_kind"), "held", row)
+                self.assertIn("bin/s9", row.get("wait_why") or "")
+                self.assertGreaterEqual(row.get("wait_mins") or 0, 9)
+                self.assertGreaterEqual(row.get("quiet_mins") or 0, 15)
+            finally:
+                self.m._wait_clear(self.C)
+        with self.subTest("c5b_wake_says_it_is_a_queue_not_a_stall"):
+                self.clear_hands("lead1234")
+                self.m._wait_mark(self.C, "held", "REQ-x 가 bin/s9 를 잡고 있다",
+                                  since=time.time() - 600)
+                try:
+                    res = self.m.wake_request(self.C, actor="tester")
+                    self.assertFalse(res["ok"], res)
+                    self.assertEqual(res["action"], "waiting", res)
+                finally:
+                    self.m._wait_clear(self.C)
 
-    def test_c5b_wake_says_it_is_a_queue_not_a_stall(self):
-        self.clear_hands("lead1234")
-        self.m._wait_mark(self.C, "held", "REQ-x 가 bin/s9 를 잡고 있다",
-                          since=time.time() - 600)
-        try:
-            res = self.m.wake_request(self.C, actor="tester")
-            self.assertFalse(res["ok"], res)
-            self.assertEqual(res["action"], "waiting", res)
-        finally:
-            self.m._wait_clear(self.C)
-
-    # ---- C6. 판정이 사는 자리는 하나다 -----------------------------------
-    def test_c6_single_verdict_function(self):
-        """판정 '정의'가 한 벌인지 본다 — 소비자 쪽은 stall_visible s5(CLI)·
-        stall_pair f1(화면 JS)이 각각 맡는다. 세 시험은 같은 계약의 다른 층이라
-        접지 않는다 (REQ-20260830-029 정독 판정).
-
-        2026-08-30 뮤테이션 실측: 종전의 assertIn("stall_verdict(", body) 는
-        docstring 산문의 `stall_verdict()` 언급에 걸려, 호출을 지워도 Green
-        이었다(dead-spot — 행동 시험 c7 이 대신 잡았다). 그래서 산문이 흉내낼
-        수 없는 **호출문 자체**를 본다."""
-        src = open(S9, encoding="utf-8").read()
-        self.assertIn("def stall_verdict(", src)
-        # stall_mins 는 그 함수의 얇은 껍데기여야 한다 — 나이를 다시 재면
-        # 두 벌이 된다.
-        i = src.index("def stall_mins(")
-        body = src[i:src.index("\ndef ", i + 10)]
-        self.assertRegex(body, r"\n\s*return stall_verdict\(",
-                         "stall_mins 가 판정을 따로 갖고 있다")
-
+            # ---- C6. 판정이 사는 자리는 하나다 -----------------------------------
+        with self.subTest("c6_single_verdict_function"):
+            src = open(S9, encoding="utf-8").read()
+            self.assertIn("def stall_verdict(", src)
+            # stall_mins 는 그 함수의 얇은 껍데기여야 한다 — 나이를 다시 재면
+            # 두 벌이 된다.
+            i = src.index("def stall_mins(")
+            body = src[i:src.index("\ndef ", i + 10)]
+            self.assertRegex(body, r"\n\s*return stall_verdict\(",
+                             "stall_mins 가 판정을 따로 갖고 있다")
 
 if __name__ == "__main__":
     unittest.main()

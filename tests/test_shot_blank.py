@@ -63,83 +63,66 @@ class ShotBlank(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix="s9shotblank-")
 
     # ------------------------------------------------------------ 백지 판정
-    def test_b1_flat_image_is_blank(self):
-        """B1. 한 색으로 덮인 캡처는 '거의 비었다'로 읽힌다."""
-        p = _png(os.path.join(self.tmp, "flat.png"), 40, 30,
-                 lambda y: b"\x11\x22\x33" * 40)
-        self.assertEqual(self.m._png_blank_rows(p), 1.0)
+    def test_shot_blank(self):
+        """ShotBlank 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("b1_flat_image_is_blank"):
+            p = _png(os.path.join(self.tmp, "flat.png"), 40, 30,
+                     lambda y: b"\x11\x22\x33" * 40)
+            self.assertEqual(self.m._png_blank_rows(p), 1.0)
+        with self.subTest("b2_varied_image_is_not_blank"):
+            p = _png(os.path.join(self.tmp, "varied.png"), 40, 30,
+                     lambda y: bytes((y * 7 + i) % 251 for i in range(120)))
+            v = self.m._png_blank_rows(p)
+            self.assertLess(v, self.m.SHOT_BLANK_ROWS, v)
+        with self.subTest("b3_threshold_leaves_room_for_dark_themes"):
+            self.assertGreater(self.m.SHOT_BLANK_ROWS, 0.70)
+            self.assertLess(self.m.SHOT_BLANK_ROWS, 0.82)
+        with self.subTest("b4_unreadable_file_does_not_block"):
+                p = os.path.join(self.tmp, "junk.png")
+                with open(p, "wb") as f:
+                    f.write(b"not a png at all")
+                self.assertIsNone(self.m._png_blank_rows(p))
 
-    def test_b2_varied_image_is_not_blank(self):
-        """B2. 줄마다 값이 다른 캡처는 백지가 아니다 — 문턱 아래여야 한다."""
-        p = _png(os.path.join(self.tmp, "varied.png"), 40, 30,
-                 lambda y: bytes((y * 7 + i) % 251 for i in range(120)))
-        v = self.m._png_blank_rows(p)
-        self.assertLess(v, self.m.SHOT_BLANK_ROWS, v)
-
-    def test_b3_threshold_leaves_room_for_dark_themes(self):
-        """B3. 문턱이 어두운 테마의 정상 캡처를 잡아먹지 않는다.
-
-        실측한 최악의 정상 캡처가 0.20, 백지가 0.80 이다. 문턱을 정상 쪽에
-        붙여 놓으면 멀쩡한 캡처가 실패로 뒤집혀 도구가 길을 막고, 백지 쪽에
-        붙여 놓으면 백지가 새어 나간다.
-        """
-        self.assertGreater(self.m.SHOT_BLANK_ROWS, 0.70)
-        self.assertLess(self.m.SHOT_BLANK_ROWS, 0.82)
-
-    def test_b4_unreadable_file_does_not_block(self):
-        """B4. 판정하지 못하면 막지 않는다 — 도구가 길을 막으면 사람이 도구를
-        끄고, 그 순간 규율도 함께 꺼진다."""
-        p = os.path.join(self.tmp, "junk.png")
-        with open(p, "wb") as f:
-            f.write(b"not a png at all")
-        self.assertIsNone(self.m._png_blank_rows(p))
-
-    # ------------------------------------------------------------ 조건 맞춤
-    def test_t1_terminal_gets_nosse(self):
-        """T1. 터미널 화면은 SSE 를 끄고 찍는다 — 안 그러면 끝나지 않는다."""
-        url, wait, why = self.m._shot_tune("http://x/#terminal", 3000)
-        self.assertIn("nosse", url)
-        self.assertIn("#terminal", url)
-        self.assertTrue(why)
-
-    def test_t2_graph_gets_more_time(self):
-        """T2. 그래프 화면은 레이아웃이 자리 잡을 시간을 받는다."""
-        url, wait, why = self.m._shot_tune("http://x/#graph", 800)
-        self.assertGreaterEqual(wait, 6000)
-
-    def test_t3_other_screens_are_untouched(self):
-        """T3. 나머지 화면은 건드리지 않는다 — 조건을 전부에 걸면 캡처가 느려지고
-        느린 도구는 안 쓰이게 된다."""
-        url, wait, why = self.m._shot_tune("http://x/#docs", 1200)
-        self.assertEqual((url, wait, why), ("http://x/#docs", 1200, ""))
-
-    def test_t4_string_wait_is_coerced(self):
-        """T4. `--wait` 는 파서가 문자열로 준다 — 여기서 숫자가 돼야 한다.
-
-        실제로 이걸 빠뜨려 `'<' not supported between str and int` 로 죽었다.
-        """
-        url, wait, why = self.m._shot_tune("http://x/#graph", "800")
-        self.assertIsInstance(wait, int)
-        self.assertGreaterEqual(wait, 6000)
-
-    def test_t5_existing_query_is_preserved(self):
-        """T5. 이미 붙어 있는 질의 문자열을 잃지 않는다 (skin·theme 파라미터)."""
-        url, _, _ = self.m._shot_tune("http://x/?skin=calm#terminal", 3000)
-        self.assertIn("skin=calm", url)
-        self.assertIn("nosse", url)
-
-    def test_t6_blank_capture_exits_nonzero(self):
-        """T6. 다시 찍어도 비어 있으면 **실패로 끝낸다**.
-
-        이 한 줄이 이 요청의 전부다 — 백지를 0 으로 돌려주면 '확인했다'가
-        거짓이 된다.
-        """
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        self.assertIn("sys.exit(5)", src, "백지에 실패 종료 코드가 없다")
-        self.assertIn("'확인했다'의 근거로 쓰지 마라", src,
-                      "실패 메시지가 무엇을 하지 말라고 말하지 않는다")
-
+            # ------------------------------------------------------------ 조건 맞춤
+        with self.subTest("t1_terminal_gets_nosse"):
+            url, wait, size, why = self.m._shot_tune("http://x/#terminal", 3000)
+            self.assertIn("nosse", url)
+            self.assertIn("#terminal", url)
+            self.assertTrue(why)
+        with self.subTest("t2_graph_gets_more_time"):
+            url, wait, size, why = self.m._shot_tune("http://x/#graph", 800)
+            self.assertGreaterEqual(wait, 6000)
+        with self.subTest("t3_other_screens_are_untouched"):
+            url, wait, size, why = self.m._shot_tune("http://x/#docs", 1200)
+            self.assertEqual((url, wait, size, why),
+                             ("http://x/#docs", 1200, None, ""))
+        with self.subTest("t4_string_wait_is_coerced"):
+            url, wait, size, why = self.m._shot_tune("http://x/#graph", "800")
+            self.assertIsInstance(wait, int)
+            self.assertGreaterEqual(wait, 6000)
+        with self.subTest("t5_existing_query_is_preserved"):
+            url, _, _, _ = self.m._shot_tune("http://x/?skin=calm#terminal", 3000)
+            self.assertIn("skin=calm", url)
+            self.assertIn("nosse", url)
+        with self.subTest("t5b_settings_pane_is_unfolded_and_tall"):
+            url, wait, size, why = self.m._shot_tune("http://x/#settings/repo",
+                                                     3000)
+            self.assertIn("noscroll", url)
+            self.assertIsNotNone(size)
+            self.assertGreater(int(size.split(",")[1]), 900)
+            # 화면 쪽이 그 스위치를 실제로 읽는가 — 도구만 붙이면 조용히 무효다
+            fmt = open(os.path.join(HERE, "..", "web", "app", "format.js"),
+                       encoding="utf-8").read()
+            self.assertIn("noscroll", fmt)
+            css = open(os.path.join(HERE, "..", "web", "css", "docs.css"),
+                       encoding="utf-8").read()
+            self.assertIn("[data-noscroll]", css)
+        with self.subTest("t6_blank_capture_exits_nonzero"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            self.assertIn("sys.exit(5)", src, "백지에 실패 종료 코드가 없다")
+            self.assertIn("'확인했다'의 근거로 쓰지 마라", src,
+                          "실패 메시지가 무엇을 하지 말라고 말하지 않는다")
 
 if __name__ == "__main__":
     unittest.main()

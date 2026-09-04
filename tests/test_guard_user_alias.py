@@ -70,38 +70,28 @@ class GuardUserAlias(unittest.TestCase):
              mock.patch("getpass.getuser", return_value=account):
             return self.m.current_user()
 
-    def test_os_account_is_matched_to_the_registered_user(self):
-        """os_accounts 에 적힌 계정으로 로그인해도 그 사람으로 읽힌다."""
-        self.assertEqual(self._as("os-bora"), "bora")
-
-    def test_the_matched_user_carries_their_role(self):
-        """이름을 이었으면 역할도 따라온다 — 이어 놓고 막으면 소용없다."""
-        with mock.patch.object(self.m, "ROOT", self.root):
-            self.assertEqual(self.m.role_of(self._as("os-bora")), "admin")
-
-    def test_a_plain_account_still_works(self):
-        """별칭이 없으면 계정 이름 그대로 — 흔한 경우를 망치지 않는다."""
-        self.assertEqual(self._as("chan"), "chan")
-
-    def test_an_unknown_account_stays_unknown(self):
-        """모르는 계정을 아무에게나 잇지 않는다 — 매칭이지 승격이 아니다."""
-        self.assertEqual(self._as("nobody"), "nobody")
-        with mock.patch.object(self.m, "ROOT", self.root):
-            self.assertEqual(self.m.role_of("nobody"), "")
-
-    def test_explicit_env_still_wins(self):
-        """S9_USER 는 여전히 앞선다 — 우선순위를 바꾸지 않았다."""
-        self.assertEqual(self._as("os-bora", {"S9_USER": "chan"}), "chan")
-
-    def test_a_broken_profile_does_not_break_the_commit(self):
-        """프로필이 깨져 있어도 게이트가 터지지 않는다 — 막더라도 말은 한다."""
-        bad = os.path.join(self.root, "users", "zzz")
-        os.makedirs(bad, exist_ok=True)
-        with open(os.path.join(bad, "profile.md"), "w", encoding="utf-8") as f:
-            f.write('---\nos_accounts: {not: "a list"}\n---\n')
-        self.addCleanup(os.remove, os.path.join(bad, "profile.md"))
-        self.assertEqual(self._as("os-bora"), "bora")
-
+    def test_guard_user_alias(self):
+        """GuardUserAlias 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("os_account_is_matched_to_the_registered_user"):
+            self.assertEqual(self._as("os-bora"), "bora")
+        with self.subTest("the_matched_user_carries_their_role"):
+            with mock.patch.object(self.m, "ROOT", self.root):
+                self.assertEqual(self.m.role_of(self._as("os-bora")), "admin")
+        with self.subTest("a_plain_account_still_works"):
+            self.assertEqual(self._as("chan"), "chan")
+        with self.subTest("an_unknown_account_stays_unknown"):
+            self.assertEqual(self._as("nobody"), "nobody")
+            with mock.patch.object(self.m, "ROOT", self.root):
+                self.assertEqual(self.m.role_of("nobody"), "")
+        with self.subTest("explicit_env_still_wins"):
+            self.assertEqual(self._as("os-bora", {"S9_USER": "chan"}), "chan")
+        with self.subTest("a_broken_profile_does_not_break_the_commit"):
+            bad = os.path.join(self.root, "users", "zzz")
+            os.makedirs(bad, exist_ok=True)
+            with open(os.path.join(bad, "profile.md"), "w", encoding="utf-8") as f:
+                f.write('---\nos_accounts: {not: "a list"}\n---\n')
+            self.addCleanup(os.remove, os.path.join(bad, "profile.md"))
+            self.assertEqual(self._as("os-bora"), "bora")
 
 if __name__ == "__main__":
     unittest.main()

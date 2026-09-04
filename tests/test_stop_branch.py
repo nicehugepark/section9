@@ -41,6 +41,12 @@ def _load(name, root):
             name, importlib.machinery.SourceFileLoader(name, S9))
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
+    # ROOT·STATE 는 import 시점에 굳고 machine 은 부를 때마다 환경에서 읽는다 —
+    # env 를 되돌리는 이 격리에서 그 둘이 어긋난다. 바인딩을 훑는 자리가 이
+    # 머신 것만 보게 된 뒤로(REQ-20260902-017 `_local_binding_glob`) 그
+    # 어긋남이 "아무 바인딩도 없다"가 됐다. env 를 열어 두면 같은 프로세스의
+    # 다른 시험까지 물들므로 이 모듈 안에서만 머신을 못박는다.
+        m.current_machine = lambda: "TEST"
         return m
     finally:
         if old is None:

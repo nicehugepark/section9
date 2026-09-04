@@ -61,187 +61,149 @@ def strip_comments(src):
 class TheWordsLiveInOnePlace(unittest.TestCase):
     """문구는 `PRJ_TEXT` 한 곳이다 — W2 의 판정이 표 하나만 갈아 끼우면 되게."""
 
-    def test_no_korean_string_outside_the_table(self):
-        src = strip_comments(read(JS))
-        m = re.search(r"const PRJ_TEXT = \{[\s\S]*?\n\};", src)
-        self.assertTrue(m, "PRJ_TEXT 표가 없다")
-        rest = src[:m.start()] + src[m.end():]
-        stray = re.findall(r"""["'`][^"'`\n]*[가-힣][^"'`\n]*["'`]""", rest)
-        self.assertEqual(
-            stray, [],
-            "화면 글자가 PRJ_TEXT 밖에 있다 — 문구 판정이 한 곳을 못 고친다: %r"
-            % stray[:4])
-
-    def test_no_key_is_written_twice(self):
-        """같은 이름을 두 번 적으면 **뒤엣것이 앞엣것을 조용히 지운다.**
-
-        실제로 그랬다: 「마지막 활동 없음」을 만들려고 `none: "없음"` 을 더했다가
-        목록의 빈 상태 문구(`none: "아직 프로젝트가 없습니다"`)가 통째로 「없음」이
-        됐고, 시험은 다 초록이었다(빈 자리가 서 있는지만 봤으므로). 캡처를 눈으로
-        보고서야 잡혔다 — 그 눈을 여기 남긴다."""
-        src = read(JS)
-        m = re.search(r"const PRJ_TEXT = \{([\s\S]*?)\n\};", src)
-        keys = re.findall(r"(?m)^\s{2}(\w+):", m.group(1))
-        dup = sorted({k for k in keys if keys.count(k) > 1})
-        self.assertEqual(dup, [], "PRJ_TEXT 에 같은 이름이 둘 있다: %r" % dup)
-
-    def test_the_fixture_calls_the_real_builders(self):
-        """검증 자는 **화면이 쓰는 그 함수**를 부른다 — 베낀 마크업이 아니다.
-
-        베끼면 그 순간부터 둘이 갈라지고, 갈라진 뒤의 캡처는 화면을 증명하지
-        않는다. 창도 마찬가지라 `s9dlg` 를 그대로 불러 띄운다(흉내 낸 껍데기는
-        실제 캐스케이드와 다를 수 있다 — 처음엔 그렇게 지었다가 걷어냈다)."""
-        fix = read(os.path.join(WEB, FIX))
-        for fn in ("prjListHTML", "prjPanelHTML", "prjStripHTML",
-                   "prjCreateDlg", "prjWire"):
-            self.assertIn(fn + "(", fix, "검증 자가 %s 를 부르지 않는다" % fn)
-        for copied in ("dlghead", "dlgfoot", "dlgcap"):
-            self.assertNotIn(copied, fix,
-                             "창 껍데기를 베꼈다(%s) — 진짜 창을 띄워라" % copied)
-
+    def test_the_words_live_in_one_place(self):
+        """문구는 `PRJ_TEXT` 한 곳이다 — W2 의 판정이 표 하나만 갈아 끼우면 되게."""
+        with self.subTest("no_korean_string_outside_the_table"):
+            src = strip_comments(read(JS))
+            m = re.search(r"const PRJ_TEXT = \{[\s\S]*?\n\};", src)
+            self.assertTrue(m, "PRJ_TEXT 표가 없다")
+            rest = src[:m.start()] + src[m.end():]
+            stray = re.findall(r"""["'`][^"'`\n]*[가-힣][^"'`\n]*["'`]""", rest)
+            self.assertEqual(
+                stray, [],
+                "화면 글자가 PRJ_TEXT 밖에 있다 — 문구 판정이 한 곳을 못 고친다: %r"
+                % stray[:4])
+        with self.subTest("no_key_is_written_twice"):
+            src = read(JS)
+            m = re.search(r"const PRJ_TEXT = \{([\s\S]*?)\n\};", src)
+            keys = re.findall(r"(?m)^\s{2}(\w+):", m.group(1))
+            dup = sorted({k for k in keys if keys.count(k) > 1})
+            self.assertEqual(dup, [], "PRJ_TEXT 에 같은 이름이 둘 있다: %r" % dup)
+        with self.subTest("the_fixture_calls_the_real_builders"):
+            fix = read(os.path.join(WEB, FIX))
+            for fn in ("prjListHTML", "prjPanelHTML", "prjStripHTML",
+                       "prjCreateDlg", "prjWire"):
+                self.assertIn(fn + "(", fix, "검증 자가 %s 를 부르지 않는다" % fn)
+            for copied in ("dlghead", "dlgfoot", "dlgcap"):
+                self.assertNotIn(copied, fix,
+                                 "창 껍데기를 베꼈다(%s) — 진짜 창을 띄워라" % copied)
 
 class TheSaveHasOneGate(unittest.TestCase):
     """설정 인라인이든 멤버 표든 한 문을 지난다 — 두 벌이면 한 벌만 고쳐진다."""
 
-    def test_only_one_fetch(self):
-        src = strip_comments(read(JS))
-        self.assertEqual(
-            len(re.findall(r"\bfetch\(", src)), 1,
-            "요청을 보내는 자리가 둘 이상이다 — 저장 규칙이 갈라진다")
+    def test_the_save_has_one_gate(self):
+        """설정 인라인이든 멤버 표든 한 문을 지난다 — 두 벌이면 한 벌만 고쳐진다."""
+        with self.subTest("only_one_fetch"):
+            src = strip_comments(read(JS))
+            self.assertEqual(
+                len(re.findall(r"\bfetch\(", src)), 1,
+                "요청을 보내는 자리가 둘 이상이다 — 저장 규칙이 갈라진다")
+        with self.subTest("every_write_goes_through_prjpost"):
+            src = strip_comments(read(JS))
+            for path in ("/api/project/set", "/api/project/member",
+                         "/api/project/member/rm", "/api/project/add"):
+                for line in [ln for ln in src.splitlines() if path in ln]:
+                    self.assertTrue(
+                        re.search(r"\b(post|prjPost)\(", line),
+                        "%s 가 관문(prjPost) 밖에서 불린다: %s" % (path, line.strip()))
+        with self.subTest("nothing_asks_before_saving_a_value"):
+            src = strip_comments(read(JS))
 
-    def test_every_write_goes_through_prjpost(self):
-        src = strip_comments(read(JS))
-        for path in ("/api/project/set", "/api/project/member",
-                     "/api/project/member/rm", "/api/project/add"):
-            for line in [ln for ln in src.splitlines() if path in ln]:
-                self.assertTrue(
-                    re.search(r"\b(post|prjPost)\(", line),
-                    "%s 가 관문(prjPost) 밖에서 불린다: %s" % (path, line.strip()))
+            def between(a, b):
+                i = src.index(a)
+                j = src.index(b, i)
+                return src[i:j]
 
-    def test_nothing_asks_before_saving_a_value(self):
-        """**보관은 확인 창을 받지 않는다** (REQ-20260831-029 리드 중재 1).
-
-        실측이 그렇게 시켰다: `status=archived` 는 프로젝트 문서의 frontmatter 한
-        칸만 바꾼다 — 문서를 접지도, 새 요청을 막지도 않는다. 화면이 하는 일은
-        목록에서 접는 것 하나이고, 되돌리는 길(보관 해제)이 같은 셀렉트에 있다.
-        아무 일도 안 일어나는 데 "정말 하시겠습니까"를 물으면 다음번 진짜 경고를
-        안 읽는다. 그래서 이 화면에서 창을 받는 것은 **만들기와 멤버 빼기**뿐이다."""
-        src = strip_comments(read(JS))
-
-        def between(a, b):
-            i = src.index(a)
-            j = src.index(b, i)
-            return src[i:j]
-
-        st = between("stSel.addEventListener", 'querySelectorAll("[data-pjmem]")')
-        self.assertNotIn("s9dlg(", st, "보관에 확인 창이 섰다")
-        self.assertIn('post("/api/project/set"', st, "보관이 저장을 안 한다")
-        edit = between('querySelectorAll("[data-pjset]")', "const stSel")
-        self.assertNotIn("s9dlg(", edit, "값 하나 고치는데 창을 띄운다")
-        self.assertIn('post("/api/project/set"', edit, "값 편집이 저장을 안 한다")
-        # 창은 셋뿐 — 만들기 하나, 멤버 둘(제거·나가기)
-        self.assertEqual(len(re.findall(r"s9dlg\(\{", src)), 3)
-
-    def test_only_the_changed_field_goes_out(self):
-        """서버는 미포함=미변경으로 읽고, 전부 무변경이면 400 을 돌려준다
-        (REQ-20260831-027 명세). 폼 전체를 실어 보내면 안 고친 칸까지 매번
-        덮어쓰고, 같은 값을 다시 골랐을 때 거부 창이 뜬다."""
-        src = strip_comments(read(JS))
-        for line in [ln for ln in src.splitlines()
-                     if '"/api/project/set"' in ln]:
-            body = re.search(r'"/api/project/set",\s*\{([^}]*)\}', line)
-            self.assertTrue(body, "set 요청 몸통을 못 읽었다: %s" % line.strip())
-            self.assertEqual(body.group(1).count(":"), 1,
-                             "한 번에 여러 필드를 보낸다: %s" % line.strip())
-
-    def test_the_screen_does_not_invent_refusals(self):
-        """거부 사유는 서버가 준 문장 그대로 — 화면이 지어내면 CLI 와 갈라진다."""
-        src = strip_comments(read(JS))
-        self.assertIn("d.error", src, "서버 사유를 그리지 않는다")
-        for word in ("권한이 없습니다", "실패했습니다", "오류"):
-            self.assertNotIn(word, src, "화면이 거부 사유를 지어낸다: %s" % word)
-
+            st = between("stSel.addEventListener", 'querySelectorAll("[data-pjmem]")')
+            self.assertNotIn("s9dlg(", st, "보관에 확인 창이 섰다")
+            self.assertIn('post("/api/project/set"', st, "보관이 저장을 안 한다")
+            edit = between('querySelectorAll("[data-pjset]")', "const stSel")
+            self.assertNotIn("s9dlg(", edit, "값 하나 고치는데 창을 띄운다")
+            self.assertIn('post("/api/project/set"', edit, "값 편집이 저장을 안 한다")
+            # 창은 셋뿐 — 만들기 하나, 멤버 둘(제거·나가기)
+            self.assertEqual(len(re.findall(r"s9dlg\(\{", src)), 3)
+        with self.subTest("only_the_changed_field_goes_out"):
+            src = strip_comments(read(JS))
+            for line in [ln for ln in src.splitlines()
+                         if '"/api/project/set"' in ln]:
+                body = re.search(r'"/api/project/set",\s*\{([^}]*)\}', line)
+                self.assertTrue(body, "set 요청 몸통을 못 읽었다: %s" % line.strip())
+                self.assertEqual(body.group(1).count(":"), 1,
+                                 "한 번에 여러 필드를 보낸다: %s" % line.strip())
+        with self.subTest("the_screen_does_not_invent_refusals"):
+            src = strip_comments(read(JS))
+            self.assertIn("d.error", src, "서버 사유를 그리지 않는다")
+            for word in ("권한이 없습니다", "실패했습니다", "오류"):
+                self.assertNotIn(word, src, "화면이 거부 사유를 지어낸다: %s" % word)
 
 class TheDialogIsBorrowed(unittest.TestCase):
     """창은 `s9dlg` 것이다 — 새 창 부품을 만들지 않는다."""
 
-    def test_it_calls_s9dlg(self):
-        self.assertIn("s9dlg({", strip_comments(read(JS)))
-
-    def test_it_does_not_build_its_own_shell(self):
-        src = strip_comments(read(JS))
-        for cls in ("dlghead", "dlgfoot", "dlgbox", "dlgcap"):
-            self.assertNotIn(
-                '"' + cls, src,
-                "창 껍데기(%s)를 스스로 짓는다 — 창이 두 벌이 된다" % cls)
-
-    def test_the_form_has_four_fields_only(self):
-        """넷만이다(표시명·slug·개요·고객). 담당자 4필드는 만들 때 쓰지 않는다."""
-        src = read(JS)
-        body = re.search(r"function prjFormHTML\(v\)\{[\s\S]*?\n\}", src)
-        self.assertTrue(body)
-        got = re.findall(r'f\("(\w+)"', body.group(0))
-        self.assertEqual(got, ["name", "slug", "summary", "customer"])
-        self.assertNotIn("contact_", body.group(0),
-                         "만들 때 담당자를 묻는다 — 그 창의 결정은 하나여야 한다")
-
+    def test_the_dialog_is_borrowed(self):
+        """창은 `s9dlg` 것이다 — 새 창 부품을 만들지 않는다."""
+        with self.subTest("it_calls_s9dlg"):
+            self.assertIn("s9dlg({", strip_comments(read(JS)))
+        with self.subTest("it_does_not_build_its_own_shell"):
+            src = strip_comments(read(JS))
+            for cls in ("dlghead", "dlgfoot", "dlgbox", "dlgcap"):
+                self.assertNotIn(
+                    '"' + cls, src,
+                    "창 껍데기(%s)를 스스로 짓는다 — 창이 두 벌이 된다" % cls)
+        with self.subTest("the_form_has_four_fields_only"):
+            src = read(JS)
+            body = re.search(r"function prjFormHTML\(v\)\{[\s\S]*?\n\}", src)
+            self.assertTrue(body)
+            got = re.findall(r'f\("(\w+)"', body.group(0))
+            self.assertEqual(got, ["name", "slug", "summary", "customer"])
+            self.assertNotIn("contact_", body.group(0),
+                             "만들 때 담당자를 묻는다 — 그 창의 결정은 하나여야 한다")
 
 class TheRulesSayNoColour(unittest.TestCase):
     """규칙 파일은 배치와 밀도만 말한다 — 색은 토큰에서만 온다."""
 
-    def test_no_colour_literal(self):
-        body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
-        bad = re.findall(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(", body)
-        self.assertEqual(bad, [], "색을 직접 적었다: %r" % bad)
-
-    def test_no_round_no_shadow_no_side_bar(self):
-        body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
-        self.assertNotIn("box-shadow", body, "그림자 금지")
-        for m in re.findall(r"border-radius:([^;}]+)", body):
-            self.assertEqual(m.strip(), "0", "라운드 금지")
-        self.assertFalse(re.search(r"border-left:\s*[1-9]", body),
-                         "카드 좌측 세로 띠 금지")
-
-    def test_the_member_table_has_one_gate(self):
-        """멤버 표 규칙은 `.pmem` 한 곳 — `.proj-info` 를 복제하지 않는다."""
-        body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
-        self.assertNotIn(".proj-info", body,
-                         "기존 패널 셀렉터를 복제했다 — 관문이 둘이 된다")
-        for name in os.listdir(os.path.join(WEB, "css")):
-            if name == "project.css":
-                continue
-            other = re.sub(r"/\*[\s\S]*?\*/", "",
-                           read(os.path.join(WEB, "css", name)))
-            self.assertNotIn(".pmem", other,
-                             "%s 가 멤버 표 규칙을 나눠 갖는다" % name)
-
-    def test_expiry_is_not_a_fault(self):
-        """만료는 고장이 아니다 — 붉은 잉크는 실패 줄에만."""
-        body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
-        self.assertIn(".pmem .m-off{color:var(--muted)}", body)
-        for rule in re.findall(r"([^{}]+)\{[^{}]*--c-blocked[^{}]*\}", body):
-            self.assertIn("pjerr", rule,
-                          "붉은 잉크가 실패 줄 밖에서 쓰인다: %s" % rule.strip())
-
-    def test_no_geometry_that_splits_at_1_25(self):
-        """비정수 배율에서 반올림이 갈릴 자리를 새로 만들지 않는다.
-
-        용의자는 홀수 px 상자와 소수 px 테두리다(s9-design 「배율 불변」).
-        7px 점은 이미 확정된 무대(.cdot)를 **그대로 쓰는** 것이라 예외다 —
-        여기서 다시 그리지 않는다."""
-        body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
-        for prop, val in re.findall(
-                r"\b(width|height|min-height|min-width)\s*:\s*([0-9.]+)px", body):
-            n = float(val)
-            if (prop, val) in (("width", "7"), ("height", "7")):
-                continue                      # .cdot 무대 — 확정값
-            self.assertEqual(n, int(n), "%s:%spx — 소수 치수" % (prop, val))
-            self.assertEqual(int(n) % 2, 0,
-                             "%s:%spx — 홀수 치수는 1.25배에서 갈린다"
-                             % (prop, val))
-        for w in re.findall(r"border[a-z-]*\s*:\s*([0-9.]+)px", body):
-            self.assertEqual(float(w), 1.0, "소수/굵은 테두리: %spx" % w)
-
+    def test_the_rules_say_no_colour(self):
+        """규칙 파일은 배치와 밀도만 말한다 — 색은 토큰에서만 온다."""
+        with self.subTest("no_colour_literal"):
+            body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
+            bad = re.findall(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(", body)
+            self.assertEqual(bad, [], "색을 직접 적었다: %r" % bad)
+        with self.subTest("no_round_no_shadow_no_side_bar"):
+            body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
+            self.assertNotIn("box-shadow", body, "그림자 금지")
+            for m in re.findall(r"border-radius:([^;}]+)", body):
+                self.assertEqual(m.strip(), "0", "라운드 금지")
+            self.assertFalse(re.search(r"border-left:\s*[1-9]", body),
+                             "카드 좌측 세로 띠 금지")
+        with self.subTest("the_member_table_has_one_gate"):
+            body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
+            self.assertNotIn(".proj-info", body,
+                             "기존 패널 셀렉터를 복제했다 — 관문이 둘이 된다")
+            for name in os.listdir(os.path.join(WEB, "css")):
+                if name == "project.css":
+                    continue
+                other = re.sub(r"/\*[\s\S]*?\*/", "",
+                               read(os.path.join(WEB, "css", name)))
+                self.assertNotIn(".pmem", other,
+                                 "%s 가 멤버 표 규칙을 나눠 갖는다" % name)
+        with self.subTest("expiry_is_not_a_fault"):
+            body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
+            self.assertIn(".pmem .m-off{color:var(--muted)}", body)
+            for rule in re.findall(r"([^{}]+)\{[^{}]*--c-blocked[^{}]*\}", body):
+                self.assertIn("pjerr", rule,
+                              "붉은 잉크가 실패 줄 밖에서 쓰인다: %s" % rule.strip())
+        with self.subTest("no_geometry_that_splits_at_1_25"):
+            body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
+            for prop, val in re.findall(
+                    r"\b(width|height|min-height|min-width)\s*:\s*([0-9.]+)px", body):
+                n = float(val)
+                if (prop, val) in (("width", "7"), ("height", "7")):
+                    continue                      # .cdot 무대 — 확정값
+                self.assertEqual(n, int(n), "%s:%spx — 소수 치수" % (prop, val))
+                self.assertEqual(int(n) % 2, 0,
+                                 "%s:%spx — 홀수 치수는 1.25배에서 갈린다"
+                                 % (prop, val))
+            for w in re.findall(r"border[a-z-]*\s*:\s*([0-9.]+)px", body):
+                self.assertEqual(float(w), 1.0, "소수/굵은 테두리: %spx" % w)
 
 class TheTwoRulebooksBecameOne(unittest.TestCase):
     """B2 의 첫 손 — 규칙이 두 벌이던 자리를 없앤다.
@@ -251,94 +213,68 @@ class TheTwoRulebooksBecameOne(unittest.TestCase):
     되고, 스킨 열 벌이 저마다 한 벌만 고친다 — 벨트 글리프 때 이 저장소가 이미
     치른 값이다. 되살아나는 것도 여기서 막는다."""
 
-    def test_the_old_panel_rules_are_gone(self):
-        css = os.path.join(WEB, "css")
-        for name in sorted(os.listdir(css)):
-            body = re.sub(r"/\*[\s\S]*?\*/", "", read(os.path.join(css, name)))
-            for dead in (".proj-info", ".pi-x", ".pi-err", ".pi-grid"):
-                self.assertNotIn(dead, body,
-                                 "%s 에 옛 패널 규칙이 남아 있다: %s" % (name, dead))
-
-    def test_the_old_panel_markup_is_gone(self):
-        """멤버 표를 짓는 자리도 하나여야 한다 — 마크업이 둘이면 문구 판정이
-        한 벌만 갈아 끼워진다(실제로 「− 제거」와 「멤버 빼기」가 그렇게 갈렸다)."""
-        app = strip_comments(read(os.path.join(WEB, "app", "app.js")))
-        for dead in ("wireMemberControls", "pi-role", "pi-newuser", "pi-addrow"):
-            self.assertNotIn(dead, app,
-                             "app.js 가 아직 멤버 표를 짓는다: %s" % dead)
-
-    def test_the_row_grammar_is_one(self):
-        """프로젝트 줄·목록·패널은 각각 한 곳이 짓는다.
-
-        **어느 화면이 그것을 부르는가는 바뀌었다** (REQ-20260831-026 G0′): 목록은
-        Docs 좌측이 아니라 Projects 탭이 부른다 — 그릇을 문서 종류와 나란히 세운
-        배치가 두 번째 반려의 내용이었다. Docs 에 남는 것은 **문서 판**뿐이다:
-        PRJ 문서는 여전히 문서이므로 주소·doclink·백링크로 열리면 그 판이 선다.
-        고정할 성질은 "짓는 자리가 하나"이지 "누가 부르는가"가 아니다."""
-        docs = strip_comments(read(os.path.join(WEB, "app", "docs.js")))
-        self.assertIn("prjPanelHTML(", docs, "PRJ 문서 뷰에 패널이 없다")
-        for gone in ("prjRowHTML(", "prjListHTML("):
-            self.assertNotIn(gone, docs,
-                             "Docs 가 아직 프로젝트 목록을 그린다 — 문이 둘이다: %s"
-                             % gone)
-        prj = strip_comments(read(JS))
-        for fn in ("function prjRowHTML", "function prjListHTML",
-                   "function renderProjects"):
-            self.assertIn(fn, prj, "프로젝트 화면 조각이 흩어졌다: %s" % fn)
-
-    def test_the_projects_list_is_off_the_polling_belt(self):
-        """`/api/projects` 는 벨트 밖이다 (REQ-20260831-026 G0 폴링 계약).
-        15초 catalog 폴이 이 요청을 끌고 다니면 주기마다 하나씩 더 나가고,
-        그 응답이 편집 중인 판을 갈아 끼울 길도 함께 열린다."""
-        app = strip_comments(read(os.path.join(WEB, "app", "app.js")))
-        body = app[app.index("async function refreshCatalog"):]
-        body = body[:body.index("\nfunction ")]
-        self.assertNotIn("refreshProjects", body,
-                         "프로젝트 목록이 아직 폴링 벨트에 실려 있다")
-        ev = strip_comments(read(os.path.join(WEB, "app", "events.js")))
-        self.assertIn("refreshProjects", ev, "탭에 들어와도 목록을 안 받는다")
-
-    def test_the_poll_does_not_wipe_a_hand_on_the_form(self):
-        """배경 갱신은 사람이 적고 있는 DOM 을 파괴하지 않는다 (REQ-055 E7 준용).
-        막는 것은 **배경 갱신뿐**이다 — 변이 뒤의 되읽기는 이 문을 지나지 않는다."""
-        js = strip_comments(read(JS))
-        self.assertIn("function prjEditing", js, "편집 중인지 묻는 자가 없다")
-        docs = strip_comments(read(os.path.join(WEB, "app", "docs.js")))
-        m = re.search(r"if \(selectedDoc && [^\n]*prjEditing[^\n]*\)\s*\n?"
-                      r"\s*loadDoc\(selectedDoc, !fresh\);", docs)
-        self.assertTrue(m, "배경 재로드에 편집 가드가 없다")
-        # 가드가 서는 자리는 **배경 갱신**뿐이다 — 배선(prjWire) 안에 들이면
-        # 변이 뒤의 되읽기까지 물린다. 창은 그 함수 하나로 자른다: 파일 끝까지
-        # 자르면 뒤에 선 판(renderProjects)의 정당한 가드를 되읽기로 오해한다.
-        i = js.index("function prjWire")
-        wire = js[i:js.index("\n}", i)]
-        self.assertIn("o.reload", js, "되읽기 손을 부르는 쪽에서 받지 않는다")
-        self.assertNotIn("prjEditing", wire, "되읽기까지 가드에 물렸다")
-
-    def test_the_reread_after_a_change_always_redraws(self):
-        """변이 뒤의 되읽기는 「안 바뀌었으면 건너뛴다」에 걸리면 안 된다.
-
-        실사고: 멤버를 넣었고 문서에도 들어갔는데 화면만 옛 표를 들고 있었다.
-        `bg` 하나가 두 가지를 뜻하고 있었다 — "안 바뀌었으면 건너뛴다"와 "읽던
-        자리를 지킨다". 되읽기는 뒤엣것만 원한다."""
-        docs = strip_comments(read(os.path.join(WEB, "app", "docs.js")))
-        self.assertRegex(docs, r"function loadDoc\(id, bg, force\)",
-                         "되읽기와 배경 갱신을 가를 자가 없다")
-        self.assertRegex(docs, r"if \(bg && !force &&",
-                         "건너뛰기 문이 force 를 안 본다")
-        self.assertRegex(docs, r"reload: async \(\) => \{[\s\S]{0,400}?"
-                               r"loadDoc\(id, true, true\)",
-                         "되읽기가 다시 그리기를 강제하지 않는다")
-
-    def test_the_project_doc_has_one_archive(self):
-        """PRJ 문서에는 「보관」이 하나여야 한다 — 위 격자의 status 가 그것이다.
-        같은 낱말 단추가 둘이면 어느 쪽이 진짜인지 묻게 된다(리드 중재 2)."""
-        tidy = strip_comments(read(os.path.join(WEB, "app", "tidy.js")))
-        i = tidy.index('data-tidy="${arch ? "unarch1" : "arch1"}"')
-        head = tidy[max(0, i - 400):i]
-        self.assertIn('type === "project"', head,
-                      "프로젝트 문서에서도 문서 치우기 「보관」이 선다")
-
+    def test_the_two_rulebooks_became_one(self):
+        """B2 의 첫 손 — 규칙이 두 벌이던 자리를 없앤다."""
+        with self.subTest("the_old_panel_rules_are_gone"):
+            css = os.path.join(WEB, "css")
+            for name in sorted(os.listdir(css)):
+                body = re.sub(r"/\*[\s\S]*?\*/", "", read(os.path.join(css, name)))
+                for dead in (".proj-info", ".pi-x", ".pi-err", ".pi-grid"):
+                    self.assertNotIn(dead, body,
+                                     "%s 에 옛 패널 규칙이 남아 있다: %s" % (name, dead))
+        with self.subTest("the_old_panel_markup_is_gone"):
+            app = strip_comments(read(os.path.join(WEB, "app", "app.js")))
+            for dead in ("wireMemberControls", "pi-role", "pi-newuser", "pi-addrow"):
+                self.assertNotIn(dead, app,
+                                 "app.js 가 아직 멤버 표를 짓는다: %s" % dead)
+        with self.subTest("the_row_grammar_is_one"):
+            docs = strip_comments(read(os.path.join(WEB, "app", "docs.js")))
+            self.assertIn("prjPanelHTML(", docs, "PRJ 문서 뷰에 패널이 없다")
+            for gone in ("prjRowHTML(", "prjListHTML("):
+                self.assertNotIn(gone, docs,
+                                 "Docs 가 아직 프로젝트 목록을 그린다 — 문이 둘이다: %s"
+                                 % gone)
+            prj = strip_comments(read(JS))
+            for fn in ("function prjRowHTML", "function prjListHTML",
+                       "function renderProjects"):
+                self.assertIn(fn, prj, "프로젝트 화면 조각이 흩어졌다: %s" % fn)
+        with self.subTest("the_projects_list_is_off_the_polling_belt"):
+            app = strip_comments(read(os.path.join(WEB, "app", "app.js")))
+            body = app[app.index("async function refreshCatalog"):]
+            body = body[:body.index("\nfunction ")]
+            self.assertNotIn("refreshProjects", body,
+                             "프로젝트 목록이 아직 폴링 벨트에 실려 있다")
+            ev = strip_comments(read(os.path.join(WEB, "app", "events.js")))
+            self.assertIn("refreshProjects", ev, "탭에 들어와도 목록을 안 받는다")
+        with self.subTest("the_poll_does_not_wipe_a_hand_on_the_form"):
+            js = strip_comments(read(JS))
+            self.assertIn("function prjEditing", js, "편집 중인지 묻는 자가 없다")
+            docs = strip_comments(read(os.path.join(WEB, "app", "docs.js")))
+            m = re.search(r"if \(selectedDoc && [^\n]*prjEditing[^\n]*\)\s*\n?"
+                          r"\s*loadDoc\(selectedDoc, !fresh\);", docs)
+            self.assertTrue(m, "배경 재로드에 편집 가드가 없다")
+            # 가드가 서는 자리는 **배경 갱신**뿐이다 — 배선(prjWire) 안에 들이면
+            # 변이 뒤의 되읽기까지 물린다. 창은 그 함수 하나로 자른다: 파일 끝까지
+            # 자르면 뒤에 선 판(renderProjects)의 정당한 가드를 되읽기로 오해한다.
+            i = js.index("function prjWire")
+            wire = js[i:js.index("\n}", i)]
+            self.assertIn("o.reload", js, "되읽기 손을 부르는 쪽에서 받지 않는다")
+            self.assertNotIn("prjEditing", wire, "되읽기까지 가드에 물렸다")
+        with self.subTest("the_reread_after_a_change_always_redraws"):
+            docs = strip_comments(read(os.path.join(WEB, "app", "docs.js")))
+            self.assertRegex(docs, r"function loadDoc\(id, bg, force\)",
+                             "되읽기와 배경 갱신을 가를 자가 없다")
+            self.assertRegex(docs, r"if \(bg && !force &&",
+                             "건너뛰기 문이 force 를 안 본다")
+            self.assertRegex(docs, r"reload: async \(\) => \{[\s\S]{0,400}?"
+                                   r"loadDoc\(id, true, true\)",
+                             "되읽기가 다시 그리기를 강제하지 않는다")
+        with self.subTest("the_project_doc_has_one_archive"):
+            tidy = strip_comments(read(os.path.join(WEB, "app", "tidy.js")))
+            i = tidy.index('data-tidy="${arch ? "unarch1" : "arch1"}"')
+            head = tidy[max(0, i - 400):i]
+            self.assertIn('type === "project"', head,
+                          "프로젝트 문서에서도 문서 치우기 「보관」이 선다")
 
 # ─── 띄워 봐야 아는 것 ────────────────────────────────────────────────────
 
@@ -594,185 +530,141 @@ class TheStatesAreAllDrawn(unittest.TestCase):
     def d(self):
         return self.out["dom"]
 
-    def test_the_list_sorts_by_recent_work(self):
-        """일하는 사람은 최근 것을 찾는다 — 이름순이 아니다."""
-        self.assertEqual(self.d["rowIds"],
-                         ["PRJ-20260823-001", "PRJ-20260901-002"])
-        self.assertIn("멤버 2", self.d["rowMeta"][0])
-        self.assertIn("열린 요청 12", self.d["rowMeta"][0])
-        self.assertIn("마지막 활동 4분 전", self.d["rowMeta"][0])
-        # 정상은 말하지 않는다 — active 는 글자를 안 받는다 (REQ-20260830-040)
-        self.assertEqual(self.d["rowStatus"], ["", ""])
+    def test_the_states_are_all_drawn(self):
+        """상태 전부 — 0·1·N · 보관 · 권한 셋 · 멤버 0 두 갈래 · 만료 · 띠."""
+        with self.subTest("the_list_sorts_by_recent_work"):
+            self.assertEqual(self.d["rowIds"],
+                             ["PRJ-20260823-001", "PRJ-20260901-002"])
+            self.assertIn("멤버 2", self.d["rowMeta"][0])
+            self.assertIn("열린 요청 12", self.d["rowMeta"][0])
+            self.assertIn("마지막 활동 4분 전", self.d["rowMeta"][0])
+            # 정상은 말하지 않는다 — active 는 글자를 안 받는다 (REQ-20260830-040)
+            self.assertEqual(self.d["rowStatus"], ["", ""])
+        with self.subTest("archived_folds_and_says_what_is_folded"):
+            self.assertEqual(self.d["fold"], "보관된 프로젝트 1개")
+            self.assertEqual(self.d["arcExpanded"], "false")
+            self.assertEqual(self.d["arcOpenText"], "접기")
+            self.assertEqual(self.d["arcOpenExpanded"], "true")
+            self.assertEqual(self.d["arcRowsHidden"], 0, "접었는데 보관된 줄이 섰다")
+            self.assertEqual(self.d["arcRowsShown"], 1, "펼쳤는데 보관된 줄이 안 섰다")
+        with self.subTest("zero_and_one_keep_the_same_shape"):
+            # 빈 자리의 말은 **문장**이다 — 한 낱말(「없음」)은 안내도 행동도 아니다
+            self.assertIn("프로젝트가 없습니다", self.d["list0None"])
+            self.assertTrue(self.d["list0Create"])
+            self.assertTrue(self.d["list1Head"])
+            self.assertTrue(self.d["list1Create"])
+        with self.subTest("without_the_right_the_button_is_gone_not_grey"):
+            self.assertTrue(self.d["listNCreate"])
+            self.assertFalse(self.d["listNoCreate"],
+                             "만들 권한이 없는데 단추가 그려졌다 — 회색 단추는 "
+                             "눌릴 것 같은 거짓 약속이다")
+        with self.subTest("the_viewer_sees_values_not_dead_controls"):
+            self.assertGreater(self.d["ownerControls"], 0)
+            self.assertEqual(self.d["viewControls"], 0,
+                             "뷰어에게 컨트롤을 그렸다")
+            self.assertEqual(self.d["viewSetEdit"], 0,
+                             "뷰어에게 설정 편집 자리를 그렸다")
+            # 축을 밝힌다 — Settings 의 시스템 role 에도 viewer 가 있다(tech-writer)
+            self.assertIn("maintainer 이상", self.d["viewNote"])
+            self.assertFalse(self.d["legendView"],
+                             "못 바꾸는 사람에게 권한 범례를 세웠다")
+        with self.subTest("an_empty_slot_is_a_place_only_for_who_can_fill_it"):
+            self.assertGreater(self.d["ownerSetRows"], self.d["viewSetRows"],
+                               "빈 칸이 고칠 수 없는 사람에게도 자리를 차지한다")
+        with self.subTest("only_the_owner_row_is_grey"):
+            self.assertTrue(self.d["maintOwnerRoleDisabled"])
+            self.assertIn("owner", self.d["maintOwnerRoleTitle"])
+        with self.subTest("the_last_owner_cannot_be_removed"):
+            self.assertTrue(self.d["ownerRmDisabled"])
+            self.assertIn("마지막 owner", self.d["ownerRmTitle"])
+        with self.subTest("leaving_is_not_removing"):
+            self.assertIn("나가기", self.d["selfRmText"])
+            self.assertIn("제거", self.d["otherRmText"])
+            self.assertIn("e7test", self.d["otherRmAria"])
+            self.assertIn("section9", self.d["ownerRmAria"])
+        with self.subTest("a_dead_button_looks_dead"):
+            self.assertNotEqual(self.d["rmOffColour"], self.d["rmOnColour"],
+                                "잠긴 「제거」가 살아 있는 것과 같은 잉크다")
+        with self.subTest("the_table_names_itself_and_its_columns"):
+            # 만료가 없으면 「만료 0」을 세우지 않는다 — 없는 문제를 보고하는 꼴이다
+            self.assertEqual(self.d["caption"], "멤버 3명 — 활성 2 · 만료 1")
+            self.assertEqual(self.d["capPlain"], "멤버 1명")
+            # 한 화면에 상태 축이 둘이다(프로젝트 status · 멤버십) — 열 이름이 가른다
+            self.assertIn("참여 상태", self.d["colHeads"])
+            self.assertTrue(self.d["legendOwner"],
+                            "권한을 바꿀 수 있는데 role 넷의 뜻이 어디에도 없다")
+            self.assertTrue(all(s == "col" for s in self.d["scopes"]),
+                            "열 머리에 scope 가 없다 — 읽어 주는 화면이 표를 못 읽는다")
+        with self.subTest("no_members_gives_an_action_or_a_way_out"):
+            self.assertTrue(self.d["addRow"], "넣을 사람이 있는데 추가 행이 없다")
+            self.assertFalse(self.d["noUserTable"],
+                             "후보가 0명인데 추가 폼을 보여 준다 — 막다른 길이다")
+            self.assertEqual(self.d["noUserLink"], "#settings/users")
+        with self.subTest("expiry_is_muted_not_red"):
+            self.assertEqual(self.d["expColour"], self.d["mutedColour"],
+                             "만료 잉크가 --muted 가 아니다")
+            self.assertNotEqual(self.d["expColour"], self.d["blockedColour"],
+                                "만료를 고장(붉은 잉크)으로 그렸다")
+            self.assertIn("m-soon", self.d["soonClass"],
+                          "만료 14일 이내인데 임박 잉크가 없다")
+            # 「만료 14일 이내」는 기준선이지 사실이 아니다 — 시간은 사람 단위로
+            self.assertRegex(self.d["soonTip"], r"^\d+일 뒤 만료$")
+        with self.subTest("the_door_is_visible_and_says_what_it_makes"):
+            self.assertEqual(self.d["createText"], "프로젝트 만들기")
+            self.assertIn("만듭니다", self.d["createAria"])
+            self.assertNotEqual(self.d["createInk"], self.d["faintColour"],
+                                "문을 화면에서 가장 옅은 잉크로 그렸다")
+            self.assertEqual(self.d["createInk"], self.d["mutedColour"])
+        with self.subTest("the_settings_grid_is_one_dictionary"):
+            self.assertEqual(self.d["setKeys"],
+                             ["name", "summary", "customer", "contact_name",
+                              "contact_org", "contact_email", "contact_phone"])
+            self.assertFalse(self.d["slugEditable"], "slug 를 고칠 수 있게 그렸다")
+            self.assertTrue(self.d["slugNote"], "고칠 수 없는 칸에 까닭이 없다")
+            self.assertTrue(self.d["statusSelect"])
+        with self.subTest("the_strip_is_one_line"):
+            self.assertEqual(self.d["stripH"], 32,
+                             "문맥 띠가 한 줄(32px)이 아니다 — 244px 표를 대신하는 자리다")
+            self.assertFalse(self.d["stripTable"], "띠에 표가 남아 있다")
+            self.assertEqual(self.d["stripBorderLeft"], "0px", "좌측 세로 띠 금지")
+            self.assertIn(self.d["stripBg"],
+                          ("rgba(0, 0, 0, 0)", "transparent"), "색면 금지")
+            self.assertIn("doclink", self.d["stripOpen"])
+            # 정상은 말하지 않는다 — 보관만 글자를 받고, 값은 영문 원문이다
+            self.assertEqual(self.d["stripActSt"], "")
+            self.assertEqual(self.d["stripArcSt"], "archived")
+            # 세 자리가 같은 낱말로 같은 것을 센다 (ux-writer 판정 7)
+            self.assertTrue(any("열린 요청" in t for t in self.d["stripMeta"]),
+                            "띠가 목록·요약과 다른 낱말로 센다")
+        with self.subTest("the_form_asks_four_things"):
+            self.assertEqual(self.d["dlgFields"],
+                             ["name", "slug", "summary", "customer"])
+            self.assertTrue(self.d["dlgYesDisabled"],
+                            "빈 창인데 확인이 눌린다 — 눌러 보고 다그치는 창이 된다")
+        with self.subTest("the_slug_candidate_never_guesses_korean"):
+            self.assertEqual(self.out["typed"]["slug"], "")
+            self.assertTrue(self.out["typed"]["yes"])
+            self.assertTrue(self.out["typed"]["errShown"])
+            self.assertIn("slug", self.out["typed"]["err"])
+            self.assertEqual(self.out["typedAscii"]["slug"], "portal-rework")
+            self.assertFalse(self.out["typedAscii"]["yes"])
+        with self.subTest("a_taken_name_is_told_on_the_spot"):
+            self.assertTrue(self.out["taken"]["yes"], "중복인데 만들 수 있다")
+            # 「이미 있는 이름입니다」는 **무엇과** 부딪혔는지를 말하지 않는다
+            self.assertIn("이미 section9", self.out["taken"]["err"])
+        with self.subTest("a_member_change_goes_out_once_through_the_gate"):
+            self.assertEqual(self.out["saved"]["idle"], "",
+                             "값이 그대로인데 요청이 나갔다")
+            self.assertIn("/api/project/member", self.out["saved"]["sent"])
+            self.assertIn('"role":"viewer"',
+                          self.out["saved"]["sent"].replace(" ", ""))
+        with self.subTest("the_strip_has_no_place_without_a_project"):
+            self.assertEqual(self.d["stripNone"], "",
+                             "고른 프로젝트가 없는데 띠가 자리를 먹는다")
+        with self.subTest("a_refusal_puts_the_control_back_and_says_why"):
+            f = self.out["failed"]
+            self.assertEqual(f["back"], f["was"], "거부당했는데 화면에 바뀐 값이 남았다")
+            self.assertTrue(f["shown"], "거부 사유가 안 보인다")
+            self.assertIn("maintainer 이상이 필요합니다", f["text"],
+                          "서버가 준 문장이 아니라 화면이 지어낸 말이 섰다")
 
-    def test_archived_folds_and_says_what_is_folded(self):
-        """「보관됨」 단독은 상태값이 새어 나온 것이다 — 무엇이 N개인지 말한다.
-        편 것은 다시 접을 수 있어야 하고, 그 사실을 읽어 주는 도구에도 준다."""
-        self.assertEqual(self.d["fold"], "보관된 프로젝트 1개")
-        self.assertEqual(self.d["arcExpanded"], "false")
-        self.assertEqual(self.d["arcOpenText"], "접기")
-        self.assertEqual(self.d["arcOpenExpanded"], "true")
-        self.assertEqual(self.d["arcRowsHidden"], 0, "접었는데 보관된 줄이 섰다")
-        self.assertEqual(self.d["arcRowsShown"], 1, "펼쳤는데 보관된 줄이 안 섰다")
-
-    def test_zero_and_one_keep_the_same_shape(self):
-        """0 에서는 안내가 아니라 행동이 서고, 1 에서 구조가 바뀌지 않는다."""
-        # 빈 자리의 말은 **문장**이다 — 한 낱말(「없음」)은 안내도 행동도 아니다
-        self.assertIn("프로젝트가 없습니다", self.d["list0None"])
-        self.assertTrue(self.d["list0Create"])
-        self.assertTrue(self.d["list1Head"])
-        self.assertTrue(self.d["list1Create"])
-
-    def test_without_the_right_the_button_is_gone_not_grey(self):
-        self.assertTrue(self.d["listNCreate"])
-        self.assertFalse(self.d["listNoCreate"],
-                         "만들 권한이 없는데 단추가 그려졌다 — 회색 단추는 "
-                         "눌릴 것 같은 거짓 약속이다")
-
-    def test_the_viewer_sees_values_not_dead_controls(self):
-        self.assertGreater(self.d["ownerControls"], 0)
-        self.assertEqual(self.d["viewControls"], 0,
-                         "뷰어에게 컨트롤을 그렸다")
-        self.assertEqual(self.d["viewSetEdit"], 0,
-                         "뷰어에게 설정 편집 자리를 그렸다")
-        # 축을 밝힌다 — Settings 의 시스템 role 에도 viewer 가 있다(tech-writer)
-        self.assertIn("maintainer 이상", self.d["viewNote"])
-        self.assertFalse(self.d["legendView"],
-                         "못 바꾸는 사람에게 권한 범례를 세웠다")
-
-    def test_an_empty_slot_is_a_place_only_for_who_can_fill_it(self):
-        """읽기만 하는 사람에게 「— · — · — · —」 넉 줄은 아무 말도 하지 않는다 —
-        문서 뷰의 메타 표가 이미 빈 줄을 안 그리는 문법이다(docs.js)."""
-        self.assertGreater(self.d["ownerSetRows"], self.d["viewSetRows"],
-                           "빈 칸이 고칠 수 없는 사람에게도 자리를 차지한다")
-
-    def test_only_the_owner_row_is_grey(self):
-        """maintainer 는 나머지를 고칠 수 있고 owner 행만 잠긴다 — 왜 이 한
-        행만 다른가에 답해야 하므로 여기만 회색을 허용한다."""
-        self.assertTrue(self.d["maintOwnerRoleDisabled"])
-        self.assertIn("owner", self.d["maintOwnerRoleTitle"])
-
-    def test_the_last_owner_cannot_be_removed(self):
-        self.assertTrue(self.d["ownerRmDisabled"])
-        self.assertIn("마지막 owner", self.d["ownerRmTitle"])
-
-    def test_leaving_is_not_removing(self):
-        """주어가 바뀌면 다른 동작이다 — 남은 「제거」, 나는 「나가기」.
-        행마다 같은 글자라 읽어 주는 도구는 어느 행인지 모른다(이름을 준다)."""
-        self.assertIn("나가기", self.d["selfRmText"])
-        self.assertIn("제거", self.d["otherRmText"])
-        self.assertIn("e7test", self.d["otherRmAria"])
-        self.assertIn("section9", self.d["ownerRmAria"])
-
-    def test_a_dead_button_looks_dead(self):
-        """못 누르는 단추가 멀쩡한 단추와 같은 얼굴이면 그것도 거짓 약속이다 —
-        `.acts button` 이 잉크색을 못박아 브라우저 기본 회색을 덮는다(실캡처에서
-        마지막 owner 의 「제거」가 살아 있는 단추로 보였다)."""
-        self.assertNotEqual(self.d["rmOffColour"], self.d["rmOnColour"],
-                            "잠긴 「제거」가 살아 있는 것과 같은 잉크다")
-
-    def test_the_table_names_itself_and_its_columns(self):
-        # 만료가 없으면 「만료 0」을 세우지 않는다 — 없는 문제를 보고하는 꼴이다
-        self.assertEqual(self.d["caption"], "멤버 3명 — 활성 2 · 만료 1")
-        self.assertEqual(self.d["capPlain"], "멤버 1명")
-        # 한 화면에 상태 축이 둘이다(프로젝트 status · 멤버십) — 열 이름이 가른다
-        self.assertIn("참여 상태", self.d["colHeads"])
-        self.assertTrue(self.d["legendOwner"],
-                        "권한을 바꿀 수 있는데 role 넷의 뜻이 어디에도 없다")
-        self.assertTrue(all(s == "col" for s in self.d["scopes"]),
-                        "열 머리에 scope 가 없다 — 읽어 주는 화면이 표를 못 읽는다")
-
-    def test_no_members_gives_an_action_or_a_way_out(self):
-        self.assertTrue(self.d["addRow"], "넣을 사람이 있는데 추가 행이 없다")
-        self.assertFalse(self.d["noUserTable"],
-                         "후보가 0명인데 추가 폼을 보여 준다 — 막다른 길이다")
-        self.assertEqual(self.d["noUserLink"], "#settings/users")
-
-    def test_expiry_is_muted_not_red(self):
-        self.assertEqual(self.d["expColour"], self.d["mutedColour"],
-                         "만료 잉크가 --muted 가 아니다")
-        self.assertNotEqual(self.d["expColour"], self.d["blockedColour"],
-                            "만료를 고장(붉은 잉크)으로 그렸다")
-        self.assertIn("m-soon", self.d["soonClass"],
-                      "만료 14일 이내인데 임박 잉크가 없다")
-        # 「만료 14일 이내」는 기준선이지 사실이 아니다 — 시간은 사람 단위로
-        self.assertRegex(self.d["soonTip"], r"^\d+일 뒤 만료$")
-
-    def test_the_door_is_visible_and_says_what_it_makes(self):
-        """이 REQ 가 푸는 문제가 「문이 없다」인데 그 문을 화면에서 가장 옅게
-        그리면 안 된다(리드 판정 1) — `.more` 의 --faint 보다 한 급 진하다.
-        명사구(「새 프로젝트」)는 눌렀을 때 무엇이 생기는지 말하지 않는다."""
-        self.assertEqual(self.d["createText"], "프로젝트 만들기")
-        self.assertIn("만듭니다", self.d["createAria"])
-        self.assertNotEqual(self.d["createInk"], self.d["faintColour"],
-                            "문을 화면에서 가장 옅은 잉크로 그렸다")
-        self.assertEqual(self.d["createInk"], self.d["mutedColour"])
-
-    def test_the_settings_grid_is_one_dictionary(self):
-        """라벨은 프론트매터 키 한 벌이다 — 여기에만 한국어를 섞으면 한 표에
-        사전이 둘이 된다(ux-writer 형식 판정). slug 는 고칠 수 없으니 입력처럼
-        그리지 않고, 왜 못 고치는지 그 자리에서 말한다(리드 중재 3)."""
-        self.assertEqual(self.d["setKeys"],
-                         ["name", "summary", "customer", "contact_name",
-                          "contact_org", "contact_email", "contact_phone"])
-        self.assertFalse(self.d["slugEditable"], "slug 를 고칠 수 있게 그렸다")
-        self.assertTrue(self.d["slugNote"], "고칠 수 없는 칸에 까닭이 없다")
-        self.assertTrue(self.d["statusSelect"])
-
-    def test_the_strip_is_one_line(self):
-        self.assertEqual(self.d["stripH"], 32,
-                         "문맥 띠가 한 줄(32px)이 아니다 — 244px 표를 대신하는 자리다")
-        self.assertFalse(self.d["stripTable"], "띠에 표가 남아 있다")
-        self.assertEqual(self.d["stripBorderLeft"], "0px", "좌측 세로 띠 금지")
-        self.assertIn(self.d["stripBg"],
-                      ("rgba(0, 0, 0, 0)", "transparent"), "색면 금지")
-        self.assertIn("doclink", self.d["stripOpen"])
-        # 정상은 말하지 않는다 — 보관만 글자를 받고, 값은 영문 원문이다
-        self.assertEqual(self.d["stripActSt"], "")
-        self.assertEqual(self.d["stripArcSt"], "archived")
-        # 세 자리가 같은 낱말로 같은 것을 센다 (ux-writer 판정 7)
-        self.assertTrue(any("열린 요청" in t for t in self.d["stripMeta"]),
-                        "띠가 목록·요약과 다른 낱말로 센다")
-
-    def test_the_form_asks_four_things(self):
-        self.assertEqual(self.d["dlgFields"],
-                         ["name", "slug", "summary", "customer"])
-        self.assertTrue(self.d["dlgYesDisabled"],
-                        "빈 창인데 확인이 눌린다 — 눌러 보고 다그치는 창이 된다")
-
-    def test_the_slug_candidate_never_guesses_korean(self):
-        """한글은 로마자로 옮기지 않는다 — 후보가 없으면 비워 두고 사람이 적는다."""
-        self.assertEqual(self.out["typed"]["slug"], "")
-        self.assertTrue(self.out["typed"]["yes"])
-        self.assertTrue(self.out["typed"]["errShown"])
-        self.assertIn("slug", self.out["typed"]["err"])
-        self.assertEqual(self.out["typedAscii"]["slug"], "portal-rework")
-        self.assertFalse(self.out["typedAscii"]["yes"])
-
-    def test_a_taken_name_is_told_on_the_spot(self):
-        self.assertTrue(self.out["taken"]["yes"], "중복인데 만들 수 있다")
-        # 「이미 있는 이름입니다」는 **무엇과** 부딪혔는지를 말하지 않는다
-        self.assertIn("이미 section9", self.out["taken"]["err"])
-
-    def test_a_member_change_goes_out_once_through_the_gate(self):
-        """바뀐 것만 나간다 — 같은 값을 다시 고르면 요청 0회."""
-        self.assertEqual(self.out["saved"]["idle"], "",
-                         "값이 그대로인데 요청이 나갔다")
-        self.assertIn("/api/project/member", self.out["saved"]["sent"])
-        self.assertIn('"role":"viewer"',
-                      self.out["saved"]["sent"].replace(" ", ""))
-
-    def test_the_strip_has_no_place_without_a_project(self):
-        self.assertEqual(self.d["stripNone"], "",
-                         "고른 프로젝트가 없는데 띠가 자리를 먹는다")
-
-    def test_a_refusal_puts_the_control_back_and_says_why(self):
-        """거부당하면 ① 컨트롤이 원복되고 ② 사유가 **서버의 말 그대로** 선다.
-
-        ②가 어려운 자리다: 원복은 판을 다시 그리는 일이라, 실패 줄을 미리 잡아 둔
-        노드에 쓰면 떨어져 나간 판에 남아 아무도 못 본다(멤버 패널이 한 번 치른 값).
-        그래서 화면에 **지금 서 있는** 판에서 읽는다."""
-        f = self.out["failed"]
-        self.assertEqual(f["back"], f["was"], "거부당했는데 화면에 바뀐 값이 남았다")
-        self.assertTrue(f["shown"], "거부 사유가 안 보인다")
-        self.assertIn("maintainer 이상이 필요합니다", f["text"],
-                      "서버가 준 문장이 아니라 화면이 지어낸 말이 섰다")

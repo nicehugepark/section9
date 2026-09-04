@@ -90,85 +90,86 @@ class TestMemberApi(unittest.TestCase):
         return {m["user"]: m for m in proj["members"]}
 
     # M1. maintainer가 멤버 추가
-    def test_m1_maintainer_adds_member(self):
-        code, res = self.post("/api/project/member",
-                              {"as": "bob", "slug": "demo", "member": "dan",
-                               "role": "contributor"})
-        self.assertEqual(code, 200, res)
-        self.assertTrue(res.get("ok"), res)
-        self.assertEqual(self.members()["dan"]["role"], "contributor")
+    def test_test_member_api(self):
+        """TestMemberApi 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("m1_maintainer_adds_member"):
+                code, res = self.post("/api/project/member",
+                                      {"as": "bob", "slug": "demo", "member": "dan",
+                                       "role": "contributor"})
+                self.assertEqual(code, 200, res)
+                self.assertTrue(res.get("ok"), res)
+                self.assertEqual(self.members()["dan"]["role"], "contributor")
 
-    # M2. upsert 부분 갱신: position만 → role/until 불변
-    def test_m2_partial_update(self):
-        code, res = self.post("/api/project/member",
-                              {"as": "bob", "slug": "demo", "member": "carol",
-                               "position": "designer"})
-        self.assertEqual(code, 200, res)
-        m = self.members()["carol"]
-        self.assertEqual(m["role"], "contributor")
-        self.assertEqual(m["position"], "designer")
-        self.assertEqual(m.get("until", ""), "")
+            # M2. upsert 부분 갱신: position만 → role/until 불변
+        with self.subTest("m2_partial_update"):
+                code, res = self.post("/api/project/member",
+                                      {"as": "bob", "slug": "demo", "member": "carol",
+                                       "position": "designer"})
+                self.assertEqual(code, 200, res)
+                m = self.members()["carol"]
+                self.assertEqual(m["role"], "contributor")
+                self.assertEqual(m["position"], "designer")
+                self.assertEqual(m.get("until", ""), "")
 
-    # M3. contributor는 멤버 변경 불가
-    def test_m3_contributor_denied(self):
-        code, res = self.post("/api/project/member",
-                              {"as": "carol", "slug": "demo", "member": "dan",
-                               "role": "viewer"})
-        self.assertEqual(code, 400, res)
-        self.assertFalse(res.get("ok"))
+            # M3. contributor는 멤버 변경 불가
+        with self.subTest("m3_contributor_denied"):
+                code, res = self.post("/api/project/member",
+                                      {"as": "carol", "slug": "demo", "member": "dan",
+                                       "role": "viewer"})
+                self.assertEqual(code, 400, res)
+                self.assertFalse(res.get("ok"))
 
-    # M4. owner 지정은 owner만 (maintainer 불가)
-    def test_m4_owner_grant_needs_own(self):
-        code, res = self.post("/api/project/member",
-                              {"as": "bob", "slug": "demo", "member": "carol",
-                               "role": "owner"})
-        self.assertEqual(code, 400, res)
+            # M4. owner 지정은 owner만 (maintainer 불가)
+        with self.subTest("m4_owner_grant_needs_own"):
+                code, res = self.post("/api/project/member",
+                                      {"as": "bob", "slug": "demo", "member": "carol",
+                                       "role": "owner"})
+                self.assertEqual(code, 400, res)
 
-    # M5. 마지막 활성 owner 강등/제거 차단
-    def test_m5_last_owner_guard(self):
-        code, res = self.post("/api/project/member",
-                              {"as": "alice", "slug": "demo", "member": "alice",
-                               "role": "maintainer"})
-        self.assertEqual(code, 400, res)
-        code, res = self.post("/api/project/member/rm",
-                              {"as": "alice", "slug": "demo", "member": "alice"})
-        self.assertEqual(code, 400, res)
-        self.assertEqual(self.members()["alice"]["role"], "owner")
+            # M5. 마지막 활성 owner 강등/제거 차단
+        with self.subTest("m5_last_owner_guard"):
+                code, res = self.post("/api/project/member",
+                                      {"as": "alice", "slug": "demo", "member": "alice",
+                                       "role": "maintainer"})
+                self.assertEqual(code, 400, res)
+                code, res = self.post("/api/project/member/rm",
+                                      {"as": "alice", "slug": "demo", "member": "alice"})
+                self.assertEqual(code, 400, res)
+                self.assertEqual(self.members()["alice"]["role"], "owner")
 
-    # M6. 미등록 as 거부 (admin 이라도 대리 대상은 등록 사용자만)
-    def test_m6_unregistered_actor(self):
-        code, res = self.post("/api/project/member",
-                              {"as": "ghost", "slug": "demo", "member": "dan",
-                               "role": "viewer"})
-        self.assertEqual(code, 400, res)
+            # M6. 미등록 as 거부 (admin 이라도 대리 대상은 등록 사용자만)
+        with self.subTest("m6_unregistered_actor"):
+                code, res = self.post("/api/project/member",
+                                      {"as": "ghost", "slug": "demo", "member": "dan",
+                                       "role": "viewer"})
+                self.assertEqual(code, 400, res)
 
-    # M6b. 구모델 user 파라미터는 무시 — carol(contributor) 대리 중 user:alice
-    #      (owner) 스푸핑을 얹어도 actor 는 carol → 거부 (REQ-20260824-027 W3)
-    def test_m6b_user_param_ignored(self):
-        code, res = self.post("/api/project/member",
-                              {"as": "carol", "user": "alice", "slug": "demo",
-                               "member": "dan", "role": "viewer"})
-        self.assertEqual(code, 400, res)
-        self.assertFalse(res.get("ok"))
+            # M6b. 구모델 user 파라미터는 무시 — carol(contributor) 대리 중 user:alice
+            #      (owner) 스푸핑을 얹어도 actor 는 carol → 거부 (REQ-20260824-027 W3)
+        with self.subTest("m6b_user_param_ignored"):
+                code, res = self.post("/api/project/member",
+                                      {"as": "carol", "user": "alice", "slug": "demo",
+                                       "member": "dan", "role": "viewer"})
+                self.assertEqual(code, 400, res)
+                self.assertFalse(res.get("ok"))
 
-    # M7. 제거 정상 경로
-    def test_m7_remove_member(self):
-        self.post("/api/project/member",
-                  {"as": "bob", "slug": "demo", "member": "dan",
-                   "role": "contributor"})
-        code, res = self.post("/api/project/member/rm",
-                              {"as": "bob", "slug": "demo", "member": "dan"})
-        self.assertEqual(code, 200, res)
-        self.assertNotIn("dan", self.members())
+            # M7. 제거 정상 경로
+        with self.subTest("m7_remove_member"):
+                self.post("/api/project/member",
+                          {"as": "bob", "slug": "demo", "member": "dan",
+                           "role": "contributor"})
+                code, res = self.post("/api/project/member/rm",
+                                      {"as": "bob", "slug": "demo", "member": "dan"})
+                self.assertEqual(code, 200, res)
+                self.assertNotIn("dan", self.members())
 
-    # M8. 회귀: CLI 경로 불변 (추출 후에도 동작·거부 동일)
-    def test_m8_cli_regression(self):
-        r = self.cli("project", "member", "demo", "ls", expect=0)
-        self.assertIn("alice", r.stdout)
-        r = self.cli("project", "member", "demo", "add", "dan",
-                     "--role", "viewer", "--user", "carol", expect=None)
-        self.assertNotEqual(r.returncode, 0)  # contributor 거부
-
+            # M8. 회귀: CLI 경로 불변 (추출 후에도 동작·거부 동일)
+        with self.subTest("m8_cli_regression"):
+            r = self.cli("project", "member", "demo", "ls", expect=0)
+            self.assertIn("alice", r.stdout)
+            r = self.cli("project", "member", "demo", "add", "dan",
+                         "--role", "viewer", "--user", "carol", expect=None)
+            self.assertNotEqual(r.returncode, 0)  # contributor 거부
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

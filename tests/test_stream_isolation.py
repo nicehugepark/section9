@@ -155,82 +155,83 @@ class TestStreamIsolation(unittest.TestCase):
         return {s["session"] for s in d["streams"]}
 
     # S1. 목록 필터: 비멤버 시점에서 타인 세션 스트림 제외
-    def test_s1_list_filtered(self):
-        sids = self.stream_sids("bob")
-        self.assertNotIn(f"{SID_ALICE}-full", sids)   # alice 개인 세션
-        self.assertNotIn(f"{SID_PX}-full", sids)      # px 멤버 아님
-        self.assertNotIn(f"{SID_ORPHAN}-full", sids)  # 기록 없는 세션
-        self.assertIn(f"{SID_BOUND}-full", sids)      # 자기 바인딩 세션
+    def test_test_stream_isolation(self):
+        """TestStreamIsolation 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("s1_list_filtered"):
+                sids = self.stream_sids("bob")
+                self.assertNotIn(f"{SID_ALICE}-full", sids)   # alice 개인 세션
+                self.assertNotIn(f"{SID_PX}-full", sids)      # px 멤버 아님
+                self.assertNotIn(f"{SID_ORPHAN}-full", sids)  # 기록 없는 세션
+                self.assertIn(f"{SID_BOUND}-full", sids)      # 자기 바인딩 세션
 
-    # S2. 직접 조회 404 — 미존재 스트림과 동일 응답 (존재 여부 비누설)
-    def test_s2_direct_fetch_404(self):
-        code, d = self.get("/api/stream", session=f"{SID_ALICE}-full",
-                           **{"as": "bob"})
-        self.assertEqual(code, 404)
-        code2, d2 = self.get("/api/stream", session="nosuchsess-full",
-                             **{"as": "bob"})
-        self.assertEqual(code2, 404)
-        self.assertEqual(d, d2)  # 응답 본문까지 동일해야 비누설
-        # 비admin 서버 직접 시점 + as 상승 시도도 차단
-        code, _ = self.get("/api/stream", port=self.port_bob,
-                           session=f"{SID_ALICE}-full", **{"as": "boss"})
-        self.assertEqual(code, 404)
+            # S2. 직접 조회 404 — 미존재 스트림과 동일 응답 (존재 여부 비누설)
+        with self.subTest("s2_direct_fetch_404"):
+                code, d = self.get("/api/stream", session=f"{SID_ALICE}-full",
+                                   **{"as": "bob"})
+                self.assertEqual(code, 404)
+                code2, d2 = self.get("/api/stream", session="nosuchsess-full",
+                                     **{"as": "bob"})
+                self.assertEqual(code2, 404)
+                self.assertEqual(d, d2)  # 응답 본문까지 동일해야 비누설
+                # 비admin 서버 직접 시점 + as 상승 시도도 차단
+                code, _ = self.get("/api/stream", port=self.port_bob,
+                                   session=f"{SID_ALICE}-full", **{"as": "boss"})
+                self.assertEqual(code, 404)
 
-    # S3. admin 전체 열람
-    def test_s3_admin_sees_all(self):
-        sids = self.stream_sids("boss")
-        for sid in (SID_ALICE, SID_PX, SID_BOUND, SID_ORPHAN):
-            self.assertIn(f"{sid}-full", sids)
-        for sid in (SID_ALICE, SID_PX, SID_BOUND, SID_ORPHAN):
-            code, _ = self.get("/api/stream", session=f"{sid}-full")
+            # S3. admin 전체 열람
+        with self.subTest("s3_admin_sees_all"):
+                sids = self.stream_sids("boss")
+                for sid in (SID_ALICE, SID_PX, SID_BOUND, SID_ORPHAN):
+                    self.assertIn(f"{sid}-full", sids)
+                for sid in (SID_ALICE, SID_PX, SID_BOUND, SID_ORPHAN):
+                    code, _ = self.get("/api/stream", session=f"{sid}-full")
+                    self.assertEqual(code, 200)
+
+            # S4. 본인·프로젝트 멤버 열람 허용
+        with self.subTest("s4_owner_and_member_allowed"):
+                sids = self.stream_sids("alice")
+                self.assertIn(f"{SID_ALICE}-full", sids)  # 본인(무소속 SES=작성자)
+                self.assertIn(f"{SID_PX}-full", sids)     # px 활성 멤버
+                code, d = self.get("/api/stream", session=f"{SID_ALICE}-full",
+                                   **{"as": "alice"})
+                self.assertEqual(code, 200)
+                code, _ = self.get("/api/stream", session=f"{SID_PX}-full",
+                                   **{"as": "alice"})
+                self.assertEqual(code, 200)
+                # 비admin whoami 서버의 기본 시점 = 자기 자신 (bob 서버, as 없이)
+                code, _ = self.get("/api/stream", port=self.port_bob,
+                                   session=f"{SID_BOUND}-full")
+                self.assertEqual(code, 200)
+
+            # S5. SES 문서 없는 스트림 = 보수 기본 (바인딩 user 본인·admin만)
+        with self.subTest("s5_no_ses_conservative"):
+                self.assertIn(f"{SID_BOUND}-full", self.stream_sids("bob"))
+                self.assertNotIn(f"{SID_BOUND}-full", self.stream_sids("alice"))
+                code, _ = self.get("/api/stream", session=f"{SID_BOUND}-full",
+                                   **{"as": "alice"})
+                self.assertEqual(code, 404)
+                # 바인딩조차 없으면 비admin 누구에게도 안 보인다
+                for viewer in ("alice", "bob"):
+                    self.assertNotIn(f"{SID_ORPHAN}-full", self.stream_sids(viewer))
+                    code, _ = self.get("/api/stream", session=f"{SID_ORPHAN}-full",
+                                       **{"as": viewer})
+                    self.assertEqual(code, 404)
+
+            # S6. 회귀: 가시 스트림의 파싱·증분(offset/after) 기존 동작 유지
+        with self.subTest("s6_stream_parse_regression"):
+            code, d = self.get("/api/stream", session=f"{SID_ALICE}-full",
+                               **{"as": "alice"})
             self.assertEqual(code, 200)
-
-    # S4. 본인·프로젝트 멤버 열람 허용
-    def test_s4_owner_and_member_allowed(self):
-        sids = self.stream_sids("alice")
-        self.assertIn(f"{SID_ALICE}-full", sids)  # 본인(무소속 SES=작성자)
-        self.assertIn(f"{SID_PX}-full", sids)     # px 활성 멤버
-        code, d = self.get("/api/stream", session=f"{SID_ALICE}-full",
-                           **{"as": "alice"})
-        self.assertEqual(code, 200)
-        code, _ = self.get("/api/stream", session=f"{SID_PX}-full",
-                           **{"as": "alice"})
-        self.assertEqual(code, 200)
-        # 비admin whoami 서버의 기본 시점 = 자기 자신 (bob 서버, as 없이)
-        code, _ = self.get("/api/stream", port=self.port_bob,
-                           session=f"{SID_BOUND}-full")
-        self.assertEqual(code, 200)
-
-    # S5. SES 문서 없는 스트림 = 보수 기본 (바인딩 user 본인·admin만)
-    def test_s5_no_ses_conservative(self):
-        self.assertIn(f"{SID_BOUND}-full", self.stream_sids("bob"))
-        self.assertNotIn(f"{SID_BOUND}-full", self.stream_sids("alice"))
-        code, _ = self.get("/api/stream", session=f"{SID_BOUND}-full",
-                           **{"as": "alice"})
-        self.assertEqual(code, 404)
-        # 바인딩조차 없으면 비admin 누구에게도 안 보인다
-        for viewer in ("alice", "bob"):
-            self.assertNotIn(f"{SID_ORPHAN}-full", self.stream_sids(viewer))
-            code, _ = self.get("/api/stream", session=f"{SID_ORPHAN}-full",
-                               **{"as": viewer})
-            self.assertEqual(code, 404)
-
-    # S6. 회귀: 가시 스트림의 파싱·증분(offset/after) 기존 동작 유지
-    def test_s6_stream_parse_regression(self):
-        code, d = self.get("/api/stream", session=f"{SID_ALICE}-full",
-                           **{"as": "alice"})
-        self.assertEqual(code, 200)
-        roles = [e["role"] for e in d["events"]]
-        self.assertEqual(roles, ["user", "assistant"])
-        self.assertEqual(d["events"][0]["text"], "hello stream")
-        self.assertGreater(d["offset"], 0)
-        # after=offset 증분 재조회 → 새 이벤트 없음
-        code, d2 = self.get("/api/stream", session=f"{SID_ALICE}-full",
-                            after=d["offset"], **{"as": "alice"})
-        self.assertEqual(code, 200)
-        self.assertEqual(d2["count"], 0)
-        self.assertEqual(d2["offset"], d["offset"])
-
+            roles = [e["role"] for e in d["events"]]
+            self.assertEqual(roles, ["user", "assistant"])
+            self.assertEqual(d["events"][0]["text"], "hello stream")
+            self.assertGreater(d["offset"], 0)
+            # after=offset 증분 재조회 → 새 이벤트 없음
+            code, d2 = self.get("/api/stream", session=f"{SID_ALICE}-full",
+                                after=d["offset"], **{"as": "alice"})
+            self.assertEqual(code, 200)
+            self.assertEqual(d2["count"], 0)
+            self.assertEqual(d2["offset"], d["offset"])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

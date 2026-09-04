@@ -109,29 +109,24 @@ class TailProc:
 class TestBackendGate(unittest.TestCase):
     """S1·S6. 판정이 지나는 문은 하나고, 문이 없으면 조용히 거짓이다."""
 
-    def test_s1_linux_uses_proc(self):
-        """이 기계(리눅스/WSL)는 예전 길 그대로 `/proc` 을 쓴다."""
-        mod.proc_cache_clear()
-        self.assertEqual(mod.proc_backend(), "proc")
-
-    def test_s1b_proc_table_sees_myself(self):
-        """어느 갈래로 보든 **나 자신**은 목록에 있고 명령줄이 붙는다."""
-        for name in BACKENDS:
-            with self.subTest(backend=name), Backend(name):
-                t = mod.proc_table()
-                self.assertIn(os.getpid(), t, f"{name}: 내 pid 가 안 보인다")
-                self.assertIn("python", t[os.getpid()].lower())
-
-    def test_s6_no_backend_is_false_not_crash(self):
-        """프로세스를 볼 수 없는 자리에서도 죽지 않는다 — 판정이 없던 때와
-        같게 동작한다(거짓). 예외를 던지면 대시보드 폴 전체가 멎는다."""
-        with Backend("none"):
-            self.assertEqual(mod.proc_table(), {})
-            self.assertFalse(mod.pid_alive(os.getpid()))
-            self.assertFalse(mod._inbox_watch_alive("abcd1234"))
-            self.assertEqual(mod.pid_cmdline(os.getpid()), "")
-            self.assertFalse(mod._session_proc_alive("deadbeef"))
-
+    def test_test_backend_gate(self):
+        """S1·S6. 판정이 지나는 문은 하나고, 문이 없으면 조용히 거짓이다."""
+        with self.subTest("s1_linux_uses_proc"):
+            mod.proc_cache_clear()
+            self.assertEqual(mod.proc_backend(), "proc")
+        with self.subTest("s1b_proc_table_sees_myself"):
+            for name in BACKENDS:
+                with self.subTest(backend=name), Backend(name):
+                    t = mod.proc_table()
+                    self.assertIn(os.getpid(), t, f"{name}: 내 pid 가 안 보인다")
+                    self.assertIn("python", t[os.getpid()].lower())
+        with self.subTest("s6_no_backend_is_false_not_crash"):
+            with Backend("none"):
+                self.assertEqual(mod.proc_table(), {})
+                self.assertFalse(mod.pid_alive(os.getpid()))
+                self.assertFalse(mod._inbox_watch_alive("abcd1234"))
+                self.assertEqual(mod.pid_cmdline(os.getpid()), "")
+                self.assertFalse(mod._session_proc_alive("deadbeef"))
 
 class TestInboxWatch(unittest.TestCase):
     """S2. 이 REQ 의 본체 — 맥 갈래에서도 수신 대기가 보여야 한다."""
@@ -146,26 +141,21 @@ class TestInboxWatch(unittest.TestCase):
         cls.tail.kill()
         mod.proc_cache_clear()
 
-    def test_s2_both_backends_agree_on_listening(self):
-        """`/proc` 갈래와 `ps` 갈래가 **같은 답**을 낸다. 맥이 idle 로 굳던
-        이유가 바로 이 둘이 갈렸기 때문이다."""
-        for name in BACKENDS:
-            with self.subTest(backend=name), Backend(name):
-                self.assertTrue(mod._inbox_watch_alive(self.sid),
-                                f"{name}: 도는 tail 을 못 봤다")
-
-    def test_s2b_other_session_is_not_listening(self):
-        """남의 세션까지 살아 있다고 하면 판정이 아니라 소음이다."""
-        for name in BACKENDS:
-            with self.subTest(backend=name), Backend(name):
-                self.assertFalse(mod._inbox_watch_alive("00000000"))
-
-    def test_s2c_empty_sid_is_never_listening(self):
-        """빈 id 는 아무 명령줄에나 맞는다 — 전부 살아있음이 되면 판정이 죽는다."""
-        for name in BACKENDS:
-            with self.subTest(backend=name), Backend(name):
-                self.assertFalse(mod._inbox_watch_alive(""))
-
+    def test_test_inbox_watch(self):
+        """S2. 이 REQ 의 본체 — 맥 갈래에서도 수신 대기가 보여야 한다."""
+        with self.subTest("s2_both_backends_agree_on_listening"):
+            for name in BACKENDS:
+                with self.subTest(backend=name), Backend(name):
+                    self.assertTrue(mod._inbox_watch_alive(self.sid),
+                                    f"{name}: 도는 tail 을 못 봤다")
+        with self.subTest("s2b_other_session_is_not_listening"):
+            for name in BACKENDS:
+                with self.subTest(backend=name), Backend(name):
+                    self.assertFalse(mod._inbox_watch_alive("00000000"))
+        with self.subTest("s2c_empty_sid_is_never_listening"):
+            for name in BACKENDS:
+                with self.subTest(backend=name), Backend(name):
+                    self.assertFalse(mod._inbox_watch_alive(""))
 
 class TestPidAlive(unittest.TestCase):
     """S3. pid 생존이 `/proc/<pid>` 존재에만 기대지 않는다."""
@@ -241,32 +231,28 @@ class TestChatLive(unittest.TestCase):
         b.update(kw)
         return b
 
-    def test_s5_fresh_activity_is_live_everywhere(self):
-        b = self._binding()
-        for name in BACKENDS + ("none",):
-            with self.subTest(backend=name), Backend(name):
-                self.assertTrue(mod.chat_live(b))
-
-    def test_s5b_attach_pid_alive_is_live_everywhere(self):
-        """활동이 낡아도 attach 프로세스가 살아 있으면 live 다 — 맥에서
-        `/proc/<pid>` 가 없어 이 갈래가 통째로 죽어 있었다."""
-        old = os.path.join(TMP, "old-transcript.jsonl")
-        with open(old, "w", encoding="utf-8") as f:
-            f.write("{}\n")
-        os.utime(old, (time.time() - 9999, time.time() - 9999))
-        b = self._binding(transcript_path=old, attach_pid=str(os.getpid()))
-        for name in BACKENDS:
-            with self.subTest(backend=name), Backend(name):
-                self.assertTrue(mod.chat_live(b),
-                                f"{name}: 산 attach pid 를 못 봤다")
-
-    def test_s5c_ended_beats_everything(self):
-        """끝난 세션은 어느 갈래에서도 되살아나지 않는다 (REQ-20260829-023 회귀)."""
-        b = self._binding(ended="1", attach_pid=str(os.getpid()))
-        for name in BACKENDS + ("none",):
-            with self.subTest(backend=name), Backend(name):
-                self.assertFalse(mod.chat_live(b))
-
+    def test_test_chat_live(self):
+        """S5. 채팅 생존 판정이 세 갈래 어디서도 같은 답을 낸다."""
+        with self.subTest("s5_fresh_activity_is_live_everywhere"):
+            b = self._binding()
+            for name in BACKENDS + ("none",):
+                with self.subTest(backend=name), Backend(name):
+                    self.assertTrue(mod.chat_live(b))
+        with self.subTest("s5b_attach_pid_alive_is_live_everywhere"):
+            old = os.path.join(TMP, "old-transcript.jsonl")
+            with open(old, "w", encoding="utf-8") as f:
+                f.write("{}\n")
+            os.utime(old, (time.time() - 9999, time.time() - 9999))
+            b = self._binding(transcript_path=old, attach_pid=str(os.getpid()))
+            for name in BACKENDS:
+                with self.subTest(backend=name), Backend(name):
+                    self.assertTrue(mod.chat_live(b),
+                                    f"{name}: 산 attach pid 를 못 봤다")
+        with self.subTest("s5c_ended_beats_everything"):
+            b = self._binding(ended="1", attach_pid=str(os.getpid()))
+            for name in BACKENDS + ("none",):
+                with self.subTest(backend=name), Backend(name):
+                    self.assertFalse(mod.chat_live(b))
 
 class TestCache(unittest.TestCase):
     """S7. 폴 한 바퀴가 세션 수만큼 `ps` 를 포크하지 않는다."""
@@ -348,55 +334,48 @@ class TestHooksDoNotDrift(unittest.TestCase):
         cls.tail.kill()
         mod.proc_cache_clear()
 
-    def test_h1_tail_alive_matches_s9(self):
-        """훅의 수신 대기 판정이 s9 의 것과 **같은 답**을 낸다 — 두 갈래 모두."""
-        for name in BACKENDS:
-            with self.subTest(backend=name), Backend(name):
-                for probe in (self.sid, "00000000", ""):
-                    self.assertEqual(
-                        self.prompt._tail_alive(f"inbox-{probe}" if probe else ""),
-                        mod._inbox_watch_alive(probe),
-                        f"{name}/{probe!r}: 훅과 s9 의 답이 갈렸다")
-
-    def test_h2_proc_info_agrees_across_backends(self):
-        """조상 체인의 재료(실행 파일 이름·부모 pid)가 갈래마다 같아야
-        `attach_pid` 가 맥에서도 진짜 claude 를 가리킨다."""
-        seen = {}
-        for name in BACKENDS:
-            with Backend(name):
-                for hook in (self.prompt, self.session):
-                    comm, ppid = hook._proc_info(os.getpid())
-                    self.assertEqual(ppid, os.getppid(),
-                                     f"{name}: 부모 pid 가 틀리다")
-                    self.assertTrue(comm, f"{name}: 실행 파일 이름이 비었다")
-                    seen.setdefault(name, comm)
-        self.assertEqual(len(set(seen.values())), 1,
-                         f"갈래마다 다른 이름이 나온다: {seen}")
-
-    def test_h3_claude_pid_never_returns_zero(self):
-        """못 찾으면 getppid 로 물러난다 — 0 이나 예외로 끝나면 바인딩이 깨진다."""
-        for name in BACKENDS + ("none",):
-            with self.subTest(backend=name), Backend(name):
-                for hook in (self.prompt, self.session):
-                    self.assertGreater(hook._claude_pid(), 0)
-
-    def test_h4_session_pid_alive_matches_s9(self):
-        """이중 접속 경고가 보는 생존이 s9 의 생존과 같다."""
-        p = subprocess.Popen(["sleep", "30"], stdin=subprocess.DEVNULL)
-        try:
+    def test_test_hooks_do_not_drift(self):
+        """복제는 갈라진다 — 갈라지지 않는지를 여기서 못박는다."""
+        with self.subTest("h1_tail_alive_matches_s9"):
+            for name in BACKENDS:
+                with self.subTest(backend=name), Backend(name):
+                    for probe in (self.sid, "00000000", ""):
+                        self.assertEqual(
+                            self.prompt._tail_alive(f"inbox-{probe}" if probe else ""),
+                            mod._inbox_watch_alive(probe),
+                            f"{name}/{probe!r}: 훅과 s9 의 답이 갈렸다")
+        with self.subTest("h2_proc_info_agrees_across_backends"):
+            seen = {}
+            for name in BACKENDS:
+                with Backend(name):
+                    for hook in (self.prompt, self.session):
+                        comm, ppid = hook._proc_info(os.getpid())
+                        self.assertEqual(ppid, os.getppid(),
+                                         f"{name}: 부모 pid 가 틀리다")
+                        self.assertTrue(comm, f"{name}: 실행 파일 이름이 비었다")
+                        seen.setdefault(name, comm)
+            self.assertEqual(len(set(seen.values())), 1,
+                             f"갈래마다 다른 이름이 나온다: {seen}")
+        with self.subTest("h3_claude_pid_never_returns_zero"):
+            for name in BACKENDS + ("none",):
+                with self.subTest(backend=name), Backend(name):
+                    for hook in (self.prompt, self.session):
+                        self.assertGreater(hook._claude_pid(), 0)
+        with self.subTest("h4_session_pid_alive_matches_s9"):
+            p = subprocess.Popen(["sleep", "30"], stdin=subprocess.DEVNULL)
+            try:
+                for name in BACKENDS:
+                    with self.subTest(backend=name), Backend(name):
+                        self.assertEqual(self.session._pid_alive(p.pid),
+                                         mod.pid_alive(p.pid))
+            finally:
+                p.kill()
+                p.wait(timeout=5)
             for name in BACKENDS:
                 with self.subTest(backend=name), Backend(name):
                     self.assertEqual(self.session._pid_alive(p.pid),
                                      mod.pid_alive(p.pid))
-        finally:
-            p.kill()
-            p.wait(timeout=5)
-        for name in BACKENDS:
-            with self.subTest(backend=name), Backend(name):
-                self.assertEqual(self.session._pid_alive(p.pid),
-                                 mod.pid_alive(p.pid))
-                self.assertFalse(self.session._pid_alive(p.pid))
-
+                    self.assertFalse(self.session._pid_alive(p.pid))
 
 class TestDoctorLive(unittest.TestCase):
     """S8. 맥이 없는 자리에서 짐작하지 않으려면, 저쪽에서 한 번 돌려
@@ -409,80 +388,68 @@ class TestDoctorLive(unittest.TestCase):
                               capture_output=True, text=True, timeout=90,
                               env=env)
 
-    def test_s8_json_names_the_branch(self):
-        r = self._run("--json")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        d = json.loads(r.stdout)
-        self.assertIn(d["backend"], ("proc", "ps", "win", "none"))
-        self.assertEqual(d["backend"], "proc")      # 이 기계는 리눅스다
-        self.assertIn("os", d)
-        self.assertIn("processes", d)
-        self.assertGreater(d["processes"], 0)
-        self.assertIn("sessions", d)
-        self.assertIn("checks", d)
-        keys = {c["key"] for c in d["checks"]}
-        # 판정이 지나는 갈래마다 한 줄씩 — 어디서 끊겼는지 눈으로 보인다
-        for want in ("backend", "self", "tail", "attach", "port"):
-            self.assertIn(want, keys, f"{want} 갈래가 진단에 없다")
-
-    def test_s8d_a_branch_that_sees_nothing_is_not_a_success(self):
-        """갈래 이름이 붙었다는 것과 그 갈래가 실제로 무엇을 봤다는 것은 다른
-        일이다. 조회 도구가 없는 기계에서 `win` 갈래는 이름은 서지만 목록이
-        빈다 — 거기서 ✓ 와 0 을 내면 아무것도 못 보는 기계가 스스로 멀쩡하다고
-        말하게 되고, 이 진단이 있는 이유가 사라진다."""
-        env = dict(os.environ)
-        env["S9_ROOT"] = TMP
-        env["S9_PROC_BACKEND"] = "win"    # 이 기계에 PowerShell 은 없다
-        r = subprocess.run([sys.executable, S9, "doctor", "--live"],
-                           capture_output=True, text=True, timeout=90, env=env)
-        self.assertEqual(r.returncode, 1,
-                         "아무것도 못 본 기계가 0 으로 끝났다")
-        self.assertIn("✗", r.stdout, "못 본다는 표시가 없다")
-        d = json.loads(subprocess.run(
-            [sys.executable, S9, "doctor", "--live", "--json"],
-            capture_output=True, text=True, timeout=90, env=env).stdout)
-        self.assertEqual(d["backend"], "win")
-        self.assertTrue(d["blind"])
-        self.assertEqual(d["processes"], 0)
-
-    def test_s8b_human_output_has_no_jargon_and_names_os(self):
-        r = self._run()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        out = r.stdout
-        self.assertIn("운영체제", out)
-        self.assertIn("프로세스", out)
-        for jargon in ("/proc", "backend", "None", "Traceback"):
-            self.assertNotIn(jargon, out, f"내부 용어가 샜다: {jargon}\n{out}")
-    def test_s8c_a_deaf_machine_shows_what_a_tail_looks_like_here(self):
-        """듣고 있는 것이 0일 때가 **친구의 화면**이다.
-
-        그때 "0개"만 말하면 다음 한 걸음이 또 짐작이 된다. 수신함 파일은
-        있는가 · 이 기계에서 tail 이라는 것이 도는가 · 그 명령줄이 우리가
-        찾는 모양인가 — 셋을 한 번에 보여 줘야 붙여 넣은 한 번으로 끝난다.
-        """
-        os.makedirs(os.path.join(TMP, "state", "terminal"), exist_ok=True)
-        box = os.path.join(TMP, "state", "terminal", "inbox-deadbeef.jsonl")
-        with open(box, "w", encoding="utf-8") as f:
-            f.write("")
-        self.addCleanup(os.unlink, box)
-        env = dict(os.environ)
-        env["S9_ROOT"] = TMP
-        env["S9_PROC_BACKEND"] = "none"      # 프로세스를 못 보는 기계인 척
-        r = subprocess.run([sys.executable, S9, "doctor", "--live"],
-                           capture_output=True, text=True, timeout=90, env=env)
-        self.assertEqual(r.returncode, 1, "볼 수 없는 기계는 1로 끝나야 한다")
-        self.assertIn("수신함", r.stdout, "수신함이 있는지를 안 말한다")
-        self.assertIn("deadbeef", r.stdout, "어느 수신함인지를 안 말한다")
-        self.assertIn("tail", r.stdout,
-                      "이 기계에서 tail 이 어떤 모양인지를 안 보여 준다 — "
-                      "그러면 다음 한 걸음이 또 짐작이 된다")
-        d = json.loads(subprocess.run(
-            [sys.executable, S9, "doctor", "--live", "--json"],
-            capture_output=True, text=True, timeout=90, env=env).stdout)
-        self.assertIn("deadbeef", d["inboxes"])
-        self.assertIn("tails", d, "기계 판독용에도 증거가 실려야 한다")
-
-
+    def test_test_doctor_live(self):
+        """S8. 맥이 없는 자리에서 짐작하지 않으려면, 저쪽에서 한 번 돌려"""
+        with self.subTest("s8_json_names_the_branch"):
+            r = self._run("--json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            d = json.loads(r.stdout)
+            self.assertIn(d["backend"], ("proc", "ps", "win", "none"))
+            self.assertEqual(d["backend"], "proc")      # 이 기계는 리눅스다
+            self.assertIn("os", d)
+            self.assertIn("processes", d)
+            self.assertGreater(d["processes"], 0)
+            self.assertIn("sessions", d)
+            self.assertIn("checks", d)
+            keys = {c["key"] for c in d["checks"]}
+            # 판정이 지나는 갈래마다 한 줄씩 — 어디서 끊겼는지 눈으로 보인다
+            for want in ("backend", "self", "tail", "attach", "port"):
+                self.assertIn(want, keys, f"{want} 갈래가 진단에 없다")
+        with self.subTest("s8d_a_branch_that_sees_nothing_is_not_a_success"):
+            env = dict(os.environ)
+            env["S9_ROOT"] = TMP
+            env["S9_PROC_BACKEND"] = "win"    # 이 기계에 PowerShell 은 없다
+            r = subprocess.run([sys.executable, S9, "doctor", "--live"],
+                               capture_output=True, text=True, timeout=90, env=env)
+            self.assertEqual(r.returncode, 1,
+                             "아무것도 못 본 기계가 0 으로 끝났다")
+            self.assertIn("✗", r.stdout, "못 본다는 표시가 없다")
+            d = json.loads(subprocess.run(
+                [sys.executable, S9, "doctor", "--live", "--json"],
+                capture_output=True, text=True, timeout=90, env=env).stdout)
+            self.assertEqual(d["backend"], "win")
+            self.assertTrue(d["blind"])
+            self.assertEqual(d["processes"], 0)
+        with self.subTest("s8b_human_output_has_no_jargon_and_names_os"):
+            r = self._run()
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertIn("운영체제", out)
+            self.assertIn("프로세스", out)
+            for jargon in ("/proc", "backend", "None", "Traceback"):
+                self.assertNotIn(jargon, out, f"내부 용어가 샜다: {jargon}\n{out}")
+        with self.subTest("s8c_a_deaf_machine_shows_what_a_tail_looks_like_here"):
+            os.makedirs(os.path.join(TMP, "state", "terminal"), exist_ok=True)
+            box = os.path.join(TMP, "state", "terminal", "inbox-deadbeef.jsonl")
+            with open(box, "w", encoding="utf-8") as f:
+                f.write("")
+            self.addCleanup(os.unlink, box)
+            env = dict(os.environ)
+            env["S9_ROOT"] = TMP
+            env["S9_PROC_BACKEND"] = "none"      # 프로세스를 못 보는 기계인 척
+            r = subprocess.run([sys.executable, S9, "doctor", "--live"],
+                               capture_output=True, text=True, timeout=90, env=env)
+            self.assertEqual(r.returncode, 1, "볼 수 없는 기계는 1로 끝나야 한다")
+            self.assertIn("수신함", r.stdout, "수신함이 있는지를 안 말한다")
+            self.assertIn("deadbeef", r.stdout, "어느 수신함인지를 안 말한다")
+            self.assertIn("tail", r.stdout,
+                          "이 기계에서 tail 이 어떤 모양인지를 안 보여 준다 — "
+                          "그러면 다음 한 걸음이 또 짐작이 된다")
+            d = json.loads(subprocess.run(
+                [sys.executable, S9, "doctor", "--live", "--json"],
+                capture_output=True, text=True, timeout=90, env=env).stdout)
+            self.assertIn("deadbeef", d["inboxes"])
+            self.assertIn("tails", d, "기계 판독용에도 증거가 실려야 한다")
 
 # ── 윈도우 갈래 ────────────────────────────────────────────────────────────
 # 이 REQ 의 목표는 "맥·윈도우·리눅스 어디서든" 이다. 맥을 고치면서 문을 하나로
@@ -550,112 +517,81 @@ class TestWindowsBackend(unittest.TestCase):
         cls.tail.kill()
         mod.proc_cache_clear()
 
-    def test_w1_backend_name_is_forceable(self):
-        """`win` 이 강제할 수 있는 이름이어야 이 자리에서 시험할 수 있다."""
-        with Backend("win"):
-            self.assertEqual(mod.proc_backend(), "win")
-
-    def test_w2_listening_matches_the_linux_answer(self):
-        """이 REQ 의 본체가 윈도우 자리로 옮겨온 것 — 수신 대기 판정이
-        `/proc` 갈래와 같은 답을 낸다."""
-        with Backend("proc"):
-            want = {p: mod._inbox_watch_alive(p)
-                    for p in (self.sid, "00000000", "")}
-        self.assertTrue(want[self.sid], "이 기계에서 tail 이 안 잡혔다")
-        with Backend("win"), FakeWin(ps_out=win_lines(self.real)):
-            for probe, exp in want.items():
-                self.assertEqual(mod._inbox_watch_alive(probe), exp,
-                                 f"{probe!r}: 윈도우 갈래가 다른 답을 냈다")
-
-    def test_w3_pid_alive_never_calls_os_kill(self):
-        """윈도우 파이썬의 `os.kill` 은 시그널 0 에도 프로세스를 **죽인다**.
-        목록으로만 답해야 한다 — 여기서 죽이면 사용자의 세션이 죽는다."""
-        with Backend("win"), FakeWin(ps_out=win_lines(self.real)), \
-                mock.patch.object(os, "kill",
-                                  side_effect=AssertionError("os.kill 호출")):
-            self.assertTrue(mod.pid_alive(os.getpid()))
-            self.assertFalse(mod.pid_alive(max(self.real) + 900000))
-            self.assertFalse(mod.pid_alive(0))
-            self.assertFalse(mod.pid_alive("x"))
-
-    def test_w4_ppid_comes_from_the_same_lookup(self):
-        """부모 pid 를 따로 묻지 않는다 — 조상 체인을 열 걸음 올라갈 때마다
-        프로세스를 띄우면 프롬프트마다 도는 훅이 못 쓰게 느려진다."""
-        fake = FakeWin(ps_out=[f"{os.getpid()} {os.getppid()} python3 x"])
-        with Backend("win"), fake:
-            self.assertEqual(mod.pid_ppid(os.getpid()), os.getppid())
-            self.assertEqual(mod.pid_ppid(max(self.real) + 900000), 0)
-        self.assertEqual(len(fake.seen), 1,
-                         f"조회를 여러 번 띄웠다: {fake.seen}")
-
-    def test_w5_wmic_fallback_keeps_commas_in_the_command_line(self):
-        """PowerShell 이 없는 옛 기계는 wmic 다. csv 인데 명령줄 안에 쉼표가
-        있으므로 **양 끝에서** 잘라야 명령줄이 잘리지 않는다 — 잘리면
-        수신함 이름이 사라져 판정이 조용히 거짓이 된다."""
-        cmd = f'tail -c +1 -f C:\\s9\\state\\terminal\\inbox-{self.sid}.jsonl,x'
-        wmic = ["Node,CommandLine,ParentProcessId,ProcessId",
-                f"BOX,{cmd},44,77"]
-        with Backend("win"), FakeWin(ps_out=[], wmic_out=wmic):
-            self.assertEqual(mod.proc_table().get(77), cmd)
-            self.assertTrue(mod._inbox_watch_alive(self.sid))
-            self.assertEqual(mod.pid_ppid(77), 44)
-
-    def test_w6_exe_name_survives_quotes_and_backslashes(self):
-        """`"C:\Program Files\nodejs\node.exe" x` 의 이름은 `node.exe` 다.
-        공백으로만 자르면 `"C:\Program` 이 되어 claude 판정이 통째로 어긋난다."""
-        line = '901 1 "C:\\Program Files\\nodejs\\node.exe" --y cli.js'
-        with Backend("win"), FakeWin(ps_out=[line]):
-            self.assertEqual(mod.pid_comm(901), "node.exe")
-        with Backend("win"), FakeWin(ps_out=["902 1 C:\\bin\\tail.exe -f a"]):
-            self.assertEqual(mod.pid_comm(902), "tail.exe")
-
-    def test_w7_port_owner_reads_netstat_in_any_language(self):
-        """`netstat` 의 상태 낱말은 언어팩을 탄다(한국어는 "수신 대기" —
-        공백까지 있어 열 수가 달라진다). 낱말이 아니라 상대 주소가 `:0` 인
-        것으로 갈라야 어느 나라 윈도우에서도 답이 나온다."""
-        rows = ["  TCP    0.0.0.0:9909     0.0.0.0:0     수신 대기      4321",
-                "  TCP    127.0.0.1:9909   127.0.0.1:5511  ESTABLISHED  9999"]
-        with Backend("win"), FakeWin(netstat_out=rows):
-            self.assertEqual(mod._port_owner_pid(9909), 4321)
-            self.assertEqual(mod._port_owner_pid(7000), 0)
-            self.assertEqual(mod._port_owner_pid(0), 0)
-
-    def test_w8_unknown_env_is_blank_not_a_guess(self):
-        """윈도우 조회는 환경을 주지 않는다. 모르는 것은 모른다고 해야
-        계정 표시가 조용히 틀리지 않는다 — 그리고 없는 `ps` 를 부르지 않는다."""
-        fake = FakeWin(ps_out=win_lines(self.real))
-        with Backend("win"), fake:
-            self.assertEqual(mod.pid_env(os.getpid(), "HOME"), "")
-            self.assertEqual(mod.proc_env_table(), {})
-        self.assertFalse([a for a in fake.seen
-                          if os.path.basename(a[0]) == "ps"],
-                         "윈도우에서 `ps` 를 불렀다")
-
-    def test_w9b_exe_suffix_does_not_hide_claude(self):
-        """윈도우의 실행 파일 이름에는 `.exe` 가 붙는다. 그대로 견주면
-        `node.exe` 가 런타임 목록에 안 걸려 **아무것도 claude 로 안 잡힌다**
-        — attach pid 재사용 방어가 늘 거짓을 내고, 조상 체인이 중간 셸에서
-        멈춰 그 셸의 pid 가 `attach_pid` 로 적힌다."""
-        lines = ['700 1 "C:\\Program Files\\nodejs\\node.exe" cli.js claude',
-                 "701 1 C:\\Windows\\System32\\notepad.exe",
-                 "702 1 C:\\bin\\claude.exe --resume"]
-        with Backend("win"), FakeWin(ps_out=lines):
-            self.assertTrue(mod._pid_is_claude(700))
-            self.assertTrue(mod._pid_is_claude(702))
-            self.assertFalse(mod._pid_is_claude(701), "아무거나 claude 가 됐다")
-        self.assertEqual(mod.exe_name("node.exe"), "node")
-        self.assertEqual(mod.exe_name("node"), "node")
-
-    def test_w9_empty_lookup_is_false_not_crash(self):
-        """조회가 아무것도 못 냈을 때(권한·정책) 판정은 거짓으로 떨어지고
-        프로그램은 산다. 대시보드 폴 한 바퀴가 예외로 멎으면 화면이 죽는다."""
-        with Backend("win"), FakeWin():
-            self.assertEqual(mod.proc_table(), {})
-            self.assertFalse(mod._inbox_watch_alive(self.sid))
-            self.assertFalse(mod.pid_alive(os.getpid()))
-            self.assertEqual(mod.pid_cmdline(os.getpid()), "")
-            self.assertEqual(mod.pid_comm(os.getpid()), "")
-
+    def test_test_windows_backend(self):
+        """W1~W7. 윈도우 갈래가 리눅스 갈래와 **같은 답**을 낸다."""
+        with self.subTest("w1_backend_name_is_forceable"):
+            with Backend("win"):
+                self.assertEqual(mod.proc_backend(), "win")
+        with self.subTest("w2_listening_matches_the_linux_answer"):
+            with Backend("proc"):
+                want = {p: mod._inbox_watch_alive(p)
+                        for p in (self.sid, "00000000", "")}
+            self.assertTrue(want[self.sid], "이 기계에서 tail 이 안 잡혔다")
+            with Backend("win"), FakeWin(ps_out=win_lines(self.real)):
+                for probe, exp in want.items():
+                    self.assertEqual(mod._inbox_watch_alive(probe), exp,
+                                     f"{probe!r}: 윈도우 갈래가 다른 답을 냈다")
+        with self.subTest("w3_pid_alive_never_calls_os_kill"):
+            with Backend("win"), FakeWin(ps_out=win_lines(self.real)), \
+                    mock.patch.object(os, "kill",
+                                      side_effect=AssertionError("os.kill 호출")):
+                self.assertTrue(mod.pid_alive(os.getpid()))
+                self.assertFalse(mod.pid_alive(max(self.real) + 900000))
+                self.assertFalse(mod.pid_alive(0))
+                self.assertFalse(mod.pid_alive("x"))
+        with self.subTest("w4_ppid_comes_from_the_same_lookup"):
+            fake = FakeWin(ps_out=[f"{os.getpid()} {os.getppid()} python3 x"])
+            with Backend("win"), fake:
+                self.assertEqual(mod.pid_ppid(os.getpid()), os.getppid())
+                self.assertEqual(mod.pid_ppid(max(self.real) + 900000), 0)
+            self.assertEqual(len(fake.seen), 1,
+                             f"조회를 여러 번 띄웠다: {fake.seen}")
+        with self.subTest("w5_wmic_fallback_keeps_commas_in_the_command_line"):
+            cmd = f'tail -c +1 -f C:\\s9\\state\\terminal\\inbox-{self.sid}.jsonl,x'
+            wmic = ["Node,CommandLine,ParentProcessId,ProcessId",
+                    f"BOX,{cmd},44,77"]
+            with Backend("win"), FakeWin(ps_out=[], wmic_out=wmic):
+                self.assertEqual(mod.proc_table().get(77), cmd)
+                self.assertTrue(mod._inbox_watch_alive(self.sid))
+                self.assertEqual(mod.pid_ppid(77), 44)
+        with self.subTest("w6_exe_name_survives_quotes_and_backslashes"):
+            line = '901 1 "C:\\Program Files\\nodejs\\node.exe" --y cli.js'
+            with Backend("win"), FakeWin(ps_out=[line]):
+                self.assertEqual(mod.pid_comm(901), "node.exe")
+            with Backend("win"), FakeWin(ps_out=["902 1 C:\\bin\\tail.exe -f a"]):
+                self.assertEqual(mod.pid_comm(902), "tail.exe")
+        with self.subTest("w7_port_owner_reads_netstat_in_any_language"):
+            rows = ["  TCP    0.0.0.0:9909     0.0.0.0:0     수신 대기      4321",
+                    "  TCP    127.0.0.1:9909   127.0.0.1:5511  ESTABLISHED  9999"]
+            with Backend("win"), FakeWin(netstat_out=rows):
+                self.assertEqual(mod._port_owner_pid(9909), 4321)
+                self.assertEqual(mod._port_owner_pid(7000), 0)
+                self.assertEqual(mod._port_owner_pid(0), 0)
+        with self.subTest("w8_unknown_env_is_blank_not_a_guess"):
+            fake = FakeWin(ps_out=win_lines(self.real))
+            with Backend("win"), fake:
+                self.assertEqual(mod.pid_env(os.getpid(), "HOME"), "")
+                self.assertEqual(mod.proc_env_table(), {})
+            self.assertFalse([a for a in fake.seen
+                              if os.path.basename(a[0]) == "ps"],
+                             "윈도우에서 `ps` 를 불렀다")
+        with self.subTest("w9b_exe_suffix_does_not_hide_claude"):
+            lines = ['700 1 "C:\\Program Files\\nodejs\\node.exe" cli.js claude',
+                     "701 1 C:\\Windows\\System32\\notepad.exe",
+                     "702 1 C:\\bin\\claude.exe --resume"]
+            with Backend("win"), FakeWin(ps_out=lines):
+                self.assertTrue(mod._pid_is_claude(700))
+                self.assertTrue(mod._pid_is_claude(702))
+                self.assertFalse(mod._pid_is_claude(701), "아무거나 claude 가 됐다")
+            self.assertEqual(mod.exe_name("node.exe"), "node")
+            self.assertEqual(mod.exe_name("node"), "node")
+        with self.subTest("w9_empty_lookup_is_false_not_crash"):
+            with Backend("win"), FakeWin():
+                self.assertEqual(mod.proc_table(), {})
+                self.assertFalse(mod._inbox_watch_alive(self.sid))
+                self.assertFalse(mod.pid_alive(os.getpid()))
+                self.assertEqual(mod.pid_cmdline(os.getpid()), "")
+                self.assertEqual(mod.pid_comm(os.getpid()), "")
 
 class TestWindowsHooksDoNotDrift(unittest.TestCase):
     """W10~W11. 훅의 복제본에도 같은 갈래가 있어야 한다 — 없으면 윈도우에서
@@ -678,50 +614,47 @@ class TestWindowsHooksDoNotDrift(unittest.TestCase):
             return_value=subprocess.CompletedProcess(
                 [], 0, stdout="\n".join(lines), stderr=""))
 
-    def test_w10_hook_tail_alive_matches_s9(self):
-        sid = "b71c0d92"
-        cmd = f"tail -c +1 -f C:\\s9\\state\\terminal\\inbox-{sid}.jsonl"
-        lines = [f"500 1 {cmd}", "501 1 C:\\Windows\\explorer.exe"]
-        with Backend("win"), self._fake(self.prompt, lines), \
-                FakeWin(ps_out=lines):
-            self.assertTrue(self.prompt._tail_alive(f"inbox-{sid}"))
-            self.assertEqual(self.prompt._tail_alive(f"inbox-{sid}"),
-                             mod._inbox_watch_alive(sid))
-            self.assertFalse(self.prompt._tail_alive("inbox-00000000"))
-            self.assertFalse(self.prompt._tail_alive(""))
-
-    def test_w11_hook_proc_info_and_alive_match_s9(self):
-        lines = ['700 1 "C:\\Program Files\\nodejs\\node.exe" cli.js',
-                 "800 700 C:\\Windows\\System32\\cmd.exe /c hook"]
-        for hook in (self.prompt, self.session):
-            with self.subTest(hook=hook.__name__), Backend("win"), \
-                    self._fake(hook, lines), FakeWin(ps_out=lines):
-                self.assertEqual(hook._proc_info(800), ("cmd.exe", 700))
-                self.assertEqual(hook._proc_info(700), ("node.exe", 1))
-                self.assertEqual(hook._proc_info(999), ("", 0))
-                self.assertEqual(hook._proc_info(700)[0], mod.pid_comm(700))
-                self.assertEqual(hook._proc_info(800)[1], mod.pid_ppid(800))
-        with Backend("win"), self._fake(self.session, lines), \
-                FakeWin(ps_out=lines):
-            self.assertTrue(self.session._pid_alive(700))
-            self.assertFalse(self.session._pid_alive(999))
-            self.assertEqual(self.session._pid_alive(700), mod.pid_alive(700))
-
-    def test_w12_hook_claude_pid_walks_the_chain_on_windows(self):
-        """조상 체인이 윈도우에서도 걸어 올라가야 `attach_pid` 가 진짜
-        claude 를 가리킨다 — 못 찾으면 0 이 아니라 getppid 로 물러난다."""
-        lines = [f'700 1 "C:\\Program Files\\nodejs\\node.exe" cli.js',
-                 f"800 700 C:\\Windows\\System32\\cmd.exe /c hook",
-                 f"{os.getpid()} 800 python3 hook"]
-        for hook in (self.prompt, self.session):
-            with self.subTest(hook=hook.__name__), Backend("win"), \
-                    self._fake(hook, lines):
-                with mock.patch.object(os, "getppid", return_value=800):
-                    self.assertEqual(hook._claude_pid(), 700)
-            with self.subTest(hook=hook.__name__, case="빈 조회"), \
-                    Backend("win"), self._fake(hook, []):
-                self.assertGreater(hook._claude_pid(), 0)
-
+    def test_test_windows_hooks_do_not_drift(self):
+        """W10~W11. 훅의 복제본에도 같은 갈래가 있어야 한다 — 없으면 윈도우에서"""
+        with self.subTest("w10_hook_tail_alive_matches_s9"):
+            sid = "b71c0d92"
+            cmd = f"tail -c +1 -f C:\\s9\\state\\terminal\\inbox-{sid}.jsonl"
+            lines = [f"500 1 {cmd}", "501 1 C:\\Windows\\explorer.exe"]
+            with Backend("win"), self._fake(self.prompt, lines), \
+                    FakeWin(ps_out=lines):
+                self.assertTrue(self.prompt._tail_alive(f"inbox-{sid}"))
+                self.assertEqual(self.prompt._tail_alive(f"inbox-{sid}"),
+                                 mod._inbox_watch_alive(sid))
+                self.assertFalse(self.prompt._tail_alive("inbox-00000000"))
+                self.assertFalse(self.prompt._tail_alive(""))
+        with self.subTest("w11_hook_proc_info_and_alive_match_s9"):
+            lines = ['700 1 "C:\\Program Files\\nodejs\\node.exe" cli.js',
+                     "800 700 C:\\Windows\\System32\\cmd.exe /c hook"]
+            for hook in (self.prompt, self.session):
+                with self.subTest(hook=hook.__name__), Backend("win"), \
+                        self._fake(hook, lines), FakeWin(ps_out=lines):
+                    self.assertEqual(hook._proc_info(800), ("cmd.exe", 700))
+                    self.assertEqual(hook._proc_info(700), ("node.exe", 1))
+                    self.assertEqual(hook._proc_info(999), ("", 0))
+                    self.assertEqual(hook._proc_info(700)[0], mod.pid_comm(700))
+                    self.assertEqual(hook._proc_info(800)[1], mod.pid_ppid(800))
+            with Backend("win"), self._fake(self.session, lines), \
+                    FakeWin(ps_out=lines):
+                self.assertTrue(self.session._pid_alive(700))
+                self.assertFalse(self.session._pid_alive(999))
+                self.assertEqual(self.session._pid_alive(700), mod.pid_alive(700))
+        with self.subTest("w12_hook_claude_pid_walks_the_chain_on_windows"):
+            lines = [f'700 1 "C:\\Program Files\\nodejs\\node.exe" cli.js',
+                     f"800 700 C:\\Windows\\System32\\cmd.exe /c hook",
+                     f"{os.getpid()} 800 python3 hook"]
+            for hook in (self.prompt, self.session):
+                with self.subTest(hook=hook.__name__), Backend("win"), \
+                        self._fake(hook, lines):
+                    with mock.patch.object(os, "getppid", return_value=800):
+                        self.assertEqual(hook._claude_pid(), 700)
+                with self.subTest(hook=hook.__name__, case="빈 조회"), \
+                        Backend("win"), self._fake(hook, []):
+                    self.assertGreater(hook._claude_pid(), 0)
 
 if __name__ == "__main__":
     unittest.main()

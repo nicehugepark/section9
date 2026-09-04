@@ -37,37 +37,38 @@ class Worktree(unittest.TestCase):
         cls.seg = cls.src[i:cls.src.index("\ndef ", i + 10)]
 
     # N1. 만들면 S9_ROOT 를 못박으라고 **말해 준다** — 이걸 빼먹으면 진실이 갈린다
-    def test_n1_pins_root(self):
-        self.assertIn("S9_ROOT", self.seg)
-        self.assertIn("진실이 두 벌", self.seg)
+    def test_worktree(self):
+        """Worktree 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_pins_root"):
+                self.assertIn("S9_ROOT", self.seg)
+                self.assertIn("진실이 두 벌", self.seg)
 
-    # N2. 거두는 자리를 함께 만든다 — 안 거두면 쌓인다
-    def test_n2_has_remove(self):
-        self.assertIn('act == "rm"', self.seg)
-        self.assertIn('"worktree", "remove"', self.seg,
-                      "거두는 명령을 실제로 부르지 않는다")
+            # N2. 거두는 자리를 함께 만든다 — 안 거두면 쌓인다
+        with self.subTest("n2_has_remove"):
+                self.assertIn('act == "rm"', self.seg)
+                self.assertIn('"worktree", "remove"', self.seg,
+                              "거두는 명령을 실제로 부르지 않는다")
 
-    # B1. 미커밋 변경이 있으면 거두지 않는다 — 말없이 지우지 않는 것이 존재 이유다
-    def test_b1_refuses_dirty_remove(self):
-        self.assertIn("확인 없이 지우지 않는다", self.seg)
+            # B1. 미커밋 변경이 있으면 거두지 않는다 — 말없이 지우지 않는 것이 존재 이유다
+        with self.subTest("b1_refuses_dirty_remove"):
+                self.assertIn("확인 없이 지우지 않는다", self.seg)
 
-    # B2. 이름을 가린다 — 경로를 벗어나는 이름을 받지 않는다
-    def test_b2_name_validated(self):
-        self.assertIn("re.fullmatch", self.seg)
-        m = re.search(r're\.fullmatch\(r"([^"]+)"', self.seg)
-        self.assertIsNotNone(m)
-        for bad in ("../x", "a/b", ""):
-            self.assertIsNone(re.fullmatch(m.group(1), bad), bad)
-        self.assertIsNotNone(re.fullmatch(m.group(1), "designer-1"))
+            # B2. 이름을 가린다 — 경로를 벗어나는 이름을 받지 않는다
+        with self.subTest("b2_name_validated"):
+                self.assertIn("re.fullmatch", self.seg)
+                m = re.search(r're\.fullmatch\(r"([^"]+)"', self.seg)
+                self.assertIsNotNone(m)
+                for bad in ("../x", "a/b", ""):
+                    self.assertIsNone(re.fullmatch(m.group(1), bad), bad)
+                self.assertIsNotNone(re.fullmatch(m.group(1), "designer-1"))
 
-    # R1. 워크트리 자리는 저장소에 담기지 않는다
-    def test_r1_not_committed(self):
-        r = subprocess.run(["git", "check-ignore", "-q",
-                            "state/worktrees/anything"],
-                           cwd=os.path.join(HERE, ".."), timeout=15)
-        self.assertEqual(r.returncode, 0,
-                         "워크트리 자리가 저장소에 담긴다")
-
+            # R1. 워크트리 자리는 저장소에 담기지 않는다
+        with self.subTest("r1_not_committed"):
+            r = subprocess.run(["git", "check-ignore", "-q",
+                                "state/worktrees/anything"],
+                               cwd=os.path.join(HERE, ".."), timeout=15)
+            self.assertEqual(r.returncode, 0,
+                             "워크트리 자리가 저장소에 담긴다")
 
 if __name__ == "__main__":
     unittest.main()

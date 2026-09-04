@@ -592,7 +592,7 @@ class Visible(Repo):
         r = subprocess.run([S9, "worktree", "ls"], capture_output=True,
                            text=True, env=dict(self.env), timeout=30)
         self.assertIn("bin/s9", r.stdout, r.stdout + r.stderr)
-        self.assertIn("커밋", r.stdout, r.stdout)
+        self.assertIn("commit", r.stdout, r.stdout)
 
 
 if __name__ == "__main__":

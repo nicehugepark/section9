@@ -83,181 +83,168 @@ class WorkerSettings(unittest.TestCase):
         cls.words = strip_comments(cls.wc)
 
     # ---- ① 자리 ---------------------------------------------------------
-    def test_left_list_places_worker_between_account_and_users(self):
-        m = re.search(r"const SECTIONS = \[[\s\S]*?\n  \];", self.src)
-        self.assertIsNotNone(m, "좌측 목록(SECTIONS)을 찾지 못했다")
-        order = re.findall(r'\["(display|account|worker|users|about)"',
-                           m.group(0))
-        self.assertIn("worker", order, "좌측 목록에 「백그라운드 작업」 구역이 없다")
-        i = order.index
-        self.assertLess(i("account"), i("worker"),
-                        "「백그라운드 작업」은 「내 계정」 다음이다")
-        self.assertLess(i("worker"), i("users"),
-                        "「백그라운드 작업」은 「사용자 관리」 앞이다 (나 → 나 → 남)")
-        self.assertRegex(self.src, r'\["worker", "백그라운드 작업"',
-                         "구역 이름은 「백그라운드 작업」이다 (REQ-20260902-005)")
+    def test_worker_settings(self):
+        """WorkerSettings 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("left_list_places_worker_between_account_and_users"):
+            m = re.search(r"const SECTIONS = \[[\s\S]*?\n  \];", self.src)
+            self.assertIsNotNone(m, "좌측 목록(SECTIONS)을 찾지 못했다")
+            order = re.findall(r'\["(display|account|worker|users|about)"',
+                               m.group(0))
+            self.assertIn("worker", order, "좌측 목록에 「백그라운드 작업」 구역이 없다")
+            i = order.index
+            self.assertLess(i("account"), i("worker"),
+                            "「백그라운드 작업」은 「내 계정」 다음이다")
+            self.assertLess(i("worker"), i("users"),
+                            "「백그라운드 작업」은 「사용자 관리」 앞이다 (나 → 나 → 남)")
+            self.assertRegex(self.src, r'\["worker", "백그라운드 작업"',
+                             "구역 이름은 「백그라운드 작업」이다 (REQ-20260902-005)")
+        with self.subTest("route_and_render_reach_the_panel"):
+            # 주소(#settings/worker)로 바로 열리고, 그 갈래가 판을 그린다.
+            self.assertIn('settingsSection === "worker"', self.src,
+                          "worker 갈래가 renderSettingsSection 에 없다")
+            self.assertIn("showWorkerCfg(", self.src, "판을 그리는 손이 없다")
+        with self.subTest("nav_subtitle_doubles_as_state"):
+                # 목록만 봐도 열려 있는 문이 보인다.
+                self.assertIn("GitHub 권한 켬", self.words,
+                              "gh 가 켜져 있으면 좌측 목록 부제가 그렇게 말해야 한다")
+                self.assertIn("workerNavSub(", self.src)
 
-    def test_route_and_render_reach_the_panel(self):
-        # 주소(#settings/worker)로 바로 열리고, 그 갈래가 판을 그린다.
-        self.assertIn('settingsSection === "worker"', self.src,
-                      "worker 갈래가 renderSettingsSection 에 없다")
-        self.assertIn("showWorkerCfg(", self.src, "판을 그리는 손이 없다")
+            # ---- ② 행 목록은 화면이 정한다 --------------------------------------
+        with self.subTest("every_known_key_gets_a_row"):
+            for k in SWITCHES + TEXTS + CAPS:
+                self.assertIn('key: "%s"' % k, self.wc, "%s 행이 없다" % k)
+        with self.subTest("unknown_keys_are_routed_by_prefix_not_dropped"):
+            self.assertIn("wcfgMine", self.wc, "모르는 키를 가르는 자가 없다")
+            self.assertIn("아직 이름 없는 값", self.words)
+            self.assertIn("그 밖의 값", self.src,
+                          "「내 계정」 쪽 자리(그 밖의 값)가 없다")
+        with self.subTest("row_list_is_not_driven_by_config"):
+                # 아는 키는 config 에 없어도 행이 선다 — 목록을 순회하는 것은 상수다.
+                for name in ("WCFG_SWITCHES.map", "WCFG_TEXTS.map", "WCFG_CAPS.map"):
+                    self.assertIn(name, self.wc,
+                                  "행을 %s 로 세우지 않으면 안 켠 스위치는 영영 안 보인다"
+                                  % name)
 
-    def test_nav_subtitle_doubles_as_state(self):
-        # 목록만 봐도 열려 있는 문이 보인다.
-        self.assertIn("GitHub 권한 켬", self.words,
-                      "gh 가 켜져 있으면 좌측 목록 부제가 그렇게 말해야 한다")
-        self.assertIn("workerNavSub(", self.src)
+            # ---- ③ 두 번 서지 않는다 --------------------------------------------
+        with self.subTest("extra_cfg_excludes_every_key_that_got_a_row"):
+            uf = websrc.fn(self, self.src, "showUserForm")
+            self.assertIn("WCFG_KEYS.includes(k)", uf,
+                          "자리를 얻은 키를 extraCfg 에서 빼지 않으면 두 번 선다")
+            self.assertIn("wcfgMine(k)", uf,
+                          "접두사로 데려간 키도 extraCfg 에서 빠져야 한다")
+        with self.subTest("the_raw_json_line_is_gone"):
+                self.assertNotIn("기타: ${esc(JSON.stringify", self.src,
+                                 "읽기 전용 JSON 한 줄이 아직 남아 있다")
 
-    # ---- ② 행 목록은 화면이 정한다 --------------------------------------
-    def test_every_known_key_gets_a_row(self):
-        for k in SWITCHES + TEXTS + CAPS:
-            self.assertIn('key: "%s"' % k, self.wc, "%s 행이 없다" % k)
+            # ---- ④ 낱말 ---------------------------------------------------------
+        with self.subTest("labels_are_the_lead_verdict"):
+            # 「worktree 쓰게 하기」 — 한때 「따로 떼어 놓고 일하기」였다.
+            # 사용자가 반려했다(REQ-20260902-002): 남의 도구가 지은 이름은
+            # 우리가 별명을 지어 주지 않는다. 별명은 두 사람 다 잃게 한다 —
+            # git 을 모르는 사람은 여전히 못 읽고, 아는 사람은 잇지 못한다.
+            # 행 이름은 **술어만** 진다 (REQ-20260902-005) — 개체 이름은 판 제목이
+            # 한 번만 지고, 행이 그것을 되풀이하면 한 판에 이름이 열 번 선다.
+            for label in ("맡기기", "파일 직접 고치기",
+                          "내 GitHub 계정 쓰게 하기", "worktree 쓰게 하기"):
+                self.assertIn(label, self.words, "확정 낱말이 아니다: " + label)
+            self.assertNotIn("자동 이어받기", self.words,
+                             "계정 스위치는 카드의 요청별 정책과 다른 이름을 쓴다")
+        with self.subTest("no_word_that_was_taken_off_the_screen"):
+            for w in BANNED:
+                self.assertNotIn(w, self.words, "화면에서 내려진 낱말: " + w)
+            # 「사본」은 worktree 의 기각된 **별명** — 낱말로 서면 안 된다.
+            # (worktree 자체는 이제 원어로 선다. 내려간 것은 우리가 지은
+            #  별명이지 git 이 지은 이름이 아니었다 — REQ-20260902-002.)
+            self.assertNotRegex(self.words, r"저장소 사본|따로 떼어 둔 사본")
+        with self.subTest("push_is_called_by_the_screen_name"):
+            # 023 이 같은 판에 `push` 단추를 세운다 — 한 개념에 두 이름 금지.
+            # 음차(「푸시」)도 옮김(「올리는 것」)도 아니고 **원어**다
+            # (REQ-20260902-002): 화면을 닫고 그 일을 하려면 사람이 치는 글자가
+            # `git push` 라, 그 글자가 곧 화면의 낱말이다.
+            self.assertNotIn("푸시", self.words, "음차는 원어로 — `push`")
+            self.assertNotIn("저장소에 올리는 것도", self.words,
+                             "옮김도 반려됐다 — 남의 도구 이름은 그대로 세운다")
+            self.assertIn("저장소에 push 하는 것도 그중 하나입니다", self.words)
+        with self.subTest("on_off_words_carry_the_state"):
+                # 색 없이 상태가 읽힌다 — 옵션 글자가 무슨 일이 일어나는지 말한다.
+                for opt in ("켬 — ", "끔 — "):
+                    self.assertIn(opt, self.words)
+                self.assertNotRegex(self.words, r'>ON<|>OFF<|활성|비활성')
 
-    def test_unknown_keys_are_routed_by_prefix_not_dropped(self):
-        self.assertIn("wcfgMine", self.wc, "모르는 키를 가르는 자가 없다")
-        self.assertIn("아직 이름 없는 값", self.words)
-        self.assertIn("그 밖의 값", self.src,
-                      "「내 계정」 쪽 자리(그 밖의 값)가 없다")
+            # ---- ⑤ 무게 ---------------------------------------------------------
+        with self.subTest("only_turning_gh_on_raises_a_dialog"):
+            # `ask` 는 gh 항목 하나에만 있고, 켤 때(val === "on")만 지난다.
+            self.assertEqual(self.wc.count("   ask: n => ({"), 1,
+                             "확인 창은 gh 하나에만 붙는다")
+            self.assertIn('if (r.ask && val === "on"', self.wc,
+                          "끌 때는 창을 세우지 않는다")
+            self.assertIn('cap: "권한"', self.wc)
+        with self.subTest("no_native_dialogs"):
+            self.assertNotRegex(self.words, r"\b(window\.)?(confirm|alert)\s*\(",
+                                "네이티브 창 금지 — s9dlg 를 쓴다")
+            self.assertIn("s9dlg(", self.wc)
+        with self.subTest("fact_line_stands_only_while_it_is_on"):
+            self.assertIn("r.fact && wcfgOn(cfg[r.key])", self.wc,
+                          "사실 줄은 켜져 있는 동안에만 선다")
+            self.assertIn("지금 켜져 있습니다", self.words)
+        with self.subTest("weight_is_ink_not_a_colour_field"):
+                css = websrc.css_section(self, self.src, r"/\* -+ 백그라운드 작업 설정")
+                self.assertIn(".wfact", css, "사실 줄 규칙을 찾지 못했다")
+                websrc.no_hex(self, css)
+                # 색은 글자색 하나뿐 — 색면(배경 칠)도 좌측 세로 띠도 없다.
+                self.assertNotRegex(css, r"background(-color)?\s*:\s*(?!none)",
+                                    "색면 하이라이트 금지")
+                self.assertNotRegex(css, r"border-left\s*:\s*[^;]*var\(--c-",
+                                    "좌측 세로 띠 금지")
+                self.assertRegex(css, r"\.wfact\{[^}]*color:var\(--c-blocked\)")
 
-    def test_row_list_is_not_driven_by_config(self):
-        # 아는 키는 config 에 없어도 행이 선다 — 목록을 순회하는 것은 상수다.
-        for name in ("WCFG_SWITCHES.map", "WCFG_TEXTS.map", "WCFG_CAPS.map"):
-            self.assertIn(name, self.wc,
-                          "행을 %s 로 세우지 않으면 안 켠 스위치는 영영 안 보인다"
-                          % name)
+            # ---- ⑥ 즉시 저장 ----------------------------------------------------
+        with self.subTest("saves_at_once_with_no_batch_button"):
+            self.assertNotRegex(self.words, r'id="w-save"|설정 저장|값 저장',
+                                "이 판에는 일괄 저장 단추를 두지 않는다")
+            self.assertIn('addEventListener("change"', self.wc)
+            self.assertIn('postJSONRaw("/api/user/config"', self.wc,
+                          "쓰는 길은 이미 있는 그 하나다 — 새 API 금지")
+        with self.subTest("failure_puts_the_handle_back"):
+            # 화면이 켜졌다고 보여 주는데 서버는 껐다면 그 화면은 거짓말이다.
+            self.assertIn("if (el && prev !== undefined) el.value = prev;", self.wc)
+            self.assertIn('say(key, "✕ " + res.error, "bad")', self.wc,
+                          "서버가 준 문장을 그대로 인라인으로 — 팝업 금지")
+        with self.subTest("message_shares_one_grid_cell_with_the_meaning"):
+                # 따로 줄을 내면 열 행이 저장할 때마다 아래가 밀린다.
+                css = websrc.css_section(self, self.src, r"/\* -+ 백그라운드 작업 설정")
+                self.assertRegex(css, r"\.wsay\{[^}]*display:grid")
+                self.assertRegex(css, r"\.wsay>\*\{[^}]*grid-area:1/1")
 
-    # ---- ③ 두 번 서지 않는다 --------------------------------------------
-    def test_extra_cfg_excludes_every_key_that_got_a_row(self):
-        uf = websrc.fn(self, self.src, "showUserForm")
-        self.assertIn("WCFG_KEYS.includes(k)", uf,
-                      "자리를 얻은 키를 extraCfg 에서 빼지 않으면 두 번 선다")
-        self.assertIn("wcfgMine(k)", uf,
-                      "접두사로 데려간 키도 extraCfg 에서 빠져야 한다")
+            # ---- ⑦ 꺼진 줄과 그 예외 --------------------------------------------
+        with self.subTest("off_rows_dim_but_the_fact_line_does_not"):
+                css = websrc.css_section(self, self.src, r"/\* -+ 백그라운드 작업 설정")
+                m = re.search(r"tr\.woff [^{]*\{[^}]*opacity:\.45\}", css)
+                self.assertIsNotNone(m, "꺼진 줄을 물리는 규칙이 없다")
+                self.assertNotIn(".wfact", m.group(0),
+                                 "gh 사실 줄은 흐려지지 않는다 — 권한을 준 적 있다는 "
+                                 "사실이 화면에서 사라지면 안 된다")
+                self.assertIn("값은 지우지 않는다", self.wc)
 
-    def test_the_raw_json_line_is_gone(self):
-        self.assertNotIn("기타: ${esc(JSON.stringify", self.src,
-                         "읽기 전용 JSON 한 줄이 아직 남아 있다")
-
-    # ---- ④ 낱말 ---------------------------------------------------------
-    def test_labels_are_the_lead_verdict(self):
-        # 「worktree 쓰게 하기」 — 한때 「따로 떼어 놓고 일하기」였다.
-        # 사용자가 반려했다(REQ-20260902-002): 남의 도구가 지은 이름은
-        # 우리가 별명을 지어 주지 않는다. 별명은 두 사람 다 잃게 한다 —
-        # git 을 모르는 사람은 여전히 못 읽고, 아는 사람은 잇지 못한다.
-        # 행 이름은 **술어만** 진다 (REQ-20260902-005) — 개체 이름은 판 제목이
-        # 한 번만 지고, 행이 그것을 되풀이하면 한 판에 이름이 열 번 선다.
-        for label in ("맡기기", "파일 직접 고치기",
-                      "내 GitHub 계정 쓰게 하기", "worktree 쓰게 하기"):
-            self.assertIn(label, self.words, "확정 낱말이 아니다: " + label)
-        self.assertNotIn("자동 이어받기", self.words,
-                         "계정 스위치는 카드의 요청별 정책과 다른 이름을 쓴다")
-
-    def test_no_word_that_was_taken_off_the_screen(self):
-        for w in BANNED:
-            self.assertNotIn(w, self.words, "화면에서 내려진 낱말: " + w)
-        # 「사본」은 worktree 의 기각된 **별명** — 낱말로 서면 안 된다.
-        # (worktree 자체는 이제 원어로 선다. 내려간 것은 우리가 지은
-        #  별명이지 git 이 지은 이름이 아니었다 — REQ-20260902-002.)
-        self.assertNotRegex(self.words, r"저장소 사본|따로 떼어 둔 사본")
-
-    def test_push_is_called_by_the_screen_name(self):
-        # 023 이 같은 판에 `push` 단추를 세운다 — 한 개념에 두 이름 금지.
-        # 음차(「푸시」)도 옮김(「올리는 것」)도 아니고 **원어**다
-        # (REQ-20260902-002): 화면을 닫고 그 일을 하려면 사람이 치는 글자가
-        # `git push` 라, 그 글자가 곧 화면의 낱말이다.
-        self.assertNotIn("푸시", self.words, "음차는 원어로 — `push`")
-        self.assertNotIn("저장소에 올리는 것도", self.words,
-                         "옮김도 반려됐다 — 남의 도구 이름은 그대로 세운다")
-        self.assertIn("저장소에 push 하는 것도 그중 하나입니다", self.words)
-
-    def test_on_off_words_carry_the_state(self):
-        # 색 없이 상태가 읽힌다 — 옵션 글자가 무슨 일이 일어나는지 말한다.
-        for opt in ("켬 — ", "끔 — "):
-            self.assertIn(opt, self.words)
-        self.assertNotRegex(self.words, r'>ON<|>OFF<|활성|비활성')
-
-    # ---- ⑤ 무게 ---------------------------------------------------------
-    def test_only_turning_gh_on_raises_a_dialog(self):
-        # `ask` 는 gh 항목 하나에만 있고, 켤 때(val === "on")만 지난다.
-        self.assertEqual(self.wc.count("   ask: n => ({"), 1,
-                         "확인 창은 gh 하나에만 붙는다")
-        self.assertIn('if (r.ask && val === "on"', self.wc,
-                      "끌 때는 창을 세우지 않는다")
-        self.assertIn('cap: "권한"', self.wc)
-
-    def test_no_native_dialogs(self):
-        self.assertNotRegex(self.words, r"\b(window\.)?(confirm|alert)\s*\(",
-                            "네이티브 창 금지 — s9dlg 를 쓴다")
-        self.assertIn("s9dlg(", self.wc)
-
-    def test_fact_line_stands_only_while_it_is_on(self):
-        self.assertIn("r.fact && wcfgOn(cfg[r.key])", self.wc,
-                      "사실 줄은 켜져 있는 동안에만 선다")
-        self.assertIn("지금 켜져 있습니다", self.words)
-
-    def test_weight_is_ink_not_a_colour_field(self):
-        css = websrc.css_section(self, self.src, r"/\* -+ 백그라운드 작업 설정")
-        self.assertIn(".wfact", css, "사실 줄 규칙을 찾지 못했다")
-        websrc.no_hex(self, css)
-        # 색은 글자색 하나뿐 — 색면(배경 칠)도 좌측 세로 띠도 없다.
-        self.assertNotRegex(css, r"background(-color)?\s*:\s*(?!none)",
-                            "색면 하이라이트 금지")
-        self.assertNotRegex(css, r"border-left\s*:\s*[^;]*var\(--c-",
-                            "좌측 세로 띠 금지")
-        self.assertRegex(css, r"\.wfact\{[^}]*color:var\(--c-blocked\)")
-
-    # ---- ⑥ 즉시 저장 ----------------------------------------------------
-    def test_saves_at_once_with_no_batch_button(self):
-        self.assertNotRegex(self.words, r'id="w-save"|설정 저장|값 저장',
-                            "이 판에는 일괄 저장 단추를 두지 않는다")
-        self.assertIn('addEventListener("change"', self.wc)
-        self.assertIn('postJSONRaw("/api/user/config"', self.wc,
-                      "쓰는 길은 이미 있는 그 하나다 — 새 API 금지")
-
-    def test_failure_puts_the_handle_back(self):
-        # 화면이 켜졌다고 보여 주는데 서버는 껐다면 그 화면은 거짓말이다.
-        self.assertIn("if (el && prev !== undefined) el.value = prev;", self.wc)
-        self.assertIn('say(key, "✕ " + res.error, "bad")', self.wc,
-                      "서버가 준 문장을 그대로 인라인으로 — 팝업 금지")
-
-    def test_message_shares_one_grid_cell_with_the_meaning(self):
-        # 따로 줄을 내면 열 행이 저장할 때마다 아래가 밀린다.
-        css = websrc.css_section(self, self.src, r"/\* -+ 백그라운드 작업 설정")
-        self.assertRegex(css, r"\.wsay\{[^}]*display:grid")
-        self.assertRegex(css, r"\.wsay>\*\{[^}]*grid-area:1/1")
-
-    # ---- ⑦ 꺼진 줄과 그 예외 --------------------------------------------
-    def test_off_rows_dim_but_the_fact_line_does_not(self):
-        css = websrc.css_section(self, self.src, r"/\* -+ 백그라운드 작업 설정")
-        m = re.search(r"tr\.woff [^{]*\{[^}]*opacity:\.45\}", css)
-        self.assertIsNotNone(m, "꺼진 줄을 물리는 규칙이 없다")
-        self.assertNotIn(".wfact", m.group(0),
-                         "gh 사실 줄은 흐려지지 않는다 — 권한을 준 적 있다는 "
-                         "사실이 화면에서 사라지면 안 된다")
-        self.assertIn("값은 지우지 않는다", self.wc)
-
-    # ---- ⑧ 서버 문장 ----------------------------------------------------
-    def test_spawn_block_speaks_the_screen_word(self):
-        self.assertNotIn("자동 이어가기가 꺼져", self.s9,
-                         "화면에 없는 세 번째 이름")
-        self.assertNotIn("auto_resume \"\n", self.s9)
-        # 폐기된 행 이름이 서버 문장에 되살아나지 않는다 (REQ-20260902-005).
-        # 주석·docstring 은 이 잣대 밖이다 — 실사고를 적은 글은 반려어를
-        # 인용해야 쓸 수 있고, 그 근거를 지우면 다음 사람이 다시 짓는다
-        # (test_screen_lexicon 이 세운 규율). 화면 문장만 잰다.
-        self.assertNotIn("무인 작업 맡기기", self.s9,
-                         "폐기된 행 이름이 서버 문장에 남았다 (REQ-20260902-005)")
-        self.assertIn("「백그라운드 작업」에서 「맡기기」가 꺼져", self.s9)
-        i = self.s9.index("「백그라운드 작업」에서 「맡기기」가 꺼져")
-        near = self.s9[i:i + 200]
-        self.assertNotIn("auto_resume", near,
-                         "사용자에게 원시 키를 외우게 하지 않는다")
-
-    def test_config_refusal_is_a_sentence(self):
-        self.assertNotIn("본인 또는 admin만 설정 변경 가능", self.s9)
-        self.assertIn("본인이나 admin 만 이 설정을 바꿀 수 ", self.s9)
-
+            # ---- ⑧ 서버 문장 ----------------------------------------------------
+        with self.subTest("spawn_block_speaks_the_screen_word"):
+            self.assertNotIn("자동 이어가기가 꺼져", self.s9,
+                             "화면에 없는 세 번째 이름")
+            self.assertNotIn("auto_resume \"\n", self.s9)
+            # 폐기된 행 이름이 서버 문장에 되살아나지 않는다 (REQ-20260902-005).
+            # 주석·docstring 은 이 잣대 밖이다 — 실사고를 적은 글은 반려어를
+            # 인용해야 쓸 수 있고, 그 근거를 지우면 다음 사람이 다시 짓는다
+            # (test_screen_lexicon 이 세운 규율). 화면 문장만 잰다.
+            self.assertNotIn("무인 작업 맡기기", self.s9,
+                             "폐기된 행 이름이 서버 문장에 남았다 (REQ-20260902-005)")
+            self.assertIn("「백그라운드 작업」에서 「맡기기」가 꺼져", self.s9)
+            i = self.s9.index("「백그라운드 작업」에서 「맡기기」가 꺼져")
+            near = self.s9[i:i + 200]
+            self.assertNotIn("auto_resume", near,
+                             "사용자에게 원시 키를 외우게 하지 않는다")
+        with self.subTest("config_refusal_is_a_sentence"):
+            self.assertNotIn("본인 또는 admin만 설정 변경 가능", self.s9)
+            self.assertIn("본인이나 admin 만 이 설정을 바꿀 수 ", self.s9)
 
 if __name__ == "__main__":
     unittest.main()

@@ -85,43 +85,44 @@ class TestLinkAudit(unittest.TestCase):
         self.cli("index", "rebuild")
 
     # L1. 정상 상태에서는 문제 0건
-    def test_l1_clean(self):
-        a, b = self.new("부모"), self.new("자식")
-        self.cli("link", b, "--parent", a)
-        issues, _ = mod.link_audit()
-        self.assertEqual([i for i in issues if a in i or b in i], [])
+    def test_test_link_audit(self):
+        """TestLinkAudit 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("l1_clean"):
+                a, b = self.new("부모"), self.new("자식")
+                self.cli("link", b, "--parent", a)
+                issues, _ = mod.link_audit()
+                self.assertEqual([i for i in issues if a in i or b in i], [])
 
-    # L2. relates는 양방향으로 기록된다 (단방향이 "연관 누락"의 원인)
-    def test_l2_relates_symmetric(self):
-        a, b = self.new("A"), self.new("B")
-        # --why 는 필수다 (REQ-20260827-030) — 여기서 보는 것은 대칭이지
-        # 이유가 아니므로 픽스처용 한 줄이면 된다.
-        self.cli("link", a, "--relates", b, "--why", "대칭 검사용 픽스처")
-        self.assertIn(a, self._meta(b).get("relates") or [])
+            # L2. relates는 양방향으로 기록된다 (단방향이 "연관 누락"의 원인)
+        with self.subTest("l2_relates_symmetric"):
+                a, b = self.new("A"), self.new("B")
+                # --why 는 필수다 (REQ-20260827-030) — 여기서 보는 것은 대칭이지
+                # 이유가 아니므로 픽스처용 한 줄이면 된다.
+                self.cli("link", a, "--relates", b, "--why", "대칭 검사용 픽스처")
+                self.assertIn(a, self._meta(b).get("relates") or [])
 
-    # L3. 깨진 관계 검출 + 복구, 복구는 멱등(재실행 시 문제 0)
-    def test_l3_detect_and_fix(self):
-        a, b = self.new("고아 부모"), self.new("고아 자식")
-        self._write_meta(b, "parent", a)          # 역참조 없는 부모 지정
-        self._write_meta(a, "relates", ["REQ-90000000-999"])  # 미존재 참조
-        issues, _ = mod.link_audit()
-        self.assertTrue(any("역참조 누락" in i for i in issues), issues)
-        self.assertTrue(any("미존재" in i for i in issues), issues)
-        _i2, fixed = mod.link_audit(fix=True)
-        self.assertGreater(fixed, 0)
-        again, _ = mod.link_audit()
-        self.assertEqual(again, [], f"복구가 멱등하지 않다: {again}")
+            # L3. 깨진 관계 검출 + 복구, 복구는 멱등(재실행 시 문제 0)
+        with self.subTest("l3_detect_and_fix"):
+                a, b = self.new("고아 부모"), self.new("고아 자식")
+                self._write_meta(b, "parent", a)          # 역참조 없는 부모 지정
+                self._write_meta(a, "relates", ["REQ-90000000-999"])  # 미존재 참조
+                issues, _ = mod.link_audit()
+                self.assertTrue(any("역참조 누락" in i for i in issues), issues)
+                self.assertTrue(any("미존재" in i for i in issues), issues)
+                _i2, fixed = mod.link_audit(fix=True)
+                self.assertGreater(fixed, 0)
+                again, _ = mod.link_audit()
+                self.assertEqual(again, [], f"복구가 멱등하지 않다: {again}")
 
-    # L4. 자기참조·순환 검출
-    def test_l4_cycles(self):
-        a, b = self.new("순환1"), self.new("순환2")
-        self._write_meta(a, "parent", b)
-        self._write_meta(b, "parent", a)
-        issues, _ = mod.link_audit()
-        self.assertTrue(any("순환" in i for i in issues), issues)
-        mod.link_audit(fix=True)
-        self.assertEqual([i for i in mod.link_audit()[0] if "순환" in i], [])
-
+            # L4. 자기참조·순환 검출
+        with self.subTest("l4_cycles"):
+            a, b = self.new("순환1"), self.new("순환2")
+            self._write_meta(a, "parent", b)
+            self._write_meta(b, "parent", a)
+            issues, _ = mod.link_audit()
+            self.assertTrue(any("순환" in i for i in issues), issues)
+            mod.link_audit(fix=True)
+            self.assertEqual([i for i in mod.link_audit()[0] if "순환" in i], [])
 
 class TestAutoRepairEntrypoint(unittest.TestCase):
     """자동화 계약 (REQ-20260825-061): 관계 복구가 사람의 명령 기억에

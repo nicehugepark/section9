@@ -72,100 +72,73 @@ class RelationProximity(unittest.TestCase):
                 return json.loads(line.split(":", 1)[1].strip())
         return []
 
-    def test_p1_unrelated_messages_are_not_linked(self):
-        """P1. 5분 사이에 온 서로 다른 주제의 두 요청은 묶이지 않는다.
+    def test_relation_proximity(self):
+        """RelationProximity 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("p1_unrelated_messages_are_not_linked"):
+            a = self.s9.chat_audit(
+                "대시보드 문서의 첫 줄이 낡았다. 읽기 전용이 아닌데 그렇게 적혀 "
+                "있으니 지금 상태에 맞게 고쳐라.", "tester", "relsess")
+            b = self.s9.chat_audit(
+                "응답 머리에 찍히는 시각이 추정값이면 안 된다. 반드시 실제 시각이 "
+                "찍히도록 고쳐라.", "tester", "relsess")
+            self.assertTrue(a and b and a != b, (a, b))
+            self.assertNotIn(b, self.relates(a), f"{a} 가 무관한 {b} 와 묶였다")
+            self.assertNotIn(a, self.relates(b), f"{b} 가 무관한 {a} 와 묶였다")
+        with self.subTest("p2_named_review_doc_is_still_linked"):
+            target = self.cli(
+                "new", "request", "--title", "확인 대상", "--summary", "t",
+                "--goal", "t", "--size", "S", "--user", "tester",
+                "--body", "x").stdout.split()[0]
+            self.cli("status", target, "in-progress", "--note", "t")
+            self.cli("status", target, "review", "--note", "t", "--force")
+            # 짧은 메타 지시("반려해")는 분류상 문서를 만들지 않는다 — 여기서
+            # 보려는 것은 그 경로가 아니라 '이름이 불린 문서가 묶이는가' 이므로
+            # 요청으로 분류되기에 충분한 길이의 실제 지적문을 쓴다.
+            msg = (f"{target} 화면에서 버튼을 눌러도 아무 반응이 없다. 콘솔에도 "
+                   f"오류가 안 뜨는데 상태가 그대로다. 어디서 끊기는지 확인해서 "
+                   f"눌리면 실제로 전이되도록 고쳐 달라.")
+            doc = self.s9.chat_audit(msg, "tester", "relsess")
+            self.assertTrue(doc, doc)
+            self.assertIn(target, self.relates(doc),
+                          "이름으로 지목한 판정 대기 문서가 안 묶였다")
+        with self.subTest("p3_unrelate_removes_both_sides"):
+            def mk(title):
+                return self.cli("new", "request", "--title", title, "--summary",
+                                "t", "--goal", "t", "--size", "S", "--user",
+                                "tester", "--body", "x").stdout.split()[0]
+            x, y = mk("한쪽"), mk("다른쪽")
+            self.cli("link", x, "--relates", y, "--why", "거두기 검사용 픽스처")
+            self.assertIn(y, self.relates(x))
+            self.assertIn(x, self.relates(y))
+            self.cli("link", x, "--unrelate", y)
+            self.assertNotIn(y, self.relates(x))
+            self.assertNotIn(x, self.relates(y), "반대편에 유령 관계가 남았다")
+        with self.subTest("p4_backfill_prunes_only_proximity_edges"):
+            a = self.s9.chat_audit(
+                "보드 카드의 글자 크기가 너무 작아서 훑기가 어렵다. 한 단계 키우고 "
+                "줄간격도 함께 손봐 달라.", "tester", "backfillsess")
+            b = self.s9.chat_audit(
+                "검색창에 한글을 넣으면 첫 글자가 씹힌다. 입력 조합 중에 필터가 "
+                "도는 것 같으니 확인해서 고쳐 달라.", "tester", "backfillsess")
+            self.assertTrue(a and b and a != b, (a, b))
+            # 자동 연결이 걸던 그 간선을 손으로 재현한다 (지금 코드는 안 건다)
+            self.cli("link", a, "--relates", b, "--why", "근접 백필 검사용 픽스처")
+            self.assertIn(b, self.relates(a))
 
-        이게 사용자가 잡아낸 그 사례다.
-        """
-        a = self.s9.chat_audit(
-            "대시보드 문서의 첫 줄이 낡았다. 읽기 전용이 아닌데 그렇게 적혀 "
-            "있으니 지금 상태에 맞게 고쳐라.", "tester", "relsess")
-        b = self.s9.chat_audit(
-            "응답 머리에 찍히는 시각이 추정값이면 안 된다. 반드시 실제 시각이 "
-            "찍히도록 고쳐라.", "tester", "relsess")
-        self.assertTrue(a and b and a != b, (a, b))
-        self.assertNotIn(b, self.relates(a), f"{a} 가 무관한 {b} 와 묶였다")
-        self.assertNotIn(a, self.relates(b), f"{b} 가 무관한 {a} 와 묶였다")
+            # 손으로 건 연관(본문이 서로를 부르는 쪽)은 살아남아야 한다
+            keep = self.cli("new", "request", "--title", "언급되는쪽", "--summary",
+                            "t", "--goal", "t", "--size", "S", "--user", "tester",
+                            "--body", "x").stdout.split()[0]
+            self.cli("link", a, "--relates", keep, "--why", "남아야 하는 간선")
 
-    def test_p2_named_review_doc_is_still_linked(self):
-        """P2. 이름으로 지목한 판정 대기 문서는 그대로 묶인다.
-
-        근거가 텍스트에 실제로 있는 연결까지 걷어내면 반대편 결함
-        (REQ-20260825-041: 채팅 지적이 원 문서에 안 닿는다)이 되살아난다.
-        """
-        target = self.cli(
-            "new", "request", "--title", "확인 대상", "--summary", "t",
-            "--goal", "t", "--size", "S", "--user", "tester",
-            "--body", "x").stdout.split()[0]
-        self.cli("status", target, "in-progress", "--note", "t")
-        self.cli("status", target, "review", "--note", "t", "--force")
-        # 짧은 메타 지시("반려해")는 분류상 문서를 만들지 않는다 — 여기서
-        # 보려는 것은 그 경로가 아니라 '이름이 불린 문서가 묶이는가' 이므로
-        # 요청으로 분류되기에 충분한 길이의 실제 지적문을 쓴다.
-        msg = (f"{target} 화면에서 버튼을 눌러도 아무 반응이 없다. 콘솔에도 "
-               f"오류가 안 뜨는데 상태가 그대로다. 어디서 끊기는지 확인해서 "
-               f"눌리면 실제로 전이되도록 고쳐 달라.")
-        doc = self.s9.chat_audit(msg, "tester", "relsess")
-        self.assertTrue(doc, doc)
-        self.assertIn(target, self.relates(doc),
-                      "이름으로 지목한 판정 대기 문서가 안 묶였다")
-
-    def test_p3_unrelate_removes_both_sides(self):
-        """P3. 잘못 걸린 연관을 CLI 로 거둘 수 있고, 양쪽에서 사라진다.
-
-        자동으로 관계를 거는 시스템이라면 자동으로 잘못 건 것을 거두는 길도
-        같은 자리에 있어야 한다 — 없어서 md 를 손으로 고쳐야 했다.
-        한쪽만 지우면 반대편에 유령 관계가 남는다.
-        """
-        def mk(title):
-            return self.cli("new", "request", "--title", title, "--summary",
-                            "t", "--goal", "t", "--size", "S", "--user",
-                            "tester", "--body", "x").stdout.split()[0]
-        x, y = mk("한쪽"), mk("다른쪽")
-        self.cli("link", x, "--relates", y, "--why", "거두기 검사용 픽스처")
-        self.assertIn(y, self.relates(x))
-        self.assertIn(x, self.relates(y))
-        self.cli("link", x, "--unrelate", y)
-        self.assertNotIn(y, self.relates(x))
-        self.assertNotIn(x, self.relates(y), "반대편에 유령 관계가 남았다")
-
-
-    def test_p4_backfill_prunes_only_proximity_edges(self):
-        """P4. 이미 걸려 있던 근접 연관을 뒤늦게 거둔다 (사용자 지시: "백필 할 수
-        있으면 해").
-
-        자국은 좁고 분명하다 — 양쪽 다 채팅 audit 이 만든 문서이고, 생성 시각이
-        그 창 안이고, 어느 쪽 본문도 상대를 부르지 않는다. 셋을 다 만족하는
-        간선만 걷는다. 되돌리기 어려운 작업이므로 **넓게 잡아 지우는 쪽보다
-        좁게 잡아 남기는 쪽**을 택했다 — 사람이 손으로 건 연관까지 지우면
-        고침이 새 손실이 된다.
-        """
-        a = self.s9.chat_audit(
-            "보드 카드의 글자 크기가 너무 작아서 훑기가 어렵다. 한 단계 키우고 "
-            "줄간격도 함께 손봐 달라.", "tester", "backfillsess")
-        b = self.s9.chat_audit(
-            "검색창에 한글을 넣으면 첫 글자가 씹힌다. 입력 조합 중에 필터가 "
-            "도는 것 같으니 확인해서 고쳐 달라.", "tester", "backfillsess")
-        self.assertTrue(a and b and a != b, (a, b))
-        # 자동 연결이 걸던 그 간선을 손으로 재현한다 (지금 코드는 안 건다)
-        self.cli("link", a, "--relates", b, "--why", "근접 백필 검사용 픽스처")
-        self.assertIn(b, self.relates(a))
-
-        # 손으로 건 연관(본문이 서로를 부르는 쪽)은 살아남아야 한다
-        keep = self.cli("new", "request", "--title", "언급되는쪽", "--summary",
-                        "t", "--goal", "t", "--size", "S", "--user", "tester",
-                        "--body", "x").stdout.split()[0]
-        self.cli("link", a, "--relates", keep, "--why", "남아야 하는 간선")
-
-        hits = self.s9.proximity_relates(fix=True)
-        pairs = {tuple(sorted((x, y))) for x, y, _ in hits}
-        self.assertIn(tuple(sorted((a, b))), pairs,
-                      f"근접 간선을 못 찾았다: {hits}")
-        self.assertNotIn(b, self.relates(a), "거두고도 남아 있다")
-        self.assertNotIn(a, self.relates(b), "반대편에 유령 관계가 남았다")
-        self.assertIn(keep, self.relates(a),
-                      "손으로 건 연관까지 지웠다 — 고침이 새 손실이 된다")
-
+            hits = self.s9.proximity_relates(fix=True)
+            pairs = {tuple(sorted((x, y))) for x, y, _ in hits}
+            self.assertIn(tuple(sorted((a, b))), pairs,
+                          f"근접 간선을 못 찾았다: {hits}")
+            self.assertNotIn(b, self.relates(a), "거두고도 남아 있다")
+            self.assertNotIn(a, self.relates(b), "반대편에 유령 관계가 남았다")
+            self.assertIn(keep, self.relates(a),
+                          "손으로 건 연관까지 지웠다 — 고침이 새 손실이 된다")
 
 if __name__ == "__main__":
     unittest.main()

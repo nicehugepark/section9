@@ -48,6 +48,13 @@ class TurnAttached(unittest.TestCase):
     def setUpClass(cls):
         cls.root = tempfile.mkdtemp(prefix="s9turnatt-")
         cls.prev_root = os.environ.get("S9_ROOT")
+        # **이 프로세스의 머신 이름도 testbox 여야 한다** (REQ-20260902-052).
+        # 바인딩 파일은 `testbox__<sid>.json` 인데 모듈이 직접 부르는
+        # `catalog_with_live` 는 os.environ 의 머신 이름으로 자리를 찾는다.
+        # subprocess 봉투에만 심어 두면 스위트 전체를 돌 때 **앞 시험이 흘린
+        # 값** 덕에 우연히 초록이고, 단독으로 돌리면 붉다 — 실제로 그랬다.
+        cls.prev_machine = os.environ.get("S9_MACHINE")
+        os.environ["S9_MACHINE"] = "testbox"
         cls.env = {**os.environ, "S9_ROOT": cls.root, "S9_MACHINE": "testbox"}
         cls.env.pop("S9_SESSION", None)
         cls.cli("init")
@@ -70,6 +77,10 @@ class TurnAttached(unittest.TestCase):
             os.environ.pop("S9_ROOT", None)
         else:
             os.environ["S9_ROOT"] = cls.prev_root
+        if cls.prev_machine is None:
+            os.environ.pop("S9_MACHINE", None)
+        else:
+            os.environ["S9_MACHINE"] = cls.prev_machine
         shutil.rmtree(cls.root, ignore_errors=True)
 
     # ---- 도구 -----------------------------------------------------------

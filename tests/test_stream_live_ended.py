@@ -28,7 +28,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
 
-from portpool import free_port, wait_server  # noqa: E402
+from portpool import free_port, urlopen_retry, wait_server  # noqa: E402
 
 
 class StreamLiveEnded(unittest.TestCase):
@@ -103,40 +103,42 @@ class StreamLiveEnded(unittest.TestCase):
         cls.srv.wait(timeout=5)
 
     def stream(self, sid):
+        # 붙자마자 끊기는 갈래를 되건다 — 되걸기는 portpool 한 자리에 있다
+        # (REQ-20260904-003). 이 파일이 그 비대칭에 넘어간 셋째였다.
         q = urllib.parse.urlencode({"session": sid})
-        with urllib.request.urlopen(
-                f"http://127.0.0.1:{self.port}/api/stream?{q}",
-                timeout=10) as r:
-            return json.loads(r.read().decode())
+        _code, body = urlopen_retry(
+            f"http://127.0.0.1:{self.port}/api/stream?{q}", timeout=10)
+        return json.loads(body)
 
     # N1. 끝난 세션은 live 가 아니다
-    def test_n1_ended_is_not_live(self):
-        d = self.stream(self.A)
-        self.assertFalse(d.get("live"), d)
+    def test_stream_live_ended(self):
+        """StreamLiveEnded 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_ended_is_not_live"):
+                d = self.stream(self.A)
+                self.assertFalse(d.get("live"), d)
 
-    # N2. 그래도 이벤트는 그대로 온다 — live 를 끄는 것이지 못 읽게 하는 게 아니다
-    def test_n2_ended_still_readable(self):
-        d = self.stream(self.A)
-        self.assertTrue(d.get("events"), d)
+            # N2. 그래도 이벤트는 그대로 온다 — live 를 끄는 것이지 못 읽게 하는 게 아니다
+        with self.subTest("n2_ended_still_readable"):
+                d = self.stream(self.A)
+                self.assertTrue(d.get("events"), d)
 
-    # B1. 지금 도는 세션은 예전대로 live
-    def test_b1_running_is_live(self):
-        d = self.stream(self.B)
-        self.assertTrue(d.get("live"), d)
+            # B1. 지금 도는 세션은 예전대로 live
+        with self.subTest("b1_running_is_live"):
+                d = self.stream(self.B)
+                self.assertTrue(d.get("live"), d)
 
-    # B2. transcript_path 가 디렉토리면 통과하지 않는다 — exists 가 아니라 isfile
-    #     (REQ-20260827-018 에서 같은 자리를 한 번 배웠다)
-    def test_b2_directory_is_not_a_transcript(self):
-        d = self.stream(self.C)
-        self.assertFalse(d.get("live"), d)
-        self.assertTrue(d.get("events"), d)     # 미러로 읽힌다
+            # B2. transcript_path 가 디렉토리면 통과하지 않는다 — exists 가 아니라 isfile
+            #     (REQ-20260827-018 에서 같은 자리를 한 번 배웠다)
+        with self.subTest("b2_directory_is_not_a_transcript"):
+                d = self.stream(self.C)
+                self.assertFalse(d.get("live"), d)
+                self.assertTrue(d.get("events"), d)     # 미러로 읽힌다
 
-    # R1. 바인딩이 없으면 예전대로 미러 폴백 · live 아님
-    def test_r1_mirror_fallback(self):
-        d = self.stream(self.D)
-        self.assertFalse(d.get("live"), d)
-        self.assertTrue(d.get("events"), d)
-
+            # R1. 바인딩이 없으면 예전대로 미러 폴백 · live 아님
+        with self.subTest("r1_mirror_fallback"):
+            d = self.stream(self.D)
+            self.assertFalse(d.get("live"), d)
+            self.assertTrue(d.get("events"), d)
 
 if __name__ == "__main__":
     unittest.main()

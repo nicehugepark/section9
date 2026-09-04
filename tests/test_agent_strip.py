@@ -96,67 +96,68 @@ class TestAgentStrip(unittest.TestCase):
                 time.sleep(0.3)
 
     # G1. 목록: type/desc/label/tokens/elapsed/active
-    def test_g1_agents_list(self):
-        code, d = self.get("/api/agents?session=stripsess")
-        self.assertEqual(code, 200, d)
-        self.assertEqual(len(d["agents"]), 1, d)
-        a = d["agents"][0]
-        self.assertEqual(a["id"], "abc123")
-        self.assertEqual(a["type"], "frontend-developer")
-        self.assertEqual(a["desc"], "스트립 구현")
-        self.assertEqual(a["label"], "설계 검토를 시작한다")
-        self.assertEqual(a["tokens"], 100)
-        self.assertTrue(a["active"])       # 방금 만든 파일 — mtime 신선
-        self.assertGreater(a["elapsed"], 0)
+    def test_test_agent_strip(self):
+        """TestAgentStrip 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("g1_agents_list"):
+                code, d = self.get("/api/agents?session=stripsess")
+                self.assertEqual(code, 200, d)
+                self.assertEqual(len(d["agents"]), 1, d)
+                a = d["agents"][0]
+                self.assertEqual(a["id"], "abc123")
+                self.assertEqual(a["type"], "frontend-developer")
+                self.assertEqual(a["desc"], "스트립 구현")
+                self.assertEqual(a["label"], "설계 검토를 시작한다")
+                self.assertEqual(a["tokens"], 100)
+                self.assertTrue(a["active"])       # 방금 만든 파일 — mtime 신선
+                self.assertGreater(a["elapsed"], 0)
 
-    # G2. 라벨·토큰 갱신(증분): 새 활동 추가 → label 교체, tokens 합산
-    def test_g2_label_updates(self):
-        self.get("/api/agents?session=stripsess")   # 캐시 적재
-        self.ag_write(
-            {"type": "assistant",
-             "timestamp": "2026-08-24T10:01:00.000Z",
-             "message": {"usage": {"output_tokens": 50},
-                         "content": [{"type": "tool_use", "name": "Read",
-                                      "id": "t2",
-                                      "input": {"file_path":
-                                                "/tmp/mock-main.png"}}]}})
-        code, d = self.get("/api/agents?session=stripsess")
-        a = d["agents"][0]
-        self.assertEqual(a["label"], "Read /tmp/mock-main.png")
-        self.assertEqual(a["tokens"], 150)
+            # G2. 라벨·토큰 갱신(증분): 새 활동 추가 → label 교체, tokens 합산
+        with self.subTest("g2_label_updates"):
+                self.get("/api/agents?session=stripsess")   # 캐시 적재
+                self.ag_write(
+                    {"type": "assistant",
+                     "timestamp": "2026-08-24T10:01:00.000Z",
+                     "message": {"usage": {"output_tokens": 50},
+                                 "content": [{"type": "tool_use", "name": "Read",
+                                              "id": "t2",
+                                              "input": {"file_path":
+                                                        "/tmp/mock-main.png"}}]}})
+                code, d = self.get("/api/agents?session=stripsess")
+                a = d["agents"][0]
+                self.assertEqual(a["label"], "Read /tmp/mock-main.png")
+                self.assertEqual(a["tokens"], 150)
 
-    # G3. agentstream: 증분 열람 + 미존재 에이전트 404
-    def test_g3_agentstream(self):
-        code, d = self.get("/api/agentstream?session=stripsess&agent=abc123")
-        self.assertEqual(code, 200, d)
-        self.assertTrue(d["events"])
-        roles = {e["role"] for e in d["events"]}
-        self.assertIn("assistant", roles)
-        off = d["offset"]
-        code, d2 = self.get(
-            f"/api/agentstream?session=stripsess&agent=abc123&after={off}")
-        self.assertEqual(d2["events"], [])          # 증분 소진
-        code, _ = self.get("/api/agentstream?session=stripsess&agent=nope")
-        self.assertEqual(code, 404)
+            # G3. agentstream: 증분 열람 + 미존재 에이전트 404
+        with self.subTest("g3_agentstream"):
+                code, d = self.get("/api/agentstream?session=stripsess&agent=abc123")
+                self.assertEqual(code, 200, d)
+                self.assertTrue(d["events"])
+                roles = {e["role"] for e in d["events"]}
+                self.assertIn("assistant", roles)
+                off = d["offset"]
+                code, d2 = self.get(
+                    f"/api/agentstream?session=stripsess&agent=abc123&after={off}")
+                self.assertEqual(d2["events"], [])          # 증분 소진
+                code, _ = self.get("/api/agentstream?session=stripsess&agent=nope")
+                self.assertEqual(code, 404)
 
-    # G4. 격리: 비멤버 시점 404 (admin as= 강등)
-    def test_g4_isolation(self):
-        subprocess.run([S9, "user", "add", "stranger"], capture_output=True,
-                       env=self.env, timeout=15)
-        code, _ = self.get("/api/agents?session=stripsess&as=stranger")
-        self.assertEqual(code, 404)
-        code, _ = self.get(
-            "/api/agentstream?session=stripsess&agent=abc123&as=stranger")
-        self.assertEqual(code, 404)
+            # G4. 격리: 비멤버 시점 404 (admin as= 강등)
+        with self.subTest("g4_isolation"):
+                subprocess.run([S9, "user", "add", "stranger"], capture_output=True,
+                               env=self.env, timeout=15)
+                code, _ = self.get("/api/agents?session=stripsess&as=stranger")
+                self.assertEqual(code, 404)
+                code, _ = self.get(
+                    "/api/agentstream?session=stripsess&agent=abc123&as=stranger")
+                self.assertEqual(code, 404)
 
-    # G5. 회귀: /api/stream 기존 동작(parse_stream_file 분리 후)
-    def test_g5_stream_regression(self):
-        code, d = self.get("/api/stream?session=stripsess")
-        self.assertEqual(code, 200)
-        self.assertTrue(d["events"])
-        self.assertIn("offset", d)
-        self.assertIn("live", d)
-
+            # G5. 회귀: /api/stream 기존 동작(parse_stream_file 분리 후)
+        with self.subTest("g5_stream_regression"):
+            code, d = self.get("/api/stream?session=stripsess")
+            self.assertEqual(code, 200)
+            self.assertTrue(d["events"])
+            self.assertIn("offset", d)
+            self.assertIn("live", d)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

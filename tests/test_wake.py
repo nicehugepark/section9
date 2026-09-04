@@ -321,26 +321,27 @@ class WakeApi(unittest.TestCase):
                 time.sleep(0.3)
 
     # A1. 멈춘 카드를 깨우면 스폰 경로까지 간다 — 킬스위치가 그 앞에서 잡는다.
-    def test_a1_route_reaches_spawn_gate(self):
-        code, res = self.post("/api/wake", {"id": self.stalled})
-        self.assertEqual(code, 409, res)
-        self.assertFalse(res["ok"])
-        self.assertEqual(res["action"], "disabled", res)
-        self.assertEqual(res["id"], self.stalled)
+    def test_wake_api(self):
+        """POST /api/wake — 배선과 응답 계약. 서버는 킬스위치를 켠 채 띄운다."""
+        with self.subTest("a1_route_reaches_spawn_gate"):
+                code, res = self.post("/api/wake", {"id": self.stalled})
+                self.assertEqual(code, 409, res)
+                self.assertFalse(res["ok"])
+                self.assertEqual(res["action"], "disabled", res)
+                self.assertEqual(res["id"], self.stalled)
 
-    # A2. 아직 도는 카드는 거부 — 겹쳐 띄우지 않는다.
-    def test_a2_route_refuses_moving(self):
-        code, res = self.post("/api/wake", {"id": self.fresh})
-        self.assertEqual(code, 409, res)
-        self.assertEqual(res["action"], "moving", res)
-        self.assertTrue(res["message"])
+            # A2. 아직 도는 카드는 거부 — 겹쳐 띄우지 않는다.
+        with self.subTest("a2_route_refuses_moving"):
+                code, res = self.post("/api/wake", {"id": self.fresh})
+                self.assertEqual(code, 409, res)
+                self.assertEqual(res["action"], "moving", res)
+                self.assertTrue(res["message"])
 
-    # A3. 없는 문서.
-    def test_a3_route_missing(self):
-        code, res = self.post("/api/wake", {"id": "REQ-19990101-001-zzzz"})
-        self.assertEqual(code, 409, res)
-        self.assertEqual(res["action"], "missing", res)
-
+            # A3. 없는 문서.
+        with self.subTest("a3_route_missing"):
+            code, res = self.post("/api/wake", {"id": "REQ-19990101-001-zzzz"})
+            self.assertEqual(code, 409, res)
+            self.assertEqual(res["action"], "missing", res)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

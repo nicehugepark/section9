@@ -20,6 +20,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import shutil
 import socket
 import tempfile
 import unittest
@@ -89,10 +90,15 @@ class Metrics(unittest.TestCase):
         """
         lock = self.m._metrics_lock(self.tmp)
         self.assertIsNotNone(lock)
+        # 시험 자리는 임시 자리라 REQ-20260902-062 의 관문에 먼저 걸린다.
+        # 여기서 재려는 것은 **그 뒤의 멱등**이라 관문만 잠시 연다.
+        was = self.m._metrics_transient_root
+        self.m._metrics_transient_root = lambda root=None: False
         try:
             self.assertEqual(self.m._metrics_alive(self.tmp), os.getpid())
             self.assertFalse(self.m.metrics_detach(self.tmp))
         finally:
+            self.m._metrics_transient_root = was
             lock.close()
         self.assertIsNone(self.m._metrics_alive(self.tmp))
 
@@ -130,6 +136,99 @@ class Metrics(unittest.TestCase):
         self.assertEqual(marks[1]["prev_boot"], 1000)
         # 첫 표식은 재시작으로 세지 않는다
         self.assertEqual(self.m.metrics_verdict(recs)["boots"], 1)
+
+    def test_s4b_boot_jitter_is_still_one_boot(self):
+        """S4b. btime 이 초 단위로 흔들려도 부팅은 하나다 (REQ-20260902-057).
+
+        WSL2 는 부팅 직후 시계를 맞추며 btime 을 (현재시각 − uptime) 으로
+        되계산해 초 단위로 흔든다. 「값이 다르면 재시작」 규칙이 그 흔들림마다
+        표식을 세워 20:02~20:08 에 경계 9개를 만들었다 — 경계가 아홉 개면
+        어느 것도 경계가 아니다. 아래는 그때 실측한 값 그대로다.
+        """
+        base = self.m.metrics_sample(self.tmp)
+        for b in (1788346922, 1788346921, 1788346920, 1788346918,
+                  1788346916, 1788346915, 1788346914, 1788346914):
+            self.m.metrics_append(dict(base, boot=b), self.tmp)
+        recs = self._lines()
+        marks = [r for r in recs if r.get("event") == "boot"]
+        self.assertEqual(len(marks), 1)          # 아홉이 아니라 하나
+        self.assertTrue(marks[0]["first"])       # 그 하나는 수집의 시작이다
+        self.assertEqual(self.m.metrics_verdict(recs)["boots"], 0)
+
+    def test_s4c_a_real_restart_still_marks(self):
+        """S4c. 흔들림을 눈감아도 진짜 재시작은 그대로 잡힌다.
+
+        허용 오차의 값이 곧 이 계기의 감도라, 경계 양쪽을 함께 잰다.
+        """
+        slack = self.m.METRICS_BOOT_SLACK_SEC
+        self.assertFalse(self.m._boot_changed(1000, 1000 + slack))
+        self.assertTrue(self.m._boot_changed(1000, 1000 + slack + 1))
+        self.assertFalse(self.m._boot_changed(1000, 1000 - slack))
+        self.assertTrue(self.m._boot_changed(1000, 1000 - slack - 1))
+        self.assertTrue(self.m._boot_changed(None, 1000))   # 수집의 시작
+        base = self.m.metrics_sample(self.tmp)
+        self.m.metrics_append(dict(base, boot=1788346922), self.tmp)
+        self.m.metrics_append(dict(base, boot=1788350522), self.tmp)
+        marks = [r for r in self._lines() if r.get("event") == "boot"]
+        self.assertEqual(len(marks), 2)
+        self.assertFalse(marks[1]["first"])
+
+    def test_s4d_no_collector_stands_in_a_throwaway_copy(self):
+        """S4d. 잠시 있다 사라질 사본에서는 수집기가 서지 않는다
+        (REQ-20260902-062).
+
+        멱등은 `state/metrics/collector.lock` 하나에 걸려 있는데 그 잠금은
+        ROOT 마다 따로다. 시험·중계가 만든 임시 사본에서 수집기가 뜨면
+        실저장소의 잠금을 **볼 수 없어** 겹쳐 살고, 그 사본이 지워진 뒤에도
+        사라진 자리에 표본을 쓰며 영원히 남는다 (실측 2026-09-02 21:36).
+        """
+        throwaway = tempfile.mkdtemp(prefix="s9metgone-")
+        try:
+            self.assertTrue(self.m._metrics_transient_root(throwaway))
+            self.assertFalse(self.m.metrics_detach(throwaway))
+            self.assertFalse(os.path.exists(
+                self.m._metrics_paths(throwaway)["lock"]))
+        finally:
+            shutil.rmtree(throwaway, ignore_errors=True)
+        # 실저장소는 임시 자리가 아니다 — 관문이 정상 기동까지 막으면 안 된다.
+        repo = os.path.join(HERE, "..")
+        self.assertFalse(self.m._metrics_transient_root(repo))
+
+    def test_s4d2_a_symlink_does_not_get_the_gate_around(self):
+        """S4d-2. 임시 자리 판정은 **realpath** 로 잰다.
+
+        경로 글자만 보면 집 안에 걸어 둔 링크 하나로 관문이 열린다 — 링크는
+        임시 자리처럼 생기지 않았지만 가리키는 곳은 임시 자리다. 겹쳐 뜨는
+        수집기를 막는 관문이 그렇게 우회되면 막은 적이 없는 것과 같다.
+        """
+        real = tempfile.mkdtemp(prefix="s9metlink-")
+        link = os.path.join(HERE, ".s9metlink-probe")
+        try:
+            os.symlink(real, link)
+        except (OSError, NotImplementedError):
+            shutil.rmtree(real, ignore_errors=True)
+            self.skipTest("이 파일 시스템은 심볼릭 링크를 만들 수 없다")
+        try:
+            # 글자만 보면 저장소 안이다 — 가리키는 곳이 임시 자리일 뿐이다.
+            self.assertNotIn(os.path.realpath(tempfile.gettempdir()), link)
+            self.assertTrue(self.m._metrics_transient_root(link))
+            self.assertFalse(self.m.metrics_detach(link))
+        finally:
+            os.remove(link)
+            shutil.rmtree(real, ignore_errors=True)
+
+    def test_s4e_the_collector_leaves_when_its_place_is_gone(self):
+        """S4e. 제 잠금이 사라진 수집기는 다음 바퀴에 스스로 물러난다.
+
+        관문은 앞으로 뜰 것만 막는다 — 이미 떠 있던 것이 자리를 잃고도 계속
+        도는 자리가 이 결함의 나머지 반이다.
+        """
+        p = self.m._metrics_paths(self.tmp)
+        os.makedirs(p["dir"], exist_ok=True)
+        if os.path.exists(p["lock"]):
+            os.remove(p["lock"])
+        self.assertEqual(self.m.metrics_loop(self.tmp, interval=0, limit=1),
+                         "자리가 사라졌다")
 
     def test_s5_day_rollover_and_prune(self):
         """S5. 날 파일로 나뉘고, 보존 기간 밖은 지운다."""
@@ -253,6 +352,114 @@ class Metrics(unittest.TestCase):
         j = hook.index("\n", hook.index("ensure_metrics()", i))
         self.assertLess(i, j)                    # 세션 시작 갈래 안에 있다
         self.assertIn('"metrics", "start"', hook)
+
+    # ---- 잠금·pid 파일의 단단함 (REQ-20260902-063, white-hacker 점검) -------
+    # 이 호스트는 사용자가 하나라 실제 공격면이 0이지만, UID 가 섞이는 배치
+    # (공유 빌드 기계)에서는 다르다. 막는 값이 공짜면 배치를 가정하지 않는다.
+
+    def test_h1_lock_does_not_follow_a_symlink(self):
+        """남이 심어 둔 링크를 따라가 그 파일에 pid 를 쓰지 않는다."""
+        p = self.m._metrics_paths(self.tmp)
+        os.makedirs(p["dir"], exist_ok=True)
+        victim = os.path.join(self.tmp, "victim.txt")
+        with open(victim, "w") as f:
+            f.write("소중한 내용\n")
+        if os.path.exists(p["lock"]):
+            os.remove(p["lock"])
+        os.symlink(victim, p["lock"])
+        self.assertIsNone(self.m._metrics_lock(self.tmp),
+                          "링크를 따라가 잠금을 잡았다")
+        with open(victim) as f:
+            self.assertEqual(f.read(), "소중한 내용\n", "남의 파일을 덮어썼다")
+        os.remove(p["lock"])
+
+    def test_h2_lock_is_not_world_readable(self):
+        """0600 — 남이 읽을 이유가 없는 파일이다."""
+        lock = self.m._metrics_lock(self.tmp)
+        self.assertIsNotNone(lock)
+        try:
+            mode = os.stat(self.m._metrics_paths(self.tmp)["lock"]).st_mode
+            self.assertEqual(mode & 0o077, 0, "잠금 파일이 남에게 열려 있다")
+        finally:
+            lock.close()
+
+    def test_h3_stop_asks_who_that_pid_is(self):
+        """죽이기 전에 그 pid 가 우리 수집기인지 묻는다.
+
+        pid 파일의 숫자를 그대로 믿으면, 재사용된 pid 나 위조된 값이 가리키는
+        남의 프로세스에 SIGTERM 이 간다."""
+        self.assertFalse(self.m._metrics_is_collector(1),
+                         "pid 1(init)을 수집기로 봤다")
+        self.assertTrue(self.m._metrics_is_collector(10**9),
+                        "/proc 에 없는 pid 는 판정을 미루지 않고 참으로 둔다")
+        with open(S9, encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("_metrics_is_collector(pid)", src,
+                      "stop 이 그 물음을 지나지 않는다")
+
+    def test_h4_start_says_it_keeps_going_out_and_how_to_stop(self):
+        """켜는 사람이 무엇을 켰는지 알아야 한다 — 비콘 고지."""
+        with open(S9, encoding="utf-8") as f:
+            src = f.read()
+        blk = src.split('if action == "start":', 1)[1][:1400]
+        self.assertIn("밖으로 나간다", blk)
+        self.assertIn("S9_NO_METRICS", blk)
+        self.assertIn("metrics stop", blk)
+
+    # ---- 봉우리를 놓치지 않는다 (REQ-20260903-004) ------------------------
+    # 비용은 총량이 아니라 동시 최고치인데, 15초에 한 번 찍는 값은 그 사이의
+    # 봉우리를 통째로 놓친다. 실제로 이 계기는 여덟 시간 동안 "몰린 순간"을
+    # 한 번도 못 봤고, 그래서 리드가 원인을 못 짚었다.
+
+    def test_p1_a_peak_between_samples_survives(self):
+        """표본 사이에 솟은 값이 표본에 남는다."""
+        self.m._PEAK.update({"tcp_inuse": 0, "sockets": 0})
+        self.m._peak_tick()
+        got = self.m._peak_take()
+        self.assertIn("peak_tcp_inuse", got)
+        self.assertGreater(got["peak_tcp_inuse"], 0)
+
+    def test_p2_the_peak_is_emptied_each_time(self):
+        """비우지 않으면 한 번 솟은 값이 영원히 따라붙어 계기가 거짓말한다."""
+        self.m._PEAK.update({"tcp_inuse": 77, "sockets": 88})
+        self.assertEqual(self.m._peak_take(),
+                         {"peak_tcp_inuse": 77, "peak_sockets": 88})
+        self.assertEqual(self.m._peak_take(), {},
+                         "봉우리가 비워지지 않았다")
+
+    def test_p3_zero_is_not_reported(self):
+        """0 은 「한가하다」가 아니라 「모른다」다 — /proc 이 없는 판에서
+        0 을 실으면 사람이 한가한 것으로 읽는다."""
+        self.m._PEAK.update({"tcp_inuse": 0, "sockets": 0})
+        self.assertEqual(self.m._peak_take(), {})
+
+    def test_p4_windows_count_is_taken_once_a_minute(self):
+        """powershell 왕복이 1~2초다 — 표본마다 재면 계기가 계기를 방해한다."""
+        import time as _t
+        self.m._WIN_BOUND.update({"at": _t.time(), "value": 4242})
+        self.assertEqual(self.m._win_bound(), 4242)
+        self.assertGreaterEqual(self.m.METRICS_WIN_EVERY, 30)
+
+    def test_p5_no_windows_side_does_not_break_the_sample(self):
+        """powershell 이 없거나 실패해도 그 키만 빠지고 표본은 산다."""
+        was = self.m.shutil.which
+        self.m._WIN_BOUND.update({"at": 0.0, "value": None})
+        self.m.shutil.which = lambda *a, **k: None
+        try:
+            self.assertIsNone(self.m._win_bound())
+            s = self.m._sys_sample()
+        finally:
+            self.m.shutil.which = was
+        self.assertNotIn("win_bound", s)
+        self.assertIn("open_files", s, "표본 전체가 죽었다")
+
+    def test_p6_the_loop_looks_while_it_sleeps(self):
+        """자는 동안에도 봐야 봉우리가 잡힌다 — 그냥 sleep(interval) 이면
+        15초짜리 눈 감기다."""
+        import inspect
+        src = inspect.getsource(self.m.metrics_loop)
+        self.assertIn("_peak_tick()", src)
+        self.assertNotIn("time.sleep(interval)", src)
 
 
 if __name__ == "__main__":

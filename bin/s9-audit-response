@@ -24,17 +24,60 @@ import shutil
 import subprocess
 import sys
 
+
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
 S9 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "s9")
+# `bin/s9` 를 부르는 argv (REQ-20260903-005). 경로 하나만 넘기면 **윈도우에서
+# 부를 수가 없다** — 그 판에는 shebang 이 없어 확장자 없는 스크립트가
+# `CreateProcess` 를 통과하지 못한다(WinError 193/2). 판을 갈라 분기하는 대신
+# 판에 기대는 것을 없앤다: 지금 도는 인터프리터로 그 파일을 연다. 리눅스·맥에서
+# 하던 일과 결과가 같고(같은 python3 가 같은 스크립트를 연다), 실행 권한 비트나
+# `env` 의 존재에도 기대지 않게 된다.
+S9_ARGV = [sys.executable, S9]
 MAX_CHARS = 12000
-# 응답 머리의 시각 도장: `[YYYY-MM-DD HH:MM:SS KST - 이름]`
+# 응답 머리의 시각 도장: `[YYYY-MM-DD HH:MM:SS ZONE - 이름]`
+#
+# 시간대 라벨을 `KST` 로 못박지 않는다 (REQ-20260903-013). 표시 시간대는 개인
+# 설정을 따르는데(REQ-20260828-024 가 프롬프트 훅에서 상수를 걷어냈다) **이쪽만
+# 남아 있었다.** KST 아닌 사람이 규약대로 `EST` 를 적으면 이 정규식이 못 알아보고,
+# 보정이 "도장이 없다"로 갈라져 **머리에 도장을 하나 더 붙인다** — 두 개가 된다.
+# 라벨은 세 꼴을 받는다: 이름(KST·EDT), 수치 오프셋(+09:00), `local`.
 STAMP_RE = re.compile(
-    r"\A`\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) KST - ([^\]\n]+)\]`")
+    r"\A`\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) "
+    r"([A-Za-z][A-Za-z0-9]{1,11}|[+-]\d{2}:?\d{2}) - ([^\]\n]+)\]`")
 STAMP_DRIFT_SEC = 60      # 이보다 어긋나면 바로잡았다는 사실도 남긴다
 
 
-def now_kst():
-    kst = datetime.timezone(datetime.timedelta(hours=9))
-    return datetime.datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
+def now_stamp(env=None):
+    """지금 시각 — 재는 자리는 `s9 now` 한 곳이다 (REQ-20260903-013).
+
+    여기 UTC+9 상수가 남아 있었다. 프롬프트 훅은 개인 설정 timezone 을 따르게
+    고쳤는데(REQ-20260828-024) 기록을 바로잡는 이쪽은 그대로여서, KST 아닌
+    사람의 문서에는 **훅이 확신 있게 틀린 시각을 적었다.** 같은 물음에 답이 둘이면
+    언젠가 갈린다 — 그 둘째를 없앤다.
+
+    부르지 못하면 시스템 로컬로 물러난다: 시각 한 줄 때문에 캡처를 통째로
+    잃지 않는다."""
+    try:
+        out = run(env or dict(os.environ), "now")
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:
+        pass
+    now = datetime.datetime.now().astimezone()
+    return f"{now:%Y-%m-%d %H:%M:%S} " + (now.strftime("%Z") or "local")
 
 
 def correct_stamp(text, now_str):
@@ -53,15 +96,15 @@ def correct_stamp(text, now_str):
     """
     m = STAMP_RE.match(text or "")
     if not m:
-        return f"`[{now_str} KST - lead]`\n\n" + (text or ""), None
+        return f"`[{now_str} - lead]`\n\n" + (text or ""), None
     try:
         fmt = "%Y-%m-%d %H:%M:%S"
-        drift = int(abs((datetime.datetime.strptime(now_str, fmt)
+        drift = int(abs((datetime.datetime.strptime(now_str[:19], fmt)
                          - datetime.datetime.strptime(m.group(1), fmt))
                         .total_seconds()))
     except ValueError:
         drift = None
-    fixed = f"`[{now_str} KST - {m.group(2)}]`" + text[m.end():]
+    fixed = f"`[{now_str} - {m.group(3)}]`" + text[m.end():]
     return fixed, drift
 
 
@@ -85,8 +128,8 @@ def _mirror_dir(root):
     남기는 쪽이 안전한 기본값이고, 자리를 잘못 짜면 resume 이 못 찾는다.
     """
     try:
-        out = subprocess.run([S9, "stream", "--dir"], capture_output=True,
-                             text=True, env={**os.environ, "S9_ROOT": root},
+        out = subprocess.run([*S9_ARGV, "stream", "--dir"], capture_output=True,
+                             encoding="utf-8", errors="replace", env={**os.environ, "S9_ROOT": root},
                              timeout=10)
         if out.returncode == 0:
             return out.stdout.strip()
@@ -159,8 +202,8 @@ def _same_head(a, b, n):
 
 
 def run(env, *argv, inp=None):
-    return subprocess.run([S9, *argv], input=inp, capture_output=True,
-                          text=True, env=env, timeout=15)
+    return subprocess.run([*S9_ARGV, *argv], input=inp, capture_output=True,
+                          encoding="utf-8", errors="replace", env=env, timeout=15)
 
 
 def pending_questions(env):
@@ -255,7 +298,7 @@ def main():
         return  # Nothing/Fragment 턴 — 붙일 문서가 없다
     # 시각은 모델이 아니라 훅이 책임진다 (REQ-20260826-038) — 자르기 전에
     # 바로잡는다(도장은 머리에 있으니 잘림과 무관하지만 순서를 고정해 둔다).
-    text, drift = correct_stamp(text, now_kst())
+    text, drift = correct_stamp(text, now_stamp(env))
     if drift is not None and drift >= STAMP_DRIFT_SEC:
         run(env, "log", f"stamp 보정: 응답 시각이 {drift}s 어긋나 실제 시각으로 고쳤다")
     if len(text) > MAX_CHARS:

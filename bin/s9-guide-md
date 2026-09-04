@@ -14,6 +14,20 @@ import re
 import sys
 from html.parser import HTMLParser
 
+
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 BLOCK = {"p", "li", "h1", "h2", "h3", "h4", "pre", "tr", "section",
@@ -35,6 +49,12 @@ class MD(HTMLParser):
         self.asset_rel = asset_rel
         self.href = None
         self.in_no = 0
+        # 표는 흘려 쓸 수 없다 — 머리줄과 구분선을 앞세워야 마크다운이 표로
+        # 읽는다 (REQ-20260902-050-62x6). 그래서 칸을 모아 두었다가 </table>
+        # 에서 한 번에 그린다. 예전엔 td·th 에 아무 처리가 없어 세 칸이 한
+        # 문단으로 붙었고, 3장 「실시간 신호 읽기」가 읽을 수 없는 덩어리였다.
+        self.tbl = None
+        self.cell_save = None
 
     def emit(self, s):
         self.out.append(s)
@@ -62,6 +82,18 @@ class MD(HTMLParser):
             self.nl(); self.emit("#### ")
         elif tag == "p":
             self.nl()
+        elif tag == "table":
+            self.nl()
+            self.tbl = {"head": None, "rows": [], "row": None, "th": False}
+        elif tag == "tr" and self.tbl is not None:
+            self.tbl["row"] = []
+            self.tbl["th"] = False
+        elif tag in ("td", "th") and self.tbl is not None:
+            # 칸 하나를 따로 받는다 — 본문 버퍼를 잠깐 바꿔 끼운다.
+            self.cell_save = self.out
+            self.out = []
+            if tag == "th":
+                self.tbl["th"] = True
         elif tag in ("ul", "ol"):
             self.li_depth += 1
         elif tag == "li":
@@ -107,6 +139,24 @@ class MD(HTMLParser):
             return
         if self.skip:
             return
+        if tag in ("td", "th") and self.tbl is not None:
+            cell = re.sub(r"\s+", " ", "".join(self.out)).strip()
+            self.out = self.cell_save
+            self.cell_save = None
+            # 칸 안의 파이프는 표의 칸막이와 같은 글자라 벗겨 준다.
+            self.tbl["row"].append(cell.replace("|", "\\|"))
+            return
+        if tag == "tr" and self.tbl is not None:
+            row = self.tbl["row"] or []
+            self.tbl["row"] = None
+            if self.tbl["th"] and self.tbl["head"] is None:
+                self.tbl["head"] = row
+            else:
+                self.tbl["rows"].append(row)
+            return
+        if tag == "table" and self.tbl is not None:
+            self.flush_table()
+            return
         if tag == "pre":
             self.pre = max(0, self.pre - 1)
             self.nl(1); self.emit("```"); self.nl()
@@ -138,6 +188,33 @@ class MD(HTMLParser):
         elif tag == "span" and self.in_no:
             self.in_no -= 1
             self.emit(". ")
+
+    def flush_table(self):
+        """모은 칸을 마크다운 표로 — 머리줄이 없으면 첫 줄을 머리로 세운다.
+
+        깃헙 마크다운은 머리줄과 구분선이 있어야 표로 읽는다. 없이 내보내면
+        고친 티도 안 나고 예전처럼 한 문단으로 붙는다.
+        """
+        t, self.tbl = self.tbl, None
+        head, rows = t["head"], t["rows"]
+        if head is None:
+            if not rows:
+                return
+            head, rows = rows[0], rows[1:]
+        n = max([len(head)] + [len(r) for r in rows])
+        if not n:
+            return
+
+        def line(cells):
+            cells = list(cells) + [""] * (n - len(cells))
+            return "| " + " | ".join(cells) + " |"
+
+        self.nl()
+        self.emit(line(head) + "\n")
+        self.emit("|" + "|".join([" --- "] * n) + "|\n")
+        for r in rows:
+            self.emit(line(r) + "\n")
+        self.nl()
 
     def handle_data(self, data):
         if self.skip:

@@ -77,13 +77,10 @@ class Cli(unittest.TestCase):
                           "--user", "tester", "--body", body).stdout.split()[0]
 
     def catalog(self):
-        rows = []
-        with open(os.path.join(self.root, "index", "catalog.jsonl"),
-                  encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    rows.append(json.loads(line))
-        return rows
+        # 파일이 아니라 문으로 읽는다 — 증분 카탈로그 뒤로 갓 쓴 행은
+        # base 가 아니라 델타에 있다 (REQ-20260902-035).
+        out = self.s9run("index", "cat").stdout
+        return [json.loads(l) for l in out.splitlines() if l.strip()]
 
     def row(self, doc_id):
         return next(r for r in self.catalog() if r["id"] == doc_id)

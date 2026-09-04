@@ -104,50 +104,40 @@ class TheMarkerKeepsTheReason(unittest.TestCase):
         with open(pf, encoding="utf-8") as f:
             return json.load(f)
 
-    def test_a_human_press_is_written_down(self):
-        """사람이 ▶ 를 누른 것 — 서버가 이미 별도 예산으로 세던 그 사실."""
-        self.mod._auto_mark_pid("REQ-WAKE", _Proc(4321), "wake")
-        m = self._marker("REQ-WAKE")
-        self.assertEqual(4321, m["pid"])
-        self.assertEqual("wake", m["reason"],
-                         "사람이 누른 사실이 마커에서 사라졌다")
-
-    def test_a_watcher_spawn_is_written_down(self):
-        self.mod._auto_mark_pid("REQ-REWORK", _Proc(4322), "rework")
-        self.assertEqual("rework", self._marker("REQ-REWORK")["reason"])
-
-    def test_the_next_spawn_overwrites_the_last(self):
-        """까닭은 **지금 도는 것**의 사실이다 — 옛 까닭이 남으면 거짓이 된다."""
-        self.mod._auto_mark_pid("REQ-TWICE", _Proc(4323), "rework")
-        self.mod._auto_mark_pid("REQ-TWICE", _Proc(4324), "wake")
-        m = self._marker("REQ-TWICE")
-        self.assertEqual("wake", m["reason"])
-        self.assertEqual(4324, m["pid"])
-
-    def test_no_reason_writes_no_key(self):
-        """까닭을 모르면 **적지 않는다** — 빈 값을 적으면 화면이 그것을
-        '까닭이 있는데 비었다'로 읽을 여지가 생긴다. 없으면 중립 문장이다."""
-        self.mod._auto_mark_pid("REQ-BLANK", _Proc(4325), "")
-        self.assertNotIn("reason", self._marker("REQ-BLANK"))
-
-    def test_a_broken_marker_does_not_raise(self):
-        """마커가 깨져 있어도 스폰은 넘어간다 — 기록이 실행을 막지 않는다."""
-        pf = os.path.join(self.mod._auto_dir(),
-                          self.mod.safe_name("REQ-JUNK") + ".json")
-        os.makedirs(os.path.dirname(pf), exist_ok=True)
-        with open(pf, "w", encoding="utf-8") as f:
-            f.write("{not json")
-        self.mod._auto_mark_pid("REQ-JUNK", _Proc(4326), "wake")
-        self.assertEqual("wake", self._marker("REQ-JUNK")["reason"])
-
-    def test_the_workspace_note_does_not_collide(self):
-        """자리 표시(`workspace`)와 까닭은 다른 칸이다 — 한 파일에 둘이 산다."""
-        self.mod._auto_mark_pid("REQ-WS", _Proc(4327), "wake")
-        self.mod._auto_mark_workspace("REQ-WS", "worktree", "본 저장소 사용 중")
-        m = self._marker("REQ-WS")
-        self.assertEqual("wake", m["reason"])
-        self.assertEqual("worktree", m["workspace"]["kind"])
-
+    def test_the_marker_keeps_the_reason(self):
+        """① 스폰 마커가 까닭을 버리지 않는다."""
+        with self.subTest("a_human_press_is_written_down"):
+            self.mod._auto_mark_pid("REQ-WAKE", _Proc(4321), "wake")
+            m = self._marker("REQ-WAKE")
+            self.assertEqual(4321, m["pid"])
+            self.assertEqual("wake", m["reason"],
+                             "사람이 누른 사실이 마커에서 사라졌다")
+        with self.subTest("a_watcher_spawn_is_written_down"):
+            self.mod._auto_mark_pid("REQ-REWORK", _Proc(4322), "rework")
+            self.assertEqual("rework", self._marker("REQ-REWORK")["reason"])
+        with self.subTest("the_next_spawn_overwrites_the_last"):
+            self.mod._auto_mark_pid("REQ-TWICE", _Proc(4323), "rework")
+            self.mod._auto_mark_pid("REQ-TWICE", _Proc(4324), "wake")
+            m = self._marker("REQ-TWICE")
+            self.assertEqual("wake", m["reason"])
+            self.assertEqual(4324, m["pid"])
+        with self.subTest("no_reason_writes_no_key"):
+            self.mod._auto_mark_pid("REQ-BLANK", _Proc(4325), "")
+            self.assertNotIn("reason", self._marker("REQ-BLANK"))
+        with self.subTest("a_broken_marker_does_not_raise"):
+            pf = os.path.join(self.mod._auto_dir(),
+                              self.mod.safe_name("REQ-JUNK") + ".json")
+            os.makedirs(os.path.dirname(pf), exist_ok=True)
+            with open(pf, "w", encoding="utf-8") as f:
+                f.write("{not json")
+            self.mod._auto_mark_pid("REQ-JUNK", _Proc(4326), "wake")
+            self.assertEqual("wake", self._marker("REQ-JUNK")["reason"])
+        with self.subTest("the_workspace_note_does_not_collide"):
+            self.mod._auto_mark_pid("REQ-WS", _Proc(4327), "wake")
+            self.mod._auto_mark_workspace("REQ-WS", "worktree", "본 저장소 사용 중")
+            m = self._marker("REQ-WS")
+            self.assertEqual("wake", m["reason"])
+            self.assertEqual("worktree", m["workspace"]["kind"])
 
 class TheRowCarriesTheReason(unittest.TestCase):
     """② 카탈로그가 그 칸을 행에 실어 낸다 — 새 통로를 파지 않는다."""
@@ -188,32 +178,28 @@ class TheRowCarriesTheReason(unittest.TestCase):
             rows = self.mod.catalog_with_live()
         return [r for r in rows if r["id"] == self.doc][0]
 
-    def test_the_human_reason_reaches_the_row(self):
-        r = self._row({"pid": 999001, "reason": "wake"})
-        self.assertEqual("spawned", r.get("live_kind"))
-        self.assertEqual("wake", r.get("spawn_reason"))
-
-    def test_the_watcher_reason_reaches_the_row(self):
-        r = self._row({"pid": 999002, "reason": "rework"})
-        self.assertEqual("rework", r.get("spawn_reason"))
-
-    def test_an_old_marker_carries_nothing(self):
-        """이 칸이 없던 시절의 마커 — 필드를 지어내지 않는다(하위호환)."""
-        r = self._row({"pid": 999003})
-        self.assertEqual("spawned", r.get("live_kind"))
-        self.assertIsNone(r.get("spawn_reason"))
-
-    def test_no_marker_no_branch(self):
-        """마커가 없으면 이 갈래 자체가 안 선다 — 사다리가 아래로 내려간다."""
-        pf = os.path.join(self.mod._auto_dir(),
-                          self.mod.safe_name(self.doc) + ".json")
-        if os.path.exists(pf):
-            os.remove(pf)
-        rows = self.mod.catalog_with_live()
-        r = [x for x in rows if x["id"] == self.doc][0]
-        self.assertNotEqual("spawned", r.get("live_kind"))
-        self.assertIsNone(r.get("spawn_reason"))
-
+    def test_the_row_carries_the_reason(self):
+        """② 카탈로그가 그 칸을 행에 실어 낸다 — 새 통로를 파지 않는다."""
+        with self.subTest("the_human_reason_reaches_the_row"):
+            r = self._row({"pid": 999001, "reason": "wake"})
+            self.assertEqual("spawned", r.get("live_kind"))
+            self.assertEqual("wake", r.get("spawn_reason"))
+        with self.subTest("the_watcher_reason_reaches_the_row"):
+            r = self._row({"pid": 999002, "reason": "rework"})
+            self.assertEqual("rework", r.get("spawn_reason"))
+        with self.subTest("an_old_marker_carries_nothing"):
+            r = self._row({"pid": 999003})
+            self.assertEqual("spawned", r.get("live_kind"))
+            self.assertIsNone(r.get("spawn_reason"))
+        with self.subTest("no_marker_no_branch"):
+            pf = os.path.join(self.mod._auto_dir(),
+                              self.mod.safe_name(self.doc) + ".json")
+            if os.path.exists(pf):
+                os.remove(pf)
+            rows = self.mod.catalog_with_live()
+            r = [x for x in rows if x["id"] == self.doc][0]
+            self.assertNotEqual("spawned", r.get("live_kind"))
+            self.assertIsNone(r.get("spawn_reason"))
 
 @unittest.skipUnless(NODE, "node 가 없어 화면 조각을 못 돌린다")
 class TheScreenSplitsTheSentence(unittest.TestCase):
@@ -239,42 +225,33 @@ class TheScreenSplitsTheSentence(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
         return r.stdout
 
-    def test_a_human_press_never_reads_as_by_itself(self):
-        """사용자 지적이 선 자리 — 제 손으로 누른 사람에게 「저절로」는 거짓이다."""
-        t = self._tell({"live_age": 7, "spawn_reason": "wake"})
-        self.assertIn("「이어가기」를 눌러", t)
-        self.assertIn("7초 전", t)
-        self.assertNotIn("저절로", t)
-        self.assertNotIn("자동", t)
-
-    def test_only_the_watcher_says_by_itself_and_says_why(self):
-        """워처 갈래만 「저절로」를 쓰고, 쓸 때는 **까닭을 함께** 진다."""
-        t = self._tell({"live_age": 12, "spawn_reason": "rework"})
-        self.assertIn("저절로", t)
-        self.assertIn("반려되어", t, "왜 저절로 떴는지가 빠졌다")
-        self.assertIn("12초 전", t)
-
-    def test_an_unknown_reason_stays_neutral(self):
-        """모르면 주어를 짐작하지 않는다 — 옛 마커·CLI 재개가 여기로 온다."""
-        for row in ({"live_age": 3},
-                    {"live_age": 3, "spawn_reason": ""},
-                    {"live_age": 3, "spawn_reason": "resume-item"}):
-            t = self._tell(row)
-            self.assertIn("3초 전에 다시 시작됐습니다", t)
+    def test_the_screen_splits_the_sentence(self):
+        """③ 세 갈래가 서로 다른 문장을 받는다."""
+        with self.subTest("a_human_press_never_reads_as_by_itself"):
+            t = self._tell({"live_age": 7, "spawn_reason": "wake"})
+            self.assertIn("「이어가기」를 눌러", t)
+            self.assertIn("7초 전", t)
             self.assertNotIn("저절로", t)
-            self.assertNotIn("눌러", t)
-
-    def test_every_branch_ends_with_the_same_promise(self):
-        """세 갈래가 **한 꼬리**를 나눠 쓴다 — 꼬리를 갈래마다 적으면 갈라진다.
-
-        그 꼬리가 하는 일은 「기다리면 된다」를 말하는 것이라, 어느 갈래에서든
-        사용자가 할 일이 같다는 사실 자체가 한 문장이어야 한다."""
-        tails = {self._tell({"live_age": 5, "spawn_reason": w})[-20:]
-                 for w in ("wake", "rework", "")}
-        self.assertEqual(1, len(tails), "갈래마다 꼬리가 갈렸다: %s" % tails)
-        self.assertIn("이어받기까지", tails.pop(),
-                      "재개의 동사가 「이어받다」가 아니다")
-
+            self.assertNotIn("자동", t)
+        with self.subTest("only_the_watcher_says_by_itself_and_says_why"):
+            t = self._tell({"live_age": 12, "spawn_reason": "rework"})
+            self.assertIn("저절로", t)
+            self.assertIn("반려되어", t, "왜 저절로 떴는지가 빠졌다")
+            self.assertIn("12초 전", t)
+        with self.subTest("an_unknown_reason_stays_neutral"):
+            for row in ({"live_age": 3},
+                        {"live_age": 3, "spawn_reason": ""},
+                        {"live_age": 3, "spawn_reason": "resume-item"}):
+                t = self._tell(row)
+                self.assertIn("3초 전에 다시 시작됐습니다", t)
+                self.assertNotIn("저절로", t)
+                self.assertNotIn("눌러", t)
+        with self.subTest("every_branch_ends_with_the_same_promise"):
+            tails = {self._tell({"live_age": 5, "spawn_reason": w})[-20:]
+                     for w in ("wake", "rework", "")}
+            self.assertEqual(1, len(tails), "갈래마다 꼬리가 갈렸다: %s" % tails)
+            self.assertIn("이어받기까지", tails.pop(),
+                          "재개의 동사가 「이어받다」가 아니다")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

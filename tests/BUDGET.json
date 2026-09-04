@@ -1,0 +1,28 @@
+{
+  "_": "시험 예산 기준선 (REQ-20260903-009). source_contract_files 는 라쳇이다 — 줄일 때만 고친다. 올려야 한다면 그 까닭을 why 에 한 줄 적어라. known 은 이미 있던 것들이라, 새로 늘어난 파일이 실패 메시지에 이름으로 지목된다.",
+  "source_contract_files": 51,
+  "why": [
+    "2026-09-03 기준선: 항목 1,986 · 소스를 두 번 이상 열어 글자를 대조하는 파일 51. 이 숫자는 지금까지 쌓인 빚이지 목표가 아니다 — 여기서부터 내려간다.",
+    "문턱이 '두 번 이상'인 까닭: 동작 시험도 준비 삼아 소스를 한 번 열 수 있다. 한 번 읽는 것까지 세면 REQ-20260903-005 의 윈도우 시험처럼 대부분 동작인 파일이 오탐으로 걸린다."
+  ],
+  "known": [
+    "test_account_flicker.py", "test_account_merge.py", "test_account_switch.py",
+    "test_agent_liveness.py", "test_agent_relay.py", "test_anchor_note.py",
+    "test_article_type.py", "test_asset_retry.py", "test_asset_text.py",
+    "test_assign_screen.py", "test_binding_sweep.py", "test_code_peek_ui.py",
+    "test_compact_signal.py", "test_dialog_fit.py", "test_guide_repo.py",
+    "test_hook_code_stamp.py", "test_install_hooks_path.py", "test_jobfile.py",
+    "test_jobs_shard.py", "test_judge_attach_kinds.py", "test_machine_accounts.py",
+    "test_metrics.py", "test_note_anchor.py", "test_notify_fanout.py",
+    "test_poll_snapshot.py", "test_priority_handle.py", "test_priority_visible.py",
+    "test_proc_scan.py", "test_restart_reach.py", "test_review_context.py",
+    "test_review_point_len.py", "test_secret_external_path.py",
+    "test_secret_where.py", "test_serve_stale.py", "test_serve_stop.py",
+    "test_session_restart.py", "test_short_ref.py", "test_spawn.py",
+    "test_stall_pair.py", "test_stall_visible.py", "test_stalled_claim.py",
+    "test_state_truth.py", "test_stop_branch.py", "test_streams_scan.py",
+    "test_sync_status.py", "test_term_mention.py", "test_timezone_pick.py",
+    "test_ux_agents.py", "test_viewer_gate.py", "test_wake_handle.py",
+    "test_windows_entry.py"
+  ]
+}

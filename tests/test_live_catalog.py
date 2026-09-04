@@ -30,8 +30,20 @@ class TestLiveCatalog(unittest.TestCase):
         cls.claude_dir = os.path.join(cls.tmp, "claude-projects")
         os.makedirs(os.path.join(cls.claude_dir, "proj"), exist_ok=True)
         base = {**os.environ, "S9_ROOT": cls.tmp, "S9_MACHINE": "testbox",
-                "S9_CLAUDE_PROJECTS": cls.claude_dir}
-        base.pop("S9_SESSION", None)
+                "S9_CLAUDE_PROJECTS": cls.claude_dir,
+                # 이 판의 문서는 alice 의 것이고, 전이도 alice 가 한다.
+                # 소유 게이트(REQ-20260902-016)가 들어온 뒤로 **남의 문서를
+                # 전이한 세션은 그 문서를 클레임하지 않는다** — 짓는 이와 집는
+                # 이가 갈리면 D6·D7 이 "등록이 안 됐다"로 넘어진다. 그것은 이
+                # 시험이 재려던 것이 아니다.
+                "S9_USER": "alice"}
+        # 바깥 세션의 자취를 들이지 않는다 — 무인 재작업 세션 안에서 스위트를
+        # 돌리면 그 봉투(S9_AUTO_RESUME·S9_ORIGIN·S9_JOB_REQ)가 새로 짓는
+        # 문서에 origin_actor=worker:auto-resume 로 새겨진다. 시험은 제 판에서만
+        # 서야 한다.
+        for leak in ("S9_SESSION", "S9_AUTO_RESUME", "S9_ORIGIN",
+                     "S9_JOB_REQ", "S9_REWORK_WATCH"):
+            base.pop(leak, None)
 
         def cli(sess, *argv):
             env = dict(base)
@@ -145,78 +157,78 @@ class TestLiveCatalog(unittest.TestCase):
         cls.srv.wait(timeout=5)
 
     # D1. 포인터 직접 증거
-    def test_d1_pointer_live(self):
-        r = self.rows[self.A]
-        self.assertTrue(r["live"], r)
+    def test_test_live_catalog(self):
+        """TestLiveCatalog 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("d1_pointer_live"):
+                r = self.rows[self.A]
+                self.assertTrue(r["live"], r)
 
-    # D2(082 개정): 스트림 tail 언급은 대화일 뿐 — 직접 증거 아님, 간접까지만
-    def test_d2_mention_is_not_direct(self):
-        r = self.rows[self.B]
-        self.assertFalse(r["live"], r)
-        self.assertEqual(r.get("live_kind"), "session", r)
+            # D2(082 개정): 스트림 tail 언급은 대화일 뿐 — 직접 증거 아님, 간접까지만
+        with self.subTest("d2_mention_is_not_direct"):
+                r = self.rows[self.B]
+                self.assertFalse(r["live"], r)
+                self.assertEqual(r.get("live_kind"), "session", r)
 
-    # D3. 세션만 활발 = 간접 — live 아님, live_kind=session
-    def test_d3_unmentioned_session_indirect(self):
-        r = self.rows[self.G]
-        self.assertFalse(r["live"], r)
-        self.assertEqual(r.get("live_kind"), "session", r)
+            # D3. 세션만 활발 = 간접 — live 아님, live_kind=session
+        with self.subTest("d3_unmentioned_session_indirect"):
+                r = self.rows[self.G]
+                self.assertFalse(r["live"], r)
+                self.assertEqual(r.get("live_kind"), "session", r)
 
-    # D6. 세션이 in-progress로 전이한 REQ = binding.active_reqs 자동 등록 → 직접
-    def test_d6_active_req_direct(self):
-        r = self.rows[self.F]
-        self.assertTrue(r["live"], r)
+            # D6. 세션이 in-progress로 전이한 REQ = binding.active_reqs 자동 등록 → 직접
+        with self.subTest("d6_active_req_direct"):
+                r = self.rows[self.F]
+                self.assertTrue(r["live"], r)
 
-    # D7. done 전이 시 모든 바인딩의 active_reqs에서 제거
-    def test_d7_done_prunes_active(self):
-        bp = os.path.join(self.tmp, "state", "sessions", "testbox__aaaa1111.json")
-        with open(bp) as f:
-            b = json.load(f)
-        self.assertIn(self.F, b.get("active_reqs", []), b)
-        self.assertNotIn(self.H, b.get("active_reqs", []), b)
+            # D7. done 전이 시 모든 바인딩의 active_reqs에서 제거
+        with self.subTest("d7_done_prunes_active"):
+                bp = os.path.join(self.tmp, "state", "sessions", "testbox__aaaa1111.json")
+                with open(bp) as f:
+                    b = json.load(f)
+                self.assertIn(self.F, b.get("active_reqs", []), b)
+                self.assertNotIn(self.H, b.get("active_reqs", []), b)
 
-    # D10. 무인 스폰 직후(클레임 전) → live_kind=spawned (REQ-20260824-008)
-    def test_d10_spawned_pending_visible(self):
-        r = self.rows[self.K]
-        self.assertFalse(r["live"], r)
-        self.assertEqual(r.get("live_kind"), "spawned", r)
+            # D10. 무인 스폰 직후(클레임 전) → live_kind=spawned (REQ-20260824-008)
+        with self.subTest("d10_spawned_pending_visible"):
+                r = self.rows[self.K]
+                self.assertFalse(r["live"], r)
+                self.assertEqual(r.get("live_kind"), "spawned", r)
 
-    # D11 (REQ-20260824-013). 클레임 시 transcript 자동 발견 → 무인 세션도 direct
-    def test_d11_worker_claim_direct(self):
-        r = self.rows[self.N]
-        self.assertTrue(r["live"], r)
-        self.assertEqual(r.get("live_kind"), "direct", r)
+            # D11 (REQ-20260824-013). 클레임 시 transcript 자동 발견 → 무인 세션도 direct
+        with self.subTest("d11_worker_claim_direct"):
+                r = self.rows[self.N]
+                self.assertTrue(r["live"], r)
+                self.assertEqual(r.get("live_kind"), "direct", r)
 
-    # B1 (REQ-20260824-011). blocked 문서는 마지막 blocked 전이 note가 사유로 노출
-    def test_b1_block_reason_exposed(self):
-        r = self.rows[self.M]
-        self.assertEqual(r.get("block_reason"), "패치 적용 대기(리드) — P1 적용 필요", r)
+            # B1 (REQ-20260824-011). blocked 문서는 마지막 blocked 전이 note가 사유로 노출
+        with self.subTest("b1_block_reason_exposed"):
+                r = self.rows[self.M]
+                self.assertEqual(r.get("block_reason"), "패치 적용 대기(리드) — P1 적용 필요", r)
 
-    # D9. last --add 병행 등록 → 직접 (last_req는 A 그대로)
-    def test_d9_last_add_direct(self):
-        self.assertTrue(self.rows[self.J]["live"], self.rows[self.J])
-        self.assertTrue(self.rows[self.A]["live"])  # last_req 교체 안 됨
+            # D9. last --add 병행 등록 → 직접 (last_req는 A 그대로)
+        with self.subTest("d9_last_add_direct"):
+                self.assertTrue(self.rows[self.J]["live"], self.rows[self.J])
+                self.assertTrue(self.rows[self.A]["live"])  # last_req 교체 안 됨
 
-    # D8(082 개정): 문서 갱신(반려 전이 등)만으로는 live 아님 — 실행 등록 필요
-    def test_d8_doc_write_alone_not_live(self):
-        r = self.rows[self.I]
-        self.assertFalse(r["live"], r)
-        self.assertFalse(r.get("live_kind"), r)
+            # D8(082 개정): 문서 갱신(반려 전이 등)만으로는 live 아님 — 실행 등록 필요
+        with self.subTest("d8_doc_write_alone_not_live"):
+                r = self.rows[self.I]
+                self.assertFalse(r["live"], r)
+                self.assertFalse(r.get("live_kind"), r)
 
-    # D4. 오래된 세션 = 무신호 (스트림에 id가 있어도 스트림 자체가 stale)
-    def test_d4_stale_session_no_signal(self):
-        r = self.rows[self.C]
-        self.assertFalse(r["live"], r)
-        self.assertFalse(r.get("live_kind"), r)
+            # D4. 오래된 세션 = 무신호 (스트림에 id가 있어도 스트림 자체가 stale)
+        with self.subTest("d4_stale_session_no_signal"):
+                r = self.rows[self.C]
+                self.assertFalse(r["live"], r)
+                self.assertFalse(r.get("live_kind"), r)
 
-    # D5. done은 신호 무관 live 아님
-    def test_d5_done_not_live(self):
-        self.assertFalse(self.rows[self.D]["live"], self.rows[self.D])
-
-    def test_d5b_unrelated_not_live(self):
-        r = self.rows[self.E]
-        self.assertFalse(r["live"], r)
-        self.assertFalse(r.get("live_kind"), r)
-
+            # D5. done은 신호 무관 live 아님
+        with self.subTest("d5_done_not_live"):
+            self.assertFalse(self.rows[self.D]["live"], self.rows[self.D])
+        with self.subTest("d5b_unrelated_not_live"):
+            r = self.rows[self.E]
+            self.assertFalse(r["live"], r)
+            self.assertFalse(r.get("live_kind"), r)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -31,10 +31,16 @@ INDEX = index_path()
 
 
 class env_as:
-    """S9_ROOT·S9_USER 를 세운 채로 모듈을 불러 쓰는 구간."""
+    """S9_ROOT·S9_USER·S9_MACHINE 를 세운 채로 모듈을 불러 쓰는 구간.
 
-    def __init__(self, root, user="alice"):
-        self.vals = {"S9_ROOT": root, "S9_USER": user}
+    머신 이름도 함께 세운다 — 바인딩을 훑는 자리가 **이 머신 것만** 보게 된
+    뒤로(REQ-20260902-017 `_local_binding_glob`), 하위 프로세스는
+    `testbox__*.json` 을 쓰는데 안에서 부른 모듈은 진짜 머신 이름을 찾아
+    "아무 바인딩도 없다"가 된다. 그러면 진행 중인 세션의 기록이 지워진다.
+    """
+
+    def __init__(self, root, user="alice", machine="testbox"):
+        self.vals = {"S9_ROOT": root, "S9_USER": user, "S9_MACHINE": machine}
 
     def __enter__(self):
         self.old = {k: os.environ.get(k) for k in self.vals}

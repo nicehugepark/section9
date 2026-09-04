@@ -199,46 +199,39 @@ class TheIdAndTheClockNeverShareInk(unittest.TestCase):
         except (ConnectionError, RuntimeError, OSError) as e:
             raise unittest.SkipTest("CDP 실측 불가: %s" % e)
 
-    def test_no_pair_overlaps_anywhere(self):
-        """전 배율×스킨×밀도×카드에서 식별자·시각 상자가 겹치지 않는다."""
-        self.maxDiff = None
-        bad = [r for r in self.rows if r["h"] > 0.01 and r["v"] > 0.01]
-        self.assertEqual(
-            [], [("%(scale)g %(skin)s/%(den)s %(tag)s h=%(h).2f v=%(v).2f"
-                  % r) for r in bad],
-            "식별자가 경과시각을 덮었다 — 캡처는 scratchpad/req021/")
-
-    def test_the_short_id_stays_on_the_first_line(self):
-        """한 줄에 드는 식별자는 내려가지 않는다 — 스트럿이 자리를 먹으면
-        여기서 걸린다. 같은 조합의 tiny 는 시각과 같은 높이(첫 줄)에 선다.
-        soft 는 시각을 제 줄로 내린 스킨이라 높이 비교 대상이 아니다."""
-        for r in self.rows:
-            if r["tag"] != "tiny" or r["skin"] in ("soft", "calm"):
-                continue
-            self.assertLess(
-                abs(r["idn"]["t"] - r["ela"]["t"]), 3.0,
-                "%(skin)s/%(den)s@%(scale)g 에서 짧은 식별자가 첫 줄을 "
-                "떠났다: idn.t=%(it).1f ela.t=%(et).1f" % dict(
-                    r, it=r["idn"]["t"], et=r["ela"]["t"]))
-
-    def test_the_long_id_goes_whole_not_cut(self):
-        """내려간 식별자도 통째다 — 상자 폭이 글자 수만큼 나온다(잘림 없음).
-        21자 전체형이 16자 표준형보다 확실히 넓어야 한다."""
-        by = {}
-        for r in self.rows:
-            by[(r["scale"], r["skin"], r["den"], r["tag"])] = r
-        for (sc, sk, dn, tag), r in by.items():
-            if tag != "worst":
-                continue
-            plain = by.get((sc, sk, dn, "plain"))
-            self.assertIsNotNone(plain)
-            w_worst = r["idn"]["r"] - r["idn"]["l"]
-            w_plain = plain["idn"]["r"] - plain["idn"]["l"]
-            self.assertGreater(
-                w_worst, w_plain + 10,
-                "%s/%s@%g 에서 21자 식별자(%.1f)가 16자(%.1f)만큼도 "
-                "안 넓다 — 잘렸다" % (sk, dn, sc, w_worst, w_plain))
-
+    def test_the_id_and_the_clock_never_share_ink(self):
+        """TheIdAndTheClockNeverShareInk 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("no_pair_overlaps_anywhere"):
+            self.maxDiff = None
+            bad = [r for r in self.rows if r["h"] > 0.01 and r["v"] > 0.01]
+            self.assertEqual(
+                [], [("%(scale)g %(skin)s/%(den)s %(tag)s h=%(h).2f v=%(v).2f"
+                      % r) for r in bad],
+                "식별자가 경과시각을 덮었다 — 캡처는 scratchpad/req021/")
+        with self.subTest("the_short_id_stays_on_the_first_line"):
+            for r in self.rows:
+                if r["tag"] != "tiny" or r["skin"] in ("soft", "calm"):
+                    continue
+                self.assertLess(
+                    abs(r["idn"]["t"] - r["ela"]["t"]), 3.0,
+                    "%(skin)s/%(den)s@%(scale)g 에서 짧은 식별자가 첫 줄을 "
+                    "떠났다: idn.t=%(it).1f ela.t=%(et).1f" % dict(
+                        r, it=r["idn"]["t"], et=r["ela"]["t"]))
+        with self.subTest("the_long_id_goes_whole_not_cut"):
+            by = {}
+            for r in self.rows:
+                by[(r["scale"], r["skin"], r["den"], r["tag"])] = r
+            for (sc, sk, dn, tag), r in by.items():
+                if tag != "worst":
+                    continue
+                plain = by.get((sc, sk, dn, "plain"))
+                self.assertIsNotNone(plain)
+                w_worst = r["idn"]["r"] - r["idn"]["l"]
+                w_plain = plain["idn"]["r"] - plain["idn"]["l"]
+                self.assertGreater(
+                    w_worst, w_plain + 10,
+                    "%s/%s@%g 에서 21자 식별자(%.1f)가 16자(%.1f)만큼도 "
+                    "안 넓다 — 잘렸다" % (sk, dn, sc, w_worst, w_plain))
 
 if __name__ == "__main__":
     unittest.main()

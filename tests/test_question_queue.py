@@ -84,40 +84,41 @@ class QuestionQueue(unittest.TestCase):
                 if c[0][0] == "note" and "answer" in c[0]]
 
     # N1. 답하기 전에 둘이 오면 둘 다 받는다
-    def test_n1_all_pending_answered(self):
-        calls = self.drive({"pending_qst": ["QST-A", "QST-B"]})
-        self.assertEqual(self._answered(calls), ["QST-A", "QST-B"])
+    def test_question_queue(self):
+        """Stop 훅을 한 번 돌리고 (호출목록) 을 준다."""
+        with self.subTest("n1_all_pending_answered"):
+                calls = self.drive({"pending_qst": ["QST-A", "QST-B"]})
+                self.assertEqual(self._answered(calls), ["QST-A", "QST-B"])
 
-    # N2. 붙인 뒤 목록을 비운다 — 다음 턴 답이 지난 질문에 또 붙지 않게
-    def test_n2_queue_cleared(self):
-        calls = self.drive({"pending_qst": ["QST-A"]})
-        binds = [c[0] for c in calls if c[0][0] == "bind"]
-        self.assertIn(("bind", "pending_qst", ""), binds, binds)
+            # N2. 붙인 뒤 목록을 비운다 — 다음 턴 답이 지난 질문에 또 붙지 않게
+        with self.subTest("n2_queue_cleared"):
+                calls = self.drive({"pending_qst": ["QST-A"]})
+                binds = [c[0] for c in calls if c[0][0] == "bind"]
+                self.assertIn(("bind", "pending_qst", ""), binds, binds)
 
-    # B1. 목록이 비어 있으면 예전 폴백(last_qst)을 쓴다
-    def test_b1_falls_back_to_last_qst(self):
-        calls = self.drive({"last_qst": "QST-OLD"})
-        self.assertEqual(self._answered(calls), ["QST-OLD"])
+            # B1. 목록이 비어 있으면 예전 폴백(last_qst)을 쓴다
+        with self.subTest("b1_falls_back_to_last_qst"):
+                calls = self.drive({"last_qst": "QST-OLD"})
+                self.assertEqual(self._answered(calls), ["QST-OLD"])
 
-    # B2. 하나가 사라졌어도 나머지엔 붙인다 — 하나 때문에 전부 버리지 않는다
-    def test_b2_missing_one_keeps_rest(self):
-        calls = self.drive({"pending_qst": ["QST-GONE", "QST-OK"]},
-                           note_fail=("QST-GONE",))
-        self.assertIn("QST-OK", self._answered(calls))
+            # B2. 하나가 사라졌어도 나머지엔 붙인다 — 하나 때문에 전부 버리지 않는다
+        with self.subTest("b2_missing_one_keeps_rest"):
+                calls = self.drive({"pending_qst": ["QST-GONE", "QST-OK"]},
+                                   note_fail=("QST-GONE",))
+                self.assertIn("QST-OK", self._answered(calls))
 
-    # F1. 하나도 성사되지 않으면 진행 중 REQ 로 물러난다 (031 의 폴백 유지)
-    def test_f1_all_fail_falls_back_to_req(self):
-        calls = self.drive({"pending_qst": ["QST-GONE"]},
-                           active_req="REQ-X", note_fail=("QST-GONE",))
-        noted = [c[0] for c in calls if c[0][0] == "note"]
-        self.assertTrue(any(a[1] == "REQ-X" and "response" in a
-                            for a in noted), noted)
+            # F1. 하나도 성사되지 않으면 진행 중 REQ 로 물러난다 (031 의 폴백 유지)
+        with self.subTest("f1_all_fail_falls_back_to_req"):
+                calls = self.drive({"pending_qst": ["QST-GONE"]},
+                                   active_req="REQ-X", note_fail=("QST-GONE",))
+                noted = [c[0] for c in calls if c[0][0] == "note"]
+                self.assertTrue(any(a[1] == "REQ-X" and "response" in a
+                                    for a in noted), noted)
 
-    # R1. 질문이 하나면 지금과 완전히 같다
-    def test_r1_single_question_unchanged(self):
-        calls = self.drive({"pending_qst": ["QST-ONE"]})
-        self.assertEqual(self._answered(calls), ["QST-ONE"])
-
+            # R1. 질문이 하나면 지금과 완전히 같다
+        with self.subTest("r1_single_question_unchanged"):
+            calls = self.drive({"pending_qst": ["QST-ONE"]})
+            self.assertEqual(self._answered(calls), ["QST-ONE"])
 
 if __name__ == "__main__":
     unittest.main()

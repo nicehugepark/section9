@@ -36,47 +36,45 @@ def files_of(suite):
 class Patterns(unittest.TestCase):
     """R4·R5. 인자 형태를 그대로 받는다."""
 
-    def test_no_args_means_everything(self):
-        self.assertEqual(runner.patterns([]), ["test_*.py"])
-        self.assertEqual(runner.patterns([""]), ["test_*.py"])
-
-    def test_three_shapes_of_one_name(self):
-        # 조각 형태는 넓힌다 — 사람이 치는 것.
-        for arg in ("uid", "test_uid"):
-            self.assertEqual(runner.patterns([arg]), ["test_*uid*.py"], arg)
-        # 정확한 파일명은 넓히지 않는다 (REQ-20260830-029): 커밋 게이트·--smoke·
-        # --changed 가 고른 파일이 이웃(test_uid_extra 등)까지 끌고 오면 계층과
-        # 선택의 뜻이 사라진다. 정확 일치도 그 파일 하나는 그대로 돈다.
-        self.assertEqual(runner.patterns(["tests/test_uid.py"]),
-                         ["test_uid.py"])
-
-    def test_many_names_become_many_patterns(self):
-        self.assertEqual(runner.patterns(["uid", "tags"]),
-                         ["test_*uid*.py", "test_*tags*.py"])
-
+    def test_patterns(self):
+        """R4·R5. 인자 형태를 그대로 받는다."""
+        with self.subTest("no_args_means_everything"):
+            self.assertEqual(runner.patterns([]), ["test_*.py"])
+            self.assertEqual(runner.patterns([""]), ["test_*.py"])
+        with self.subTest("three_shapes_of_one_name"):
+            # 조각 형태는 넓힌다 — 사람이 치는 것.
+            for arg in ("uid", "test_uid"):
+                self.assertEqual(runner.patterns([arg]), ["test_*uid*.py"], arg)
+            # 정확한 파일명은 넓히지 않는다 (REQ-20260830-029): 커밋 게이트·--smoke·
+            # --changed 가 고른 파일이 이웃(test_uid_extra 등)까지 끌고 오면 계층과
+            # 선택의 뜻이 사라진다. 정확 일치도 그 파일 하나는 그대로 돈다.
+            self.assertEqual(runner.patterns(["tests/test_uid.py"]),
+                             ["test_uid.py"])
+        with self.subTest("many_names_become_many_patterns"):
+            self.assertEqual(runner.patterns(["uid", "tags"]),
+                             ["test_*uid*.py", "test_*tags*.py"])
 
 class Discovery(unittest.TestCase):
     """R1·R2·R3. 전부 고르고, 겹치면 한 번만, 못 고르면 이름을 댄다."""
 
-    def test_every_pattern_is_collected(self):
-        suite, empty = runner.discover(["test_*uid*.py", "test_*tags*.py"])
-        got = files_of(suite)
-        self.assertIn("test_uid", got)
-        self.assertIn("test_tags", got)
-        self.assertEqual(empty, [])
-
-    def test_overlapping_patterns_run_once(self):
-        one, _ = runner.discover(["test_*uid*.py"])
-        twice, _ = runner.discover(["test_*uid*.py", "test_*uid*.py"])
-        self.assertEqual(twice.countTestCases(), one.countTestCases())
-
-    def test_unmatched_pattern_is_named(self):
-        suite, empty = runner.discover(
-            ["test_*uid*.py", "test_*없는것abcxyz*.py"])
-        self.assertEqual(empty, ["test_*없는것abcxyz*.py"])
-        self.assertGreater(suite.countTestCases(), 0,
-                           "고른 것은 그대로 돌아야 한다")
-
+    def test_discovery(self):
+        """R1·R2·R3. 전부 고르고, 겹치면 한 번만, 못 고르면 이름을 댄다."""
+        with self.subTest("every_pattern_is_collected"):
+            suite, empty = runner.discover(["test_*uid*.py", "test_*tags*.py"])
+            got = files_of(suite)
+            self.assertIn("test_uid", got)
+            self.assertIn("test_tags", got)
+            self.assertEqual(empty, [])
+        with self.subTest("overlapping_patterns_run_once"):
+            one, _ = runner.discover(["test_*uid*.py"])
+            twice, _ = runner.discover(["test_*uid*.py", "test_*uid*.py"])
+            self.assertEqual(twice.countTestCases(), one.countTestCases())
+        with self.subTest("unmatched_pattern_is_named"):
+            suite, empty = runner.discover(
+                ["test_*uid*.py", "test_*없는것abcxyz*.py"])
+            self.assertEqual(empty, ["test_*없는것abcxyz*.py"])
+            self.assertGreater(suite.countTestCases(), 0,
+                               "고른 것은 그대로 돌아야 한다")
 
 class EndToEnd(unittest.TestCase):
     """R1·R3·R6. 진짜로 돌려서 본다 — 계약은 프로세스 경계에서 지켜져야 한다."""
@@ -89,25 +87,23 @@ class EndToEnd(unittest.TestCase):
                               capture_output=True, text=True, timeout=600,
                               cwd=os.path.dirname(HERE))
 
-    def test_two_names_both_actually_run(self):
-        r = self._run("uid", "tags")
-        out = r.stdout + r.stderr
-        self.assertIn("test_uid", out)
-        self.assertIn("test_tags", out)
-        self.assertEqual(r.returncode, 0, out[-1500:])
-
-    def test_unmatched_name_fails_the_run(self):
-        """다른 게 다 통과해도 실패다 — 안 돈 것이 통과로 보이면 안 된다."""
-        r = self._run("uid", "없는것abcxyz")
-        out = r.stdout + r.stderr
-        self.assertIn("없는것abcxyz", out)
-        self.assertEqual(r.returncode, 1,
-                         "못 고른 패턴이 있는데 성공으로 끝났다")
-
-    def test_single_name_still_works(self):
-        r = self._run("uid")
-        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-1500:])
-
+    def test_end_to_end(self):
+        """R1·R3·R6. 진짜로 돌려서 본다 — 계약은 프로세스 경계에서 지켜져야 한다."""
+        with self.subTest("two_names_both_actually_run"):
+            r = self._run("uid", "tags")
+            out = r.stdout + r.stderr
+            self.assertIn("test_uid", out)
+            self.assertIn("test_tags", out)
+            self.assertEqual(r.returncode, 0, out[-1500:])
+        with self.subTest("unmatched_name_fails_the_run"):
+            r = self._run("uid", "없는것abcxyz")
+            out = r.stdout + r.stderr
+            self.assertIn("없는것abcxyz", out)
+            self.assertEqual(r.returncode, 1,
+                             "못 고른 패턴이 있는데 성공으로 끝났다")
+        with self.subTest("single_name_still_works"):
+            r = self._run("uid")
+            self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-1500:])
 
 class GateHandsOffEveryName(unittest.TestCase):
     """R6. 게이트가 만드는 이름 목록이 러너에서 전부 선택된다."""

@@ -182,11 +182,20 @@ class TestReworkWatcher(unittest.TestCase):
         self.assertIn(ap, self.cli("eeee5555", "approvals"),
                       "메모까지 사라지면 사람도 못 본다 — 잃는 것이 생긴다")
 
-        # W1. 반려 아닌 in-progress(open→in-progress)는 워처 대상 아님
+        # W1. 반려 아닌 in-progress(open→in-progress) — 막는 것은 **전이의
+        # 종류가 아니라 붙어 있는 손**이다 (REQ-20260903-015 로 개정).
+        #
+        # 여기 있던 계약은 "CLI 착수는 워처 대상 아님" 이었다. 그 좁힘이
+        # 구멍이었다: 그렇게 시작한 요청의 작업자가 죽으면 후보 자체가 되지
+        # 않아 아무도 이어받지 않았고, 2026-09-03 에 넷이 그렇게 멈춰 있었다.
+        # 지금은 후보로 서되 `rework_claimed()` 가 막는다 — 아래 두 줄이
+        # 그 문을 직접 두드린다.
         plain = self.cli("eeee5555", "new", "request", "--title", "plain",
-                         "--summary", "t", "--size", "S", "--user", "alice",
-                         "--body", "x").split()[0]
+                         "--summary", "t", "--goal", "t", "--size", "S",
+                         "--user", "alice", "--body", "x").split()[0]
         self.cli(None, "status", plain, "in-progress", "--note", "t")
+        os.utime(self.transcript, None)              # 담당 세션이 살아 있고
+        self.cli("eeee5555", "last", plain, "--add")  # 실제로 집고 있다
         spawned, _ = self.tick(grace=0)
         self.assertNotIn(plain, spawned, spawned)
 
@@ -247,11 +256,18 @@ class TestReworkWatcher(unittest.TestCase):
         self.cli(None, "status", D, "in-progress", "--note", "drag 이동 [via dashboard]")
         spawned, calls = self.tick(grace=0)
         self.assertIn(D, spawned, (spawned, self.spawn_log()))
-        # CLI 착수(마커 없음) → 그 세션이 작업 중 — 스폰 제외
+        # CLI 착수(마커 없음) → 그 세션이 **살아서 붙어 있으면** 스폰 제외
         C = new_open("cli-start")
         self.cli("eeee5555", "status", C, "in-progress", "--note", "착수")
+        os.utime(self.transcript, None)             # 그 세션이 살아 있다
         spawned, calls = self.tick(grace=0)
         self.assertNotIn(C, spawned, spawned)
+        # …그런데 그 손이 사라지면 이어받는다 (REQ-20260903-015). 여기가
+        # 예전에 뚫려 있던 자리다 — 죽은 작업자가 문서를 영영 in-progress 로
+        # 붙잡고 있었고, 화면은 「진행 중」이라고 적었다.
+        os.utime(self.transcript, (old, old))
+        spawned, calls = self.tick(grace=0)
+        self.assertIn(C, spawned, (spawned, self.spawn_log()))
 
 
 if __name__ == "__main__":

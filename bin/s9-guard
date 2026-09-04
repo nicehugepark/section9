@@ -14,10 +14,24 @@ import re
 import subprocess
 import sys
 
+
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
-PROTECTED = ("bin/", "web/", "harness/", ".github/", ".gitignore")
+PROTECTED = ("bin/", "web/", "harness/", ".github/", ".gitignore", ".gitattributes")
 # **실행 권위를 갖는 텍스트**도 코드다 (REQ-20260902-032, white-hacker 검토 시나리오
 # 4·5). `projects/<slug>/agents/*.md` 는 워커 프롬프트 서두에 그대로 주입되고
 # `.claude/agents` 로 미러돼 네이티브 서브에이전트 정의가 된다. `users/<u>/skills|agents`
@@ -152,8 +166,9 @@ def live_workers():
     이 함수는 한 줄도 안 바뀌었다.
     """
     try:
-        out = subprocess.run([os.path.join(ROOT, "bin", "s9"), "workers",
-                              "--quiet"], capture_output=True, text=True,
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "s9"), "workers",
+                              "--quiet"], capture_output=True,
+                                  encoding="utf-8", errors="replace",
                              cwd=ROOT, timeout=15)
         return [l for l in out.stdout.splitlines() if l.strip()]
     except Exception:
@@ -246,7 +261,7 @@ def staged_tests_gate(staged):
         return   # 코드가 안 담겼으면(문서·상태 커밋) 게이트 생략 — 종전과 같다
     r = subprocess.run(["python3", "tests/", "--smoke", "--jobs", "4", *names],
                        capture_output=True,
-                       text=True, cwd=ROOT, timeout=600,
+                       encoding="utf-8", errors="replace", cwd=ROOT, timeout=600,
                        env=clean_git_env())
     if r.returncode == 0:
         return
@@ -254,9 +269,113 @@ def staged_tests_gate(staged):
           file=sys.stderr)
     print(f"  대상: 스모크 12파일 ∪ {' '.join(names) or '(담긴 시험 없음)'}",
           file=sys.stderr)
-    tail = (r.stdout + r.stderr).strip().splitlines()[-25:]
-    for line in tail:
-        print(f"  {line}", file=sys.stderr)
+    _show_gate_failure(r)
+    sys.exit(1)
+
+
+def _show_gate_failure(r):
+    """실패한 자리를 보여 준다 — 마지막 몇 줄이 아니라 (REQ-20260904-003).
+
+    예전엔 출력의 **마지막 25줄**만 찍었다. 순차라면 그 자리가 실패 요약이지만,
+    게이트는 `--jobs 4` 로 돈다 — 실패한 샤드의 출력이 먼저 나오고 통과한
+    샤드가 뒤에 온다. 그래서 「실패합니다」라고 말한 뒤 **초록 결과를 보여
+    줬다.** 2026-09-04 에 그 화면을 세 번 보고도 원인을 못 읽었다.
+
+    막기만 하고 이유를 안 보여 주는 문은 사람이 `--no-verify` 를 배우게 한다.
+    그러니 ① 실패한 줄과 그 앞뒤를 골라 보이고, ② 전문은 파일로 남겨 그
+    경로를 말한다. 고르기가 빗나가도 전문이 있으면 사람은 길을 잃지 않는다.
+    """
+    import re as _re
+    all_out = (r.stdout or "") + (r.stderr or "")
+    lines = all_out.splitlines()
+    try:
+        os.makedirs(os.path.join(ROOT, "state"), exist_ok=True)
+        full = os.path.join(ROOT, "state", "last-gate.log")
+        with open(full, "w", encoding="utf-8") as f:
+            f.write(all_out)
+    except OSError:
+        full = ""
+    hot = _re.compile(r"^(FAIL|ERROR):|^FAILED|실패한 샤드|Traceback")
+    marks = [i for i, ln in enumerate(lines) if hot.search(ln)]
+    if marks:
+        shown, last = 0, -1
+        for i in marks:
+            if shown >= 60:
+                print("  … (남은 실패는 전문에서)", file=sys.stderr)
+                break
+            lo = max(last + 1, i - 1)
+            for j in range(lo, min(len(lines), i + 12)):
+                print(f"  {lines[j]}", file=sys.stderr)
+                shown += 1
+            last = min(len(lines), i + 12) - 1
+    else:
+        # 표식이 없으면 샤드가 **죽은** 것이다 — 끊긴 자리가 곧 단서다.
+        print("  실패 표식이 없다 — 샤드가 도중에 죽었을 수 있다. 끊긴 자리:",
+              file=sys.stderr)
+        for ln in lines[-15:]:
+            print(f"  {ln}", file=sys.stderr)
+    if full:
+        print(f"  전문: {full}", file=sys.stderr)
+
+
+# 어디에 닿을지 셀 수 없는 파일 (REQ-20260903-012). 원본은 tests/__main__.py 의
+# `COMMON` 이고 여기는 그 사본이다 — 훅은 시험 러너를 import 하지 않는다(그
+# import 하나가 포트풀·임시자리까지 끌고 온다). 두 목록이 갈리는지는
+# tests/test_wide_gate.py 가 값으로 대 본다.
+WIDE = ("bin/s9", "tests/__main__.py", "tests/portpool.py",
+        "tests/tmproot.py", "tests/jobfile.py", "tests/precious.py")
+
+
+def wide_change_verdict(staged):
+    """(넓은 파일 목록, 지금 이 나무가 전체 초록인가) — **묻기만** 한다.
+
+    시험을 한 건도 돌리지 않는다. 게이트가 시험을 돌리기 **전에** 떠 둬야
+    그 실행의 부산물이 판정을 뒤집지 못한다 (REQ-20260904-003).
+    고장 나면 초록으로 답한다 — 문이 고장 나 모든 커밋을 막으면 그날로 뽑힌다.
+    """
+    wide = [f for f in staged if f.replace("\\", "/") in WIDE]
+    if not wide:
+        return ([], True)
+    try:
+        r = subprocess.run([sys.executable or "python3",
+                            os.path.join(ROOT, "tests"), "--is-green"],
+                           capture_output=True, encoding="utf-8",
+                           errors="replace", cwd=ROOT, timeout=120,
+                           env=clean_git_env())
+    except Exception:
+        return (wide, True)
+    return (wide, r.returncode == 0)
+
+
+def wide_change_gate(staged, verdict=None):
+    """넓게 닿는 파일이 담기면 **전체 green 기록**을 묻는다 (REQ-20260903-012).
+
+    실사고: `bin/s9` 한 줄(REQ-20260902-017 `_local_binding_glob`)이 커밋에
+    담기지 않은 시험 18건을 깨뜨렸다. 위의 `staged_tests_gate` 는 담긴 시험과
+    스모크 12파일만 보는데 그 열둘과 깨진 여덟 파일은 하나도 겹치지 않았다 —
+    게이트는 초록을 보고 통과시켰고 커밋은 붉은 채로 들어갔다.
+
+    그렇다고 매 커밋에 전체를 물리지 않는다(분 단위라 규율이 먼저 죽는다).
+    **돌리지 않고 묻는다**: 지금 이 나무 지문으로 전체가 초록이었던 기록이
+    있나(`python3 tests/ --is-green`, REQ-20260903-010 의 선택별 green 기록).
+    있으면 비용 0으로 지나가고, 없을 때만 막으며 돌릴 명령을 그대로 보인다.
+
+    게이트가 고장 나면(파이썬 없음·시간 초과 등) 통과시킨다 — 문이 고장 나
+    모든 커밋을 막으면 그날로 문이 뽑힌다.
+    """
+    wide, green = verdict if verdict is not None else wide_change_verdict(staged)
+    if not wide or green:
+        return
+    print("s9-guard: 넓게 닿는 파일이 담겼는데 이 상태에서 전체 스위트가 "
+          "통과한 기록이 없습니다 — 커밋을 멈춥니다.", file=sys.stderr)
+    for f in wide[:10]:
+        print(f"  - {f}", file=sys.stderr)
+    print("  이 파일들은 어느 시험에 닿을지 셀 수 없어, 담긴 시험과 스모크만으로는",
+          file=sys.stderr)
+    print("  깨진 곳을 못 봅니다. 한 번 돌리고 다시 커밋하세요:", file=sys.stderr)
+    print("      python3 tests/", file=sys.stderr)
+    print("  (통과하면 그 기록이 남아 다음 커밋은 그냥 지나갑니다.)",
+          file=sys.stderr)
     sys.exit(1)
 
 
@@ -279,7 +398,7 @@ def secret_gate(staged):
         m = importlib.util.module_from_spec(sp)
         sp.loader.exec_module(m)
         blob = subprocess.run(["git", "diff", "--cached"], capture_output=True,
-                              text=True, cwd=ROOT).stdout
+                              encoding="utf-8", errors="replace", cwd=ROOT).stdout
         hits = m.secret_leak(staged, blob, root=ROOT)
         # 권한이 실린 설정 미러도 같은 자리에서 막는다 (REQ-20260827-045) —
         # 경계를 막아도 손으로 붙여 넣으면 그대로 들어온다.
@@ -301,17 +420,28 @@ def secret_gate(staged):
 
 def main():
     out = subprocess.run(["git", "diff", "--cached", "--name-only"],
-                         capture_output=True, text=True, cwd=ROOT)
+                         capture_output=True,
+                             encoding="utf-8", errors="replace", cwd=ROOT)
     staged = [l for l in out.stdout.splitlines() if l.strip()]
     concurrent_gate(staged)
+    # **넓은 변경 판정을 먼저 묻는다** (REQ-20260904-003). 아래 게이트가 시험을
+    # 돌리면 그 실행이 나무를 건드려(임시 파일·복원되는 파일) 지문이 움직이고,
+    # 그러면 방금 만든 전체 초록 기록을 이 문이 못 알아본다 — 사람이 시키는 대로
+    # `python3 tests/` 를 돌려 초록을 만들어도 커밋이 또 막힌다(실측 2026-09-04:
+    # 13:12 에 `--is-green` 이 0 이었는데 13:19 커밋에서 같은 문이 막았다).
+    # 묻는 값은 **커밋 시점의 나무**여야 한다. 그래서 판정을 먼저 뜨고,
+    # 막을지는 시험 게이트 뒤에 정한다 — 순서가 바뀌어도 사람이 보는 차례
+    # (시험 실패가 먼저)는 그대로다.
+    wide_verdict = wide_change_verdict(staged)
     staged_tests_gate(staged)
+    wide_change_gate(staged, wide_verdict)
     secret_gate(staged)
     hits = protected_hits(staged)
     # 역할 변경은 프로필 파일 전체가 아니라 그 줄만 본다 (REQ-20260902-032)
     try:
         diff_text = subprocess.run(["git", "diff", "--cached", "-U0", "--",
                                     *[f for f in staged if f.endswith("profile.md")]],
-                                   capture_output=True, text=True, cwd=ROOT).stdout \
+                                   capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT).stdout \
             if any(f.endswith("profile.md") for f in staged) else ""
     except Exception:
         diff_text = ""

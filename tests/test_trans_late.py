@@ -58,67 +58,68 @@ class TransLate(unittest.TestCase):
     #     전이표만이 아니라 부트가 받는 값 전부가 같은 재시도를 탄다. 계약의
     #     세기는 그대로다 — 전이표는 여전히 물러섰다 다시 받아야 하고, 여기서는
     #     그 규칙이 실제로 걸린 자리를 짚는다.
-    def test_t1_retries(self):
-        self.assertIn("fetch", self.load)
-        self.assertIn("loadSupply", self.load, "전이표가 공통 문을 안 지난다")
-        door = grab(self.src, "loadSupply")
-        self.assertTrue(re.search(r"for\s*\(", door) or "retry" in door,
-                        "공통 문이 한 번만 받고 만다")
-        self.assertIn("setTimeout", door, "물러섰다 다시 받지 않는다")
+    def test_trans_late(self):
+        """TransLate 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("t1_retries"):
+                self.assertIn("fetch", self.load)
+                self.assertIn("loadSupply", self.load, "전이표가 공통 문을 안 지난다")
+                door = grab(self.src, "loadSupply")
+                self.assertTrue(re.search(r"for\s*\(", door) or "retry" in door,
+                                "공통 문이 한 번만 받고 만다")
+                self.assertIn("setTimeout", door, "물러섰다 다시 받지 않는다")
 
-    # T2. 부트가 표를 직접 받지 않는다 — 받는 자리는 하나다
-    def test_t2_boot_uses_one_door(self):
-        self.assertIn("loadTrans", self.boot)
-        self.assertNotIn('fetch("/api/transitions")', self.boot,
-                         "부트가 전이표를 직접 받는다 — 재시도를 못 탄다")
-        # 표를 받는 fetch 는 온 파일에서 loadTrans 안의 한 줄뿐이어야 한다
-        self.assertEqual(self.src.count('fetch("/api/transitions")'), 1,
-                         "전이표를 받는 자리가 둘 이상이다")
-        self.assertIn('fetch("/api/transitions")', self.load)
+            # T2. 부트가 표를 직접 받지 않는다 — 받는 자리는 하나다
+        with self.subTest("t2_boot_uses_one_door"):
+                self.assertIn("loadTrans", self.boot)
+                self.assertNotIn('fetch("/api/transitions")', self.boot,
+                                 "부트가 전이표를 직접 받는다 — 재시도를 못 탄다")
+                # 표를 받는 fetch 는 온 파일에서 loadTrans 안의 한 줄뿐이어야 한다
+                self.assertEqual(self.src.count('fetch("/api/transitions")'), 1,
+                                 "전이표를 받는 자리가 둘 이상이다")
+                self.assertIn('fetch("/api/transitions")', self.load)
 
-    # T3. 빈 표와 '갈 곳 없음'을 가른다
-    def test_t3_missing_is_not_empty(self):
-        self.assertIn("transReady", self.src,
-                      "표가 왔는지 묻는 자리가 없다 — targets.length 로는 구분이 안 된다")
-        m = re.search(r"const transLost\s*=([^\n;]*)", self.doc)
-        self.assertTrue(m, "문서 화면이 '표가 안 왔다'를 판정하지 않는다")
-        self.assertNotIn("targets.length", m.group(1),
-                         "갈 곳 없는 done 문서를 '표가 안 왔다'로 읽는다")
+            # T3. 빈 표와 '갈 곳 없음'을 가른다
+        with self.subTest("t3_missing_is_not_empty"):
+                self.assertIn("transReady", self.src,
+                              "표가 왔는지 묻는 자리가 없다 — targets.length 로는 구분이 안 된다")
+                m = re.search(r"const transLost\s*=([^\n;]*)", self.doc)
+                self.assertTrue(m, "문서 화면이 '표가 안 왔다'를 판정하지 않는다")
+                self.assertNotIn("targets.length", m.group(1),
+                                 "갈 곳 없는 done 문서를 '표가 안 왔다'로 읽는다")
 
-    # T4. 못 받은 동안 그 자리가 조용하지 않다 + 다시 받는 길이 있다
-    def test_t4_says_and_offers(self):
-        self.assertIn("transLost", self.doc)
-        # 전이 단추 무리가 transBtns 로 갈라졌다 (REQ-20260830-046 — 행동 띠가
-        # 벨트·전이·말하기를 한 곳에 모으며). '못 받은 경우'는 그 무리가 다룬다.
-        i = self.doc.index("const transBtns")
-        seg = self.doc[i:i + 900]
-        self.assertIn("transLost", seg, "버튼 줄이 못 받은 경우를 다루지 않는다")
-        self.assertIn("data-retrans", self.src, "다시 받는 버튼이 없다")
-        self.assertIn("dataset.retrans", self.src, "다시 받기 버튼에 핸들러가 없다")
+            # T4. 못 받은 동안 그 자리가 조용하지 않다 + 다시 받는 길이 있다
+        with self.subTest("t4_says_and_offers"):
+                self.assertIn("transLost", self.doc)
+                # 전이 단추 무리가 transBtns 로 갈라졌다 (REQ-20260830-046 — 행동 띠가
+                # 벨트·전이·말하기를 한 곳에 모으며). '못 받은 경우'는 그 무리가 다룬다.
+                i = self.doc.index("const transBtns")
+                seg = self.doc[i:i + 900]
+                self.assertIn("transLost", seg, "버튼 줄이 못 받은 경우를 다루지 않는다")
+                self.assertIn("data-retrans", self.src, "다시 받는 버튼이 없다")
+                self.assertIn("dataset.retrans", self.src, "다시 받기 버튼에 핸들러가 없다")
 
-    # T5. 표가 오면 보고 있던 문서를 다시 그린다 — 사람이 새로고침하게 두지 않는다
-    def test_t5_redraws_when_it_arrives(self):
-        refill = grab(self.src, "transRefill")
-        self.assertIn("loadTrans", refill)
-        self.assertIn("loadDoc(", refill,
-                      "표가 와도 열려 있는 문서를 다시 그리지 않는다")
-        self.assertIn("dataset.showing", refill,
-                      "그 사이 다른 문서로 옮겨 갔는지 보지 않는다")
-        self.assertIn("transRefill", self.doc,
-                      "문서 화면이 표를 다시 받으러 가지 않는다")
+            # T5. 표가 오면 보고 있던 문서를 다시 그린다 — 사람이 새로고침하게 두지 않는다
+        with self.subTest("t5_redraws_when_it_arrives"):
+                refill = grab(self.src, "transRefill")
+                self.assertIn("loadTrans", refill)
+                self.assertIn("loadDoc(", refill,
+                              "표가 와도 열려 있는 문서를 다시 그리지 않는다")
+                self.assertIn("dataset.showing", refill,
+                              "그 사이 다른 문서로 옮겨 갔는지 보지 않는다")
+                self.assertIn("transRefill", self.doc,
+                              "문서 화면이 표를 다시 받으러 가지 않는다")
 
-    # T6. 배경 갱신이 빈 표를 메운다 — 보드의 드래그 대상 표시도 이 표를 쓴다
-    def test_t6_background_heals(self):
-        rc = grab(self.src, "refreshCatalog")
-        self.assertIn("transRefill", rc, "배경 갱신이 빈 전이표를 그대로 둔다")
-        self.assertIn("transReady", rc, "이미 받은 표를 매 주기 다시 받는다")
+            # T6. 배경 갱신이 빈 표를 메운다 — 보드의 드래그 대상 표시도 이 표를 쓴다
+        with self.subTest("t6_background_heals"):
+                rc = grab(self.src, "refreshCatalog")
+                self.assertIn("transRefill", rc, "배경 갱신이 빈 전이표를 그대로 둔다")
+                self.assertIn("transReady", rc, "이미 받은 표를 매 주기 다시 받는다")
 
-    # T7. 손 없이 이 상황을 만들 수 있다 (진단·헤드리스 캡처용)
-    def test_t7_diagnostic_switch(self):
-        self.assertIn("transfail", self.src, "재현 스위치가 없다")
-        self.assertIn("transfail=once", self.src,
-                      "한 번만 실패시키는 경로가 없다 — 회복을 못 찍는다")
-
+            # T7. 손 없이 이 상황을 만들 수 있다 (진단·헤드리스 캡처용)
+        with self.subTest("t7_diagnostic_switch"):
+            self.assertIn("transfail", self.src, "재현 스위치가 없다")
+            self.assertIn("transfail=once", self.src,
+                          "한 번만 실패시키는 경로가 없다 — 회복을 못 찍는다")
 
 if __name__ == "__main__":
     unittest.main()

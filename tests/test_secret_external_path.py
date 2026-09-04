@@ -20,7 +20,7 @@ REQ-20260828-012 는 비밀 키 목록을 화면에 냈지만 **바깥 경로를
      지금 그 경로가 실제로 읽히는지는 `external_secret_state()` 한 곳이 내고
      CLI(`s9 secret ls`)와 대시보드가 같은 것을 읽는다.
 
-덤으로 지키는 것: **리포 안 경로는 뜻이 없다**(리포는 공유·공개된다).
+덤으로 지키는 것: **저장소 안 경로는 뜻이 없다**(저장소는 공유·공개된다).
 
 (2026-08-28 재작업: 처음에는 "s9 는 바깥 폴더를 **읽기만** 한다"가 여기 계약이었다.
 사용자가 바로 그 비대칭을 지적해 — "key, value는 설정창에서 반영할 수는 없나?" —
@@ -66,9 +66,12 @@ class ExternalPathVerdict(unittest.TestCase):
         return r.stdout + r.stderr
 
     def set_path(self, value):
+        # 비밀 위치 키는 추적되지 않는 자리(local.json)에만 산다
+        # (REQ-20260902-031) — settings.json 에 적으면 user_config 가
+        # 읽지 않는다. 원격이 밀어 넣을 수 있는 칸에 두지 않기 위해서다.
         cfgdir = os.path.join(self.root, "users", "alice", "config")
         os.makedirs(cfgdir, exist_ok=True)
-        p = os.path.join(cfgdir, "settings.json")
+        p = os.path.join(cfgdir, "local.json")
         d = {}
         if os.path.exists(p):
             with open(p, encoding="utf-8") as f:
@@ -97,20 +100,22 @@ class ExternalPathVerdict(unittest.TestCase):
         self.assertIn("무시된다", out,
                       "폴더가 없어 무시되는데 화면·CLI 어디서도 말하지 않는다")
 
-    # B2. 리포 안을 가리키면 '바깥'의 뜻이 없다 — 폴더가 실제로 있어도 그렇다
+    # B2. 저장소 안을 가리키면 '바깥'의 뜻이 없다 — 폴더가 실제로 있어도 그렇다
     def test_b2_inside_the_repo_is_pointless(self):
         inside = os.path.join(self.root, "users")
         self.assertTrue(os.path.isdir(inside))
         self.set_path(inside)
         out = self.cli("secret", "ls")
-        self.assertIn("리포 안", out, "리포 안 경로를 그냥 통과시킨다")
+        # 화면 낱말이 「리포」에서 「저장소」로 섰다 — 이 제품이 스스로 지은
+        # 말은 우리 말로 세운다(CLAUDE.md 말과 태도 2).
+        self.assertIn("저장소 안", out, "저장소 안 경로를 그냥 통과시킨다")
 
-    # B3. 리포 안 + 폴더 없음 = 리포 얘기를 먼저 한다.
+    # B3. 저장소 안 + 폴더 없음 = 저장소 얘기를 먼저 한다.
     #     "폴더를 만드세요"라고 안내하면 사고를 거드는 셈이다
     def test_b3_inside_the_repo_wins_over_missing(self):
         self.set_path(os.path.join(self.root, "nope-not-here"))
         out = self.cli("secret", "ls")
-        self.assertIn("리포 안", out)
+        self.assertIn("저장소 안", out)
         self.assertNotIn("폴더가 없어", out)
 
 

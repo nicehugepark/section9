@@ -45,78 +45,47 @@ class BindingShape(unittest.TestCase):
         with open(cls.real, "w") as f:
             f.write("{}\n")
 
-    def test_s1_split_path_is_rejoined(self):
-        """S1. 글자로 쪼개진 경로가 다시 하나로 붙는다 (실제로 상해 있던 모양)."""
-        b = self.m._norm_binding(
-            {"agent_transcript_path": list(self.real)})
-        self.assertEqual(b["agent_transcript_path"], [self.real])
-
-    def test_s2_split_path_that_no_longer_exists_is_dropped(self):
-        """S2. 붙였는데 그 파일이 없으면 버린다.
-
-        죽은 세션의 임시 파일은 이미 사라졌다. 없는 경로를 남겨 두면 활동
-        판정이 매번 헛되이 두드린다.
-        """
-        b = self.m._norm_binding(
-            {"agent_transcript_path": list("/tmp/사라진/파일.output")})
-        self.assertEqual(b["agent_transcript_path"], [])
-
-    def test_s3_root_slash_never_survives(self):
-        """S3. `"/"` 가 활동 경로로 살아남지 않는다.
-
-        이게 이 결함의 진짜 해다 — 루트는 실제로 존재하므로 걸러지지 않고,
-        그 mtime 이 "이 세션은 살아 있다"로 읽힌다.
-        """
-        b = self.m._norm_binding({"agent_transcript_path": list("/tmp/x")})
-        self.assertNotIn("/", b["agent_transcript_path"])
-
-    def test_s4_plain_string_becomes_a_list(self):
-        """S4. 옛 문자열 형태도 리스트로 맞춘다 — 두 뜻 중 하나로 모은다."""
-        b = self.m._norm_binding({"agent_transcript_path": self.real})
-        self.assertEqual(b["agent_transcript_path"], [self.real])
-
-    def test_s5_healthy_list_is_untouched(self):
-        """S5. 멀쩡한 목록은 건드리지 않는다 — 고침이 새 손실이 되면 안 된다.
-
-        픽스처가 실재하는 파일이어야 한다. 처음엔 가짜 경로를 썼는데, H1
-        재작업(존재가 아니라 **파일인가**로 거른다 — REQ-20260827-018)이 들어오자
-        이 테스트가 무너졌다. **테스트가 틀렸던 것**이다: "멀쩡한 목록"의 뜻은
-        "실재하는 transcript 들"이지 "그럴듯한 문자열들"이 아니다.
-        """
-        second = os.path.join(self.tmp, "agent-out2.jsonl")
-        with open(second, "w") as f:
-            f.write("{}\n")
-        good = [self.real, second]
-        b = self.m._norm_binding({"agent_transcript_path": list(good)})
-        self.assertEqual(b["agent_transcript_path"], good)
-
-    def test_s6_the_boundary_is_read_and_write(self):
-        """S6. 정규화가 **읽기와 쓰기 양쪽**에 걸려 있다.
-
-        한쪽만 걸면 다른 쪽으로 상한 데이터가 계속 들어온다. 방어가 경계에
-        있어야 한다는 것이 이 문서의 요점이다.
-        """
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        self.assertIn("return _norm_binding(json.load(f))", src,
-                      "읽기 경계에 정규화가 없다")
-        self.assertIn("binding = _norm_binding(binding)", src,
-                      "쓰기 경계에 정규화가 없다")
-
-    def test_s7_round_trip_repairs_the_stored_file(self):
-        """S7. 상한 바인딩을 읽어 쓰면 파일이 고쳐진다 — 옛 데이터가 스스로
-        정리되는 경로가 있어야 사람이 손으로 고치지 않는다."""
-        m = self.m
-        os.makedirs(m.STATE, exist_ok=True)
-        b = {"machine": "testbox", "session": "shapetst",
-             "agent_transcript_path": list(self.real)}
-        m.write_binding(b)
-        again = m.read_binding("testbox", "shapetst")
-        self.assertEqual(again["agent_transcript_path"], [self.real])
-        with open(m.binding_path("testbox", "shapetst"), encoding="utf-8") as f:
-            self.assertEqual(
-                json.load(f)["agent_transcript_path"], [self.real])
-
+    def test_binding_shape(self):
+        """BindingShape 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("s1_split_path_is_rejoined"):
+            b = self.m._norm_binding(
+                {"agent_transcript_path": list(self.real)})
+            self.assertEqual(b["agent_transcript_path"], [self.real])
+        with self.subTest("s2_split_path_that_no_longer_exists_is_dropped"):
+            b = self.m._norm_binding(
+                {"agent_transcript_path": list("/tmp/사라진/파일.output")})
+            self.assertEqual(b["agent_transcript_path"], [])
+        with self.subTest("s3_root_slash_never_survives"):
+            b = self.m._norm_binding({"agent_transcript_path": list("/tmp/x")})
+            self.assertNotIn("/", b["agent_transcript_path"])
+        with self.subTest("s4_plain_string_becomes_a_list"):
+            b = self.m._norm_binding({"agent_transcript_path": self.real})
+            self.assertEqual(b["agent_transcript_path"], [self.real])
+        with self.subTest("s5_healthy_list_is_untouched"):
+            second = os.path.join(self.tmp, "agent-out2.jsonl")
+            with open(second, "w") as f:
+                f.write("{}\n")
+            good = [self.real, second]
+            b = self.m._norm_binding({"agent_transcript_path": list(good)})
+            self.assertEqual(b["agent_transcript_path"], good)
+        with self.subTest("s6_the_boundary_is_read_and_write"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            self.assertIn("return _norm_binding(json.load(f))", src,
+                          "읽기 경계에 정규화가 없다")
+            self.assertIn("binding = _norm_binding(binding)", src,
+                          "쓰기 경계에 정규화가 없다")
+        with self.subTest("s7_round_trip_repairs_the_stored_file"):
+            m = self.m
+            os.makedirs(m.STATE, exist_ok=True)
+            b = {"machine": "testbox", "session": "shapetst",
+                 "agent_transcript_path": list(self.real)}
+            m.write_binding(b)
+            again = m.read_binding("testbox", "shapetst")
+            self.assertEqual(again["agent_transcript_path"], [self.real])
+            with open(m.binding_path("testbox", "shapetst"), encoding="utf-8") as f:
+                self.assertEqual(
+                    json.load(f)["agent_transcript_path"], [self.real])
 
 class LiveAgents(unittest.TestCase):
     """이 정규화가 무엇을 떠받치는가 (REQ-20260827-002).

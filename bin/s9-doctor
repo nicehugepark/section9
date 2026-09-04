@@ -42,9 +42,43 @@ import subprocess
 import sys
 import time
 
+
+# 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
+# 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
+# cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
+# (`UnicodeDecodeError: 0xc0 in position 3`). 파일에 남는 기록도 같은 이유로
+# 판마다 다른 바이트가 된다. 판을 가르는 자리는 이름을 붙여 한 곳에 둔다:
+# 여기가 그 자리이고, 도구마다 같은 글자로 서 있는지는 시험이 못박는다.
+if os.name == "nt":
+    for _std in (sys.stdout, sys.stderr):
+        try:
+            _std.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
 ROOT = os.environ.get("S9_ROOT") or os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))
 ORPHAN_AGE = 180          # 이보다 오래 산 테스트 서버는 고아로 본다
+
+
+def _envint(name, default):
+    """환경변수 하나에서 양의 정수 하나 — 못 읽거나 0 이하면 기본값."""
+    try:
+        v = int((os.environ.get(name) or "").strip())
+    except (TypeError, ValueError):
+        return default
+    return v if v > 0 else default
+
+
+# **동시 상한 표** (REQ-20260903-004). 비용은 총량이 아니라 동시 최고치라,
+# 흩어져 있으면 겹칠 때의 합을 아무도 모른다. 이 도구는 s9 가 못 뜰 때도 써야
+# 해서 s9 를 import 하지 않는다 — 그래서 표를 두 벌 든다. 두 벌이 갈리는 것은
+# 시간 문제이므로 tests/test_concurrency.py 가 매번 같은지 확인한다.
+CONCURRENCY = {
+    "headless": _envint("S9_MAX_HEADLESS", 8),
+    "test_jobs": _envint("S9_MAX_JOBS", 4),
+    "conns": _envint("S9_MAX_CONNS", 256),
+}
 PROBE_TIMEOUT = 2.0
 
 # 윈도우 동적 포트 소진도 — 고갈된 뒤가 아니라 임계에서 먼저 알린다.
@@ -129,7 +163,8 @@ def ps_rows():
              (["ps", "-A", "-ww", "-o", "pid=,ppid=,etime=,command="], False))
     for argv, skip_header in forms:
         try:
-            out = subprocess.run(argv, capture_output=True, text=True,
+            out = subprocess.run(argv, capture_output=True,
+                                 encoding="utf-8", errors="replace",
                                  timeout=10).stdout
         except Exception:
             continue
@@ -158,15 +193,44 @@ PORT_RE = re.compile(r"--port\s+(\d+)")
 
 
 def proc_cmd(pid):
+    """그 pid 의 명령줄 (모르면 "").
+
+    갈래가 셋이다 — `/proc` · `ps` · 윈도우. 종전에는 `/proc` 다음이 곧바로
+    `ps` 였고, 그래서 **네이티브 윈도우에서는 언제나 빈 문자열**이었다
+    (REQ-20260903-005). 진단이 "모른다"가 아니라 "없다"로 답하면, 이 값을
+    쓰는 `reparented`·고아 회수가 조용히 틀린 판정을 낸다.
+    """
     try:
         with open(f"/proc/{pid}/cmdline", "rb") as f:
             return f.read().decode("utf-8", "ignore").replace("\0", " ").strip()
     except OSError:
         pass
+    if os.name == "nt":
+        # 한 pid 만 묻는다 — 이 도구는 몇 개만 보므로 전수 조회가 필요 없다.
+        # **첫 문장이 인코딩을 정한다**: PowerShell 은 기본적으로 콘솔
+        # 코드페이지로 쓰고, 그러면 받는 쪽이 UTF-8 로 풀다 죽어 빈 문자열이
+        # 돌아온다 — 실측으로 잡힌 자리다 (s9.WIN_PS_SCRIPT 와 같은 이유).
+        for exe in ("powershell", "pwsh"):
+            if not shutil.which(exe):
+                continue
+            try:
+                r = subprocess.run(
+                    [exe, "-NoProfile", "-NonInteractive", "-Command",
+                     "[Console]::OutputEncoding = "
+                     "[System.Text.Encoding]::UTF8; "
+                     f"(Get-CimInstance Win32_Process -Filter "
+                     f"'ProcessId={int(pid)}').CommandLine"],
+                    capture_output=True, timeout=20,
+                    encoding="utf-8", errors="replace")
+                return (r.stdout or "").strip()
+            except Exception:
+                return ""
+        return ""
     try:
         return subprocess.run(["ps", "-p", str(pid), "-o", "args="],
-                              capture_output=True, text=True,
-                              timeout=5).stdout.strip()
+                              capture_output=True, timeout=5,
+                              encoding="utf-8",
+                              errors="replace").stdout.strip()
     except Exception:
         return ""
 
@@ -206,7 +270,8 @@ def scan(rows):
 
 def listeners():
     try:
-        out = subprocess.run(["ss", "-ltn"], capture_output=True, text=True,
+        out = subprocess.run(["ss", "-ltn"], capture_output=True,
+                             encoding="utf-8", errors="replace",
                              timeout=10).stdout
         return max(len(out.splitlines()) - 1, 0)
     except Exception:
@@ -215,7 +280,8 @@ def listeners():
 
 def socket_summary():
     try:
-        out = subprocess.run(["ss", "-s"], capture_output=True, text=True,
+        out = subprocess.run(["ss", "-s"], capture_output=True,
+                             encoding="utf-8", errors="replace",
                              timeout=10).stdout
         for line in out.splitlines():
             if line.startswith("TCP:"):
@@ -228,7 +294,8 @@ def socket_summary():
 def wsl_mode():
     for cmd in (["wslinfo", "--networking-mode"],):
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            r = subprocess.run(cmd, capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=5)
             if r.returncode == 0 and r.stdout.strip():
                 return r.stdout.strip()
         except Exception:
@@ -258,7 +325,8 @@ def windows_ports(timeout=25):
         " | ConvertTo-Json -Compress")
     try:
         r = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command",
-                            script], capture_output=True, text=True,
+                            script], capture_output=True,
+                                encoding="utf-8", errors="replace",
                            timeout=timeout)
         return json.loads(r.stdout.strip().splitlines()[-1])
     except Exception:
@@ -301,7 +369,8 @@ def reclaim_relay(target, timeout=30):
     """지목된 중계 프로세스를 종료해 점유 포트를 즉시 반환시킨다."""
     tk = shutil.which("taskkill.exe") or "taskkill.exe"
     r = subprocess.run([tk, "/PID", str(target["pid"]), "/F"],
-                       capture_output=True, text=True, timeout=timeout)
+                       capture_output=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
     return {"pid": target["pid"], "rc": r.returncode,
             "out": (r.stdout or r.stderr).strip()}
 
@@ -358,7 +427,8 @@ def scan_shot_browsers():
         "| ConvertTo-Json -Compress" % cond)
     try:
         r = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command",
-                            script], capture_output=True, text=True, timeout=60)
+                            script], capture_output=True,
+                                encoding="utf-8", errors="replace", timeout=60)
         rows = json.loads(r.stdout.strip() or "[]")
     except Exception:
         return []
@@ -751,7 +821,8 @@ def git_hooks_dir(cwd):
     (REQ-20260829-001 이 게이트 시험 쪽에서 만난 그 함정)."""
     try:
         r = subprocess.run(["git", "rev-parse", "--git-path", "hooks"],
-                           cwd=cwd, capture_output=True, text=True, timeout=10)
+                           cwd=cwd, capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=10)
     except Exception:
         return ""
     if r.returncode != 0 or not r.stdout.strip():
@@ -763,7 +834,7 @@ def git_hooks_dir(cwd):
 def boot_info():
     init = ""
     try:
-        with open("/proc/1/comm") as f:
+        with open("/proc/1/comm", encoding="utf-8") as f:
             init = f.read().strip()
     except OSError:
         pass
@@ -774,7 +845,8 @@ def boot_info():
         r = subprocess.run(["systemctl", "show",
                             "-p", "UserspaceTimestampMonotonic",
                             "-p", "FinishTimestampMonotonic"],
-                           capture_output=True, text=True, timeout=10)
+                           capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=10)
         vals = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
         u = int(vals.get("UserspaceTimestampMonotonic") or 0)
         fin = int(vals.get("FinishTimestampMonotonic") or 0)
@@ -826,7 +898,7 @@ def _dash_port():
         except ValueError:
             pass
     try:
-        with open(os.path.join(ROOT, "state", "port")) as f:
+        with open(os.path.join(ROOT, "state", "port"), encoding="utf-8") as f:
             return int(f.read().strip())
     except (OSError, ValueError):
         return 9909
@@ -839,7 +911,7 @@ def serve_info():
     # 9909 에서 멀쩡히 돌고 있었다 (REQ-20260830-004). 죽었으면 규범 포트로.
     port = _dash_port()
     try:
-        with open(os.path.join(ROOT, "state", "serve-code.json")) as f:
+        with open(os.path.join(ROOT, "state", "serve-code.json"), encoding="utf-8") as f:
             d = json.load(f) or {}
         pid = int(d.get("pid") or 0)
         if pid > 0:
@@ -876,7 +948,7 @@ def serve_info():
 def hooks_info():
     missing = []
     try:
-        with open(os.path.expanduser("~/.claude/settings.json")) as f:
+        with open(os.path.expanduser("~/.claude/settings.json"), encoding="utf-8") as f:
             hooks = (json.load(f) or {}).get("hooks") or {}
     except Exception:
         hooks = {}
@@ -947,7 +1019,7 @@ def repo_info():
     def g(*args):
         try:
             r = subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
-                               text=True, timeout=10)
+                               encoding="utf-8", errors="replace", timeout=10)
         except Exception:
             return None
         return r.stdout.strip() if r.returncode == 0 else None
@@ -961,7 +1033,8 @@ def repo_info():
     code = []
     try:
         raw = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
-                             capture_output=True, text=True,
+                             capture_output=True,
+                                 encoding="utf-8", errors="replace",
                              timeout=20).stdout
     except Exception:
         raw = ""
@@ -990,6 +1063,129 @@ def deps_info():
     return {"missing_required": missing_req, "missing_optional": missing_opt}
 
 
+# 역할 진실은 GitHub 권한이고 profile 의 role 은 캐시다 (REQ-20260902-034).
+# 로컬 인가(S9_USER)는 자기신고라 인증이 아니다 — 최종 게이트는 리포 권한이다.
+# 둘이 어긋나면(profile 은 admin 인데 리포는 write) 사람이 알아야 한다.
+GH_ROLE_MAP = {"admin": "admin", "maintain": "member", "write": "member",
+               "triage": "viewer", "read": "viewer", "none": ""}
+
+
+def _origin_slug():
+    """origin 의 owner/repo — https·ssh 둘 다. GitHub 이 아니면 ""."""
+    try:
+        url = subprocess.run(["git", "remote", "get-url", "origin"], cwd=ROOT,
+                             capture_output=True, encoding="utf-8", errors="replace", timeout=10).stdout.strip()
+    except Exception:
+        return ""
+    m = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$", url)
+    return f"{m.group(1)}/{m.group(2)}" if m else ""
+
+
+def _gh_json(path):
+    """gh api 한 번 — 없거나 실패하면 None (확인 불가는 실패가 아니다)."""
+    if not shutil.which("gh"):
+        return None
+    try:
+        r = subprocess.run(["gh", "api", path], capture_output=True,
+                           encoding="utf-8", errors="replace",
+                           timeout=20)
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    try:
+        return json.loads(r.stdout)
+    except ValueError:
+        return None
+
+
+def _profiles():
+    """users/<u>/profile.md 의 role·github — 독립 실행 도구라 손으로 읽는다."""
+    out = {}
+    base = os.path.join(ROOT, "users")
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return out
+    for u in names:
+        p = os.path.join(base, u, "profile.md")
+        try:
+            with open(p, encoding="utf-8") as f:
+                head = f.read().split("\n---\n", 1)[0]
+        except OSError:
+            continue
+        role, gh = "member", ""
+        for line in head.splitlines():
+            if line.startswith("role:"):
+                role = line.split(":", 1)[1].strip() or "member"
+            elif line.startswith("github:"):
+                gh = line.split(":", 1)[1].strip().strip('"').lstrip("@")
+        out[u] = {"role": role, "github": gh}
+    return out
+
+
+def authz_info(slug=None, profiles=None, gh=None):
+    """profile role ↔ GitHub 권한 대조 + public 리포의 데이터 노출."""
+    slug = _origin_slug() if slug is None else slug
+    profiles = _profiles() if profiles is None else profiles
+    gh = _gh_json if gh is None else gh
+    info = {"slug": slug, "checked": [], "mismatch": [], "skipped": [],
+            "unavailable": False, "public": None, "vault_tracked": None}
+    if not slug:
+        info["unavailable"] = True
+        return info
+    repo = gh(f"repos/{slug}")
+    if repo is None:
+        info["unavailable"] = True
+        return info
+    info["public"] = not bool(repo.get("private"))
+    try:
+        ls = subprocess.run(["git", "ls-files", "vault"], cwd=ROOT,
+                            capture_output=True, encoding="utf-8", errors="replace", timeout=10).stdout
+        info["vault_tracked"] = bool(ls.strip())
+    except Exception:
+        info["vault_tracked"] = None
+    for u, pr in profiles.items():
+        if not pr.get("github"):
+            info["skipped"].append(u)
+            continue
+        perm = gh(f"repos/{slug}/collaborators/{pr['github']}/permission")
+        if not perm:
+            info["skipped"].append(u)
+            continue
+        ghrole = GH_ROLE_MAP.get(str(perm.get("permission") or "none"), "")
+        row = {"user": u, "profile": pr["role"], "github": perm.get("permission"),
+               "expect": ghrole}
+        info["checked"].append(row)
+        if ghrole != pr["role"]:
+            info["mismatch"].append(row)
+    return info
+
+
+def authz_verdict(a):
+    if a.get("unavailable"):
+        return _v("authz", "권한", "ok",
+                  "권한: GitHub 권한을 확인할 수 없다(원격이 GitHub 이 아니거나 gh 없음)",
+                  None)
+    bits, level, advice = [], "ok", None
+    if a.get("mismatch"):
+        level = "warn"
+        bits.append("역할 불일치 " + ", ".join(
+            f"{m['user']}(profile {m['profile']} ≠ GitHub {m['github']})"
+            for m in a["mismatch"][:3]))
+        advice = ("역할의 진실은 GitHub 권한이다 — profile 의 role 을 거기에 맞추거나"
+                  "(`s9 user role <이름> <역할>`, admin 만) 리포 권한을 고쳐라.")
+    if a.get("public") and a.get("vault_tracked"):
+        level = "warn"
+        bits.append("public 리포에 vault/ 가 track 된다 — 요청·지식 문서가 공개돼 있다")
+        advice = (advice or "") + (" 데이터는 사설 인스턴스 리포로 분리하라"
+                                   "(`s9 instance init`, docs/08).")
+    n = len(a.get("checked") or [])
+    head = f"권한: 대조 {n}명" + (f" · 건너뜀 {len(a['skipped'])}" if a.get("skipped") else "")
+    return _v("authz", "권한", level, head + (" · " + " · ".join(bits) if bits else ""),
+              advice or None)
+
+
 def system_checks():
     return [boot_verdict(boot_info()),
             tmp_verdict(tmp_info()),
@@ -997,7 +1193,8 @@ def system_checks():
             serve_verdict(serve_info()),
             repo_verdict(repo_info()),
             hooks_verdict(hooks_info()),
-            deps_verdict(deps_info())]
+            deps_verdict(deps_info()),
+            authz_verdict(authz_info())]
 
 
 def diagnose():
@@ -1179,9 +1376,14 @@ def main():
             print(f"회수 대상: pid {target['pid']} {target['name']} — 동적 포트 "
                   f"{target['count']}개 점유 (전체 {pv['bound']}/{pv['total']})")
             print(f"  {target['cmd']}")
+            # 대가를 줄여 적지 않는다 (REQ-20260902-066). 예전 문구는 "실행 중인
+            # WSL 세션은 유지된다"고 단언했고, 그 단언을 믿고 60% 무인 종료를
+            # 걸었다가 2026-09-02 하루에 아홉 번 발동해 일곱 번이 실패로
+            # 남았다 — 같은 날 사용자가 "자꾸 wsl 이 죽는 것 같다"고 물었다.
             print("종료하면 그 포트가 즉시 반환된다. COM 대리 프로세스라 필요 시 "
-                  "다시 뜨고, 실행 중인 WSL 세션은 유지된다. 다만 현재 공개된 "
-                  "포트는 재공개까지 잠깐 끊길 수 있다.")
+                  "다시 뜬다. 다만 공개된 포트는 재공개까지 끊기고, 실행 중인 "
+                  "WSL 세션까지 함께 내려간 사례가 있다 — 지금 하던 일이 끊겨도 "
+                  "되는 때인지 보고 골라라.")
             go = args.yes
             if not go:
                 try:
@@ -1207,6 +1409,7 @@ def main():
         time.sleep(0.5)
         d["probe_after_fix"] = probe_new_port()
         d["degraded"] = not d["probe_after_fix"]["ok"]
+    d["concurrency"] = CONCURRENCY
     d["advice"] = advise(d)
 
     if args.json:
@@ -1226,6 +1429,14 @@ def main():
           f"(고아 테스트 서버 {len(d['orphan_test_servers'])}개) · "
           f"헤드리스 브라우저 {len(d['headless_chrome'])}개 · "
           f"캡처 산출물 {human(d['shots_bytes'])}")
+    # **겹칠 때의 합을 사람이 물을 수 있어야 한다** (REQ-20260903-004).
+    # 비용은 총량이 아니라 동시 최고치인데, 상한이 흩어져 있으면 그 합을
+    # 아무도 모른다. 여기 한 줄로 세워 둔다 — 값은 bin/s9 의 CONCURRENCY 한 표.
+    cc = d.get("concurrency") or {}
+    if cc:
+        print("동시 상한: "
+              + " · ".join(f"{k} {v}" for k, v in cc.items())
+              + f" (한때 합 최대 {sum(cc.values())})")
     pv = port_verdict(d.get("windows_ports") or {})
     if pv:
         mark2 = {"ok": "✓", "warn": "△", "critical": "✗"}[pv["level"]]

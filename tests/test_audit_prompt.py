@@ -27,38 +27,39 @@ os.environ.pop("S9_AUTO_RESUME", None)
 
 class TestClassify(unittest.TestCase):
     # S1. 파편 차단: 짧은 무의미 단문은 REQ를 만들지 않는다
-    def test_s1_fragment_single_word(self):
-        self.assertEqual(hook.classify("logout"), "fragment")
+    def test_test_classify(self):
+        """TestClassify 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("s1_fragment_single_word"):
+                self.assertEqual(hook.classify("logout"), "fragment")
 
-    # S2. 짧은 영어/한글 명사 파편
-    def test_s2_fragments(self):
-        for t in ("test", "로그아웃", "asdf", "ㅁㄴㅇㄹ", "dashboard"):
-            self.assertEqual(hook.classify(t), "fragment", t)
+            # S2. 짧은 영어/한글 명사 파편
+        with self.subTest("s2_fragments"):
+                for t in ("test", "로그아웃", "asdf", "ㅁㄴㅇㄹ", "dashboard"):
+                    self.assertEqual(hook.classify(t), "fragment", t)
 
-    # S3. 짧아도 명령형이면 request 유지
-    def test_s3_short_imperative_is_request(self):
-        self.assertEqual(hook.classify("로그아웃 만들어줘"), "request")
-        self.assertEqual(hook.classify("로그인 고쳐"), "request")
+            # S3. 짧아도 명령형이면 request 유지
+        with self.subTest("s3_short_imperative_is_request"):
+                self.assertEqual(hook.classify("로그아웃 만들어줘"), "request")
+                self.assertEqual(hook.classify("로그인 고쳐"), "request")
 
-    # S4. 짧은 질문은 question 유지
-    def test_s4_short_question(self):
-        self.assertEqual(hook.classify("로그아웃 왜 안돼?"), "question")
-        self.assertEqual(hook.classify("왜"), "question")
+            # S4. 짧은 질문은 question 유지
+        with self.subTest("s4_short_question"):
+                self.assertEqual(hook.classify("로그아웃 왜 안돼?"), "question")
+                self.assertEqual(hook.classify("왜"), "question")
 
-    # S5. 회귀: 기존 분류 불변
-    def test_s5_regressions(self):
-        self.assertEqual(hook.classify("ㅇㅋ"), "nothing")
-        self.assertEqual(hook.classify("073 이어서 진행해라"), "nothing")
-        self.assertEqual(hook.classify("REQ-20260823-073 이어서"), "nothing")
-        self.assertEqual(
-            hook.classify("대시보드에서 프로젝트 멤버를 관리할 수 있는 화면이 필요하다. "
-                          "추가와 제거, 역할 변경을 지원해야 한다."),
-            "request")
-        self.assertEqual(hook.classify("멤버 역할은 어디서 바꾸나요"), "question")
-        # 긴 명사구(>20자)는 여전히 기본값 request
-        self.assertEqual(
-            hook.classify("프로젝트 멤버관리 대시보드 신규 구축 건"), "request")
-
+            # S5. 회귀: 기존 분류 불변
+        with self.subTest("s5_regressions"):
+            self.assertEqual(hook.classify("ㅇㅋ"), "nothing")
+            self.assertEqual(hook.classify("073 이어서 진행해라"), "nothing")
+            self.assertEqual(hook.classify("REQ-20260823-073 이어서"), "nothing")
+            self.assertEqual(
+                hook.classify("대시보드에서 프로젝트 멤버를 관리할 수 있는 화면이 필요하다. "
+                              "추가와 제거, 역할 변경을 지원해야 한다."),
+                "request")
+            self.assertEqual(hook.classify("멤버 역할은 어디서 바꾸나요"), "question")
+            # 긴 명사구(>20자)는 여전히 기본값 request
+            self.assertEqual(
+                hook.classify("프로젝트 멤버관리 대시보드 신규 구축 건"), "request")
 
 class TestFragmentBranch(unittest.TestCase):
     # S6. 파편도 정정 경로 컨텍스트를 주입한다 (REQ는 미생성)
@@ -242,42 +243,43 @@ class TestUserPrefs(unittest.TestCase):
         return printed.getvalue()
 
     # P1. pref_* 있으면 request/question 컨텍스트에 주입
-    def test_p1_prefs_injected(self):
-        cfg = json.dumps({"timezone": "Asia/Seoul",
-                          "pref_말투": "짧고 단정하게", "pref_보고": "결론 먼저"})
-        out_req = self._run_hook("대시보드에 위젯 만들어줘", cfg)
-        self.assertIn("개인 설정", out_req)
-        self.assertIn("말투: 짧고 단정하게", out_req)
-        out_q = self._run_hook("이건 왜 이래?", cfg)
-        self.assertIn("보고: 결론 먼저", out_q)
+    def test_test_user_prefs(self):
+        """개인 선호 자동 반영 (REQ-20260824-006)."""
+        with self.subTest("p1_prefs_injected"):
+                cfg = json.dumps({"timezone": "Asia/Seoul",
+                                  "pref_말투": "짧고 단정하게", "pref_보고": "결론 먼저"})
+                out_req = self._run_hook("대시보드에 위젯 만들어줘", cfg)
+                self.assertIn("개인 설정", out_req)
+                self.assertIn("말투: 짧고 단정하게", out_req)
+                out_q = self._run_hook("이건 왜 이래?", cfg)
+                self.assertIn("보고: 결론 먼저", out_q)
 
-    # P2 (016 개정). pref 없으면 '없음 + 기본 복귀·관성 금지'를 명시 주입 —
-    # 삭제가 침묵이 아니라 지시가 되어야 설정이 항상 먹는다
-    def test_p2_no_prefs_explicit_default(self):
-        out = self._run_hook("대시보드에 위젯 만들어줘",
-                             json.dumps({"timezone": "Asia/Seoul"}))
-        self.assertIn("◈ 개인 설정: 없음", out)
-        self.assertIn("관성을 따르지 마라", out)
+            # P2 (016 개정). pref 없으면 '없음 + 기본 복귀·관성 금지'를 명시 주입 —
+            # 삭제가 침묵이 아니라 지시가 되어야 설정이 항상 먹는다
+        with self.subTest("p2_no_prefs_explicit_default"):
+                out = self._run_hook("대시보드에 위젯 만들어줘",
+                                     json.dumps({"timezone": "Asia/Seoul"}))
+                self.assertIn("◈ 개인 설정: 없음", out)
+                self.assertIn("관성을 따르지 마라", out)
 
-    # P3. 저장 규약 지시가 request 규약에 포함
-    def test_p3_save_instruction_present(self):
-        out = self._run_hook("대시보드에 위젯 만들어줘", "{}")
-        self.assertIn("pref_<주제>", out)
+            # P3. 저장 규약 지시가 request 규약에 포함
+        with self.subTest("p3_save_instruction_present"):
+                out = self._run_hook("대시보드에 위젯 만들어줘", "{}")
+                self.assertIn("pref_<주제>", out)
 
-    # B5 (REQ-20260824-028). 미확인 승인 메모가 주입되고 후속 착수 지시 포함
-    def test_b5_approval_memo_injected(self):
-        out = self._run_hook("대시보드에 위젯 만들어줘", "{}")
-        self.assertIn("🆗 방금 승인 처리된 요청의 메모", out)
-        self.assertIn("자동으로 다음 요청이 생성되고", out)
-        self.assertIn("구현 착수 신호", out)
+            # B5 (REQ-20260824-028). 미확인 승인 메모가 주입되고 후속 착수 지시 포함
+        with self.subTest("b5_approval_memo_injected"):
+                out = self._run_hook("대시보드에 위젯 만들어줘", "{}")
+                self.assertIn("🆗 방금 승인 처리된 요청의 메모", out)
+                self.assertIn("자동으로 다음 요청이 생성되고", out)
+                self.assertIn("구현 착수 신호", out)
 
-    # B4 (REQ-20260824-011). blocked '패치 적용 대기'가 리드 프롬프트에 주입된다
-    def test_b4_blocked_warning_injected(self):
-        out = self._run_hook("대시보드에 위젯 만들어줘", "{}")
-        self.assertIn("⛔ 대기(blocked) 요청", out)
-        self.assertIn("패치 적용 대기(리드)", out)
-        self.assertIn("블락을 풀어라", out)
-
+            # B4 (REQ-20260824-011). blocked '패치 적용 대기'가 리드 프롬프트에 주입된다
+        with self.subTest("b4_blocked_warning_injected"):
+            out = self._run_hook("대시보드에 위젯 만들어줘", "{}")
+            self.assertIn("⛔ 대기(blocked) 요청", out)
+            self.assertIn("패치 적용 대기(리드)", out)
+            self.assertIn("블락을 풀어라", out)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

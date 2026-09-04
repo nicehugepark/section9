@@ -151,7 +151,10 @@ class ProcScope(unittest.TestCase):
         src = open(S9, encoding="utf-8").read()
         i = src.index("def handle_one_request(self):")
         j = src.index("        def ", i + 10)
-        self.assertIn("with proc_scope():", src[i:j],
+        # 문의 자리를 묻지 글자를 묻지 않는다 — 같은 문에 다른 범위가 함께
+        # 서면(`with proc_scope(), streams_scope():`, REQ-20260902-004) 글자만
+        # 달라진다. 계약은 "이 메서드가 스코프를 연다"다.
+        self.assertIn("proc_scope()", src[i:j],
                       "요청 스코프의 문이 handle_one_request 에 없다 — "
                       "나중에 붙는 메서드가 그냥 지나간다")
 
@@ -283,61 +286,59 @@ class ProcScanServer(unittest.TestCase):
         return self.gauge()["reads"] - before
 
     # ---- S14. 계기가 있다 ------------------------------------------------
-    def test_s14_serveinfo_reports_the_gauge(self):
-        g = self.gauge()
-        for k in ("backend", "reads", "shared", "max_inflight"):
-            self.assertIn(k, g, g)
+    def test_proc_scan_server(self):
+        """실서버로 잰다 — 한 요청이 `/proc` 을 몇 번 훑는가."""
+        with self.subTest("s14_serveinfo_reports_the_gauge"):
+                g = self.gauge()
+                for k in ("backend", "reads", "shared", "max_inflight"):
+                    self.assertIn(k, g, g)
 
-    # ---- S2/S3. 한 요청 = 한 번의 훑기 (실서버) --------------------------
-    def test_s2_chat_target_scans_once(self):
-        # 계기 델타에는 배경 스레드(워처·하트비트)의 훑기가 섞일 수 있으므로
-        # 여유를 준다. 고치기 전 이 값은 바인딩 수(40)를 넘었다.
-        d = self.scans("/api/chat/target")
-        self.assertLessEqual(d, 3, f"/api/chat/target 한 요청이 {d}번 훑었다")
+            # ---- S2/S3. 한 요청 = 한 번의 훑기 (실서버) --------------------------
+        with self.subTest("s2_chat_target_scans_once"):
+            # 계기 델타에는 배경 스레드(워처·하트비트)의 훑기가 섞일 수 있으므로
+            # 여유를 준다. 고치기 전 이 값은 바인딩 수(40)를 넘었다.
+            d = self.scans("/api/chat/target")
+            self.assertLessEqual(d, 3, f"/api/chat/target 한 요청이 {d}번 훑었다")
+        with self.subTest("s3_sessions_scans_once"):
+            d = self.scans("/api/sessions")
+            self.assertLessEqual(d, 3, f"/api/sessions 한 요청이 {d}번 훑었다")
+        with self.subTest("s3b_catalog_scans_once"):
+                d = self.scans("/api/catalog")
+                self.assertLessEqual(d, 3, f"/api/catalog 한 요청이 {d}번 훑었다")
 
-    def test_s3_sessions_scans_once(self):
-        d = self.scans("/api/sessions")
-        self.assertLessEqual(d, 3, f"/api/sessions 한 요청이 {d}번 훑었다")
+            # ---- S4. 동시 요청이 훑기를 곱하지 않는다 ----------------------------
+        with self.subTest("s4_concurrency_does_not_multiply"):
+                one = self.scans("/api/chat/target")
+                eight = self.scans("/api/chat/target", n=8)
+                self.assertLessEqual(eight, one + 8,
+                                     f"동시 8건이 훑기 {eight}번 — 동시성이 곱한다")
+                self.assertLessEqual(self.gauge()["max_inflight"], 1,
+                                     "동시 진입이 1을 넘었다 — 단일비행이 없다")
 
-    def test_s3b_catalog_scans_once(self):
-        d = self.scans("/api/catalog")
-        self.assertLessEqual(d, 3, f"/api/catalog 한 요청이 {d}번 훑었다")
-
-    # ---- S4. 동시 요청이 훑기를 곱하지 않는다 ----------------------------
-    def test_s4_concurrency_does_not_multiply(self):
-        one = self.scans("/api/chat/target")
-        eight = self.scans("/api/chat/target", n=8)
-        self.assertLessEqual(eight, one + 8,
-                             f"동시 8건이 훑기 {eight}번 — 동시성이 곱한다")
-        self.assertLessEqual(self.gauge()["max_inflight"], 1,
-                             "동시 진입이 1을 넘었다 — 단일비행이 없다")
-
-    # ---- S9. 신선도 계약: 요청마다 새로 뜬다 -----------------------------
-    def test_s9_freshness_survives(self):
-        """tail 을 죽이면 다음 요청이 곧바로 안다 (C9 와 같은 계약)."""
-        tail = shutil.which("tail")
-        if not tail:
-            self.skipTest("tail 없음")
-        sid = "scan0000"
-        inbox = os.path.join(self.tmp, "state", "terminal",
-                             f"inbox-{sid}.jsonl")
-        os.makedirs(os.path.dirname(inbox), exist_ok=True)
-        open(inbox, "a").close()
-        p = subprocess.Popen([tail, "-f", inbox], stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-        try:
+            # ---- S9. 신선도 계약: 요청마다 새로 뜬다 -----------------------------
+        with self.subTest("s9_freshness_survives"):
+            tail = shutil.which("tail")
+            if not tail:
+                self.skipTest("tail 없음")
+            sid = "scan0000"
+            inbox = os.path.join(self.tmp, "state", "terminal",
+                                 f"inbox-{sid}.jsonl")
+            os.makedirs(os.path.dirname(inbox), exist_ok=True)
+            open(inbox, "a").close()
+            p = subprocess.Popen([tail, "-f", inbox], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+            try:
+                time.sleep(0.3)
+                r = json.loads(self.get(f"/api/chat/target?sid={sid}")[1])
+                self.assertTrue(r["listening"], r)
+            finally:
+                p.terminate()
+                p.wait(timeout=5)
             time.sleep(0.3)
             r = json.loads(self.get(f"/api/chat/target?sid={sid}")[1])
-            self.assertTrue(r["listening"], r)
-        finally:
-            p.terminate()
-            p.wait(timeout=5)
-        time.sleep(0.3)
-        r = json.loads(self.get(f"/api/chat/target?sid={sid}")[1])
-        self.assertFalse(r["listening"],
-                         "tail 이 죽었는데 다음 요청이 여전히 수신 대기라 "
-                         "말한다 — 스코프가 요청을 넘어 살아 있다")
-
+            self.assertFalse(r["listening"],
+                             "tail 이 죽었는데 다음 요청이 여전히 수신 대기라 "
+                             "말한다 — 스코프가 요청을 넘어 살아 있다")
 
 if __name__ == "__main__":
     unittest.main()

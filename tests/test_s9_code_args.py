@@ -141,89 +141,90 @@ class TestCodeArgs(unittest.TestCase):
         return last
 
     # G1. 인자 전달: 뒤따르는 인자가 claude 명령에 그대로 포함
-    def test_g1_args_passthrough(self):
-        out = self.run_code("--permission-mode", "acceptEdits")
-        cmd = json.loads(out)
-        self.assertEqual(cmd[0], "claude")
-        self.assertIn("--permission-mode", cmd)
-        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "acceptEdits")
+    def test_test_code_args(self):
+        """TestCodeArgs 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("g1_args_passthrough"):
+                out = self.run_code("--permission-mode", "acceptEdits")
+                cmd = json.loads(out)
+                self.assertEqual(cmd[0], "claude")
+                self.assertIn("--permission-mode", cmd)
+                self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "acceptEdits")
 
-    # G2. 계정 기본값: s9code_args 설정이 실행 인자에 포함
-    def test_g2_config_default(self):
-        subprocess.run([S9, "user", "config", "tester", "s9code_args",
-                        "--permission-mode acceptEdits"],
-                       capture_output=True, env=self.env, timeout=15)
-        try:
-            cmd = json.loads(self.run_code())
-            self.assertIn("--permission-mode", cmd)
-            self.assertIn("acceptEdits", cmd)
-        finally:
-            subprocess.run([S9, "user", "config", "tester", "s9code_args", ""],
-                           capture_output=True, env=self.env, timeout=15)
+            # G2. 계정 기본값: s9code_args 설정이 실행 인자에 포함
+        with self.subTest("g2_config_default"):
+                subprocess.run([S9, "user", "config", "tester", "s9code_args",
+                                "--permission-mode acceptEdits"],
+                               capture_output=True, env=self.env, timeout=15)
+                try:
+                    cmd = json.loads(self.run_code())
+                    self.assertIn("--permission-mode", cmd)
+                    self.assertIn("acceptEdits", cmd)
+                finally:
+                    subprocess.run([S9, "user", "config", "tester", "s9code_args", ""],
+                                   capture_output=True, env=self.env, timeout=15)
 
-    # G3. 병합 순서: 계정 기본값이 앞, 명령행이 뒤(명령행 우선)
-    def test_g3_merge_order(self):
-        subprocess.run([S9, "user", "config", "tester", "s9code_args", "--model opus"],
-                       capture_output=True, env=self.env, timeout=15)
-        try:
-            cmd = json.loads(self.run_code("--model", "sonnet"))
-            self.assertEqual(cmd.index("--model"), 1)          # 기본값이 먼저
-            self.assertEqual(cmd[1:3], ["--model", "opus"])
-            self.assertEqual(cmd[3:5], ["--model", "sonnet"])  # 명령행이 뒤
-        finally:
-            subprocess.run([S9, "user", "config", "tester", "s9code_args", ""],
-                           capture_output=True, env=self.env, timeout=15)
+            # G3. 병합 순서: 계정 기본값이 앞, 명령행이 뒤(명령행 우선)
+        with self.subTest("g3_merge_order"):
+                subprocess.run([S9, "user", "config", "tester", "s9code_args", "--model opus"],
+                               capture_output=True, env=self.env, timeout=15)
+                try:
+                    cmd = json.loads(self.run_code("--model", "sonnet"))
+                    self.assertEqual(cmd.index("--model"), 1)          # 기본값이 먼저
+                    self.assertEqual(cmd[1:3], ["--model", "opus"])
+                    self.assertEqual(cmd[3:5], ["--model", "sonnet"])  # 명령행이 뒤
+                finally:
+                    subprocess.run([S9, "user", "config", "tester", "s9code_args", ""],
+                                   capture_output=True, env=self.env, timeout=15)
 
-    # G5. auto 모드(REQ-20260824-036 반려 반영): s9code_args '--permission-mode
-    # auto' 설정 시 claude가 auto 모드로 실행 — 사람이 다시 승인할 필요가 없다
-    def test_g5_auto_mode_config(self):
-        subprocess.run([S9, "user", "config", "tester", "s9code_args",
-                        "--permission-mode auto"],
-                       capture_output=True, env=self.env, timeout=15)
-        try:
-            cmd = json.loads(self.run_code())
-            self.assertEqual(cmd[1:3], ["--permission-mode", "auto"])
-        finally:
-            subprocess.run([S9, "user", "config", "tester", "s9code_args", ""],
-                           capture_output=True, env=self.env, timeout=15)
+            # G5. auto 모드(REQ-20260824-036 반려 반영): s9code_args '--permission-mode
+            # auto' 설정 시 claude가 auto 모드로 실행 — 사람이 다시 승인할 필요가 없다
+        with self.subTest("g5_auto_mode_config"):
+                subprocess.run([S9, "user", "config", "tester", "s9code_args",
+                                "--permission-mode auto"],
+                               capture_output=True, env=self.env, timeout=15)
+                try:
+                    cmd = json.loads(self.run_code())
+                    self.assertEqual(cmd[1:3], ["--permission-mode", "auto"])
+                finally:
+                    subprocess.run([S9, "user", "config", "tester", "s9code_args", ""],
+                                   capture_output=True, env=self.env, timeout=15)
 
-    # P1. preflight: 훅 미설치 흔적(settings.json에 마커 없음) → s9-install 자동
-    #     실행 안내가 출력되고 설치가 수행된다 (REQ-20260824-052)
-    def test_p1_preflight_installs(self):
-        home2 = tempfile.mkdtemp(prefix="s9codeh2-")
-        # 실리포 유사 ROOT(bin/ 존재) — s9-install이 자기 파일들을 찾을 수 있게
-        root2 = tempfile.mkdtemp(prefix="s9coderoot-")
-        os.symlink(os.path.join(HERE, "..", "bin"),
-                   os.path.join(root2, "bin"))
-        os.symlink(os.path.join(HERE, "..", "harness"),
-                   os.path.join(root2, "harness"))
-        env2 = {**self.env, "HOME": home2, "S9_ROOT": root2}
-        r = subprocess.run([S9, "code"], capture_output=True, text=True,
-                           env=env2, timeout=60, stdin=subprocess.DEVNULL)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("훅 미설치", r.stdout)
-        self.assertTrue(os.path.exists(
-            os.path.join(home2, ".claude", "settings.json")))
-        self.assertIn("미로그인", r.stdout)   # credentials 없음 → 로그인 예고
-        self.assertIn('["claude"', r.stdout)  # 그 후 실행은 계속된다
+            # P1. preflight: 훅 미설치 흔적(settings.json에 마커 없음) → s9-install 자동
+            #     실행 안내가 출력되고 설치가 수행된다 (REQ-20260824-052)
+        with self.subTest("p1_preflight_installs"):
+                home2 = tempfile.mkdtemp(prefix="s9codeh2-")
+                # 실리포 유사 ROOT(bin/ 존재) — s9-install이 자기 파일들을 찾을 수 있게
+                root2 = tempfile.mkdtemp(prefix="s9coderoot-")
+                os.symlink(os.path.join(HERE, "..", "bin"),
+                           os.path.join(root2, "bin"))
+                os.symlink(os.path.join(HERE, "..", "harness"),
+                           os.path.join(root2, "harness"))
+                env2 = {**self.env, "HOME": home2, "S9_ROOT": root2}
+                r = subprocess.run([S9, "code"], capture_output=True, text=True,
+                                   env=env2, timeout=60, stdin=subprocess.DEVNULL)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("훅 미설치", r.stdout)
+                self.assertTrue(os.path.exists(
+                    os.path.join(home2, ".claude", "settings.json")))
+                self.assertIn("미로그인", r.stdout)   # credentials 없음 → 로그인 예고
+                self.assertIn('["claude"', r.stdout)  # 그 후 실행은 계속된다
 
-    # P2. preflight: 미등록 사용자 + 비대화형 → 등록 안내만 출력(멈추지 않음)
-    def test_p2_preflight_unregistered_notty(self):
-        env2 = {**self.env}
-        env2.pop("S9_USER")               # OS 계정 fallback → 미등록
-        r = subprocess.run([S9, "code"], capture_output=True, text=True,
-                           env=env2, timeout=30, stdin=subprocess.DEVNULL)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("미등록 사용자", r.stdout)
-        self.assertIn('["claude"', r.stdout)
+            # P2. preflight: 미등록 사용자 + 비대화형 → 등록 안내만 출력(멈추지 않음)
+        with self.subTest("p2_preflight_unregistered_notty"):
+                env2 = {**self.env}
+                env2.pop("S9_USER")               # OS 계정 fallback → 미등록
+                r = subprocess.run([S9, "code"], capture_output=True, text=True,
+                                   env=env2, timeout=30, stdin=subprocess.DEVNULL)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("미등록 사용자", r.stdout)
+                self.assertIn('["claude"', r.stdout)
 
-    # G4. 회귀: --no-claude 는 대시보드만 — dry-run 출력(JSON exec 라인) 없음
-    def test_g4_no_claude(self):
-        r = subprocess.run([S9, "code", "--no-claude"], capture_output=True,
-                           text=True, env=self.env, timeout=15)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertNotIn('["claude"', r.stdout)
-
+            # G4. 회귀: --no-claude 는 대시보드만 — dry-run 출력(JSON exec 라인) 없음
+        with self.subTest("g4_no_claude"):
+            r = subprocess.run([S9, "code", "--no-claude"], capture_output=True,
+                               text=True, env=self.env, timeout=15)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn('["claude"', r.stdout)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

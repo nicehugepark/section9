@@ -59,78 +59,67 @@ def hook(prompt, session="stampses"):
 
 
 class ResponseStamp(unittest.TestCase):
-    def test_hook_injects_instruction_and_material(self):
+    def test_response_stamp(self):
         """규칙과 재료가 같은 자리에 있다 — 지시문과 실제 시각을 함께 준다."""
-        ctx = hook("지금 상태 알려줘")
-        self.assertIn("현재 시각", ctx)
-        self.assertRegex(ctx, STAMP_RE)
-
-    def test_heading_names_the_speaker(self):
-        """이름이 함께 나온다 — 위임 보고를 리드의 말과 구분할 수 있어야 한다."""
-        m = re.search(STAMP_RE, hook("아무 말"))
-        self.assertIsNotNone(m)
-        self.assertEqual(m.group(3), "lead")
-
-    def test_injected_time_is_real_and_kst(self):
-        """주입된 값이 진짜 지금이다 — 지어낸 시각을 규약이 승인하면 안 된다."""
-        ctx = hook("아무 말")
-        m = re.search(STAMP_RE, ctx)
-        self.assertIsNotNone(m)
-        got = datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
-        # 이 테스트 환경에는 사용자 설정이 없어 시스템 로컬로 물러선다.
-        now = datetime.datetime.now().astimezone().replace(tzinfo=None)
-        self.assertLess(abs((now - got).total_seconds()), 120,
-                        "주입 시각이 지금과 다르다 — 고정값이나 다른 시간대다")
-
-    def test_no_heading_marker(self):
-        """제목 기호를 붙이지 않는다 — 헤딩을 렌더하지 않는 화면에서 `#` 이 샌다.
-
-        사용자 정정: "해시 강조라는건 해시코드와 같은 방식으로 강조를 해달라는
-        의미잖아" (REQ-20260826-030).
-        """
-        ctx = hook("아무 말")
-        self.assertNotIn("# `[", ctx)
-        self.assertIn("`#` 은 붙이지 마라", ctx)
-
-    def test_no_exception_for_command_turns(self):
-        """슬래시 명령 턴에도 지시는 나간다 — 예외가 하나 생기면 규칙이 죽는다."""
-        self.assertRegex(hook("/help"), STAMP_RE)
-
-    def test_no_exception_for_system_notification_turns(self):
-        """시스템 통지 턴도 마찬가지 — 그 턴에도 사용자는 응답을 본다."""
-        self.assertRegex(hook("<task-notification>done</task-notification>"),
-                         STAMP_RE)
-
-    def test_protocol_carries_the_rule(self):
-        """훅이 없는 하네스(Gemini/Codex 등)를 위해 공통 규약에도 있어야 한다."""
-        with open(PROTOCOL, encoding="utf-8") as f:
-            src = f.read()
-        self.assertIn("KST", src)
-        self.assertIn("지어내지 마라", src)
-        self.assertIn("date '+%Y-%m-%d %H:%M:%S %Z'", src,
-                      "주입이 없는 환경에서 시각을 얻을 방법을 알려줘야 한다 — "
-                      "시간대는 %Z 로 따라가야 한다 (REQ-20260828-024)")
-        self.assertIn("lead", src, "응답 주체 이름 규칙이 공통 규약에 없다")
-        self.assertIn("KST - lead]`", src, "표기 형태가 규약과 어긋난다")
-        self.assertNotIn("# `[2026", src, "제목 기호(#)가 규약에 남아 있다")
-
-    def test_every_role_agent_carries_the_rule(self):
-        """서브에이전트에는 UserPromptSubmit 훅이 없다 — 각자 문서에 있어야 한다."""
-        names = [n for n in os.listdir(AGENTS) if n.endswith(".md")
-                 and n != "README.md"]
-        self.assertGreater(len(names), 20, "역할 에이전트를 찾지 못했다")
-        missing, unnamed = [], []
-        for n in names:
-            with open(os.path.join(AGENTS, n), encoding="utf-8") as f:
-                txt = f.read()
-            if "KST" not in txt:
-                missing.append(n)
-            # 각자 자기 이름을 쓰도록 박혀 있어야 한다 — 일반 안내로는 안 지켜진다
-            elif f"KST - {n[:-3]}]`" not in txt:
-                unnamed.append(n)
-        self.assertEqual(missing, [], f"시각 규칙이 빠진 에이전트: {missing}")
-        self.assertEqual(unnamed, [], f"자기 이름이 박히지 않은 에이전트: {unnamed}")
-
+        with self.subTest("hook_injects_instruction_and_material"):
+            ctx = hook("지금 상태 알려줘")
+            # 라벨은 이 값이 **무엇인지** 말한다 (REQ-20260903-013):
+            # 「현재 시각」이라 부르면 몇 분 뒤 답을 쓰며 그대로 베낀다.
+            self.assertIn("이 턴이 도착한 시각", ctx)
+            self.assertIn("답을 쓰기 직전에 재라", ctx)
+            self.assertRegex(ctx, STAMP_RE)
+        with self.subTest("heading_names_the_speaker"):
+            m = re.search(STAMP_RE, hook("아무 말"))
+            self.assertIsNotNone(m)
+            self.assertEqual(m.group(3), "lead")
+        with self.subTest("injected_time_is_real_and_kst"):
+            ctx = hook("아무 말")
+            m = re.search(STAMP_RE, ctx)
+            self.assertIsNotNone(m)
+            got = datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+            # 이 테스트 환경에는 사용자 설정이 없어 시스템 로컬로 물러선다.
+            now = datetime.datetime.now().astimezone().replace(tzinfo=None)
+            # 창을 10분으로 둔다 (REQ-20260904-003). 이 검사가 잡으려는 것은
+            # **고정값**과 **다른 시간대**인데, 시간대가 어긋나면 최소 30분이고
+            # 고정값은 며칠씩 벌어진다 — 10분으로도 둘 다 잡힌다. 반대로 창이
+            # 좁으면 부하가 걸린 병렬 실행에서 멀쩡한 값이 붉어진다.
+            self.assertLess(abs((now - got).total_seconds()), 600,
+                            "주입 시각이 지금과 다르다 — 고정값이나 다른 시간대다")
+        with self.subTest("no_heading_marker"):
+            ctx = hook("아무 말")
+            self.assertNotIn("# `[", ctx)
+            self.assertIn("`#` 은 붙이지 마라", ctx)
+        with self.subTest("no_exception_for_command_turns"):
+            self.assertRegex(hook("/help"), STAMP_RE)
+        with self.subTest("no_exception_for_system_notification_turns"):
+            self.assertRegex(hook("<task-notification>done</task-notification>"),
+                             STAMP_RE)
+        with self.subTest("protocol_carries_the_rule"):
+            with open(PROTOCOL, encoding="utf-8") as f:
+                src = f.read()
+            self.assertIn("KST", src)
+            self.assertIn("지어내지 마라", src)
+            self.assertIn("date '+%Y-%m-%d %H:%M:%S %Z'", src,
+                          "주입이 없는 환경에서 시각을 얻을 방법을 알려줘야 한다 — "
+                          "시간대는 %Z 로 따라가야 한다 (REQ-20260828-024)")
+            self.assertIn("lead", src, "응답 주체 이름 규칙이 공통 규약에 없다")
+            self.assertIn("KST - lead]`", src, "표기 형태가 규약과 어긋난다")
+            self.assertNotIn("# `[2026", src, "제목 기호(#)가 규약에 남아 있다")
+        with self.subTest("every_role_agent_carries_the_rule"):
+            names = [n for n in os.listdir(AGENTS) if n.endswith(".md")
+                     and n != "README.md"]
+            self.assertGreater(len(names), 20, "역할 에이전트를 찾지 못했다")
+            missing, unnamed = [], []
+            for n in names:
+                with open(os.path.join(AGENTS, n), encoding="utf-8") as f:
+                    txt = f.read()
+                if "KST" not in txt:
+                    missing.append(n)
+                # 각자 자기 이름을 쓰도록 박혀 있어야 한다 — 일반 안내로는 안 지켜진다
+                elif f"KST - {n[:-3]}]`" not in txt:
+                    unnamed.append(n)
+            self.assertEqual(missing, [], f"시각 규칙이 빠진 에이전트: {missing}")
+            self.assertEqual(unnamed, [], f"자기 이름이 박히지 않은 에이전트: {unnamed}")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -31,40 +31,41 @@ class WorkerGhEnvelope(unittest.TestCase):
         cls.seg = src[i:i + 1800]
 
     # N1. 스위치가 있고, 켜면 gh 가 봉투에 든다
-    def test_n1_switch_exists(self):
-        self.assertIn('cfg.get("auto_resume_gh")', self.seg)
-        m = re.search(r'cfg\.get\("auto_resume_gh"\):\s*\n\s*perm = perm \+ '
-                      r'\[(.+?)\]', self.seg)
-        self.assertIsNotNone(m, self.seg[-600:])
-        self.assertIn("gh", m.group(1))
+    def test_worker_gh_envelope(self):
+        """WorkerGhEnvelope 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_switch_exists"):
+                self.assertIn('cfg.get("auto_resume_gh")', self.seg)
+                m = re.search(r'cfg\.get\("auto_resume_gh"\):\s*\n\s*perm = perm \+ '
+                              r'\[(.+?)\]', self.seg)
+                self.assertIsNotNone(m, self.seg[-600:])
+                self.assertIn("gh", m.group(1))
 
-    # N2. 기본 봉투는 그대로 — 읽기 + s9
-    def test_n2_default_envelope_unchanged(self):
-        head = self.seg[:self.seg.index("if cfg.get(")]
-        for t in ("Read", "Glob", "Grep", "bin/s9"):
-            self.assertIn(t.replace("bin/s9", "s9bin"), head) \
-                if t == "bin/s9" else self.assertIn(t, head)
-        self.assertNotIn("gh", head, "기본 봉투에 gh 가 들어 있다")
+            # N2. 기본 봉투는 그대로 — 읽기 + s9
+        with self.subTest("n2_default_envelope_unchanged"):
+                head = self.seg[:self.seg.index("if cfg.get(")]
+                for t in ("Read", "Glob", "Grep", "bin/s9"):
+                    self.assertIn(t.replace("bin/s9", "s9bin"), head) \
+                        if t == "bin/s9" else self.assertIn(t, head)
+                self.assertNotIn("gh", head, "기본 봉투에 gh 가 들어 있다")
 
-    # B1. 편집 스위치와 **섞이지 않는다** — 하나를 켰다고 다른 하나가 따라오면
-    #     그 결정을 누구도 한 적이 없게 된다
-    def test_b1_not_bundled_with_apply(self):
-        m = re.search(r'if cfg\.get\("auto_resume_apply"\):(.*?)\n\s*#',
-                      self.seg, re.S)
-        self.assertIsNotNone(m)
-        self.assertNotIn("gh", m.group(1),
-                         "파일 편집 스위치에 gh 가 묶여 있다")
+            # B1. 편집 스위치와 **섞이지 않는다** — 하나를 켰다고 다른 하나가 따라오면
+            #     그 결정을 누구도 한 적이 없게 된다
+        with self.subTest("b1_not_bundled_with_apply"):
+                m = re.search(r'if cfg\.get\("auto_resume_apply"\):(.*?)\n\s*#',
+                              self.seg, re.S)
+                self.assertIsNotNone(m)
+                self.assertNotIn("gh", m.group(1),
+                                 "파일 편집 스위치에 gh 가 묶여 있다")
 
-    # B2. 켜지 않은 사용자에게는 아무것도 달라지지 않는다
-    def test_b2_off_by_default(self):
-        self.assertNotIn('cfg.get("auto_resume_gh", True)', self.seg)
-        self.assertNotIn('cfg.get("auto_resume_gh") is not False', self.seg)
+            # B2. 켜지 않은 사용자에게는 아무것도 달라지지 않는다
+        with self.subTest("b2_off_by_default"):
+                self.assertNotIn('cfg.get("auto_resume_gh", True)', self.seg)
+                self.assertNotIn('cfg.get("auto_resume_gh") is not False', self.seg)
 
-    # F1. 무엇을 켜는 것인지 코드가 말해 준다 — 조용한 권한 확장은 안 된다
-    def test_f1_documented(self):
-        self.assertIn("경계가 아니다", self.seg,
-                      "gh 봉투가 경계가 아니라는 사실이 코드에 없다")
-
+            # F1. 무엇을 켜는 것인지 코드가 말해 준다 — 조용한 권한 확장은 안 된다
+        with self.subTest("f1_documented"):
+            self.assertIn("경계가 아니다", self.seg,
+                          "gh 봉투가 경계가 아니라는 사실이 코드에 없다")
 
 if __name__ == "__main__":
     unittest.main()

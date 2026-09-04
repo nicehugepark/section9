@@ -36,6 +36,13 @@ finally:
         else:
             os.environ[k] = v
 
+# ROOT·STATE 는 import 시점에 굳고 machine 은 부를 때마다 환경에서 읽는다 —
+# env 를 되돌리는 이 격리에서 그 둘이 어긋난다. 바인딩을 훑는 자리가 이 머신
+# 것만 보게 된 뒤로(REQ-20260902-017 `_local_binding_glob`) 그 어긋남이
+# 곧바로 "세션 없음/종료됨" 이 됐다. env 를 열어 두면 같은 프로세스의 다른
+# 시험까지 물들므로, 이 모듈 안에서만 머신을 못박는다.
+mod.current_machine = lambda: "testbox"
+
 
 def write_jsonl(entries, name):
     path = os.path.join(TMP, name)
@@ -334,6 +341,47 @@ class TestModelPersistence(unittest.TestCase):
             r = mod.restart_session("persistok", model="claude-opus-5[1m]")
         self.assertTrue(r["ok"], r)
         self.assertEqual(writes, {"last_model_choice": "claude-opus-5[1m]"})
+
+
+class TheWrapperIsRecognisedByPlace(unittest.TestCase):
+    """래퍼 판정은 **자리**로 한다 — 글자가 아무 데나 있는 것은 아니다
+    (REQ-20260904-003).
+
+    실사고 2026-09-04: 판정이 `"s9" in wcmd and "code" in wcmd` 였다. 병렬
+    시험의 부모 명령줄에는 시험 파일 이름 200개가 실려 있고 그중
+    `test_s9_code_args.py` 한 낱말에 두 글자가 다 있다 — 그래서 래퍼가 있다고
+    믿고 SIGTERM 을 보냈고, 되살릴 래퍼가 없어 **샤드가 자기 자신을 죽였다.**
+
+    사람의 세션도 같은 길로 간다: 부모 명령줄에 그 두 글자가 우연히 섞이면
+    세션이 SIGTERM 을 맞고 그냥 죽는데 화면에는 「재시작했다」로 보인다.
+    """
+
+    def test_w1_a_real_wrapper_is_recognised(self):
+        self.assertTrue(mod._is_code_wrapper(
+            "python3 /home/u/section9/bin/s9 code --resume abc"))
+
+    def test_w3_a_test_filename_is_not_a_wrapper(self):
+        """이 사고를 낸 바로 그 문자열."""
+        self.assertFalse(mod._is_code_wrapper(
+            "python3 tests/ --smoke --jobs 4 test_s9_code_args.py test_s9_sync.py"))
+
+    def test_w4_someone_elses_command_is_not_a_wrapper(self):
+        self.assertFalse(mod._is_code_wrapper("/home/x/section9/other code-thing"))
+
+    def test_w5_another_subcommand_is_not_a_wrapper(self):
+        self.assertFalse(mod._is_code_wrapper(
+            "python3 /home/u/section9/bin/s9 serve --port 9909"))
+
+    def test_b1_the_windows_form_is_recognised(self):
+        """역슬래시 경로 — 리눅스에서 읽어도 갈래로 센다 (REQ-20260903-005 형제)."""
+        self.assertTrue(mod._is_code_wrapper(
+            "cmd.exe /c C:\\repo\\bin\\s9.cmd code"))
+
+    def test_b2_flags_between_are_skipped(self):
+        self.assertTrue(mod._is_code_wrapper("python3 /home/u/bin/s9 --quiet code"))
+
+    def test_nothing_is_not_a_wrapper(self):
+        self.assertFalse(mod._is_code_wrapper(""))
 
 
 class TestModelPolicyWins(unittest.TestCase):

@@ -29,60 +29,52 @@ _spec.loader.exec_module(s9)
 class JudgeTest(unittest.TestCase):
     """H1~H5, H9: 순수 판정 함수 — 파일시스템 없이 규칙만 고정한다."""
 
-    def test_h1_lead(self):
-        st, _ = s9.judge_health("lead:claude-opus-5", age=10, pid_alive=True)
-        self.assertEqual(st, "alive")
-        st, why = s9.judge_health("lead:claude-opus-5", age=10, pid_alive=False)
-        self.assertEqual(st, "failed")
-        self.assertTrue(why)
-        st, _ = s9.judge_health("lead:claude-opus-5", age=9999, pid_alive=None)
-        self.assertEqual(st, "stalled")
-
-    def test_h2_sub(self):
-        self.assertEqual(
-            s9.judge_health("sub:designer:a1fefd40", age=30)[0], "alive")
-        self.assertEqual(
-            s9.judge_health("sub:designer:a1fefd40", age=600)[0], "stalled")
-
-    def test_h3_worker_failed_on_limit_log(self):
-        st, why = s9.judge_health(
-            "worker:auto-resume", age=5, pid_alive=False,
-            log_line="Claude usage limit reached for model fable")
-        self.assertEqual(st, "failed")
-        self.assertIn("limit", why)
-
-    def test_h3_worker_dead_without_log_is_failed(self):
-        st, why = s9.judge_health("worker:auto-resume", age=5, pid_alive=False)
-        self.assertEqual(st, "failed")
-        self.assertTrue(why, "사유 없는 failed 는 화면에서 쓸모가 없다")
-
-    def test_h4_worker_alive(self):
-        self.assertEqual(
-            s9.judge_health("worker:auto-resume", age=5, pid_alive=True)[0],
-            "alive")
-        # 살아 있어도 진전이 없으면 stalled — pid 생존은 진행의 증거가 아니다
-        self.assertEqual(
-            s9.judge_health("worker:auto-resume", age=9999, pid_alive=True)[0],
-            "stalled")
-
-    def test_h5_recorded_state_wins(self):
-        """리드가 기록한 종결 상태가 최우선 — 끝난 항목을 파일 신호로 되살리지
-        않는다 (관측이 사실을 뒤집으면 안 된다)."""
-        self.assertEqual(
-            s9.judge_health("sub:x:1", age=9999, recorded="done")[0], "done")
-        self.assertEqual(
-            s9.judge_health("sub:x:1", age=1, recorded="failed")[0], "failed")
-
-    def test_h9_unknown_when_no_signal(self):
-        st, _ = s9.judge_health("sub:x:1")
-        self.assertEqual(st, "unknown")
-        st, _ = s9.judge_health("garbage-actor", age=1)
-        self.assertEqual(st, "unknown")
-
-    def test_h9_never_raises(self):
-        for kw in ({"age": "bad"}, {"pid_alive": "x"}, {"log_line": None}):
-            s9.judge_health("sub:x:1", **kw)
-
+    def test_judge_test(self):
+        """H1~H5, H9: 순수 판정 함수 — 파일시스템 없이 규칙만 고정한다."""
+        with self.subTest("h1_lead"):
+            st, _ = s9.judge_health("lead:claude-opus-5", age=10, pid_alive=True)
+            self.assertEqual(st, "alive")
+            st, why = s9.judge_health("lead:claude-opus-5", age=10, pid_alive=False)
+            self.assertEqual(st, "failed")
+            self.assertTrue(why)
+            st, _ = s9.judge_health("lead:claude-opus-5", age=9999, pid_alive=None)
+            self.assertEqual(st, "stalled")
+        with self.subTest("h2_sub"):
+            self.assertEqual(
+                s9.judge_health("sub:designer:a1fefd40", age=30)[0], "alive")
+            self.assertEqual(
+                s9.judge_health("sub:designer:a1fefd40", age=600)[0], "stalled")
+        with self.subTest("h3_worker_failed_on_limit_log"):
+            st, why = s9.judge_health(
+                "worker:auto-resume", age=5, pid_alive=False,
+                log_line="Claude usage limit reached for model fable")
+            self.assertEqual(st, "failed")
+            self.assertIn("limit", why)
+        with self.subTest("h3_worker_dead_without_log_is_failed"):
+            st, why = s9.judge_health("worker:auto-resume", age=5, pid_alive=False)
+            self.assertEqual(st, "failed")
+            self.assertTrue(why, "사유 없는 failed 는 화면에서 쓸모가 없다")
+        with self.subTest("h4_worker_alive"):
+            self.assertEqual(
+                s9.judge_health("worker:auto-resume", age=5, pid_alive=True)[0],
+                "alive")
+            # 살아 있어도 진전이 없으면 stalled — pid 생존은 진행의 증거가 아니다
+            self.assertEqual(
+                s9.judge_health("worker:auto-resume", age=9999, pid_alive=True)[0],
+                "stalled")
+        with self.subTest("h5_recorded_state_wins"):
+            self.assertEqual(
+                s9.judge_health("sub:x:1", age=9999, recorded="done")[0], "done")
+            self.assertEqual(
+                s9.judge_health("sub:x:1", age=1, recorded="failed")[0], "failed")
+        with self.subTest("h9_unknown_when_no_signal"):
+            st, _ = s9.judge_health("sub:x:1")
+            self.assertEqual(st, "unknown")
+            st, _ = s9.judge_health("garbage-actor", age=1)
+            self.assertEqual(st, "unknown")
+        with self.subTest("h9_never_raises"):
+            for kw in ({"age": "bad"}, {"pid_alive": "x"}, {"log_line": None}):
+                s9.judge_health("sub:x:1", **kw)
 
 class HealthReportTest(unittest.TestCase):
     """H6~H8: `s9 agents health --json` 계약과 스캔 범위."""

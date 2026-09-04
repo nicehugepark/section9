@@ -207,8 +207,10 @@ class SyncPaths(unittest.TestCase):
                          "이벤트 커밋 대상에 대화 원문이 남아 있다 — "
                          ".gitignore 한 줄이 사라지면 157MB 가 자동 커밋된다")
         # 지켜야 할 것은 계속 지킨다 — 위 검사가 목록을 비워도 통과하면 안 된다
-        for p in ("vault", "users", "projects", "state/sessions"):
+        for p in ("vault", "users", "projects"):
             self.assertIn(p, m.SYNC_DATA_PATHS)
+        # 세션 바인딩은 track 해제 (REQ-20260902-026) — 담당은 문서 lease 가 나른다
+        self.assertNotIn("state/sessions", m.SYNC_DATA_PATHS)
 
 
 if __name__ == "__main__":

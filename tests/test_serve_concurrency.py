@@ -87,63 +87,64 @@ class ServeConcurrency(unittest.TestCase):
         return out, time.time() - t0
 
     # N1. 브라우저가 여는 만큼(6)은 전부 200 이다
-    def test_n1_browser_level_concurrency_all_ok(self):
-        out, _ = self.burst(BROWSER_CONNS)
-        self.assertEqual(out, [200] * BROWSER_CONNS, out)
+    def test_serve_concurrency(self):
+        """ServeConcurrency 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_browser_level_concurrency_all_ok"):
+                out, _ = self.burst(BROWSER_CONNS)
+                self.assertEqual(out, [200] * BROWSER_CONNS, out)
 
-    # N2. 직렬이 아니다 — 동시 6건이 한 건의 6배가 아니라 그에 가깝게 끝난다.
-    #     '스레드로 돈다'의 관측 가능한 정의가 이것이다. 단일 스레드였다면
-    #     6배(+대기열 리셋)가 되고, 넉넉히 잡은 3배 문턱에서 걸린다.
-    def test_n2_not_serialized(self):
-        t0 = time.time()
-        self.get()
-        solo = time.time() - t0
-        _, wall = self.burst(BROWSER_CONNS)
-        self.assertLess(wall, max(solo * 3, 1.0),
-                        f"동시 {BROWSER_CONNS}건 {wall:.2f}s vs 단건 {solo:.2f}s "
-                        f"— 직렬로 처리되고 있다")
+            # N2. 직렬이 아니다 — 동시 6건이 한 건의 6배가 아니라 그에 가깝게 끝난다.
+            #     '스레드로 돈다'의 관측 가능한 정의가 이것이다. 단일 스레드였다면
+            #     6배(+대기열 리셋)가 되고, 넉넉히 잡은 3배 문턱에서 걸린다.
+        with self.subTest("n2_not_serialized"):
+                t0 = time.time()
+                self.get()
+                solo = time.time() - t0
+                _, wall = self.burst(BROWSER_CONNS)
+                self.assertLess(wall, max(solo * 3, 1.0),
+                                f"동시 {BROWSER_CONNS}건 {wall:.2f}s vs 단건 {solo:.2f}s "
+                                f"— 직렬로 처리되고 있다")
 
-    # B1. 한 연결이 오래 붙잡고 있어도 다른 요청이 막히지 않는다.
-    #     SSE 가 그러듯 커넥션을 점유하는 상황을 라우트에 의존하지 않고 만든다 —
-    #     요청 줄만 보내고 헤더를 끝내지 않으면 그 핸들러는 계속 읽기에 앉아 있다.
-    #     단일 스레드 서버였다면 그 한 자리가 서버 전체를 세운다.
-    def test_b1_stuck_connection_does_not_block(self):
-        hold = socket.create_connection(("127.0.0.1", self.port), 5)
-        try:
-            hold.sendall(b"GET /api/catalog HTTP/1.1\r\nHost: x\r\n")
-            time.sleep(0.2)                     # 서버가 그 연결을 집게 둔다
-            out, _ = self.burst(3)
-            self.assertEqual(out, [200] * 3, out)
-        finally:
-            hold.close()
+            # B1. 한 연결이 오래 붙잡고 있어도 다른 요청이 막히지 않는다.
+            #     SSE 가 그러듯 커넥션을 점유하는 상황을 라우트에 의존하지 않고 만든다 —
+            #     요청 줄만 보내고 헤더를 끝내지 않으면 그 핸들러는 계속 읽기에 앉아 있다.
+            #     단일 스레드 서버였다면 그 한 자리가 서버 전체를 세운다.
+        with self.subTest("b1_stuck_connection_does_not_block"):
+                hold = socket.create_connection(("127.0.0.1", self.port), 5)
+                try:
+                    hold.sendall(b"GET /api/catalog HTTP/1.1\r\nHost: x\r\n")
+                    time.sleep(0.2)                     # 서버가 그 연결을 집게 둔다
+                    out, _ = self.burst(3)
+                    self.assertEqual(out, [200] * 3, out)
+                finally:
+                    hold.close()
 
-    # F1. 리슨 큐 계약 — 파이썬 기본값(5)으로 되돌아가면 잡는다.
-    #     수는 이제 이름을 얻었다(SERVE_BACKLOG, REQ-20260901-020) — 그래서
-    #     대입 자리의 글자가 아니라 **실제로 쓰이는 값**을 잰다. 리터럴만 보면
-    #     이름 뒤에서 5로 내려가도 시험이 침묵한다.
-    def test_f1_queue_size_contract(self):
-        src = open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8").read()
-        self.assertIsNotNone(
-            re.search(r"ThreadingHTTPServer\.request_queue_size\s*=\s*"
-                      r"SERVE_BACKLOG", src),
-            "request_queue_size 설정이 사라졌다")
-        m = re.search(r"^SERVE_BACKLOG\s*=.*?(\d+)\s*,\s*int\)", src,
-                      re.M)
-        self.assertIsNotNone(m, "SERVE_BACKLOG 기본값을 못 찾았다")
-        self.assertGreaterEqual(int(m.group(1)), 32, m.group(0))
+            # F1. 리슨 큐 계약 — 파이썬 기본값(5)으로 되돌아가면 잡는다.
+            #     수는 이제 이름을 얻었다(SERVE_BACKLOG, REQ-20260901-020) — 그래서
+            #     대입 자리의 글자가 아니라 **실제로 쓰이는 값**을 잰다. 리터럴만 보면
+            #     이름 뒤에서 5로 내려가도 시험이 침묵한다.
+        with self.subTest("f1_queue_size_contract"):
+                src = open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8").read()
+                self.assertIsNotNone(
+                    re.search(r"ThreadingHTTPServer\.request_queue_size\s*=\s*"
+                              r"SERVE_BACKLOG", src),
+                    "request_queue_size 설정이 사라졌다")
+                m = re.search(r"^SERVE_BACKLOG\s*=.*?(\d+)\s*,\s*int\)", src,
+                              re.M)
+                self.assertIsNotNone(m, "SERVE_BACKLOG 기본값을 못 찾았다")
+                self.assertGreaterEqual(int(m.group(1)), 32, m.group(0))
 
-    # R1. 서버가 다시 단일 스레드로 바뀌면 잡는다 — N2 보다 먼저, 명시적으로
-    # (REQ-20260830-028 뒤로 바인드 지점은 QuietDisconnectServer 지만, 그것이
-    #  ThreadingHTTPServer 의 자식이라는 사실까지 함께 계약한다 — 이름만 보면
-    #  단일 스레드 부모로 바꿔치기해도 이 시험이 침묵한다.)
-    def test_r1_server_is_threaded(self):
-        src = open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8").read()
-        flat = src.replace(" ", "")
-        self.assertIn("QuietDisconnectServer((", flat,
-                      "serve 바인드 지점이 사라졌다")
-        self.assertIn("classQuietDisconnectServer(http.server.ThreadingHTTPServer)",
-                      flat, "serve 가 단일 스레드 HTTPServer 로 되돌아갔다")
-
+            # R1. 서버가 다시 단일 스레드로 바뀌면 잡는다 — N2 보다 먼저, 명시적으로
+            # (REQ-20260830-028 뒤로 바인드 지점은 QuietDisconnectServer 지만, 그것이
+            #  ThreadingHTTPServer 의 자식이라는 사실까지 함께 계약한다 — 이름만 보면
+            #  단일 스레드 부모로 바꿔치기해도 이 시험이 침묵한다.)
+        with self.subTest("r1_server_is_threaded"):
+            src = open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8").read()
+            flat = src.replace(" ", "")
+            self.assertIn("QuietDisconnectServer((", flat,
+                          "serve 바인드 지점이 사라졌다")
+            self.assertIn("classQuietDisconnectServer(http.server.ThreadingHTTPServer)",
+                          flat, "serve 가 단일 스레드 HTTPServer 로 되돌아갔다")
 
 if __name__ == "__main__":
     unittest.main()

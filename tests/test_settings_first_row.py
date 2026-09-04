@@ -60,48 +60,49 @@ class SettingsFirstRow(unittest.TestCase):
         assert cls.grp, ".grp 규칙을 못 찾았다"
 
     # ① 기본 머리는 아래로 밀리지 않는다
-    def test_base_grp_not_pushed_down(self):
-        base = [(s, b) for s, b in self.grp
-                if ".typebar" not in s and "top:" in b]
-        self.assertTrue(base, ".doclist .grp 의 top 선언을 못 찾았다")
-        for sel, body in base:
-            top = re.search(r"top:\s*([^;}]+)", body).group(1).strip()
-            self.assertIn(top, ("0", "0px"),
-                          f"타입바를 요구하지 않는 규칙이 머리를 {top} 밀어낸다 "
-                          f"— 첫 항목 제목이 그만큼 가려진다: {sel}")
+    def test_settings_first_row(self):
+        """SettingsFirstRow 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("base_grp_not_pushed_down"):
+                base = [(s, b) for s, b in self.grp
+                        if ".typebar" not in s and "top:" in b]
+                self.assertTrue(base, ".doclist .grp 의 top 선언을 못 찾았다")
+                for sel, body in base:
+                    top = re.search(r"top:\s*([^;}]+)", body).group(1).strip()
+                    self.assertIn(top, ("0", "0px"),
+                                  f"타입바를 요구하지 않는 규칙이 머리를 {top} 밀어낸다 "
+                                  f"— 첫 항목 제목이 그만큼 가려진다: {sel}")
 
-    # ② 타입바 오프셋은 타입바를 요구하는 선택자에만
-    def test_typebar_offset_is_scoped(self):
-        off = [(s, b) for s, b in self.grp if "--tbh" in b]
-        self.assertTrue(off, "타입바 아래에 머리를 붙이는 규칙이 사라졌다 "
-                             "— Docs 에서 머리가 타입바 뒤로 숨는다")
-        for sel, body in off:
-            self.assertIn(".typebar", sel,
-                          f"타입바가 없어도 적용되는 오프셋이다: {sel}")
-            self.assertRegex(sel, r"\.typebar\s*[~+]\s*",
-                             f"선행 형제로 요구해야 한다: {sel}")
+            # ② 타입바 오프셋은 타입바를 요구하는 선택자에만
+        with self.subTest("typebar_offset_is_scoped"):
+                off = [(s, b) for s, b in self.grp if "--tbh" in b]
+                self.assertTrue(off, "타입바 아래에 머리를 붙이는 규칙이 사라졌다 "
+                                     "— Docs 에서 머리가 타입바 뒤로 숨는다")
+                for sel, body in off:
+                    self.assertIn(".typebar", sel,
+                                  f"타입바가 없어도 적용되는 오프셋이다: {sel}")
+                    self.assertRegex(sel, r"\.typebar\s*[~+]\s*",
+                                     f"선행 형제로 요구해야 한다: {sel}")
 
-    # ③ 타입바 없이 이 위젯을 쓰는 자리가 실제로 있다 (규칙의 근거)
-    def test_grp_used_without_typebar(self):
-        # Settings 좌측 목록
-        m = re.search(r'<div class="doclist"><div class="grp">설정</div>',
-                      self.src)
-        self.assertIsNotNone(m, "Settings 목록의 머리 markup 이 바뀌었다 "
-                                "— 이 테스트가 지키는 자리를 다시 확인하라")
-        seg = self.src[m.start():m.start() + 400]
-        self.assertNotIn("typebar", seg, "Settings 목록에 타입바가 생겼다")
-        # Stream 빈 상태 줄
-        self.assertIn('<div class="grp">no streams', self.src)
+            # ③ 타입바 없이 이 위젯을 쓰는 자리가 실제로 있다 (규칙의 근거)
+        with self.subTest("grp_used_without_typebar"):
+                # Settings 좌측 목록
+                m = re.search(r'<div class="doclist"><div class="grp">설정</div>',
+                              self.src)
+                self.assertIsNotNone(m, "Settings 목록의 머리 markup 이 바뀌었다 "
+                                        "— 이 테스트가 지키는 자리를 다시 확인하라")
+                seg = self.src[m.start():m.start() + 400]
+                self.assertNotIn("typebar", seg, "Settings 목록에 타입바가 생겼다")
+                # Stream 빈 상태 줄
+                self.assertIn('<div class="grp">no streams', self.src)
 
-    # ④ 머리는 불투명해야 한다 — 배경을 지워 때우지 않는다
-    def test_grp_stays_opaque(self):
-        base = [b for s, b in self.grp
-                if ".typebar" not in s and "position:sticky" in b]
-        self.assertTrue(base, "머리의 sticky 선언을 못 찾았다")
-        self.assertTrue(any("background:" in b for b in base),
-                        "머리에서 배경을 지웠다 — 스크롤 중 글자가 겹친다. "
-                        "가림은 위치로 풀어야지 투명도로 덮지 않는다")
-
+            # ④ 머리는 불투명해야 한다 — 배경을 지워 때우지 않는다
+        with self.subTest("grp_stays_opaque"):
+            base = [b for s, b in self.grp
+                    if ".typebar" not in s and "position:sticky" in b]
+            self.assertTrue(base, "머리의 sticky 선언을 못 찾았다")
+            self.assertTrue(any("background:" in b for b in base),
+                            "머리에서 배경을 지웠다 — 스크롤 중 글자가 겹친다. "
+                            "가림은 위치로 풀어야지 투명도로 덮지 않는다")
 
 if __name__ == "__main__":
     unittest.main()

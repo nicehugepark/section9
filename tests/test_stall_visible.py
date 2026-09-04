@@ -159,72 +159,61 @@ class StallJudgmentServer(unittest.TestCase):
         return {x["id"]: x for x in json.loads(r.stdout)}
 
     # S1. 멈춘 행은 분(minutes)을 달고 온다 — 화면이 다시 재지 않아도 되게
-    def test_s1_stalled_row_carries_minutes(self):
-        row = self.catalog()[self.STALE]
-        self.assertIsNotNone(row.get("stalled_mins"),
-                             "멈춘 in-progress 행에 stalled_mins 가 없다")
-        self.assertGreaterEqual(row["stalled_mins"], 15)
+    def test_stall_judgment_server(self):
+        """catalog_with_live 가 멈춤을 재고, stalled 는 그것을 읽는다."""
+        with self.subTest("s1_stalled_row_carries_minutes"):
+                row = self.catalog()[self.STALE]
+                self.assertIsNotNone(row.get("stalled_mins"),
+                                     "멈춘 in-progress 행에 stalled_mins 가 없다")
+                self.assertGreaterEqual(row["stalled_mins"], 15)
 
-    # S2. 세션이 살아 있다고 진전이 아니다 — 그게 이번 사고의 거짓말이었다
-    #
-    # 개정 (REQ-20260831-005): 원래는 live=True(직접)인 채로 멈춤이 함께 서는
-    # 것을 계약으로 삼았다. 이제 그 조합은 정의상 없다 — 클레임 + 2분 내 활동은
-    # attached(긴 턴 진행 중)지 멈춤이 아니다(일하는 세션 위에 두 번째 손을
-    # 얹지 않는다). 이 시험의 과녁("세션 맥박 ≠ 진전")은 그대로 남는다: 손 뗀
-    # 것의 클레임은 유예가 풀고, 그 뒤에도 세션 맥박(간접, live_kind=session)이
-    # 뛰는 동안 멈춤은 멈춤이라 말해야 한다.
-    def test_s2_live_session_still_stalled(self):
-        row = self.catalog()[self.STALE]
-        self.assertEqual(row.get("live_kind"), "session",
-                         "이 상황(세션은 활동 중, 클레임은 풀림)이 아니다")
-        self.assertIsNotNone(row.get("stalled_mins"),
-                             "세션 맥박을 요청의 진전으로 치고 있다")
+            # S2. 세션이 살아 있다고 진전이 아니다 — 그게 이번 사고의 거짓말이었다
+            #
+            # 개정 (REQ-20260831-005): 원래는 live=True(직접)인 채로 멈춤이 함께 서는
+            # 것을 계약으로 삼았다. 이제 그 조합은 정의상 없다 — 클레임 + 2분 내 활동은
+            # attached(긴 턴 진행 중)지 멈춤이 아니다(일하는 세션 위에 두 번째 손을
+            # 얹지 않는다). 이 시험의 과녁("세션 맥박 ≠ 진전")은 그대로 남는다: 손 뗀
+            # 것의 클레임은 유예가 풀고, 그 뒤에도 세션 맥박(간접, live_kind=session)이
+            # 뛰는 동안 멈춤은 멈춤이라 말해야 한다.
+        with self.subTest("s2_live_session_still_stalled"):
+                row = self.catalog()[self.STALE]
+                self.assertEqual(row.get("live_kind"), "session",
+                                 "이 상황(세션은 활동 중, 클레임은 풀림)이 아니다")
+                self.assertIsNotNone(row.get("stalled_mins"),
+                                     "세션 맥박을 요청의 진전으로 치고 있다")
 
-    # S3. 방금 움직인 것과 끝난 것에는 안 붙는다
-    def test_s3_fresh_and_done_have_none(self):
-        cat = self.catalog()
-        self.assertIsNone(cat[self.FRESH].get("stalled_mins"))
-        self.assertIsNone(cat[self.DONE].get("stalled_mins"))
+            # S3. 방금 움직인 것과 끝난 것에는 안 붙는다
+        with self.subTest("s3_fresh_and_done_have_none"):
+                cat = self.catalog()
+                self.assertIsNone(cat[self.FRESH].get("stalled_mins"))
+                self.assertIsNone(cat[self.DONE].get("stalled_mins"))
 
-    # S4. CLI 와 화면이 같은 수를 말한다
-    def test_s4_cli_matches_catalog(self):
-        out = self.cli(None, "stalled")
-        self.assertIn(self.STALE, out)
-        self.assertNotIn(self.FRESH, out)
-        mins = self.catalog()[self.STALE]["stalled_mins"]
-        self.assertIn(f"{mins}분째", out,
-                      f"CLI 와 화면의 분이 다르다 (화면 {mins})")
+            # S4. CLI 와 화면이 같은 수를 말한다
+        with self.subTest("s4_cli_matches_catalog"):
+                out = self.cli(None, "stalled")
+                self.assertIn(self.STALE, out)
+                self.assertNotIn(self.FRESH, out)
+                mins = self.catalog()[self.STALE]["stalled_mins"]
+                self.assertIn(f"{mins}분째", out,
+                              f"CLI 와 화면의 분이 다르다 (화면 {mins})")
 
-    # S5. 판정을 두 벌 만들지 않는다 — stalled 는 읽기만 한다
-    def test_s5_single_judgment(self):
-        """CLI 소비자(stalled_requests)가 판정을 다시 재지 않는지 본다.
-        판정 '정의'는 stall_trust c6, 화면 JS 술어는 stall_pair f1 몫 —
-        같은 계약의 다른 층이라 셋을 접지 않는다 (REQ-20260830-029).
-        뮤테이션 실측(2026-08-30): stalled_mins 읽기를 지우면 이 시험이
-        Red — 살아 있다."""
-        src = open(S9, encoding="utf-8").read()
-        i = src.index("def stalled_requests(")
-        seg = src[i:src.index("\ndef ", i + 10)]
-        self.assertIn("stalled_mins", seg,
-                      "stalled 가 catalog 의 판정을 읽지 않는다")
-        self.assertNotIn("fromisoformat", seg,
-                         "stalled 가 나이를 다시 재고 있다 — 판정이 두 벌이다")
+            # S5. 판정을 두 벌 만들지 않는다 — stalled 는 읽기만 한다
+        with self.subTest("s5_single_judgment"):
+                src = open(S9, encoding="utf-8").read()
+                i = src.index("def stalled_requests(")
+                seg = src[i:src.index("\ndef ", i + 10)]
+                self.assertIn("stalled_mins", seg,
+                              "stalled 가 catalog 의 판정을 읽지 않는다")
+                self.assertNotIn("fromisoformat", seg,
+                                 "stalled 가 나이를 다시 재고 있다 — 판정이 두 벌이다")
 
-    # S6. 화면으로 나가는 통로에 실린다
-    def test_s6_reaches_the_screen(self):
-        """`/api/catalog` 가 live 판정을 거친다.
-
-        찾는 범위를 **바이트 수가 아니라 그 갈래의 끝까지**로 잡는다. 앞서는
-        400자 창이었는데, REQ-20260829-025 가 보관 판정을 그 자리에 넣으면서
-        주석 여섯 줄이 앞에 붙자 창 밖으로 밀려났다 — 계약은 그대로인데
-        시험만 빨개졌다. 창의 크기는 계약이 아니다.
-        """
-        src = open(S9, encoding="utf-8").read()
-        i = src.index('elif parsed.path == "/api/catalog"')
-        j = src.index('elif parsed.path ==', i + 10)   # 다음 갈래 직전까지
-        self.assertIn("catalog_with_live()", src[i:j],
-                      "/api/catalog 가 live 판정을 거치지 않는다")
-
+            # S6. 화면으로 나가는 통로에 실린다
+        with self.subTest("s6_reaches_the_screen"):
+            src = open(S9, encoding="utf-8").read()
+            i = src.index('elif parsed.path == "/api/catalog"')
+            j = src.index('elif parsed.path ==', i + 10)   # 다음 갈래 직전까지
+            self.assertIn("catalog_with_live()", src[i:j],
+                          "/api/catalog 가 live 판정을 거치지 않는다")
 
 # ------------------------------------------------------------------- 화면
 
@@ -243,79 +232,73 @@ class StallOnScreen(unittest.TestCase):
         cls.stall = _grab(cls.src, "stallHTML")
 
     # C1. 꺼진 점은 속 빈 링이다 (대비 2.98:1 → 기준 통과)
-    def test_c1_off_dot_is_a_ring(self):
-        m = re.search(r"\.livedot\.off\{([^}]*)\}", self.src)
-        self.assertTrue(m, ".livedot.off 규칙이 없다")
-        rule = m.group(1)
-        self.assertIn("transparent", rule, "꺼진 점이 아직 색으로 채워져 있다")
-        self.assertIn("border", rule, "속 빈 링이 아니다")
-        self.assertNotIn("var(--faint)", rule,
-                         "--faint 는 대비 2.98:1 로 미달이다")
+    def test_stall_on_screen(self):
+        """StallOnScreen 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("c1_off_dot_is_a_ring"):
+                m = re.search(r"\.livedot\.off\{([^}]*)\}", self.src)
+                self.assertTrue(m, ".livedot.off 규칙이 없다")
+                rule = m.group(1)
+                self.assertIn("transparent", rule, "꺼진 점이 아직 색으로 채워져 있다")
+                self.assertIn("border", rule, "속 빈 링이 아니다")
+                self.assertNotIn("var(--faint)", rule,
+                                 "--faint 는 대비 2.98:1 로 미달이다")
 
-    # C2. 멈춘 카드는 초록 점멸을 켜지 않는다 — 점과 글자가 어긋나면 둘 다 죽는다
-    def test_c2_stalled_never_pulses_green(self):
-        i = self.card.index("livedot")
-        seg = self.card[:i]
-        self.assertIn("stalled_mins", seg,
-                      "점을 고르기 전에 멈춤 판정을 읽지 않는다")
-        on = self.card.index('livedot on')
-        stall = self.card.index("stalled", i - 400 if i > 400 else 0)
-        self.assertLess(stall, on,
-                        "초록 점멸이 멈춤 판정보다 먼저 걸린다 — 멈춘 것이 초록으로 뛴다")
+            # C2. 멈춘 카드는 초록 점멸을 켜지 않는다 — 점과 글자가 어긋나면 둘 다 죽는다
+        with self.subTest("c2_stalled_never_pulses_green"):
+                i = self.card.index("livedot")
+                seg = self.card[:i]
+                self.assertIn("stalled_mins", seg,
+                              "점을 고르기 전에 멈춤 판정을 읽지 않는다")
+                on = self.card.index('livedot on')
+                stall = self.card.index("stalled", i - 400 if i > 400 else 0)
+                self.assertLess(stall, on,
+                                "초록 점멸이 멈춤 판정보다 먼저 걸린다 — 멈춘 것이 초록으로 뛴다")
 
-    # C3. 멈춤은 기존 한 줄 문법(.rvpt)으로 말한다 — 새 배지·색면 없음
-    def test_c3_one_line_reuses_rvpt(self):
-        self.assertIn("stallHTML(r)", self.card, "카드가 멈춤 줄을 짓는 자리를 안 부른다")
-        self.assertIn('rvpt stall', self.stall, "멈춤 줄이 .rvpt 형제가 아니다")
-        self.assertIn("진전 없음", self.stall)
-        self.assertIn("마지막", self.stall)
+            # C3. 멈춤은 기존 한 줄 문법(.rvpt)으로 말한다 — 새 배지·색면 없음
+        with self.subTest("c3_one_line_reuses_rvpt"):
+                self.assertIn("stallHTML(r)", self.card, "카드가 멈춤 줄을 짓는 자리를 안 부른다")
+                self.assertIn('rvpt stall', self.stall, "멈춤 줄이 .rvpt 형제가 아니다")
+                self.assertIn("진전 없음", self.stall)
+                self.assertIn("마지막", self.stall)
 
-    # C4. 선행 대기가 있어도 손잡이를 뺏지 않는다 (REQ-20260828-041 2차로 뒤집힘)
-    def test_c4_dep_does_not_eat_the_handle(self):
-        """'같은 사실을 두 줄로 말하지 않는다'는 **문장**의 규칙이다.
+            # C4. 선행 대기가 있어도 손잡이를 뺏지 않는다 (REQ-20260828-041 2차로 뒤집힘)
+        with self.subTest("c4_dep_does_not_eat_the_handle"):
+                m = re.search(r"const stall\s*=([\s\S]{0,400}?);\n", self.card)
+                self.assertTrue(m, "멈춤 줄을 짓는 자리가 없다")
+                self.assertNotIn("bl.length", m.group(1),
+                                 "선행 대기가 아직 멈춤 손잡이를 지운다")
 
-        그 규칙으로 세운 관문이 지운 것은 문장 하나가 아니라 행동 하나였고,
-        게다가 카드에만 있어서 같은 요청이 카드에선 못 깨우고 문서에선 깨워졌다.
-        선행 대기는 관계(무엇이 안 끝났나), 멈춤은 시계(아무도 안 적고 있다) —
-        축이 다르고, 선행이 안 끝난 채 아무도 안 붙은 요청이야말로 깨울 것이다.
-        """
-        m = re.search(r"const stall\s*=([\s\S]{0,400}?);\n", self.card)
-        self.assertTrue(m, "멈춤 줄을 짓는 자리가 없다")
-        self.assertNotIn("bl.length", m.group(1),
-                         "선행 대기가 아직 멈춤 손잡이를 지운다")
+            # C5. 열 머리가 몇 개가 멈췄는지 센다 — in-progress 열에서만, 0이면 안 나온다
+        with self.subTest("c5_column_head_counts"):
+                self.assertIn("멈춤", self.col, "열 머리에 멈춤 수가 없다")
+                # 세는 술어는 카드가 쓰는 그 하나다 (REQ-20260828-041 2차)
+                self.assertIn("stallState(", self.col)
+                m = re.search(r"const stalls?\s*=([\s\S]{0,300}?);\n", self.col)
+                self.assertTrue(m, "멈춤 수를 세는 자리가 없다")
+                self.assertIn('in-progress', m.group(1) + self.col,
+                              "멈춤 수가 in-progress 열에 한정되지 않는다")
 
-    # C5. 열 머리가 몇 개가 멈췄는지 센다 — in-progress 열에서만, 0이면 안 나온다
-    def test_c5_column_head_counts(self):
-        self.assertIn("멈춤", self.col, "열 머리에 멈춤 수가 없다")
-        # 세는 술어는 카드가 쓰는 그 하나다 (REQ-20260828-041 2차)
-        self.assertIn("stallState(", self.col)
-        m = re.search(r"const stalls?\s*=([\s\S]{0,300}?);\n", self.col)
-        self.assertTrue(m, "멈춤 수를 세는 자리가 없다")
-        self.assertIn('in-progress', m.group(1) + self.col,
-                      "멈춤 수가 in-progress 열에 한정되지 않는다")
+            # C6. in-progress 열은 오래 멈춘 순으로 선다 — 급한 것이 위에
+        with self.subTest("c6_stalled_first"):
+                self.assertIn("stallState(", self.board,
+                              "보드가 멈춤으로 정렬하지 않는다")
+                seg = self.board[self.board.index("stallState(") - 300:]
+                self.assertIn("in-progress", seg[:400] + self.board,
+                              "정렬이 in-progress 열에 한정되지 않는다")
 
-    # C6. in-progress 열은 오래 멈춘 순으로 선다 — 급한 것이 위에
-    def test_c6_stalled_first(self):
-        self.assertIn("stallState(", self.board,
-                      "보드가 멈춤으로 정렬하지 않는다")
-        seg = self.board[self.board.index("stallState(") - 300:]
-        self.assertIn("in-progress", seg[:400] + self.board,
-                      "정렬이 in-progress 열에 한정되지 않는다")
-
-    # C7. 하지 않기로 한 것: 깜빡임·색면·좌측 바·새 경고 띠
-    def test_c7_no_new_layer(self):
-        m = re.search(r"\.rvpt\.stall[^{]*\{([^}]*)\}", self.src)
-        self.assertTrue(m, ".rvpt.stall 규칙이 없다")
-        rule = m.group(1)
-        for banned in ("animation", "background", "border-left"):
-            self.assertNotIn(banned, rule,
-                             f"멈춤 줄이 {banned} 로 새 층을 만들고 있다")
-        self.assertNotIn("stallbanner", self.src)
-        # 카드 자체에 멈춤 배경을 칠하지 않는다
-        self.assertFalse(re.search(r"\.card\[data-stall[^{]*\{[^}]*background",
-                                   self.src),
-                         "멈춘 카드에 배경을 칠하고 있다")
-
+            # C7. 하지 않기로 한 것: 깜빡임·색면·좌측 바·새 경고 띠
+        with self.subTest("c7_no_new_layer"):
+            m = re.search(r"\.rvpt\.stall[^{]*\{([^}]*)\}", self.src)
+            self.assertTrue(m, ".rvpt.stall 규칙이 없다")
+            rule = m.group(1)
+            for banned in ("animation", "background", "border-left"):
+                self.assertNotIn(banned, rule,
+                                 f"멈춤 줄이 {banned} 로 새 층을 만들고 있다")
+            self.assertNotIn("stallbanner", self.src)
+            # 카드 자체에 멈춤 배경을 칠하지 않는다
+            self.assertFalse(re.search(r"\.card\[data-stall[^{]*\{[^}]*background",
+                                       self.src),
+                             "멈춘 카드에 배경을 칠하고 있다")
 
 if __name__ == "__main__":
     unittest.main()

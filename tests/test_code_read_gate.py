@@ -12,7 +12,8 @@
 조용히 넓어지는 것을 막는 유일한 장치다.
 
 왜 "git 추적 파일만" 이 아닌가: 이 저장소는 `vault/**`(약 900개)·
-`state/sessions/*.json`(91개)·`users/*/config/settings.json` 을 **추적한다**.
+`state/sessions/*.json`(당시 91개 — 2026-09-02 track 해제, REQ-20260902-026)·
+`users/*/config/settings.json` 을 **추적한다**.
 그 규칙을 쓰면 `doc_visible`·`stream_visible` 이 통째로 무효가 되고, 어제
 REQ-20260828-012 가 정한 "비밀은 값도 경로도 주지 않는다" 가 그 자리에서 뒤집힌다.
 

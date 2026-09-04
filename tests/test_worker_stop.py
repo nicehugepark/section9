@@ -161,34 +161,35 @@ class TheCommand(unittest.TestCase):
     def setUpClass(cls):
         cls.src = open(S9, encoding="utf-8").read()
 
-    def test_workers_takes_stop(self):
-        # 실패 메시지에 원본을 싣지 않는다 — 65,000줄이 화면을 덮으면 정작
-        # 무엇이 없는지가 안 읽힌다.
-        self.assertTrue(re.search(r'wk\.add_argument\("--stop"', self.src),
-                        "`s9 workers --stop <문서id>` 가 파서에 없다")
-
-    def test_workers_takes_why(self):
-        self.assertTrue(re.search(r'wk\.add_argument\("--why"', self.src),
-                        "이유를 받는 자리가 없다")
-
-    def test_the_command_goes_through_the_one_function(self):
-        i = self.src.find("def cmd_workers(")
-        self.assertGreater(i, 0)
-        self.assertIn("worker_stop", self.src[i:i + 1400],
-                      "명령이 자기 손으로 죽인다 — 판정이 두 벌이 된다")
-
-    def test_nothing_else_grew_a_kill(self):
-        """죽이는 자리는 하나여야 한다 — 두 곳이면 한 곳만 게이트를 지킨다."""
-        i = self.src.find("def worker_stop(")
-        self.assertGreater(i, 0, "worker_stop() 이 없다")
-        # 다음 최상위 함수까지가 이 함수다. 글자 수로 잘라 두면 주석 몇 줄에
-        # 창이 밀려 **제품은 멀쩡한데 시험만 빨개진다** (REQ-20260830-002 에서
-        # 실제로 그랬다).
-        j = self.src.find("\ndef ", i + 1)
-        blk = self.src[i:j if j > 0 else len(self.src)]
-        self.assertIn("SIGTERM", blk)
-        self.assertIn("SIGKILL", blk)
-
+    def test_the_command(self):
+        """명령이 있어야 사람이 쓴다 — 함수만 있으면 아무도 못 부른다."""
+        with self.subTest("workers_takes_stop"):
+            # 실패 메시지에 원본을 싣지 않는다 — 65,000줄이 화면을 덮으면 정작
+            # 무엇이 없는지가 안 읽힌다.
+            self.assertTrue(re.search(r'wk\.add_argument\("--stop"', self.src),
+                            "`s9 workers --stop <문서id>` 가 파서에 없다")
+        with self.subTest("workers_takes_why"):
+            self.assertTrue(re.search(r'wk\.add_argument\("--why"', self.src),
+                            "이유를 받는 자리가 없다")
+        with self.subTest("the_command_goes_through_the_one_function"):
+            i = self.src.find("def cmd_workers(")
+            self.assertGreater(i, 0)
+            self.assertIn("worker_stop", self.src[i:i + 1400],
+                          "명령이 자기 손으로 죽인다 — 판정이 두 벌이 된다")
+        with self.subTest("nothing_else_grew_a_kill"):
+            i = self.src.find("def worker_stop(")
+            self.assertGreater(i, 0, "worker_stop() 이 없다")
+            # 다음 최상위 함수까지가 이 함수다. 글자 수로 잘라 두면 주석 몇 줄에
+            # 창이 밀려 **제품은 멀쩡한데 시험만 빨개진다** (REQ-20260830-002 에서
+            # 실제로 그랬다).
+            j = self.src.find("\ndef ", i + 1)
+            blk = self.src[i:j if j > 0 else len(self.src)]
+            self.assertIn("SIGTERM", blk)     # 먼저 물러나기를 청하고
+            # 회수 신호는 `sig_kill()` 로 부른다 — 윈도우에 SIGKILL 이 없어
+            # 이름을 그대로 쓰면 그 판에서 AttributeError 로 죽는다
+            # (REQ-20260903-005). 계약은 「회수한다」이지 「그 글자를 쓴다」가
+            # 아니므로, 그 뜻을 부르는 자리를 본다.
+            self.assertIn("sig_kill()", blk)  # 안 물러나면 그때 회수한다
 
 if __name__ == "__main__":
     unittest.main()

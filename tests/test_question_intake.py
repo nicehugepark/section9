@@ -100,70 +100,65 @@ class ChatIntakeTest(unittest.TestCase):
     # 한때 되지 않았다 — chat_audit 이 request 가 아니면 로그만 남겼다.
     # 이제 프롬프트 훅과 같은 판정(is_durable_question)을 채팅 경로도 쓴다
     # (REQ-20260826-033). 이 테스트는 그 입구가 다시 닫히는 것을 막는다.
-    def test_i1_durable_chat_question_becomes_doc(self):
-        # 전제: 이 발화는 프롬프트 훅 기준으로 '남을 질문'이다.
-        self.assertEqual(self.hook.classify(DURABLE_Q), "question")
-        self.assertTrue(self.hook.is_durable_question(DURABLE_Q))
+    def test_chat_intake_test(self):
+        """chat_audit 를 직접 부른다 — 서버 없이 입구 하나만 본다."""
+        with self.subTest("i1_durable_chat_question_becomes_doc"):
+                # 전제: 이 발화는 프롬프트 훅 기준으로 '남을 질문'이다.
+                self.assertEqual(self.hook.classify(DURABLE_Q), "question")
+                self.assertTrue(self.hook.is_durable_question(DURABLE_Q))
 
-        self.s9.chat_audit(DURABLE_Q, "tester", "chatsess")
-        self.cli("index", "rebuild")
-        self.assertIn("question", self.types(),
-                      "대시보드 채팅으로 들어온 질문이 문서가 되지 않는다 "
-                      "— 사용자가 화면에서 본 '질문 한 장'의 원인")
+                self.s9.chat_audit(DURABLE_Q, "tester", "chatsess")
+                self.cli("index", "rebuild")
+                self.assertIn("question", self.types(),
+                              "대시보드 채팅으로 들어온 질문이 문서가 되지 않는다 "
+                              "— 사용자가 화면에서 본 '질문 한 장'의 원인")
 
-    # ---------------------------------------------------------------- I2
-    # 경계: 채팅 request 는 지금처럼 REQ 가 된다 (질문 입구를 열다 깨지면 안 된다)
-    def test_i2_chat_request_still_becomes_req(self):
-        before = self.types().count("request")
-        doc_id = self.s9.chat_audit(REQUEST_MSG, "tester", "chatsess")
-        self.assertTrue(doc_id and doc_id.startswith("REQ-"),
-                        f"채팅 요청이 REQ 로 기록되지 않았다: {doc_id!r}")
-        self.cli("index", "rebuild")
-        self.assertEqual(self.types().count("request"), before + 1)
+            # ---------------------------------------------------------------- I2
+            # 경계: 채팅 request 는 지금처럼 REQ 가 된다 (질문 입구를 열다 깨지면 안 된다)
+        with self.subTest("i2_chat_request_still_becomes_req"):
+                before = self.types().count("request")
+                doc_id = self.s9.chat_audit(REQUEST_MSG, "tester", "chatsess")
+                self.assertTrue(doc_id and doc_id.startswith("REQ-"),
+                                f"채팅 요청이 REQ 로 기록되지 않았다: {doc_id!r}")
+                self.cli("index", "rebuild")
+                self.assertEqual(self.types().count("request"), before + 1)
 
-    # ---------------------------------------------------------------- I3
-    # 경계: 짧은 확인 발화는 아무 문서도 만들지 않는다 (잡음 차단 유지).
-    # 질문 입구가 열려도 이 발화는 세션 로그로 끝나야 한다.
-    def test_i3_throwaway_chat_makes_no_doc(self):
-        self.assertFalse(self.hook.is_durable_question(THROWAWAY_Q),
-                         "짧은 확인 발화가 '남을 질문'으로 판정된다")
-        before = len(self.catalog())
-        self.assertIsNone(self.s9.chat_audit(THROWAWAY_Q, "tester", "chatsess"))
-        self.cli("index", "rebuild")
-        self.assertEqual(len(self.catalog()), before,
-                         "짧은 확인 발화가 문서를 만들었다")
+            # ---------------------------------------------------------------- I3
+            # 경계: 짧은 확인 발화는 아무 문서도 만들지 않는다 (잡음 차단 유지).
+            # 질문 입구가 열려도 이 발화는 세션 로그로 끝나야 한다.
+        with self.subTest("i3_throwaway_chat_makes_no_doc"):
+                self.assertFalse(self.hook.is_durable_question(THROWAWAY_Q),
+                                 "짧은 확인 발화가 '남을 질문'으로 판정된다")
+                before = len(self.catalog())
+                self.assertIsNone(self.s9.chat_audit(THROWAWAY_Q, "tester", "chatsess"))
+                self.cli("index", "rebuild")
+                self.assertEqual(len(self.catalog()), before,
+                                 "짧은 확인 발화가 문서를 만들었다")
 
-    # ---------------------------------------------------------------- I4
-    # 두 입구가 같은 자를 써야 한다. 채팅 경로가 분류(classify)만 보고 문서화
-    # 판정(is_durable_question)을 보지 않는 것이 이 결함의 형태다 — 수리는
-    # 판정 함수를 공유하는 방향이어야 하고, 그 함수는 훅이 소유한다.
-    def test_i5_answer_seam_is_bound(self):
-        """I5. 질문 문서는 `last_qst` 로 묶인다 — 이 이음매가 없으면 답이
-        채팅에만 남고 문서는 영원히 미답으로 서 있다 (터미널 경로와 같은 방식).
-
-        '질문은 남았는데 답이 없다'는 이 타입이 없애려던 상태 그 자체다.
-        """
-        env = {**os.environ, "S9_SESSION": "seamsess"}
-        qst = self.s9._chat_question(S9, env, DURABLE_Q,
-                                     DURABLE_Q.splitlines()[0], "tester")
-        self.assertTrue(qst and qst.startswith("QST-"), f"{qst!r}")
-        # 읽기는 Stop 훅과 같은 방식으로 — 키를 주고 부르면 그 키를 **지운다**
-        # (`s9 bind <key>` 는 클리어다). 키 없이 부르면 전체를 JSON 으로 낸다.
-        b = subprocess.run([S9, "bind"], capture_output=True, text=True,
-                           timeout=20, env=env, stdin=subprocess.DEVNULL)
-        self.assertEqual(json.loads(b.stdout or "{}").get("last_qst"), qst,
-                      "생성한 질문이 last_qst 로 묶이지 않았다 — "
-                      "Stop 훅이 답을 붙일 대상을 못 찾는다")
-
-    def test_i4_intake_judgement_is_shared(self):
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        self.assertIn("_chat_classifier", src)
-        # classify 를 훅에서 로드해 쓰는 구조는 이미 있다 — 판정도 같은 자리에서
-        # 가져올 수 있다는 뜻이다(같은 모듈에 is_durable_question 이 있다).
-        self.assertTrue(hasattr(self.hook, "is_durable_question"))
-        self.assertTrue(hasattr(self.hook, "classify"))
-
+            # ---------------------------------------------------------------- I4
+            # 두 입구가 같은 자를 써야 한다. 채팅 경로가 분류(classify)만 보고 문서화
+            # 판정(is_durable_question)을 보지 않는 것이 이 결함의 형태다 — 수리는
+            # 판정 함수를 공유하는 방향이어야 하고, 그 함수는 훅이 소유한다.
+        with self.subTest("i5_answer_seam_is_bound"):
+            env = {**os.environ, "S9_SESSION": "seamsess"}
+            qst = self.s9._chat_question(S9, env, DURABLE_Q,
+                                         DURABLE_Q.splitlines()[0], "tester")
+            self.assertTrue(qst and qst.startswith("QST-"), f"{qst!r}")
+            # 읽기는 Stop 훅과 같은 방식으로 — 키를 주고 부르면 그 키를 **지운다**
+            # (`s9 bind <key>` 는 클리어다). 키 없이 부르면 전체를 JSON 으로 낸다.
+            b = subprocess.run([S9, "bind"], capture_output=True, text=True,
+                               timeout=20, env=env, stdin=subprocess.DEVNULL)
+            self.assertEqual(json.loads(b.stdout or "{}").get("last_qst"), qst,
+                          "생성한 질문이 last_qst 로 묶이지 않았다 — "
+                          "Stop 훅이 답을 붙일 대상을 못 찾는다")
+        with self.subTest("i4_intake_judgement_is_shared"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            self.assertIn("_chat_classifier", src)
+            # classify 를 훅에서 로드해 쓰는 구조는 이미 있다 — 판정도 같은 자리에서
+            # 가져올 수 있다는 뜻이다(같은 모듈에 is_durable_question 이 있다).
+            self.assertTrue(hasattr(self.hook, "is_durable_question"))
+            self.assertTrue(hasattr(self.hook, "classify"))
 
 if __name__ == "__main__":
     unittest.main()

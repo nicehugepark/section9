@@ -127,11 +127,17 @@ class WorkerClaim(unittest.TestCase):
 
     def test_worker_running_reports_who(self):
         """판정만 돌려주면 화면·로그가 이유를 지어낸다 — 근거를 함께 낸다."""
+        # 나이는 **이 시험이 실제로 흘려보낸 시간**에 대 본다 (REQ-20260904-003).
+        # 상수 60초에 대면 「마커가 제 나이를 안다」가 아니라 「이 기계가 60초
+        # 안에 두 줄을 지난다」를 재게 되고, 부하가 걸린 병렬 실행에서 붉어진다.
+        t0 = time.time()
         self.marker(self.live.pid)
         got = self.m.worker_running(self.RID)
         self.assertIsNotNone(got)
         self.assertEqual(got["pid"], self.live.pid)
-        self.assertLess(got["age"], 60)
+        self.assertGreaterEqual(got["age"], 0)
+        self.assertLessEqual(got["age"], (time.time() - t0) + 5,
+                             "마커가 제 나이보다 오래된 것으로 보인다")
 
     def test_a_marker_without_pid_is_not_a_claim(self):
         """구 마커(pid 없음)를 클레임으로 치면 하루 종일 아무도 못 이어받는다."""

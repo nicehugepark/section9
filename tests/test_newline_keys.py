@@ -36,36 +36,37 @@ class NewlineKeys(unittest.TestCase):
         cls.body = m.group(1)
 
     # ① Enter 전송은 그대로다
-    def test_enter_still_sends(self):
-        self.assertIn("sendChat()", self.body)
+    def test_newline_keys(self):
+        """NewlineKeys 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("enter_still_sends"):
+                self.assertIn("sendChat()", self.body)
 
-    # ② Ctrl 이 눌린 Enter 는 전송으로 가지 않는다
-    def test_ctrl_enter_is_not_send(self):
-        m = re.search(r'e\.key === "Enter" && ([^)]*)\)\{[^\n]*sendChat',
-                      self.body)
-        self.assertIsNotNone(m, self.body[-800:])
-        guard = m.group(1)
-        self.assertIn("shiftKey", guard, guard)
-        self.assertIn("ctrlKey", guard,
-                      f"Ctrl+Enter 가 여전히 전송으로 간다: {guard}")
+            # ② Ctrl 이 눌린 Enter 는 전송으로 가지 않는다
+        with self.subTest("ctrl_enter_is_not_send"):
+                m = re.search(r'e\.key === "Enter" && ([^)]*)\)\{[^\n]*sendChat',
+                              self.body)
+                self.assertIsNotNone(m, self.body[-800:])
+                guard = m.group(1)
+                self.assertIn("shiftKey", guard, guard)
+                self.assertIn("ctrlKey", guard,
+                              f"Ctrl+Enter 가 여전히 전송으로 간다: {guard}")
 
-    # ③ Ctrl+Enter 가 실제로 줄바꿈을 넣는다 — textarea 는 스스로 넣지 않는다
-    def test_ctrl_enter_inserts_newline(self):
-        m = re.search(r"ctrlKey[^\n]*Enter|Enter[^\n]*ctrlKey", self.body)
-        self.assertIsNotNone(m, "Ctrl+Enter 분기가 없다")
-        seg = self.body[m.start():m.start() + 700]
-        self.assertIn("\\n", seg, f"줄바꿈을 넣는 자리가 없다:\n{seg[:400]}")
-        self.assertIn("selectionStart", seg,
-                      f"커서 자리에 넣지 않는다:\n{seg[:400]}")
+            # ③ Ctrl+Enter 가 실제로 줄바꿈을 넣는다 — textarea 는 스스로 넣지 않는다
+        with self.subTest("ctrl_enter_inserts_newline"):
+                m = re.search(r"ctrlKey[^\n]*Enter|Enter[^\n]*ctrlKey", self.body)
+                self.assertIsNotNone(m, "Ctrl+Enter 분기가 없다")
+                seg = self.body[m.start():m.start() + 700]
+                self.assertIn("\\n", seg, f"줄바꿈을 넣는 자리가 없다:\n{seg[:400]}")
+                self.assertIn("selectionStart", seg,
+                              f"커서 자리에 넣지 않는다:\n{seg[:400]}")
 
-    # ④ 안내 문구가 두 키를 다 말한다
-    def test_placeholder_mentions_both(self):
-        m = re.search(r"placeholder = \"메시지[^\"]*\"", self.src)
-        self.assertIsNotNone(m, "입력줄 안내 문구를 못 찾았다")
-        hint = m.group(0)
-        self.assertIn("Shift+Enter", hint, hint)
-        self.assertIn("Ctrl+Enter", hint, hint)
-
+            # ④ 안내 문구가 두 키를 다 말한다
+        with self.subTest("placeholder_mentions_both"):
+            m = re.search(r"placeholder = \"메시지[^\"]*\"", self.src)
+            self.assertIsNotNone(m, "입력줄 안내 문구를 못 찾았다")
+            hint = m.group(0)
+            self.assertIn("Shift+Enter", hint, hint)
+            self.assertIn("Ctrl+Enter", hint, hint)
 
 if __name__ == "__main__":
     unittest.main()

@@ -199,123 +199,102 @@ class DialogSafeFocus(unittest.TestCase):
         cls.shapes = dialog_shapes()
         cls.confirms = [s for s in cls.shapes if s[1] == "confirm"]
 
-    def test_f0_shapes_were_actually_read(self):
-        self.assertGreater(len(self.shapes), 20, "창 모양을 못 읽었다")
-        self.assertGreater(len(self.confirms), 9, "확인 창을 못 읽었다")
+    def test_dialog_safe_focus(self):
+        """DialogSafeFocus 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("f0_shapes_were_actually_read"):
+                self.assertGreater(len(self.shapes), 20, "창 모양을 못 읽었다")
+                self.assertGreater(len(self.confirms), 9, "확인 창을 못 읽었다")
 
-    # ---- F1. 확인 창은 전부 대장에 있다 ----------------------------------
-    def test_f1_every_confirm_is_on_the_census(self):
-        seen = set()
-        for fn, _k, ok, cancel, _safe in self.confirms:
-            key = (fn, ok, cancel)
-            seen.add(key)
-            self.assertIn(key, CENSUS,
-                          f"{fn}: 대장에 없는 확인 창이다 ({ok} / {cancel}) — "
-                          f"맨 Enter 가 어디에 닿아야 하는지 tests/"
-                          f"test_dialog_safe.py 의 CENSUS 에 적어라")
-        missing = sorted(set(CENSUS) - seen)
-        self.assertEqual(missing, [], "대장에는 있는데 화면에 없는 창이다 — "
-                                      "지웠으면 대장에서도 지워라")
+            # ---- F1. 확인 창은 전부 대장에 있다 ----------------------------------
+        with self.subTest("f1_every_confirm_is_on_the_census"):
+                seen = set()
+                for fn, _k, ok, cancel, _safe in self.confirms:
+                    key = (fn, ok, cancel)
+                    seen.add(key)
+                    self.assertIn(key, CENSUS,
+                                  f"{fn}: 대장에 없는 확인 창이다 ({ok} / {cancel}) — "
+                                  f"맨 Enter 가 어디에 닿아야 하는지 tests/"
+                                  f"test_dialog_safe.py 의 CENSUS 에 적어라")
+                missing = sorted(set(CENSUS) - seen)
+                self.assertEqual(missing, [], "대장에는 있는데 화면에 없는 창이다 — "
+                                              "지웠으면 대장에서도 지워라")
 
-    # ---- F2. 대장이 적은 대로 초점을 둔다 --------------------------------
-    def test_f2_focus_matches_the_census(self):
-        for fn, _k, ok, cancel, safe in self.confirms:
-            want, why = CENSUS[(fn, ok, cancel)]
-            if want:
-                self.assertTrue(safe, f"{fn}: 「{ok}」 창이 물러나는 쪽에서 "
-                                      f"시작하지 않는다 — {why}. `safe: true` 를 "
-                                      f"세워라")
-            else:
-                self.assertFalse(safe, f"{fn}: 「{ok}」 창은 물러설 이유가 없다 "
-                                       f"— {why}. `safe` 를 빼라")
+            # ---- F2. 대장이 적은 대로 초점을 둔다 --------------------------------
+        with self.subTest("f2_focus_matches_the_census"):
+                for fn, _k, ok, cancel, safe in self.confirms:
+                    want, why = CENSUS[(fn, ok, cancel)]
+                    if want:
+                        self.assertTrue(safe, f"{fn}: 「{ok}」 창이 물러나는 쪽에서 "
+                                              f"시작하지 않는다 — {why}. `safe: true` 를 "
+                                              f"세워라")
+                    else:
+                        self.assertFalse(safe, f"{fn}: 「{ok}」 창은 물러설 이유가 없다 "
+                                               f"— {why}. `safe` 를 빼라")
 
-    # ---- F3. safe 는 확인 창에만 선다 ------------------------------------
-    def test_f3_safe_only_where_it_can_be_kept(self):
-        """알림에는 물러날 버튼이 없고, 쓰는 창은 초점이 상자로 간다
-        (dialog.js: `if (ask){ … ta.focus(); }` 가 먼저다). 거기 붙은 safe 는
-        지켜지지 않으면서 읽는 사람에게는 지켜진다고 말한다."""
-        for fn, kind, ok, _cancel, safe in self.shapes:
-            if kind == "confirm" or not safe:
-                continue
-            self.fail(f"{fn}: {kind} 창(「{ok}」)에 safe 가 붙었다 — "
-                      f"이 종류는 초점을 그리로 옮기지 않는다")
+            # ---- F3. safe 는 확인 창에만 선다 ------------------------------------
+        with self.subTest("f3_safe_only_where_it_can_be_kept"):
+                for fn, kind, ok, _cancel, safe in self.shapes:
+                    if kind == "confirm" or not safe:
+                        continue
+                    self.fail(f"{fn}: {kind} 창(「{ok}」)에 safe 가 붙었다 — "
+                              f"이 종류는 초점을 그리로 옮기지 않는다")
 
-    # ---- F4. 세우기 창 (회귀) --------------------------------------------
-    def test_f4_the_stop_dialog_starts_on_leaving_it_alone(self):
-        """맨 Enter 가 「중단하기」에 닿던 그 자리. 낱말이 표(STOP_KIND)에서
-        오므로(REQ-20260830-035) 글자로는 못 짚어 모양으로 짚는다. 창이 하나인
-        것도 계약이다 — 갈래마다 창을 지으면 고친 창이 사람이 보는 창이 아니다."""
-        hit = [s for s in self.confirms
-               if s[0] == "card.js" and s[2] == "stopAsk"]
-        self.assertEqual(len(hit), 1, "세우기 확인 창을 못 찾았다 — "
-                                      "ok: stopAsk.ok 가 바뀌었나")
-        self.assertEqual(hit[0][3], "그대로 두기", "물러나는 낱말이 바뀌었다")
-        self.assertTrue(hit[0][4], "세우기 창의 맨 Enter 가 아직 「중단하기」에 "
-                                   "닿는다 — 읽지 않고 Enter 를 치는 손이 도는 "
-                                   "작업을 세운다 (REQ-20260830-008)")
+            # ---- F4. 세우기 창 (회귀) --------------------------------------------
+        with self.subTest("f4_the_stop_dialog_starts_on_leaving_it_alone"):
+                hit = [s for s in self.confirms
+                       if s[0] == "card.js" and s[2] == "stopAsk"]
+                self.assertEqual(len(hit), 1, "세우기 확인 창을 못 찾았다 — "
+                                              "ok: stopAsk.ok 가 바뀌었나")
+                self.assertEqual(hit[0][3], "그대로 두기", "물러나는 낱말이 바뀌었다")
+                self.assertTrue(hit[0][4], "세우기 창의 맨 Enter 가 아직 「중단하기」에 "
+                                           "닿는다 — 읽지 않고 Enter 를 치는 손이 도는 "
+                                           "작업을 세운다 (REQ-20260830-008)")
 
-    # ---- 바닥 힌트가 같은 깃발을 읽는다 ----------------------------------
-    def test_f5_the_hint_reads_the_same_flag(self):
-        """손이 배우는 규칙과 화면이 적는 규칙이 갈리면 안 된다 — 초점이
-        물러나는 쪽에 서면 바닥도 `Enter 로 그대로 두기` 라고 적어야 한다."""
-        src = read(os.path.join(APP, "dialog.js"))
-        self.assertIn('o.safe ? (o.cancel || "그만두기")', src,
-                      "바닥 힌트가 safe 를 읽지 않는다")
-        self.assertIn("(o.safe && no ? no : yes).focus()", src,
-                      "초점이 safe 를 읽지 않는다")
+            # ---- 바닥 힌트가 같은 깃발을 읽는다 ----------------------------------
+        with self.subTest("f5_the_hint_reads_the_same_flag"):
+                src = read(os.path.join(APP, "dialog.js"))
+                self.assertIn('o.safe ? (o.cancel || "그만두기")', src,
+                              "바닥 힌트가 safe 를 읽지 않는다")
+                self.assertIn("(o.safe && no ? no : yes).focus()", src,
+                              "초점이 safe 를 읽지 않는다")
 
-    # ---- F6. 갈래마다 물어본다 (REQ-20260902-005 안전 함정) --------------
-    def test_f6_every_running_kind_still_carries_a_question(self):
-        """`ask` 가 없는 갈래는 **창 없이 곧장 중단한다**.
+            # ---- F6. 갈래마다 물어본다 (REQ-20260902-005 안전 함정) --------------
+        with self.subTest("f6_every_running_kind_still_carries_a_question"):
+            src = read(os.path.join(APP, "card.js"))
+            m = re.search(r"const STOP_KIND = \{([\s\S]*?)\n\};", src)
+            self.assertIsNotNone(m, "STOP_KIND 표를 못 찾았다")
+            body = m.group(1)
+            # 표의 한 급 들여쓴 이름만 = 갈래. 그 다음 갈래 전까지가 제 몫이다.
+            keys = [(mm.group(1), mm.start()) for mm in
+                    re.finditer(r"(?m)^  (\w+): \{", body)]
+            self.assertTrue(keys, "갈래를 하나도 못 읽었다")
+            slices = {}
+            for i, (name, at) in enumerate(keys):
+                end = keys[i + 1][1] if i + 1 < len(keys) else len(body)
+                slices[name] = body[at:end]
 
-            const go = !stopAsk || await s9dlg(...)   // card.js
+            with open(os.path.join(ROOT, "bin", "s9"), encoding="utf-8") as f:
+                s9 = f.read()
+            # 갈래를 내는 함수 하나만 본다 — 파일 전체를 훑으면 「자리」의
+            # main/worktree 같은 남의 kind 가 섞여 든다.
+            fn = re.search(r"\ndef stoppable_verdict\([\s\S]*?\n\ndef ", s9)
+            self.assertIsNotNone(fn, "stoppable_verdict 를 못 찾았다")
+            server = set(re.findall(r'return \{"kind": "(\w+)"', fn.group(0)))
+            self.assertTrue(server >= {"worker", "session", "agent", "idle"},
+                            "서버가 내는 갈래를 못 읽었다: %s" % sorted(server))
+            self.assertEqual(sorted(server), sorted(slices),
+                             "서버가 내는 갈래와 화면의 문안 표가 어긋난다 — "
+                             "빠진 갈래는 확인 창 없이 중단된다")
 
-        이름을 갈면서 창 셋의 문안이 비슷해 보인다고 `STOP_KIND` 에서 갈래
-        하나를 지우면, 그 갈래는 `stopAsk` 가 undefined 가 되어 확인 없이
-        지나간다 — 되돌릴 수 없는 중단이 말없이 실행되는 길이다. `||` 의
-        기본값이 「묻지 않는다」 쪽이라 결함이 조용하다: 화면은 멀쩡히 돌고,
-        아무도 안 물어봤다는 사실만 사라진다.
-
-        갈래 이름은 서버(`stoppable_verdict`)가 정하고 화면은 그것을
-        `data-kind` 로 받아 읽는다. 그래서 목록을 여기 옮겨 적지 않고 **서버에서
-        읽어** 맞춘다 — 옮겨 적으면 서버가 갈래를 늘릴 때 이 시험만 옛 세상에
-        남는다."""
-        src = read(os.path.join(APP, "card.js"))
-        m = re.search(r"const STOP_KIND = \{([\s\S]*?)\n\};", src)
-        self.assertIsNotNone(m, "STOP_KIND 표를 못 찾았다")
-        body = m.group(1)
-        # 표의 한 급 들여쓴 이름만 = 갈래. 그 다음 갈래 전까지가 제 몫이다.
-        keys = [(mm.group(1), mm.start()) for mm in
-                re.finditer(r"(?m)^  (\w+): \{", body)]
-        self.assertTrue(keys, "갈래를 하나도 못 읽었다")
-        slices = {}
-        for i, (name, at) in enumerate(keys):
-            end = keys[i + 1][1] if i + 1 < len(keys) else len(body)
-            slices[name] = body[at:end]
-
-        with open(os.path.join(ROOT, "bin", "s9"), encoding="utf-8") as f:
-            s9 = f.read()
-        # 갈래를 내는 함수 하나만 본다 — 파일 전체를 훑으면 「자리」의
-        # main/worktree 같은 남의 kind 가 섞여 든다.
-        fn = re.search(r"\ndef stoppable_verdict\([\s\S]*?\n\ndef ", s9)
-        self.assertIsNotNone(fn, "stoppable_verdict 를 못 찾았다")
-        server = set(re.findall(r'return \{"kind": "(\w+)"', fn.group(0)))
-        self.assertTrue(server >= {"worker", "session", "agent", "idle"},
-                        "서버가 내는 갈래를 못 읽었다: %s" % sorted(server))
-        self.assertEqual(sorted(server), sorted(slices),
-                         "서버가 내는 갈래와 화면의 문안 표가 어긋난다 — "
-                         "빠진 갈래는 확인 창 없이 중단된다")
-
-        for kind in sorted(server - {"idle"}):
-            self.assertIn("ask: {", slices[kind],
-                          "「%s」 갈래에 확인 창이 없다 — 되돌릴 수 없는 중단이 "
-                          "말없이 실행된다 (card.js 의 `!stopAsk` 갈래)" % kind)
-        # idle 만 예외이고, 그것도 **까닭이 있어서** 예외다: 붙어 있는 손이
-        # 없어 잃는 것이 없고 「▶ 이어가기」 한 번으로 되돌아간다.
-        self.assertNotIn("ask: {", slices["idle"],
-                         "잃는 것이 없는 갈래에 확인 창을 세웠다 — 확인은 "
-                         "되돌릴 수 없을 때만이다 (s9-design 4절)")
-
+            for kind in sorted(server - {"idle"}):
+                self.assertIn("ask: {", slices[kind],
+                              "「%s」 갈래에 확인 창이 없다 — 되돌릴 수 없는 중단이 "
+                              "말없이 실행된다 (card.js 의 `!stopAsk` 갈래)" % kind)
+            # idle 만 예외이고, 그것도 **까닭이 있어서** 예외다: 붙어 있는 손이
+            # 없어 잃는 것이 없고 「▶ 이어가기」 한 번으로 되돌아간다.
+            self.assertNotIn("ask: {", slices["idle"],
+                             "잃는 것이 없는 갈래에 확인 창을 세웠다 — 확인은 "
+                             "되돌릴 수 없을 때만이다 (s9-design 4절)")
 
 if __name__ == "__main__":
     unittest.main()

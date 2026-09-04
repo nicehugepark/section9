@@ -162,56 +162,47 @@ class ConnBase(unittest.TestCase):
 class TestKeepAliveIdle(ConnBase):
     idle = 8.0        # 40연결을 여는 시간(WSL2 루프백)보다 넉넉해야 한다
 
-    def test_s1_keepalive_still_reused(self):
-        """S1. 이어쓰기는 그대로 산다 — 한 연결로 5회 연속 200."""
-        s = self.conn()
-        for i in range(5):
+    def test_test_keep_alive_idle(self):
+        """TestKeepAliveIdle 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("s1_keepalive_still_reused"):
+            s = self.conn()
+            for i in range(5):
+                r = self.get(s=s)
+                self.assertTrue(r.startswith(b"HTTP/1.1 200"),
+                                f"{i}번째 요청이 200 이 아니다: {r[:80]!r}")
+            # 아직 살아 있어야 한다 (상한 전)
             r = self.get(s=s)
-            self.assertTrue(r.startswith(b"HTTP/1.1 200"),
-                            f"{i}번째 요청이 200 이 아니다: {r[:80]!r}")
-        # 아직 살아 있어야 한다 (상한 전)
-        r = self.get(s=s)
-        self.assertTrue(r.startswith(b"HTTP/1.1 200"))
-
-    def test_s3_keepalive_header_announces_limit(self):
-        """S3. 상한을 헤더로 알린다 — 클라이언트가 눈치로 알게 두지 않는다."""
-        s = self.opened()
-        r = self.get(s=s)
-        self.assertIn(b"Keep-Alive: timeout=", r.split(b"\r\n\r\n")[0],
-                      "keep-alive 응답이 유휴 상한을 알리지 않는다")
-
-    def test_s2_idle_connection_is_released(self):
-        """S2. 유휴 상한을 넘긴 연결은 서버가 스스로 닫는다."""
-        s = self.conn(timeout=self.idle * 4)
-        self.get(s=s)
-        s.settimeout(self.idle * 4)
-        # 서버가 닫으면 recv 가 b'' 로 돌아온다. 안 닫으면 여기서 타임아웃.
-        try:
-            left = s.recv(4096)
-        except socket.timeout:
-            self.fail(f"유휴 {self.idle * 4:.0f}초가 지나도 서버가 연결을 안 놓았다")
-        self.assertEqual(left, b"", f"닫는 대신 뭘 보냈다: {left[:80]!r}")
-
-    def test_s8_idle_connections_do_not_pile_up(self):
-        """S8. 회귀 — 유휴 연결 40개를 열고 버려도 스레드가 되돌아온다.
-
-        이것이 실사고의 기계 판정이다: 고치기 전에는 40이 영원히 남았다.
-        """
-        # 정점은 **여는 동안** 재야 한다 — 상한이 짧으면 마지막을 여는 사이
-        # 첫 것이 이미 걷힌다(그것이 고쳐졌다는 뜻이기도 하다).
-        socks, peak = [], 0
-        for _ in range(40):
-            socks.append(self.opened())
-            peak = max(peak, self.threads())
-        self.assertGreaterEqual(peak, self.base + 20,
-                                "40연결이 스레드를 안 만들었다 — 시험이 헛돈다")
-        ok = _wait(lambda: self.threads() <= self.base + 5, self.idle * 4, 0.2)
-        after = self.threads()
-        for s in socks:
-            s.close()
-        self.assertTrue(ok, f"스레드가 안 걷혔다: 기저 {self.base} → 정점 "
-                            f"{peak} → {self.idle * 4:.0f}초 뒤 {after}")
-
+            self.assertTrue(r.startswith(b"HTTP/1.1 200"))
+        with self.subTest("s3_keepalive_header_announces_limit"):
+            s = self.opened()
+            r = self.get(s=s)
+            self.assertIn(b"Keep-Alive: timeout=", r.split(b"\r\n\r\n")[0],
+                          "keep-alive 응답이 유휴 상한을 알리지 않는다")
+        with self.subTest("s2_idle_connection_is_released"):
+            s = self.conn(timeout=self.idle * 4)
+            self.get(s=s)
+            s.settimeout(self.idle * 4)
+            # 서버가 닫으면 recv 가 b'' 로 돌아온다. 안 닫으면 여기서 타임아웃.
+            try:
+                left = s.recv(4096)
+            except socket.timeout:
+                self.fail(f"유휴 {self.idle * 4:.0f}초가 지나도 서버가 연결을 안 놓았다")
+            self.assertEqual(left, b"", f"닫는 대신 뭘 보냈다: {left[:80]!r}")
+        with self.subTest("s8_idle_connections_do_not_pile_up"):
+            # 정점은 **여는 동안** 재야 한다 — 상한이 짧으면 마지막을 여는 사이
+            # 첫 것이 이미 걷힌다(그것이 고쳐졌다는 뜻이기도 하다).
+            socks, peak = [], 0
+            for _ in range(40):
+                socks.append(self.opened())
+                peak = max(peak, self.threads())
+            self.assertGreaterEqual(peak, self.base + 20,
+                                    "40연결이 스레드를 안 만들었다 — 시험이 헛돈다")
+            ok = _wait(lambda: self.threads() <= self.base + 5, self.idle * 4, 0.2)
+            after = self.threads()
+            for s in socks:
+                s.close()
+            self.assertTrue(ok, f"스레드가 안 걷혔다: 기저 {self.base} → 정점 "
+                                f"{peak} → {self.idle * 4:.0f}초 뒤 {after}")
 
 class TestSSELifetime(ConnBase):
     def _sse(self):

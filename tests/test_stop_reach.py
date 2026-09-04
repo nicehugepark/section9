@@ -227,36 +227,34 @@ class ManyAtOnce(unittest.TestCase):
 class MixedWithTheAccountSwitch(unittest.TestCase):
     """S7~S8 — 계정·모델을 바꾸는 걸음과 섞인다."""
 
-    def test_s7_restart_can_stop_the_workers_first(self):
-        m = _load("s9stop_r")
-        self.assertIn("stop_workers",
-                      set(inspect.signature(m.restart_session).parameters),
-                      "계정·모델을 바꾸며 작업자를 세울 자리가 없다")
-        i = SRC.find("def restart_session(")
-        blk = SRC[i:SRC.find("\ndef ", i + 10)]
-        self.assertIn("stop_all_workers", blk,
-                      "재기동이 도는 작업자를 그대로 둔다 — 옛 계정으로 계속 돈다")
-
-    def test_s7b_the_restart_route_carries_it(self):
-        i = SRC.find('parsed.path == "/api/session/restart"')
-        self.assertGreater(i, 0)
-        self.assertIn("stop_workers", SRC[i:i + 900],
-                      "화면이 '세우고 바꾸기'를 보낼 자리가 없다")
-
-    def test_s8_the_route_exists(self):
-        i = SRC.find('parsed.path == "/api/stop"')
-        self.assertGreater(i, 0, "POST /api/stop 이 없다 — 화면 손이 닿지 않는다")
-        blk = SRC[i:i + 900]
-        self.assertTrue("stop_request" in blk and "stop_all_workers" in blk,
-                        "한 건과 전부, 두 갈래가 다 없다")
-
-    def test_s8b_the_cli_stops_them_all(self):
-        self.assertIn('wk.add_argument("--stop-all"', SRC,
-                      "`s9 workers --stop-all` 이 파서에 없다")
-        i = SRC.find("def cmd_workers(")
-        self.assertIn("stop_all_workers", SRC[i:i + 1800],
-                      "명령이 그 함수를 안 지난다")
-
+    def test_mixed_with_the_account_switch(self):
+        """S7~S8 — 계정·모델을 바꾸는 걸음과 섞인다."""
+        with self.subTest("s7_restart_can_stop_the_workers_first"):
+            m = _load("s9stop_r")
+            self.assertIn("stop_workers",
+                          set(inspect.signature(m.restart_session).parameters),
+                          "계정·모델을 바꾸며 작업자를 세울 자리가 없다")
+            i = SRC.find("def restart_session(")
+            blk = SRC[i:SRC.find("\ndef ", i + 10)]
+            self.assertIn("stop_all_workers", blk,
+                          "재기동이 도는 작업자를 그대로 둔다 — 옛 계정으로 계속 돈다")
+        with self.subTest("s7b_the_restart_route_carries_it"):
+            i = SRC.find('parsed.path == "/api/session/restart"')
+            self.assertGreater(i, 0)
+            self.assertIn("stop_workers", SRC[i:i + 900],
+                          "화면이 '세우고 바꾸기'를 보낼 자리가 없다")
+        with self.subTest("s8_the_route_exists"):
+            i = SRC.find('parsed.path == "/api/stop"')
+            self.assertGreater(i, 0, "POST /api/stop 이 없다 — 화면 손이 닿지 않는다")
+            blk = SRC[i:i + 900]
+            self.assertTrue("stop_request" in blk and "stop_all_workers" in blk,
+                            "한 건과 전부, 두 갈래가 다 없다")
+        with self.subTest("s8b_the_cli_stops_them_all"):
+            self.assertIn('wk.add_argument("--stop-all"', SRC,
+                          "`s9 workers --stop-all` 이 파서에 없다")
+            i = SRC.find("def cmd_workers(")
+            self.assertIn("stop_all_workers", SRC[i:i + 1800],
+                          "명령이 그 함수를 안 지난다")
 
 class TheHandleOnTheScreen(unittest.TestCase):
     """S10~S14 — 손이 닿는 자리는 화면이다 (라운드3).
@@ -291,109 +289,94 @@ class TheHandleOnTheScreen(unittest.TestCase):
         cls.stall = _fn(cls.web, "stallHTML")
         cls.restart = _fn(cls.web, "sessionRestart")
 
-    def test_s10_the_row_stands_on_the_server_fact(self):
-        self.assertIn("r.worker", self.workrow,
-                      "화면이 서버가 준 사실 말고 다른 것으로 손잡이를 세운다")
-        # ⏸ 를 그리는 자리는 하나로 모였다 (REQ-20260830-035 — 갈래가 넷이라
-        # 줄마다 베끼면 네 벌이 된다). 행의 사실을 읽는 계약은 그 조각이 진다.
-        # wordy 는 얼굴 인자다 (REQ-20260830-046) — 조건이 아니라 같은 호출이다.
-        self.assertIn("stopBtnHTML(r, wordy)", self.workrow, "벨트가 ⏸ 를 안 세운다")
-        self.assertIn('data-stop="${esc(r.id)}"', _fn(self.web, "stopBtnHTML"))
-        # 점으로 대신하면 클레임 뒤에 손잡이가 사라진다
-        self.assertNotIn("live_kind", self.workrow,
-                         "손잡이가 점의 값을 읽는다 — 클레임 뒤에 사라진다")
-        # 서버가 그 사실을 행에 싣는 자리도 하나여야 한다
-        i = SRC.find("def catalog_with_live(")
-        self.assertGreater(i, 0)
-        blk = SRC[i:SRC.find("\ndef ", i + 10)]
-        self.assertIn('r["worker"]', blk, "행이 도는 작업자를 안 나른다")
-        self.assertIn("worker_running(", blk,
-                      "판정을 새로 지었다 — 워처와 화면이 다른 말을 하게 된다")
-
-    def test_s11_board_and_document_grow_the_same_handle(self):
-        """카드와 문서가 **같은 두 조각**을 부른다 (REQ-20260830-040).
-
-        조각이 사실 줄(stallHTML)과 손잡이 벨트(deedBeltHTML) 둘로 나뉘었지만,
-        짓는 자리는 여전히 한 곳씩이고 두 화면이 그 둘을 다 부른다 — 한쪽이
-        벨트를 안 부르면 그 화면만 손잡이를 잃는다."""
-        self.assertIn("stopBtnHTML(r, wordy)", _fn(self.web, "deedBeltHTML"),
-                      "벨트가 세우기를 안 짓는다")
-        for caller in ("cardHTML", "loadDoc"):
-            seg = _fn(self.web, caller) if caller != "loadDoc" \
-                else self.web[self.web.index("async function loadDoc("):]
-            self.assertIn("deedBeltHTML(", seg,
-                          "%s 가 손잡이 벨트를 안 부른다" % caller)
-            self.assertIn("stallHTML(", seg,
-                          "%s 가 사실 줄을 안 부른다" % caller)
-        # 자리는 둘이다 — 카드의 글리프(stopBtnHTML)와 문서의 낱말
-        # (holdLockHTML). 갈래가 갈린 것은 뜻이 갈렸기 때문이고
-        # (REQ-20260830-042: 도는 것을 끊는 행위 vs 앞으로 못 맡게 하는 정책),
-        # 길은 하나다 — 둘 다 같은 data-stop 을 달고 같은 stopDoc 으로
-        # 들어가며, 갈래는 data-kind 가 나른다.
-        places = {n for n in ("stopBtnHTML", "holdLockHTML")
-                  if 'data-stop="${esc(' in _fn(self.web, n)}
-        self.assertEqual({"stopBtnHTML", "holdLockHTML"}, places,
-                         "손잡이를 그리는 자리가 그 둘이 아니다")
-        self.assertEqual(len(re.findall(r'data-stop="\$\{esc\(', self.web)), 2,
-                         "손잡이를 그리는 자리가 또 늘었다 — 한 벌만 고쳐진다")
-        for n in ("stopBtnHTML", "holdLockHTML"):
-            self.assertIn("data-kind=", _fn(self.web, n),
-                          "%s 가 갈래를 안 실어 stopKindOf 가 worker 로 떨어진다" % n)
-        self.assertIn("stopDoc(sp.dataset.stop)", self.web,
-                      "누른 것이 아무 데도 닿지 않는다")
-
-    def test_s12_an_irreversible_press_asks_first(self):
-        self.assertIn('kind: "confirm"', self.stop, "묻지 않고 세운다")
-        # 물음이 먼저다 — 확인 전에 요청이 나가면 묻는 시늉만 하는 창이다
-        self.assertLess(self.stop.find('kind: "confirm"'),
-                        self.stop.find('"/api/stop"'),
-                        "확인을 받기 전에 이미 요청이 나갔다")
-        self.assertIn("if (!go) return;", self.stop, "그만두기가 안 통한다")
-        self.assertIn("if (stopPending(id)) return;", self.stop, "연타가 막히지 않는다")
-        self.assertIn("STOP_HOLD", self.web, "잠금이 만료되지 않는다")
-
-    def test_s13_the_screen_says_the_server_sentence(self):
-        self.assertIn("title: d.message", self.stop, "서버 문장이 창에 안 선다")
-        self.assertNotIn("d.action", self.stop, "화면이 action 을 읽는다")
-        for a in ("stopped", "none", "not-request", "missing"):
-            self.assertNotIn('"%s"' % a, self.stop,
-                             "화면이 서버의 사유 낱말을 알고 있다: %s" % a)
-        self.assertIn("stop: false", self.stop, "거절이 붉은 실패의 옷을 입는다")
-        self.assertEqual(len(re.findall(r'"/api/stop"', self.web)), 1,
-                         "세우기를 부르는 자리가 여럿이다")
-
-    def test_s14_changing_the_account_can_stop_them_first(self):
-        self.assertIn("liveWorkerRows()", self.restart,
-                      "계정·모델 창이 도는 작업자를 모른다")
-        self.assertIn("stopWorkers: true", self.restart)
-        self.assertIn("if (!go) return;", self.restart,
-                      "물었는데 그만둘 자리가 없다")
-        self.assertIn("stop_workers: !!req.stopWorkers", self.web,
-                      "고른 것이 서버로 안 간다")
-
-    def test_s15_it_reuses_what_the_card_already_wears(self):
-        """새 층을 만들지 않는다 — 색면·띠 없이 있는 문법을 그대로 입는다."""
-        self.assertIn('class="acts deedbelt"', self.workrow)
-        # 뒤에 상태 갈래(`ico`·`busy`)가 붙는다 — REQ-20260830-032 로 손잡이
-        # 얼굴이 ⏸ 글리프가 됐다. 무는 것은 낱말이 아니라 입은 옷이다.
-        # 그리는 자리는 공용 조각 하나다 (REQ-20260830-035).
-        self.assertRegex(_fn(self.web, "stopBtnHTML"), r'class="deed stop[ `$]')
-        m = re.search(r"\.acts\.deedbelt\{([^}]*)\}", self.web)
-        self.assertIsNotNone(m, ".acts.deedbelt 규칙이 없다")
-        for banned in ("background", "animation", "border-left"):
-            self.assertNotIn(banned, m.group(1),
-                             "세우기 줄이 %s 로 새 층을 만든다" % banned)
-
-    def test_s16_the_handle_can_be_seen_on_purpose(self):
-        """도는 작업자는 캡처하려는 그 순간에 없다 — 진단으로 세울 수 있어야 한다.
-
-        깨우기가 두 번 고쳐 올려지는 동안 한 번도 눈으로 확인되지 못한 이유가
-        정확히 이것이었다 (REQ-20260828-041 반려)."""
-        probe = _fn(self.web, "workProbe")
-        self.assertIn("r.worker =", probe, "진단이 행에 값을 안 얹는다")
-        self.assertIn("workProbe(rows)", _fn(self.web, "stallProbe"),
-                      "진단이 화면 갱신 길에 서 있지 않다 — 아무 일도 안 한다")
-
+    def test_the_handle_on_the_screen(self):
+        """S10~S14 — 손이 닿는 자리는 화면이다 (라운드3)."""
+        with self.subTest("s10_the_row_stands_on_the_server_fact"):
+            self.assertIn("r.worker", self.workrow,
+                          "화면이 서버가 준 사실 말고 다른 것으로 손잡이를 세운다")
+            # ⏸ 를 그리는 자리는 하나로 모였다 (REQ-20260830-035 — 갈래가 넷이라
+            # 줄마다 베끼면 네 벌이 된다). 행의 사실을 읽는 계약은 그 조각이 진다.
+            # wordy 는 얼굴 인자다 (REQ-20260830-046) — 조건이 아니라 같은 호출이다.
+            self.assertIn("stopBtnHTML(r, wordy)", self.workrow, "벨트가 ⏸ 를 안 세운다")
+            self.assertIn('data-stop="${esc(r.id)}"', _fn(self.web, "stopBtnHTML"))
+            # 점으로 대신하면 클레임 뒤에 손잡이가 사라진다
+            self.assertNotIn("live_kind", self.workrow,
+                             "손잡이가 점의 값을 읽는다 — 클레임 뒤에 사라진다")
+            # 서버가 그 사실을 행에 싣는 자리도 하나여야 한다
+            i = SRC.find("def catalog_with_live(")
+            self.assertGreater(i, 0)
+            blk = SRC[i:SRC.find("\ndef ", i + 10)]
+            self.assertIn('r["worker"]', blk, "행이 도는 작업자를 안 나른다")
+            self.assertIn("worker_running(", blk,
+                          "판정을 새로 지었다 — 워처와 화면이 다른 말을 하게 된다")
+        with self.subTest("s11_board_and_document_grow_the_same_handle"):
+            self.assertIn("stopBtnHTML(r, wordy)", _fn(self.web, "deedBeltHTML"),
+                          "벨트가 세우기를 안 짓는다")
+            for caller in ("cardHTML", "loadDoc"):
+                seg = _fn(self.web, caller) if caller != "loadDoc" \
+                    else self.web[self.web.index("async function loadDoc("):]
+                self.assertIn("deedBeltHTML(", seg,
+                              "%s 가 손잡이 벨트를 안 부른다" % caller)
+                self.assertIn("stallHTML(", seg,
+                              "%s 가 사실 줄을 안 부른다" % caller)
+            # 자리는 둘이다 — 카드의 글리프(stopBtnHTML)와 문서의 낱말
+            # (holdLockHTML). 갈래가 갈린 것은 뜻이 갈렸기 때문이고
+            # (REQ-20260830-042: 도는 것을 끊는 행위 vs 앞으로 못 맡게 하는 정책),
+            # 길은 하나다 — 둘 다 같은 data-stop 을 달고 같은 stopDoc 으로
+            # 들어가며, 갈래는 data-kind 가 나른다.
+            places = {n for n in ("stopBtnHTML", "holdLockHTML")
+                      if 'data-stop="${esc(' in _fn(self.web, n)}
+            self.assertEqual({"stopBtnHTML", "holdLockHTML"}, places,
+                             "손잡이를 그리는 자리가 그 둘이 아니다")
+            self.assertEqual(len(re.findall(r'data-stop="\$\{esc\(', self.web)), 2,
+                             "손잡이를 그리는 자리가 또 늘었다 — 한 벌만 고쳐진다")
+            for n in ("stopBtnHTML", "holdLockHTML"):
+                self.assertIn("data-kind=", _fn(self.web, n),
+                              "%s 가 갈래를 안 실어 stopKindOf 가 worker 로 떨어진다" % n)
+            self.assertIn("stopDoc(sp.dataset.stop)", self.web,
+                          "누른 것이 아무 데도 닿지 않는다")
+        with self.subTest("s12_an_irreversible_press_asks_first"):
+            self.assertIn('kind: "confirm"', self.stop, "묻지 않고 세운다")
+            # 물음이 먼저다 — 확인 전에 요청이 나가면 묻는 시늉만 하는 창이다
+            self.assertLess(self.stop.find('kind: "confirm"'),
+                            self.stop.find('"/api/stop"'),
+                            "확인을 받기 전에 이미 요청이 나갔다")
+            self.assertIn("if (!go) return;", self.stop, "그만두기가 안 통한다")
+            self.assertIn("if (stopPending(id)) return;", self.stop, "연타가 막히지 않는다")
+            self.assertIn("STOP_HOLD", self.web, "잠금이 만료되지 않는다")
+        with self.subTest("s13_the_screen_says_the_server_sentence"):
+            self.assertIn("title: d.message", self.stop, "서버 문장이 창에 안 선다")
+            self.assertNotIn("d.action", self.stop, "화면이 action 을 읽는다")
+            for a in ("stopped", "none", "not-request", "missing"):
+                self.assertNotIn('"%s"' % a, self.stop,
+                                 "화면이 서버의 사유 낱말을 알고 있다: %s" % a)
+            self.assertIn("stop: false", self.stop, "거절이 붉은 실패의 옷을 입는다")
+            self.assertEqual(len(re.findall(r'"/api/stop"', self.web)), 1,
+                             "세우기를 부르는 자리가 여럿이다")
+        with self.subTest("s14_changing_the_account_can_stop_them_first"):
+            self.assertIn("liveWorkerRows()", self.restart,
+                          "계정·모델 창이 도는 작업자를 모른다")
+            self.assertIn("stopWorkers: true", self.restart)
+            self.assertIn("if (!go) return;", self.restart,
+                          "물었는데 그만둘 자리가 없다")
+            self.assertIn("stop_workers: !!req.stopWorkers", self.web,
+                          "고른 것이 서버로 안 간다")
+        with self.subTest("s15_it_reuses_what_the_card_already_wears"):
+            self.assertIn('class="acts deedbelt"', self.workrow)
+            # 뒤에 상태 갈래(`ico`·`busy`)가 붙는다 — REQ-20260830-032 로 손잡이
+            # 얼굴이 ⏸ 글리프가 됐다. 무는 것은 낱말이 아니라 입은 옷이다.
+            # 그리는 자리는 공용 조각 하나다 (REQ-20260830-035).
+            self.assertRegex(_fn(self.web, "stopBtnHTML"), r'class="deed stop[ `$]')
+            m = re.search(r"\.acts\.deedbelt\{([^}]*)\}", self.web)
+            self.assertIsNotNone(m, ".acts.deedbelt 규칙이 없다")
+            for banned in ("background", "animation", "border-left"):
+                self.assertNotIn(banned, m.group(1),
+                                 "세우기 줄이 %s 로 새 층을 만든다" % banned)
+        with self.subTest("s16_the_handle_can_be_seen_on_purpose"):
+            probe = _fn(self.web, "workProbe")
+            self.assertIn("r.worker =", probe, "진단이 행에 값을 안 얹는다")
+            self.assertIn("workProbe(rows)", _fn(self.web, "stallProbe"),
+                          "진단이 화면 갱신 길에 서 있지 않다 — 아무 일도 안 한다")
 
 class WhatWasStoppedCanStartAgain(unittest.TestCase):
     """R1~R7 — 세운 것을 사람이 되돌릴 수 있다 (라운드4 반려).
@@ -528,45 +511,36 @@ class TheRestartHandle(unittest.TestCase):
         cls.row = _fn(cls.web, "stoppedRowHTML")
         cls.stall = _fn(cls.web, "stallHTML")
 
-    def test_r8_the_handle_takes_the_same_road_as_wake(self):
-        """중단한 것을 다시 맡기는 일은 멈춘 것을 맡기는 일과 **같다**.
-
-        낱말도 같고(「이어가기」) 응답도 같으니 길도 하나여야 한다 — 속성만
-        다른 이유는 그려지는 줄이 다르기 때문이고, 그 속성은 곧장 같은 함수로
-        들어간다."""
-        self.assertIn("r.stopped", self.row)
-        # 손잡이는 줄을 떠나 id 줄의 벨트로 갔다 (REQ-20260830-040 규칙 4) —
-        # 줄과 손잡이의 조건이 갈라지지 않게 술어(heldState) 하나를 함께 먹는다.
-        self.assertIn("heldState(r)", self.row, "줄이 술어를 안 지난다")
-        wake = _fn(self.web, "wakeBtnHTML")
-        self.assertIn("heldState(r)", wake, "손잡이가 같은 술어를 안 지난다")
-        self.assertIn("data-restart=", wake)
-        # 낱말은 상수 한 곳에서 온다 — 글리프가 된 뒤로 이름은 눈에 보이는
-        # 글자가 아니라 aria-label·title 이 나른다 (REQ-20260830-032). 원문에
-        # 박힌 글자를 물면 주석 한 줄에도 통과하므로 상수를 문다.
-        self.assertIn("WAKE_LABEL", wake, "손잡이의 낱말이 멈춘 카드와 다르다")
-        self.assertRegex(wake, r'aria-label="\$\{[^"]*WAKE_LABEL',
-                         "글리프 손잡이가 이름을 낭독기에 안 실어 보낸다")
-        self.assertRegex(self.web, r"wakeDoc\(\w+\.dataset\.restart\)",
-                         "다시 맡기는 손잡이가 자기만의 길을 판다")
-        self.assertEqual(len(re.findall(r'"/api/wake"', self.web)), 1)
-
-    def test_r8b_one_handle_per_card(self):
-        """같은 일을 하는 손잡이를 한 카드에 둘 그리지 않는다."""
-        self.assertIn("stoppedRowHTML(r)", self.stall,
-                      "카드·문서가 함께 부르는 그 함수가 이 줄을 안 짓는다")
-        self.assertRegex(self.stall, r"if \(stopped\)[\s\S]{0,80}return",
-                         "세워 둔 카드에 멈춤 줄과 다시 시작이 함께 선다")
-
-    def test_r8c_the_press_paints_both_handles(self):
-        """누른 순간 잠기는 얼굴은 두 줄 모두에 온다 — 한쪽만 칠하면 그 카드는
-        눌러도 아무 일이 없는 것처럼 보인다."""
-        paint = _fn(self.web, "paintWake")
-        self.assertIn("data-restart", paint,
-                      "중단해 둔 카드의 손잡이는 눌러도 잠기지 않는다")
-        # 낱말은 상수 한 곳에서 온다 — 글자를 두 곳에 두면 개명 한 번에 갈린다
-        self.assertIn("WAKE_GOING", paint)
-
+    def test_the_restart_handle(self):
+        """R8 — 세워 둔 카드에 다시 시작할 손잡이가 선다."""
+        with self.subTest("r8_the_handle_takes_the_same_road_as_wake"):
+            self.assertIn("r.stopped", self.row)
+            # 손잡이는 줄을 떠나 id 줄의 벨트로 갔다 (REQ-20260830-040 규칙 4) —
+            # 줄과 손잡이의 조건이 갈라지지 않게 술어(heldState) 하나를 함께 먹는다.
+            self.assertIn("heldState(r)", self.row, "줄이 술어를 안 지난다")
+            wake = _fn(self.web, "wakeBtnHTML")
+            self.assertIn("heldState(r)", wake, "손잡이가 같은 술어를 안 지난다")
+            self.assertIn("data-restart=", wake)
+            # 낱말은 상수 한 곳에서 온다 — 글리프가 된 뒤로 이름은 눈에 보이는
+            # 글자가 아니라 aria-label·title 이 나른다 (REQ-20260830-032). 원문에
+            # 박힌 글자를 물면 주석 한 줄에도 통과하므로 상수를 문다.
+            self.assertIn("WAKE_LABEL", wake, "손잡이의 낱말이 멈춘 카드와 다르다")
+            self.assertRegex(wake, r'aria-label="\$\{[^"]*WAKE_LABEL',
+                             "글리프 손잡이가 이름을 낭독기에 안 실어 보낸다")
+            self.assertRegex(self.web, r"wakeDoc\(\w+\.dataset\.restart\)",
+                             "다시 맡기는 손잡이가 자기만의 길을 판다")
+            self.assertEqual(len(re.findall(r'"/api/wake"', self.web)), 1)
+        with self.subTest("r8b_one_handle_per_card"):
+            self.assertIn("stoppedRowHTML(r)", self.stall,
+                          "카드·문서가 함께 부르는 그 함수가 이 줄을 안 짓는다")
+            self.assertRegex(self.stall, r"if \(stopped\)[\s\S]{0,80}return",
+                             "세워 둔 카드에 멈춤 줄과 다시 시작이 함께 선다")
+        with self.subTest("r8c_the_press_paints_both_handles"):
+            paint = _fn(self.web, "paintWake")
+            self.assertIn("data-restart", paint,
+                          "중단해 둔 카드의 손잡이는 눌러도 잠기지 않는다")
+            # 낱말은 상수 한 곳에서 온다 — 글자를 두 곳에 두면 개명 한 번에 갈린다
+            self.assertIn("WAKE_GOING", paint)
 
 if __name__ == "__main__":
     unittest.main()

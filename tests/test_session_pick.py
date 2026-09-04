@@ -278,7 +278,9 @@ class TestPickerScreen(unittest.TestCase):
         sh = self._fn("sessShape")
         self.assertIn("somewhere", sh, "갈 곳이 있는지 안 따진다")
         self.assertIn("SESS_FOOT", sh, "갈 곳이 없을 때 나가는 문이 없다")
-        self.assertIn('foot: somewhere ? ""', sh,
+        # 앞에 `waiting ||` 이 붙어도(REQ-20260902-065: 받는 중에는 없다고
+        # 말하지 않는다) 계약은 그대로다 — 갈 곳이 있으면 발치가 빈다.
+        self.assertIn('somewhere ? ""', sh,
                       "갈 곳이 있는데도 깨우기를 나란히 세운다")
         self.assertIn('data-act="wake"', self.src, "깨우기 손잡이가 없다")
         self.assertIn('picked.act === "wake"', self._fn("termSessionPick"),

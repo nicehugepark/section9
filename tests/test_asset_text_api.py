@@ -38,56 +38,30 @@ class AssetTextApi(unittest.TestCase):
         cls.asset = _route(cls.src, "/api/asset")
         cls.text = _route(cls.src, "/api/asset-text")
 
-    def test_a1_the_route_exists(self):
-        """A1. 라우트가 있다 — 없으면 화면이 영영 404 를 받는다."""
-        self.assertTrue(self.text, "/api/asset-text 라우트를 찾지 못했다")
-
-    def test_a2_the_gate_is_the_same_one(self):
-        """A2. 게이트가 `/api/asset` 과 **같은 함수**다.
-
-        비슷한 것을 새로 쓰면 둘이 갈리고, 갈린 쪽이 느슨하면 그게 구멍이다.
-        이 저장소가 오늘만 세 번 밟은 실패다.
-        """
-        for frag in ("me = viewer_of(qs)", "doc_visible(meta_a, me)"):
-            self.assertIn(frag, self.asset, f"기준 라우트가 바뀌었다: {frag}")
-            self.assertIn(frag, self.text, f"본문 라우트에 게이트가 없다: {frag}")
-
-    def test_a3_filename_cannot_escape_the_directory(self):
-        """A3. 파일명이 디렉토리를 벗어나지 못한다.
-
-        `f=../../etc/passwd` 같은 것을 막는 정규화가 원본 서빙과 같아야 한다 —
-        본문 쪽만 느슨하면 **원본은 못 가져가는 파일의 내용을 텍스트로 가져간다.**
-        """
-        norm = "safe_name(os.path.basename(qs.get(\"f\", [\"\"])[0]))"
-        self.assertIn(norm, self.asset)
-        self.assertIn(norm, self.text)
-
-    def test_a4_absence_and_denial_look_the_same(self):
-        """A4. 없는 것과 못 보는 것이 **같은 404** 다.
-
-        갈라 놓으면 응답 차이가 "그 문서는 존재한다"를 흘린다 — 내용을 막아도
-        존재가 새면 막은 것이 아니다.
-        """
-        self.assertIn('self._send(404, "text/plain", b"not found")', self.text)
-        # 거부 경로에서 본문을 실어 보내지 않는다
-        self.assertNotIn("403", self.text)
-
-    def test_a5_it_reads_the_one_sidecar_path(self):
-        """A5. 사이드카 경로를 스스로 조립하지 않고 020 이 만든 함수를 쓴다.
-
-        경로 규칙이 둘로 갈라지면 `s9 assets reindex` 가 만든 파일과 화면이
-        읽는 파일이 달라진다 — 검색은 찾는데 화면은 못 여는 상태가 된다.
-        """
-        self.assertIn("asset_text_path(doc_asset_dir(doc_id), fn)", self.text)
-
-    def test_a6_module_still_loads(self):
-        """A6. 문법이 성립한다(서버 전체가 한 파일이라 값싼 보험)."""
-        spec = importlib.util.spec_from_loader(
-            "s9atapi", importlib.machinery.SourceFileLoader("s9atapi", S9))
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-        self.assertTrue(callable(m.asset_text_path))
-
+    def test_asset_text_api(self):
+        """AssetTextApi 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("a1_the_route_exists"):
+            self.assertTrue(self.text, "/api/asset-text 라우트를 찾지 못했다")
+        with self.subTest("a2_the_gate_is_the_same_one"):
+            for frag in ("me = viewer_of(qs)", "doc_visible(meta_a, me)"):
+                self.assertIn(frag, self.asset, f"기준 라우트가 바뀌었다: {frag}")
+                self.assertIn(frag, self.text, f"본문 라우트에 게이트가 없다: {frag}")
+        with self.subTest("a3_filename_cannot_escape_the_directory"):
+            norm = "safe_name(os.path.basename(qs.get(\"f\", [\"\"])[0]))"
+            self.assertIn(norm, self.asset)
+            self.assertIn(norm, self.text)
+        with self.subTest("a4_absence_and_denial_look_the_same"):
+            self.assertIn('self._send(404, "text/plain", b"not found")', self.text)
+            # 거부 경로에서 본문을 실어 보내지 않는다
+            self.assertNotIn("403", self.text)
+        with self.subTest("a5_it_reads_the_one_sidecar_path"):
+            self.assertIn("asset_text_path(doc_asset_dir(doc_id), fn)", self.text)
+        with self.subTest("a6_module_still_loads"):
+            spec = importlib.util.spec_from_loader(
+                "s9atapi", importlib.machinery.SourceFileLoader("s9atapi", S9))
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            self.assertTrue(callable(m.asset_text_path))
 
 if __name__ == "__main__":
     unittest.main()

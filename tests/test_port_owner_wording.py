@@ -42,36 +42,40 @@ class PortOwnerWording(unittest.TestCase):
     def setUpClass(cls):
         cls.m = _load()
         src = open(S9, encoding="utf-8").read()
+        # 구간은 **표식으로** 끊는다 — 예전엔 1400자를 세었는데, 그 앞의
+        # 주석이 길어지자(REQ-20260902-066) `who += (` 가 창 밖으로 밀려
+        # setUpClass 가 ValueError 로 죽었다. 글자 수는 계약이 아니다.
         i = src.index('who = ""')
-        cls.seg = src[i:i + 1400]
+        cls.seg = src[i:src.index("# 심각도를 비율에 맞춰", i)]
         # 실제로 사람에게 나가는 문장만 — 주석은 이 실수를 인용하고 있어서
         # 그대로 재면 주석 때문에 계약이 깨진다.
         j = cls.seg.index("who += (")
         cls.said = cls.seg[j:cls.seg.index(")\n", j)]
 
     # N1. 중계 이름을 알아본다
-    def test_n1_relay_recognised(self):
-        for n in ("dllhost.exe", "DLLHOST.EXE", " svchost.exe "):
-            self.assertTrue(self.m._is_wsl_relay(n), n)
+    def test_port_owner_wording(self):
+        """PortOwnerWording 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("n1_relay_recognised"):
+                for n in ("dllhost.exe", "DLLHOST.EXE", " svchost.exe "):
+                    self.assertTrue(self.m._is_wsl_relay(n), n)
 
-    # B1. 아무 이름이나 중계로 치지 않는다 — 그러면 진짜 남의 점유를 가린다
-    def test_b1_other_names_not_relay(self):
-        for n in ("chrome.exe", "python3", "", None, "docker.exe"):
-            self.assertFalse(self.m._is_wsl_relay(n), n)
+            # B1. 아무 이름이나 중계로 치지 않는다 — 그러면 진짜 남의 점유를 가린다
+        with self.subTest("b1_other_names_not_relay"):
+                for n in ("chrome.exe", "python3", "", None, "docker.exe"):
+                    self.assertFalse(self.m._is_wsl_relay(n), n)
 
-    # N2. 중계일 때는 그것이 무엇인지와 되돌리는 명령을 함께 말한다
-    def test_n2_says_what_and_how(self):
-        self.assertIn("_is_wsl_relay", self.seg)
-        self.assertIn("중계", self.seg)
-        self.assertIn("--recover", self.seg,
-                      "돌려받는 방법을 말하지 않는다")
+            # N2. 중계일 때는 그것이 무엇인지와 되돌리는 명령을 함께 말한다
+        with self.subTest("n2_says_what_and_how"):
+                self.assertIn("_is_wsl_relay", self.seg)
+                self.assertIn("중계", self.seg)
+                self.assertIn("--recover", self.seg,
+                              "돌려받는 방법을 말하지 않는다")
 
-    # F1. "우리 것/남의 것" 을 단정하지 않는다 — 답할 수 없는 질문이다
-    #     (REQ-20260827-022 에서 그렇게 단정했다가 매번 거짓을 말했다)
-    def test_f1_no_ownership_claim(self):
-        for phrase in ("우리 것이 아니", "남의 프로세스", "우리 몫"):
-            self.assertNotIn(phrase, self.said, phrase)
-
+            # F1. "우리 것/남의 것" 을 단정하지 않는다 — 답할 수 없는 질문이다
+            #     (REQ-20260827-022 에서 그렇게 단정했다가 매번 거짓을 말했다)
+        with self.subTest("f1_no_ownership_claim"):
+            for phrase in ("우리 것이 아니", "남의 프로세스", "우리 몫"):
+                self.assertNotIn(phrase, self.said, phrase)
 
 if __name__ == "__main__":
     unittest.main()

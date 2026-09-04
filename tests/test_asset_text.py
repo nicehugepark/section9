@@ -114,122 +114,122 @@ class TestAssetText(unittest.TestCase):
             return e.code, e.read().decode("utf-8", "replace")
 
     # ---- S1. 인제스트 → 사이드카 -----------------------------------------
-    def test_s1_ingest_writes_sidecar(self):
-        body = f"연산군은 {SECRET} 에서 죽었다.\n두 번째 줄."
-        src = self.upload("s1.txt", body)
-        rid = self.new_with("사이드카 생성", [src])
-        self.assertEqual(self.sidecar(rid, "s1.txt").strip(), body.strip())
+    def test_test_asset_text(self):
+        """TestAssetText 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("s1_ingest_writes_sidecar"):
+            body = f"연산군은 {SECRET} 에서 죽었다.\n두 번째 줄."
+            src = self.upload("s1.txt", body)
+            rid = self.new_with("사이드카 생성", [src])
+            self.assertEqual(self.sidecar(rid, "s1.txt").strip(), body.strip())
+        with self.subTest("s1b_sidecar_from_real_pdf"):
+                with open(PDF_FIXTURE, "rb") as f:
+                    src = self.upload("s1b.pdf", f.read())
+                rid = self.new_with("PDF 사이드카", [src])
+                got = self.sidecar(rid, "s1b.pdf")
+                self.assertGreater(len(got), 200, "PDF 추출본이 사이드카에 없다")
+                word = [w for w in got.split() if len(w) >= 3][0]
+                self.assertIn(rid, self.cli("search", word, "--body"))
 
-    def test_s1b_sidecar_from_real_pdf(self):
-        """실물 한글 PDF(REQ-20260826-001 픽스처)의 추출본이 그대로 남는다."""
-        with open(PDF_FIXTURE, "rb") as f:
-            src = self.upload("s1b.pdf", f.read())
-        rid = self.new_with("PDF 사이드카", [src])
-        got = self.sidecar(rid, "s1b.pdf")
-        self.assertGreater(len(got), 200, "PDF 추출본이 사이드카에 없다")
-        word = [w for w in got.split() if len(w) >= 3][0]
-        self.assertIn(rid, self.cli("search", word, "--body"))
+            # ---- S2. 검색이 첨부 본문까지 본다 -----------------------------------
+        with self.subTest("s2_search_body_finds_attachment_text"):
+                src = self.upload("s2.txt", f"기록에 따르면 {SECRET} 은 강 가운데다.")
+                rid = self.new_with("첨부 검색", [src], body_extra="본문에는 없는 낱말")
+                out = self.cli("search", SECRET, "--body")
+                self.assertIn(rid, out, "첨부 안에만 있는 문구로 문서가 잡히지 않는다")
+                self.assertIn("s2.txt", out, "어느 첨부에서 나왔는지 안 보인다")
+                # 첨부가 없는 문서는 여전히 안 잡힌다
+                self.assertEqual(self.cli("search", SECRET).strip(), "",
+                                 "메타 검색이 첨부 본문에 오염됐다")
 
-    # ---- S2. 검색이 첨부 본문까지 본다 -----------------------------------
-    def test_s2_search_body_finds_attachment_text(self):
-        src = self.upload("s2.txt", f"기록에 따르면 {SECRET} 은 강 가운데다.")
-        rid = self.new_with("첨부 검색", [src], body_extra="본문에는 없는 낱말")
-        out = self.cli("search", SECRET, "--body")
-        self.assertIn(rid, out, "첨부 안에만 있는 문구로 문서가 잡히지 않는다")
-        self.assertIn("s2.txt", out, "어느 첨부에서 나왔는지 안 보인다")
-        # 첨부가 없는 문서는 여전히 안 잡힌다
-        self.assertEqual(self.cli("search", SECRET).strip(), "",
-                         "메타 검색이 첨부 본문에 오염됐다")
+            # ---- S3. 사이드카는 재생성 가능한 파생물 -----------------------------
+        with self.subTest("s3_reindex_restores"):
+                src = self.upload("s3.txt", f"{SECRET} 관련 조사 메모.")
+                rid = self.new_with("재생성", [src])
+                before = self.sidecar(rid, "s3.txt")
+                shutil.rmtree(self.text_dir(rid))
+                self.assertEqual(self.cli("search", SECRET, "--body").count(rid), 0,
+                                 "사이드카를 지웠는데도 검색된다 — 다른 곳에 복제됐다")
+                self.cli("assets", "reindex")
+                self.assertEqual(self.sidecar(rid, "s3.txt"), before)
+                self.assertIn(rid, self.cli("search", SECRET, "--body"))
 
-    # ---- S3. 사이드카는 재생성 가능한 파생물 -----------------------------
-    def test_s3_reindex_restores(self):
-        src = self.upload("s3.txt", f"{SECRET} 관련 조사 메모.")
-        rid = self.new_with("재생성", [src])
-        before = self.sidecar(rid, "s3.txt")
-        shutil.rmtree(self.text_dir(rid))
-        self.assertEqual(self.cli("search", SECRET, "--body").count(rid), 0,
-                         "사이드카를 지웠는데도 검색된다 — 다른 곳에 복제됐다")
-        self.cli("assets", "reindex")
-        self.assertEqual(self.sidecar(rid, "s3.txt"), before)
-        self.assertIn(rid, self.cli("search", SECRET, "--body"))
+            # ---- S4. 회귀: 문서 본문 검색은 그대로 -------------------------------
+        with self.subTest("s4_doc_body_search_unchanged"):
+                mark = "회귀확인문구ZX"
+                out = self.cli("new", "request", "--title", "본문 검색", "--summary", "s",
+                               "--size", "S", "--goal", "g", "--body", f"{mark} 있다")
+                rid = out.split()[0]
+                hit = self.cli("search", mark, "--body")
+                self.assertIn(rid, hit)
+                self.assertRegex(hit, rf"{rid}:\d+:", "라인 번호 표기가 사라졌다")
 
-    # ---- S4. 회귀: 문서 본문 검색은 그대로 -------------------------------
-    def test_s4_doc_body_search_unchanged(self):
-        mark = "회귀확인문구ZX"
-        out = self.cli("new", "request", "--title", "본문 검색", "--summary", "s",
-                       "--size", "S", "--goal", "g", "--body", f"{mark} 있다")
-        rid = out.split()[0]
-        hit = self.cli("search", mark, "--body")
-        self.assertIn(rid, hit)
-        self.assertRegex(hit, rf"{rid}:\d+:", "라인 번호 표기가 사라졌다")
+            # ---- S5. 회귀: 카탈로그 스키마·크기 불변 -----------------------------
+        with self.subTest("s5_catalog_not_bloated"):
+                src = self.upload("s5.txt", (SECRET + " ") * 500)
+                rid = self.new_with("카탈로그 불변", [src])
+                cat = os.path.join(self.tmp, "index", "catalog.jsonl")
+                self.cli("index", "rebuild")
+                import json
+                rows = [json.loads(l) for l in open(cat, encoding="utf-8") if l.strip()]
+                row = [r for r in rows if r["id"] == rid][0]
+                for k, v in row.items():
+                    self.assertNotIn(SECRET, str(v),
+                                     f"카탈로그 '{k}' 에 첨부 본문이 실렸다")
 
-    # ---- S5. 회귀: 카탈로그 스키마·크기 불변 -----------------------------
-    def test_s5_catalog_not_bloated(self):
-        src = self.upload("s5.txt", (SECRET + " ") * 500)
-        rid = self.new_with("카탈로그 불변", [src])
-        cat = os.path.join(self.tmp, "index", "catalog.jsonl")
-        self.cli("index", "rebuild")
-        import json
-        rows = [json.loads(l) for l in open(cat, encoding="utf-8") if l.strip()]
-        row = [r for r in rows if r["id"] == rid][0]
-        for k, v in row.items():
-            self.assertNotIn(SECRET, str(v),
-                             f"카탈로그 '{k}' 에 첨부 본문이 실렸다")
+            # ---- S6. 추출 0자면 사이드카를 만들지 않는다 -------------------------
+        with self.subTest("s6_no_empty_sidecar"):
+                src = self.upload("s6.png", PNG)
+                rid = self.new_with("빈 추출", [src])
+                d = self.text_dir(rid)
+                self.assertFalse(os.path.exists(os.path.join(d, "s6.png.txt")),
+                                 "추출 0자인데 빈 사이드카를 남겼다")
 
-    # ---- S6. 추출 0자면 사이드카를 만들지 않는다 -------------------------
-    def test_s6_no_empty_sidecar(self):
-        src = self.upload("s6.png", PNG)
-        rid = self.new_with("빈 추출", [src])
-        d = self.text_dir(rid)
-        self.assertFalse(os.path.exists(os.path.join(d, "s6.png.txt")),
-                         "추출 0자인데 빈 사이드카를 남겼다")
+            # ---- S7. 이름 충돌·유니코드 ------------------------------------------
+        with self.subTest("s7_name_collision_and_unicode"):
+                a = self.upload("같은이름.txt", "텍스트쪽 고유낱말 알파일세")
+                b = self.upload("같은이름.md", "마크다운쪽 고유낱말 베타일세")
+                rid = self.new_with("이름 충돌", [a, b])
+                self.assertIn("알파일세", self.sidecar(rid, "같은이름.txt"))
+                self.assertIn("베타일세", self.sidecar(rid, "같은이름.md"))
 
-    # ---- S7. 이름 충돌·유니코드 ------------------------------------------
-    def test_s7_name_collision_and_unicode(self):
-        a = self.upload("같은이름.txt", "텍스트쪽 고유낱말 알파일세")
-        b = self.upload("같은이름.md", "마크다운쪽 고유낱말 베타일세")
-        rid = self.new_with("이름 충돌", [a, b])
-        self.assertIn("알파일세", self.sidecar(rid, "같은이름.txt"))
-        self.assertIn("베타일세", self.sidecar(rid, "같은이름.md"))
+            # ---- S8. 상한에서 자른다 ---------------------------------------------
+        with self.subTest("s8_truncates_at_limit"):
+                cap = s9_const("ATTACH_TEXT_MAX")
+                big = "가나다라마바사아자차" * (cap // 10 + 500)
+                src = self.upload("s8.txt", big)
+                rid = self.new_with("상한", [src])
+                got = self.sidecar(rid, "s8.txt")
+                self.assertLessEqual(len(got), cap)
+                self.assertGreater(len(got), cap // 2, "상한보다 훨씬 적게 저장됐다")
+                self.assertTrue(big.startswith(got[:200]))
 
-    # ---- S8. 상한에서 자른다 ---------------------------------------------
-    def test_s8_truncates_at_limit(self):
-        cap = s9_const("ATTACH_TEXT_MAX")
-        big = "가나다라마바사아자차" * (cap // 10 + 500)
-        src = self.upload("s8.txt", big)
-        rid = self.new_with("상한", [src])
-        got = self.sidecar(rid, "s8.txt")
-        self.assertLessEqual(len(got), cap)
-        self.assertGreater(len(got), cap // 2, "상한보다 훨씬 적게 저장됐다")
-        self.assertTrue(big.startswith(got[:200]))
+            # ---- S9. 첨부 하나가 실패해도 인제스트는 완주 ------------------------
+        with self.subTest("s9_extraction_failure_isolated"):
+                bad = self.upload("s9bad.pdf", b"%PDF-1.4\n<<garbage>>\n")
+                good = self.upload("s9good.txt", f"{SECRET} 정상 추출")
+                rid = self.new_with("실패 격리", [bad, good])
+                with open(self.doc_path(rid), encoding="utf-8") as f:
+                    body = f.read()
+                self.assertIn(f"assets/{rid}/s9bad.pdf", body, "파일 이전이 중단됐다")
+                self.assertIn(f"assets/{rid}/s9good.txt", body)
+                self.assertIn("attached", body, "태깅이 중단됐다")
+                self.assertIn(SECRET, self.sidecar(rid, "s9good.txt"))
 
-    # ---- S9. 첨부 하나가 실패해도 인제스트는 완주 ------------------------
-    def test_s9_extraction_failure_isolated(self):
-        bad = self.upload("s9bad.pdf", b"%PDF-1.4\n<<garbage>>\n")
-        good = self.upload("s9good.txt", f"{SECRET} 정상 추출")
-        rid = self.new_with("실패 격리", [bad, good])
-        with open(self.doc_path(rid), encoding="utf-8") as f:
-            body = f.read()
-        self.assertIn(f"assets/{rid}/s9bad.pdf", body, "파일 이전이 중단됐다")
-        self.assertIn(f"assets/{rid}/s9good.txt", body)
-        self.assertIn("attached", body, "태깅이 중단됐다")
-        self.assertIn(SECRET, self.sidecar(rid, "s9good.txt"))
+            # ---- S10. 서버 검색도 같은 의미론 ------------------------------------
+        with self.subTest("s10_server_search_matches_cli"):
+                src = self.upload("s10.txt", f"서버쪽 {SECRET} 확인")
+                rid = self.new_with("서버 검색", [src])
+                code, body = self.get(f"/api/search?q={urllib.parse.quote(SECRET)}")
+                self.assertEqual(code, 200)
+                self.assertIn(rid, body, "대시보드 검색이 첨부 본문을 못 본다")
 
-    # ---- S10. 서버 검색도 같은 의미론 ------------------------------------
-    def test_s10_server_search_matches_cli(self):
-        src = self.upload("s10.txt", f"서버쪽 {SECRET} 확인")
-        rid = self.new_with("서버 검색", [src])
-        code, body = self.get(f"/api/search?q={urllib.parse.quote(SECRET)}")
-        self.assertEqual(code, 200)
-        self.assertIn(rid, body, "대시보드 검색이 첨부 본문을 못 본다")
-
-    # ---- S11. .text 가 첨부 경로로 새지 않는다 ---------------------------
-    def test_s11_text_dir_not_served(self):
-        src = self.upload("s11.txt", f"{SECRET} 위생")
-        rid = self.new_with("위생", [src])
-        self.assertEqual(self.get(f"/api/asset?doc={rid}&f=.text")[0], 404)
-        self.assertEqual(
-            self.get(f"/api/asset?doc={rid}&f=.text/s11.txt.txt")[0], 404)
+            # ---- S11. .text 가 첨부 경로로 새지 않는다 ---------------------------
+        with self.subTest("s11_text_dir_not_served"):
+            src = self.upload("s11.txt", f"{SECRET} 위생")
+            rid = self.new_with("위생", [src])
+            self.assertEqual(self.get(f"/api/asset?doc={rid}&f=.text")[0], 404)
+            self.assertEqual(
+                self.get(f"/api/asset?doc={rid}&f=.text/s11.txt.txt")[0], 404)
 
 if __name__ == "__main__":
     unittest.main()

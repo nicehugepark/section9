@@ -347,7 +347,12 @@ class TestSuiteNetworkDiscipline(unittest.TestCase):
                 continue
             with open(os.path.join(HERE, fn), encoding="utf-8") as f:
                 src = f.read()
-            if "serve" not in src or "create_connection" not in src:
+            # 서버를 **띄우는** 파일만 본다. 글자 "serve" 로 고르면 주석·
+            # 독스트링에 그 말이 있고 create_connection 을 흉내내기로 가로채는
+            # 파일까지 걸린다 — test_metrics 가 그 자리였고 서버를 띄우지도
+            # 기다리지도 않는다. 실제로 띄우는 자리는 argv 토큰으로 드러난다.
+            spawns = ('"serve"' in src) or ("'serve'" in src)
+            if not spawns or "create_connection" not in src:
                 continue
             if "wait_server" not in src:
                 bad.append(fn)

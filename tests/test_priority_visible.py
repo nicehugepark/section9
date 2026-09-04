@@ -56,55 +56,40 @@ class CardShowsPriority(unittest.TestCase):
         cls.card = _fn_body(cls.html, "cardHTML")
         cls.prio = _fn_body(cls.html, "prioHTML")
 
-    def test_cardhtml_exists(self):
-        """전제: 카드 렌더 함수가 있다 (이름이 바뀌었다면 계약을 갱신하라)."""
-        self.assertTrue(self.card, "cardHTML() 를 찾지 못했다")
-
-    def test_card_renders_prio_span(self):
-        self.assertIn("prioHTML(r)", self.card,
-                      "보드 카드가 우선순위를 그리지 않는다 — 반려 사유 그대로다")
-        # 클래스 목록은 문서 뷰어용 pfull 로 갈라진다 (REQ-20260827-029) —
-        # 여는 따옴표까지만 본다. 여기서 고정할 것은 이름이지 문자열 모양이 아니다.
-        self.assertIn('class="prio', self.prio,
-                      "prioHTML() 이 .prio 를 그리지 않는다")
-
-    def test_card_carries_numeric_value(self):
-        """등급 이름만 보이면 '가중치 형태로' 라는 지시를 배반한다.
-        기계가 읽는 축(data-prio)과 사람이 읽는 숫자가 함께 있어야 한다."""
-        self.assertIn("data-prio=", self.prio)
-        self.assertIn("data-tier=", self.prio)
-        self.assertIn("pnum", self.prio, "사람이 읽는 숫자 자리가 없다")
-
-    def test_all_three_surfaces_share_one_renderer(self):
-        """카드·Docs 목록 행·문서 뷰어가 같은 함수를 쓴다 — 표기가 갈리면
-        같은 값이 화면마다 다른 등급으로 보인다."""
-        self.assertGreaterEqual(
-            len(re.findall(r"prioHTML\(", self.html)), 4,
-            "prioHTML() 선언 + 세 화면 호출이 모두 있어야 한다")
-
-    def test_card_prio_is_unconditional(self):
-        """반려의 핵심 회귀 방지: 기본값을 숨기는 조건이 붙으면 안 된다.
-
-        `.size` 는 값이 없을 수 있어 조건부가 맞지만, priority 는 언제나
-        값이 있다(기본 50). 기본값 비교로 표기를 끄는 순간 이 요청이 처음
-        반려됐던 상태로 정확히 되돌아간다."""
-        guard = re.search(
-            r"(priority|prio)\s*(!==|!=|===|==|>|<|>=|<=)\s*"
-            r"(50|PRIORITY_DEFAULT|PRIO_DEFAULT)\s*\?", self.card)
-        self.assertIsNone(
-            guard,
-            "카드의 우선순위 표기가 기본값 비교로 감춰진다: "
-            + (guard.group(0) if guard else ""))
-        # 조건부 표기가 어떻게 생겼는지 아는 상태로 위를 단언한다는 근거
-        self.assertIn("r.size ?", self.card,
-                      "전제 확인 실패: .size 의 조건부 표기가 사라졌다")
-
-    def test_prio_precedes_size_on_meta_row(self):
-        """우선순위가 크기보다 먼저 읽혀야 한다 — 무엇부터 집을지가 먼저다."""
-        self.assertLess(self.card.index("prioHTML(r)"),
-                        self.card.index("r.size ?"),
-                        "우선순위가 크기 뒤에 온다")
-
+    def test_card_shows_priority(self):
+        """보드 카드 — 우선순위는 조건 없이 항상 찍힌다."""
+        with self.subTest("cardhtml_exists"):
+            self.assertTrue(self.card, "cardHTML() 를 찾지 못했다")
+        with self.subTest("card_renders_prio_span"):
+            self.assertIn("prioHTML(r)", self.card,
+                          "보드 카드가 우선순위를 그리지 않는다 — 반려 사유 그대로다")
+            # 클래스 목록은 문서 뷰어용 pfull 로 갈라진다 (REQ-20260827-029) —
+            # 여는 따옴표까지만 본다. 여기서 고정할 것은 이름이지 문자열 모양이 아니다.
+            self.assertIn('class="prio', self.prio,
+                          "prioHTML() 이 .prio 를 그리지 않는다")
+        with self.subTest("card_carries_numeric_value"):
+            self.assertIn("data-prio=", self.prio)
+            self.assertIn("data-tier=", self.prio)
+            self.assertIn("pnum", self.prio, "사람이 읽는 숫자 자리가 없다")
+        with self.subTest("all_three_surfaces_share_one_renderer"):
+            self.assertGreaterEqual(
+                len(re.findall(r"prioHTML\(", self.html)), 4,
+                "prioHTML() 선언 + 세 화면 호출이 모두 있어야 한다")
+        with self.subTest("card_prio_is_unconditional"):
+            guard = re.search(
+                r"(priority|prio)\s*(!==|!=|===|==|>|<|>=|<=)\s*"
+                r"(50|PRIORITY_DEFAULT|PRIO_DEFAULT)\s*\?", self.card)
+            self.assertIsNone(
+                guard,
+                "카드의 우선순위 표기가 기본값 비교로 감춰진다: "
+                + (guard.group(0) if guard else ""))
+            # 조건부 표기가 어떻게 생겼는지 아는 상태로 위를 단언한다는 근거
+            self.assertIn("r.size ?", self.card,
+                          "전제 확인 실패: .size 의 조건부 표기가 사라졌다")
+        with self.subTest("prio_precedes_size_on_meta_row"):
+            self.assertLess(self.card.index("prioHTML(r)"),
+                            self.card.index("r.size ?"),
+                            "우선순위가 크기 뒤에 온다")
 
 class TierDerivation(unittest.TestCase):
     """등급은 값 하나에서 파생된다 — 저장은 수치, 표기는 등급."""
@@ -156,28 +141,24 @@ class VisualConstraints(unittest.TestCase):
         cls.rules = [(m.group(1), m.group(2)) for m in re.finditer(
             r"([^{}]*\.prio[^{}]*)\{([^}]*)\}", cls.html)]
 
-    def test_prio_is_styled(self):
-        self.assertTrue(self.rules, ".prio 에 대한 CSS 규칙이 하나도 없다")
-
-    def test_no_color_fill(self):
-        """색면 하이라이트 금지 — 등급을 배경으로 칠하지 않는다."""
-        for sel, body in self.rules:
-            for decl in re.findall(r"background(?:-color)?\s*:([^;]+)", body):
-                v = decl.strip().lower()
-                ok = (v.startswith("none") or v.startswith("transparent")
-                      or v == "inherit")
-                self.assertTrue(
-                    ok, "%s 가 .prio 에 색면을 칠한다: background:%s"
-                        % (sel.strip(), decl.strip()))
-
-    def test_not_all_achromatic(self):
-        """무채색 미니멀 금지 — 등급 차이가 색조로도 읽혀야 한다.
-        전부 var(--faint)/회색이면 urgent 와 normal 이 구분되지 않는다."""
-        joined = " ".join(b for _, b in self.rules)
-        self.assertRegex(
-            joined, r"(hsl|--c-|--accent|--warn|--hot|color-mix)",
-            ".prio 규칙이 전부 무채색이다 — 등급 대비가 생기지 않는다")
-
+    def test_visual_constraints(self):
+        """프로젝트 시각 규약: 색은 면이 아니라 글자·마크·타이포·깊이로."""
+        with self.subTest("prio_is_styled"):
+            self.assertTrue(self.rules, ".prio 에 대한 CSS 규칙이 하나도 없다")
+        with self.subTest("no_color_fill"):
+            for sel, body in self.rules:
+                for decl in re.findall(r"background(?:-color)?\s*:([^;]+)", body):
+                    v = decl.strip().lower()
+                    ok = (v.startswith("none") or v.startswith("transparent")
+                          or v == "inherit")
+                    self.assertTrue(
+                        ok, "%s 가 .prio 에 색면을 칠한다: background:%s"
+                            % (sel.strip(), decl.strip()))
+        with self.subTest("not_all_achromatic"):
+            joined = " ".join(b for _, b in self.rules)
+            self.assertRegex(
+                joined, r"(hsl|--c-|--accent|--warn|--hot|color-mix)",
+                ".prio 규칙이 전부 무채색이다 — 등급 대비가 생기지 않는다")
 
 class BoardOrder(unittest.TestCase):
     """조회 순서가 우선순위를 따른다 (유도이지 강제가 아니다)."""
@@ -187,36 +168,30 @@ class BoardOrder(unittest.TestCase):
         with open(INDEX, encoding="utf-8") as f:
             cls.html = f.read()
 
-    def test_single_ordering_point(self):
-        """CLI 의 work_order() 와 같은 원리 — 규칙이 흩어지면 화면마다
-        순서가 달라진다. 대시보드도 정렬 진입점이 하나여야 한다."""
-        self.assertEqual(
-            len(re.findall(r"const\s+workOrder\s*=", self.html)), 1,
-            "workOrder 정렬 진입점이 없거나 둘 이상이다")
-
-    def test_priority_is_primary_key(self):
-        m = re.search(r"const\s+workOrder\s*=(.*?);\n", self.html, re.S)
-        self.assertIsNotNone(m)
-        body = m.group(1)
-        # 값 읽기는 prioOf() 하나를 거친다(표기와 같은 파생) — 정렬만 raw
-        # r.priority 를 직접 보면 값이 없거나 망가진 문서에서 순서와 표기가
-        # 갈린다.
-        self.assertIn("prioOf(", body, "정렬이 우선순위를 보지 않는다")
-        self.assertLess(body.index("prioOf("),
-                        body.index("updated"),
-                        "우선순위가 1차 키가 아니다")
-
-    def test_filtered_uses_work_order(self):
-        """Board·Docs·Graph 가 모두 같은 순서를 쓰도록 filtered() 한 곳에서
-        건다 — 탭마다 순서가 다르면 우선순위를 신뢰할 수 없다."""
-        body = _fn_body(self.html, "filtered")
-        self.assertIn("workOrder(catalog)", body,
-                      "filtered() 가 workOrder 를 쓰지 않는다")
-
-    def test_default_priority_constant(self):
-        self.assertRegex(self.html, r"PRIO_DEFAULT\s*=\s*50",
-                         "기본값 50 상수가 없다")
-
+    def test_board_order(self):
+        """조회 순서가 우선순위를 따른다 (유도이지 강제가 아니다)."""
+        with self.subTest("single_ordering_point"):
+            self.assertEqual(
+                len(re.findall(r"const\s+workOrder\s*=", self.html)), 1,
+                "workOrder 정렬 진입점이 없거나 둘 이상이다")
+        with self.subTest("priority_is_primary_key"):
+            m = re.search(r"const\s+workOrder\s*=(.*?);\n", self.html, re.S)
+            self.assertIsNotNone(m)
+            body = m.group(1)
+            # 값 읽기는 prioOf() 하나를 거친다(표기와 같은 파생) — 정렬만 raw
+            # r.priority 를 직접 보면 값이 없거나 망가진 문서에서 순서와 표기가
+            # 갈린다.
+            self.assertIn("prioOf(", body, "정렬이 우선순위를 보지 않는다")
+            self.assertLess(body.index("prioOf("),
+                            body.index("updated"),
+                            "우선순위가 1차 키가 아니다")
+        with self.subTest("filtered_uses_work_order"):
+            body = _fn_body(self.html, "filtered")
+            self.assertIn("workOrder(catalog)", body,
+                          "filtered() 가 workOrder 를 쓰지 않는다")
+        with self.subTest("default_priority_constant"):
+            self.assertRegex(self.html, r"PRIO_DEFAULT\s*=\s*50",
+                             "기본값 50 상수가 없다")
 
 if __name__ == "__main__":
     unittest.main()

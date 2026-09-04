@@ -78,99 +78,100 @@ class Lease(unittest.TestCase):
         return self.m.doc_lease(self.m.read_doc(self.m.locate(rid))[0])
 
     # L1. 리스 없는 내 문서 → 획득
-    def test_l1_acquire_free(self):
-        rid = self.new()
-        ok, code, why = self.m.doc_lease_acquire(rid, "claim", local=self.local())
-        self.assertTrue(ok, (code, why))
-        l = self.lease(rid)
-        self.assertEqual((l["user"], l["machine"], l["session"]), ("me", "here", "s-me1"))
-        self.assertTrue(l["since"] and l["renewed"])
+    def test_lease(self):
+        """Lease 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("l1_acquire_free"):
+                rid = self.new()
+                ok, code, why = self.m.doc_lease_acquire(rid, "claim", local=self.local())
+                self.assertTrue(ok, (code, why))
+                l = self.lease(rid)
+                self.assertEqual((l["user"], l["machine"], l["session"]), ("me", "here", "s-me1"))
+                self.assertTrue(l["since"] and l["renewed"])
 
-    # L2. 다른 머신의 신선한 리스 → busy-elsewhere; --takeover 로 이관
-    def test_l2_busy_elsewhere_and_takeover(self):
-        rid = self.new()
-        self.set_lease(rid)
-        for want in ("list", "spawn", "claim"):
-            ok, code, _ = self.m.doc_lease_acquire(rid, want, local=self.local())
-            self.assertEqual((ok, code), (False, "busy-elsewhere"), want)
-        self.assertEqual(self.lease(rid)["machine"], "there")
-        # 남(other)은 담당자가 아니라 takeover 도 못 한다
-        ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local("other"),
-                                               takeover=True)
-        self.assertFalse(ok)
-        # 담당자 본인은 옮긴다 — History 에 남는다
-        ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local(),
-                                               takeover=True)
-        self.assertEqual((ok, code), (True, "takeover"))
-        self.assertEqual(self.lease(rid)["machine"], "here")
-        body = self.m.read_doc(self.m.locate(rid))[1]
-        self.assertIn("lease: takeover me@there -> me@here", body)
-        # CLI 도 같은 문
-        rid2 = self.new()
-        self.set_lease(rid2)
-        r = subprocess.run([S9, "claim", rid2, "--takeover"], capture_output=True,
-                           text=True, env={**self.base, "S9_USER": "me",
-                                           "S9_SESSION": "s-me2"},
+            # L2. 다른 머신의 신선한 리스 → busy-elsewhere; --takeover 로 이관
+        with self.subTest("l2_busy_elsewhere_and_takeover"):
+                rid = self.new()
+                self.set_lease(rid)
+                for want in ("list", "spawn", "claim"):
+                    ok, code, _ = self.m.doc_lease_acquire(rid, want, local=self.local())
+                    self.assertEqual((ok, code), (False, "busy-elsewhere"), want)
+                self.assertEqual(self.lease(rid)["machine"], "there")
+                # 남(other)은 담당자가 아니라 takeover 도 못 한다
+                ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local("other"),
+                                                       takeover=True)
+                self.assertFalse(ok)
+                # 담당자 본인은 옮긴다 — History 에 남는다
+                ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local(),
+                                                       takeover=True)
+                self.assertEqual((ok, code), (True, "takeover"))
+                self.assertEqual(self.lease(rid)["machine"], "here")
+                body = self.m.read_doc(self.m.locate(rid))[1]
+                self.assertIn("lease: takeover me@there -> me@here", body)
+                # CLI 도 같은 문
+                rid2 = self.new()
+                self.set_lease(rid2)
+                r = subprocess.run([S9, "claim", rid2, "--takeover"], capture_output=True,
+                                   text=True, env={**self.base, "S9_USER": "me",
+                                                   "S9_SESSION": "s-me2"},
+                                   stdin=subprocess.DEVNULL)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(self.lease(rid2)["machine"], "here")
+
+            # L3. 만료된 리스 → free
+        with self.subTest("l3_expired_is_free"):
+                rid = self.new()
+                old = (datetime.datetime.now().astimezone()
+                       - datetime.timedelta(seconds=self.m.DOC_LEASE_TTL + 5)).isoformat()
+                self.set_lease(rid, since=old, renewed=old)
+                ok, code, _ = self.m.doc_lease_acquire(rid, "spawn", local=self.local())
+                self.assertTrue(ok, code)
+                self.assertEqual(self.lease(rid)["machine"], "here")
+
+            # L4. 같은 머신·다른 세션 — 죽었으면 takeover-local, 살았으면 busy-local
+        with self.subTest("l4_same_machine_other_session"):
+                rid = self.new()
+                self.set_lease(rid, machine="here", session="s-dead")
+                with mock.patch.object(self.m, "_session_alive_here", lambda s: False):
+                    ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local())
+                self.assertEqual((ok, code), (True, "takeover-local"))
+                self.set_lease(rid, machine="here", session="s-live")
+                with mock.patch.object(self.m, "_session_alive_here", lambda s: True):
+                    ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local())
+                self.assertEqual((ok, code), (False, "busy-local"))
+                # 내 세션이면 renew
+                self.set_lease(rid, machine="here", session="s-me1")
+                ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local())
+                self.assertEqual((ok, code), (True, "renew"))
+
+            # L5. 전이·노트가 renewed 를 올린다 (하트비트)
+        with self.subTest("l5_progress_writes_renew"):
+                rid = self.new()
+                old = (datetime.datetime.now().astimezone()
+                       - datetime.timedelta(seconds=600)).isoformat()
+                self.set_lease(rid, machine="here", session="s-me1", since=old, renewed=old)
+                env = {**self.base, "S9_USER": "me", "S9_SESSION": "s-me1"}
+                subprocess.run([S9, "note", rid, "진행", "--label", "response"],
+                               capture_output=True, env=env, stdin=subprocess.DEVNULL)
+                self.assertGreater(self.lease(rid)["renewed"], old)
+                self.assertEqual(self.lease(rid)["since"], old)
+                # 남의 리스는 내 쓰기가 갱신하지 않는다
+                self.set_lease(rid, user="other", machine="here", since=old, renewed=old)
+                subprocess.run([S9, "note", rid, "참견", "--label", "response"],
+                               capture_output=True, env=env, stdin=subprocess.DEVNULL)
+                self.assertEqual(self.lease(rid)["renewed"], old)
+
+            # L6. 회수 — assign·종결
+        with self.subTest("l6_release_on_assign_and_close"):
+            rid = self.new()
+            self.set_lease(rid, machine="here", session="s-me1")
+            self.m.do_assign(rid, "other", actor="me")
+            self.assertEqual(self.lease(rid), {})
+            rid2 = self.new()
+            self.set_lease(rid2, machine="here", session="s-me1")
+            subprocess.run([S9, "status", rid2, "cancelled", "--note", "x", "--force"],
+                           capture_output=True, env={**self.base, "S9_USER": "me"},
                            stdin=subprocess.DEVNULL)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(self.lease(rid2)["machine"], "here")
-
-    # L3. 만료된 리스 → free
-    def test_l3_expired_is_free(self):
-        rid = self.new()
-        old = (datetime.datetime.now().astimezone()
-               - datetime.timedelta(seconds=self.m.DOC_LEASE_TTL + 5)).isoformat()
-        self.set_lease(rid, since=old, renewed=old)
-        ok, code, _ = self.m.doc_lease_acquire(rid, "spawn", local=self.local())
-        self.assertTrue(ok, code)
-        self.assertEqual(self.lease(rid)["machine"], "here")
-
-    # L4. 같은 머신·다른 세션 — 죽었으면 takeover-local, 살았으면 busy-local
-    def test_l4_same_machine_other_session(self):
-        rid = self.new()
-        self.set_lease(rid, machine="here", session="s-dead")
-        with mock.patch.object(self.m, "_session_alive_here", lambda s: False):
-            ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local())
-        self.assertEqual((ok, code), (True, "takeover-local"))
-        self.set_lease(rid, machine="here", session="s-live")
-        with mock.patch.object(self.m, "_session_alive_here", lambda s: True):
-            ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local())
-        self.assertEqual((ok, code), (False, "busy-local"))
-        # 내 세션이면 renew
-        self.set_lease(rid, machine="here", session="s-me1")
-        ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local())
-        self.assertEqual((ok, code), (True, "renew"))
-
-    # L5. 전이·노트가 renewed 를 올린다 (하트비트)
-    def test_l5_progress_writes_renew(self):
-        rid = self.new()
-        old = (datetime.datetime.now().astimezone()
-               - datetime.timedelta(seconds=600)).isoformat()
-        self.set_lease(rid, machine="here", session="s-me1", since=old, renewed=old)
-        env = {**self.base, "S9_USER": "me", "S9_SESSION": "s-me1"}
-        subprocess.run([S9, "note", rid, "진행", "--label", "response"],
-                       capture_output=True, env=env, stdin=subprocess.DEVNULL)
-        self.assertGreater(self.lease(rid)["renewed"], old)
-        self.assertEqual(self.lease(rid)["since"], old)
-        # 남의 리스는 내 쓰기가 갱신하지 않는다
-        self.set_lease(rid, user="other", machine="here", since=old, renewed=old)
-        subprocess.run([S9, "note", rid, "참견", "--label", "response"],
-                       capture_output=True, env=env, stdin=subprocess.DEVNULL)
-        self.assertEqual(self.lease(rid)["renewed"], old)
-
-    # L6. 회수 — assign·종결
-    def test_l6_release_on_assign_and_close(self):
-        rid = self.new()
-        self.set_lease(rid, machine="here", session="s-me1")
-        self.m.do_assign(rid, "other", actor="me")
-        self.assertEqual(self.lease(rid), {})
-        rid2 = self.new()
-        self.set_lease(rid2, machine="here", session="s-me1")
-        subprocess.run([S9, "status", rid2, "cancelled", "--note", "x", "--force"],
-                       capture_output=True, env={**self.base, "S9_USER": "me"},
-                       stdin=subprocess.DEVNULL)
-        self.assertEqual(self.lease(rid2), {})
-
+            self.assertEqual(self.lease(rid2), {})
 
 if __name__ == "__main__":
     unittest.main()

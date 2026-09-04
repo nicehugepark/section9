@@ -101,77 +101,78 @@ class TestClaudeUsage(unittest.TestCase):
                 time.sleep(0.3)
 
     # U1. 파싱: 이메일·구독·3버킷(모델명 포함), 토큰 비노출
-    def test_u1_parse(self):
-        d = self.get()
-        self.assertTrue(d["ok"], d)
-        self.assertEqual(d["email"], "me@test.dev")
-        self.assertEqual(d["subscription"], "team")
-        kinds = {L["kind"]: L for L in d["limits"]}
-        self.assertEqual(kinds["session"]["percent"], 7)
-        self.assertEqual(kinds["weekly_all"]["percent"], 31)
-        self.assertEqual(kinds["weekly_scoped"]["percent"], 60)
-        self.assertEqual(kinds["weekly_scoped"]["scope_name"], "Fable")
-        self.assertNotIn("tok-secret-123", json.dumps(d))
+    def test_test_claude_usage(self):
+        """TestClaudeUsage 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("u1_parse"):
+                d = self.get()
+                self.assertTrue(d["ok"], d)
+                self.assertEqual(d["email"], "me@test.dev")
+                self.assertEqual(d["subscription"], "team")
+                kinds = {L["kind"]: L for L in d["limits"]}
+                self.assertEqual(kinds["session"]["percent"], 7)
+                self.assertEqual(kinds["weekly_all"]["percent"], 31)
+                self.assertEqual(kinds["weekly_scoped"]["percent"], 60)
+                self.assertEqual(kinds["weekly_scoped"]["scope_name"], "Fable")
+                self.assertNotIn("tok-secret-123", json.dumps(d))
 
-    # U2. 60s 캐시: 연속 호출이 업스트림 재타격 없음
-    def test_u2_cache(self):
-        self.get()
-        before = len(MockUpstream.hits)
-        self.get()
-        self.get()
-        self.assertEqual(len(MockUpstream.hits), before)
+            # U2. 60s 캐시: 연속 호출이 업스트림 재타격 없음
+        with self.subTest("u2_cache"):
+                self.get()
+                before = len(MockUpstream.hits)
+                self.get()
+                self.get()
+                self.assertEqual(len(MockUpstream.hits), before)
 
-    # U3. 자격증명 없음 → 200 + ok:false (500 금지)
-    def test_u3_no_credentials(self):
-        home2 = tempfile.mkdtemp(prefix="s9home2-")
-        tmp2 = tempfile.mkdtemp(prefix="s9usage2-")
-        port2 = free_port()
-        env2 = {**os.environ, "S9_ROOT": tmp2, "HOME": home2,
-                "S9_REWORK_WATCH": "off"}
-        env2.pop("S9_SESSION", None)
-        subprocess.run([S9, "init"], capture_output=True, env=env2, timeout=15)
-        srv2 = subprocess.Popen(
-            [S9, "serve", "--host", "127.0.0.1", "--port", str(port2)],
-            env=env2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        try:
-            wait_server(port2)
-            d = self.get(port2)
-            self.assertFalse(d["ok"])
-            self.assertIn("자격증명", d.get("error", ""))
-        finally:
-            srv2.terminate()
-            srv2.wait(timeout=5)
+            # U3. 자격증명 없음 → 200 + ok:false (500 금지)
+        with self.subTest("u3_no_credentials"):
+                home2 = tempfile.mkdtemp(prefix="s9home2-")
+                tmp2 = tempfile.mkdtemp(prefix="s9usage2-")
+                port2 = free_port()
+                env2 = {**os.environ, "S9_ROOT": tmp2, "HOME": home2,
+                        "S9_REWORK_WATCH": "off"}
+                env2.pop("S9_SESSION", None)
+                subprocess.run([S9, "init"], capture_output=True, env=env2, timeout=15)
+                srv2 = subprocess.Popen(
+                    [S9, "serve", "--host", "127.0.0.1", "--port", str(port2)],
+                    env=env2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try:
+                    wait_server(port2)
+                    d = self.get(port2)
+                    self.assertFalse(d["ok"])
+                    self.assertIn("자격증명", d.get("error", ""))
+                finally:
+                    srv2.terminate()
+                    srv2.wait(timeout=5)
 
-    # U3b(U6). 서버 생존 중 계정 전환: 자격증명 파일이 바뀌면 TTL 무시하고
-    #          즉시 새 계정 반영 (mtime 무효화 — 장수 serve 프로세스 전제)
-    def test_u3b_account_switch_live(self):
-        d = self.get()
-        self.assertEqual(d["email"], "me@test.dev")
-        with open(os.path.join(self.home, ".claude.json"), "w") as f:
-            json.dump({"oauthAccount":
-                       {"emailAddress": "other@test.dev"}}, f)
-        cred = os.path.join(self.home, ".claude", ".credentials.json")
-        with open(cred, "w") as f:
-            json.dump({"claudeAiOauth": {"accessToken": "tok-other-456",
-                                         "subscriptionType": "pro"}}, f)
-        os.utime(cred, (time.time() + 2, time.time() + 2))  # mtime 확실히 변경
-        d = self.get()
-        self.assertEqual(d["email"], "other@test.dev", d)
-        self.assertEqual(d["subscription"], "pro")
-        self.assertNotIn("tok-other-456", json.dumps(d))
+            # U3b(U6). 서버 생존 중 계정 전환: 자격증명 파일이 바뀌면 TTL 무시하고
+            #          즉시 새 계정 반영 (mtime 무효화 — 장수 serve 프로세스 전제)
+        with self.subTest("u3b_account_switch_live"):
+                d = self.get()
+                self.assertEqual(d["email"], "me@test.dev")
+                with open(os.path.join(self.home, ".claude.json"), "w") as f:
+                    json.dump({"oauthAccount":
+                               {"emailAddress": "other@test.dev"}}, f)
+                cred = os.path.join(self.home, ".claude", ".credentials.json")
+                with open(cred, "w") as f:
+                    json.dump({"claudeAiOauth": {"accessToken": "tok-other-456",
+                                                 "subscriptionType": "pro"}}, f)
+                os.utime(cred, (time.time() + 2, time.time() + 2))  # mtime 확실히 변경
+                d = self.get()
+                self.assertEqual(d["email"], "other@test.dev", d)
+                self.assertEqual(d["subscription"], "pro")
+                self.assertNotIn("tok-other-456", json.dumps(d))
 
-    # U4. 업스트림 다운 → 캐시가 있으면 stale 반환 (서버는 계속 응답)
-    def test_u4_upstream_down_stale(self):
-        self.get()  # 캐시 확보
-        MockUpstream.hits.clear()
-        cls = type(self)
-        cls.upsrv.shutdown()   # 업스트림 다운
-        time.sleep(0.2)
-        d = self.get()
-        # 캐시 TTL 내라 캐시 히트(신선) 또는 stale — 어느 쪽이든 데이터는 있다
-        self.assertTrue(d.get("ok") or d.get("stale"), d)
-        self.assertTrue(d.get("limits"), d)
-
+            # U4. 업스트림 다운 → 캐시가 있으면 stale 반환 (서버는 계속 응답)
+        with self.subTest("u4_upstream_down_stale"):
+            self.get()  # 캐시 확보
+            MockUpstream.hits.clear()
+            cls = type(self)
+            cls.upsrv.shutdown()   # 업스트림 다운
+            time.sleep(0.2)
+            d = self.get()
+            # 캐시 TTL 내라 캐시 히트(신선) 또는 stale — 어느 쪽이든 데이터는 있다
+            self.assertTrue(d.get("ok") or d.get("stale"), d)
+            self.assertTrue(d.get("limits"), d)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

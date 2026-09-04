@@ -547,82 +547,73 @@ class JudgeNoteContract(unittest.TestCase):
     `memo.startswith("승인:")` 가 아무 표시 없이 마주 보고 있었다.
     """
 
-    def test_only_review_exits_get_a_verb(self):
-        self.assertEqual(s9.judge_note("review", "done", "잘 됐다"), "승인: 잘 됐다")
-        self.assertEqual(s9.judge_note("review", "in-progress", "부족"), "반려: 부족")
-        # 판정이 아닌 이동은 메모 그대로 — 여기에 동사를 붙이면 거짓말이다
-        self.assertEqual(s9.judge_note("in-progress", "done", "끝냄"), "끝냄")
-        self.assertEqual(s9.judge_note("open", "cancelled", ""), "")
+    def test_judge_note_contract(self):
+        """History 문구를 짓는 쪽과 되읽는 쪽이 한 쌍인가 (REQ-20260828-007 4차)."""
+        with self.subTest("only_review_exits_get_a_verb"):
+            self.assertEqual(s9.judge_note("review", "done", "잘 됐다"), "승인: 잘 됐다")
+            self.assertEqual(s9.judge_note("review", "in-progress", "부족"), "반려: 부족")
+            # 판정이 아닌 이동은 메모 그대로 — 여기에 동사를 붙이면 거짓말이다
+            self.assertEqual(s9.judge_note("in-progress", "done", "끝냄"), "끝냄")
+            self.assertEqual(s9.judge_note("open", "cancelled", ""), "")
+        with self.subTest("no_memo_is_said_so_and_is_not_a_memo"):
+            n = s9.judge_note("review", "done", "")
+            self.assertEqual(n, "승인 (메모 없음)")
+            self.assertFalse(n.startswith("승인:"),
+                             "메모 없는 승인이 메모 있는 승인으로 읽힌다")
+            self.assertEqual(s9.judge_memo(n), "")
+        with self.subTest("the_pair_round_trips"):
+            for memo in ("한 줄", "콜론: 이 들어간 메모", "  앞뒤 공백  "):
+                for to in ("done", "in-progress"):
+                    note = s9.judge_note("review", to, memo)
+                    self.assertEqual(s9.judge_memo(note + " [via dashboard]"),
+                                     memo.strip(),
+                                     "%r 가 왕복에서 달라진다" % memo)
+        with self.subTest("old_records_still_read_the_same"):
+            self.assertEqual(s9.judge_memo("대시보드 승인 [via dashboard]"), "")
+            self.assertEqual(s9.judge_memo("승인: 이전 기록 [via dashboard]"), "이전 기록")
+            self.assertEqual(s9.judge_memo("반려: 사유 [via dashboard]"), "사유")
+        with self.subTest("the_write_path_composes_it_end_to_end"):
+            tmp = tempfile.mkdtemp(prefix="s9judge-")
+            env = {**os.environ, "S9_ROOT": tmp, "S9_MACHINE": "testbox",
+                   "S9_USER": "tester"}
+            env.pop("S9_SESSION", None)
 
-    def test_no_memo_is_said_so_and_is_not_a_memo(self):
-        """메모 없는 승인은 그렇게 적고, 되읽으면 빈 값이다."""
-        n = s9.judge_note("review", "done", "")
-        self.assertEqual(n, "승인 (메모 없음)")
-        self.assertFalse(n.startswith("승인:"),
-                         "메모 없는 승인이 메모 있는 승인으로 읽힌다")
-        self.assertEqual(s9.judge_memo(n), "")
+            def cli(*argv):
+                r = subprocess.run([S9, *argv], capture_output=True, text=True,
+                                   env=env, timeout=20, stdin=subprocess.DEVNULL)
+                self.assertEqual(r.returncode, 0,
+                                 "s9 %s: %s%s" % (" ".join(argv), r.stdout, r.stderr))
+                return r
 
-    def test_the_pair_round_trips(self):
-        for memo in ("한 줄", "콜론: 이 들어간 메모", "  앞뒤 공백  "):
-            for to in ("done", "in-progress"):
-                note = s9.judge_note("review", to, memo)
-                self.assertEqual(s9.judge_memo(note + " [via dashboard]"),
-                                 memo.strip(),
-                                 "%r 가 왕복에서 달라진다" % memo)
+            cli("init")
+            cli("user", "add", "tester")
+            cli("new", "request", "--title", "판정 문구 계약", "--summary", "s",
+                "--size", "S", "--goal", "g", "--body", "b")
+            doc = glob.glob(os.path.join(tmp, "vault", "requests", "**", "REQ-*.md"),
+                            recursive=True)[0]
+            rid = os.path.splitext(os.path.basename(doc))[0]
+            cli("status", rid, "in-progress", "--note", "착수")
+            cli("status", rid, "review", "--note", "확인 포인트")
 
-    def test_old_records_still_read_the_same(self):
-        """vault 에 이미 박힌 옛 꼴도 같은 뜻으로 읽힌다."""
-        self.assertEqual(s9.judge_memo("대시보드 승인 [via dashboard]"), "")
-        self.assertEqual(s9.judge_memo("승인: 이전 기록 [via dashboard]"), "이전 기록")
-        self.assertEqual(s9.judge_memo("반려: 사유 [via dashboard]"), "사유")
+            # 대시보드가 하는 그대로 — 메모 **원문만** 넘긴다
+            script = ("import os,sys;"
+                      "import importlib.machinery as m, importlib.util as u;"
+                      "sp=u.spec_from_loader('s9x', m.SourceFileLoader('s9x', %r));"
+                      "mod=u.module_from_spec(sp); sp.loader.exec_module(mod);"
+                      "mod.do_transition(%r, 'done', note='이대로 갑시다',"
+                      " user='tester', judge=True, via='dashboard')" % (S9, rid))
+            r = subprocess.run([sys.executable, "-c", script], env=env,
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
-    def test_the_write_path_composes_it_end_to_end(self):
-        """화면이 원문만 보내도 History 에는 판정 문구가 남는다.
-
-        단위 계약만으로는 부족하다 — 끊어야 했던 것은 화면과 서버 **사이**의
-        결합이므로, 실제 쓰기 경로가 그 문구를 짓는지까지 본다.
-        """
-        tmp = tempfile.mkdtemp(prefix="s9judge-")
-        env = {**os.environ, "S9_ROOT": tmp, "S9_MACHINE": "testbox",
-               "S9_USER": "tester"}
-        env.pop("S9_SESSION", None)
-
-        def cli(*argv):
-            r = subprocess.run([S9, *argv], capture_output=True, text=True,
-                               env=env, timeout=20, stdin=subprocess.DEVNULL)
-            self.assertEqual(r.returncode, 0,
-                             "s9 %s: %s%s" % (" ".join(argv), r.stdout, r.stderr))
-            return r
-
-        cli("init")
-        cli("user", "add", "tester")
-        cli("new", "request", "--title", "판정 문구 계약", "--summary", "s",
-            "--size", "S", "--goal", "g", "--body", "b")
-        doc = glob.glob(os.path.join(tmp, "vault", "requests", "**", "REQ-*.md"),
-                        recursive=True)[0]
-        rid = os.path.splitext(os.path.basename(doc))[0]
-        cli("status", rid, "in-progress", "--note", "착수")
-        cli("status", rid, "review", "--note", "확인 포인트")
-
-        # 대시보드가 하는 그대로 — 메모 **원문만** 넘긴다
-        script = ("import os,sys;"
-                  "import importlib.machinery as m, importlib.util as u;"
-                  "sp=u.spec_from_loader('s9x', m.SourceFileLoader('s9x', %r));"
-                  "mod=u.module_from_spec(sp); sp.loader.exec_module(mod);"
-                  "mod.do_transition(%r, 'done', note='이대로 갑시다',"
-                  " user='tester', judge=True, via='dashboard')" % (S9, rid))
-        r = subprocess.run([sys.executable, "-c", script], env=env,
-                           capture_output=True, text=True, timeout=30)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-
-        with open(doc, encoding="utf-8") as f:
-            last = [ln for ln in f.read().split("\n") if " status: " in ln][-1]
-        self.assertIn("review -> done", last)
-        self.assertIn("— 승인: 이대로 갑시다 [via dashboard]", last,
-                      "쓰기 경로가 판정 문구를 짓지 않는다: %s" % last)
-        # 그리고 읽는 쪽이 그것을 메모로 되찾는다
-        note = last.split(" — ", 1)[1]
-        self.assertEqual(s9.judge_memo(note), "이대로 갑시다")
+            with open(doc, encoding="utf-8") as f:
+                last = [ln for ln in f.read().split("\n") if " status: " in ln][-1]
+            self.assertIn("review -> done", last)
+            self.assertIn("— 승인: 이대로 갑시다 [via dashboard]", last,
+                          "쓰기 경로가 판정 문구를 짓지 않는다: %s" % last)
+            # 그리고 읽는 쪽이 그것을 메모로 되찾는다
+            note = last.split(" — ", 1)[1]
+            self.assertEqual(s9.judge_memo(note), "이대로 갑시다")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

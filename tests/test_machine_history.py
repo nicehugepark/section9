@@ -38,75 +38,64 @@ class MachineHistory(unittest.TestCase):
         with open(INDEX, encoding="utf-8") as f:
             cls.src = f.read()
 
-    def test_it_stands_in_my_account_screen(self):
-        """내 계정 화면에 선다 — 프로필 옆이 이 이력의 자리다."""
-        self.assertIn("${machineHistoryHTML(u)}", self._fn("showUserForm"),
-                      "프로필 화면에 이력을 세우지 않았다")
-        fn = self._fn("machineHistoryHTML")
-        for col in ("머신", "운영체제", "계정", "처음", "마지막"):
-            self.assertIn(col, fn, "열이 없다: %s" % col)
-        # 이 칸에는 OS 계정이 올 수도, 사람이 정한 하네스 이름이 올 수도 있다
-        # (2026-08-27 반려). 둘 중 하나라고 이름 붙이면 절반은 거짓말이 된다.
-        self.assertNotIn("<th>OS 계정</th>", fn,
-                         "OS 계정이 아닌 이름까지 OS 계정이라 부른다")
-        self.assertIn("machine_accounts", fn, "서버가 주는 값을 읽지 않는다")
+    def test_machine_history(self):
+        """MachineHistory 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("it_stands_in_my_account_screen"):
+            self.assertIn("${machineHistoryHTML(u)}", self._fn("showUserForm"),
+                          "프로필 화면에 이력을 세우지 않았다")
+            fn = self._fn("machineHistoryHTML")
+            for col in ("머신", "운영체제", "계정", "처음", "마지막"):
+                self.assertIn(col, fn, "열이 없다: %s" % col)
+            # 이 칸에는 OS 계정이 올 수도, 사람이 정한 하네스 이름이 올 수도 있다
+            # (2026-08-27 반려). 둘 중 하나라고 이름 붙이면 절반은 거짓말이 된다.
+            self.assertNotIn("<th>OS 계정</th>", fn,
+                             "OS 계정이 아닌 이름까지 OS 계정이라 부른다")
+            self.assertIn("machine_accounts", fn, "서버가 주는 값을 읽지 않는다")
+        with self.subTest("most_recent_first"):
+            fn = self._fn("machineHistoryHTML")
+            self.assertRegex(fn, r"\.sort\(\(a, b\) => \(Date\.parse\(b\.last",
+                             "마지막 본 때 내림차순으로 세우지 않는다")
+        with self.subTest("stale_recedes_by_lightness_not_hue"):
+            fn = self._fn("machineHistoryHTML")
+            self.assertIn("MACHINE_FRESH_MS", fn, "산 것과 죽은 것을 가르는 잣대가 없다")
+            css = self._css()
+            m = re.search(r"\.mhtbl tr\.stale td[^{]*\{([^}]*)\}", css)
+            self.assertIsNotNone(m, "오래된 줄의 규칙이 없다")
+            self.assertIn("var(--faint)", m.group(1), "명도로 물리지 않는다")
+            blk = ";".join(re.findall(r"\.mh[a-z]*[^{]*\{([^}]*)\}", css))
+            websrc.no_hex(self, blk)
+            self.assertNotRegex(blk, r"\bborder-left\b", "좌측 세로 띠 금지")
+            for v in re.findall(r"background\s*:\s*([^;}\n]+)", blk):
+                self.assertIn(v.strip(), ("none", "transparent", "var(--panel)"),
+                              "색면을 깔지 않는다: %s" % v)
+            # 경과를 함께 보여야 "얼마나 됐나"를 날짜에서 빼지 않아도 된다
+            self.assertIn("fmtElapsed", fn, "얼마나 됐는지 말하지 않는다")
+        with self.subTest("seen_once_says_so"):
+            fn = self._fn("machineHistoryHTML")
+            self.assertRegex(fn, r"const once = r\.first && r\.last && r\.first === r\.last",
+                             "한 번만 보인 머신을 가려내지 않는다")
+            self.assertIn("한 번뿐", fn, "무슨 뜻인지 말하지 않는다")
+        with self.subTest("empty_does_not_break_the_table"):
+            fn = self._fn("machineHistoryHTML")
+            self.assertRegex(fn, r"if \(!rows\.length\)", "빈 경우를 따로 그리지 않는다")
+            self.assertIn("이 계정으로 세션을 연 적이 없습니다", fn,
+                          "왜 비었는지 말하지 않는다")
+            # 빈 상태에서 <table> 을 그리면 머리만 있는 표가 남는다
+            empty = fn[fn.index("if (!rows.length)"):fn.index("const body")]
+            self.assertNotIn("<table", empty, "빈데도 표를 세운다")
+        with self.subTest("wide_table_scrolls_inside_itself"):
+            self.assertIn('<div class="mhwrap">', self._fn("machineHistoryHTML"),
+                          "표를 감싸는 자리가 없다")
+            self.assertIn("overflow-x:auto", self._css(), "표가 판을 밀어낸다")
+        with self.subTest("it_can_be_opened_without_hands"):
+                self.assertIn("mh=([a-z]+)", self.src, "진단 파라미터가 없다")
+                demo = self._fn("machineDemo")
+                self.assertIn("empty", demo, "빈 상태를 세울 길이 없다")
+                # 자리표시자만 쓴다 — 이 저장소는 공개다
+                self.assertNotRegex(demo, r"@[a-z0-9.]+\.(com|net|org)\b",
+                                    "진단 데이터에 실제로 보이는 주소를 적었다")
 
-    def test_most_recent_first(self):
-        """마지막으로 본 때 순 — 지금 쓰는 것이 맨 위다."""
-        fn = self._fn("machineHistoryHTML")
-        self.assertRegex(fn, r"\.sort\(\(a, b\) => \(Date\.parse\(b\.last",
-                         "마지막 본 때 내림차순으로 세우지 않는다")
-
-    def test_stale_recedes_by_lightness_not_hue(self):
-        """오래 안 쓴 줄은 명도로 뒤로 물린다 — 색면·색상 금지."""
-        fn = self._fn("machineHistoryHTML")
-        self.assertIn("MACHINE_FRESH_MS", fn, "산 것과 죽은 것을 가르는 잣대가 없다")
-        css = self._css()
-        m = re.search(r"\.mhtbl tr\.stale td[^{]*\{([^}]*)\}", css)
-        self.assertIsNotNone(m, "오래된 줄의 규칙이 없다")
-        self.assertIn("var(--faint)", m.group(1), "명도로 물리지 않는다")
-        blk = ";".join(re.findall(r"\.mh[a-z]*[^{]*\{([^}]*)\}", css))
-        websrc.no_hex(self, blk)
-        self.assertNotRegex(blk, r"\bborder-left\b", "좌측 세로 띠 금지")
-        for v in re.findall(r"background\s*:\s*([^;}\n]+)", blk):
-            self.assertIn(v.strip(), ("none", "transparent", "var(--panel)"),
-                          "색면을 깔지 않는다: %s" % v)
-        # 경과를 함께 보여야 "얼마나 됐나"를 날짜에서 빼지 않아도 된다
-        self.assertIn("fmtElapsed", fn, "얼마나 됐는지 말하지 않는다")
-
-    def test_seen_once_says_so(self):
-        """처음과 마지막이 같으면 같은 시각을 두 번 적지 않는다."""
-        fn = self._fn("machineHistoryHTML")
-        self.assertRegex(fn, r"const once = r\.first && r\.last && r\.first === r\.last",
-                         "한 번만 보인 머신을 가려내지 않는다")
-        self.assertIn("한 번뿐", fn, "무슨 뜻인지 말하지 않는다")
-
-    def test_empty_does_not_break_the_table(self):
-        """빈 사용자에서 표를 세우지 않고 왜 비었는지 한 줄로 말한다."""
-        fn = self._fn("machineHistoryHTML")
-        self.assertRegex(fn, r"if \(!rows\.length\)", "빈 경우를 따로 그리지 않는다")
-        self.assertIn("이 계정으로 세션을 연 적이 없습니다", fn,
-                      "왜 비었는지 말하지 않는다")
-        # 빈 상태에서 <table> 을 그리면 머리만 있는 표가 남는다
-        empty = fn[fn.index("if (!rows.length)"):fn.index("const body")]
-        self.assertNotIn("<table", empty, "빈데도 표를 세운다")
-
-    def test_wide_table_scrolls_inside_itself(self):
-        """넘치면 표만 스크롤한다 — 판이 통째로 밀리면 옆의 폼까지 어긋난다."""
-        self.assertIn('<div class="mhwrap">', self._fn("machineHistoryHTML"),
-                      "표를 감싸는 자리가 없다")
-        self.assertIn("overflow-x:auto", self._css(), "표가 판을 밀어낸다")
-
-    def test_it_can_be_opened_without_hands(self):
-        """헤드리스로 직접 보고 고칠 길 — 오래된 머신도 빈 계정도 손으로 못 만든다."""
-        self.assertIn("mh=([a-z]+)", self.src, "진단 파라미터가 없다")
-        demo = self._fn("machineDemo")
-        self.assertIn("empty", demo, "빈 상태를 세울 길이 없다")
-        # 자리표시자만 쓴다 — 이 저장소는 공개다
-        self.assertNotRegex(demo, r"@[a-z0-9.]+\.(com|net|org)\b",
-                            "진단 데이터에 실제로 보이는 주소를 적었다")
-
-    # ---------- helpers ----------
+            # ---------- helpers ----------
 
     def _fn(self, name):
         return websrc.fn(self, self.src, name)

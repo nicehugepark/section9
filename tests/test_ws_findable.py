@@ -59,92 +59,62 @@ class ChipIsFindable(unittest.TestCase):
 
     # ---------- ① 누를 수 있다는 것이 보인다 ----------
 
-    def test_f1_the_chip_wears_the_pressable_grammar(self):
-        """점선 밑줄 = "누르면 더 있다" — 이 화면이 이미 쓰는 한 가지 뜻이다."""
-        self.assertIn("text-decoration", self.wsat,
-                      "칩에 누를 수 있다는 표시가 없다 — 표만으로는 태그와 안 갈린다")
-        self.assertIn("dotted", self.wsat, "점선이 아니다")
-        # 이 화면에서 점선 밑줄은 새 어휘가 아니다 — 이미 둘이 쓰고 있다
-        self.assertIn("dotted", rule(self.docs, "a.doclink")
-                      + re.search(r"\.prio\.pfull \.pname\{([^}]*)\}",
-                                  self.board).group(1),
-                      "빌려 온 문법의 원래 자리가 사라졌다 — 칩만 남으면 새 표식이다")
+    def test_chip_is_findable(self):
+        """조각 하나만 본다 — 이어 붙인 한 장에서 `.wsat` 를 찾으면 앞선 조각의 같은"""
+        with self.subTest("f1_the_chip_wears_the_pressable_grammar"):
+            self.assertIn("text-decoration", self.wsat,
+                          "칩에 누를 수 있다는 표시가 없다 — 표만으로는 태그와 안 갈린다")
+            self.assertIn("dotted", self.wsat, "점선이 아니다")
+            # 이 화면에서 점선 밑줄은 새 어휘가 아니다 — 이미 둘이 쓰고 있다
+            self.assertIn("dotted", rule(self.docs, "a.doclink")
+                          + re.search(r"\.prio\.pfull \.pname\{([^}]*)\}",
+                                      self.board).group(1),
+                          "빌려 온 문법의 원래 자리가 사라졌다 — 칩만 남으면 새 표식이다")
+        with self.subTest("f2_tags_do_not_wear_it"):
+            self.assertNotIn("text-decoration", rule(self.board, ".tag"),
+                             "태그에도 밑줄이 있다 — 칩이 다시 태그로 읽힌다")
+        with self.subTest("f3_still_a_word_not_a_field"):
+            for banned in ("background", "border"):
+                self.assertNotIn(banned, self.wsat,
+                                 "칩에 색면·테두리를 줬다")
+        with self.subTest("f4_the_underline_comes_from_the_word"):
+                self.assertIn("text-decoration-color", self.wsat, "밑줄 색을 안 정했다")
+                m = re.search(r"text-decoration-color:([^;]+)", self.wsat)
+                self.assertIn("currentColor", m.group(1),
+                              "밑줄 색이 글자에서 파생하지 않는다 — 톤·스킨을 못 따라간다")
 
-    def test_f2_tags_do_not_wear_it(self):
-        """갈라야 할 상대는 태그다. 태그도 밑줄을 가지면 칩은 다시 태그가 된다."""
-        self.assertNotIn("text-decoration", rule(self.board, ".tag"),
-                         "태그에도 밑줄이 있다 — 칩이 다시 태그로 읽힌다")
+            # ---------- ② 누를 면적 ----------
+        with self.subTest("f5_the_target_is_bigger_than_the_letters"):
+            pad = re.search(r"(?<![\w-])padding:\s*(\d+)px", self.wsat)
+            self.assertTrue(pad, "칩에 누를 여유가 없다 — 글자 높이가 곧 과녁이다")
+            self.assertGreaterEqual(int(pad.group(1)), 4,
+                                    "여유가 너무 얇다 — 과녁이 여전히 글자다")
+        with self.subTest("f6_the_target_does_not_move_the_row"):
+                self.assertIn("margin:0 -", self.wsat,
+                              "가로로 벌어진 여유를 안 되돌렸다 — 메타 줄이 밀린다")
 
-    def test_f3_still_a_word_not_a_field(self):
-        """2차가 세운 계약을 밑줄이 무르지 않는다 — 이 화면의 배지는 글자다.
-        (그래서 `border-bottom` 이 아니라 `text-decoration` 이다: 재질은 같고,
-        칩이 줄바꿈될 때도 밑줄이 따라간다.)"""
-        for banned in ("background", "border"):
-            self.assertNotIn(banned, self.wsat,
-                             "칩에 색면·테두리를 줬다")
-
-    def test_f4_the_underline_comes_from_the_word(self):
-        """밑줄 색은 토큰이 아니라 제 글자색에서 파생한다.
-
-        구분선 토큰(`--hairline`)을 빌려 썼더니 다크 톤에서 밑줄이 배경에
-        잠겼다(glass/carbon 실측). 스킨이 제 색을 가지면 따라오지도 못한다."""
-        self.assertIn("text-decoration-color", self.wsat, "밑줄 색을 안 정했다")
-        m = re.search(r"text-decoration-color:([^;]+)", self.wsat)
-        self.assertIn("currentColor", m.group(1),
-                      "밑줄 색이 글자에서 파생하지 않는다 — 톤·스킨을 못 따라간다")
-
-    # ---------- ② 누를 면적 ----------
-
-    def test_f5_the_target_is_bigger_than_the_letters(self):
-        """10px 글자의 누를 자리는 13px 다 — 손가락에도 떨리는 손에도 좁다."""
-        pad = re.search(r"(?<![\w-])padding:\s*(\d+)px", self.wsat)
-        self.assertTrue(pad, "칩에 누를 여유가 없다 — 글자 높이가 곧 과녁이다")
-        self.assertGreaterEqual(int(pad.group(1)), 4,
-                                "여유가 너무 얇다 — 과녁이 여전히 글자다")
-
-    def test_f6_the_target_does_not_move_the_row(self):
-        """넓힌 만큼은 되돌린다 — 옆의 태그가 한 픽셀도 밀리면 안 된다.
-        칩이 판을 밀면 그건 표시가 아니라 레이아웃 변경이다."""
-        self.assertIn("margin:0 -", self.wsat,
-                      "가로로 벌어진 여유를 안 되돌렸다 — 메타 줄이 밀린다")
-
-    # ---------- ③ 창의 첫 줄이 답이다 ----------
-
-    def test_f7_the_answer_comes_first(self):
-        """"어느 화면에서 확인하나"가 먼저, "왜 저기 앉았나"가 나중."""
-        body = re.search(r"(?m)^function wsOpen\(id\)\{.*?^\}", self.card,
-                         re.S).group(0)
-        i_means = body.index("WS_MEANS")
-        i_why = body.index("s.why")
-        self.assertLess(i_means, i_why,
-                        "사유가 답보다 먼저 선다 — 사람은 답을 못 찾고 창을 닫는다")
-
-    def test_f8_only_the_answer_rises_to_ink(self):
-        """한 창의 강조는 하나다(s9-design 2). 답만 잉크로 올리고, 사유·푸는 법은
-        **흐리게 내리지 않는다** — 본문 대비 4.5:1 아래로 내려가는 문장을 만들지
-        않는다(s9-design 7).
-
-        답이 오르는 자리가 **첫 줄에서 제목으로** 바뀌었다 (REQ-20260902-005):
-        창머리가 문서 id 를 `doc:` 칸으로 받아 가면서 제목 자리가 비었고, 그
-        자리에 사람이 누르며 품은 질문의 답이 올라섰다. 강조가 하나인 것은
-        그대로다 — 제목은 이미 그 창에서 가장 굵은 글자다."""
-        body = re.search(r"(?m)^function wsOpen\(id\)\{.*?^\}", self.card,
-                         re.S).group(0)
-        self.assertRegex(body, r"title:\s*`\$\{WS_MEANS\[",
-                         "답이 제목으로 오르지 않는다")
-        for sel in (".dlgbox .wsrow", ".dlgbox .wsfix"):
-            self.assertNotIn("--faint", rule(self.overlay, sel),
-                             f"{sel} 을 흐림으로 내렸다 — 본문 대비가 무너진다")
-
-    def test_f9_the_answer_is_one_line_not_a_second_copy(self):
-        """답은 WS_MEANS 한 곳에서만 온다. 창이 제 문장을 새로 지으면 자리마다
-        다른 말이 서고, 그때부터 한 벌만 고쳐진다."""
-        body = re.search(r"(?m)^function wsOpen\(id\)\{.*?^\}", self.card,
-                         re.S).group(0)
-        self.assertEqual(body.count("WS_MEANS["), 1, "답이 두 자리에 선다")
-        self.assertNotIn("나타납니다", body,
-                         "창이 답 문장을 손으로 다시 적었다 — WS_MEANS 와 두 벌이다")
-
+            # ---------- ③ 창의 첫 줄이 답이다 ----------
+        with self.subTest("f7_the_answer_comes_first"):
+            body = re.search(r"(?m)^function wsOpen\(id\)\{.*?^\}", self.card,
+                             re.S).group(0)
+            i_means = body.index("WS_MEANS")
+            i_why = body.index("s.why")
+            self.assertLess(i_means, i_why,
+                            "사유가 답보다 먼저 선다 — 사람은 답을 못 찾고 창을 닫는다")
+        with self.subTest("f8_only_the_answer_rises_to_ink"):
+            body = re.search(r"(?m)^function wsOpen\(id\)\{.*?^\}", self.card,
+                             re.S).group(0)
+            self.assertRegex(body, r"title:\s*`\$\{WS_MEANS\[",
+                             "답이 제목으로 오르지 않는다")
+            for sel in (".dlgbox .wsrow", ".dlgbox .wsfix"):
+                self.assertNotIn("--faint", rule(self.overlay, sel),
+                                 f"{sel} 을 흐림으로 내렸다 — 본문 대비가 무너진다")
+        with self.subTest("f9_the_answer_is_one_line_not_a_second_copy"):
+            body = re.search(r"(?m)^function wsOpen\(id\)\{.*?^\}", self.card,
+                             re.S).group(0)
+            self.assertEqual(body.count("WS_MEANS["), 1, "답이 두 자리에 선다")
+            self.assertNotIn("나타납니다", body,
+                             "창이 답 문장을 손으로 다시 적었다 — WS_MEANS 와 두 벌이다")
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,40 +29,32 @@ def _paste_handler():
 
 
 class PasteTakesAnyFile(unittest.TestCase):
-    def test_p1_paste_does_not_filter_by_image(self):
+    def test_paste_takes_any_file(self):
         """붙여넣기 처리기가 종류로 거르지 않는다."""
-        h = _paste_handler()
-        self.assertIn('i.kind === "file"', h)
-        # 주석에는 옛 정규식이 경위로 적혀 있어도 된다 — **코드**에 없어야 한다.
-        code = re.sub(r"/\*.*?\*/", "", h, flags=re.S)
-        code = re.sub(r"//[^\n]*", "", code)
-        self.assertNotIn("^image/", code,
-                         "붙여넣기가 그림만 받으면 pdf·mp4 가 조용히 사라진다")
-
-    def test_p2_the_three_ways_in_agree(self):
-        """붙여넣기·drop·📎 셋이 같은 문을 쓴다 — 한 벌만 고쳐지면 안 된다."""
-        h = _paste_handler()
-        self.assertIn("termUpload", h)
-        # drop 과 파일 고르기도 같은 함수를 지난다
-        self.assertGreaterEqual(SRC.count("termUpload("), 3)
-
-    def test_p3_why_is_written_down(self):
-        """되돌리는 사람이 이유를 읽을 수 있어야 한다."""
-        h = _paste_handler()
-        self.assertIn("REQ-20260829-035", h)
-
-    def test_p4_dialog_chip_has_an_emoji_fallback(self):
-        """칩 앞머리가 🖼/📎 라 mono 하나만 물리면 두부 상자가 된다."""
-        m = re.search(r"\.dlgatt \.chip\{[^}]*\}", SRC, re.S)
-        self.assertTrue(m)
-        body = m.group(0)
-        self.assertIn("Segoe UI Emoji", body)
-        self.assertIn("Noto Color Emoji", body)
-
-    def test_p5_the_terminal_already_had_that_fallback(self):
-        """이 판단은 새것이 아니다 — 터미널이 이미 같은 폴백을 쓴다."""
-        self.assertGreaterEqual(SRC.count('"Segoe UI Emoji","Noto Color Emoji"'), 3)
-
+        with self.subTest("p1_paste_does_not_filter_by_image"):
+            h = _paste_handler()
+            self.assertIn('i.kind === "file"', h)
+            # 주석에는 옛 정규식이 경위로 적혀 있어도 된다 — **코드**에 없어야 한다.
+            code = re.sub(r"/\*.*?\*/", "", h, flags=re.S)
+            code = re.sub(r"//[^\n]*", "", code)
+            self.assertNotIn("^image/", code,
+                             "붙여넣기가 그림만 받으면 pdf·mp4 가 조용히 사라진다")
+        with self.subTest("p2_the_three_ways_in_agree"):
+            h = _paste_handler()
+            self.assertIn("termUpload", h)
+            # drop 과 파일 고르기도 같은 함수를 지난다
+            self.assertGreaterEqual(SRC.count("termUpload("), 3)
+        with self.subTest("p3_why_is_written_down"):
+            h = _paste_handler()
+            self.assertIn("REQ-20260829-035", h)
+        with self.subTest("p4_dialog_chip_has_an_emoji_fallback"):
+            m = re.search(r"\.dlgatt \.chip\{[^}]*\}", SRC, re.S)
+            self.assertTrue(m)
+            body = m.group(0)
+            self.assertIn("Segoe UI Emoji", body)
+            self.assertIn("Noto Color Emoji", body)
+        with self.subTest("p5_the_terminal_already_had_that_fallback"):
+            self.assertGreaterEqual(SRC.count('"Segoe UI Emoji","Noto Color Emoji"'), 3)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

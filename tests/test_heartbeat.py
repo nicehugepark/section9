@@ -142,64 +142,60 @@ class TheStamp(Base):
 class TheVerdict(Base):
     """H2·H4·H5·H7 — attached 까지만, 무신호면 현행."""
 
-    def test_h2_fresh_touch_means_attached_not_moving(self):
-        rid = self.mkreq()
-        r = self.row(rid, mins_quiet=60)         # 문서는 60분 조용
-        sid = self.live_session()
-        self.m.heartbeat_touch(rid, session=sid)   # 손길은 방금, 주인은 살아 있다
-        v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(v["state"], "attached", v)
-        self.assertIsNone(v["mins"], "stalled_mins 가 생겼다 — 손잡이가 선다")
-        self.assertGreaterEqual(v["quiet_mins"], 59,
-                                "조용한 시간을 감췄다 — REQ-034 의 반대편 병")
-        # 낱말 통일 (REQ-20260831-005 tech-writer): 만지다/손대다 두 이름 →
-        # 「손대다」 하나. 손길 문장은 다른 창이 언제 손댔는지를 말한다.
-        self.assertIn("손댔습니다", v["why"])
-
-    def test_h2b_a_dead_sessions_touch_does_not_attach(self):
-        # REQ-034 재발 방지선: 깨운 워커가 클레임만 하고 죽으면 그 도장은
-        # 세션과 함께 죽는다 — 경보가 15분 꺼진 채 남지 않는다.
-        rid = self.mkreq()
-        r = self.row(rid, mins_quiet=60)
-        self.m.heartbeat_touch(rid, session="dead0000")   # 바인딩 없는 세션
-        v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(v["state"], "stalled", v)
-
-    def test_h2c_an_anonymous_touch_does_not_attach(self):
-        # 귀속 없는 손길은 손길이 아니다 — 근원 B 와 같은 원칙.
-        rid = self.mkreq()
-        r = self.row(rid, mins_quiet=60)
-        self.m.heartbeat_touch(rid)                        # 세션 없음
-        v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(v["state"], "stalled", v)
-
-    def test_h4_no_signal_is_stalled_as_before(self):
-        rid = self.mkreq()
-        r = self.row(rid, mins_quiet=60)
-        import shutil
-        shutil.rmtree(self.hbdir, ignore_errors=True)   # C3: 디렉토리 자체가 없다
-        v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(v["state"], "stalled", v)
-        self.assertGreaterEqual(v["mins"], 59)
-
-    def test_h5_future_mtime_is_no_signal(self):
-        rid = self.mkreq()
-        r = self.row(rid, mins_quiet=60)
-        self.m.heartbeat_touch(rid, session=self.live_session())
-        t = time.time() + 3600
-        os.utime(self.hb(rid), (t, t))           # C7: 미래 시각
-        v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(v["state"], "stalled", v)
-
-    def test_h7_old_touch_does_not_attach(self):
-        rid = self.mkreq()
-        r = self.row(rid, mins_quiet=60)
-        self.m.heartbeat_touch(rid, session=self.live_session())
-        t = time.time() - self.m.HEARTBEAT_ATTACH_WIN - 60
-        os.utime(self.hb(rid), (t, t))
-        v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
-        self.assertEqual(v["state"], "stalled", v)
-
+    def test_the_verdict(self):
+        """H2·H4·H5·H7 — attached 까지만, 무신호면 현행."""
+        with self.subTest("h2_fresh_touch_means_attached_not_moving"):
+            rid = self.mkreq()
+            r = self.row(rid, mins_quiet=60)         # 문서는 60분 조용
+            sid = self.live_session()
+            self.m.heartbeat_touch(rid, session=sid)   # 손길은 방금, 주인은 살아 있다
+            v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+            self.assertEqual(v["state"], "attached", v)
+            self.assertIsNone(v["mins"], "stalled_mins 가 생겼다 — 손잡이가 선다")
+            self.assertGreaterEqual(v["quiet_mins"], 59,
+                                    "조용한 시간을 감췄다 — REQ-034 의 반대편 병")
+            # 낱말 통일 (REQ-20260831-005 tech-writer): 만지다/손대다 두 이름 →
+            # 「손대다」 하나. 손길 문장은 다른 창이 언제 손댔는지를 말한다.
+            self.assertIn("손댔습니다", v["why"])
+        with self.subTest("h2b_a_dead_sessions_touch_does_not_attach"):
+            # REQ-034 재발 방지선: 깨운 워커가 클레임만 하고 죽으면 그 도장은
+            # 세션과 함께 죽는다 — 경보가 15분 꺼진 채 남지 않는다.
+            rid = self.mkreq()
+            r = self.row(rid, mins_quiet=60)
+            self.m.heartbeat_touch(rid, session="dead0000")   # 바인딩 없는 세션
+            v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+            self.assertEqual(v["state"], "stalled", v)
+        with self.subTest("h2c_an_anonymous_touch_does_not_attach"):
+            # 귀속 없는 손길은 손길이 아니다 — 근원 B 와 같은 원칙.
+            rid = self.mkreq()
+            r = self.row(rid, mins_quiet=60)
+            self.m.heartbeat_touch(rid)                        # 세션 없음
+            v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+            self.assertEqual(v["state"], "stalled", v)
+        with self.subTest("h4_no_signal_is_stalled_as_before"):
+            rid = self.mkreq()
+            r = self.row(rid, mins_quiet=60)
+            import shutil
+            shutil.rmtree(self.hbdir, ignore_errors=True)   # C3: 디렉토리 자체가 없다
+            v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+            self.assertEqual(v["state"], "stalled", v)
+            self.assertGreaterEqual(v["mins"], 59)
+        with self.subTest("h5_future_mtime_is_no_signal"):
+            rid = self.mkreq()
+            r = self.row(rid, mins_quiet=60)
+            self.m.heartbeat_touch(rid, session=self.live_session())
+            t = time.time() + 3600
+            os.utime(self.hb(rid), (t, t))           # C7: 미래 시각
+            v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+            self.assertEqual(v["state"], "stalled", v)
+        with self.subTest("h7_old_touch_does_not_attach"):
+            rid = self.mkreq()
+            r = self.row(rid, mins_quiet=60)
+            self.m.heartbeat_touch(rid, session=self.live_session())
+            t = time.time() - self.m.HEARTBEAT_ATTACH_WIN - 60
+            os.utime(self.hb(rid), (t, t))
+            v = self.m.stall_verdict(r, time.time(), self.m.STALLED_WIN)
+            self.assertEqual(v["state"], "stalled", v)
 
 class TheWake(Base):
     """H3 — attached 카드는 깨워지지 않고, 사유가 사람 말로 나간다."""

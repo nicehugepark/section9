@@ -50,41 +50,34 @@ class TheMark(unittest.TestCase):
         cls.m = _load()
         cls.fn = staticmethod(getattr(cls.m, "asset_mark", None))
 
-    def test_it_exists(self):
-        self.assertTrue(self.fn, "asset_mark() 이 없다 — 화면마다 자기 정규식을 "
-                                 "들면 한 곳만 고쳐진다")
-
-    def test_pictures_are_pictures(self):
-        for n in ("shot.png", "a.JPG", "b.jpeg", "c.gif", "d.webp", "e.svg",
-                  "f.heic"):
-            with self.subTest(n):
-                self.assertEqual(self.fn("/tmp/" + n), f"[Image: /tmp/{n}]")
-
-    def test_a_video_is_not_a_picture(self):
-        """영상을 `[Image:]` 로 적으면 문서 뷰어가 깨진 그림 한 칸을 그린다."""
-        for n in ("screen.mp4", "a.MOV", "b.webm", "c.mkv"):
-            with self.subTest(n):
-                self.assertEqual(self.fn("/tmp/" + n), f"[File: /tmp/{n}]")
-
-    def test_documents_and_data_are_files(self):
-        for n in ("report.pdf", "sheet.xlsx", "log.txt", "dump.csv",
-                  "notes.hwp", "sound.mp3", "bundle.zip"):
-            with self.subTest(n):
-                self.assertEqual(self.fn("/tmp/" + n), f"[File: /tmp/{n}]")
-
-    def test_an_unknown_extension_is_a_file(self):
-        """모르는 것은 그림이라고 우기지 않는다 — 깨진 칸보다 이름 한 줄이 낫다."""
-        self.assertEqual(self.fn("/tmp/x.qqq"), "[File: /tmp/x.qqq]")
-        self.assertEqual(self.fn("/tmp/noext"), "[File: /tmp/noext]")
-
-    def test_it_reads_from_the_one_table(self):
-        """확장자 목록을 여기서 새로 짓지 않는다 — TYPE_GROUPS 가 이미 있다."""
-        src = open(S9, encoding="utf-8").read()
-        i = src.find("def asset_mark(")
-        self.assertGreater(i, 0)
-        self.assertIn("TYPE_GROUPS", src[i:i + 900],
-                      "확장자 목록을 두 벌로 만들었다")
-
+    def test_the_mark(self):
+        """무엇으로 적을지는 파일이 정한다."""
+        with self.subTest("it_exists"):
+            self.assertTrue(self.fn, "asset_mark() 이 없다 — 화면마다 자기 정규식을 "
+                                     "들면 한 곳만 고쳐진다")
+        with self.subTest("pictures_are_pictures"):
+            for n in ("shot.png", "a.JPG", "b.jpeg", "c.gif", "d.webp", "e.svg",
+                      "f.heic"):
+                with self.subTest(n):
+                    self.assertEqual(self.fn("/tmp/" + n), f"[Image: /tmp/{n}]")
+        with self.subTest("a_video_is_not_a_picture"):
+            for n in ("screen.mp4", "a.MOV", "b.webm", "c.mkv"):
+                with self.subTest(n):
+                    self.assertEqual(self.fn("/tmp/" + n), f"[File: /tmp/{n}]")
+        with self.subTest("documents_and_data_are_files"):
+            for n in ("report.pdf", "sheet.xlsx", "log.txt", "dump.csv",
+                      "notes.hwp", "sound.mp3", "bundle.zip"):
+                with self.subTest(n):
+                    self.assertEqual(self.fn("/tmp/" + n), f"[File: /tmp/{n}]")
+        with self.subTest("an_unknown_extension_is_a_file"):
+            self.assertEqual(self.fn("/tmp/x.qqq"), "[File: /tmp/x.qqq]")
+            self.assertEqual(self.fn("/tmp/noext"), "[File: /tmp/noext]")
+        with self.subTest("it_reads_from_the_one_table"):
+            src = open(S9, encoding="utf-8").read()
+            i = src.find("def asset_mark(")
+            self.assertGreater(i, 0)
+            self.assertIn("TYPE_GROUPS", src[i:i + 900],
+                          "확장자 목록을 두 벌로 만들었다")
 
 class TheLabel(unittest.TestCase):
     """판정의 근거는 질문이 아니다."""
@@ -94,27 +87,25 @@ class TheLabel(unittest.TestCase):
         cls.m = _load()
         cls.src = open(S9, encoding="utf-8").read()
 
-    def test_append_takes_a_label(self):
-        import inspect
-        sig = inspect.signature(self.m.chat_append_doc)
-        self.assertIn("label", sig.parameters,
-                      "라벨이 'ask' 로 박혀 있다 — 반려 근거가 질문으로 적힌다")
-        self.assertEqual(sig.parameters["label"].default, "ask",
-                         "이어 말하기의 기존 뜻(질문)은 그대로여야 한다")
-
-    def test_the_api_passes_it_through(self):
-        i = self.src.find('elif parsed.path == "/api/note":')
-        self.assertGreater(i, 0)
-        self.assertIn("label", self.src[i:i + 1500],
-                      "/api/note 가 라벨을 받지 않는다")
-
-    def test_a_made_up_label_is_refused(self):
-        """아무 낱말이나 라벨이 되면 문서의 구획이 사람마다 달라진다."""
-        self.assertTrue(getattr(self.m, "NOTE_LABELS", None),
-                        "허용 라벨 목록이 없다")
-        self.assertIn("response", self.m.NOTE_LABELS)
-        self.assertIn("ask", self.m.NOTE_LABELS)
-
+    def test_the_label(self):
+        """판정의 근거는 질문이 아니다."""
+        with self.subTest("append_takes_a_label"):
+            import inspect
+            sig = inspect.signature(self.m.chat_append_doc)
+            self.assertIn("label", sig.parameters,
+                          "라벨이 'ask' 로 박혀 있다 — 반려 근거가 질문으로 적힌다")
+            self.assertEqual(sig.parameters["label"].default, "ask",
+                             "이어 말하기의 기존 뜻(질문)은 그대로여야 한다")
+        with self.subTest("the_api_passes_it_through"):
+            i = self.src.find('elif parsed.path == "/api/note":')
+            self.assertGreater(i, 0)
+            self.assertIn("label", self.src[i:i + 1500],
+                          "/api/note 가 라벨을 받지 않는다")
+        with self.subTest("a_made_up_label_is_refused"):
+            self.assertTrue(getattr(self.m, "NOTE_LABELS", None),
+                            "허용 라벨 목록이 없다")
+            self.assertIn("response", self.m.NOTE_LABELS)
+            self.assertIn("ask", self.m.NOTE_LABELS)
 
 class OneTrip(unittest.TestCase):
     """붙이기와 전이는 한 번에 간다."""

@@ -46,37 +46,28 @@ class TestReviewHoverExpand(unittest.TestCase):
                 out.append((m.group(1).strip(), m.group(2)))
         return out
 
-    def test_something_still_clamps(self):
-        """전제 확인: 카드는 여전히 긴 글을 접는다 (접힘이 없어졌다면 이
-        계약의 대상이 사라진 것이므로 테스트를 갱신하라)."""
-        self.assertTrue(self._clamp_rules(), ".rvpt/.rvtx 를 접는 규칙이 하나도 없다")
-
-    def test_clamp_is_paired_with_a_way_out(self):
-        """접었으면 나머지로 가는 길이 있어야 한다 (REQ-20260825-071 의 살아 있는 요구)."""
-        self.assertIn('class="rvmore"', self.html,
-                      "접기만 하고 전문으로 가는 손잡이가 없다 — REQ-071 반려가 재발한다")
-        self.assertRegex(self.html, r"\.rvpt\.iscut\s*\+\s*\.rvmore\{",
-                         "잘린 카드에만 손잡이를 여는 규칙이 없다")
-
-    def test_the_way_out_is_reachable_without_a_mouse(self):
-        """마우스 없는 사용자도 갈 수 있어야 한다 — 손잡이는 진짜 button 이고
-        포커스가 보인다. 호버 전개는 이 조건을 애초에 못 채웠다."""
-        self.assertRegex(self.html, r'<button type="button" class="rvmore"',
-                         "손잡이가 진짜 button 이 아니다 — 키보드로 닿지 않는다")
-        self.assertRegex(self.html, r"\.rvmore:focus-visible\{[^}]*outline",
-                         "손잡이에 포커스 링이 없다")
-
-    def test_no_in_card_hover_expansion(self):
-        """포인터를 얹었다고 카드가 자라면 아래 카드가 밀리고, 사용자가 신고한
-        그 화면(REQ-20260829-009)이 된다."""
-        for sel, css in re.findall(r"(?m)^([^\n{]*:(?:hover|focus-within)[^\n{]*\.rvpt[^{]*)\{([^}]*)\}",
-                                   self.html):
-            flat = css.replace(" ", "")
-            self.assertNotIn("line-clamp:unset", flat,
-                             "호버/포커스로 클램프를 푸는 규칙이 남아 있다: " + sel.strip())
-            self.assertNotRegex(flat, r"max-height:\d{2,}em",
-                                "호버/포커스로 카드를 늘리는 규칙이 남아 있다: " + sel.strip())
-
+    def test_test_review_hover_expand(self):
+        """TestReviewHoverExpand 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("something_still_clamps"):
+            self.assertTrue(self._clamp_rules(), ".rvpt/.rvtx 를 접는 규칙이 하나도 없다")
+        with self.subTest("clamp_is_paired_with_a_way_out"):
+            self.assertIn('class="rvmore"', self.html,
+                          "접기만 하고 전문으로 가는 손잡이가 없다 — REQ-071 반려가 재발한다")
+            self.assertRegex(self.html, r"\.rvpt\.iscut\s*\+\s*\.rvmore\{",
+                             "잘린 카드에만 손잡이를 여는 규칙이 없다")
+        with self.subTest("the_way_out_is_reachable_without_a_mouse"):
+            self.assertRegex(self.html, r'<button type="button" class="rvmore"',
+                             "손잡이가 진짜 button 이 아니다 — 키보드로 닿지 않는다")
+            self.assertRegex(self.html, r"\.rvmore:focus-visible\{[^}]*outline",
+                             "손잡이에 포커스 링이 없다")
+        with self.subTest("no_in_card_hover_expansion"):
+            for sel, css in re.findall(r"(?m)^([^\n{]*:(?:hover|focus-within)[^\n{]*\.rvpt[^{]*)\{([^}]*)\}",
+                                       self.html):
+                flat = css.replace(" ", "")
+                self.assertNotIn("line-clamp:unset", flat,
+                                 "호버/포커스로 클램프를 푸는 규칙이 남아 있다: " + sel.strip())
+                self.assertNotRegex(flat, r"max-height:\d{2,}em",
+                                    "호버/포커스로 카드를 늘리는 규칙이 남아 있다: " + sel.strip())
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

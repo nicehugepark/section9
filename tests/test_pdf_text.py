@@ -212,123 +212,123 @@ class TestPdfText(unittest.TestCase):
         return os.path.join(self.tmp, name)
 
     # S2/S3 — hex 문자열 + ToUnicode(bfchar·bfrange 구간형/배열형·surrogate)
-    def test_s2_s3_hex_and_tounicode(self):
-        f = word_like(self.p("word.pdf"))
-        raw = open(f, "rb").read()
-        self.assertNotIn(b") Tj", raw, "리터럴 문자열이 없는 PDF여야 의미가 있다")
-        t = s9.attach_text(f)
-        self.assertIn("한글", t)          # bfchar + bfrange 배열형
-        self.assertIn("AB CD", t)         # bfrange 구간형 + TJ 큰 음수 = 공백
-        self.assertIn("\U0001F600", t)    # surrogate pair
+    def test_test_pdf_text(self):
+        """TestPdfText 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("s2_s3_hex_and_tounicode"):
+                f = word_like(self.p("word.pdf"))
+                raw = open(f, "rb").read()
+                self.assertNotIn(b") Tj", raw, "리터럴 문자열이 없는 PDF여야 의미가 있다")
+                t = s9.attach_text(f)
+                self.assertIn("한글", t)          # bfchar + bfrange 배열형
+                self.assertIn("AB CD", t)         # bfrange 구간형 + TJ 큰 음수 = 공백
+                self.assertIn("\U0001F600", t)    # surrogate pair
 
-    # S4 — ToUnicode 가 없으면 임베드 폰트 cmap 을 역매핑한다
-    def test_s4_tounicode_absent_falls_back_to_font_cmap(self):
-        f = word_like(self.p("nocmap.pdf"), tounicode=False,
-                      font_cmap={0xD55C: 3, 0xAE00: 4, 0xBCF4: 5,
-                                 0x41: 0x10, 0x42: 0x11, 0x43: 0x12, 0x44: 0x13})
-        t = s9.attach_text(f)
-        self.assertIn("한글", t)
-        self.assertIn("AB CD", t)
+            # S4 — ToUnicode 가 없으면 임베드 폰트 cmap 을 역매핑한다
+        with self.subTest("s4_tounicode_absent_falls_back_to_font_cmap"):
+                f = word_like(self.p("nocmap.pdf"), tounicode=False,
+                              font_cmap={0xD55C: 3, 0xAE00: 4, 0xBCF4: 5,
+                                         0x41: 0x10, 0x42: 0x11, 0x43: 0x12, 0x44: 0x13})
+                t = s9.attach_text(f)
+                self.assertIn("한글", t)
+                self.assertIn("AB CD", t)
 
-    # S4-b — 매핑이 아예 없으면 쓰레기를 뱉느니 침묵한다
-    def test_s4b_no_map_no_garbage(self):
-        f = word_like(self.p("blind.pdf"), tounicode=False)
-        t = s9.attach_text(f)
-        self.assertEqual("", t.strip())
+            # S4-b — 매핑이 아예 없으면 쓰레기를 뱉느니 침묵한다
+        with self.subTest("s4b_no_map_no_garbage"):
+                f = word_like(self.p("blind.pdf"), tounicode=False)
+                t = s9.attach_text(f)
+                self.assertEqual("", t.strip())
 
-    # S5 — 스트림 바이너리에 endstream 바이트열이 있어도 본문이 살아남는다
-    def test_s5_endstream_inside_binary(self):
-        trap = b"\x00\x01binary endstream\nmore\x00" * 8
-        f = literal_pdf(self.p("trap.pdf"), extra=trap)
-        t = s9.attach_text(f)
-        self.assertIn("section9 deploy", t)
-        self.assertIn("deploy pipeline report", t)
+            # S5 — 스트림 바이너리에 endstream 바이트열이 있어도 본문이 살아남는다
+        with self.subTest("s5_endstream_inside_binary"):
+                trap = b"\x00\x01binary endstream\nmore\x00" * 8
+                f = literal_pdf(self.p("trap.pdf"), extra=trap)
+                t = s9.attach_text(f)
+                self.assertIn("section9 deploy", t)
+                self.assertIn("deploy pipeline report", t)
 
-    # S6 — 8MB 하드코딩 제거: 상한은 첨부 상한(30MB)과 같다
-    def test_s6_beyond_8mb(self):
-        self.assertGreaterEqual(s9.ATTACH_MAX_BYTES, 30 * 1024 * 1024)
-        pad = b"A" * (9 * 1024 * 1024)
-        f = literal_pdf(self.p("big.pdf"), pad=pad)
-        self.assertGreater(os.path.getsize(f), 8 * 1024 * 1024)
-        t = s9.attach_text(f)
-        self.assertIn("deploy pipeline report", t)
+            # S6 — 8MB 하드코딩 제거: 상한은 첨부 상한(30MB)과 같다
+        with self.subTest("s6_beyond_8mb"):
+                self.assertGreaterEqual(s9.ATTACH_MAX_BYTES, 30 * 1024 * 1024)
+                pad = b"A" * (9 * 1024 * 1024)
+                f = literal_pdf(self.p("big.pdf"), pad=pad)
+                self.assertGreater(os.path.getsize(f), 8 * 1024 * 1024)
+                t = s9.attach_text(f)
+                self.assertIn("deploy pipeline report", t)
 
-    # S7 — TJ 커닝 배열에서 단어가 쪼개지지 않는다
-    def test_s7_tj_kerning_keeps_words(self):
-        f = literal_pdf(self.p("kern.pdf"))
-        t = s9.attach_text(f)
-        self.assertIn("section9 deploy", t)
-        self.assertNotIn("sec tion9", t)
+            # S7 — TJ 커닝 배열에서 단어가 쪼개지지 않는다
+        with self.subTest("s7_tj_kerning_keeps_words"):
+                f = literal_pdf(self.p("kern.pdf"))
+                t = s9.attach_text(f)
+                self.assertIn("section9 deploy", t)
+                self.assertNotIn("sec tion9", t)
 
-    # S8 — 임베드 폰트 테이블 이름이 본문/태그로 새지 않는다
-    def test_s8_no_font_table_names(self):
-        f = word_like(self.p("font.pdf"),
-                      font_cmap={0xD55C: 3, 0xAE00: 4, 0xBCF4: 5})
-        t = s9.attach_text(f)
-        for junk in ("glyf", "head", "hmtx", "gasp", "loca", "cmap"):
-            self.assertNotIn(junk, t)
-        self.assertNotIn("cmap", " ".join(s9.attach_tags([f])))
+            # S8 — 임베드 폰트 테이블 이름이 본문/태그로 새지 않는다
+        with self.subTest("s8_no_font_table_names"):
+                f = word_like(self.p("font.pdf"),
+                              font_cmap={0xD55C: 3, 0xAE00: 4, 0xBCF4: 5})
+                t = s9.attach_text(f)
+                for junk in ("glyf", "head", "hmtx", "gasp", "loca", "cmap"):
+                    self.assertNotIn(junk, t)
+                self.assertNotIn("cmap", " ".join(s9.attach_tags([f])))
 
-    # S9 — 스캔본(이미지만): 본문 없음이 정답, 이미지 바이너리는 새지 않는다
-    def test_s9_scanned_image_only(self):
-        img = flate((b"(JFIF scanner artifact 2026) " + bytes(range(256))) * 60)
-        content = b"q 200 0 0 200 72 500 cm /Im0 Do Q\n"
-        cs = flate(content)
-        objs = {
-            1: b"<< /Type /Catalog /Pages 2 0 R >>",
-            2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            3: (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-                b"/Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>"),
-            4: (b"<< /Length %d /Filter /FlateDecode >>" % len(cs), cs),
-            5: (b"<< /Type /XObject /Subtype /Image /Width 100 /Height 100 "
-                b"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Length %d "
-                b"/Filter /FlateDecode >>" % len(img), img),
-        }
-        f = build(objs, path=self.p("scan.pdf"))
-        self.assertEqual("", s9.attach_text(f).strip())
-        self.assertNotIn("scanner", " ".join(s9.attach_tags([f])))
+            # S9 — 스캔본(이미지만): 본문 없음이 정답, 이미지 바이너리는 새지 않는다
+        with self.subTest("s9_scanned_image_only"):
+                img = flate((b"(JFIF scanner artifact 2026) " + bytes(range(256))) * 60)
+                content = b"q 200 0 0 200 72 500 cm /Im0 Do Q\n"
+                cs = flate(content)
+                objs = {
+                    1: b"<< /Type /Catalog /Pages 2 0 R >>",
+                    2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                    3: (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                        b"/Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>"),
+                    4: (b"<< /Length %d /Filter /FlateDecode >>" % len(cs), cs),
+                    5: (b"<< /Type /XObject /Subtype /Image /Width 100 /Height 100 "
+                        b"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Length %d "
+                        b"/Filter /FlateDecode >>" % len(img), img),
+                }
+                f = build(objs, path=self.p("scan.pdf"))
+                self.assertEqual("", s9.attach_text(f).strip())
+                self.assertNotIn("scanner", " ".join(s9.attach_tags([f])))
 
-    # S10 — 기존에 통과하던 평문 경로가 그대로 통과한다
-    def test_s10_regression_literal(self):
-        f = literal_pdf(self.p("plain.pdf"))
-        self.assertIn("deploy pipeline report", s9.attach_text(f))
+            # S10 — 기존에 통과하던 평문 경로가 그대로 통과한다
+        with self.subTest("s10_regression_literal"):
+                f = literal_pdf(self.p("plain.pdf"))
+                self.assertIn("deploy pipeline report", s9.attach_text(f))
 
-    # S11 — 잘린 PDF · 암호화 · 빈 파일: 예외 없이 빈 문자열/부분 결과
-    def test_s11_defensive(self):
-        good = open(literal_pdf(self.p("g.pdf")), "rb").read()
-        cut = self.p("cut.pdf")
-        with open(cut, "wb") as f:
-            f.write(good[:len(good) // 3])
-        empty = self.p("empty.pdf")
-        open(empty, "wb").close()
-        enc = self.p("enc.pdf")
-        with open(enc, "wb") as f:
-            f.write(good.replace(b"/Root 1 0 R", b"/Root 1 0 R /Encrypt 9 0 R"))
-        for p in (cut, empty, enc):
-            self.assertIsInstance(s9.attach_text(p), str)
-        self.assertEqual("", s9.attach_text(empty))
+            # S11 — 잘린 PDF · 암호화 · 빈 파일: 예외 없이 빈 문자열/부분 결과
+        with self.subTest("s11_defensive"):
+                good = open(literal_pdf(self.p("g.pdf")), "rb").read()
+                cut = self.p("cut.pdf")
+                with open(cut, "wb") as f:
+                    f.write(good[:len(good) // 3])
+                empty = self.p("empty.pdf")
+                open(empty, "wb").close()
+                enc = self.p("enc.pdf")
+                with open(enc, "wb") as f:
+                    f.write(good.replace(b"/Root 1 0 R", b"/Root 1 0 R /Encrypt 9 0 R"))
+                for p in (cut, empty, enc):
+                    self.assertIsInstance(s9.attach_text(p), str)
+                self.assertEqual("", s9.attach_text(empty))
 
-    # S1 — 실물 웹 인쇄본 (문서 첨부라 어느 머신에서나 돈다)
-    def test_s1_real_web_print(self):
-        self.assertTrue(os.path.exists(REAL_WEB), "재현 자산이 사라졌다: " + REAL_WEB)
-        t = s9.attach_text(REAL_WEB)
-        self.assertIn("배포 파이프라인 점검 보고서", t)
-        self.assertIn("deploy pipeline verification report", t)
-        for junk in ("glyf", "hmtx", "gasp"):
-            self.assertNotIn(junk, t)
+            # S1 — 실물 웹 인쇄본 (문서 첨부라 어느 머신에서나 돈다)
+        with self.subTest("s1_real_web_print"):
+                self.assertTrue(os.path.exists(REAL_WEB), "재현 자산이 사라졌다: " + REAL_WEB)
+                t = s9.attach_text(REAL_WEB)
+                self.assertIn("배포 파이프라인 점검 보고서", t)
+                self.assertIn("deploy pipeline verification report", t)
+                for junk in ("glyf", "hmtx", "gasp"):
+                    self.assertNotIn(junk, t)
 
-    # S1/S12 — 실물 한글 PDF 1MB (있는 머신에서만)
-    @unittest.skipUnless(os.path.exists(REAL_KO), "실물 한글 PDF 없음")
-    def test_s1b_real_korean_manual(self):
-        t0 = time.time()
-        t = s9.attach_text(REAL_KO)
-        took = time.time() - t0
-        hangul = sum(1 for c in t if "가" <= c <= "힣")
-        self.assertGreater(hangul, 200, f"한글 {hangul}자: {t[:120]!r}")
-        self.assertLess(took, 10, f"추출에 {took:.1f}s — 동기 인제스트 경로다")
-        for junk in ("glyf", "hmtx", "gasp"):
-            self.assertNotIn(junk, t)
-
+            # S1/S12 — 실물 한글 PDF 1MB (있는 머신에서만)
+        with self.subTest("s1b_real_korean_manual"):
+            t0 = time.time()
+            t = s9.attach_text(REAL_KO)
+            took = time.time() - t0
+            hangul = sum(1 for c in t if "가" <= c <= "힣")
+            self.assertGreater(hangul, 200, f"한글 {hangul}자: {t[:120]!r}")
+            self.assertLess(took, 10, f"추출에 {took:.1f}s — 동기 인제스트 경로다")
+            for junk in ("glyf", "hmtx", "gasp"):
+                self.assertNotIn(junk, t)
 
 if __name__ == "__main__":
     unittest.main()

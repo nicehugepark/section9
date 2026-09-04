@@ -3,7 +3,7 @@
 사용자: "시각 표시에 KST로, 그리고 KST라고 출력이 되고 있는데 내가 지시를 그렇게
 했었지만, settings의 개인설정 타임존을 따라가게 하는게 맞다."
 
-훅이 매 턴 주입하는 `◈ 현재 시각 …` 이 KST 로 못박혀 있었다(`now_kst()` 가
+훅이 매 턴 주입하는 `◈ 이 턴이 도착한 시각 …` 이 KST 로 못박혀 있었다(`now_kst()` 가
 UTC+9 를 상수로 들고 있었다). 설정에 `timezone` 이 이미 있고 대시보드는 그것을
 따르는데(`display_tz()`), 이 한 줄만 따로 놀았다 — 같은 물음에 두 답이 있으면
 언젠가 갈린다.
@@ -69,7 +69,7 @@ class StampTimezone(unittest.TestCase):
         self._cfg(timezone="America/New_York")
         s = self._stamp()
         self.assertNotIn("KST", s, "설정을 바꿨는데 KST 가 그대로다")
-        self.assertRegex(s, r"◈ 현재 시각 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} E[SD]T",
+        self.assertRegex(s, r"◈ 이 턴이 도착한 시각 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} E[SD]T",
                          "뉴욕 시간대 라벨이 아니다")
 
     def test_n3_time_and_label_agree(self):
@@ -78,7 +78,7 @@ class StampTimezone(unittest.TestCase):
         import zoneinfo
         self._cfg(timezone="America/New_York")
         s = self._stamp()
-        m = re.search(r"◈ 현재 시각 (\d{4}-\d{2}-\d{2} \d{2}:\d{2}):\d{2}", s)
+        m = re.search(r"◈ 이 턴이 도착한 시각 (\d{4}-\d{2}-\d{2} \d{2}:\d{2}):\d{2}", s)
         self.assertIsNotNone(m, s[:120])
         want = datetime.datetime.now(
             zoneinfo.ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M")
@@ -87,19 +87,20 @@ class StampTimezone(unittest.TestCase):
     def test_b1_no_setting_uses_system_local(self):
         self._cfg()
         s = self._stamp()
-        self.assertRegex(s, r"◈ 현재 시각 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+ —",
+        self.assertRegex(s, r"◈ 이 턴이 도착한 시각 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+ —",
                          "설정이 없을 때 라벨이 비었다")
 
     def test_b2_bad_zone_falls_back_quietly(self):
         self._cfg(timezone="Mars/Olympus")
         s = self._stamp()          # 예외 없이 서야 한다
-        self.assertIn("◈ 현재 시각", s)
+        self.assertIn("◈ 이 턴이 도착한 시각", s)
 
     def test_b3_two_lines_agree(self):
         """주입 문구는 시각을 두 번 적는다 — 둘이 다르면 모델이 어느 쪽을 쓸지 모른다."""
         self._cfg(timezone="Asia/Seoul")
         s = self._stamp()
-        stamps = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+?)(?: —| -)", s)
+        stamps = re.findall(
+            r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+?)(?: —| -)", s)
         self.assertGreaterEqual(len(stamps), 2, s[:160])
         self.assertEqual(stamps[0], stamps[1], "두 자리의 시각·라벨이 다르다")
 

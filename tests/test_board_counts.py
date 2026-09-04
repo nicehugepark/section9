@@ -63,50 +63,37 @@ class BoardCounts(unittest.TestCase):
 
     # ---------- ① 같은 집합에서 센다 ----------
 
-    def test_the_column_head_counts_what_the_column_holds(self):
-        """열 머리가 세는 대상 = 그 열이 담는 대상.
+    def test_board_counts(self):
+        """BoardCounts 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("the_column_head_counts_what_the_column_holds"):
+                col = self._grab(self.src, "colHTML")
+                live = re.search(r"const colLive = [^;]*;", self.src)
+                self.assertTrue(live, "colLive 를 못 찾았다")
+                self.assertIn("colLive(key, grp)", col, "하루 자르기를 적용하지 않는다")
+                self.assertIn("TERMINAL_WINDOW_MS", live.group(0))
+                self.assertIn("termAt(r)", live.group(0),
+                              "카드가 쓰는 그 시각으로 자르지 않는다")
+                self.assertIn('<span class="n">${live.length}</span>', col,
+                              "열 머리가 자르기 전 수를 보여 준다")
 
-        하루 자르기는 이름 있는 자리(colLive)로 옮겼다 — 판이 "이 열을 세울까"를
-        물을 때와 열이 "무엇을 그릴까"를 물을 때가 같은 답을 봐야 하기 때문이다
-        (REQ-20260829-031). 열 머리가 그 결과를 센다는 계약은 그대로다."""
-        col = self._grab(self.src, "colHTML")
-        live = re.search(r"const colLive = [^;]*;", self.src)
-        self.assertTrue(live, "colLive 를 못 찾았다")
-        self.assertIn("colLive(key, grp)", col, "하루 자르기를 적용하지 않는다")
-        self.assertIn("TERMINAL_WINDOW_MS", live.group(0))
-        self.assertIn("termAt(r)", live.group(0),
-                      "카드가 쓰는 그 시각으로 자르지 않는다")
-        self.assertIn('<span class="n">${live.length}</span>', col,
-                      "열 머리가 자르기 전 수를 보여 준다")
+            # ---------- ② 한 숫자는 한 곳에만 ----------
+        with self.subTest("the_count_is_not_repeated_anywhere_else"):
+                # 화면 어디서도 다시 그리지 않는다 — renderBoard 안만 보면 다른 함수로
+                # 옮겨 심는 것을 놓친다. (CSS 의 `.stats{...}` 는 이 검사에 걸리지 않는다:
+                # 죽은 채로 남겨 뒀고, 되살리는 값이 싸도록 일부러 지우지 않았다.)
+                self.assertNotIn('class="stats"', self.src, "상태 띠가 아직 그려진다")
+                self.assertNotIn("data-statf", self.fn, "띠의 필터가 아직 붙어 있다")
+                self.assertNotIn("__statusFilter", self.src,
+                                 "쓰이지 않는 필터 상태가 남아 있다")
+                self.assertNotIn("전체 요청", self.fn, "합계를 두 번째로 세는 자리가 남았다")
 
-    # ---------- ② 한 숫자는 한 곳에만 ----------
-
-    def test_the_count_is_not_repeated_anywhere_else(self):
-        """같은 집합을 세는 두 번째 자리를 두지 않는다 (2차).
-
-        1차의 계약은 정반대였다 — "띠를 지우지 않는다". 뒤집힌 이유는 이 파일
-        맨 위에 적어 뒀다: 셈을 맞추고 나니 두 줄이 같은 말을 두 번 하게 됐고,
-        띠의 필터는 보드에서 할 일이 없었다.
-        """
-        # 화면 어디서도 다시 그리지 않는다 — renderBoard 안만 보면 다른 함수로
-        # 옮겨 심는 것을 놓친다. (CSS 의 `.stats{...}` 는 이 검사에 걸리지 않는다:
-        # 죽은 채로 남겨 뒀고, 되살리는 값이 싸도록 일부러 지우지 않았다.)
-        self.assertNotIn('class="stats"', self.src, "상태 띠가 아직 그려진다")
-        self.assertNotIn("data-statf", self.fn, "띠의 필터가 아직 붙어 있다")
-        self.assertNotIn("__statusFilter", self.src,
-                         "쓰이지 않는 필터 상태가 남아 있다")
-        self.assertNotIn("전체 요청", self.fn, "합계를 두 번째로 세는 자리가 남았다")
-
-    # ---------- ③ 설명으로 메우지 않는다 ----------
-
-    def test_no_slash_notation_and_no_excuse_line(self):
-        """`3/4` 도, 설명 문구도 없다."""
-        col = self._grab(self.src, "colHTML")
-        head = col[col.index('<h2>'):col.index('</h2>')]
-        self.assertNotIn("/${", head, "두 수를 나란히 적는 표기가 남아 있다")
-        for word in ("하루", "제외", "기준", "가려", "숨긴"):
-            self.assertNotIn(word, head, "열 머리에 변명하는 문구를 붙였다: %s" % word)
-
+            # ---------- ③ 설명으로 메우지 않는다 ----------
+        with self.subTest("no_slash_notation_and_no_excuse_line"):
+            col = self._grab(self.src, "colHTML")
+            head = col[col.index('<h2>'):col.index('</h2>')]
+            self.assertNotIn("/${", head, "두 수를 나란히 적는 표기가 남아 있다")
+            for word in ("하루", "제외", "기준", "가려", "숨긴"):
+                self.assertNotIn(word, head, "열 머리에 변명하는 문구를 붙였다: %s" % word)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

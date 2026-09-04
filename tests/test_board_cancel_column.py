@@ -95,69 +95,61 @@ class BoardCancelColumn(unittest.TestCase):
         return json.loads(p.stdout.strip().splitlines()[-1])
 
     # X1 — 이 요청의 전부: 오늘 취소된 것이 없으면 열이 서지 않는다
-    def test_x1_no_cancels_today_no_column(self):
-        self.assertFalse(self.stands("cancelled", []),
-                         "취소가 한 건도 없는데 열이 자리를 먹는다")
-        self.assertFalse(self.stands("cancelled", [3 * DAY, 9 * DAY]),
-                         "이틀 지난 취소 때문에 열이 서서 '없음' 한 줄만 말한다")
+    def test_board_cancel_column(self):
+        """BoardCancelColumn 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("x1_no_cancels_today_no_column"):
+                self.assertFalse(self.stands("cancelled", []),
+                                 "취소가 한 건도 없는데 열이 자리를 먹는다")
+                self.assertFalse(self.stands("cancelled", [3 * DAY, 9 * DAY]),
+                                 "이틀 지난 취소 때문에 열이 서서 '없음' 한 줄만 말한다")
 
-    # X2 — 있는 것을 놓치게 하지는 않는다
-    def test_x2_a_cancel_today_stands_the_column(self):
-        self.assertTrue(self.stands("cancelled", [60 * 1000]),
-                        "오늘 취소한 것이 있는데 열이 없다 — 감춘 게 아니라 잃었다")
-        self.assertTrue(self.stands("cancelled", [5 * 60 * 60 * 1000, 9 * DAY]),
-                        "오늘 것 하나와 옛것이 섞이면 열이 서야 한다")
+            # X2 — 있는 것을 놓치게 하지는 않는다
+        with self.subTest("x2_a_cancel_today_stands_the_column"):
+                self.assertTrue(self.stands("cancelled", [60 * 1000]),
+                                "오늘 취소한 것이 있는데 열이 없다 — 감춘 게 아니라 잃었다")
+                self.assertTrue(self.stands("cancelled", [5 * 60 * 60 * 1000, 9 * DAY]),
+                                "오늘 것 하나와 옛것이 섞이면 열이 서야 한다")
 
-    # X3 — 경계는 done 과 같은 하루다 (잣대를 새로 만들지 않는다)
-    def test_x3_the_same_day_as_done(self):
-        self.assertTrue(self.stands("cancelled", [DAY - 60 * 1000]))
-        self.assertFalse(self.stands("cancelled", [DAY + 60 * 1000]))
+            # X3 — 경계는 done 과 같은 하루다 (잣대를 새로 만들지 않는다)
+        with self.subTest("x3_the_same_day_as_done"):
+                self.assertTrue(self.stands("cancelled", [DAY - 60 * 1000]))
+                self.assertFalse(self.stands("cancelled", [DAY + 60 * 1000]))
 
-    # X4 — done 은 비어도 선다: "오늘 무엇을 끝냈나"는 매일 보는 값이다
-    def test_x4_done_still_stands_when_empty(self):
-        self.assertTrue(self.stands("done", []))
-        self.assertTrue(self.stands("done", [9 * DAY]),
-                        "하루 지난 완료뿐이어도 done 열은 제 이름을 지킨다")
+            # X4 — done 은 비어도 선다: "오늘 무엇을 끝냈나"는 매일 보는 값이다
+        with self.subTest("x4_done_still_stands_when_empty"):
+                self.assertTrue(self.stands("done", []))
+                self.assertTrue(self.stands("done", [9 * DAY]),
+                                "하루 지난 완료뿐이어도 done 열은 제 이름을 지킨다")
 
-    # X5 — 비어 있음이 정보인 열은 그대로다
-    def test_x5_the_live_columns_are_untouched(self):
-        for key in ("open", "in-progress", "review"):
-            self.assertTrue(self.stands(key, []),
-                            f"{key} 열이 비었다고 사라졌다 — 그 0 은 사람이 보러 오는 값이다")
+            # X5 — 비어 있음이 정보인 열은 그대로다
+        with self.subTest("x5_the_live_columns_are_untouched"):
+                for key in ("open", "in-progress", "review"):
+                    self.assertTrue(self.stands(key, []),
+                                    f"{key} 열이 비었다고 사라졌다 — 그 0 은 사람이 보러 오는 값이다")
 
-    # X6 — 원래 "있을 때만" 서던 열의 규칙은 건드리지 않는다
-    def test_x6_the_old_rule_survives_for_the_others(self):
-        for key in ("blocked", "draft"):
-            self.assertFalse(self.stands(key, []))
-            self.assertTrue(self.stands(key, [9 * DAY]),
-                            "취소 아닌 열까지 시간으로 잘랐다")
+            # X6 — 원래 "있을 때만" 서던 열의 규칙은 건드리지 않는다
+        with self.subTest("x6_the_old_rule_survives_for_the_others"):
+                for key in ("blocked", "draft"):
+                    self.assertFalse(self.stands(key, []))
+                    self.assertTrue(self.stands(key, [9 * DAY]),
+                                    "취소 아닌 열까지 시간으로 잘랐다")
 
-    # ---------- 소스 계약 ----------
-
-    def test_c1_one_judgement_in_one_place(self):
-        """판이 "이 열을 세울까"를 묻는 자리는 하나다 — renderBoard 안에 손으로
-        적힌 두 번째 목록이 남으면 다음에 한쪽만 고쳐진다."""
-        self.assertIn("colStanding(st, grp)", self.board)
-        self.assertNotIn('"open","in-progress","review","done"', self.board,
-                         "열 목록이 renderBoard 에 다시 적혀 있다")
-
-    def test_c2_the_same_clock_for_standing_and_drawing(self):
-        """열이 서는 잣대와 열이 그리는 잣대가 같아야 한다 — 두 벌이면 열은
-        섰는데 안이 비거나, 안에 있는데 열이 안 서는 조합이 생긴다."""
-        col = grab(self.src, r"^function colHTML\(key, label, color, grp\)\{.*?^\}",
-                   "colHTML")
-        self.assertIn("colLive(key, grp)", col)
-        self.assertIn("colLive(", self.stand)
-        self.assertIn("TERMINAL_WINDOW_MS", self.live)
-        self.assertIn("TERMINAL.has(key)", self.live,
-                      "끝난 상태의 정의를 손으로 다시 적었다")
-
-    def test_c3_only_cancelled_is_special(self):
-        """취소만 다른 잣대를 쓴다 — done 까지 함께 감추면 "오늘 무엇을 끝냈나"가
-        사라진다."""
-        self.assertIn('key === "cancelled"', self.stand)
-        self.assertNotIn('key === "done"', self.stand)
-
+            # ---------- 소스 계약 ----------
+        with self.subTest("c1_one_judgement_in_one_place"):
+            self.assertIn("colStanding(st, grp)", self.board)
+            self.assertNotIn('"open","in-progress","review","done"', self.board,
+                             "열 목록이 renderBoard 에 다시 적혀 있다")
+        with self.subTest("c2_the_same_clock_for_standing_and_drawing"):
+            col = grab(self.src, r"^function colHTML\(key, label, color, grp\)\{.*?^\}",
+                       "colHTML")
+            self.assertIn("colLive(key, grp)", col)
+            self.assertIn("colLive(", self.stand)
+            self.assertIn("TERMINAL_WINDOW_MS", self.live)
+            self.assertIn("TERMINAL.has(key)", self.live,
+                          "끝난 상태의 정의를 손으로 다시 적었다")
+        with self.subTest("c3_only_cancelled_is_special"):
+            self.assertIn('key === "cancelled"', self.stand)
+            self.assertNotIn('key === "done"', self.stand)
 
 if __name__ == "__main__":
     unittest.main()

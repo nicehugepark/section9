@@ -261,6 +261,14 @@ const rvClamped = (cap, tx) => `<div class="rvpt">${cap}</div>`;
 // 비워 둔다. 자리 표시의 계약은 tests/test_workspace_chip.py 가 따로 붙잡는다.
 const wsChip = () => "";
 const rvLabel = s => s;
+/* 담당 축이 카드에 들어왔다 (REQ-20260902-021) — 이 시험의 관심사는 아니지만
+   cardHTML 이 그 조각들을 부르므로 재료를 세워 준다. 이 컴퓨터의 이름을 주면
+   「다른 컴퓨터」 줄은 서지 않는다(행에 lease 가 없으니 어차피 안 선다) —
+   진행 축의 판정이 종전 그대로인지가 이 파일이 재는 것이다. */
+const TERMINAL = new Set(["done", "cancelled"]);
+const viewMe = () => "u", isAdmin = () => false;
+const dlink = (id, inner) => `<a href="#">${inner}</a>`;
+globalThis.window = {__whoami: {machine: "THIS-PC"}};
 const DEP_DEAD = new Set(["done", "cancelled"]);
 let CAT = [];
 const catFind = id => CAT.find(r => r.id === id) || null;
@@ -327,6 +335,13 @@ class StallRendersTheSame(unittest.TestCase):
             # 여기 없으면 render 가 통째로 멎는다. 낱말 상수도 원문에서 떠 온다.
             _const(self.src, "JQ_AHEAD"), _const(self.src, "JQ_CHURN"),
             g("judgeQueueHTML"),
+            # 담당 축 (REQ-20260902-021) — 진행 축 사다리의 맨 위(「다른 컴퓨터」)와
+            # 메타 줄의 조각을 카드가 부른다. 목록에 없으면 render 가 통째로
+            # 멎는다(이 파일 위 주석의 그 규율).
+            _const(self.src, "LEASE_TTL"), _const(self.src, "docCreator"),
+            g("originWho"), g("originBits"), g("lineageTell"), g("lineageChip"),
+            g("badgeFace"), g("ownerBadgeHTML"),
+            g("leaseElsewhere"), g("canTakeover"), g("elsewhereRowHTML"),
             g("slowRowHTML"), g("stoppedRowHTML"),
             g("stopBtnHTML"), g("holdTell"), g("holdTellHTML"),
             g("wakeBtnHTML"), g("driftBtnHTML"),

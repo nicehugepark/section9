@@ -74,93 +74,94 @@ class WhatTheReaderSees(unittest.TestCase):
     """① 판독 결과가 맞다."""
 
     # S1. 정상: 끝난 턴은 끝난 턴이다
-    def test_s1_finished_turn_is_idle(self):
-        st = mod.transcript_read(write([user(), asst("end_turn")], "s1.jsonl"))
-        self.assertTrue(st["ok"])
-        self.assertFalse(st["busy"])
-        self.assertFalse(st["limit"])
-        self.assertEqual(st["model"], "claude-fable-5")
+    def test_what_the_reader_sees(self):
+        """① 판독 결과가 맞다."""
+        with self.subTest("s1_finished_turn_is_idle"):
+                st = mod.transcript_read(write([user(), asst("end_turn")], "s1.jsonl"))
+                self.assertTrue(st["ok"])
+                self.assertFalse(st["busy"])
+                self.assertFalse(st["limit"])
+                self.assertEqual(st["model"], "claude-fable-5")
 
-    # S2. 진행 중: 도구를 부르는 중이거나 사용자 턴이 마지막이면 busy
-    def test_s2_running_turn_is_busy(self):
-        self.assertTrue(mod.transcript_read(
-            write([asst("tool_use")], "s2a.jsonl"))["busy"])
-        self.assertTrue(mod.transcript_read(
-            write([asst("end_turn"), user()], "s2b.jsonl"))["busy"])
-        # 직전 중단 직후의 사용자 턴은 아무도 응답하지 않는다
-        self.assertFalse(mod.transcript_read(write(
-            [asst("end_turn"), user("[Request interrupted by user]")],
-            "s2c.jsonl"))["busy"])
-        # 블록 목록으로 들어온 같은 말도 같게 읽는다
-        self.assertFalse(mod.transcript_read(write(
-            [{"type": "user", "message": {"content": [
-                {"type": "text", "text": "[Request interrupted by user]"}]}}],
-            "s2d.jsonl"))["busy"])
+            # S2. 진행 중: 도구를 부르는 중이거나 사용자 턴이 마지막이면 busy
+        with self.subTest("s2_running_turn_is_busy"):
+                self.assertTrue(mod.transcript_read(
+                    write([asst("tool_use")], "s2a.jsonl"))["busy"])
+                self.assertTrue(mod.transcript_read(
+                    write([asst("end_turn"), user()], "s2b.jsonl"))["busy"])
+                # 직전 중단 직후의 사용자 턴은 아무도 응답하지 않는다
+                self.assertFalse(mod.transcript_read(write(
+                    [asst("end_turn"), user("[Request interrupted by user]")],
+                    "s2c.jsonl"))["busy"])
+                # 블록 목록으로 들어온 같은 말도 같게 읽는다
+                self.assertFalse(mod.transcript_read(write(
+                    [{"type": "user", "message": {"content": [
+                        {"type": "text", "text": "[Request interrupted by user]"}]}}],
+                    "s2d.jsonl"))["busy"])
 
-    # S3. 한도(핵심 회귀): 한도로 굳은 턴은 **도는 턴이 아니다**
-    def test_s3_limit_is_not_busy(self):
-        st = mod.transcript_read(write(
-            [user(), limit_event()], "s3.jsonl"))
-        self.assertFalse(st["busy"], "한도로 굳은 턴이 다시 '진행 중'으로 읽힌다")
-        self.assertTrue(st["limit"])
-        self.assertTrue(st["limit_seen"])
-        self.assertEqual(st["limit_model"], "Fable 5")
-        # 사람이 네 번 시도하면 같은 줄이 네 번 쌓인다 — 판정은 그대로다
-        st4 = mod.transcript_read(write(
-            [user()] + [limit_event()] * 4, "s3b.jsonl"))
-        self.assertFalse(st4["busy"])
-        self.assertTrue(st4["limit"])
+            # S3. 한도(핵심 회귀): 한도로 굳은 턴은 **도는 턴이 아니다**
+        with self.subTest("s3_limit_is_not_busy"):
+                st = mod.transcript_read(write(
+                    [user(), limit_event()], "s3.jsonl"))
+                self.assertFalse(st["busy"], "한도로 굳은 턴이 다시 '진행 중'으로 읽힌다")
+                self.assertTrue(st["limit"])
+                self.assertTrue(st["limit_seen"])
+                self.assertEqual(st["limit_model"], "Fable 5")
+                # 사람이 네 번 시도하면 같은 줄이 네 번 쌓인다 — 판정은 그대로다
+                st4 = mod.transcript_read(write(
+                    [user()] + [limit_event()] * 4, "s3b.jsonl"))
+                self.assertFalse(st4["busy"])
+                self.assertTrue(st4["limit"])
 
-    # S4. 서명 다중화: 문구 하나에만 기대지 않는다
-    def test_s4_signatures_are_plural(self):
-        # 문구가 바뀌어도 에러 표식이 남으면 한도다
-        st = mod.transcript_read(write([asst(
-            stop="stop_sequence", model="<synthetic>", text="다른 문구",
-            error="rate_limit")], "s4a.jsonl"))
-        self.assertTrue(st["limit"])
-        # 에러 표식이 없어도 문구가 있으면 한도다
-        st = mod.transcript_read(write([asst(
-            stop="stop_sequence", model="<synthetic>",
-            text=LIMIT_TEXT)], "s4b.jsonl"))
-        self.assertTrue(st["limit"])
-        # 429 만 있어도 한도다
-        st = mod.transcript_read(write([asst(
-            stop="stop_sequence", model="<synthetic>", text="",
-            apiErrorStatus=429)], "s4c.jsonl"))
-        self.assertTrue(st["limit"])
+            # S4. 서명 다중화: 문구 하나에만 기대지 않는다
+        with self.subTest("s4_signatures_are_plural"):
+                # 문구가 바뀌어도 에러 표식이 남으면 한도다
+                st = mod.transcript_read(write([asst(
+                    stop="stop_sequence", model="<synthetic>", text="다른 문구",
+                    error="rate_limit")], "s4a.jsonl"))
+                self.assertTrue(st["limit"])
+                # 에러 표식이 없어도 문구가 있으면 한도다
+                st = mod.transcript_read(write([asst(
+                    stop="stop_sequence", model="<synthetic>",
+                    text=LIMIT_TEXT)], "s4b.jsonl"))
+                self.assertTrue(st["limit"])
+                # 429 만 있어도 한도다
+                st = mod.transcript_read(write([asst(
+                    stop="stop_sequence", model="<synthetic>", text="",
+                    apiErrorStatus=429)], "s4c.jsonl"))
+                self.assertTrue(st["limit"])
 
-    # S5. 판정 불가는 신호를 안 보내는 쪽으로 — 여기서 예외가 나면 안 된다
-    def test_s5_unreadable_is_quiet(self):
-        for p in ("", "/no/such/file.jsonl",
-                  write([], "s5-empty.jsonl")):
-            st = mod.transcript_read(p)
-            self.assertFalse(st["busy"])
-            self.assertFalse(st["limit"])
-        broken = os.path.join(TMP, "s5-broken.jsonl")
-        with open(broken, "w", encoding="utf-8") as f:
-            f.write('{"type": 깨진 줄\n')
-        self.assertFalse(mod.transcript_read(broken)["busy"])
+            # S5. 판정 불가는 신호를 안 보내는 쪽으로 — 여기서 예외가 나면 안 된다
+        with self.subTest("s5_unreadable_is_quiet"):
+                for p in ("", "/no/such/file.jsonl",
+                          write([], "s5-empty.jsonl")):
+                    st = mod.transcript_read(p)
+                    self.assertFalse(st["busy"])
+                    self.assertFalse(st["limit"])
+                broken = os.path.join(TMP, "s5-broken.jsonl")
+                with open(broken, "w", encoding="utf-8") as f:
+                    f.write('{"type": 깨진 줄\n')
+                self.assertFalse(mod.transcript_read(broken)["busy"])
 
-    # S7. 이웃 계약 보존: 상태줄의 모델과 끝난 사유는 그대로다
-    def test_s7_neighbours_unchanged(self):
-        tp = write([asst("end_turn", "claude-opus-5"), limit_event()],
-                   "s7.jsonl")
-        # 합성 표기는 모델이 아니다 (REQ-082 · 기존 R15)
-        self.assertEqual(mod.session_model({"transcript_path": tp}),
-                         "claude-opus-5")
-        # 끝난 사유는 여전히 판별된다 (REQ-20260901-006)
-        self.assertTrue(mod.transcript_read(tp)["limit_seen"])
+            # S7. 이웃 계약 보존: 상태줄의 모델과 끝난 사유는 그대로다
+        with self.subTest("s7_neighbours_unchanged"):
+                tp = write([asst("end_turn", "claude-opus-5"), limit_event()],
+                           "s7.jsonl")
+                # 합성 표기는 모델이 아니다 (REQ-082 · 기존 R15)
+                self.assertEqual(mod.session_model({"transcript_path": tp}),
+                                 "claude-opus-5")
+                # 끝난 사유는 여전히 판별된다 (REQ-20260901-006)
+                self.assertTrue(mod.transcript_read(tp)["limit_seen"])
 
-    # 캐시가 판정을 굳히지 않는다 — 파일이 바뀌면 답도 바뀐다
-    def test_cache_follows_the_file(self):
-        p = os.path.join(TMP, "cache.jsonl")
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(json.dumps(asst("tool_use")) + "\n")
-        self.assertTrue(mod.transcript_read(p)["busy"])
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(json.dumps(asst("end_turn")) + "\n")
-        self.assertFalse(mod.transcript_read(p)["busy"])
-
+            # 캐시가 판정을 굳히지 않는다 — 파일이 바뀌면 답도 바뀐다
+        with self.subTest("cache_follows_the_file"):
+            p = os.path.join(TMP, "cache.jsonl")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(json.dumps(asst("tool_use")) + "\n")
+            self.assertTrue(mod.transcript_read(p)["busy"])
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(json.dumps(asst("end_turn")) + "\n")
+            self.assertFalse(mod.transcript_read(p)["busy"])
 
 class WhereTheReadingLives(unittest.TestCase):
     """② 판독하는 자리가 하나뿐이다 — 이 감시가 다음 '게이트만 낡음'을 막는다."""

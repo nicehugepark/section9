@@ -75,65 +75,57 @@ class AuditWiring(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as f:
             f.write(DOC)
 
-    def test_w1_injected_loss_raises_one_alert(self):
-        """① 유실 주입 → 알림 1회, 수신함 문안에 경로와 확인 명령이 실린다."""
-        self.hurt()
-        got = []
-        n = self.mod.snapshot_audit_alert(send=lambda m, **k: got.append(m))
-        self.assertEqual(n, 1, "유실을 주입했는데 알림이 없다")
-        self.assertTrue(got, "수신함으로 아무것도 안 갔다")
-        self.assertIn(self.rel, got[0])
-        self.assertIn("snapshot --audit", got[0])
-
-    def test_w2_the_same_loss_is_told_once(self):
-        """② 같은 유실은 한 번만 — 복원되면 지문이 지워져 다음은 새 사건이다."""
-        self.hurt()
-        send = lambda m, **k: None
-        self.mod.snapshot_audit_alert(send=send)
-        self.assertEqual(0, self.mod.snapshot_audit_alert(send=send),
-                         "같은 유실을 두 바퀴째 또 떠들었다")
-        self.heal()
-        self.assertEqual(0, self.mod.snapshot_audit_alert(send=send),
-                         "복원됐는데 알림이 났다")
-        self.hurt()
-        self.assertEqual(1, self.mod.snapshot_audit_alert(send=send),
-                         "복원 뒤의 새 유실이 옛 지문에 먹혔다")
-        self.heal()
-
-    def test_w3_a_dead_inbox_does_not_kill_the_alarm(self):
-        """수신함이 없어도(라이브 세션 0) 감사는 계속 돈다 — 예외가 안 샌다."""
-        self.hurt()
-        def boom(m, **k):
-            raise ValueError("라이브 클로드 세션이 없다")
-        self.mod._AUDIT_TOLD.clear()
-        n = self.mod.snapshot_audit_alert(send=boom)
-        self.assertEqual(n, 1, "수신함 실패가 감사 자체를 죽였다")
-        self.heal()
-
-    def test_w4_digest_speaks_of_the_loss(self):
-        """③ digest 는 유실을 안 채로 조용히 끝나지 않는다."""
-        self.hurt()
-        r = subprocess.run([S9, "digest"], capture_output=True, text=True,
-                           env={**os.environ, "S9_ROOT": self.tmp}, timeout=60)
-        self.assertIn("기록 유실 감지", r.stdout,
-                      "digest 가 유실을 말하지 않았다:\n" + r.stdout[-800:])
-        self.assertIn("snapshot --audit", r.stdout)
-        self.heal()
-        r2 = subprocess.run([S9, "digest"], capture_output=True, text=True,
-                            env={**os.environ, "S9_ROOT": self.tmp}, timeout=60)
-        self.assertNotIn("기록 유실 감지", r2.stdout,
-                         "유실이 없는데 경보가 났다 — 거짓 경보는 꺼진 탐지기다")
-
-    def test_w5_the_watcher_loop_carries_the_audit(self):
-        """워처 배선이 실제로 있다 — 10분 주기 조건과 함께 (문면 계약)."""
-        with open(S9, encoding="utf-8") as f:
-            src = f.read()
-        i = src.index("def _rework_loop")
-        loop = src[i:i + 1500]
-        self.assertIn("snapshot_audit_alert()", loop,
-                      "워처가 감사를 부르지 않는다")
-        self.assertIn("% 20 == 0", loop, "10분(20틱) 주기가 아니다")
-
+    def test_audit_wiring(self):
+        """AuditWiring 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("w1_injected_loss_raises_one_alert"):
+            self.hurt()
+            got = []
+            n = self.mod.snapshot_audit_alert(send=lambda m, **k: got.append(m))
+            self.assertEqual(n, 1, "유실을 주입했는데 알림이 없다")
+            self.assertTrue(got, "수신함으로 아무것도 안 갔다")
+            self.assertIn(self.rel, got[0])
+            self.assertIn("snapshot --audit", got[0])
+        with self.subTest("w2_the_same_loss_is_told_once"):
+            self.hurt()
+            send = lambda m, **k: None
+            self.mod.snapshot_audit_alert(send=send)
+            self.assertEqual(0, self.mod.snapshot_audit_alert(send=send),
+                             "같은 유실을 두 바퀴째 또 떠들었다")
+            self.heal()
+            self.assertEqual(0, self.mod.snapshot_audit_alert(send=send),
+                             "복원됐는데 알림이 났다")
+            self.hurt()
+            self.assertEqual(1, self.mod.snapshot_audit_alert(send=send),
+                             "복원 뒤의 새 유실이 옛 지문에 먹혔다")
+            self.heal()
+        with self.subTest("w3_a_dead_inbox_does_not_kill_the_alarm"):
+            self.hurt()
+            def boom(m, **k):
+                raise ValueError("라이브 클로드 세션이 없다")
+            self.mod._AUDIT_TOLD.clear()
+            n = self.mod.snapshot_audit_alert(send=boom)
+            self.assertEqual(n, 1, "수신함 실패가 감사 자체를 죽였다")
+            self.heal()
+        with self.subTest("w4_digest_speaks_of_the_loss"):
+            self.hurt()
+            r = subprocess.run([S9, "digest"], capture_output=True, text=True,
+                               env={**os.environ, "S9_ROOT": self.tmp}, timeout=60)
+            self.assertIn("기록 유실 감지", r.stdout,
+                          "digest 가 유실을 말하지 않았다:\n" + r.stdout[-800:])
+            self.assertIn("snapshot --audit", r.stdout)
+            self.heal()
+            r2 = subprocess.run([S9, "digest"], capture_output=True, text=True,
+                                env={**os.environ, "S9_ROOT": self.tmp}, timeout=60)
+            self.assertNotIn("기록 유실 감지", r2.stdout,
+                             "유실이 없는데 경보가 났다 — 거짓 경보는 꺼진 탐지기다")
+        with self.subTest("w5_the_watcher_loop_carries_the_audit"):
+            with open(S9, encoding="utf-8") as f:
+                src = f.read()
+            i = src.index("def _rework_loop")
+            loop = src[i:i + 1500]
+            self.assertIn("snapshot_audit_alert()", loop,
+                          "워처가 감사를 부르지 않는다")
+            self.assertIn("% 20 == 0", loop, "10분(20틱) 주기가 아니다")
 
 if __name__ == "__main__":
     unittest.main()

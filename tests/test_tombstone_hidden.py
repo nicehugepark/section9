@@ -36,9 +36,10 @@ class TestTombstoneHidden(unittest.TestCase):
         return r.stdout
 
     def catalog_ids(self):
-        p = os.path.join(self.tmp, "index", "catalog.jsonl")
-        with open(p, encoding="utf-8") as f:
-            return [json.loads(x)["id"] for x in f.read().splitlines() if x.strip()]
+        # 증분 카탈로그(REQ-20260902-035) 뒤로 base 파일 하나만 읽으면
+        # 방금 만든 문서가 빠진다 — 병합된 문으로 묻는다.
+        return [json.loads(x)["id"]
+                for x in self.cli("index", "cat").splitlines() if x.strip()]
 
     def ls_ids(self):
         return self.cli("ls")

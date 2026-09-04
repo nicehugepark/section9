@@ -91,35 +91,34 @@ class ArrowIsNotSwallowedByItsOwnStroke(unittest.TestCase):
         cls.html = _read()
         cls.branch = _blocked_branch(cls.html)
 
-    def test_a1_branch_exists(self):
-        self.assertTrue(self.branch.strip(),
-                        "엣지 루프에 blocked_by 분기가 없다 — 의존 획 자체가 사라졌다")
-
-    def test_a2_stroke_does_not_run_center_to_center(self):
-        # 반려를 만든 바로 그 모양: moveTo(노드중심) → lineTo(다른 노드중심).
-        # 두 끝점이 모두 노드 중심이면 획이 촉을 관통한다.
-        pat = re.compile(
-            r"moveTo\(\s*sxOf\(\s*(\w+)\s*\)[^;]*?\)\s*;?\s*"
-            r"ctx\.lineTo\(\s*sxOf\(\s*(\w+)\s*\)")
-        hit = pat.search(self.branch)
-        self.assertIsNone(
-            hit,
-            "의존 획을 노드 중심에서 노드 중심까지 긋고 있다 — 획이 화살촉을 "
-            "관통해 실루엣이 '끝이 두꺼운 선'으로만 읽힌다(1차 반려의 원인). "
-            "획의 끝점은 촉의 밑변이어야 한다")
-
-    def test_a3_stroke_ends_at_head_base(self):
-        # 끝점은 기하 계산이 돌려준 밑변 좌표여야 한다. 이름을 bx/by 로 고정하지는
-        # 않는다 — '노드 중심이 아닌 계산된 지점'이면 된다. 이 구간의 lineTo 는
-        # 전부 그래야 하므로 하나만 보지 않고 전수로 검사한다.
-        calls = re.findall(r"ctx\.lineTo\(([^)]*\)?[^)]*)\)", self.branch)
-        self.assertTrue(calls, "blocked_by 획을 긋는 lineTo 가 없다")
-        bad = [c for c in calls if "sxOf(" in c or "syOf(" in c]
-        self.assertEqual(
-            bad, [],
-            f"의존 획의 끝점이 노드 중심 좌표다({bad}) — 촉의 밑변에서 끊어야 "
-            "화살촉이 실루엣으로 남는다")
-
+    def test_arrow_is_not_swallowed_by_its_own_stroke(self):
+        """① 획이 촉을 관통하면 안 된다 — 획은 촉의 밑변에서 끊긴다."""
+        with self.subTest("a1_branch_exists"):
+            self.assertTrue(self.branch.strip(),
+                            "엣지 루프에 blocked_by 분기가 없다 — 의존 획 자체가 사라졌다")
+        with self.subTest("a2_stroke_does_not_run_center_to_center"):
+            # 반려를 만든 바로 그 모양: moveTo(노드중심) → lineTo(다른 노드중심).
+            # 두 끝점이 모두 노드 중심이면 획이 촉을 관통한다.
+            pat = re.compile(
+                r"moveTo\(\s*sxOf\(\s*(\w+)\s*\)[^;]*?\)\s*;?\s*"
+                r"ctx\.lineTo\(\s*sxOf\(\s*(\w+)\s*\)")
+            hit = pat.search(self.branch)
+            self.assertIsNone(
+                hit,
+                "의존 획을 노드 중심에서 노드 중심까지 긋고 있다 — 획이 화살촉을 "
+                "관통해 실루엣이 '끝이 두꺼운 선'으로만 읽힌다(1차 반려의 원인). "
+                "획의 끝점은 촉의 밑변이어야 한다")
+        with self.subTest("a3_stroke_ends_at_head_base"):
+            # 끝점은 기하 계산이 돌려준 밑변 좌표여야 한다. 이름을 bx/by 로 고정하지는
+            # 않는다 — '노드 중심이 아닌 계산된 지점'이면 된다. 이 구간의 lineTo 는
+            # 전부 그래야 하므로 하나만 보지 않고 전수로 검사한다.
+            calls = re.findall(r"ctx\.lineTo\(([^)]*\)?[^)]*)\)", self.branch)
+            self.assertTrue(calls, "blocked_by 획을 긋는 lineTo 가 없다")
+            bad = [c for c in calls if "sxOf(" in c or "syOf(" in c]
+            self.assertEqual(
+                bad, [],
+                f"의존 획의 끝점이 노드 중심 좌표다({bad}) — 촉의 밑변에서 끊어야 "
+                "화살촉이 실루엣으로 남는다")
 
 class ArrowHeadReadsAgainstEverything(unittest.TestCase):
     """②③ 촉은 획보다 진하고, 배경색 테두리로 주변에서 떨어진다."""
@@ -130,30 +129,29 @@ class ArrowHeadReadsAgainstEverything(unittest.TestCase):
         cls.branch = _blocked_branch(cls.html)
         cls.arrow = _arrow_fn(cls.html)
 
-    def test_b1_arrow_painter_exists(self):
-        self.assertTrue(self.arrow.strip(), "화살촉을 칠하는 함수를 찾지 못했다")
-
-    def test_b2_head_has_background_outline(self):
-        # 노드 링·교차 계보선과 겹쳐도 윤곽이 남으려면 배경색 테두리가 필요하다.
-        self.assertRegex(
-            self.arrow, r"strokeStyle\s*=\s*\w*[Bb]g\w*",
-            "촉에 배경색 분리 테두리가 없다 — 노드 링·교차 엣지와 겹치면 윤곽이 사라진다")
-        self.assertIn("stroke()", self.arrow,
-                      "테두리 색만 정하고 긋지 않았다")
-
-    def test_b3_head_color_is_not_the_stroke_color(self):
-        # 촉이 획과 같은 반투명 색이면 배경에 녹는다 — 별도의 (더 진한) 색이어야 한다.
-        line = re.search(r"ctx\.strokeStyle\s*=\s*(\w+)\s*;", self.branch)
-        self.assertIsNotNone(line, "의존 획의 strokeStyle 대입을 찾지 못했다")
-        call = re.search(r"\b\w*[Aa]rrow\w*\(([^;]*)\)\s*;", self.branch)
-        self.assertIsNotNone(call, "분기에서 화살촉 그리기 호출을 찾지 못했다")
-        passed = [a.strip() for a in call.group(1).split(",")]
-        self.assertNotIn(
-            line.group(1), passed,
-            f"촉을 획과 같은 색 변수({line.group(1)})로 칠하고 있다 — 그 색은 "
-            "반투명(hover 중엔 0.16)이라 촉이 배경에 녹는다. 촉은 획보다 "
-            "한 단계 진해야 한다")
-
+    def test_arrow_head_reads_against_everything(self):
+        """②③ 촉은 획보다 진하고, 배경색 테두리로 주변에서 떨어진다."""
+        with self.subTest("b1_arrow_painter_exists"):
+            self.assertTrue(self.arrow.strip(), "화살촉을 칠하는 함수를 찾지 못했다")
+        with self.subTest("b2_head_has_background_outline"):
+            # 노드 링·교차 계보선과 겹쳐도 윤곽이 남으려면 배경색 테두리가 필요하다.
+            self.assertRegex(
+                self.arrow, r"strokeStyle\s*=\s*\w*[Bb]g\w*",
+                "촉에 배경색 분리 테두리가 없다 — 노드 링·교차 엣지와 겹치면 윤곽이 사라진다")
+            self.assertIn("stroke()", self.arrow,
+                          "테두리 색만 정하고 긋지 않았다")
+        with self.subTest("b3_head_color_is_not_the_stroke_color"):
+            # 촉이 획과 같은 반투명 색이면 배경에 녹는다 — 별도의 (더 진한) 색이어야 한다.
+            line = re.search(r"ctx\.strokeStyle\s*=\s*(\w+)\s*;", self.branch)
+            self.assertIsNotNone(line, "의존 획의 strokeStyle 대입을 찾지 못했다")
+            call = re.search(r"\b\w*[Aa]rrow\w*\(([^;]*)\)\s*;", self.branch)
+            self.assertIsNotNone(call, "분기에서 화살촉 그리기 호출을 찾지 못했다")
+            passed = [a.strip() for a in call.group(1).split(",")]
+            self.assertNotIn(
+                line.group(1), passed,
+                f"촉을 획과 같은 색 변수({line.group(1)})로 칠하고 있다 — 그 색은 "
+                "반투명(hover 중엔 0.16)이라 촉이 배경에 녹는다. 촉은 획보다 "
+                "한 단계 진해야 한다")
 
 class ArrowHeadIsBigEnoughToBeATriangle(unittest.TestCase):
     """④ 대시 한 칸과 구별되는 크기·비율이어야 한다."""
@@ -163,28 +161,27 @@ class ArrowHeadIsBigEnoughToBeATriangle(unittest.TestCase):
         cls.html = _read()
         cls.geom = _geom_fn(cls.html)
 
-    def test_c1_geometry_fn_exists(self):
-        self.assertTrue(self.geom.strip(), "촉 기하를 계산하는 함수를 찾지 못했다")
-
-    def test_c2_length_floor_clears_one_dash(self):
-        floors = [float(x) for x in re.findall(r"Math\.max\(\s*(\d+(?:\.\d+)?)", self.geom)]
-        self.assertTrue(floors, "촉 길이에 하한이 없다 — 줌아웃하면 촉이 사라진다")
-        self.assertGreaterEqual(
-            max(floors), HEAD_MIN,
-            f"촉 길이 하한이 {max(floors)}px 다. 의존 획의 대시 한 칸이 "
-            f"{DASH_ON}px 이므로 이보다 크지 않으면 촉이 '대시 한 칸'과 구별되지 "
-            f"않는다 (하한 {HEAD_MIN}px 이상)")
-
-    def test_c3_base_is_wide_enough(self):
-        m = re.search(r"\bB\s*=\s*L\s*\*\s*(\d*\.?\d+)", self.geom)
-        self.assertIsNotNone(m, "밑변 반폭(B)을 촉 길이(L)에서 파생하지 않았다")
-        k = float(m.group(1))
-        self.assertGreaterEqual(
-            k, BASE_MIN,
-            f"밑변 반폭이 길이의 {k}배다 — 이보다 좁으면 화살촉이 아니라 가는 "
-            f"다트로 보이고, 길이가 하한까지 줄면 대시와 구별되지 않는다 "
-            f"({BASE_MIN} 이상)")
-
+    def test_arrow_head_is_big_enough_to_be_a_triangle(self):
+        """④ 대시 한 칸과 구별되는 크기·비율이어야 한다."""
+        with self.subTest("c1_geometry_fn_exists"):
+            self.assertTrue(self.geom.strip(), "촉 기하를 계산하는 함수를 찾지 못했다")
+        with self.subTest("c2_length_floor_clears_one_dash"):
+            floors = [float(x) for x in re.findall(r"Math\.max\(\s*(\d+(?:\.\d+)?)", self.geom)]
+            self.assertTrue(floors, "촉 길이에 하한이 없다 — 줌아웃하면 촉이 사라진다")
+            self.assertGreaterEqual(
+                max(floors), HEAD_MIN,
+                f"촉 길이 하한이 {max(floors)}px 다. 의존 획의 대시 한 칸이 "
+                f"{DASH_ON}px 이므로 이보다 크지 않으면 촉이 '대시 한 칸'과 구별되지 "
+                f"않는다 (하한 {HEAD_MIN}px 이상)")
+        with self.subTest("c3_base_is_wide_enough"):
+            m = re.search(r"\bB\s*=\s*L\s*\*\s*(\d*\.?\d+)", self.geom)
+            self.assertIsNotNone(m, "밑변 반폭(B)을 촉 길이(L)에서 파생하지 않았다")
+            k = float(m.group(1))
+            self.assertGreaterEqual(
+                k, BASE_MIN,
+                f"밑변 반폭이 길이의 {k}배다 — 이보다 좁으면 화살촉이 아니라 가는 "
+                f"다트로 보이고, 길이가 하한까지 줄면 대시와 구별되지 않는다 "
+                f"({BASE_MIN} 이상)")
 
 class ArrowVanishesWhenTheDependencyEnds(unittest.TestCase):
     """수명 규칙 (DOC-20260826-001 규칙 4): 끝난 의존은 그리지 않는다.

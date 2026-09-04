@@ -25,7 +25,9 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOOK = os.path.join(HERE, "..", "bin", "s9-audit-response")
-NOW = "2026-08-26 23:30:00"
+# 시간대 라벨은 now_str 에 실려 온다 (REQ-20260903-013) — 훅이 `KST` 를
+# 상수로 들고 있던 자리를 없앴다.
+NOW = "2026-08-26 23:30:00 KST"
 
 
 def _load():
@@ -41,53 +43,35 @@ class ResponseStamp(unittest.TestCase):
     def setUpClass(cls):
         cls.m = _load()
 
-    def test_r1_stale_stamp_is_corrected(self):
-        """R1. 모델이 적은 과거 시각이 실제 시각으로 바뀐다 (이 요구의 핵심).
-
-        23:20 에 프롬프트를 받아 23:30 에 답을 마쳤으면 기록은 23:30 이어야
-        한다. 10분 전을 가리키는 도장은 "언제 한 말인가"에 거짓을 답한다.
-        """
-        text = "`[2026-08-26 23:20:04 KST - lead]`\n\n작업했다."
-        fixed, drift = self.m.correct_stamp(text, NOW)
-        self.assertTrue(fixed.startswith(f"`[{NOW} KST - lead]`"), fixed)
-        self.assertEqual(drift, 596)
-        self.assertIn("작업했다.", fixed)
-
-    def test_r2_role_name_is_preserved(self):
-        """R2. 이름은 모델이 쓴 것을 그대로 둔다 — 누가 말하는지는 모델만 안다.
-
-        시각을 고치면서 이름까지 'lead' 로 눌러 쓰면, 위임된 에이전트의 보고가
-        리드의 말로 둔갑한다.
-        """
-        text = "`[2026-08-26 23:20:04 KST - designer]`\n\n표를 그렸다."
-        fixed, _ = self.m.correct_stamp(text, NOW)
-        self.assertIn("- designer]`", fixed)
-        self.assertNotIn("- lead]`", fixed)
-
-    def test_r3_missing_stamp_is_added(self):
-        """R3. 도장이 아예 없으면 붙인다 — 기록은 언제 한 말인지 말할 수
-        있어야 한다."""
-        fixed, drift = self.m.correct_stamp("도장 없이 시작하는 응답", NOW)
-        self.assertTrue(fixed.startswith(f"`[{NOW} KST - lead]`"), fixed)
-        self.assertIsNone(drift)
-        self.assertIn("도장 없이 시작하는 응답", fixed)
-
-    def test_r4_accurate_stamp_survives_unchanged(self):
-        """R4. 이미 맞는 도장은 건드리지 않는다 (어긋남 0)."""
-        text = f"`[{NOW} KST - lead]`\n\n본문"
-        fixed, drift = self.m.correct_stamp(text, NOW)
-        self.assertEqual(fixed, text)
-        self.assertEqual(drift, 0)
-
-    def test_r5_only_the_head_is_a_stamp(self):
-        """R5. 본문 중간의 같은 모양은 도장이 아니다 — 예시로 적은 도장까지
-        고쳐 쓰면 문서가 자기 설명과 어긋난다."""
-        text = "설명한다. 형식은 `[2026-08-26 23:20:04 KST - lead]` 이다."
-        fixed, drift = self.m.correct_stamp(text, NOW)
-        self.assertIn("`[2026-08-26 23:20:04 KST - lead]` 이다.", fixed)
-        self.assertIsNone(drift)          # 머리에 없었으니 새로 붙는다
-        self.assertTrue(fixed.startswith(f"`[{NOW} KST - lead]`"), fixed)
-
+    def test_response_stamp(self):
+        """ResponseStamp 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("r1_stale_stamp_is_corrected"):
+            text = "`[2026-08-26 23:20:04 KST - lead]`\n\n작업했다."
+            fixed, drift = self.m.correct_stamp(text, NOW)
+            self.assertTrue(fixed.startswith(f"`[{NOW} - lead]`"), fixed)
+            self.assertEqual(drift, 596)
+            self.assertIn("작업했다.", fixed)
+        with self.subTest("r2_role_name_is_preserved"):
+            text = "`[2026-08-26 23:20:04 KST - designer]`\n\n표를 그렸다."
+            fixed, _ = self.m.correct_stamp(text, NOW)
+            self.assertIn("- designer]`", fixed)
+            self.assertNotIn("- lead]`", fixed)
+        with self.subTest("r3_missing_stamp_is_added"):
+            fixed, drift = self.m.correct_stamp("도장 없이 시작하는 응답", NOW)
+            self.assertTrue(fixed.startswith(f"`[{NOW} - lead]`"), fixed)
+            self.assertIsNone(drift)
+            self.assertIn("도장 없이 시작하는 응답", fixed)
+        with self.subTest("r4_accurate_stamp_survives_unchanged"):
+            text = f"`[{NOW} - lead]`\n\n본문"
+            fixed, drift = self.m.correct_stamp(text, NOW)
+            self.assertEqual(fixed, text)
+            self.assertEqual(drift, 0)
+        with self.subTest("r5_only_the_head_is_a_stamp"):
+            text = "설명한다. 형식은 `[2026-08-26 23:20:04 KST - lead]` 이다."
+            fixed, drift = self.m.correct_stamp(text, NOW)
+            self.assertIn("`[2026-08-26 23:20:04 KST - lead]` 이다.", fixed)
+            self.assertIsNone(drift)          # 머리에 없었으니 새로 붙는다
+            self.assertTrue(fixed.startswith(f"`[{NOW} - lead]`"), fixed)
 
 if __name__ == "__main__":
     unittest.main()

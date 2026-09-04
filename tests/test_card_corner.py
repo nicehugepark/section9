@@ -70,75 +70,56 @@ class TheCardHasOneRuler(unittest.TestCase):
         cls.corner = [(s, d) for s, d in cls.rules
                       if any(c in s for c in CORNER)]
 
-    def test_the_ruler_is_declared_on_the_card(self):
-        """자는 카드가 쥔다 — 자식이 물려받아 읽을 수 있어야 한다."""
-        base = [d for s, d in self.card if s == ".card"]
-        self.assertTrue(base, "`.card` 기본 규칙이 없다")
-        for tok in RULER + ("--card-edge",):
-            self.assertTrue(any(tok in d for d in base),
-                            "카드가 %s 를 세우지 않는다 — 세우지 않으면 "
-                            "모서리 좌표가 읽을 자가 없다" % tok)
-
-    def test_the_padding_reads_the_ruler(self):
-        """안여백이 자를 안 읽으면, 자를 바꿔도 카드가 안 움직인다."""
-        base = [d for s, d in self.card if s == ".card"]
-        pad = _decl(base[0], "padding")
-        self.assertIsNotNone(pad, "`.card` 에 padding 선언이 없다")
-        for tok in RULER:
-            self.assertIn("var(%s" % tok, pad,
-                          "안여백이 %s 를 안 읽는다: %s" % (tok, pad))
-
-    def test_no_skin_writes_the_padding_again(self):
-        """스킨·밀도는 자만 바꾼다.
-
-        `.card` 에 padding 을 직접 적는 순간 그 값은 모서리 좌표와 갈라진다 —
-        바로 이 결함이 slate·cork·grid·calm 넷에서 한꺼번에 났다."""
-        again = [s for s, d in self.card
-                 if s != ".card" and _decl(d, "padding") is not None]
-        self.assertEqual(
-            again, [],
-            "이 규칙들이 카드 안여백을 자 밖에서 다시 적는다: %s — "
-            "`--card-pt/--card-pb/--card-px` 로 옮겨라" % again)
-
-    def test_the_corner_never_hardcodes_a_coordinate(self):
-        """모서리 좌표에 상수 px 이 서면 그 스킨은 다시 어긋난다."""
-        for sel, dec in self.corner:
-            for side in ("top", "right", "bottom", "left"):
-                val = _decl(dec, side)
-                if val is None:
-                    continue
-                self.assertNotRegex(
-                    val, r"-?\d+(\.\d+)?px",
-                    "%s 의 %s 이 상수 px 이다(%s) — `var(--card-p*)` 로 "
-                    "안여백을 읽어라" % (sel, side, val))
-
-    def test_the_corner_line_is_one_number(self):
-        """식별자·시각·손잡이는 같은 줄 상자를 쓴다.
-
-        하나라도 제 줄높이를 따로 가지면, 좌표가 같아도 중심이 어긋난다."""
-        want = {".card .id": None, ".elapsed": None, ".card .pickdoc": None}
-        for sel, dec in self.rules:
-            if sel in want and _decl(dec, "line-height"):
-                want[sel] = _decl(dec, "line-height")
-        for sel, val in want.items():
-            self.assertIsNotNone(val, "%s 에 줄높이 선언이 없다" % sel)
-            self.assertIn("var(--card-edge", val,
-                          "%s 의 줄높이가 자를 안 읽는다: %s" % (sel, val))
-
-    def test_the_belt_never_swells_the_id_line(self):
-        """id 줄의 벨트는 세로 여백을 갖지 않는다 — 한 곳에서 못박는다.
-
-        `.acts` 의 윗여백을 스킨·밀도가 저마다 다시 적으므로(calm compact 의
-        `margin-top:6px`), 0 으로 돌리는 규칙은 그 어떤 skin×density 짝보다
-        특이도가 높아야 한다: `.card .id .acts.deedbelt` 가 그 자리다."""
-        nail = [d for s, d in self.rules
-                if s == ".card .id .acts.deedbelt"]
-        self.assertTrue(nail, "id 줄 벨트의 자리 규칙이 없다")
-        self.assertEqual(_decl(nail[0], "margin-top"), "0",
-                         "id 줄 벨트의 윗여백이 0 으로 못박히지 않았다")
-        self.assertEqual(_decl(nail[0], "margin-bottom"), "0",
-                         "id 줄 벨트의 아랫여백이 0 으로 못박히지 않았다")
-
+    def test_the_card_has_one_ruler(self):
+        """TheCardHasOneRuler 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("the_ruler_is_declared_on_the_card"):
+            base = [d for s, d in self.card if s == ".card"]
+            self.assertTrue(base, "`.card` 기본 규칙이 없다")
+            for tok in RULER + ("--card-edge",):
+                self.assertTrue(any(tok in d for d in base),
+                                "카드가 %s 를 세우지 않는다 — 세우지 않으면 "
+                                "모서리 좌표가 읽을 자가 없다" % tok)
+        with self.subTest("the_padding_reads_the_ruler"):
+            base = [d for s, d in self.card if s == ".card"]
+            pad = _decl(base[0], "padding")
+            self.assertIsNotNone(pad, "`.card` 에 padding 선언이 없다")
+            for tok in RULER:
+                self.assertIn("var(%s" % tok, pad,
+                              "안여백이 %s 를 안 읽는다: %s" % (tok, pad))
+        with self.subTest("no_skin_writes_the_padding_again"):
+            again = [s for s, d in self.card
+                     if s != ".card" and _decl(d, "padding") is not None]
+            self.assertEqual(
+                again, [],
+                "이 규칙들이 카드 안여백을 자 밖에서 다시 적는다: %s — "
+                "`--card-pt/--card-pb/--card-px` 로 옮겨라" % again)
+        with self.subTest("the_corner_never_hardcodes_a_coordinate"):
+            for sel, dec in self.corner:
+                for side in ("top", "right", "bottom", "left"):
+                    val = _decl(dec, side)
+                    if val is None:
+                        continue
+                    self.assertNotRegex(
+                        val, r"-?\d+(\.\d+)?px",
+                        "%s 의 %s 이 상수 px 이다(%s) — `var(--card-p*)` 로 "
+                        "안여백을 읽어라" % (sel, side, val))
+        with self.subTest("the_corner_line_is_one_number"):
+            want = {".card .id": None, ".elapsed": None, ".card .pickdoc": None}
+            for sel, dec in self.rules:
+                if sel in want and _decl(dec, "line-height"):
+                    want[sel] = _decl(dec, "line-height")
+            for sel, val in want.items():
+                self.assertIsNotNone(val, "%s 에 줄높이 선언이 없다" % sel)
+                self.assertIn("var(--card-edge", val,
+                              "%s 의 줄높이가 자를 안 읽는다: %s" % (sel, val))
+        with self.subTest("the_belt_never_swells_the_id_line"):
+            nail = [d for s, d in self.rules
+                    if s == ".card .id .acts.deedbelt"]
+            self.assertTrue(nail, "id 줄 벨트의 자리 규칙이 없다")
+            self.assertEqual(_decl(nail[0], "margin-top"), "0",
+                             "id 줄 벨트의 윗여백이 0 으로 못박히지 않았다")
+            self.assertEqual(_decl(nail[0], "margin-bottom"), "0",
+                             "id 줄 벨트의 아랫여백이 0 으로 못박히지 않았다")
 
 if __name__ == "__main__":
     unittest.main()

@@ -95,28 +95,29 @@ class InstallIntoProfile(unittest.TestCase):
                                  timeout=120)
 
     # N2. 훅이 프로필의 settings.json 에 들어간다
-    def test_n2_hooks_land_in_profile(self):
-        sp = os.path.join(self.prof, "settings.json")
-        self.assertTrue(os.path.exists(sp),
-                        f"프로필에 settings.json 이 없다\n{self.out.stdout}"
-                        f"{self.out.stderr}")
-        with open(sp, encoding="utf-8") as f:
-            self.assertIn("s9-audit-prompt", f.read())
+    def test_install_into_profile(self):
+        """N2·N3 — 설치가 프로필로 간다. 실 HOME 은 건드리지 않는다."""
+        with self.subTest("n2_hooks_land_in_profile"):
+                sp = os.path.join(self.prof, "settings.json")
+                self.assertTrue(os.path.exists(sp),
+                                f"프로필에 settings.json 이 없다\n{self.out.stdout}"
+                                f"{self.out.stderr}")
+                with open(sp, encoding="utf-8") as f:
+                    self.assertIn("s9-audit-prompt", f.read())
 
-    # N2b. 실 HOME(~/.claude)에는 만들지 않는다 — 격리 HOME 안에서도 확인
-    def test_n2b_real_home_untouched(self):
-        self.assertFalse(
-            os.path.exists(os.path.join(self.home, ".claude",
-                                        "settings.json")),
-            "프로필로 설치했는데 ~/.claude 에도 썼다")
+            # N2b. 실 HOME(~/.claude)에는 만들지 않는다 — 격리 HOME 안에서도 확인
+        with self.subTest("n2b_real_home_untouched"):
+                self.assertFalse(
+                    os.path.exists(os.path.join(self.home, ".claude",
+                                                "settings.json")),
+                    "프로필로 설치했는데 ~/.claude 에도 썼다")
 
-    # N3. 스킬·에이전트도 프로필로 — 없으면 designer 위임이 안 된다
-    def test_n3_skills_agents_land_in_profile(self):
-        for d in ("skills", "agents"):
-            p = os.path.join(self.prof, d)
-            self.assertTrue(os.path.isdir(p), f"{p} 없음\n{self.out.stdout}")
-            self.assertTrue(os.listdir(p), f"{p} 비어 있음")
-
+            # N3. 스킬·에이전트도 프로필로 — 없으면 designer 위임이 안 된다
+        with self.subTest("n3_skills_agents_land_in_profile"):
+            for d in ("skills", "agents"):
+                p = os.path.join(self.prof, d)
+                self.assertTrue(os.path.isdir(p), f"{p} 없음\n{self.out.stdout}")
+                self.assertTrue(os.listdir(p), f"{p} 비어 있음")
 
 class CodePreflightSeesProfile(unittest.TestCase):
     """B2 — `s9 code` 의 자가 치유가 프로필을 본다.

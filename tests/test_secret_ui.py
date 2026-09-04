@@ -44,102 +44,91 @@ class SecretUI(unittest.TestCase):
 
     # ---------- ① 목록은 이름과 둔 곳뿐 ----------
 
-    def test_the_list_shows_names_not_values(self):
-        """값을 그리는 자리가 아예 없어야 한다."""
-        fn = self._fn("loadSecrets")
-        self.assertIn('fetch("/api/secrets")', fn, "목록을 서버에서 받지 않는다")
-        self.assertIn("k.key", fn, "키 이름을 안 그린다")
-        self.assertIn("저장소 밖", fn, "어느 쪽에 있는지 말하지 않는다")
-        # 서버 응답에 value 가 없지만, 화면이 그걸 그리려 든 흔적도 없어야 한다
-        # 줄 하나가 읽는 필드는 이름과 둔 곳뿐이다 — 그 밖의 필드를 읽으면 언젠가
-        # 값이 딸려 온다
-        row = fn[fn.index("d.keys.map"):fn.index('.join("")')]
-        # 가려짐(shadowed)이 붙었다 (REQ-20260828-017) — 밖에 넣은 값이 안의
-        # 같은 이름에 가려 안 쓰이는 사실은 줄이 직접 말해야 한다. 그래도 읽는
-        # 것은 여전히 셋뿐이다: 값을 그리는 길은 열리지 않는다.
-        self.assertEqual(sorted(set(re.findall(r"\bk\.(\w+)", row))),
-                         ["key", "shadowed", "where"],
-                         "줄이 이름·둔 곳·가려짐 말고 다른 것을 읽는다")
+    def test_secret_u_i(self):
+        """SecretUI 의 계약을 한 항목으로 — 검사는 그대로다."""
+        with self.subTest("the_list_shows_names_not_values"):
+                fn = self._fn("loadSecrets")
+                self.assertIn('fetch("/api/secrets")', fn, "목록을 서버에서 받지 않는다")
+                self.assertIn("k.key", fn, "키 이름을 안 그린다")
+                self.assertIn("저장소 밖", fn, "어느 쪽에 있는지 말하지 않는다")
+                # 서버 응답에 value 가 없지만, 화면이 그걸 그리려 든 흔적도 없어야 한다
+                # 줄 하나가 읽는 필드는 이름과 둔 곳뿐이다 — 그 밖의 필드를 읽으면 언젠가
+                # 값이 딸려 온다
+                row = fn[fn.index("d.keys.map"):fn.index('.join("")')]
+                # 가려짐(shadowed)이 붙었다 (REQ-20260828-017) — 밖에 넣은 값이 안의
+                # 같은 이름에 가려 안 쓰이는 사실은 줄이 직접 말해야 한다. 그래도 읽는
+                # 것은 여전히 셋뿐이다: 값을 그리는 길은 열리지 않는다.
+                self.assertEqual(sorted(set(re.findall(r"\bk\.(\w+)", row))),
+                                 ["key", "shadowed", "where"],
+                                 "줄이 이름·둔 곳·가려짐 말고 다른 것을 읽는다")
 
-    # ---------- ② 값 칸은 password, 저장 뒤 비운다 ----------
+            # ---------- ② 값 칸은 password, 저장 뒤 비운다 ----------
+        with self.subTest("the_value_box_is_masked_and_cleared"):
+                blk = self._block()
+                self.assertRegex(blk, r'id="sec-val" type="password"', "값 칸이 가려지지 않는다")
+                self.assertIn('autocomplete="new-password"', blk,
+                              "브라우저가 값을 채워 넣는다")
+                add = self.src[self.src.index('addBtn.addEventListener'):]
+                add = add[:add.index("// 엔터로도 넣는다")]
+                # 성공/실패를 가르기 **전에** 비운다 — 실패했다고 남겨 두면 그대로 방치된다
+                self.assertLess(add.index('vIn.value = "";'), add.index("if (!res.ok)"),
+                                "저장에 실패하면 값이 칸에 남는다")
+                self.assertIn("값은 다시 보이지 않습니다", add,
+                              "다시 볼 수 없다는 것을 말해 주지 않는다")
 
-    def test_the_value_box_is_masked_and_cleared(self):
-        """저장 뒤 값이 칸에 남아 있으면 캡처·화면 공유로 그대로 따라간다."""
-        blk = self._block()
-        self.assertRegex(blk, r'id="sec-val" type="password"', "값 칸이 가려지지 않는다")
-        self.assertIn('autocomplete="new-password"', blk,
-                      "브라우저가 값을 채워 넣는다")
-        add = self.src[self.src.index('addBtn.addEventListener'):]
-        add = add[:add.index("// 엔터로도 넣는다")]
-        # 성공/실패를 가르기 **전에** 비운다 — 실패했다고 남겨 두면 그대로 방치된다
-        self.assertLess(add.index('vIn.value = "";'), add.index("if (!res.ok)"),
-                        "저장에 실패하면 값이 칸에 남는다")
-        self.assertIn("값은 다시 보이지 않습니다", add,
-                      "다시 볼 수 없다는 것을 말해 주지 않는다")
+            # ---------- ③ 지우기는 확인 한 단계 ----------
+        with self.subTest("removing_asks_once_because_it_cannot_be_undone"):
+                blk = self._block()
+                rm = blk[blk.index("secList.addEventListener"):]
+                self.assertIn('kind: "confirm"', rm, "확인 없이 지운다")
+                self.assertIn("되살릴 수 없습니다", rm, "되돌릴 수 없다는 것을 말하지 않는다")
+                self.assertIn('ok: "지우기"', rm, "확인 버튼이 동사+목적이 아니다")
+                self.assertIn('postJSONRaw("/api/secret/rm"', rm, "서버에 지우라고 하지 않는다")
+                self.assertGreater(rm.index('postJSONRaw("/api/secret/rm"'),
+                                   rm.index('kind: "confirm"'), "묻기 전에 지운다")
 
-    # ---------- ③ 지우기는 확인 한 단계 ----------
+            # ---------- ④ 상태를 다 그린다 ----------
+        with self.subTest("every_state_is_drawn"):
+                fn = self._fn("loadSecrets")
+                self.assertIn("불러오는 중…", fn, "불러오는 동안 화면이 멈춘 것처럼 보인다")
+                self.assertIn("아직 넣은 비밀이 없습니다", fn, "빈 상태가 없다")
+                self.assertIn("비밀 목록을 받아오지 못했습니다", fn, "받아오기 실패 상태가 없다")
+                self.assertIn('id="sec-retry"', fn, "실패했을 때 다시 시도할 손잡이가 없다")
+                # 빈 상태가 설명과 같은 회색으로 이어 붙으면 한 문단으로 읽힌다
+                self.assertIn(".secempty{", self.src, "빈 상태를 설명과 구별하지 않는다")
 
-    def test_removing_asks_once_because_it_cannot_be_undone(self):
-        """되돌릴 수 없을 때만 확인 창을 쓴다 — 여기가 정확히 그 자리다."""
-        blk = self._block()
-        rm = blk[blk.index("secList.addEventListener"):]
-        self.assertIn('kind: "confirm"', rm, "확인 없이 지운다")
-        self.assertIn("되살릴 수 없습니다", rm, "되돌릴 수 없다는 것을 말하지 않는다")
-        self.assertIn('ok: "지우기"', rm, "확인 버튼이 동사+목적이 아니다")
-        self.assertIn('postJSONRaw("/api/secret/rm"', rm, "서버에 지우라고 하지 않는다")
-        self.assertGreater(rm.index('postJSONRaw("/api/secret/rm"'),
-                           rm.index('kind: "confirm"'), "묻기 전에 지운다")
+            # ---------- ⑤ 내 계정 판에서만 ----------
+        with self.subTest("it_only_appears_on_my_own_account"):
+                self.assertIn("const mySecrets = !isAdminEdit && !asUser && u.name === getMe();",
+                              self.src, "남의 계정 판에도 내 비밀이 나온다")
+                self.assertIn("${mySecrets ? `", self.src, "그 판단이 화면에 안 걸려 있다")
 
-    # ---------- ④ 상태를 다 그린다 ----------
+            # ---------- ⑥ 색면 없음 ----------
+        with self.subTest("it_wears_ink_not_a_colour_field"):
+                css = self.src[self.src.index("/* ------- 비밀 키 · 대화 기록"):]
+                css = css[:css.index(".cfg-h{")]
+                # 허용되는 배경은 지면·판·잉크(hover 인버스)뿐이다 — 상태색 색면은 없다
+                for m in re.finditer(r"background:([^;}]+)", css):
+                    self.assertIn(m.group(1).strip(), ("none", "var(--panel)", "var(--text)",
+                                                       "var(--bg)"), "배경에 색면을 깐다")
+                self.assertNotIn("border-left:", css, "세로 띠를 두른다")
+                self.assertNotIn("border-radius", css, "라운드를 쓴다")
+                self.assertNotIn("box-shadow", css, "그림자를 쓴다")
+                websrc.no_hex(self, css, "색을 하드코딩한다")
+            # ---------- ⑦ 손 없이 넣고 지운다 (그리고 진짜 비밀은 못 건드린다) ----------
+        with self.subTest("it_can_be_exercised_without_hands"):
+                self.assertIn("[?&]secdbg", self.src, "손 없이 눌러 볼 길이 없다")
+                dbg = self.src[self.src.index("if (secList && /[?&]secdbg/"):]
+                dbg = dbg[:dbg.index('host.querySelector("#pf-save")')]
+                self.assertIn('const K = "S9DBG_TEST"', dbg,
+                              "진단이 진짜 비밀을 건드릴 수 있다")
+                self.assertIn('host.querySelector("#sec-add").click()', dbg,
+                              "진짜 버튼을 누르지 않는다")
+                self.assertIn("dlg.querySelector(\".dlgyes\")", dbg,
+                              "확인 창을 실제로 지나지 않는다")
+                self.assertIn("inPanel()", dbg, "값이 샜는지 재지 않는다")
 
-    def test_every_state_is_drawn(self):
-        """빈 상태는 안내가 아니라 다음 행동을 주는 자리다."""
-        fn = self._fn("loadSecrets")
-        self.assertIn("불러오는 중…", fn, "불러오는 동안 화면이 멈춘 것처럼 보인다")
-        self.assertIn("아직 넣은 비밀이 없습니다", fn, "빈 상태가 없다")
-        self.assertIn("비밀 목록을 받아오지 못했습니다", fn, "받아오기 실패 상태가 없다")
-        self.assertIn('id="sec-retry"', fn, "실패했을 때 다시 시도할 손잡이가 없다")
-        # 빈 상태가 설명과 같은 회색으로 이어 붙으면 한 문단으로 읽힌다
-        self.assertIn(".secempty{", self.src, "빈 상태를 설명과 구별하지 않는다")
-
-    # ---------- ⑤ 내 계정 판에서만 ----------
-
-    def test_it_only_appears_on_my_own_account(self):
-        """서버 목록은 대리(as)를 안 받고 쓰기는 받는다 — 섞으면 화면이 거짓말한다."""
-        self.assertIn("const mySecrets = !isAdminEdit && !asUser && u.name === getMe();",
-                      self.src, "남의 계정 판에도 내 비밀이 나온다")
-        self.assertIn("${mySecrets ? `", self.src, "그 판단이 화면에 안 걸려 있다")
-
-    # ---------- ⑥ 색면 없음 ----------
-
-    def test_it_wears_ink_not_a_colour_field(self):
-        """색면 하이라이트·세로 띠 금지. 어느 쪽에 있는지는 낱말로 말한다."""
-        css = self.src[self.src.index("/* ------- 비밀 키 · 대화 기록"):]
-        css = css[:css.index(".cfg-h{")]
-        # 허용되는 배경은 지면·판·잉크(hover 인버스)뿐이다 — 상태색 색면은 없다
-        for m in re.finditer(r"background:([^;}]+)", css):
-            self.assertIn(m.group(1).strip(), ("none", "var(--panel)", "var(--text)",
-                                               "var(--bg)"), "배경에 색면을 깐다")
-        self.assertNotIn("border-left:", css, "세로 띠를 두른다")
-        self.assertNotIn("border-radius", css, "라운드를 쓴다")
-        self.assertNotIn("box-shadow", css, "그림자를 쓴다")
-        websrc.no_hex(self, css, "색을 하드코딩한다")
-    # ---------- ⑦ 손 없이 넣고 지운다 (그리고 진짜 비밀은 못 건드린다) ----------
-
-    def test_it_can_be_exercised_without_hands(self):
-        """코드를 읽어서는 "값이 안 나온다"를 확인할 수 없다 — 실제로 넣어 봐야 한다."""
-        self.assertIn("[?&]secdbg", self.src, "손 없이 눌러 볼 길이 없다")
-        dbg = self.src[self.src.index("if (secList && /[?&]secdbg/"):]
-        dbg = dbg[:dbg.index('host.querySelector("#pf-save")')]
-        self.assertIn('const K = "S9DBG_TEST"', dbg,
-                      "진단이 진짜 비밀을 건드릴 수 있다")
-        self.assertIn('host.querySelector("#sec-add").click()', dbg,
-                      "진짜 버튼을 누르지 않는다")
-        self.assertIn("dlg.querySelector(\".dlgyes\")", dbg,
-                      "확인 창을 실제로 지나지 않는다")
-        self.assertIn("inPanel()", dbg, "값이 샜는지 재지 않는다")
-
-    # ---------- helpers ----------
+            # ---------- helpers ----------
 
     def _block(self):
         i = self.src.index('<div class="cfg-h">비밀 키')
