@@ -67,7 +67,11 @@ class Reuse(unittest.TestCase):
                          " 안 재는 것이다")
 
     def test_selections_do_not_borrow_each_others_pass(self):
-        """다른 선택은 남의 통과를 빌려 쓰지 못한다."""
+        """다른 선택은 남의 통과를 빌려 쓰지 못한다.
+
+        예외는 **전체**뿐이다 — 아래 FullCovers 를 보라. 여기서 빌려 주는 쪽은
+        부분 선택이라 덮지 않는다.
+        """
         self.m.mark_green(["test_alpha.py"], "fp1")
         self.assertFalse(self.m.green_seen(["test_beta.py"], "fp1"))
         self.assertFalse(self.m.green_seen(["test_alpha.py", "test_beta.py"],
@@ -213,3 +217,70 @@ class EndToEnd(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FullCovers(unittest.TestCase):
+    """전체가 초록이면 그 안의 어떤 선택도 초록이다 (REQ-20260904-005).
+
+    왜 필요한가(실측 2026-09-04): 전체 297파일을 초록으로 돌린 **직후** 커밋
+    문이 그 안의 234파일을 고르면 `_selection_key` 가 달라 「처음 보는 조합」이
+    되고, 방금 통과한 시험을 5분에 걸쳐 다시 돌렸다. 재사용 계층이 있는데도
+    커밋마다 분 단위를 무는 자리가 여기였다.
+
+    선택은 언제나 `discover(HERE)` 안에서 고른 것이라 전체의 부분집합임이
+    구조로 보장된다 — 그래서 부분집합인지 따로 세지 않는다.
+    """
+
+    def setUp(self):
+        self.m = _load()
+        self.tmp = tempfile.mkdtemp(prefix="s9cover-")
+        self.m.REUSE_DIR = os.path.join(self.tmp, "green")
+        self.m.RUN_LOCKS = os.path.join(self.tmp, "jobs")
+        self.full = self.m.patterns([])
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_one_file_is_covered_by_a_green_whole(self):
+        """C1. 전체가 F 로 초록이면 한 파일짜리 선택도 이미 통과다."""
+        self.m.mark_green(self.full, "fp1")
+        self.assertTrue(self.m.green_seen(["test_port_pool.py"], "fp1"))
+
+    def test_a_smoke_sized_selection_is_covered(self):
+        """C2. 여러 파일을 고른 선택(스모크 꼴)도 덮인다."""
+        self.m.mark_green(self.full, "fp1")
+        many = [f"test_x{i}.py" for i in range(12)]
+        self.assertTrue(self.m.green_seen(many, "fp1"))
+
+    def test_its_own_record_still_wins(self):
+        """C3. 자기 기록이 있으면 그대로 쓴다 — 종전 동작 불변."""
+        self.m.mark_green(["test_alpha.py"], "fp1")
+        self.assertTrue(self.m.green_seen(["test_alpha.py"], "fp1"))
+
+    def test_a_different_tree_is_not_covered(self):
+        """C4. 나무가 바뀌면 전체 기록이 있어도 덮지 않는다."""
+        self.m.mark_green(self.full, "fp1")
+        self.assertFalse(self.m.green_seen(["test_alpha.py"], "fp2"))
+
+    def test_without_a_whole_record_nothing_is_covered(self):
+        """C5. 전체 기록이 아예 없으면 덮을 것이 없다."""
+        self.assertFalse(self.m.green_seen(["test_alpha.py"], "fp1"))
+
+    def test_is_green_asks_only_the_whole(self):
+        """C6. 「전체가 초록이었나」는 전체 기록으로만 답한다.
+
+        부분집합 기록으로 그렇다고 답하면 넓은 변경의 커밋 문(WIDE gate)이
+        거짓 초록을 보고 붉은 나무를 통과시킨다.
+        """
+        self.m.mark_green(["test_alpha.py"], "fp1")
+        self.assertFalse(self.m.green_seen(self.full, "fp1", cover=False))
+        self.m.mark_green(self.full, "fp1")
+        self.assertTrue(self.m.green_seen(self.full, "fp1", cover=False))
+
+    def test_the_message_says_what_covered_it(self):
+        """C1b. 화면이 무엇 덕에 안 돌았는지 말한다.
+
+        「안 돌았다」만 보이면 사람이 문을 의심한다 — 오늘 그 의심에 값을 치렀다.
+        """
+        src = open(_runner, encoding="utf-8").read()
+        self.assertIn("전체 스위트가 이미 초록이다", src)

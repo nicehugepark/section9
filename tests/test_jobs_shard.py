@@ -73,3 +73,65 @@ class TheShard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ProgressWhileRunning(unittest.TestCase):
+    """도는 중은 도는 것으로 보인다 (REQ-20260904-004).
+
+    예전엔 `--jobs` 모드의 진행이 **샤드가 끝날 때만** 올라갔다. 샤드 하나가
+    5분 넘게 도니 그동안 잡 파일의 mtime 이 멈췄고, 화면은 그 mtime 으로
+    「N초 잠잠」을 그렸다 — 멀쩡히 도는 것과 멈춘 것이 같아 보이면, 진짜로
+    멈춘 날에 아무도 알아채지 못한다. 2026-09-04 에 그 착각으로 1시간 41분.
+
+    실행: python3 tests/ jobs_shard
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.m = _load()
+
+    class _Out:
+        def __init__(self, name):
+            self.name = name
+
+    def _pending(self, text, group):
+        import tempfile
+        fh = tempfile.NamedTemporaryFile(mode="w", suffix=".shard",
+                                         delete=False, encoding="utf-8")
+        fh.write(text)
+        fh.close()
+        self.addCleanup(lambda: os.path.exists(fh.name) and os.unlink(fh.name))
+        return [(None, self._Out(fh.name), group)]
+
+    def test_p2_progress_moves_before_a_shard_finishes(self):
+        """P2. 샤드가 끝나기 전에도 시작된 파일이 세어진다."""
+        out = ("test_a (test_alpha.A.test_a) ... ok\n"
+               "test_b (test_alpha.A.test_b) ... ok\n"
+               "test_c (test_beta.B.test_c) ... ok\n")
+        pend = self._pending(out, ["test_alpha.py", "test_beta.py",
+                                   "test_gamma.py"])
+        self.assertEqual(self.m._started_in(pend), 2)
+
+    def test_p4_progress_never_exceeds_the_shard(self):
+        """P4. 샤드에 담긴 파일 수를 넘지 않는다 — 화면의 분모가 깨진다."""
+        out = "".join(f"t (test_x{i}.C.t) ... ok\n" for i in range(9))
+        pend = self._pending(out, ["test_x0.py", "test_x1.py"])
+        self.assertEqual(self.m._started_in(pend), 2)
+
+    def test_p5_an_unreadable_shard_is_zero_not_a_crash(self):
+        """P5. 출력을 못 읽어도 러너가 죽지 않는다 — 표시가 실행을 죽이면 본말전도."""
+        pend = [(None, self._Out(os.path.join(HERE, "no-such-shard.out")),
+                 ["test_a.py"])]
+        self.assertEqual(self.m._started_in(pend), 0)
+
+    def test_p1_the_loop_bumps_every_turn_not_only_on_completion(self):
+        """P1. 폴링 한 바퀴마다 진행을 올린다 — 잡 파일 mtime 이 끊기지 않는다.
+
+        글자가 아니라 자리를 본다: `bump(` 호출이 `poll()` 을 보기 **전에**
+        한 번 있어야 한다.
+        """
+        src = open(RUNNER, encoding="utf-8").read()
+        body = src.split("def run_sharded", 1)[1]
+        loop = body.split("while pending:", 1)[1].split("for pr, out, group", 1)[0]
+        self.assertIn("bump(", loop,
+                      "샤드 완료를 기다려야만 진행이 올라간다 — 「잠잠」이 다시 거짓말한다")

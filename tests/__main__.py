@@ -10,6 +10,7 @@ usage:
 """
 import json
 import os
+import re
 import sys
 import time
 import unittest
@@ -150,6 +151,7 @@ def write_green_stamp(repo=None, stamp=None):
 #
 # 안쪽 실행(S9_TESTS_NESTED)은 둘 다 지나친다 — 바깥이 이미 문을 지났고,
 # 여기서 또 잠그면 자기 자신을 기다린다.
+_MOD_RE = re.compile(r"\((test_[A-Za-z0-9_]+)\.")
 REUSE_DIR = os.path.join(REPO, "state", "tests-green")
 RUN_LOCKS = os.path.join(REPO, "state", "jobs")
 REUSE_WAIT_SEC = int(os.environ.get("S9_TESTS_WAIT") or 1800)
@@ -211,15 +213,45 @@ def _reuse_path(pats):
     return os.path.join(REUSE_DIR, _selection_key(pats) + ".json")
 
 
-def green_seen(pats, fp):
-    """이 선택이 이 지문으로 이미 통과했나."""
-    if not fp:
-        return False
+def _green_fp(pats):
+    """이 선택의 마지막 green 지문 (없으면 None)."""
     try:
         with open(_reuse_path(pats), encoding="utf-8") as f:
-            return json.load(f).get("fingerprint") == fp
+            return json.load(f).get("fingerprint")
     except (OSError, ValueError):
+        return None
+
+
+def green_seen(pats, fp, cover=True):
+    """이 선택이 이 지문으로 이미 통과했나.
+
+    **전체가 덮는다** (REQ-20260904-005). 자기 선택의 기록이 없어도, 같은
+    지문에서 **전체 스위트가 초록**이었으면 그 안의 어떤 선택도 초록이다 —
+    선택은 언제나 `discover(HERE)` 안에서 고른 것이라 전체의 부분집합임이
+    구조로 보장된다.
+
+    없으면 어떻게 되나(실측 2026-09-04): 전체 297파일을 초록으로 돌린 **직후**
+    커밋 문이 그 안의 234파일을 고르면 `_selection_key` 가 달라 「처음 보는
+    조합」이 되고, 방금 통과한 시험을 5분에 걸쳐 다시 돌린다. 재사용 계층이
+    있는데도 커밋마다 분 단위를 무는 자리가 여기였다.
+
+    이 규칙이 기대는 전제 하나: **시험은 어떤 조합으로 돌려도 같은 답을 낸다.**
+    2026-09-04 하루가 통째로 그 전제가 깨진 자리를 쫓은 날이었으므로
+    (포트 판정·래퍼 판정) 적어 둔다 — 조합에 따라 답이 갈리는 시험이 남아 있으면
+    이 규칙이 그것을 덮는 뚜껑이 된다. 덮이는 것은 **간섭 결함**뿐이고 코드
+    결함은 아니다(같은 나무에서 전체가 초록이었으므로).
+
+    `cover=False` 는 「정확히 이 선택」만 묻는다 — `--is-green` 이 그 길로 온다.
+    """
+    if not fp:
         return False
+    if _green_fp(pats) == fp:
+        return True
+    if cover:
+        full = patterns([])
+        if sorted(str(p) for p in pats) != sorted(str(p) for p in full):
+            return _green_fp(full) == fp
+    return False
 
 
 def mark_green(pats, fp):
@@ -335,6 +367,27 @@ def matched_files(pats):
     return out
 
 
+def _started_in(pending):
+    """아직 도는 샤드들에서 **시작된 시험 파일 수** (REQ-20260904-004).
+
+    자식은 unittest 를 verbose 로 돌리므로 줄마다 `(test_모듈.클래스.시험)` 이
+    찍힌다. 거기서 모듈 이름만 모으면 「이 샤드가 몇 번째 파일까지 왔나」가
+    나온다 — 자식에게 따로 보고 배선을 넣지 않고도 진행이 흐른다.
+
+    읽기가 실패해도(파일이 사라졌든 인코딩이 깨졌든) 0 으로 답한다. 진행 표시
+    때문에 시험 실행이 죽는 것은 본말전도다.
+    """
+    seen = 0
+    for _pr, out, group in pending:
+        try:
+            with open(out.name, encoding="utf-8", errors="replace") as fh:
+                mods = set(_MOD_RE.findall(fh.read()))
+        except OSError:
+            continue
+        seen += min(len(mods), len(group))
+    return seen
+
+
 def run_sharded(pats, jobs, bump=None):
     """병렬 본대 + 직렬 꼬리 (REQ-20260830-027 2단계).
 
@@ -372,6 +425,14 @@ def run_sharded(pats, jobs, bump=None):
     pending = list(procs)
     while pending:
         _time.sleep(0.5)
+        # **도는 중을 도는 것으로 보이게 한다** (REQ-20260904-004). 예전엔
+        # 샤드가 하나 끝날 때만 진행을 올렸다 — 샤드 하나가 5분 넘게 도니 그
+        # 동안 잡 파일의 mtime 이 멈췄고, 화면은 그 mtime 으로 「N초 잠잠」을
+        # 그렸다. 멀쩡히 도는 것이 멈춘 것과 똑같이 보이면, 진짜로 멈춘 날에
+        # 아무도 알아채지 못한다 — 2026-09-04 에 리드가 그 착각으로 1시간
+        # 41분을 기다렸다.
+        if bump:
+            bump(done_files + _started_in(pending))
         still = []
         for pr, out, group in pending:
             if pr.poll() is None:
@@ -379,7 +440,7 @@ def run_sharded(pats, jobs, bump=None):
                 continue
             done_files += len(group)
             if bump:
-                bump(done_files)
+                bump(done_files + _started_in(still))
             if pr.returncode != 0:
                 ok = False
                 out.flush()
@@ -521,7 +582,9 @@ def full_suite_green(repo=None):
     이 문이 있으나 마나다.
     """
     fp = tree_fingerprint(repo)
-    return bool(fp) and green_seen(patterns([]), fp)
+    # cover=False: 「전체가 초록이었나」는 전체 기록으로만 답한다 — 부분집합
+    # 기록으로 그렇다고 답하면 넓은 변경의 커밋 문이 거짓 초록을 본다.
+    return bool(fp) and green_seen(patterns([]), fp, cover=False)
 
 
 def main():
@@ -608,7 +671,11 @@ def main():
         reuse = ("--no-reuse" not in sys.argv[1:]) and not nested
         fp = tree_fingerprint() if not nested else None
         if reuse and green_seen(pats, fp):
-            print("바뀐 것이 없다 — 이 선택은 방금 통과했다. 다시 돌지 않는다 "
+            # 무엇이 덮었는지 말한다 — 「안 돌았다」만 보이면 사람이 문을
+            # 의심한다 (REQ-20260904-005).
+            why = ("이 선택이 방금 통과했다" if _green_fp(pats) == fp
+                   else "이 나무에서 전체 스위트가 이미 초록이다")
+            print(f"바뀐 것이 없다 — {why}. 다시 돌지 않는다 "
                   "(`--no-reuse` 로 강제).", file=sys.stderr)
             return 0
         if not nested:
