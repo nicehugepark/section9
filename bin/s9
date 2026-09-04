@@ -18153,8 +18153,8 @@ def port_guard_tick():
         # 사용자 브라우저·앱이 최다면 이 분기에 못 들어온다(P2).
         _guard_log(f"동적 포트 {bound}/{total} ({ratio:.0%}) — WSL 중계"
                    f"({win.get('top_name')})가 {win.get('top_count', 0):,}개를 "
-                   f"쥐고 있어 자동으로 돌려받는다 (중계는 다시 뜨고 세션은 "
-                   f"살아남는다).")
+                   f"쥐고 있어 자동으로 돌려받는다 (중계는 다시 뜨지만 그것이 "
+                   f"나르던 연결은 끊긴다 — REQ-20260904-014).")
         rr = _doctor("--recover", "--yes")
         verdict["action"] = "relay-recover"
         verdict["ok"] = bool(rr and rr.returncode == 0)

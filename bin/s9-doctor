@@ -14,8 +14,10 @@ ERR_NO_BUFFER_SPACE 를 낸다. 기존에 떠 있던 포트는 멀쩡해서 증�
 원인은 리눅스가 아니라 호스트였다 — WSL 포트 중계 COM 대리 프로세스가 동적
 포트 16,384개 중 15,709개를 Bound 로 잡고 놓지 않았다. 이 상태에서 리눅스
 쪽 자원을 아무리 회수해도 풀리지 않으므로, 그 점유자를 지목해 회수한다.
-회수는 `wsl --shutdown` 보다 훨씬 덜 파괴적이다 — COM 대리는 필요할 때 다시
-뜨고, 실행 중인 세션·에이전트는 살아남는다.
+회수는 `wsl --shutdown` 보다 덜 파괴적이지만 공짜가 아니다 — COM 대리는 필요할
+때 다시 뜨지만, **그 중계가 나르던 TCP 연결은 전부 끊긴다**(브라우저 탭·VS Code
+Remote 채널·DB 클라이언트). 실행 중인 WSL 세션까지 함께 내려간 사례가 있다
+(2026-09-02, REQ-20260902-066). 「세션은 살아남는다」는 거둔 단언이다.
 
 세 번째 축이 **예방**이다(REQ-20260825-102). 캡처가 남긴 브라우저를 그때그때
 회수하는 것만으로는 부족했다 — 세션이 중간에 죽거나 캡처가 강제 종료되면
@@ -90,22 +92,58 @@ RELAY_SHARE = 0.30
 WIN_RELAY_CLSID = "{17696EAC-9568-4CF5-BB8C-82515AAD6C09}"
 
 
-def probe_new_port(budget=12.0):
+# 프로브 전용 자리 — 풀(18800~18927)과 겹치지 않는 우리 대역의 꼭대기.
+# 커널 임시 범위(32768~)와 윈도우 동적 범위(49152~) **아래**다 (REQ-20260904-017).
+PROBE_PORTS = range(18990, 19000)
+# 대기 파라미터 — tests/portpool.py 의 wait_server 와 같은 규율: 두드리는
+# 횟수가 곧 비용이다(연결 하나 = 윈도우 동적 포트 하나).
+PROBE_FIRST, PROBE_MAX, PROBE_GROWTH = 0.05, 2.0, 1.7
+
+
+def _probe_listener():
+    """프로브 리스너 — 임시 포트(0)가 아니라 우리 대역에 세운다.
+
+    예전엔 `bind(("127.0.0.1", 0))` 이었다. 커널 임시 범위라 윈도우 동적
+    범위와 겹치고, `tests/portpool.py` 가 시험에서 적발하는 바로 그 행위다 —
+    문이 tests/ 만 보고 있어 도구는 안 걸렸다(devops 판정, REQ-20260904-013).
+    """
+    last = None
+    for port in PROBE_PORTS:
+        s = socket.socket()
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+            s.listen(8)
+            return s, port, None
+        except OSError as e:
+            last = e
+            s.close()
+    return None, None, last
+
+
+def probe_new_port(budget=12.0, _connect=None, _sleep=None):
     """새 포트를 열고 접속 가능해질 때까지 걸리는 시간을 잰다.
 
     binary 판정이 아니라 **지연 측정**인 이유: 이 증상은 "안 된다"가 아니라
     "늦어진다"이고, 늦어지는 정도가 곧 윈도우 측 압박의 크기다. 0초면 건강,
     1~3초면 정상 범위(virtioproxy 공개 지연), 그 이상이면 서버 기동 코드가
-    타임아웃으로 죽기 시작한다."""
-    srv = socket.socket()
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    try:
-        srv.bind(("127.0.0.1", 0))
-        srv.listen(8)
-        port = srv.getsockname()[1]
-    except OSError as e:
-        srv.close()
-        return {"ok": False, "stage": "bind", "error": str(e), "latency": None}
+    타임아웃으로 죽기 시작한다.
+
+    **진단이 병을 키우면 안 된다** (REQ-20260904-017). 예전엔 0.25초 고정
+    간격으로 최대 12초를 두드렸다 — 건강할 때 분당 1개지만, 공개가 늦어지는
+    **바로 그때** 분당 최대 48개 = 시간당 2,880개다. 실측 소모 속도(2,670/h,
+    REQ-20260903-003)와 같은 자릿수다. `wait_server` 에서 끊은 되먹임이 도구
+    쪽엔 그대로 남아 있었다. 이제 지수 백오프로 12초 안에 10회 이하다.
+
+    그리고 **횟수를 센다.** 0.25초 고정 간격은 7% 창(12~16ms 실패)을 0.25 로
+    묻어 지연 숫자에서 안 보이게 했다 — 세지 않는 재시도는 결함을 가린다.
+    `attempts` 가 2 이상이면 첫 시도가 거부된 것이고, 그것이 곧 창의 크기다.
+    """
+    srv, port, err = _probe_listener()
+    if srv is None:
+        return {"ok": False, "stage": "bind", "error": str(err), "latency": None}
+    connect = _connect or (lambda p: socket.create_connection(("127.0.0.1", p), 1).close())
+    sleep = _sleep or time.sleep
 
     import threading
 
@@ -119,17 +157,27 @@ def probe_new_port(budget=12.0):
     threading.Thread(target=accept_loop, daemon=True).start()
 
     t0 = time.time()
-    while time.time() - t0 < budget:
+    attempts, wait, spent = 0, PROBE_FIRST, 0.0
+    while True:
+        attempts += 1
         try:
-            socket.create_connection(("127.0.0.1", port), 1).close()
+            connect(port)
             lat = time.time() - t0
             srv.close()
-            return {"ok": True, "port": port, "latency": round(lat, 2)}
+            return {"ok": True, "port": port, "latency": round(lat, 2),
+                    "attempts": attempts}
         except OSError:
-            time.sleep(0.25)
+            # 예산은 **잠재운 시간**으로 센다 — 벽시계로 세면 잠을 흉내 낸
+            # 시험에서 무한히 돌고, 실전에서도 두드리는 횟수가 곧 비용이다.
+            if spent + wait >= budget:
+                break
+            sleep(wait)
+            spent += wait
+            wait = min(PROBE_MAX, wait * PROBE_GROWTH)
     srv.close()
     return {"ok": False, "stage": "publish", "port": port,
-            "error": f"{budget:.0f}초 안에 공개되지 않음", "latency": None}
+            "error": f"{budget:.0f}초 안에 공개되지 않음", "latency": None,
+            "attempts": attempts}
 
 
 def etime_sec(tok):
@@ -1260,9 +1308,15 @@ def advise(d):
                     else "COM 대리 프로세스")
             out.append(f"점유자: pid {target['pid']} {target['name']} — "
                        f"{target['count']}개. {kind}로 보인다.")
+            # 거둔 단언을 다시 적지 않는다 (REQ-20260904-014). 「세션은
+            # 살아남는다」는 REQ-20260902-066 이 근거 없음으로 판정했고, 그
+            # 중계가 나르던 연결이 전부 끊기는 것은 설계상 확실하다 — 사람이
+            # 고장 났을 때 읽는 이 문장이 거짓이면 안내가 곧 피해가 된다.
             out.append(f"`s9-doctor --recover` — 그 프로세스를 종료해 포트를 "
-                       f"즉시 반환시킨다. 중계는 필요할 때 다시 뜨고, 실행 중인 "
-                       f"세션·에이전트는 살아남는다(wsl --shutdown 과 다르다).")
+                       f"즉시 반환시킨다. 중계는 다시 뜨지만 그것이 나르던 연결"
+                       f"(브라우저 탭·원격 편집기 채널)은 전부 끊기고, WSL 세션"
+                       f"까지 함께 내려간 사례가 있다 — 하던 일이 끊겨도 되는 "
+                       f"때에 사람이 직접 돌려라.")
         elif win.get("top_name"):
             out.append(f"최다 점유자는 pid {win.get('top_pid')} "
                        f"{win['top_name']} ({win.get('top_count')}개) — "
