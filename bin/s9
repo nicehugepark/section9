@@ -18029,6 +18029,121 @@ PORT_GUARD_EVERY = 60      # 회수 주기 (초) — 고아가 살아 있을 수
 # **기울기**다. 여기 문턱은 그때까지 기록을 덜 시끄럽게 하는 몫만 한다.
 PORT_GUARD_WARN = 0.60
 PORT_GUARD_AUTO = 0.90     # 마지막 안전망 — 여기까지 온 것 자체가 결함이다
+# 사다리의 중간 칸 (REQ-20260904-016). 사다리의 유일한 중간 칸이 「남을 죽인다」
+# 였기 때문에 그것을 60% 로 내렸다가 하루에 아홉 번 죽였다. 중간 칸은 파괴적일
+# 필요가 없다 — 0.85 가 5분 지속되면 **우리 것부터** 거둔다(`--fix`, 무해).
+# 그리고 0.90 은 비율 하나로 발동하지 않는다: 오늘 실측 p90 이 84%, 낮 천장이
+# 90% 라 그 선은 이상 신호가 아니라 평시 분포의 꼬리 안이다. 여섯 조건이 전부
+# 참일 때만 죽인다(`_port_recover_gate`). 3,873표본 재생: 옛 규칙은 처형 후보
+# 10회, 새 사다리는 --fix 6회·처형 후보 2회(둘 다 실제 91~96%).
+PORT_GUARD_BANNER = 0.75   # 오르는 중이면 화면 재료(banner·eta)를 싣는다
+PORT_GUARD_FIX = 0.85      # 이 선이 지속되면 파괴 없는 회수
+PORT_GUARD_SUSTAIN = 5     # 「지속」= 연속 틱 수 (1분 주기 → 5분), 하락 없음
+PORT_GUARD_FIX_EVERY = 600     # --fix 되풀이 간격 (초)
+PORT_GUARD_RECOVER_HOUR = 1    # 처형 예산 — 시간당
+PORT_GUARD_RECOVER_DAY = 3     #             하루
+_port_ring = {"samples": [], "fix_at": 0.0, "recovers": []}   # 시험이 지운다
+
+
+def _port_ring_file():
+    return os.path.join(ROOT, "state", "port-guard-ring.json")
+
+
+def _port_ring_load():
+    """serve 가 다시 떠도 5분을 잃지 않는다 — 최선 노력, 실패는 빈 링."""
+    if _port_ring["samples"] or _port_ring["recovers"] or _port_ring["fix_at"]:
+        return
+    try:
+        with open(_port_ring_file(), encoding="utf-8") as f:
+            d = json.load(f)
+        _port_ring["samples"] = list(d.get("samples") or [])[-10:]
+        _port_ring["fix_at"] = float(d.get("fix_at") or 0)
+        _port_ring["recovers"] = list(d.get("recovers") or [])[-20:]
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def _port_ring_save():
+    try:
+        os.makedirs(os.path.dirname(_port_ring_file()), exist_ok=True)
+        with open(_port_ring_file(), "w", encoding="utf-8") as f:
+            json.dump(_port_ring, f)
+    except OSError:
+        pass
+
+
+def _port_trend(ratio, bound, total, now):
+    """최근 표본으로 **기울기**를 낸다 — 비율 하나는 「하루의 끝」을 잴 뿐이다.
+
+    반환 rising(직전보다 올랐나) · sustain(연속으로 FIX 선 위에 하락 없이 있은
+    틱 수) · eta_min(이 속도면 몇 분 뒤 마르나, 모르면 None).
+    """
+    s = _port_ring["samples"]
+    s.append([now, round(ratio, 4), int(bound)])
+    del s[:-10]
+    rising = len(s) >= 2 and s[-1][1] >= s[-2][1]
+    sustain = 0
+    for i in range(len(s) - 1, -1, -1):
+        if s[i][1] < PORT_GUARD_FIX:
+            break
+        if i < len(s) - 1 and s[i][1] > s[i + 1][1]:
+            break     # 그 사이에 하락이 있었다 — 지속이 아니다
+        sustain += 1
+    eta = None
+    if len(s) >= 3:
+        dt = (s[-1][0] - s[0][0]) / 60.0
+        if dt > 0:
+            per_min = (s[-1][2] - s[0][2]) / dt
+            if per_min > 0:
+                eta = round((total - bound) / per_min, 1)
+    return {"rising": rising, "sustain": sustain, "eta_min": eta}
+
+
+def _port_quiet():
+    """지금 아무도 일하지 않나 — 살아 있는 세션도, 집힌 in-progress 도 없다.
+
+    사람의 연결을 끊는 자리에 사람이 있으면 안 죽인다. **모르면 조용하지 않은
+    것으로 답한다** — 판정이 실패했다고 죽이는 쪽으로 기울면 안 된다.
+    """
+    import glob as _glob
+    try:
+        for bp in _glob.glob(_local_binding_glob()):
+            try:
+                with open(bp, encoding="utf-8") as f:
+                    b = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if chat_live(b):
+                return False
+        for r in load_catalog():
+            if r.get("type") == "request" and r.get("status") == "in-progress" \
+                    and rework_claimed(r["id"]):
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _port_recover_gate(ratio, trend, win, now):
+    """무인 처형의 문 — 여섯이 **전부** 참일 때만 연다. (열림, 막은 이유들)."""
+    why = []
+    if ratio < PORT_GUARD_AUTO:
+        why.append(f"비율 {ratio:.0%} < {PORT_GUARD_AUTO:.0%}")
+    if trend["sustain"] < PORT_GUARD_SUSTAIN:
+        why.append(f"지속 {trend['sustain']}/{PORT_GUARD_SUSTAIN}틱 (한 표본이 스친 것은 처형 사유가 아니다)")
+    if not _is_wsl_relay(win.get("top_name", "")):
+        why.append(f"최다 점유자가 중계가 아니다({win.get('top_name') or '?'}) — 사용자 앱 불가침")
+    fix_at = _port_ring["fix_at"]
+    if not fix_at or now - fix_at > 1800:
+        why.append("파괴 없는 회수(--fix)를 아직 안 거쳤다")
+    if not _port_quiet():
+        why.append("일하는 중이다(살아 있는 세션 또는 집힌 요청) — 사람의 연결을 끊지 않는다")
+    rec = [t for t in _port_ring["recovers"] if now - t < 86400]
+    if len([t for t in rec if now - t < 3600]) >= PORT_GUARD_RECOVER_HOUR:
+        why.append(f"예산 — 이번 시간에 이미 {PORT_GUARD_RECOVER_HOUR}회")
+    elif len(rec) >= PORT_GUARD_RECOVER_DAY:
+        why.append(f"예산 — 오늘 이미 {PORT_GUARD_RECOVER_DAY}회")
+    return (not why), why
 # 중간 안전망 (REQ-20260830-037) — **기본값은 끔이다** (REQ-20260902-066).
 # 최다 점유자가 WSL 중계(dllhost)일 때 60%부터 그 프로세스를 죽여 포트를
 # 돌려받던 자리다. 근거는 "회수는 싸다(실측 0.3초·세션 생존)"였는데, 그
@@ -18135,31 +18250,56 @@ def port_guard_tick():
         return {"swept": swept}
     bound = win.get("bound") or 0
     ratio = bound / total
+    import time as _t0
+    nowt = _t0.time()
+    _port_ring_load()
+    trend = _port_trend(ratio, bound, total, nowt)
     verdict = {"ratio": round(ratio, 3), "bound": bound, "total": total,
-               "swept": swept, "action": None}
-    if ratio >= PORT_GUARD_AUTO:
-        _guard_log(f"동적 포트 {bound}/{total} ({ratio:.0%}) — 마지막 안전망 "
-                   f"작동. 여기까지 온 것은 누수 차단에 구멍이 있다는 뜻이다.")
-        rr = _doctor("--recover", "--yes")
-        verdict["action"] = "recover"
-        verdict["ok"] = bool(rr and rr.returncode == 0)
-        _guard_log("자동 회수 결과: "
-                   + ("정상" if verdict["ok"] else "실패 — 사람 확인 필요"))
-    elif ratio >= PORT_GUARD_RELAY_AUTO \
-            and _is_wsl_relay(win.get("top_name", "")):
-        # 중간 안전망 (REQ-20260830-037) — **중계 독식일 때만**. 최종 판정은
-        # doctor 의 relay_hoarder(독식 비율+이름 이중 게이트) 한 곳이다:
-        # 여기서 넓게 부르고 저쪽이 좁게 판정해야 게이트가 두 벌로 안 갈린다.
-        # 사용자 브라우저·앱이 최다면 이 분기에 못 들어온다(P2).
-        _guard_log(f"동적 포트 {bound}/{total} ({ratio:.0%}) — WSL 중계"
-                   f"({win.get('top_name')})가 {win.get('top_count', 0):,}개를 "
-                   f"쥐고 있어 자동으로 돌려받는다 (중계는 다시 뜨지만 그것이 "
-                   f"나르던 연결은 끊긴다 — REQ-20260904-014).")
-        rr = _doctor("--recover", "--yes")
-        verdict["action"] = "relay-recover"
-        verdict["ok"] = bool(rr and rr.returncode == 0)
-        _guard_log("자동 회수 결과: "
-                   + ("정상" if verdict["ok"] else "실패 — 사람 확인 필요"))
+               "swept": swept, "action": None,
+               "rising": trend["rising"], "sustain": trend["sustain"],
+               "eta_min": trend["eta_min"]}
+    # 화면 재료 — 사람이 처음 보는 자리. 퍼센트가 아니라 **남은 시간**을 준다
+    # (REQ-20260904-016): 실측 시간당 2,670 이면 어느 시점에서든 여섯 시간이
+    # 안 남는다. 문구는 화면 쪽(ux-writer) 몫이고 여기서는 값만 싣는다.
+    if ratio >= PORT_GUARD_BANNER and trend["rising"]:
+        verdict["banner"] = {"ratio": round(ratio, 3), "eta_min": trend["eta_min"]}
+    recovered = False
+    if ratio >= PORT_GUARD_AUTO or (
+            PORT_GUARD_RELAY_AUTO and ratio >= PORT_GUARD_RELAY_AUTO
+            and _is_wsl_relay(win.get("top_name", ""))):
+        # 마지막 안전망도 중간 안전망도 **같은 문**을 지난다 — 게이트가 두
+        # 벌이면 성긴 쪽으로 샌다. 비율 하나로는 절대 열리지 않는다.
+        ok, why = _port_recover_gate(ratio, trend, win, nowt)
+        if ok:
+            _guard_log(f"동적 포트 {bound}/{total} ({ratio:.0%}) — 여섯 조건이 "
+                       f"전부 참이라 회수한다 (지속 {trend['sustain']}틱 · "
+                       f"--fix 선행 · 조용함 · 예산 안).")
+            rr = _doctor("--recover", "--yes")
+            verdict["action"] = "recover"
+            verdict["ok"] = bool(rr and rr.returncode == 0)
+            _port_ring["recovers"].append(nowt)
+            del _port_ring["recovers"][:-20]
+            _guard_log("자동 회수 결과: "
+                       + ("정상" if verdict["ok"] else "실패 — 사람 확인 필요"))
+            recovered = True
+        else:
+            verdict["held"] = why
+            key = f"held|{int(ratio * 20)}|{len(why)}"
+            if _port_warn_should_speak(key, nowt):
+                _guard_log(f"동적 포트 {bound}/{total} ({ratio:.0%}) — 처형 선 위지만 "
+                           f"세운다: " + " · ".join(why))
+    if not recovered and ratio >= PORT_GUARD_FIX \
+            and trend["sustain"] >= PORT_GUARD_SUSTAIN \
+            and nowt - _port_ring["fix_at"] >= PORT_GUARD_FIX_EVERY:
+        # 파괴 없는 중간 칸 — 우리 것부터 거둔다. 남도 사람도 안 죽인다.
+        _guard_log(f"동적 포트 {bound}/{total} ({ratio:.0%}) — {trend['sustain']}틱 "
+                   f"지속. 파괴 없는 회수(--fix)를 먼저 돌린다.")
+        _doctor("--fix")
+        verdict["action"] = "fix"
+        _port_ring["fix_at"] = nowt
+    _port_ring_save()
+    if recovered or verdict["action"] == "fix":
+        pass
     elif ratio >= PORT_GUARD_WARN:
         verdict["action"] = "watch"
         # 경고는 **누가 가장 많이 쥐고 있는지까지** 말한다 (REQ-20260827-019):

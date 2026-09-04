@@ -87,8 +87,15 @@ class PortWarnRepeat(unittest.TestCase):
         """
         with open(S9, encoding="utf-8") as f:
             src = f.read()
-        auto = src.split("if ratio >= PORT_GUARD_AUTO:", 1)[1].split("elif")[0]
-        self.assertNotIn("_port_warn_should_speak", auto,
+        # 사다리(REQ-20260904-016) 뒤의 모양: 문(`_port_recover_gate`)이 열리면
+        # `if ok:` 가지가 회수를 돌린다. **그 가지**는 침묵 장치를 지나지 않는다.
+        # 세워 둔(held) 가지는 같은 말을 되풀이하지 않아도 된다 — 그건 "계속
+        # 나쁘다"가 아니라 "여전히 안 죽인다"이고, 왜인지는 verdict.held 에 남는다.
+        tick = src.split("def port_guard_tick", 1)[1].split("\ndef ", 1)[0]
+        opened = tick.split("if ok:", 1)[1].split("else:", 1)[0]
+        self.assertIn('_doctor("--recover", "--yes")', opened,
+                      "열린 가지에 회수가 없다 — 구조가 바뀌었으면 이 시험을 다시 읽어라")
+        self.assertNotIn("_port_warn_should_speak", opened,
                          "자동 회수 경로까지 침묵시켰다")
 
 

@@ -50,7 +50,10 @@ class PortWarnNames(unittest.TestCase):
             self.assertIn('if win.get("top_name") and win.get("top_count")',
                           self.warn, "필드가 없을 때의 갈래가 없다")
         with self.subTest("p4_auto_recovery_threshold_is_untouched"):
-            self.assertIn("if ratio >= PORT_GUARD_AUTO:", self.src)
+            # 0.90 은 그대로 문의 첫 조건이다 (REQ-20260904-016 뒤로는 그 문이
+            # `_port_recover_gate` 안에 있고, 비율 하나로는 열리지 않는다).
+            self.assertIn("if ratio < PORT_GUARD_AUTO:", self.src)
+            self.assertIn("PORT_GUARD_AUTO = 0.90", self.src)
             self.assertIn('_doctor("--recover", "--yes")', self.src)
 
 if __name__ == "__main__":
