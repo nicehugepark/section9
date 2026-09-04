@@ -17564,10 +17564,13 @@ def cmd_code(args):
     import socket
     import subprocess
     port = s9_port()
-    try:
-        socket.create_connection(("127.0.0.1", port), 0.5).close()
+    # 연결됨 ≠ 준비됨 (REQ-20260904-015). 예전엔 connect 한 번 성공이면 「실행
+    # 중」을 찍었는데, WSL 중계는 아무도 안 듣는 포트에도 connect 를 받아 준다.
+    # 우리 서버가 실제로 답하는지를 왕복으로 본다.
+    ready = dashboard_ready("127.0.0.1", port)
+    if ready["ready"]:
         print(f"대시보드 실행 중: http://127.0.0.1:{port}/")
-    except OSError:
+    else:
         # 서버를 직접 띄우지 않고 **감시자**를 띄운다 (REQ-20260825-096) —
         # 감시자가 서버를 올리고, 죽으면 사유를 남기고 되살린다. 여기서
         # os.fork 로 직접 갈라지지 않는 이유는 argv 다: fork 는 argv 를 물려받아
@@ -18622,6 +18625,108 @@ def cmd_shot(args):
         print(f"s9 shot: 스크린샷 생성 실패 ({candidates[0]}). "
               f"수동 확인: cmd.exe /c start {url}", file=sys.stderr)
         sys.exit(3)
+
+
+# 공개는 왕복으로 끝난다 (REQ-20260904-015). 되걸기 예산은 실측에서 왔다:
+# 창은 0.5초에 닫히고 실패는 12~16ms 다. `wait_server` 의 40초/30회를 베끼지
+# 않는다 — 그건 「서버가 아직 없을 수 있다」용이다.
+DASH_READY_FIRST = 0.1
+DASH_READY_MAX = 0.8
+DASH_READY_TRIES = 3
+DASH_READY_BUDGET = 1.0
+
+
+def dashboard_ready(host, port, expect_started=None, _connect=None, _sleep=None):
+    """이 주소에서 **우리 대시보드가 답하는가** — 연결됨이 아니라 준비됨을 잰다.
+
+    WSL 에서 `127.0.0.1:포트` 는 바인딩이 둘이다(리눅스 커널 + 윈도우 중계).
+    리눅스가 먼저 들으면 갓 공개된 포트가 잠깐 **거부**하고(실측 7%, 0.5초
+    뒤 0%), 리눅스가 먼저 그만두면 중계가 대신 받아 **붙자마자 끊는다**(점거).
+    connect 성공은 그 어느 쪽도 가르지 못한다 — 응답의 첫 바이트까지 봐야
+    진짜다(tests/portpool.py 의 wait_server 가 적어 둔 계약, 이제 공용).
+
+    GET /api/serveinfo 를 보내고 셋을 본다: ① 첫 바이트가 `HTTP/` ② 본문이
+    JSON ③ `expect_started` 를 주면 `started` 가 그 값이다. 셋째가 **점거
+    판별**이다 — 답이 오는데 내 것이 아니면 남이 그 자리에 있다. bind 도
+    connect 도 못 가르는 것을 왕복만 가른다(중계는 리눅스 bind 를 쥐지 않는다).
+
+    되걸기는 여기 한 곳, 좁게. **거부만** 다시 건다(100ms·×2·상한 0.8·3회·
+    총 1초). **리셋은 재시도하지 않는다** — 우리가 듣는 자리에서의 리셋은
+    점거의 지문이고, 덮는 순간 가로채기가 계기판에서 사라진다. 맥·윈도우
+    네이티브에는 중계가 없어 첫 시도에 끝나고, 죽은 서버는 1초 안에 죽은 것으로
+    답한다 — 「거부는 거짓말」을 공통 규율로 올리지 않은 까닭이다.
+
+    반환 {ready, mine, attempts, started, why}. 횟수를 센다 — 세지 않는
+    재시도는 결함을 가린다(attempts ≥ 2 가 곧 창의 크기다).
+    """
+    import socket as _s
+
+    def _default(h, p):
+        with _s.create_connection((h, p), 1.0) as c:
+            c.sendall(f"GET /api/serveinfo HTTP/1.0\r\nHost: {h}:{p}\r\n\r\n"
+                      .encode())
+            c.settimeout(2.0)
+            buf = b""
+            need = None
+            while len(buf) < 65536:
+                chunk = c.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                # 끝을 EOF 로 기다리지 않는다 — 실서버는 keep-alive 라 닫지
+                # 않고, 그러면 2초 타임아웃이 「준비 안 됨」으로 읽힌다(W3 실측).
+                # 헤더가 다 왔고 Content-Length 만큼 본문이 왔으면 그만 읽는다.
+                if need is None and b"\r\n\r\n" in buf:
+                    head, _, rest = buf.partition(b"\r\n\r\n")
+                    for ln in head.split(b"\r\n"):
+                        if ln.lower().startswith(b"content-length:"):
+                            try:
+                                need = int(ln.split(b":", 1)[1].strip())
+                            except ValueError:
+                                need = None
+                    if need is None:
+                        need = -1        # 길이 없음 — EOF 까지
+                if need is not None and need >= 0:
+                    if len(buf.partition(b"\r\n\r\n")[2]) >= need:
+                        break
+        return buf
+
+    connect = _connect or _default
+    sleep = _sleep or time.sleep
+    attempts, wait, spent = 0, DASH_READY_FIRST, 0.0
+    while True:
+        attempts += 1
+        try:
+            raw = connect(host, port)
+        except ConnectionRefusedError:
+            if attempts >= DASH_READY_TRIES or spent + wait > DASH_READY_BUDGET:
+                return {"ready": False, "mine": None, "attempts": attempts,
+                        "why": "거부 — 아무도 듣지 않는다"}
+            sleep(wait)
+            spent += wait
+            wait = min(DASH_READY_MAX, wait * 2)
+            continue
+        except ConnectionResetError:
+            return {"ready": False, "mine": None, "attempts": attempts,
+                    "why": "리셋 — 우리 자리에서의 리셋은 점거의 지문이다 "
+                           "(재시도하지 않는다)"}
+        except OSError as e:
+            return {"ready": False, "mine": None, "attempts": attempts,
+                    "why": f"{type(e).__name__}: {e}"}
+        if not raw.startswith(b"HTTP/"):
+            return {"ready": False, "mine": None, "attempts": attempts,
+                    "why": "연결은 됐지만 HTTP 응답이 없다 (중계가 받아준 가짜 연결)"}
+        body = raw.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in raw else b""
+        try:
+            info = json.loads(body.decode("utf-8", "replace"))
+            started = info.get("started")
+        except (ValueError, AttributeError):
+            return {"ready": False, "mine": None, "attempts": attempts,
+                    "why": "HTTP 응답이지만 serveinfo 가 아니다 (다른 프로그램의 웹서버)"}
+        mine = None if expect_started is None else (started == expect_started)
+        return {"ready": True, "mine": mine, "attempts": attempts,
+                "started": started,
+                "why": "" if mine in (None, True) else "답이 오는데 내 것이 아니다 — 점거"}
 
 
 def _port_busy(host, port, timeout=0.4):
@@ -23053,6 +23158,27 @@ def cmd_serve(args):
         die(f"포트 {args.port} 를 잡지 못했다: {e}\n"
             f"  다른 프로세스가 물고 있다면 그쪽이 계속 응답한다 — "
             f"`bin/s9 serve --stop` 으로 내린 뒤 다시 띄워라.")
+    # **공개는 왕복으로 끝난다** (REQ-20260904-015). listen() 이 돌아온 것과
+    # 남들이 이 주소로 붙을 수 있는 것은 다른 사건이다 — WSL 중계가 자리를
+    # 받기까지 창이 있고(실측 7%), 그 창 안에 지문을 쓰고 주소를 알리면 사람과
+    # 훅이 「떴다」를 믿고 붙다가 거부를 만난다. 그래서 남들이 쓸 그 주소로
+    # 내가 나에게 물어 **내 답**을 받은 뒤에야 알린다. 답이 오는데 내 것이
+    # 아니면 남이 그 자리에 있다(점거) — bind 는 됐어도 붙는 쪽은 남에게 간다.
+    _probe_host = "127.0.0.1" if args.host in ("0.0.0.0", "") else args.host
+    srv.timeout = 3
+    _t = threading.Thread(target=srv.handle_request, daemon=True)
+    _t.start()
+    _self = dashboard_ready(_probe_host, args.port, expect_started=SERVE_STARTED)
+    _t.join(4)
+    srv.timeout = None
+    if _self["ready"] and _self["mine"] is False:
+        die(f"포트 {args.port} 에 남이 답한다 — 점거다 (답한 쪽의 기동 시각 "
+            f"{_self.get('started')!r}). bind 는 됐지만 붙는 쪽은 그쪽으로 간다.\n"
+            f"  `bin/s9 doctor` 로 누가 그 자리에 있는지 보라.")
+    if not _self["ready"]:
+        print(f"경고: 포트 {args.port} 를 잡았지만 자기왕복이 안 됐다 "
+              f"({_self['attempts']}회 · {_self['why']}) — 공개가 늦는 중일 수 "
+              f"있다. 그대로 띄운다.", file=sys.stderr)
     # 임시 포트 서버(시험 등)는 지문을 남기지 않는다 (REQ-20260830-005) —
     # 자격 판정은 serve_stamp_wanted 하나다.
     try:
