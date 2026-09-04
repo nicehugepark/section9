@@ -115,8 +115,15 @@ class PortGuard(unittest.TestCase):
             s9.PORT_GUARD_RELAY_AUTO = orig
 
     def test_p3_below_threshold_is_unchanged(self):
-        v = self.tick(8000)                       # 49% — 중계여도 문턱 미만
-        self.assertEqual(v["action"], "watch")
+        """문턱 아래는 조용하다 — 49% 는 이 기계의 **일하는 중** 값이다.
+
+        실측 2026-09-04(31시간 3,873표본, REQ-20260903-003): 중앙값 30% ·
+        p75 54%. 그래서 예전 문턱 0.30 은 하루의 절반이 넘는 값이었고
+        「넘었다」가 아무것도 말하지 않았다. 문턱을 0.60 으로 올린 뒤로
+        49% 는 아무 말도 하지 않는다.
+        """
+        v = self.tick(8000)                       # 49% — 일하는 중의 평범한 값
+        self.assertIsNone(v["action"])
         self.assertNotIn(("--recover", "--yes"), self.calls)
 
     def test_reclaims_every_tick_regardless_of_pressure(self):
@@ -130,9 +137,19 @@ class PortGuard(unittest.TestCase):
         self.assertNotIn(("--recover", "--yes"), self.calls)
 
     def test_elevated_is_recorded_not_acted_on(self):
-        v = self.tick(8000)                       # 49% — 평시보다 높다
+        """문턱을 넘으면 적기만 한다 — 손대지 않는다.
+
+        기록에 적는 말도 실측에 맞춘다: 예전엔 「평시 1~3%」라고 적었는데
+        그 전제가 틀렸다. 놀 때 바닥은 10 안팎(0%)이고, 일하는 동안 단조
+        증가해 바닥으로 돌아오지 않는다 — 그러니 사람이 볼 값은 비율이
+        아니라 기울기다 (REQ-20260903-003).
+        """
+        v = self.tick(11000)                      # 67% — 문턱(60%) 위
         self.assertEqual(v["action"], "watch")
-        self.assertTrue(any("평시" in m for m in self.logged))
+        self.assertTrue(any("계속 오른다" in m for m in self.logged),
+                        f"기울기를 말하지 않는다: {self.logged}")
+        self.assertFalse(any("평시 1~3%" in m for m in self.logged),
+                         "틀린 평시가 아직 적힌다")
         self.assertNotIn(("--recover", "--yes"), self.calls)
 
     def test_last_resort_recovers_and_flags_a_defect(self):

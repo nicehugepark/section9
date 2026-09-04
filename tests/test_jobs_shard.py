@@ -110,19 +110,40 @@ class ProgressWhileRunning(unittest.TestCase):
                "test_c (test_beta.B.test_c) ... ok\n")
         pend = self._pending(out, ["test_alpha.py", "test_beta.py",
                                    "test_gamma.py"])
-        self.assertEqual(self.m._started_in(pend), 2)
+        self.assertEqual(self.m._started_in(pend, {}), 2)
 
     def test_p4_progress_never_exceeds_the_shard(self):
         """P4. 샤드에 담긴 파일 수를 넘지 않는다 — 화면의 분모가 깨진다."""
         out = "".join(f"t (test_x{i}.C.t) ... ok\n" for i in range(9))
         pend = self._pending(out, ["test_x0.py", "test_x1.py"])
-        self.assertEqual(self.m._started_in(pend), 2)
+        self.assertEqual(self.m._started_in(pend, {}), 2)
 
     def test_p5_an_unreadable_shard_is_zero_not_a_crash(self):
         """P5. 출력을 못 읽어도 러너가 죽지 않는다 — 표시가 실행을 죽이면 본말전도."""
         pend = [(None, self._Out(os.path.join(HERE, "no-such-shard.out")),
                  ["test_a.py"])]
-        self.assertEqual(self.m._started_in(pend), 0)
+        self.assertEqual(self.m._started_in(pend, {}), 0)
+
+    def test_p6_only_the_new_bytes_are_read(self):
+        """P6. 두 번째부터는 **늘어난 만큼만** 읽는다.
+
+        처음엔 매번 통째로 읽었는데, 출력이 수 MB 로 자라는 후반에는 그것이
+        초당 두 번씩 수십 MB 를 읽고 정규식을 다시 거는 일이 됐다 — 진행
+        표시가 샤드에게서 CPU 를 뺏어 스위트가 420초에서 585초 밖으로 밀렸다
+        (실측 2026-09-04, 같은 나무에서 두 번 시간 초과). 재는 행위가 재려는
+        대상을 느리게 만들면 그 표시는 거짓말이 된다.
+        """
+        filler = "".join(f"t (test_alpha.A.t{i}) ... ok\n" for i in range(40))
+        pend = self._pending(filler, ["test_alpha.py", "test_beta.py"])
+        state = {}
+        self.assertEqual(self.m._started_in(pend, state), 1)
+        name = pend[0][1].name
+        # 겹쳐 읽는 200자를 뺀 만큼은 이미 지나갔다 — 다음엔 통째로 안 읽는다.
+        self.assertGreater(state[name][0], 0)
+        with open(name, "a", encoding="utf-8") as fh:
+            fh.write("t (test_beta.B.t) ... ok\n")
+        # 이어서 읽어도 앞에서 본 것을 잊지 않는다.
+        self.assertEqual(self.m._started_in(pend, state), 2)
 
     def test_p1_the_loop_bumps_every_turn_not_only_on_completion(self):
         """P1. 폴링 한 바퀴마다 진행을 올린다 — 잡 파일 mtime 이 끊기지 않는다.

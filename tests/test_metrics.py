@@ -67,14 +67,18 @@ class Metrics(unittest.TestCase):
             return [json.loads(x) for x in f if x.strip()]
 
     # ---------------------------------------------------------------- 정상
-    def test_s1_sample_carries_three_lanes_and_system(self):
-        """S1. 표본 한 줄에 네트워크 3갈래와 국소 자원이 함께 담긴다.
+    def test_s1_sample_carries_four_lanes_and_system(self):
+        """S1. 표본 한 줄에 네트워크 4갈래와 국소 자원이 함께 담긴다.
 
         따로 적으면 사고 시각에 둘을 맞춰 보는 일이 사람 몫이 된다. 같은
         줄에 있어야 "밖은 멀쩡한데 안이 바닥났다"가 한눈에 읽힌다.
+
+        넷째 `link` 는 **국소 대조군**이다 (REQ-20260903-002) — 바깥 셋이 다
+        죽었을 때 「회선이 없다」와 「밖으로 못 나간다」를 가른다. 바깥으로
+        나가지 않으므로 비용이 0 이고, 그래서 매 표본에 넣는다.
         """
         s = self.m.metrics_sample(self.tmp)
-        self.assertEqual(set(s["net"]), {"api", "ctl", "dns"})
+        self.assertEqual(set(s["net"]), {"api", "ctl", "dns", "link"})
         self.assertIn("ts", s)
         self.assertTrue(s["boot"] > 0)
         self.assertTrue(set(s["sys"]) >= {"load1", "mem_avail_mb"})
@@ -321,6 +325,62 @@ class Metrics(unittest.TestCase):
 
         v = self.m.metrics_verdict([sample(_ok("api"), _ok("ctl"), _ok("dns"))])
         self.assertIn("멀쩡", v["verdict"])
+
+    def test_s11_the_local_lane_splits_no_line_from_cannot_get_out(self):
+        """S11. 국소 대조군이 「회선이 없다」와 「밖으로 못 나간다」를 가른다.
+
+        실사고 2026-09-03: 세 갈래가 전부 바깥을 향해, 동시 불통을 보고 리드가
+        WSL 네트워크 죽음의 재발로 보고했다. 사용자 정정 — "방금 출근길이어서
+        네트웍이 끊긴건 정상이다." 사고 판정에서 그 둘은 정반대다: 하나는
+        고칠 것이 없고 하나는 결함이다 (REQ-20260903-002).
+        """
+        def sample(link=None):
+            net = {"api": _bad("api", "tcp"), "ctl": _bad("ctl", "tcp"),
+                   "dns": _bad("dns", "dns")}
+            if link is not None:
+                net["link"] = link
+            return {"ts": "2026-09-03T08:00:00+09:00", "boot": 1,
+                    "net": net, "sys": {"tcp_tw": 10}}
+
+        # L3. 링크도 죽었다 — 회선이 없다(고칠 것 없음).
+        v = self.m.metrics_verdict(
+            [sample({"label": "link", "ok": False, "backend": "proc"})])
+        self.assertIn("회선이 없다", v["verdict"])
+        self.assertEqual(v["link_fail"], 1)
+
+        # L4. 링크는 살았다 — 밖으로 못 나갔다(결함).
+        v = self.m.metrics_verdict(
+            [sample({"label": "link", "ok": True, "backend": "proc"})])
+        self.assertIn("밖으로 못 나갔다", v["verdict"])
+        self.assertEqual(v["link_fail"], 0)
+
+        # L5·L6. 링크를 모르거나(옛 표본·문 없는 판) 아예 없으면 종전 문구 —
+        # 없는 근거로 판정하지 않는다.
+        v = self.m.metrics_verdict([sample(None)])
+        self.assertIn("회선 —", v["verdict"])
+        self.assertNotIn("회선이 없다", v["verdict"])
+
+    def test_s12_the_local_lane_answers_from_a_door(self):
+        """S12. 국소 갈래는 **문** 안에서 판을 가른다 (DOC-20260903-004).
+
+        원시 `/proc` 읽기를 늘리면 맥·윈도우가 같이 걸린다 — 그래서 읽는 자리를
+        `link_backend()` 한 문에 두고, 문이 없는 판에서는 「모른다」고 답한다.
+        모르는 것을 「붙어 있다」로 세면 이 갈래는 대조군이 아니라 거짓말이 된다.
+        """
+        be = self.m.link_backend()
+        self.assertIn(be["backend"], ("proc", "none"))
+        if be["backend"] == "none":
+            self.assertIsNone(be["ok"], "모르는 판인데 붙어 있다고 답했다")
+            self.assertEqual(self.m._probe_link()["stage"], "unknown")
+            return
+        # L1·L2. 이 판에서는 실제로 읽어 답한다.
+        self.assertIsInstance(be["ok"], bool)
+        lane = self.m._probe_link()
+        self.assertEqual(lane["label"], "link")
+        self.assertEqual(lane["backend"], "proc")
+        if be["ok"]:
+            self.assertTrue(lane["ok"])
+            self.assertTrue(lane.get("iface"), "붙어 있다면서 인터페이스가 없다")
 
     # ---------------------------------------------------------------- 회귀
     def test_s9_lock_is_its_own(self):

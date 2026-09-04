@@ -90,7 +90,10 @@ PLATFORM_CALLS = {
 # 바로 그 일이다.
 DOORS = ("_spawn_detached_fork", "_spawn_detached_subprocess", "spawn_backend",
          "proc_backend", "proc_table", "_proc_table_raw", "_proc_table_shared",
-         "_proc_table_uncached", "pid_alive", "pid_cmdline", "pid_comm")
+         "_proc_table_uncached", "pid_alive", "pid_cmdline", "pid_comm",
+         # 회선에 붙어 있나 — 리눅스는 경로표, 맥·윈도우는 다른 자리다.
+         # 문이 없는 판에서는 "모른다"고 답한다 (REQ-20260903-002).
+         "link_backend")
 
 # 2026-09-04 실측. **목표가 아니라 빚이다** — 내려갈 때만 고친다.
 #

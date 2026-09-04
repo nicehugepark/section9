@@ -388,24 +388,37 @@ def matched_files(pats):
     return out
 
 
-def _started_in(pending):
+def _started_in(pending, state):
     """아직 도는 샤드들에서 **시작된 시험 파일 수** (REQ-20260904-004).
 
     자식은 unittest 를 verbose 로 돌리므로 줄마다 `(test_모듈.클래스.시험)` 이
     찍힌다. 거기서 모듈 이름만 모으면 「이 샤드가 몇 번째 파일까지 왔나」가
     나온다 — 자식에게 따로 보고 배선을 넣지 않고도 진행이 흐른다.
 
-    읽기가 실패해도(파일이 사라졌든 인코딩이 깨졌든) 0 으로 답한다. 진행 표시
-    때문에 시험 실행이 죽는 것은 본말전도다.
+    **새로 늘어난 만큼만 읽는다.** 처음엔 매번 파일을 통째로 읽었는데, 출력이
+    수 MB 로 자라는 후반에는 그것이 초당 두 번씩 수십 MB 를 읽고 정규식을 다시
+    거는 일이 됐다 — 진행 표시가 샤드에게서 CPU 를 뺏어 **스위트가 420초에서
+    585초 밖으로 밀렸다**(실측 2026-09-04, 같은 나무에서 두 번 시간 초과).
+    표시를 위해 재는 값이 재려는 대상을 느리게 만들면 그 표시는 거짓말이 된다.
+    `state` 는 파일마다 (다음에 읽을 자리, 지금까지 본 모듈)을 들고 있다.
+    경계에 걸려 잘린 이름을 놓치지 않도록 200자만 겹쳐 읽는다.
+
+    읽기가 실패해도(파일이 사라졌든 인코딩이 깨졌든) 그 샤드는 세지 않는다.
+    진행 표시 때문에 시험 실행이 죽는 것은 본말전도다.
     """
     seen = 0
     for _pr, out, group in pending:
+        st = state.setdefault(out.name, [0, set()])
         try:
             with open(out.name, encoding="utf-8", errors="replace") as fh:
-                mods = set(_MOD_RE.findall(fh.read()))
-        except OSError:
+                fh.seek(st[0])
+                chunk = fh.read()
+                st[0] = max(0, fh.tell() - 200)
+        except (OSError, ValueError):
             continue
-        seen += min(len(mods), len(group))
+        if chunk:
+            st[1].update(_MOD_RE.findall(chunk))
+        seen += min(len(st[1]), len(group))
     return seen
 
 
@@ -444,6 +457,7 @@ def run_sharded(pats, jobs, bump=None):
     done_files = 0
     import time as _time
     pending = list(procs)
+    seen_state = {}          # 샤드 출력의 {이름: [다음에 읽을 자리, 본 모듈]}
     while pending:
         _time.sleep(0.5)
         # **도는 중을 도는 것으로 보이게 한다** (REQ-20260904-004). 예전엔
@@ -453,7 +467,7 @@ def run_sharded(pats, jobs, bump=None):
         # 아무도 알아채지 못한다 — 2026-09-04 에 리드가 그 착각으로 1시간
         # 41분을 기다렸다.
         if bump:
-            bump(done_files + _started_in(pending))
+            bump(done_files + _started_in(pending, seen_state))
         still = []
         for pr, out, group in pending:
             if pr.poll() is None:
@@ -461,7 +475,7 @@ def run_sharded(pats, jobs, bump=None):
                 continue
             done_files += len(group)
             if bump:
-                bump(done_files + _started_in(still))
+                bump(done_files + _started_in(still, seen_state))
             if pr.returncode != 0:
                 ok = False
                 out.flush()

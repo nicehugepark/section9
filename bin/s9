@@ -17862,7 +17862,16 @@ def _sweep_before_shot():
 
 
 PORT_GUARD_EVERY = 60      # 회수 주기 (초) — 고아가 살아 있을 수 있는 최대 시간
-PORT_GUARD_WARN = 0.30     # 이 비율을 넘으면 기록에 남긴다 (평시 1~3%)
+# 이 비율을 넘으면 기록에 남긴다. 0.30 은 "평시 1~3%" 라는 전제 위에 섰는데,
+# 그 전제가 **틀렸다** — 실측 2026-09-04(31시간 3,873표본, REQ-20260903-003):
+#   놀 때 바닥 10 안팎 = **0%** (새벽 00~05시 내내 9~24)
+#   중앙값 4,856 = **30%**, p75 = 54%, p90 = 84%
+# 즉 0.30 은 하루의 절반이 넘는 값이라 "넘었다"가 아무것도 말하지 않았다.
+# 그리고 더 중요한 것: **되돌아오지 않는다.** 09-04 아침에 06시 10 → 07시
+# 4,108 → 09시 8,026 → 12시 11,375 로 단조 증가했고, 바닥으로 돌아온 유일한
+# 계기는 중계 프로세스가 죽는 것이었다. 그러니 판정해야 할 값은 비율이 아니라
+# **기울기**다. 여기 문턱은 그때까지 기록을 덜 시끄럽게 하는 몫만 한다.
+PORT_GUARD_WARN = 0.60
 PORT_GUARD_AUTO = 0.90     # 마지막 안전망 — 여기까지 온 것 자체가 결함이다
 # 중간 안전망 (REQ-20260830-037) — **기본값은 끔이다** (REQ-20260902-066).
 # 최다 점유자가 WSL 중계(dllhost)일 때 60%부터 그 프로세스를 죽여 포트를
@@ -18032,7 +18041,7 @@ def port_guard_tick():
                         "그 종료는 공개된 포트를 잠깐 끊고 WSL 세션까지 "
                         "함께 내릴 수 있다 — 지금 하던 일이 끊겨도 되는 때에 "
                         "사람이 판단해 돌려라.")
-        # 심각도를 비율에 맞춰 말한다. 84% 에서 "평시(1~3%)보다 높다"는 사실이긴
+        # 심각도를 비율에 맞춰 말한다. 84% 에서 "평시보다 높다"는 사실이긴
         # 해도 사람에게 전해지는 무게가 틀렸다 — 마지막 안전망이 90% 다.
         left = total - bound
         head = ("거의 찼다" if ratio >= 0.75 else
@@ -18046,8 +18055,9 @@ def port_guard_tick():
         key = f"{int(ratio * 20)}|{win.get('top_pid')}"
         if _port_warn_should_speak(key, _t.time()):
             _guard_log(f"동적 포트 {bound}/{total} ({ratio:.0%}) — {head} "
-                       f"(평시 1~3%, 남은 {left:,}개, 자동 회수 문턱 "
-                       f"{PORT_GUARD_AUTO:.0%}).{who} 자세히: `bin/s9 doctor`")
+                       f"(놀 때 0%, 일하는 동안 계속 오른다 — 남은 {left:,}개, "
+                       f"자동 회수 문턱 {PORT_GUARD_AUTO:.0%})"
+                       f".{who} 자세히: `bin/s9 doctor`")
     return verdict
 
 
@@ -18697,9 +18707,82 @@ def metrics_sample(root=None):
             "ctl": _probe("ctl", METRICS_CTL_IP, ip=METRICS_CTL_IP,
                           sni=METRICS_CTL_SNI),
             "dns": _probe_dns(METRICS_API_HOST),
+            # 국소 대조군 — 바깥 셋이 다 죽었을 때 그 사유를 가른다
+            # (REQ-20260903-002). 나가지 않으므로 비용이 0 이다.
+            "link": _probe_link(),
         },
         "sys": _sys_sample(),
     }
+
+
+def link_backend():
+    """이 기계가 회선에 붙어 있나를 **묻는 문** (REQ-20260903-002).
+
+    판마다 묻는 자리가 다르다 — 리눅스는 기본 경로표와 링크 상태, 맥은
+    `route -n get default`·`ifconfig`, 윈도우는 다른 자리다. 지금 문이 서 있는
+    것은 리눅스뿐이고, 나머지 판에서는 **모른다**고 답한다.
+
+    모르는 것을 「붙어 있다」로 세면 이 갈래는 대조군이 아니라 거짓말이 된다 —
+    바깥이 죽은 날마다 「회선은 멀쩡한데 우리가 못 나간다」로 읽히고, 그건
+    이동 중 끊김을 매번 결함으로 만든다.
+
+    반환: {"backend": "proc"|"none", "ok": bool|None, "iface": …, "gateway": …,
+           "operstate": …, "carrier": …}
+    """
+    out = {"backend": "none", "ok": None}
+    try:
+        with open("/proc/net/route", encoding="utf-8") as f:
+            rows = f.read().splitlines()
+    except OSError:
+        return out
+    out["backend"] = "proc"
+    iface = gw = None
+    for ln in rows[1:]:
+        c = ln.split()
+        # Iface Destination Gateway … — 목적지 0.0.0.0 인 줄이 기본 경로다.
+        if len(c) >= 3 and c[1] == "00000000":
+            iface = c[0]
+            try:
+                g = int(c[2], 16)
+                gw = ".".join(str((g >> s) & 0xFF) for s in (0, 8, 16, 24))
+            except ValueError:
+                gw = None
+            break
+    out["iface"], out["gateway"] = iface, gw
+    if iface:
+        for key, fn in (("operstate", str), ("carrier", str)):
+            try:
+                with open(f"/sys/class/net/{iface}/{key}", encoding="utf-8") as f:
+                    out[key] = fn(f.read().strip())
+            except OSError:
+                pass
+    # 붙어 있다 = 기본 경로가 있고, 링크가 내려가 있지 않다. carrier 를 못 읽는
+    # 판(WSL 의 가상 인터페이스가 그렇다)에서는 경로가 있는 것으로 족하다 —
+    # 없는 값을 죽음으로 세면 평시가 사고로 보인다.
+    down = (out.get("operstate") == "down") or (out.get("carrier") == "0")
+    out["ok"] = bool(iface) and not down
+    return out
+
+
+def _probe_link():
+    """국소 대조군 — **바깥으로 한 발자국도 안 나가고** 회선 유무만 답한다.
+
+    실사고 2026-09-03: 계기가 세 갈래(api·ctl·dns) 동시 불통을 잡았고 리드가
+    그것을 WSL 네트워크 죽음의 재발로 보고했다. 사용자 정정 — "방금 출근길이어서
+    네트웍이 끊긴건 정상이다." 세 갈래가 전부 바깥을 향해서, 「밖으로 못
+    나갔다」까지만 말하고 그 사유를 못 갈랐다. 사고 판정에서 그 둘은 정반대다:
+    하나는 고칠 것이 없고 하나는 결함이다.
+    """
+    be = link_backend()
+    out = {"label": "link", "ok": bool(be.get("ok")),
+           "backend": be.get("backend"),
+           "stage": "ok" if be.get("ok") else "link"}
+    if be.get("ok") is None:
+        out["stage"] = "unknown"
+    for k in ("iface", "gateway", "operstate", "carrier"):
+        if be.get(k) is not None:
+            out[k] = be[k]
+    return out
 
 
 def _probe_dns(host, timeout=METRICS_TIMEOUT_SEC):
@@ -19183,7 +19266,20 @@ def metrics_verdict(recs):
     elif not api_bad:
         verdict = "밖으로 나가는 길은 이 창에서 멀쩡했다"
     elif ctl_bad and dns_bad:
-        verdict = "회선 — 대조군·이름 풀이까지 함께 죽었다"
+        # **국소 대조군이 이 자리를 가른다** (REQ-20260903-002). 바깥 셋이 다
+        # 죽은 것은 「밖으로 못 나갔다」까지만 말한다 — 회선 자체가 없는 것과
+        # 회선은 있는데 못 나가는 것은 판정이 정반대다(하나는 고칠 것이 없다).
+        # 링크를 모르는 판에서는 종전 문구 그대로 — 없는 근거로 판정하지 않는다.
+        link = [s for s in samples if "link" in s["net"]]
+        link_bad = [s for s in link if not s["net"]["link"].get("ok")]
+        if not link:
+            verdict = "회선 — 대조군·이름 풀이까지 함께 죽었다"
+        elif link_bad:
+            verdict = ("회선이 없다 — 이 기계가 링크에 붙어 있지 않았다"
+                       " (이동 중·와이파이 끊김 · 고칠 것 없음)")
+        else:
+            verdict = ("밖으로 못 나갔다 — 링크는 붙어 있는데 대조군·이름"
+                       " 풀이까지 죽었다 (WSL/NAT)")
     elif dns_bad and not ctl_bad:
         verdict = "이름 풀이 — 대조군은 살았는데 주소를 못 얻었다"
     elif not ctl_bad and not dns_bad:
@@ -19192,7 +19288,11 @@ def metrics_verdict(recs):
         verdict = "섞임 — 아래 단계별 횟수를 보라"
     return {"verdict": verdict, "n": n,
             "api_fail": len(api_bad), "ctl_fail": len(ctl_bad),
-            "dns_fail": len(dns_bad), "stages": stages,
+            "dns_fail": len(dns_bad),
+            "link_fail": len([s for s in samples
+                              if "link" in s["net"]
+                              and not s["net"]["link"].get("ok")]),
+            "stages": stages,
             "api_p95_ms": p95, "api_slow": len(slow),
             "tw_max": max(tw) if tw else None,
             "boots": len(boots)}
@@ -19264,9 +19364,20 @@ def cmd_metrics(args):
         if args.json:
             print(json.dumps(s, ensure_ascii=False))
         else:
-            for k in ("api", "ctl", "dns"):
-                d = s["net"][k]
+            for k in ("api", "ctl", "dns", "link"):
+                d = s["net"].get(k)
+                if not d:
+                    continue
                 ms = d.get("total_ms", d.get("ms"))
+                if k == "link":
+                    # 나가지 않는 갈래라 잰 시간이 없다 — 대신 무엇을 보고
+                    # 답했는지를 적는다 (REQ-20260903-002).
+                    where = d.get("iface") or d.get("backend")
+                    mark = ("붙어 있다" if d.get("ok")
+                            else ("모른다(문 없음)" if d.get("stage") == "unknown"
+                                  else "안 붙어 있다"))
+                    print(f"  {k:4} {mark} ({where})")
+                    continue
                 mark = (f"ok {ms}ms" if d.get("ok")
                         else f"실패({d.get('stage')}) {d.get('error','')}")
                 print(f"  {k:4} {mark}")
