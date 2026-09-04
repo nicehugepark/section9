@@ -65,7 +65,11 @@ class ClaimRelease(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     # ---- 픽스처 --------------------------------------------------------
-    def doc(self, *, session=DEAD, sessions=(LIVE, DEAD), quiet_sec=1200):
+    # 1230 = 20분 30초. **분 경계에 세우지 않는다** — 1200(정확히 20분)이면
+    # 문서를 쓰고 재는 사이에 1초만 흘러도 floor 가 19 를 내어 R5 가 이따금
+    # 붉어진다(실측 2026-09-04: 전체 실행 하나를 그것으로 잃었다). 재는 값이
+    # 경계에 있으면 그 시험은 계약이 아니라 시계를 재는 것이 된다.
+    def doc(self, *, session=DEAD, sessions=(LIVE, DEAD), quiet_sec=1230):
         path = os.path.join(self.m.VAULT, "requests", "2026", "08", DOC + ".md")
         meta = {"id": DOC, "type": "request", "title": "클레임을 푸는 길이 없다",
                 "summary": "s", "status": "in-progress", "size": "S",
