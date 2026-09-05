@@ -137,6 +137,9 @@ class TestInstanceInit(unittest.TestCase):
         with self.subTest("i6_upgrade_merge"):
             up = os.path.join(self.base, "upstream-copy")
             sh("git", "clone", "-q", os.path.join(HERE, ".."), up)
+            # 베이스가 detached HEAD(원격 CI)면 클론도 가지가 없어 아래 commit 이
+            # main 에 안 실린다 — 업스트림의 가지는 main 이다 (jade 실측 2026-09-06)
+            sh("git", "checkout", "-q", "-B", "main", cwd=up)
             marker = os.path.join(up, "docs", "upgrade-marker.md")
             with open(marker, "w") as f:
                 f.write("업그레이드 확인용\n")

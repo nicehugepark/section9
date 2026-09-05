@@ -32,6 +32,29 @@ class RemoteRun(unittest.TestCase):
             if old_env is not None:
                 os.environ["S9_TEST_REMOTE"] = old_env
 
+    def test_k5_document_dirt_does_not_count_as_uncommitted(self):
+        """K5. vault/·state/ 의 미커밋은 지문 밖 — 세지 않는다; bin/ 의 미커밋은 센다.
+
+        commit 훅이 REQ 문서에 commit 노트를 붙이므로 commit 직후의 나무는 늘 vault/
+        하나가 더럽다. 그것을 세면 초록 기록은 영영 안 남는다(실측 2026-09-06).
+        """
+        import subprocess
+        d = tempfile.mkdtemp(prefix="s9rr-tree-")
+        def git(*a):
+            return subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, check=True)
+        git("init", "-q", "-b", "main")
+        for p in ("vault/r.md", "state/x.json", "bin/tool"):
+            os.makedirs(os.path.join(d, os.path.dirname(p)), exist_ok=True)
+            open(os.path.join(d, p), "w").write("a\n")
+        git("add", "-A"); git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x")
+        sha, dirty = remote_run.head_state(repo=d)
+        self.assertEqual((len(sha), dirty), (40, 0))
+        open(os.path.join(d, "vault/r.md"), "a").write("commit 노트\n")
+        open(os.path.join(d, "state/x.json"), "a").write("1\n")
+        self.assertEqual(remote_run.head_state(repo=d)[1], 0, "문서·상태의 때는 세지 않는다")
+        open(os.path.join(d, "bin/tool"), "a").write("b\n")
+        self.assertEqual(remote_run.head_state(repo=d)[1], 1, "코드의 때는 센다")
+
     def test_k2_the_remote_is_a_clone_that_runs_the_pushed_commit(self):
         """K2. 원격 한 줄: clone(없으면) → refs/ci/<sha7> fetch → 그 커밋 → index → 시험."""
         sha = "0123456789abcdef0123456789abcdef01234567"

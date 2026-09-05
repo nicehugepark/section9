@@ -165,8 +165,8 @@ def _selection_key(pats):
 
 
 # 지문에 안 세는 자리 — 문서·상태·사람 데이터는 시험 결과를 바꾸지 않는다.
-FP_SKIP = ("vault/", "state/", "docs/", "projects/", "users/", "index/",
-           ".git/")
+# 표는 remote_run 에 한 벌만 — 원격의 「미커밋 변경」 판정도 같은 표를 본다.
+from remote_run import FP_SKIP  # noqa: E402
 
 
 def tree_fingerprint(repo=None):

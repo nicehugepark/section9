@@ -79,11 +79,30 @@ def _git(*args):
                           timeout=120)
 
 
-def head_state():
-    """(sha, 미커밋 변경 수) — 원격은 **commit 된 나무**를 돈다. 미커밋 변경은 안 실린다."""
-    sha = _git("rev-parse", "HEAD").stdout.strip()
-    dirty = [ln for ln in _git("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
-             if ln.strip()]
+# 지문에 안 세는 자리 — 문서·상태·사람 데이터는 시험 결과를 바꾸지 않는다.
+# tests/__main__.py 의 tree_fingerprint 와 **같은 표**다 (거기서 이것을 가져다 쓴다).
+FP_SKIP = ("vault/", "state/", "docs/", "projects/", "users/", "index/",
+           ".git/")
+
+
+def head_state(repo=None, skip=FP_SKIP):
+    """(sha, 지문에 드는 미커밋 변경 수) — 원격은 **commit 된 나무**를 돈다.
+
+    skip 아래(문서·상태)의 변경은 지문에도 안 들고 시험 결과도 안 바꾸니 세지
+    않는다. 실측 2026-09-06: commit 훅이 그 commit 을 REQ 문서에 노트로 붙이므로
+    commit 직후의 나무는 **언제나** vault/ 한 파일이 더러웠고, 그래서 post-commit
+    배경 실행이 초록 기록을 한 번도 남기지 못했다(「미커밋 변경 1개 …」).
+    """
+    repo = repo or REPO
+    sha = _git("-C", repo, "rev-parse", "HEAD").stdout.strip()
+    dirty = []
+    for ln in _git("-C", repo, "status", "--porcelain", "--untracked-files=no").stdout.splitlines():
+        if not ln.strip():
+            continue
+        path = ln[3:].split(" -> ")[-1].strip().strip('"').replace("\\", "/")
+        if path.startswith(tuple(skip)):
+            continue
+        dirty.append(path)
     return sha, len(dirty)
 
 
