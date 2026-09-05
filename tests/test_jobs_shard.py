@@ -171,6 +171,27 @@ class ShardsHaveADeadline(unittest.TestCase):
         self.assertIn("timeout=SHARD_TIMEOUT_SEC", blk, "직렬 꼬리에 상한이 없다")
 
 
+class QuarantineIsBoundedAndLoud(unittest.TestCase):
+    """기한부 격리 (규약 18조) — 전체 실행에서만 빼고, 기한이 있고, 말한다."""
+
+    def test_q1_full_runs_skip_quarantined_files_until_the_deadline(self):
+        import json, tempfile, time, io, contextlib
+        spec = importlib.util.spec_from_loader(
+            "s9runner_q", importlib.machinery.SourceFileLoader("s9runner_q", RUNNER))
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        d = tempfile.mkdtemp(prefix="s9q-"); m.QUARANTINE = os.path.join(d, "q.json")
+        json.dump({"test_a.py": {"req": "REQ-x", "until": time.time() + 3600},
+                   "test_b.py": {"req": "REQ-y", "until": time.time() - 1}},
+                  open(m.QUARANTINE, "w", encoding="utf-8"))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            kept, dropped = m.apply_quarantine(["test_a.py", "test_b.py", "test_c.py"], full=True)
+        self.assertEqual((kept, dropped), (["test_b.py", "test_c.py"], ["test_a.py"]))   # 기한 지난 b 는 돈다
+        self.assertIn("[격리] test_a.py — REQ-x", err.getvalue())
+        kept, dropped = m.apply_quarantine(["test_a.py"], full=False)        # 지목한 실행은 그대로
+        self.assertEqual((kept, dropped), (["test_a.py"], []))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

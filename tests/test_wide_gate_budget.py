@@ -55,5 +55,31 @@ class RedRatchet(unittest.TestCase):
                                             fix_env="REQ-20260905-007-62x6")[0])
 
 
+class OneFullRunAtATime(unittest.TestCase):
+    """전체 실행은 한 번에 하나 (REQ-20260905-022)."""
+
+    def test_o1_a_live_full_job_stops_a_second_spawn(self):
+        """O1. kind=full 이고 pid 가 살아 있는 잡이 있으면 그 pid, 죽은 pid 나 표적 잡은 0."""
+        import json
+        import tempfile
+        m = _load()
+        d = tempfile.mkdtemp(prefix="s9jobs-")
+        def put(name, **kw):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                json.dump(kw, f)
+        put("tests-1.json", kind="full", pid=999999999)          # 죽은 실행
+        put("tests-2.json", kind="targeted", pid=os.getpid())     # 표적
+        self.assertEqual(m.full_run_in_flight(d), 0)
+        put("tests-3.json", kind="full", pid=os.getpid())         # 살아 있는 전체
+        self.assertEqual(m.full_run_in_flight(d), os.getpid())
+
+    def test_o2_the_runner_reaps_its_children_on_sigterm(self):
+        """O2. 러너는 SIGTERM 에 샤드·좁혀서-다시 자식을 함께 거둔다(구조)."""
+        src = open(os.path.join(HERE, "__main__.py"), encoding="utf-8").read()
+        blk = src.split("def run_sharded", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("_signal.SIGTERM", blk, "SIGTERM 에 자식을 거두지 않는다")
+        self.assertIn("RETRY_PROCS", blk, "좁혀서-다시 자식을 추적하지 않는다")
+
+
 if __name__ == "__main__":
     unittest.main()

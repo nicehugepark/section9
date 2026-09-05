@@ -539,11 +539,48 @@ FLAKY_FILE = os.path.join(REPO, "state", "test-flaky.jsonl")
 SHARD_TIMEOUT_SEC = float(os.environ.get("S9_SHARD_TIMEOUT", "900"))
 
 
+QUARANTINE = os.path.join(REPO, "state", "test-quarantine.json")
+
+
+def quarantined(now=None):
+    """기한부 격리 목록 {파일: {"req", "until"}} — 기한이 지난 것은 뺀다 (규약 18조).
+
+    같은 간헐 실패를 두 번째 보면 다시 돌리지 않고 격리해 별 REQ 로 세운다. 격리는
+    **전체 실행**에서만 빼고(이름을 지목한 실행은 그대로 돈다), 기한이 있으며,
+    무엇이 왜 빠졌는지 실행마다 말한다 — 조용히 사라지는 시험은 없다.
+    """
+    now = time.time() if now is None else now
+    try:
+        with open(QUARANTINE, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in (d or {}).items()
+            if isinstance(v, dict) and float(v.get("until") or 0) > now}
+
+
+def apply_quarantine(files, full):
+    """전체 실행이면 격리 파일을 빼고 그 사실을 말한다. (남은 파일, 뺀 파일)"""
+    if not full:
+        return files, []
+    q = quarantined()
+    if not q:
+        return files, []
+    kept = [f for f in files if f not in q]
+    dropped = [f for f in files if f in q]
+    for f in dropped:
+        print(f"[격리] {f} — {q[f].get('req', '?')} · "
+              f"{time.strftime('%m-%d', time.localtime(float(q[f].get('until') or 0)))} 까지",
+              file=sys.stderr)
+    return kept, dropped
+
+
 def overdue(started, now, limit=None):
     """이 샤드가 상한을 넘겼나."""
     limit = SHARD_TIMEOUT_SEC if limit is None else limit
     return limit > 0 and (now - started) > limit
 LAST_RUN_RED = []            # 마지막 병렬 실행의 붉은 파일 (record_last_red 재료)
+RETRY_PROCS = []             # 좁혀서-다시 자식 — SIGTERM 에 함께 거둔다 (REQ-20260905-022)
 RETRY_MAX_FILES = 3
 
 
@@ -582,7 +619,7 @@ def record_flaky(files, note):
         pass
 
 
-def run_sharded(pats, jobs, bump=None):
+def run_sharded(pats, jobs, bump=None, skip=()):
     """병렬 본대 + 직렬 꼬리 (REQ-20260830-027 2단계).
 
     자식은 `python3 tests/ <파일…>` + S9_TESTS_NESTED=1 — reap·잡파일·바깥
@@ -591,10 +628,33 @@ def run_sharded(pats, jobs, bump=None):
     된다. 반환: (ok, 돈 파일 수)."""
     import subprocess
     import tempfile
-    files = matched_files(pats)
+    files = [f for f in matched_files(pats) if f not in set(skip)]   # skip = 격리 (18조)
     body = [f for f in files if f not in SERIAL]
     tail = [f for f in files if f in SERIAL]
     procs = []
+    # 죽을 때 자식도 함께 (REQ-20260905-022) — 부모만 죽으면 샤드·좁혀서-다시
+    # 자식이 고아로 남아 CPU 를 먹는다(실측 2026-09-05: 죽인 실행의 재실행 자식이
+    # 다음 실행과 겹쳤다). SIGTERM/SIGINT 를 받으면 자식을 먼저 거두고 나간다.
+    import signal as _signal
+    children = procs                          # 같은 리스트 — 뒤에 채워진다
+
+    def _reap_children(signum, _frame):
+        for pr, _out, _group in list(children):
+            try:
+                pr.kill()
+            except OSError:
+                pass
+        for pr in list(RETRY_PROCS):
+            try:
+                pr.kill()
+            except OSError:
+                pass
+        raise SystemExit(128 + signum)
+    for _sig in (_signal.SIGTERM, _signal.SIGINT):
+        try:
+            _signal.signal(_sig, _reap_children)
+        except (ValueError, OSError):
+            pass                              # 메인 스레드가 아니면 못 건다
     # 포트 칸 수를 샤드 수에 맞춘다 (REQ-20260905-001) — 칸이 넷으로 못박혀
     # 있으면 다섯째 샤드부터 자기 자리가 없어 같은 포트를 두고 다툰다. 실측:
     # 칸이 4 로 못박혔을 때 4·6·10 샤드가 525·518·520초로 평평했고 코어는 83%
@@ -701,8 +761,11 @@ def run_sharded(pats, jobs, bump=None):
     if not ok and should_retry(red):
         print(f"[좁혀서 다시] 붉은 파일 {len(red)}개만 단독으로 한 번 더 돈다: "
               f"{' '.join(red)}", file=sys.stderr)
-        r = subprocess.run([sys.executable, HERE, "--no-reuse", *red], env=env,
-                           stdin=subprocess.DEVNULL)
+        r = subprocess.Popen([sys.executable, HERE, "--no-reuse", *red], env=env,
+                             stdin=subprocess.DEVNULL)
+        RETRY_PROCS.append(r)
+        r.wait()
+        RETRY_PROCS.remove(r)
         if r.returncode == 0:
             ok = True
             record_flaky(red, "샤드에서 붉음 · 단독 초록")
@@ -1028,6 +1091,7 @@ def main():
                     return 0
         if jobs > 1 and not nested:
             files = matched_files(pats)
+            files, _dropped = apply_quarantine(files, full_requested)
             if not files:
                 print(f"no tests matched: {', '.join(pats)}", file=sys.stderr)
                 return 1
@@ -1035,7 +1099,7 @@ def main():
                                         args=" ".join(sys.argv[1:4]))
             try:
                 ran = True
-                ok, _n = run_sharded(pats, jobs, bump=bump)
+                ok, _n = run_sharded(pats, jobs, bump=bump, skip=_dropped)
             finally:
                 clear()
                 # 샤드 자식들이 남긴 소요를 여기서 합친다 (REQ-20260905-001).

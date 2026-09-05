@@ -417,6 +417,31 @@ def head_touches_wide():
         return []
 
 
+def _pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def full_run_in_flight(jobs_dir=None):
+    """지금 살아 있는 전체 실행(kind=full, pid 생존)의 pid — 없으면 0."""
+    jobs_dir = jobs_dir or os.path.join(ROOT, "state", "jobs")
+    try:
+        names = os.listdir(jobs_dir)
+    except OSError:
+        return 0
+    for n in names:
+        if not (n.startswith("tests-") and n.endswith(".json")):
+            continue
+        d = _read_json(os.path.join(jobs_dir, n)) or {}
+        pid = int(d.get("pid") or 0)
+        if d.get("kind") == "full" and pid and _pid_alive(pid):
+            return pid
+    return 0
+
+
 def after_commit():
     """post-commit: 넓은 파일이 담긴 커밋이면 전체 스위트를 배경에서 띄운다.
 
@@ -433,6 +458,14 @@ def after_commit():
             return 0                        # 이 나무는 이미 초록이다
     except Exception:
         pass
+    # 전체 실행은 한 번에 하나 (REQ-20260905-022). 연속 commit 마다 하나씩 띄우면
+    # 뒤의 것이 잠금 뒤에 줄을 서고 CPU 는 겹친다(실측 2026-09-05 20:13). 살아
+    # 있는 전체 실행이 있으면 그 결과가 라쳇을 판정한다 — 새 것은 띄우지 않는다.
+    live = full_run_in_flight()
+    if live:
+        print(f"s9-guard: 전체 스위트가 이미 돌고 있다(pid {live}) — 새로 띄우지 않는다. "
+              f"그 결과가 붉으면 다음 커밋이 라쳇에 걸린다.", file=sys.stderr)
+        return 0
     try:
         sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
                              encoding="utf-8", cwd=ROOT, timeout=10,
