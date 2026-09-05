@@ -142,7 +142,7 @@ def _listen_published(timeout=3.0):
     def _drain():
         # 받아서 곧 닫는다. 아무도 accept 하지 않으면 리눅스는 backlog 가 찬 뒤의
         # SYN 을 버려 connect 가 타임아웃되고, 판정이 「닫힘(free)」으로 떨어진다
-        # (jade 실측 2026-09-06: silent → mine 사이에서 free). WSL 은 중계가 대신
+        # (원격 리눅스 실측 2026-09-06: silent → mine 사이에서 free). WSL 은 중계가 대신
         # 받아 주어 이 결함이 보이지 않았다.
         while True:
             try:

@@ -31,7 +31,7 @@ class TestP5Live(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        key = "jade"
+        key = None                      # 없으면 기억된 원격(state/test-remote)
         if "--key" in sys.argv:
             key = sys.argv[sys.argv.index("--key") + 1]
         cls.fx = p5_live.Live(key=key, keep="--keep" in sys.argv)

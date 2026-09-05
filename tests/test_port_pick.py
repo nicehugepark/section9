@@ -61,7 +61,7 @@ class PickPort(unittest.TestCase):
     def test_p6_a_rootless_answer_from_a_stranger_moves_me(self):
         """P6. 응답에 root 가 없고 내 저장소의 기동 흔적도 없으면 남의 것 — 옮긴다.
 
-        jade 실측 2026-09-06: 다른 리눅스 사용자의 옛 section9 이 9909 에 앉아 있었고,
+        원격 리눅스 실측 2026-09-06: 다른 리눅스 사용자의 옛 section9 이 9909 에 앉아 있었고,
         그 옛 판은 serveinfo 에 root 를 안 실었다. 예전 조항은 그것을 내 것으로 봤다.
         """
         port, why = self.m.pick_dashboard_port(

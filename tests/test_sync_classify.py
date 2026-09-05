@@ -124,7 +124,7 @@ class SyncClassify(unittest.TestCase):
                  "\tusers/sjpark/machines.json\n"
                  "Please move or remove them before you merge.\nAborting\n")
 
-    # C10. 추적 안 되는 파일이 pull 을 막으면 비켜 세우고 한 번 더 당긴다 (jade 실사고 2026-09-06)
+    # C10. 추적 안 되는 파일이 pull 을 막으면 비켜 세우고 한 번 더 당긴다 (원격 리눅스 실사고 2026-09-06)
     def test_c10_untracked_file_is_rescued_and_pull_retried(self):
         os.makedirs(os.path.join(self.root, "users", "sjpark"))
         with open(os.path.join(self.root, "users", "sjpark", "machines.json"), "w") as f:

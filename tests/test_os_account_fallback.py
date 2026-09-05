@@ -1,6 +1,6 @@
 """미등록 운영체제 계정은 조용히 사용자가 되지 않는다 (REQ-20260906-008).
 
-jade 실사고 2026-09-06: 계정 sjpark 이 os_accounts 에 없어 「sjpark」이 사용자로 서고
+원격 리눅스 실사고 2026-09-06: 계정 sjpark 이 os_accounts 에 없어 「sjpark」이 사용자로 서고
 users/sjpark 이 생겨 동기화까지 됐다. git 은 user.name=nicehugepark 을 알고 있었다.
 
 실행: python3 tests/ os_account_fallback

@@ -17,7 +17,7 @@ A 의 `s9 sync` 는 진짜 네트워크(ssh 터널 위의 git://)로 밀고 당�
 이 파일의 얼굴(tests/test_p5_live.py)은 사람이 `p5_live` 라고 지목한 실행에서만
 깨어난다. 전체 스위트도, 샤드 자식도 그 낱말을 넘기지 않으므로 조용히 건너뛴다.
 
-    실행:  python3 tests/ p5_live               (비밀 이름 기본값 jade)
+    실행:  python3 tests/ p5_live               (비밀 이름은 기억된 원격 state/test-remote·S9_TEST_REMOTE)
            python3 tests/p5_live.py --key <비밀이름> [--port 29418] [--keep]
 
 비밀 값은 읽지 않는다 — `s9 secret run` 의 `{{secret:KEY}}` 치환으로만 쓴다
@@ -92,11 +92,25 @@ REPORT = Report()
 
 
 # ---------------------------------------------------------------- 두 머신
+def default_key():
+    """두 번째 컴퓨터의 비밀 이름 — 기억된 원격(state/test-remote)·S9_TEST_REMOTE 에서.
+
+    특정 머신의 이름을 코드에 박지 않는다 — 그것은 한 사람의 비밀로 만든 장치라
+    저장소를 이어받는 다른 사람은 그 개념 자체를 몰라야 한다(REQ-20260906-011).
+    """
+    import remote_run
+    key = remote_run.remote_key([])
+    if not key:
+        raise SystemExit("두 번째 컴퓨터의 비밀 이름이 없다 — --key <이름> 또는 "
+                         "`python3 tests/ --remote <이름> --remember`")
+    return key
+
+
 class Live:
     """A = 이 컴퓨터의 임시 루트, B = 원격 컴퓨터의 ~/s9field/beta."""
 
-    def __init__(self, key="jade", port=29418, keep=False):
-        self.key, self.port, self.keep = key, port, keep
+    def __init__(self, key=None, port=29418, keep=False):
+        self.key, self.port, self.keep = key or default_key(), port, keep
         self.alpha = tempfile.mkdtemp(prefix="s9live-")
         self.lport = port          # 이 컴퓨터에서 터널이 서는 자리 (막혔으면 옮긴다)
         self.url = f"git://127.0.0.1:{self.lport}/origin.git"
@@ -564,7 +578,7 @@ def scene5_sync_failure(fx, X):
 
 
 def main(argv):
-    key, port, keep = "jade", 29418, False
+    key, port, keep = None, 29418, False
     if "--key" in argv:
         key = argv[argv.index("--key") + 1]
     if "--port" in argv:

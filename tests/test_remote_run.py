@@ -19,11 +19,11 @@ class RemoteRun(unittest.TestCase):
         d = tempfile.mkdtemp(prefix="s9rr-")
         remote_run.REMOTE_KEY_FILE = os.path.join(d, "test-remote")
         try:
-            self.assertEqual(remote_run.remote_key(["--remote", "jade"]), "jade")
+            self.assertEqual(remote_run.remote_key(["--remote", "relay1"]), "relay1")
             self.assertIsNone(remote_run.remote_key([]))
             os.environ["S9_TEST_REMOTE"] = "opal"
             self.assertEqual(remote_run.remote_key([]), "opal")
-            self.assertEqual(remote_run.remote_key(["--remote", "jade"]), "jade")
+            self.assertEqual(remote_run.remote_key(["--remote", "relay1"]), "relay1")
             os.environ.pop("S9_TEST_REMOTE", None)
             remote_run.remember("ruby")
             self.assertEqual(remote_run.remote_key([]), "ruby")
@@ -69,11 +69,11 @@ class RemoteRun(unittest.TestCase):
         self.assertNotIn("tar", line, "GitHub 이 축이다 — 보내는 것이 있으면 안 된다")
 
     def test_k4_full_means_no_pattern_and_jobs_is_not_a_pattern(self):
-        """K4. 전체 = 패턴 없음. `--jobs 16` 의 16 과 `--remote jade` 의 jade 는 패턴이 아니다."""
+        """K4. 전체 = 패턴 없음. `--jobs 16` 의 16 과 `--remote relay1` 의 relay1 은 패턴이 아니다."""
         f = remote_run.is_full_invocation
         self.assertTrue(f([]))
         self.assertTrue(f(["--jobs", "16"]))
-        self.assertTrue(f(["--jobs", "16", "--no-reuse", "--remote", "jade"]))
+        self.assertTrue(f(["--jobs", "16", "--no-reuse", "--remote", "relay1"]))
         self.assertFalse(f(["--jobs", "16", "jobs_shard"]))
         self.assertFalse(f(["--smoke", "--jobs", "4"]))
         self.assertFalse(f(["--changed"]))

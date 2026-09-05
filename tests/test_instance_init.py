@@ -26,7 +26,7 @@ class DetachedBase(unittest.TestCase):
 
     원격 CI(tests/remote_run.py)는 베이스를 `checkout -f <sha>` 로 놓고 돈다 —
     그 클론에는 가지가 없어 `push -u origin main` 이 「src refspec main does not
-    match any」로 섰다(jade 실측 2026-09-06). 인스턴스의 가지는 베이스가 어디에
+    match any」로 섰다(원격 리눅스 실측 2026-09-06). 인스턴스의 가지는 베이스가 어디에
     서 있든 main 이다.
     """
     def test_detached_base_still_pushes_main(self):
@@ -138,7 +138,7 @@ class TestInstanceInit(unittest.TestCase):
             up = os.path.join(self.base, "upstream-copy")
             sh("git", "clone", "-q", os.path.join(HERE, ".."), up)
             # 베이스가 detached HEAD(원격 CI)면 클론도 가지가 없어 아래 commit 이
-            # main 에 안 실린다 — 업스트림의 가지는 main 이다 (jade 실측 2026-09-06)
+            # main 에 안 실린다 — 업스트림의 가지는 main 이다 (원격 리눅스 실측 2026-09-06)
             sh("git", "checkout", "-q", "-B", "main", cwd=up)
             marker = os.path.join(up, "docs", "upgrade-marker.md")
             with open(marker, "w") as f:

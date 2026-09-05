@@ -484,7 +484,7 @@ def _git_identity():
 def _user_by_git_identity():
     """git 이 아는 이 사람(user.name·user.email)과 맞는 등록 사용자 — 이름·github·이메일.
 
-    jade 실사고 2026-09-06: 운영체제 계정 sjpark 이 os_accounts 에 없어 「sjpark」이
+    원격 리눅스 실사고 2026-09-06: 운영체제 계정 sjpark 이 os_accounts 에 없어 「sjpark」이
     조용히 사용자로 섰고 users/sjpark 이 생겨 동기화까지 됐다. 그 머신의 git 은
     user.name=nicehugepark 을 알고 있었다 — 등록 사용자와 같은 이름이다. 새 계정을
     지어내기 전에 그 증거를 본다. 어느 것도 안 맞으면 빈 문자열.
@@ -1327,7 +1327,7 @@ def machine_register(fp, name=None):
     name = name or _fp_user()
     if not name or name not in registered_users():
         # 미등록 이름(운영체제 계정 폴백)에는 등록부를 만들지 않는다 — 만드는
-        # 순간 users/<계정>/ 이 생겨 사용자로 보이고 동기화까지 된다(jade 실사고
+        # 순간 users/<계정>/ 이 생겨 사용자로 보이고 동기화까지 된다(원격 리눅스 실사고
         # 2026-09-06, REQ-20260906-008). 등록은 s9 user add/attach 의 몫이다.
         return None
     path = machines_registry_path(name)
@@ -10259,7 +10259,7 @@ def _sync_fail_kind(stderr):
 def _sync_rescue_untracked(stderr):
     """pull 을 막은 「추적 안 되는 파일」을 state/sync-rescue/<시각>-untracked/ 로 옮긴다.
 
-    실사고 jade 2026-09-06 01:19: s9 가 스스로 쓰는 users/<나>/machines.json 이
+    원격 리눅스 실사고 2026-09-06 01:19: s9 가 스스로 쓰는 users/<나>/machines.json 이
     로컬 commit 에도 들어 있고 작업 나무에도 새로 생겨 있었다. pull --rebase 가
     「untracked working tree files would be overwritten」로 서고, 이어진 abort 마저
     실패해 rebase 잔재가 남았다 — 그 뒤의 sync 는 전부 pull-fail 이었다. 지우지
@@ -10297,7 +10297,7 @@ def _sync_rescue_untracked(stderr):
 def _sync_abort_rebase():
     """rebase 를 물린다 — abort 가 실패하면 잔재를 비우고 가지를 원위치로 되돌린다.
 
-    `rebase --abort` 가 「could not move back to <sha>」로 실패한 실사고(jade
+    `rebase --abort` 가 「could not move back to <sha>」로 실패한 실사고(원격 리눅스
     2026-09-06)가 있다. 그때 .git/rebase-merge 가 남으면 그 뒤의 pull 이 전부
     「rebase in progress」로 선다. orig-head·head-name 을 읽어 --quit 뒤 가지를
     그 자리로 돌려놓는다 — 로컬 commit 은 하나도 잃지 않는다.
@@ -17685,7 +17685,7 @@ def cmd_instance(args):
     git("clone", "--quiet", ROOT, target, cwd=None)
     # 베이스가 detached HEAD 면(원격 CI 가 `checkout <sha>` 로 돈다) 클론에도
     # 가지가 없어 뒤의 `push origin main` 이 「src refspec main」으로 선다 —
-    # 인스턴스의 가지는 언제나 main 이다 (jade 실측 2026-09-06, REQ-20260905-012).
+    # 인스턴스의 가지는 언제나 main 이다 (원격 리눅스 실측 2026-09-06, REQ-20260905-012).
     git("checkout", "-q", "-B", "main")
     git("remote", "rename", "origin", "upstream")
     git("remote", "set-url", "upstream", upstream_url)
@@ -18006,7 +18006,7 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
         elif _launched_here(root, port):
             # root 가 없는 답은 이 조항 이전의 서버다 — 답으로는 못 가르니 **내
             # 저장소가 그 포트에 띄운 흔적**(state/serve-code.json 의 port + 살아
-            # 있는 pid)으로 가른다. 예전엔 무조건 내 것으로 봤는데, jade 실측
+            # 있는 pid)으로 가른다. 예전엔 무조건 내 것으로 봤는데, 원격 리눅스 실측
             # 2026-09-06: 다른 리눅스 사용자의 옛 section9 이 9909 에 앉아 있었고
             # 그것을 내 것으로 읽어 포트를 안 옮겼다(REQ-20260906-004). 흔적이
             # 있으면 종전대로 재사용한다 — 멀쩡한 내 대시보드를 둘로 만들지 않는다.
