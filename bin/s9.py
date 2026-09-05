@@ -15070,6 +15070,13 @@ def _discover_transcript(sid8):
     root = os.environ.get("S9_CLAUDE_PROJECTS",
                           os.path.expanduser("~/.claude/projects"))
     cands = _glob.glob(os.path.join(root, "*", safe_name(sid8) + "*.jsonl"))
+    # 설치 표식 이전의 옛 대화는 후보가 아니다 (REQ-20260905-025) — 예전 하네스가
+    # 남긴 것을 우리 세션으로 오인해 요청·기록으로 끌어오는 길을 여기서 막는다.
+    try:
+        _env = _env_module()
+        cands = [c for c in cands if not _env.predates_install(c, ROOT)]
+    except Exception:
+        pass
     return max(cands, key=os.path.getmtime) if cands else ""
 
 
@@ -16205,10 +16212,14 @@ def do_user_attach(name, machine=None):
     # 동기화 모드는 사람이 껐다 켰다 할 스위치가 아니다 — 한 사람이 두 대에서 같은
     # 저장소를 쓰기 시작했다는 사실이 판정이고, 그 사실은 여기서 생긴다. 그냥
     # clone 만 한 사람(머신 하나)에게는 어떤 git 쓰기도 없다(REQ-20260824-051 그대로).
+    ATTACH_SYNC_ON[:] = []
     if changed and attach_turns_sync_on(meta):
         sync_set_mode("remote")
-        return acct, machine, changed, True
-    return acct, machine, changed, False
+        ATTACH_SYNC_ON.append(name)
+    return acct, machine, changed
+
+
+ATTACH_SYNC_ON = []      # 방금 attach 가 동기화를 켰으면 그 사용자 이름 (cmd_user 가 읽는다)
 
 
 def attach_turns_sync_on(meta):
@@ -16562,7 +16573,8 @@ def cmd_user(args):
     elif args.action == "attach":
         name = args.name or die("usage: s9 user attach <name>")
         try:
-            acct, mach, changed, sync_on = do_user_attach(name, machine=machine)
+            acct, mach, changed = do_user_attach(name, machine=machine)
+            sync_on = bool(ATTACH_SYNC_ON)
         except ValueError as e:
             die(str(e))
         print(f"{name}: attached {acct}@{mach}"
@@ -17760,6 +17772,11 @@ def ensure_claude_login(run=None, state=None):
         return "not-installed"
     if c.get("logged_in"):
         return "ok"
+    if not sys.stdin.isatty() and run is None:
+        # 무인·파이프에서는 로그인 화면을 띄울 수 없다 — 안내만 남기고 지나간다.
+        # 이어서 뜨는 claude 가 제 로그인 화면을 보인다.
+        print("◌ Claude Code 로그인이 없다 — 터미널에서 `claude auth login` 을 먼저 하라")
+        return "not-tty"
     print("◌ Claude Code 로그인이 없다 — 먼저 로그인한다 (claude auth login)…")
     try:
         (run or (lambda argv: _sp.call(argv)))(["claude", "auth", "login"])
@@ -17858,6 +17875,77 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
     except OSError:
         pass
     return new, why
+
+
+def _env_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "s9_env", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_env.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def cmd_env(args):
+    """기존 환경의 승계·정리·백업 (REQ-20260905-025): status · backups · backup · restore · inherit."""
+    env = _env_module()
+    act = args.env_action
+    if act == "status":
+        bks = env.list_backups()
+        at = env.installed_at(ROOT)
+        print(f"설치 표식: {datetime.datetime.fromtimestamp(at).isoformat(timespec='seconds') if at else '없음'}")
+        print(f"백업 {len(bks)}개 — {env.backups_root()}" + (f" (마지막 {bks[-1]})" if bks else ""))
+        return
+    if act == "backups":
+        for n in env.list_backups():
+            print(n)
+        return
+    if act == "backup":
+        r = env.backup(reason="manual")
+        print(f"복사 {len(r['entries'])}개 → {r['dir'] or '(없음)'}")
+        return
+    if act == "restore":
+        r = env.restore(args.which or "latest", dry_run=bool(args.dry_run))
+        tag = "(미리보기) " if r["dry_run"] else ""
+        print(f"{tag}{r['at']}: 되돌림 {len(r['restored'])} · 이미 같음 {len(r['skipped'])} · "
+              f"비켜 세움 {len(r['conflicts'])}")
+        for rel, aside in r["conflicts"]:
+            print(f"  {rel} → 원위치의 새 파일은 {os.path.basename(aside)} 로")
+        return
+    if act == "inherit":
+        bks = env.list_backups()
+        if not bks:
+            die("승계할 백업이 없다 — 먼저 `s9 env backup`")
+        bdir = os.path.join(env.backups_root(), args.which or bks[-1])
+        cands = env.inherit_candidates(bdir)
+        if not cands:
+            print("예전 설정에서 옮길 만한 줄이 없다")
+            return
+        print("예전에 Claude 에 적어 두셨던 말입니다. section9 에서도 지킬 것만 고르세요 — "
+              "고르지 않은 것은 그대로 남고, 지워지지 않습니다.")
+        for i, (src, line) in enumerate(cands, 1):
+            print(f"  {i:3d}. [{src}] {line}")
+        if not sys.stdin.isatty():
+            print("(번호를 고르려면 터미널에서 실행하라 — 자동으로 넣지 않는다)")
+            return
+        try:
+            pick = input("번호(쉼표로 여럿, 비우면 없음): ").strip()
+        except EOFError:
+            pick = ""
+        chosen = []
+        for tok in pick.replace(" ", "").split(","):
+            if tok.isdigit() and 1 <= int(tok) <= len(cands):
+                chosen.append(cands[int(tok) - 1][1])
+        if not chosen:
+            print("고른 것이 없다 — 아무것도 바뀌지 않았다")
+            return
+        who = args.user or whoami_info()["user"]
+        cur = (user_config(who) or {}).get("pref_승계") or ""
+        new = (cur + "\n" if cur else "") + "\n".join(f"- {c}" for c in chosen)
+        do_user_config_set(who, "pref_승계", new, actor="s9 env inherit")
+        print(f"{len(chosen)}줄을 {who} 의 개인 설정(pref_승계)에 넣었다 — `s9 user config {who} pref_승계 ''` 로 비운다")
+        return
+    die("usage: s9 env status|backups|backup|restore [시각|latest] [--dry-run]|inherit [시각]")
 
 
 def cmd_code(args):
@@ -24976,6 +25064,13 @@ def main():
     sc.add_argument("--internal", action="store_true",
                     help="rm: 저장소 안의 것만 지운다 (set 의 기본값)")
     sc.set_defaults(fn=cmd_secret)
+
+    ev = sub.add_parser("env", help="기존 환경의 승계·정리·백업 (설치 전 설정의 백업·되돌리기·승계)")
+    ev.add_argument("env_action", choices=["status", "backups", "backup", "restore", "inherit"])
+    ev.add_argument("which", nargs="?", help="restore/inherit: 백업 시각(YYYYMMDD-HHMMSS) 또는 latest")
+    ev.add_argument("--dry-run", action="store_true", help="restore: 무엇이 바뀔지만 본다")
+    ev.add_argument("--user", help="inherit: 개인 설정을 넣을 사용자(기본 현재 사용자)")
+    ev.set_defaults(fn=cmd_env)
 
     nw = sub.add_parser("now",
                         help="지금 시각을 실측해 응답 머리 형식으로 낸다")

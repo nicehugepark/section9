@@ -15,6 +15,7 @@ usage: s9-install [--quiet] [--no-claude]
 import json
 import os
 import stat
+import shutil
 import subprocess
 import sys
 
@@ -444,6 +445,59 @@ def login_state(marks=None, which=None):
     return out
 
 
+def _load_env_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "s9_env", os.path.join(ROOT, "bin", "s9_env.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def env_backup_mode():
+    argv = sys.argv[1:]
+    if "--backup" in argv:
+        i = argv.index("--backup")
+        if i + 1 < len(argv) and argv[i + 1] in ("silent", "ask", "off"):
+            return argv[i + 1]
+    return "silent"
+
+
+def env_backup_before_install():
+    """설치 표식을 세우고, 모드에 따라 기존 환경을 백업한다. 실패해도 설치는 계속 —
+    다만 백업 없이 병합하지 않도록 `--backup off` 가 아니면 실패를 크게 말한다."""
+    try:
+        env = _load_env_module()
+    except Exception as e:
+        say(f"⚠ 백업 모듈을 못 읽었다({e}) — 백업 없이 계속한다")
+        return None
+    try:
+        if env.mark_installed(ROOT):
+            say("설치 표식 state/installed_at — 이 시각 이전의 옛 대화는 section9 이 집지 않는다")
+    except OSError:
+        pass
+    mode = env_backup_mode()
+    if mode == "off":
+        say("백업 없이 진행한다 (--backup off)")
+        return None
+    if mode == "ask" and sys.stdin.isatty():
+        try:
+            a = input("설치 전에 예전 Claude 설정(settings.json·CLAUDE.md·메모리)을 복사해 둘까요? [Y/n] ")
+        except EOFError:
+            a = "y"
+        if a.strip().lower() in ("n", "no"):
+            say("백업을 건너뛴다(사용자 선택)")
+            return None
+    try:
+        r = env.backup(reason="install")
+        if not r.get("dir"):
+            say("백업할 예전 설정이 없다 — 새 환경이다")
+        return r
+    except Exception as e:
+        say(f"⚠ 백업 실패({e}) — 설치는 계속하되, 이 줄을 남긴다. 되돌릴 것이 없다는 뜻이다")
+        return None
+
+
 def login_guide(state=None):
     """설치가 끝났는데 로그인이 없으면 여기서 말한다 — 첫 `s9 code` 가 로그인 화면에서
     막히는 것이 실사고다(새 머신 설치, 2026-09-05). 설치를 막지는 않는다."""
@@ -472,12 +526,20 @@ def main():
         return
     install_dirs()
     install_git_hooks()
+    # 기존 환경 백업 (REQ-20260905-025) — settings.json 을 병합하기 **전에**. 모드 셋을
+    # 다 둔다(사용자 요구: 하나만 채택하지 말고 다 제공): 기본 `--backup silent`(조용히),
+    # `--backup ask`(tty 면 묻고 아니면 조용히), `--backup off`. 무엇을 백업하고 어디에
+    # 두는지는 bin/s9_env.py 한 곳이 안다. 자격증명은 목록에 없다.
+    env_bk = env_backup_before_install()
     if "--no-claude" not in sys.argv:
         install_claude_hooks()
         install_skills_agents()
     install_other_harnesses()
     start_dashboard()
     say("section9 install 완료")
+    if env_bk and env_bk.get("dir"):
+        say(f"예전 설정 {len(env_bk['entries'])}개를 {env_bk['dir']} 에 그대로 복사해 두었습니다. "
+            f"원본은 건드리지 않았습니다. 설치 전으로 돌아가려면: s9 env restore {os.path.basename(env_bk['dir'])}")
     login_guide()
 
 
