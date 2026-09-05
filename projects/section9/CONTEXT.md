@@ -22,3 +22,10 @@ CLI(bin/s9)·대시보드(web/)·자동 재작업(auto-resume) 워커로 구성�
 - 에셋(외부 파일): projects/section9/assets/
 - 작업 규약: CLAUDE.md · harness/common/PROTOCOL.md
 - 설계 결정: DOC-20260823-005(프로젝트 모델·로드맵) · DOC-20260824-001(에셋 공간)
+
+## 저장소 정책 (주인 결정, REQ-20260905-019)
+- push 는 `main` 으로 직접 한다 — 브랜치·PR 을 만들지 않는다. GitHub 의 「Bypassed rule
+  violations」 경고는 실패가 아니니 다시 묻지 않는다. 미는 것은 검증된 마지막 commit 이다.
+- 이것은 개인 선호(pref_*)가 아니라 이 저장소의 규칙이다 — 하네스를 만드는 동안 개인
+  선호 슬롯에는 제품·저장소 규칙을 넣지 않는다(PROTOCOL 19조).
+

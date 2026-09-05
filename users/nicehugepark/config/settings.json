@@ -5,7 +5,5 @@
  "stream_mirror": "on",
  "timezone": "Asia/Seoul",
  "last_model_choice": "fable",
- "machine_fp": "62x6",
- "pref_git": "push 는 main 으로 직접 — 이 리포 주인의 결정. 브랜치·PR 을 만들지 말고, GitHub 의 「Bypassed rule violations」 경고는 실패가 아니니 다시 묻지 마라. 미는 것은 검증된 마지막 commit",
- "pref_디자인": "스킨은 다채롭게(glass 유지), 그래프는 입체감. 다른 제품을 대놓고 옮긴 듯한 이름·스타일(Jira풍·Trello풍·newspaper·neon·blueprint)은 반려 — 시스템과 어울려야 한다"
+ "machine_fp": "62x6"
 }
