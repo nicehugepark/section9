@@ -1109,10 +1109,13 @@ def main():
                 merge_times()
             if ok:
                 mark_green(pats, fp)
-            elif full_requested:
-                record_last_red(LAST_RUN_RED, fp)
                 if full_requested:
                     write_green_stamp()
+            elif full_requested:
+                # 7442b68 이 이 두 줄 사이에 elif 를 끼워 넣으면서 초록 도장이 붉은
+                # 갈래로 밀려 들어갔다 — 붉은 전체가 --changed 의 기준을 찍고, 초록은
+                # 안 찍던 자리. 도장은 초록에만 (REQ-20260905-025 에서 실측).
+                record_last_red(LAST_RUN_RED, fp)
             drop_run_lock(lock_fh)
             return 0 if ok else 1
         # 로컬 서버에 두드리는 시험 전부에 되걸기를 입힌다 (REQ-20260904-003) —

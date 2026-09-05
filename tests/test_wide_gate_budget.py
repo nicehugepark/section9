@@ -35,8 +35,15 @@ class RedRatchet(unittest.TestCase):
                                             green_age=600, now=1500, fix_env="")
         self.assertTrue(blocked)                 # 초록 at=900 < 붉음 1000
         self.assertEqual(files, ["test_code_read_gate.py"])
-        self.assertTrue(self.m.red_ratchet(["bin/s9.py"], red=self.red,
-                                           green_age=None, now=1500, fix_env="")[0])
+        # green_age=None 은 「초록 없음」이 아니라 「기록을 찾아보라」다 — 실저장소의
+        # 초록이 신선하면 이 단언이 시각에 따라 갈린다(실측 2026-09-05). 없음은 함수로 세운다.
+        keep = self.m.full_green_age
+        self.m.full_green_age = lambda: None
+        try:
+            self.assertTrue(self.m.red_ratchet(["bin/s9.py"], red=self.red,
+                                               green_age=None, now=1500, fix_env="")[0])
+        finally:
+            self.m.full_green_age = keep
 
     def test_t2_green_after_red_passes(self):
         """T2. 붉음 뒤에 초록이 있었으면 막지 않는다 · 기록이 없어도 막지 않는다."""
