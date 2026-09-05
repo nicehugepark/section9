@@ -39,7 +39,7 @@ class PickPort(unittest.TestCase):
         self.assertEqual((port, why), (9909, "mine"))
         self.assertEqual(self._port_file(), "")
 
-    def test_p2_someone_elses_section9_moves_me_to_the_next_free_port(self):
+    def test_p2_someone_elses_section9_moves_me_to_the_next_open_port(self):
         """P2. 다른 저장소의 section9 이 답하면 9910~ 의 빈 포트로 가고 state/port 에 적는다."""
         port, why = self.m.pick_dashboard_port(
             9909, root=self.root, _info=lambda p: {"started": "x", "root": "/home/other/section9"},

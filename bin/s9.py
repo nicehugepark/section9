@@ -13842,6 +13842,9 @@ def cmd_review(args):
         print("(확인 대기 없음)")
 
 
+CONTEXT_HEAD = 30      # digest 에 싣는 CONTEXT.md 앞줄 수 (REQ-20260905-020)
+
+
 def cmd_digest(args):
     """catalog을 컨텍스트 주입용으로 재요약 (인덱스의 인덱스).
 
@@ -13909,6 +13912,22 @@ def cmd_digest(args):
     ctxs = [f"- {p['slug']}: projects/{p['slug']}/CONTEXT.md"
             for p in user_projects(user)
             if os.path.exists(context_path(p["slug"]))]
+    # 3단계 (REQ-20260905-020): 경로만 가리키면 읽지 않은 세션은 모른다 — 저장소
+    # 정책처럼 규칙을 CONTEXT.md 에 두는 순간부터 본문이 실려야 한다. 앞 CONTEXT_HEAD
+    # 줄만 싣고(전체 주입 금지), 예산이 모자라면 이 절이 먼저 줄어든다.
+    ctx_body = []
+    for p in user_projects(user):
+        cp = context_path(p["slug"])
+        if not os.path.exists(cp):
+            continue
+        try:
+            with open(cp, encoding="utf-8") as f:
+                lines = [ln.rstrip() for ln in f.read().splitlines() if ln.strip()]
+        except OSError:
+            continue
+        ctx_body.append(f"[{p['slug']}] projects/{p['slug']}/CONTEXT.md 앞 {CONTEXT_HEAD}줄"
+                        + ("" if len(lines) <= CONTEXT_HEAD else f" (전체 {len(lines)}줄 — 나머지는 Read)"))
+        ctx_body.extend(lines[:CONTEXT_HEAD])
     # 우선순위 낮은 섹션부터 잘려나가도록 뒤에서부터 배치
     # 아무에게도 닿지 못한 전이 통지 (REQ-20260826-015). 첫 줄에 올린다 —
     # 통지가 유실됐다는 것은 그 작업을 지금 아무도 모른다는 뜻이라, 다른 어떤
@@ -13928,6 +13947,7 @@ def cmd_digest(args):
         ("## 최근 완료", [line(r) for r in closed[:8]]),
         ("## knowledge (설계/결정)", [line(r) for r in know[:8]]),
         ("## 내 프로젝트 컨텍스트 (작업 전 Read)", ctxs),
+        ("## 프로젝트 컨텍스트 본문", ctx_body),
     ]
 
     def build(item_caps):
