@@ -38,9 +38,13 @@ BUDGET = os.path.join(HERE, "BUDGET.json")
 # 소스 텍스트를 읽어 들이는 모양 — 대문자 상수로 경로를 잡아 열거나
 # `read_text()` 로 통째로 읽는 자리. 시험 자신의 임시 파일은 소문자 변수라
 # 여기 안 걸린다.
+# 헬퍼 경유도 센다 (REQ-20260905-011): read⟨S9_SRC⟩·_src⟨APP⟩ 처럼 소문자 이름의
+# 헬퍼가 대문자 상수 경로를 받아 통째로 읽는 자리 — `open(` 만 보면 이 구멍으로 빠졌다.
+# 그리고 tests 밖으로 나가는 경로(`os.path.join(HERE, ".."`)를 열어 읽는 자리도.
 READS_SOURCE = re.compile(
-    r'open\(\s*(?:S9|DOCTOR|SRC|RUNNER|APP|WEB|[A-Z][A-Z0-9_]{1,})\s*,'
-    r'|\.read_text\(\)')
+    r'\b[A-Za-z_]*(?:open|read|src|slurp|text)[A-Za-z_]*\(\s*(?:S9|DOCTOR|SRC|RUNNER|APP|WEB|[A-Z][A-Z0-9_]{1,})\s*[,)]'
+    r'|\.read_text\(\)'
+    r'|\b[A-Za-z_]*(?:open|read|src|slurp|text)[A-Za-z_]*\(\s*os\.path\.join\(\s*HERE\s*,\s*"\.\."')
 
 
 def scan(here=None):
