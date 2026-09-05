@@ -695,6 +695,8 @@ def _envnum(name, default, cast=float):
 # 대시보드 서버는 연결 하나에 스레드 하나다. 놓아 주지 않는 연결은 곧 놓아
 # 주지 않는 스레드이고, 스레드가 쌓이면 새 연결이 리셋된다.
 #   KEEPALIVE_IDLE  요청과 요청 사이 **노는** 시간의 상한. 처리 시간은 안 잰다.
+#   CLOSE_LAST_WAIT 닫기로 한 연결에서 상대의 FIN 을 기다리는 상한 — 우리가
+#                   먼저 닫으면 WSL 중계가 그 자리를 영영 쥔다 (REQ-20260905-002).
 #                   화면의 가장 느린 폴은 2.5초(터미널 폴백)라, 20초면
 #                   정상 폴링은 한 번도 안 걸리고 버려진 연결만 걷힌다.
 #   MAX_CONNS       동시 연결 상한. 넘으면 조용히 리셋되게 두지 않고 503 으로
@@ -706,6 +708,7 @@ def _envnum(name, default, cast=float):
 #   SERVE_BACKLOG   받아들이기 큐. 32는 재접속 폭풍(브라우저 F5·SSE 재연결)
 #                   에서 넘쳐, 커널이 SYN 을 버리면 화면이 「죽은」 것으로 보인다.
 KEEPALIVE_IDLE = _envnum("S9_KEEPALIVE_IDLE", 20.0)
+CLOSE_LAST_WAIT_SEC = _envnum("S9_CLOSE_LAST_WAIT", 1.0)   # 상대가 먼저 닫을 틈 — urllib 은 수 ms 안에 닫는다
 MAX_CONNS = int(_envnum("S9_MAX_CONNS", 256, int))
 SERVE_BACKLOG = int(_envnum("S9_SERVE_BACKLOG", 128, int))
 
@@ -21746,6 +21749,30 @@ def cmd_serve(args):
                                  f"timeout={int(self.idle_timeout)}")
             super().end_headers()
 
+        def finish(self):
+            """닫을 때는 **상대가 먼저 끊게 둔다** (REQ-20260905-002).
+
+            실측 2026-09-05: WSL 중계는 **리스닝 쪽이 먼저 FIN 을 보낸 연결**
+            마다 호스트 동적 포트 하나를 제 수명 동안 쥐고 놓지 않는다 —
+            서버가 먼저 닫은 20건 → +20 · 클라이언트가 먼저 닫은 20건 → 0.
+            `Connection: close` 를 청한 클라이언트(urllib 기본)는 본문을 다
+            읽자마자 제 쪽을 닫으니, 그 FIN 을 잠깐 기다렸다가 닫으면 이 서버는
+            언제나 **둘째로** 닫는다. 기다림은 놀고 있는 스레드 하나이고 상한이
+            있다 — 상대가 안 닫으면(유휴 상한·SSE 만료) 우리가 닫는 수밖에
+            없고, 그 몫은 이 방법으로 못 없앤다. 시험 스위트 한 바퀴가 ~480 을
+            쌓던 경로가 이것이었다 (REQ-20260905-001 실측).
+            """
+            super().finish()
+            if not self.close_connection \
+                    or getattr(self, "_server_closes_first", False):
+                return
+            try:
+                self.connection.settimeout(CLOSE_LAST_WAIT_SEC)
+                while self.connection.recv(4096):
+                    pass
+            except (OSError, ValueError):
+                pass
+
         def _peer_gone(self):
             """상대가 이미 갔는가 — 긴 연결(SSE)이 스스로 묻는 말.
 
@@ -22125,6 +22152,11 @@ def cmd_serve(args):
                 except ValueError:
                     after = 0
                 self.close_connection = True
+                # 스트림은 서버가 끝내는 연결이다 — 상대는 EOF 를 읽으려
+                # 기다리고 있으니 finish 의 「상대가 먼저 닫게 두기」는 여기서
+                # 1초를 그냥 태운다(실측: 전체 스위트 334→438초). 이 몫은
+                # 어차피 우리가 먼저 닫아야 하는 자리라 기다리지 않는다.
+                self._server_closes_first = True
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Cache-Control", "no-store")
