@@ -78,7 +78,7 @@ def _envint(name, default):
 # 시간 문제이므로 tests/test_concurrency.py 가 매번 같은지 확인한다.
 CONCURRENCY = {
     "headless": _envint("S9_MAX_HEADLESS", 8),
-    "test_jobs": _envint("S9_MAX_JOBS", 4),
+    "test_jobs": _envint("S9_MAX_JOBS", 8),
     "conns": _envint("S9_MAX_CONNS", 256),
 }
 PROBE_TIMEOUT = 2.0

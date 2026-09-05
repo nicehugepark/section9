@@ -61,13 +61,21 @@ except ImportError:      # 윈도우 — 슬롯 잠금 없이 pid 로만 나눈�
 # 18800~18927 — 윈도우 동적 범위(49152~65535)와 커널 임시 범위(32768~60999)
 # 양쪽 모두의 아래. 대시보드 기본 포트(9909)와 그 스캔 대역(9910~9950)도 피한다.
 POOL_BASE = int(os.environ.get("S9_TEST_PORT_BASE", "18800"))
-POOL_SIZE = int(os.environ.get("S9_TEST_PORT_SIZE", "128"))
 
 # 스위트가 동시에 여러 개 돌 수 있다(무인 감사 세션 병렬) — 풀을 슬롯으로 갈라
 # 프로세스마다 다른 구간을 쓰게 한다. 같은 포트를 동시에 노려 서로 밀어내는
 # 사고(테스트가 서버를 띄우기 직전에 남이 채감)를 구조적으로 없앤다.
-POOL_SLOTS = 4
-SLOT_SIZE = POOL_SIZE // POOL_SLOTS
+#
+# **칸 수는 샤드 수를 따라간다** (REQ-20260905-001). 4 로 못박혀 있었는데,
+# 그것이 곧 병렬의 천장이었다 — 다섯째 샤드부터는 자기 칸이 없어 pid 로 나눠
+# 쓰며 같은 포트를 두고 다툰다. 실측 2026-09-05: 4·6·10 샤드가 각각 525·518·
+# 520초로 **평평했다**. 코어는 83% 놀고 있었다. 칸을 맞춘 뒤 6→343 · 8→317 ·
+# 10→295초 — 그래서 상한 표(S9_MAX_JOBS)의 기본도 4 에서 8 로 올렸다. 러너가 `--jobs` 를 그대로
+# 넘겨주고, 칸마다 32포트를 유지하도록 풀 폭도 함께 넓힌다(18800~ 대역은
+# 커널 임시 범위 32768 아래라 여유가 크다).
+POOL_SLOTS = max(1, int(os.environ.get("S9_TEST_PORT_SLOTS", "4")))
+POOL_SIZE = int(os.environ.get("S9_TEST_PORT_SIZE", str(max(128, POOL_SLOTS * 32))))
+SLOT_SIZE = max(8, POOL_SIZE // POOL_SLOTS)
 LOCK_DIR = os.path.join(tempfile.gettempdir(), "s9-portpool")
 
 WIN_DYNAMIC_START = 49152          # 윈도우 기본 동적 포트 시작

@@ -17693,8 +17693,11 @@ def cmd_code(args):
 CONCURRENCY = {
     # 동시에 살아 있는 캡처 브라우저 (캡처 1건 = chrome 프로세스 약 11개)
     "headless": int(_envnum("S9_MAX_HEADLESS", 8, int)),
-    # 시험 러너의 병렬 갈래 (tests/__main__.py 가 이 값으로 --jobs 를 묶는다)
-    "test_jobs": int(_envnum("S9_MAX_JOBS", 4, int)),
+    # 시험 러너의 병렬 갈래 (tests/__main__.py 가 이 값으로 --jobs 를 묶는다).
+    # 8 의 근거 (REQ-20260905-001, 14코어 실측 2026-09-05): 포트 칸을 샤드 수에
+    # 맞춘 뒤 전체 스위트가 4→~520 · 6→343 · 8→317 · 10→295초. 8 이 무릎이다 —
+    # 그 위는 두 세션이 겹치면 코어를 넘긴다. 포트 점유는 샤드 수와 무관했다.
+    "test_jobs": int(_envnum("S9_MAX_JOBS", 8, int)),
     # 서버가 한때 받아 두는 연결 — 이미 서는 상한이라 표에 옮겨 적기만 한다
     "conns": MAX_CONNS,
 }

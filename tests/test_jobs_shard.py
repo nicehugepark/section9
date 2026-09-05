@@ -5,6 +5,8 @@
 import importlib.machinery
 import importlib.util
 import os
+import subprocess
+import sys
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -74,6 +76,35 @@ class TheShard(unittest.TestCase):
             self.assertTrue(ok, "빠른 두 샤드가 green 이 아니다")
             self.assertGreaterEqual(n, 2)
 
+class PortSlotsFollowJobs(unittest.TestCase):
+    """T4. 포트 칸 수가 샤드 수를 따라간다 (REQ-20260905-001).
+
+    칸이 4 로 못박혀 있으면 다섯째 샤드부터 자기 칸이 없어 같은 포트를 두고
+    다툰다 — 실측으로 4·6·10 샤드가 전부 ~520초로 평평했던 이유다. 칸을
+    맞춘 뒤 6→343 · 8→317 · 10→295초.
+    """
+
+    def test_t4_the_pool_widens_with_the_slots(self):
+        """칸을 10 으로 주면 풀도 따라 넓어지고, 칸마다 자리가 남는다."""
+        code = ("import portpool as p; "
+                "print(p.POOL_SLOTS, p.POOL_SIZE, p.SLOT_SIZE)")
+        r = subprocess.run([sys.executable, "-c", code], cwd=HERE,
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, "S9_TEST_PORT_SLOTS": "10"})
+        self.assertEqual(r.returncode, 0, r.stderr[-400:])
+        slots, size, slot = map(int, r.stdout.split())
+        self.assertEqual(slots, 10)
+        self.assertGreaterEqual(slot, 8, "칸 하나가 8포트보다 좁다")
+        self.assertGreaterEqual(size, slots * slot)
+
+    def test_t4b_the_runner_hands_its_jobs_to_the_pool(self):
+        """러너가 샤드 자식에게 S9_TEST_PORT_SLOTS 를 샤드 수로 넘긴다."""
+        src = open(RUNNER, encoding="utf-8").read()
+        blk = src.split("def run_sharded", 1)[1].split("for group in shard", 1)[0]
+        self.assertIn('"S9_TEST_PORT_SLOTS": str(max(4, jobs))', blk,
+                      "샤드 수가 포트 칸으로 안 넘어간다 — 5샤드부터 포트를 다툰다")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
@@ -104,6 +135,23 @@ class WeighByMeasuredTime(unittest.TestCase):
     def _files(self, n=4):
         return [f for f in sorted(os.listdir(HERE))
                 if f.startswith("test_") and f.endswith(".py")][:n]
+
+    def test_t0_setupclass_cost_is_counted(self):
+        """T0. 클래스 준비(setUpClass)에 든 시간이 그 파일에 얹힌다.
+
+        시험 하나의 실행만 재면 이 저장소의 비싼 파일이 0 으로 보인다 — 비용은
+        대부분 서버를 띄우는 `setUpClass` 에 있고 그 자리는 startTest~stopTest
+        사이에 없다(실측 2026-09-05: 기록 0.0초 · 실제 3.3초). 그 무게로
+        샤딩하면 가장 비싼 파일을 가장 가볍다고 믿는다.
+
+        계약을 자리로 본다: 직전 시험이 끝난 때부터 재야 그 틈이 들어온다.
+        """
+        src = open(RUNNER, encoding="utf-8").read()
+        blk = src.split("per_file = {}", 1)[1].split("try:", 1)[0]
+        self.assertIn("last_ts", blk,
+                      "직전 시험이 끝난 때를 안 들고 있다 — setUpClass 가 안 잡힌다")
+        self.assertNotIn("def startTest", blk,
+                         "시험 시작 시각부터 재면 클래스 준비가 빠진다")
 
     def test_t3_known_times_drive_the_weight(self):
         """T3. 기록이 있으면 잰 시간으로 균형을 잡는다 — 느린 것이 먼저 자리를 잡는다."""

@@ -61,5 +61,5 @@ s9 note <REQ-id> --label tdd "
   길어지니 애초에 안 만지는 설계가 우선이다. 물려받은 환경(S9_TESTS_NESTED 등)에
   기대지 말고 setUp 에서 정리하라.
 - **실행 습관**: 개발 중 `python3 tests/ --changed`(변경에 닿는 것만) 또는 표적
-  패턴, review/done 전 전체는 `python3 tests/ --jobs 4`. 종료 코드는 파이프에
+  패턴, review/done 전 전체는 `python3 tests/ --jobs 8`. 종료 코드는 파이프에
   가리지 말고 실측하라(`; echo exit=$?`).

@@ -85,6 +85,17 @@ class Concurrency(unittest.TestCase):
                 env={**os.environ, "S9_MAX_JOBS": "2"})
             said = r.stdout + r.stderr
             self.assertIn("→ 2 로 묶는다", said, said[-400:])
+        with self.subTest("b2_without_the_env_the_runner_uses_the_table"):
+            # 러너가 제 몫 기본값을 따로 들면 갈린다 — 실측 2026-09-05: 표를
+            # 8 로 올렸는데 러너는 4 로 묶었다. 환경변수 없이 표의 값으로 묶는다.
+            env = {k: v for k, v in os.environ.items() if k != "S9_MAX_JOBS"}
+            os.environ.pop("S9_MAX_JOBS", None)
+            table = _doctor_concurrency({})["test_jobs"]
+            r = subprocess.run(
+                [sys.executable, HERE, "--jobs", "99", "no_such_pattern_xyz"],
+                capture_output=True, text=True, timeout=180, env=env)
+            said = r.stdout + r.stderr
+            self.assertIn(f"→ {table} 로 묶는다", said, said[-400:])
         # ---- ③ 사람이 겹칠 때의 합을 물을 수 있다 -----------------------------
         with self.subTest("c1_doctor_reports_the_table"):
             self.assertEqual(_doctor_concurrency({"S9_MAX_HEADLESS": "3",

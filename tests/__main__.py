@@ -506,6 +506,32 @@ def _started_in(pending, state):
     return seen
 
 
+def jobs_cap():
+    """--jobs 의 상한 — 값은 bin/s9 의 CONCURRENCY 한 표에서 온다.
+
+    환경변수(S9_MAX_JOBS)가 있으면 그것, 없으면 **표의 기본값을 소스에서
+    읽는다.** 여기 숫자를 또 적으면 갈린다 — 실측 2026-09-05: 표를 8 로 올렸는데
+    러너가 제 몫 4 로 묶어, 「8샤드 최종 실행」이 실은 4샤드였다(410초).
+    bin/s9 를 import 하지 않는 이유는 그것이 무겁고 부작용이 있어서다 — 글자
+    하나를 읽는 데 만 팔천 줄을 실행할 이유가 없다. 표가 갈리는지는
+    test_concurrency 가 지킨다.
+    """
+    try:
+        cap = int((os.environ.get("S9_MAX_JOBS") or "").strip())
+        if cap > 0:
+            return cap
+    except ValueError:
+        pass
+    try:
+        src = open(os.path.join(REPO, "bin", "s9"), encoding="utf-8").read()
+        m = re.search(r'"test_jobs":\s*int\(_envnum\("S9_MAX_JOBS",\s*(\d+)', src)
+        if m:
+            return int(m.group(1))
+    except OSError:
+        pass
+    return 4
+
+
 def run_sharded(pats, jobs, bump=None):
     """병렬 본대 + 직렬 꼬리 (REQ-20260830-027 2단계).
 
@@ -519,7 +545,12 @@ def run_sharded(pats, jobs, bump=None):
     body = [f for f in files if f not in SERIAL]
     tail = [f for f in files if f in SERIAL]
     procs = []
-    env = {**os.environ, "S9_TESTS_NESTED": "1"}
+    # 포트 칸 수를 샤드 수에 맞춘다 (REQ-20260905-001) — 칸이 넷으로 못박혀
+    # 있으면 다섯째 샤드부터 자기 자리가 없어 같은 포트를 두고 다툰다. 실측:
+    # 칸이 4 로 못박혔을 때 4·6·10 샤드가 525·518·520초로 평평했고 코어는 83%
+    # 놀았다. 칸을 맞춘 뒤 6→343 · 8→317 · 10→295초 (2026-09-05, 14코어).
+    env = {**os.environ, "S9_TESTS_NESTED": "1",
+           "S9_TEST_PORT_SLOTS": str(max(4, jobs))}
     for group in shard(body, jobs):
         out = tempfile.NamedTemporaryFile(mode="w+", suffix=".shard",
                                           delete=False)
@@ -745,11 +776,7 @@ def main():
             # (S9_MAX_JOBS), 여기서는 그 값으로 묶기만 한다 — 판정을 두 벌로
             # 들지 않는다. 사용자가 짚은 자리가 이것이다: "동시에 여러 요청
             # 작업을 할 때 테스트가 몰리면".
-            try:
-                cap = int((os.environ.get("S9_MAX_JOBS") or "").strip())
-            except ValueError:
-                cap = 4
-            cap = cap if cap > 0 else 4
+            cap = jobs_cap()
             if jobs > cap:
                 print(f"--jobs {jobs} → {cap} 로 묶는다 (동시 상한, "
                       f"S9_MAX_JOBS 로 올릴 수 있다)", file=sys.stderr)
@@ -848,20 +875,29 @@ def main():
                                     args=" ".join(sys.argv[1:4]))
 
         # 파일별 소요를 잰다 (REQ-20260905-001) — 샤딩 무게의 원천이다.
+        #
+        # **시험 하나의 실행만 재면 비싼 것이 0 으로 보인다.** 처음엔
+        # startTest~stopTest 를 쟀는데, 이 저장소의 비용은 대부분 `setUpClass`
+        # 에 있다(서버를 띄우고 `s9 init` 을 돌린다) — 그 자리는 그 사이에
+        # 없다. 실측 2026-09-05: `test_live_worker_scope` 가 기록 0.0초인데
+        # 실제 3.3초, 「합 0.29초」인 60파일이 벽시계로 60.8초였다. 그 무게로
+        # 샤딩하면 가장 비싼 파일을 가장 가볍다고 믿는다.
+        #
+        # 그래서 **직전 시험이 끝난 뒤부터 이 시험이 끝날 때까지**를 이 시험의
+        # 모듈에 얹는다. 클래스 준비·정리에 든 시간이 그 사이에 통째로 들어와,
+        # 파일별 합이 벽시계에 맞는다.
         per_file = {}
+        last_ts = [time.time()]
 
         class _Result(unittest.TextTestResult):
-            def startTest(self, test):
-                self._t0 = time.time()
-                super().startTest(test)
-
             def stopTest(self, test):
                 super().stopTest(test)
+                now = time.time()
                 mod = getattr(test, "__module__", "") or ""
                 if mod.startswith("test_"):
                     per_file[mod + ".py"] = round(
-                        per_file.get(mod + ".py", 0.0)
-                        + (time.time() - getattr(self, "_t0", time.time())), 3)
+                        per_file.get(mod + ".py", 0.0) + (now - last_ts[0]), 3)
+                last_ts[0] = now
                 bump(self.testsRun)
         try:
             res = unittest.TextTestRunner(verbosity=2,
