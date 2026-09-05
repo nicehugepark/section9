@@ -80,6 +80,13 @@ class OneFullRunAtATime(unittest.TestCase):
         self.assertIn("_signal.SIGTERM", blk, "SIGTERM 에 자식을 거두지 않는다")
         self.assertIn("RETRY_PROCS", blk, "좁혀서-다시 자식을 추적하지 않는다")
 
+    def test_o3_commit_time_knobs_do_not_leak_into_the_background_run(self):
+        """O3. 커밋 때의 손잡이(S9_FIX_RED 등)는 배경 전체 실행에 물려주지 않는다(구조)."""
+        src = open(GUARD, encoding="utf-8").read()
+        blk = src.split("def after_commit", 1)[1].split("\ndef ", 1)[0]
+        for k in ("S9_FIX_RED", "S9_ALLOW_CONCURRENT"):
+            self.assertIn(k, blk, f"{k} 를 배경 실행 환경에서 걷지 않는다")
+
 
 if __name__ == "__main__":
     unittest.main()

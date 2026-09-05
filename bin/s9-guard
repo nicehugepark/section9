@@ -474,6 +474,11 @@ def after_commit():
         log = open(os.path.join(ASYNC_DIR, f"{sha}.log"), "ab")
         env = clean_git_env()
         env.pop("S9_TESTS_NESTED", None)
+        # 커밋 때 쓴 손잡이(S9_FIX_RED·S9_ALLOW_CONCURRENT)는 배경 실행에 물려주지
+        # 않는다 — 물려주면 라쳇 시험이 스스로를 못 재고(실측: test_wide_gate w3b 붉음),
+        # 그 실행이 남긴 판정도 손잡이가 낀 것이 된다.
+        for k in ("S9_FIX_RED", "S9_ALLOW_CONCURRENT", "S9_GIT_OK"):
+            env.pop(k, None)
         # 원격이 기억돼 있으면(state/test-remote, REQ-20260905-012) 러너가 알아서
         # 원격으로 보낸다 — 48코어면 1분 안이고 중계 계열 간헐도 없다.
         remote = os.path.exists(os.path.join(ROOT, "state", "test-remote"))
