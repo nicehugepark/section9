@@ -20,7 +20,7 @@ import time
 _NOOP = (lambda n: None, lambda: None)
 
 
-def start(total, root=None, name="테스트", hint="tests", args=""):
+def start(total, root=None, name="테스트", hint="tests", args="", kind=""):
     """잡 파일을 쓴다. 반환 (bump(n), clear) — 어떤 실패도 러너를 못 죽인다.
 
     파일 이름에 pid 가 들어간다 (REQ-20260830-022 반려 재작업): 이름이 하나면
@@ -37,6 +37,11 @@ def start(total, root=None, name="테스트", hint="tests", args=""):
              "session": (os.environ.get("S9_SESSION") or "")[:8],
              "req": (os.environ.get("S9_JOB_REQ") or "")[:40],
              "args": str(args or "")[:120],
+             # 이 실행이 어떤 종류인가 (REQ-20260905-006) — full·smoke·targeted.
+             # **러너만 아는 사실이다**: 명령줄에는 `--changed` 가 고른 파일도,
+             # 게이트가 전체로 물러난 사정도 안 적혀 있다. 여기 적어 두면 읽는
+             # 쪽이 문자열을 되짚어 다시 알아낼 일이 없다.
+             "kind": str(kind or "")[:16],
              "total": int(total or 0), "done": 0}
 
     def sweep():

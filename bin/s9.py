@@ -13104,6 +13104,11 @@ def heartbeat_session(doc_id):
 
 
 JOB_CAP_SEC = 3600   # 잡의 수명 상한 — 행·고아 파일이 진행으로 못 굳는다
+# 실행의 종류 (REQ-20260905-006) — **아는 것만 통과시키는 자리다.**
+# 러너가 적고(tests/jobfile.py) 화면은 옮기기만 한다. 여기서 걸러 두면, 러너가
+# 새 이름을 적기 시작해도 화면이 모르는 낱말을 그대로 그리는 일은 없다.
+# 없거나 모르는 값은 빈 문자열 — **모르는 것은 그리지 않는다**(화면 규칙).
+JOB_KINDS = ("full", "smoke", "targeted")
 
 
 def jobs_running(now=None):
@@ -13113,7 +13118,7 @@ def jobs_running(now=None):
     선언을 세 겹으로 검증한다 — pid 생존 · 명령줄에 hint 포함(pid 재사용 방어,
     _worker_alive 와 동형) · 시작 60분 상한(SIGKILL 고아·행 방어). 셋 중 하나라도
     어긋나면 그 잡은 없는 것이다: 급사한 러너의 파일은 거짓말하지 못한다.
-    반환 행: {name, pid, mins, quiet_sec, total, done, session}."""
+    반환 행: {name, pid, mins, quiet_sec, kind, total, done, session}."""
     import glob as _glob
     import time as _time
     now = _time.time() if now is None else now
@@ -13143,6 +13148,8 @@ def jobs_running(now=None):
                     "req": str(j.get("req") or ""),
                     "mins": int(max(0, now - started) // 60),
                     "quiet_sec": quiet,
+                    "kind": (str(j.get("kind") or "")
+                             if str(j.get("kind") or "") in JOB_KINDS else ""),
                     "total": int(j.get("total") or 0),
                     "done": int(j.get("done") or 0),
                     "session": str(j.get("session") or "")})

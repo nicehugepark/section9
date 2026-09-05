@@ -346,6 +346,93 @@ function svRestartSet(v, clearAfter){
     svRestartT = setTimeout(() => { svRestart = null; renderSvChip(); }, clearAfter);
   renderSvChip();
 }
+/* 도는 잡을 한 줄로 (REQ-20260830-022 · 모수는 REQ-20260905-006).
+
+   **낱말과 조립이 사는 유일한 자리다.** 종전에는 renderSvChip 한가운데에
+   삼항 두 겹으로 엮여 있어, 얼굴이 다섯인데(모수 있음·없음·잠잠 겹침·복수·
+   빈 잡) 어느 얼굴도 실행으로 확인할 길이 없었다 — 시험이 글자를 찾는
+   수밖에 없었고, 글자 찾기는 조각 순서를 못 본다.
+
+   모수를 더한 이유 (사용자 2026-09-05): "얼마나 기다려야 할지 감을 잡기 위한
+   전체 개수도 알고 싶을 뿐이다." 종전 「· 1,204건」은 지나온 수만 말해, 그
+   수가 큰 것인지 작은 것인지 판단할 자가 화면에 없었다. 서버는 처음부터
+   전체 수를 실어 보내고 있었다(jobs_running) — 화면이 안 그렸을 뿐이다.
+
+   **여전히 진행바도 퍼센트도 남은 시간도 없다.** 금지의 근거는 「끝을 모른다」
+   였는데 이제 끝을 알지만, 세는 단위(파일·시험 개수)마다 무게가 열 배씩
+   갈려서(REQ-20260905-001 실측) 「120/301」은 시간의 60% 지점이 아니다.
+   막대와 퍼센트는 그 거짓을 그림으로 약속한다. 분수는 약속하지 않는다 —
+   사용자가 스스로 가늠하겠다고 한 그 자리를 그대로 둔다.
+
+   낱말 판정 (ux-writer · tech-writer · translator 합치): 슬래시 분수는 이런
+   계기판에서 굳은 표기이고 mono 타이포와 결이 맞다. 단위 「건」은 분모 뒤
+   **한 번만** — 「120건/301건」은 영어를 낱말 그대로 옮긴 흔적으로 읽힌다.
+   세는 것이 실행 방식에 따라 파일이기도 시험 개수이기도 하지만 화면은 그
+   차이를 말하지 않는다: 「파일」로 이름 붙이면 내부 실행 방식이 새어나가고,
+   사용자가 원한 것은 감이지 무엇을 세는지의 구분이 아니다.
+
+   반환 {label, title} · 도는 잡이 없으면 null. */
+/* 실행의 종류 (REQ-20260905-006 2차) — 사용자: 전체 스위트인지, 스모크인지,
+   골라 부른 것인지도 보이게 하라. 물음은 1차와 같다: **얼마나 기다리나.**
+   같은 「14/211건」이라도 전체는 4분+, 스모크는 20초대다 — 분수만으로는
+   그 둘이 안 갈린다(둘 다 두 자릿수 분모가 나온다).
+
+   **셋 다 이름을 준다.** 기본값 하나를 무표기로 두면 그 얼굴이 두 뜻이 된다 —
+   「골라 부른 것」과 「종류를 모르는 것(옛 러너)」이 같은 글자가 되어, 무표기가
+   무슨 뜻인지 아는 사람만 읽을 수 있는 화면이 된다. 이름이 없는 얼굴은
+   모르는 얼굴 하나뿐이어야 한다.
+
+   낱말 판정이 갈렸고(designer 가 끊었다 — 근거는 REQ 노트):
+   · 「스모크」 — ux-writer 「빠른」·tech-writer 「핵심만/간이」·translator
+     「스모크」로 갈렸다. **스모크로 간다.** ① s9-design 6절이 확립 업계어를
+     순우리말로 되돌리는 것을 결함으로 못박았고(Jira 「할당 해제됨」 패턴),
+     한국 개발 현장에서 「스모크 테스트」는 그 확립어다. ② 이 칩은 시험이 도는
+     그 몇 분에만 존재한다 — 읽는 사람은 정의상 `--smoke` 를 친 쪽이거나 그
+     게이트를 돌린 쪽이다. ③ 「빠른」은 시간을 약속하는 말이라 스모크가
+     느려지는 날 제 입으로 거짓말한다(「빠른 테스트 90초째」).
+   · 「표적」 — tech-writer 채택(이 저장소가 이미 쓰는 말) · translator 는
+     「선택」 제안. **표적으로 간다**: 「선택 테스트」는 「선택형 시험」으로
+     먼저 읽힌다. 같은 개념에 두 번째 이름을 만들지 않는다.
+   · 「전체」가 툴팁의 「전체 N건 중」과 두 뜻으로 겹치던 것은 tech-writer·
+     translator 가 함께 짚었다 — 툴팁에서 「전체」를 뺐다. 「N건 중」의 「중」이
+     이미 총량 대비를 말하므로 잃는 뜻이 없다. */
+const JOB_KIND = {full: "전체", smoke: "스모크", targeted: "표적"};
+function jobChip(jobs){
+  jobs = jobs || [];
+  if (!jobs.length) return null;
+  const num = n => Number(n).toLocaleString("ko-KR");
+  const one = jobs[0], mx = Math.max(...jobs.map(j => +j.mins || 0));
+  const nat = v => Math.max(0, Math.floor(+v || 0));   // 문자열·null·음수 방어
+  const kind = JOB_KIND[one.kind] ? JOB_KIND[one.kind] + " " : "";
+  const total = nat(one.total);
+  /* 지나온 수가 전체 수를 넘으면 눌러 그린다. 「305/301」은 정보가 아니라
+     고장으로 읽히고, 한 번 고장으로 읽힌 칩은 다음 숫자도 안 믿긴다. */
+  const done = total ? Math.min(nat(one.done), total) : nat(one.done);
+  /* 복수는 분수를 섞지 않는다: 동시에 도는 잡들은 세는 단위가 서로 다를 수
+     있어(하나는 파일, 하나는 시험 개수) 합치면 뜻 없는 수가 된다. 「몇 개가
+     도나」와 「얼마나 남았나」는 한 낱말 밑에 뒤섞이지 않는다. */
+  if (jobs.length > 1)
+    return {label: `도는 일 ${jobs.length}건 · ${mx}분째`,
+            title: `${esc(one.name)}가 ${mx}분째 돌고 있습니다 — 여기 숫자가 `
+              + `곧 진행입니다. 끝나면 이 표시가 사라집니다`};
+  return {
+    label: `${kind}${one.name} ${mx}분째`
+      + (total ? ` · ${num(done)}/${num(total)}건`
+               : (done ? ` · ${num(done)}건` : ""))
+      + (+one.quiet_sec >= 60 ? ` · ${one.quiet_sec}초 잠잠` : ""),
+    /* 못 지킬 약속은 하지 않는다 (REQ-20260830-030): 백그라운드 실행의
+       출력은 Terminal 탭에 흐르지 않는다 — 사용자가 실제로 되물었다.
+       클릭 이동은 커서와 실제 이동이 말한다(ux-writer: 툴팁에 "누르면 …"을
+       다시 넣으면 또 기대를 만든다).
+       「여기 숫자가 곧 진행입니다」는 전체 수를 모르던 시절의 변명 문장이다 —
+       전체 수가 있으면 값 자체가 진행을 말하므로, 칩이 기호로 말한 것을
+       툴팁은 말로 되풀이한다(같은 값, 다른 문체). 전체 수가 없을 때만 옛
+       문장으로 물러난다. */
+    title: `${kind}${esc(one.name)}가 ${mx}분째 돌고 있습니다 — `
+      + (total ? `${num(total)}건 중 ${num(done)}건까지 지나왔습니다`
+               : `여기 숫자가 곧 진행입니다`)
+      + `. 끝나면 이 표시가 사라집니다`};
+}
 function renderSvChip(){
   const el = $("#sv-chip");
   if (!el) return;
@@ -370,42 +457,38 @@ function renderSvChip(){
      줄의 「조용」(문서에 안 적힘)과 다른 축(작업이 신호를 안 냄)이라 낱말을
      가른다. 숫자가 매분 바뀌는 것은 sig 가 흡수한다. */
   let jobs = (ocInfo && ocInfo.jobs) || [];
-  /* ?job=<분>[&jobquiet=<초>][&jobn=<건수>] — 칩을 진짜로 세운다 (?stall 이 낸
-     선례: 이 화면은 긴 잡이 도는 그 몇 분에만 존재해 파라미터 없이는 검증 못
-     한다). `jobn` 은 **복수형 얼굴**을 세운다 (REQ-20260831-025): 한 건일 때는
-     잡 이름을 그대로 부르고 둘 이상일 때만 세는데, 그 둘째 얼굴은 파라미터가
-     없던 동안 화면에서 한 번도 확인된 적이 없었다. */
+  /* ?job=<분>[&jobquiet=<초>][&jobn=<건수>][&jobdone=<수>][&jobtotal=<수>] —
+     칩을 진짜로 세운다 (?stall 이 낸 선례: 이 화면은 긴 잡이 도는 그 몇 분에만
+     존재해 파라미터 없이는 검증 못 한다). `jobn` 은 **복수형 얼굴**을 세운다
+     (REQ-20260831-025): 한 건일 때는 잡 이름을 그대로 부르고 둘 이상일 때만
+     세는데, 그 둘째 얼굴은 파라미터가 없던 동안 화면에서 한 번도 확인된 적이
+     없었다. `jobtotal=0` 은 **전체 수를 모르는 얼굴**을 세운다
+     (REQ-20260905-006): 옛 러너가 전체 수를 안 싣던 시절로 물러난 문구인데,
+     그 얼굴 역시 실데이터로는 만들 길이 없다. `jobkind=` 는 종류 셋을 세운다
+     (full·smoke·targeted, 그 밖의 값이면 이름 없는 얼굴) — 스모크는 20초대라
+     그 몇 초를 노려 캡처할 수가 없다. */
   const jm = /[?&]job=(\d+)/.exec(location.search);
   if (jm) {
-    const n = Math.max(1, Math.min(9,
-      +((/[?&]jobn=(\d+)/.exec(location.search) || [])[1] || 1)));
-    const quiet = +((/[?&]jobquiet=(\d+)/.exec(location.search) || [])[1] || 0);
+    const par = (k, dflt) =>
+      +((new RegExp(`[?&]${k}=(\\d+)`).exec(location.search) || [])[1] || dflt);
+    const n = Math.max(1, Math.min(9, par("jobn", 1)));
+    const quiet = par("jobquiet", 0);
+    const done = par("jobdone", 1204), total = par("jobtotal", 3120);
+    const kind = (/[?&]jobkind=(\w+)/.exec(location.search) || [])[1] || "full";
     jobs = Array.from({length: n}, (_, i) => (
       {name: n > 1 ? "테스트 " + (i + 1) : "테스트", mins: +jm[1] + i,
-       done: 1204, quiet_sec: quiet}));
+       done, total, kind, quiet_sec: quiet}));
   }
-  if (jobs.length){
-    const mx = Math.max(...jobs.map(j => +j.mins || 0));
-    const one = jobs[0];
-    /* 복수형이 「자동 작업 N건」이었다 — **이름 오용**이다 (DOC-20260831-005
-       규칙 7). 여기 세는 것은 이 세션이 띄운 긴 잡(테스트 스위트 등)이지
-       무인 작업이 아닌데, 한 낱말이 다른 개념을 덮고 있었다. 단수는 이미 잡
-       이름을 그대로 부른다(「테스트 4분째」) — 복수도 이름을 짓지 말고 도는
-       사실만 센다. */
-    const label = jobs.length > 1
-      ? `도는 일 ${jobs.length}건 · ${mx}분째`
-      : `${one.name} ${mx}분째`
-        + (one.done ? ` · ${Number(one.done).toLocaleString("ko-KR")}건` : "")
-        + (+one.quiet_sec >= 60 ? ` · ${one.quiet_sec}초 잠잠` : "");
-    items.push({tone: "sv-run", mark: "↻", spin: true, label,
-      /* 못 지킬 약속은 하지 않는다 (REQ-20260830-030): 백그라운드 실행의
-         출력은 Terminal 탭에 흐르지 않는다 — 사용자가 실제로 되물었다.
-         진행은 이 숫자 자체다. 클릭 이동은 커서와 실제 이동이 말한다(ux-writer:
-         툴팁에 "누르면 …"을 다시 넣으면 또 기대를 만든다). */
-      title: `${esc(one.name)}가 ${mx}분째 돌고 있습니다 — 여기 숫자가 곧 `
-        + `진행입니다. 끝나면 이 표시가 사라집니다`,
+  /* 복수형이 「자동 작업 N건」이었다 — **이름 오용**이다 (DOC-20260831-005
+     규칙 7). 여기 세는 것은 이 세션이 띄운 긴 잡(테스트 스위트 등)이지
+     무인 작업이 아닌데, 한 낱말이 다른 개념을 덮고 있었다. 단수는 이미 잡
+     이름을 그대로 부른다(「테스트 4분째」) — 복수도 이름을 짓지 말고 도는
+     사실만 센다. 낱말과 조립은 jobChip 하나가 안다. */
+  const job = jobChip(jobs);
+  if (job)
+    items.push({tone: "sv-run", mark: "↻", spin: true,
+      label: job.label, title: job.title,
       act: () => document.querySelector('header [data-tab="terminal"]')?.click()});
-  }
   const oc = ocInfo;
   if (oc && oc.stale && ocAck() === oc.started)
     items.push({tone: "sv-warn", mark: "▲", label: "서버 재기동 필요",

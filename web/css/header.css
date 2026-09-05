@@ -3,9 +3,16 @@
 header{background:var(--bg);border-bottom:1px solid var(--border);
   position:sticky;top:0;z-index:10}
 .hrow1{display:flex;align-items:baseline;gap:26px;padding:14px 22px 0}
-.brand{font-size:15px;font-weight:700;letter-spacing:.02em;padding-bottom:12px}
+/* 브랜드와 탭은 **줄지 않는다** (REQ-20260905-006 실측). 둘 다 flex 항목인데
+   줄 수 있게 두었더니, 오른쪽 칩이 길어진 1100px 화면에서 브랜드가 「■ /
+   section9」 두 줄로 접혔다 — 이름이 접히는 것은 칩이 잘리는 것보다 나쁘다.
+   헤더에서 줄어야 하는 것은 배경 칩이고(그러라고 말줄임이 달려 있다), 구조인
+   이름과 길목인 탭은 아니다. 줄지 않는 것이 하나 더 있다: .sv-keep(방금 누른
+   것의 결과) — 그것은 칩 안에서의 예외다. */
+.brand{font-size:15px;font-weight:700;letter-spacing:.02em;padding-bottom:12px;
+  flex:none;white-space:nowrap}
 .brand .dot{display:inline-block;width:8px;height:8px;background:var(--text);margin-right:8px}
-.tabs{display:flex;gap:2px}
+.tabs{display:flex;gap:2px;flex:none}
 .tabs button{border:0;background:none;padding:4px 12px 13px;cursor:pointer;
   font-size:13px;color:var(--muted);font-family:inherit;letter-spacing:.01em;
   border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -117,8 +124,16 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 .svchip{display:flex;align-items:baseline;gap:12px;min-width:0;
   margin-left:auto;padding-bottom:12px}
 .svchip:empty{display:none}
+/* 폭은 **가장 긴 얼굴을 재서 정한다** (REQ-20260905-006). 34ch 였고, 그 값은
+   재서 고른 것이 아니었다 — 실측(1440px·11.5px, ch=6.39px → 34ch=217px)에서
+   도는 잡 칩의 가장 긴 얼굴 「↻ 전체 테스트 59분째 · 1,204/3,120건 · 90초
+   잠잠」이 250px 라 이미 잘리고 있었다. 잘린 꼬리는 정보가 아니라 고장으로
+   읽힌다(REQ-20260830-043 에서 카드가 같은 사유로 반려됐다) — 게다가 여기서
+   잘리는 꼬리가 하필 「N초 잠잠」, 즉 넷 중 유일한 **신호**다.
+   40ch=256px 로 그 얼굴을 덮는다. 상한을 올릴 뿐이라 짧은 칩은 그대로이고,
+   좁은 화면에서는 flex 가 여전히 줄인다(줄지 않는 것은 .sv-keep 뿐이다). */
 .svchip button{border:0;background:none;cursor:pointer;font:inherit;font-size:11.5px;
-  color:var(--muted);padding:3px 2px;white-space:nowrap;max-width:34ch;
+  color:var(--muted);padding:3px 2px;white-space:nowrap;max-width:40ch;
   overflow:hidden;text-overflow:ellipsis}
 /* 전환 결과는 **줄지 않는다** (REQ-20260901-014 D1). 폭 훑기 실측에서 1024px
    까지는 온전했으나 900px 에서 「▲ ⋯」만 남았다 — 계정이 안 바뀐 사실이 화면에서
