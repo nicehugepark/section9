@@ -166,6 +166,56 @@ def _reclaim_orphans():
         pass
 
 
+# ── 남의 낡은 공개 — 윈도우 중계가 아직 붙들고 있는 포트 (REQ-20260905-007) ──
+# WSL 의 윈도우 중계는 리눅스 리스너가 사라진 뒤에도 그 포트를 한동안 LISTEN 으로
+# 공개하고, 그 포트로 오는 연결을 가로채 리눅스 서버에 닿지 못하게 한다
+# (DOC-20260903-001-62x6). 실측 2026-09-05: 서버 스레드는 select 에서 놀고 있고
+# 대기열은 0 — 클라이언트의 연결이 서버에 **도착하지 않았다**. 리눅스 쪽 bind 는
+# 멀쩡히 성공하므로 _try_bind 로는 가를 수 없다. 낡은 공개를 우리가 지울 수는
+# 없다 — 피할 수는 있다: 윈도우 쪽 목록을 프로세스당 한 번 읽어 그 포트는 **뒤로
+# 미룬다**. 빼는 것이 아니라 미루는 것이다 — 실측 2026-09-06: 직전 실행이 쓴 칸의
+# 32포트가 전부 아직 공개 중이었고, 빼 버리면 풀이 그 자리에서 마른다(port_pool
+# 시험 3건이 그렇게 붉었다). 안 공개된 포트가 남아 있는 동안만 그쪽을 먼저 쓴다.
+# 윈도우가 아니면 빈 집합이라 아무것도 달라지지 않는다.
+WIN_NETSTAT = "/mnt/c/Windows/System32/netstat.exe"
+_foreign = None
+
+
+def parse_listen_ports(text):
+    """netstat 출력에서 LISTEN 중인 로컬 포트 집합 — 윈도우(LISTENING)·BSD(LISTEN) 공통.
+
+    줄 모양: `TCP    0.0.0.0:18812    0.0.0.0:0    LISTENING` — 로컬 주소는 둘째 칸,
+    상태는 마지막 칸. IPv6(`[::]:18812`)도 같은 꼬리다.
+    """
+    ports = set()
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 4 or not parts[-1].upper().startswith("LISTEN"):
+            continue
+        m = re.search(r":(\d+)$", parts[1])
+        if m:
+            ports.add(int(m.group(1)))
+    return ports
+
+
+def _windows_netstat():
+    if not os.path.exists(WIN_NETSTAT):
+        return ""
+    try:
+        return subprocess.run([WIN_NETSTAT, "-an", "-p", "tcp"], capture_output=True,
+                              text=True, errors="replace", timeout=15).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def foreign_listens(refresh=False):
+    """윈도우 쪽이 LISTEN 으로 공개 중인 포트 집합 — 프로세스당 한 번 읽고 기억한다."""
+    global _foreign
+    if _foreign is None or refresh:
+        _foreign = parse_listen_ports(_windows_netstat())
+    return _foreign
+
+
 def _try_bind(port):
     """실제로 잡을 수 있는 포트인지 확인 — 잡히면 bind+listen 된 소켓을 준다.
 
@@ -199,11 +249,16 @@ def pool_socket(base=None, size=None):
         global _cursor
         with _lock:
             start = _cursor % n
-            for i in range(n):
-                s = _try_bind(ports[(start + i) % n])
-                if s is not None:
-                    _cursor = (start + i + 1) % n
-                    return s
+            foreign = foreign_listens()
+            # 1차: 중계가 붙들지 않은 포트만 · 2차: 남은 것 — 미루되 빼지 않는다
+            for avoid in ((foreign, set()) if foreign else (set(),)):
+                for i in range(n):
+                    if ports[(start + i) % n] in avoid:
+                        continue      # 중계가 붙든 포트 — bind 는 되지만 연결이 안 올 수 있다
+                    s = _try_bind(ports[(start + i) % n])
+                    if s is not None:
+                        _cursor = (start + i + 1) % n
+                        return s
         return None
 
     s = _grab()
@@ -213,13 +268,18 @@ def pool_socket(base=None, size=None):
     # 사람에게 회수를 안내하고 실패하는 대신 **먼저 회수하고 다시 시도한다**.
     # 안내만 하면 그 스위트는 어차피 깨지고, 다음 실행도 같은 자리에서 깨진다.
     _reclaim_orphans()
+    foreign_listens(refresh=True)     # 회수로 윈도우 쪽 공개도 걷혔을 수 있다
     s = _grab()
     if s is not None:
         return s
+    held = sorted(set(ports) & foreign_listens())
     raise RuntimeError(
         f"테스트 포트 풀 소진: {ports[0]}~{ports[-1]} {n}개가 모두 사용 중이다. "
         "회수를 시도했는데도 비지 않았다 — 살아 있는 서버가 실제로 그만큼 "
-        "있다는 뜻이다. `s9 doctor` 로 확인하라.")
+        "있다는 뜻이다. `s9 doctor` 로 확인하라."
+        + (f" (그중 윈도우 중계가 붙든 낡은 공개 {len(held)}개: "
+           f"{held[:8]}{'…' if len(held) > 8 else ''} — 리눅스에서는 지울 수 없다, "
+           "시간이 걷어 간다)" if held else ""))
 
 
 def free_port(base=None, size=None):

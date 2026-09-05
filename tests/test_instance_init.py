@@ -21,6 +21,33 @@ def sh(*argv, cwd=None, env=None, inp=None):
                           capture_output=True, text=True, timeout=60)
 
 
+class DetachedBase(unittest.TestCase):
+    """I7. 베이스가 detached HEAD 여도 인스턴스는 main 가지로 서고 push 된다.
+
+    원격 CI(tests/remote_run.py)는 베이스를 `checkout -f <sha>` 로 놓고 돈다 —
+    그 클론에는 가지가 없어 `push -u origin main` 이 「src refspec main does not
+    match any」로 섰다(jade 실측 2026-09-06). 인스턴스의 가지는 베이스가 어디에
+    서 있든 main 이다.
+    """
+    def test_detached_base_still_pushes_main(self):
+        base = tempfile.mkdtemp(prefix="s9inst-detached-")
+        root = os.path.join(base, "base")
+        sh("git", "clone", "-q", os.path.join(HERE, ".."), root)
+        sh("git", "checkout", "-q", "--detach", cwd=root)
+        self.assertEqual(sh("git", "branch", "--show-current", cwd=root).stdout.strip(), "")
+        origin = os.path.join(base, "work.git")
+        sh("git", "init", "-q", "--bare", origin)
+        target = os.path.join(base, "org-work")
+        env = {**os.environ, "S9_ROOT": root}
+        for k in ("S9_SESSION", "S9_AUTO_RESUME"):
+            env.pop(k, None)
+        r = sh(os.path.join(root, "bin", "s9"), "instance", "init", origin, "--dir", target, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("⑤ push 완료", r.stdout)
+        self.assertEqual(sh("git", "branch", "--show-current", cwd=target).stdout.strip(), "main")
+        self.assertIn("main", sh("git", "--git-dir", origin, "branch").stdout)
+
+
 class TestInstanceInit(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

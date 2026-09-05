@@ -158,6 +158,68 @@ class PoolRange(unittest.TestCase):
         self.assertFalse(ports & set(range(9909, 9951)))
 
 
+class ForeignListens(unittest.TestCase):
+    """윈도우 중계가 붙든 낡은 공개는 풀에서 건너뛴다 (REQ-20260905-007).
+
+    리눅스 쪽 bind 가 성공해도 그 포트로 오는 연결은 중계가 가로채 서버에
+    닿지 않는다(2026-09-05 실측: 서버는 select 에서 놀고 대기열 0). 그러니 판정은
+    bind 가 아니라 윈도우 쪽 LISTEN 목록이다.
+    """
+    NETSTAT = textwrap.dedent("""\
+        \r
+        Active Connections\r
+        \r
+          Proto  Local Address          Foreign Address        State\r
+          TCP    0.0.0.0:135            0.0.0.0:0              LISTENING\r
+          TCP    0.0.0.0:18812          0.0.0.0:0              LISTENING\r
+          TCP    127.0.0.1:9909         127.0.0.1:52011        ESTABLISHED\r
+          TCP    127.0.0.1:52011        127.0.0.1:9909         TIME_WAIT\r
+          TCP    [::]:18813             [::]:0                 LISTENING\r
+          TCP    [::1]:30000            [::]:0                 LISTENING\r
+        """)
+
+    def test_parse_windows_netstat(self):
+        """LISTENING 줄의 로컬 포트만 — IPv6 꼬리도 같이, 연결·대기 줄은 제외."""
+        self.assertEqual(portpool.parse_listen_ports(self.NETSTAT),
+                         {135, 18812, 18813, 30000})
+        self.assertEqual(portpool.parse_listen_ports(""), set())
+
+    def test_foreign_port_is_deferred(self):
+        """윈도우가 붙든 포트는 bind 가 돼도 — 안 붙든 포트가 남아 있는 한 — 나눠 주지 않는다."""
+        ports = portpool.slot_ports()
+        saved = portpool._foreign
+        try:
+            portpool._foreign = set(ports[:len(ports) // 2])
+            got = {portpool.free_port() for _ in range(6)}
+            self.assertFalse(got & portpool._foreign,
+                             f"중계가 붙든 포트를 나눠 줬다: {got & portpool._foreign}")
+            self.assertTrue(got <= set(ports))
+        finally:
+            portpool._foreign = saved
+
+    def test_all_foreign_still_allocates(self):
+        """칸 전체가 공개 중이어도 풀은 마르지 않는다 — 미루는 것이지 빼는 것이 아니다.
+
+        실측 2026-09-06: 직전 실행의 32포트가 전부 아직 윈도우에 공개 중이었다.
+        """
+        ports = portpool.slot_ports()
+        saved = portpool._foreign
+        try:
+            portpool._foreign = set(ports)
+            self.assertIn(portpool.free_port(), set(ports))
+        finally:
+            portpool._foreign = saved
+
+    def test_not_windows_means_nothing_changes(self):
+        """netstat.exe 가 없는 판(리눅스·맥)에서는 빈 집합 — 풀은 그대로다."""
+        saved_exe, saved = portpool.WIN_NETSTAT, portpool._foreign
+        try:
+            portpool.WIN_NETSTAT = "/nonexistent/netstat.exe"
+            self.assertEqual(portpool.foreign_listens(refresh=True), set())
+        finally:
+            portpool.WIN_NETSTAT, portpool._foreign = saved_exe, saved
+
+
 class BoundedReuse(unittest.TestCase):
     def test_distinct_ports_are_capped(self):
         """할당을 몇 번 하든 서로 다른 포트 수는 풀 크기 이하."""

@@ -17539,6 +17539,10 @@ def cmd_instance(args):
     upstream_url = up.stdout.strip() if up.returncode == 0 else ROOT
     print(f"① 베이스 clone: {ROOT} → {target}")
     git("clone", "--quiet", ROOT, target, cwd=None)
+    # 베이스가 detached HEAD 면(원격 CI 가 `checkout <sha>` 로 돈다) 클론에도
+    # 가지가 없어 뒤의 `push origin main` 이 「src refspec main」으로 선다 —
+    # 인스턴스의 가지는 언제나 main 이다 (jade 실측 2026-09-06, REQ-20260905-012).
+    git("checkout", "-q", "-B", "main")
     git("remote", "rename", "origin", "upstream")
     git("remote", "set-url", "upstream", upstream_url)
     git("remote", "add", "origin", url)

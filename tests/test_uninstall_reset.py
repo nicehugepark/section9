@@ -14,6 +14,8 @@ import sys
 import tempfile
 import unittest
 
+import portpool
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 INSTALL = os.path.join(HERE, "..", "bin", "s9-install")
 ENV = os.path.join(HERE, "..", "bin", "s9_env.py")
@@ -133,9 +135,22 @@ def _listen_published(timeout=3.0):
     """127.0.0.1 에 리스너를 세우고 **연결이 실제로 되는 때까지** 기다린 뒤 (socket, port) 를 준다.
     WSL 의 윈도우 중계(DOC-20260903-001)는 새 리스너를 몇십 ms 뒤에 공개한다 — 바로 두드리면
     ECONNREFUSED 다. 그것은 「없다」가 아니라 「아직」이다."""
-    import socket, time
-    srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(1)
+    import socket, threading, time
+    srv = portpool.pool_socket()          # 풀에서 — 임시 포트 bind 는 윈도우 동적 포트를 먹는다
     port = srv.getsockname()[1]
+
+    def _drain():
+        # 받아서 곧 닫는다. 아무도 accept 하지 않으면 리눅스는 backlog 가 찬 뒤의
+        # SYN 을 버려 connect 가 타임아웃되고, 판정이 「닫힘(free)」으로 떨어진다
+        # (jade 실측 2026-09-06: silent → mine 사이에서 free). WSL 은 중계가 대신
+        # 받아 주어 이 결함이 보이지 않았다.
+        while True:
+            try:
+                c, _ = srv.accept()
+                c.close()
+            except OSError:
+                return
+    threading.Thread(target=_drain, daemon=True).start()
     t0 = time.time()
     while time.time() - t0 < timeout:
         try:
@@ -149,14 +164,13 @@ def _listen_published(timeout=3.0):
 def _closed_port():
     """지금 아무도 안 듣는 포트 하나 — 두드려서 거절되는 것을 확인한 뒤 준다.
     「방금 닫은 포트」는 WSL 중계가 한동안 계속 공개해 둔다(DOC-20260903-001) — 닫았다고 닫힌 게 아니다."""
-    import random, socket
-    for _ in range(50):
-        port = random.randint(40000, 60000)
-        try:
-            socket.create_connection(("127.0.0.1", port), 0.3).close()
-        except OSError:
-            return port
-    raise AssertionError("닫힌 포트를 못 찾았다")
+    import socket
+    port = 31999                          # 대역 표의 더미 — 아무도 bind 하지 않는다 (bin/s9-doctor)
+    try:
+        socket.create_connection(("127.0.0.1", port), 0.3).close()
+    except OSError:
+        return port
+    raise AssertionError(f"더미 포트 {port} 가 열려 있다 — 대역 표(bin/s9-doctor)를 어긴 것이 있다")
 
 
 class Reset(unittest.TestCase):
