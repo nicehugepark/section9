@@ -27,17 +27,20 @@ class TheShard(unittest.TestCase):
 
     def test_the_shard(self):
         """TheShard 의 계약을 한 항목으로 — 검사는 그대로다."""
-        with self.subTest("p1_greedy_by_size_covers_every_file_once"):
+        with self.subTest("p1_greedy_by_weight_covers_every_file_once"):
             files = ["test_wake.py", "test_graph_empty.py", "test_stall_pair.py",
                      "test_platform_live.py", "test_heartbeat.py"]
             bins = self.m.shard(files, 3)
             flat = [f for b in bins for f in b]
             self.assertEqual(sorted(flat), sorted(files), "빠지거나 겹친 파일")
             self.assertLessEqual(len(bins), 3)
-            # 각 빈의 첫 파일은 그 빈에서 가장 크다 — 느린 것부터 자리 잡는다
+            # 각 빈의 첫 파일은 그 빈에서 가장 **무겁다** — 느린 것부터 자리
+            # 잡아야 꼬리가 짧다. 무게는 크기가 아니라 `_weights` 가 정한다
+            # (실측 시간 > 크기, REQ-20260905-001) — 여기서 크기를 다시 못박으면
+            # 무게를 고칠 때마다 이 시험이 헛되이 붉어진다.
+            w = self.m._weights(files)
             for b in bins:
-                sizes = [os.path.getsize(os.path.join(HERE, f)) for f in b]
-                self.assertEqual(sizes[0], max(sizes))
+                self.assertEqual(w[b[0]], max(w[f] for f in b))
         with self.subTest("p2_serial_files_stay_out_of_shards"):
             # SERIAL 은 공유 상태를 만진다 — 본대에 섞이면 서로 밟는다.
             for f in self.m.SERIAL:
@@ -73,6 +76,96 @@ class TheShard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class WeighByMeasuredTime(unittest.TestCase):
+    """샤딩 무게는 크기가 아니라 **잰 시간** (REQ-20260905-001).
+
+    종전 무게는 `os.path.getsize` — 「큰 파일이 오래 걸린다」는 가정인데 이
+    저장소에서 거짓이다. 서버를 띄우는 작은 파일 하나가 큰 grep 시험 열 개보다
+    비싸고, 실측 2026-09-05 에 43파일 선택이 297파일 전체보다 오래 걸렸다
+    (757초 vs 514초). 무엇을 도느냐는 안 바뀌고 어느 빈에 넣느냐만 바뀐다.
+
+    실행: python3 tests/ jobs_shard
+    """
+
+    def setUp(self):
+        self.m = _load()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix="s9times-")
+        self.m.TIMES_FILE = os.path.join(self.tmp, "test-times.json")
+        self.m.TIMES_DIR = os.path.join(self.tmp, "times")
+        self.addCleanup(__import__("shutil").rmtree, self.tmp, True)
+
+    def _write(self, d):
+        with open(self.m.TIMES_FILE, "w", encoding="utf-8") as f:
+            __import__("json").dump(d, f)
+
+    def _files(self, n=4):
+        return [f for f in sorted(os.listdir(HERE))
+                if f.startswith("test_") and f.endswith(".py")][:n]
+
+    def test_t3_known_times_drive_the_weight(self):
+        """T3. 기록이 있으면 잰 시간으로 균형을 잡는다 — 느린 것이 먼저 자리를 잡는다."""
+        fs = self._files(4)
+        self._write({fs[0]: 100.0, fs[1]: 1.0, fs[2]: 1.0, fs[3]: 1.0})
+        w = self.m._weights(fs)
+        self.assertEqual(w[fs[0]], 100.0)
+        bins = self.m.shard(fs, 2)
+        slow = [b for b in bins if fs[0] in b][0]
+        self.assertEqual(slow, [fs[0]], "가장 느린 것이 혼자 한 빈을 못 잡았다")
+
+    def test_b1_no_record_falls_back_to_size(self):
+        """B1. 기록이 없으면 종전대로 크기 — 없는 값으로 판단하지 않는다."""
+        fs = self._files(4)
+        w = self.m._weights(fs)
+        for f in fs:
+            self.assertEqual(w[f], os.path.getsize(os.path.join(HERE, f)))
+
+    def test_b2_a_new_file_gets_the_median_not_zero(self):
+        """B2. 기록에 없는 새 파일은 아는 것들의 중앙값 — 0 이면 한 빈에 몰린다."""
+        fs = self._files(5)
+        self._write({fs[0]: 10.0, fs[1]: 20.0, fs[2]: 30.0, fs[3]: 40.0})
+        w = self.m._weights(fs)
+        self.assertGreater(w[fs[4]], 0)
+        self.assertIn(w[fs[4]], (20.0, 30.0))
+
+    def test_b3_a_broken_record_is_ignored(self):
+        """B3. 기록이 깨졌으면 조용히 크기로 물러난다."""
+        with open(self.m.TIMES_FILE, "w", encoding="utf-8") as f:
+            f.write("{not json")
+        self.assertEqual(self.m.load_times(), {})
+        fs = self._files(3)
+        w = self.m._weights(fs)
+        self.assertEqual(w[fs[0]], os.path.getsize(os.path.join(HERE, fs[0])))
+
+    def test_t2b_the_parallel_path_merges_too(self):
+        """T2b. **병렬 경로에도 합치는 자리가 있다** (실측으로 잡은 구멍).
+
+        처음엔 순차 블록의 finally 에만 merge 를 뒀는데, `--jobs` 는 그 블록을
+        아예 안 지난다 — 297파일을 돌고 4파일만 기록에 남았다. 재고도 안 쓰는
+        기록은 없는 기록이다.
+        """
+        src = open(RUNNER, encoding="utf-8").read()
+        branch = src.split("if jobs > 1 and not nested:", 1)[1].split(
+            "\n        # 로컬 서버에", 1)[0]
+        self.assertIn("merge_times()", branch,
+                      "병렬 경로가 자식들의 기록을 안 합친다")
+
+    def test_t1_t2_children_record_and_the_parent_merges(self):
+        """T1·T2·B4. 자식이 pid 별로 남기고 부모가 합친다 — 서로 안 덮는다."""
+        self.m.record_times({"test_a.py": 1.5})
+        import json as _j
+        # 다른 pid 가 남긴 것처럼 하나 더
+        os.makedirs(self.m.TIMES_DIR, exist_ok=True)
+        with open(os.path.join(self.m.TIMES_DIR, "999999.json"), "w",
+                  encoding="utf-8") as f:
+            _j.dump({"test_b.py": 2.5}, f)
+        self.m.merge_times()
+        got = self.m.load_times()
+        self.assertEqual(got.get("test_a.py"), 1.5)
+        self.assertEqual(got.get("test_b.py"), 2.5, "다른 실행의 기록을 덮었다")
+        self.assertEqual(os.listdir(self.m.TIMES_DIR), [], "합친 뒤 안 치웠다")
 
 
 class ProgressWhileRunning(unittest.TestCase):

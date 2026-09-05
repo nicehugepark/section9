@@ -366,16 +366,100 @@ SERIAL = ("test_jobfile.py", "test_runner_patterns.py", "test_tmp_hygiene.py",
           "test_streams_scan.py")
 
 
+TIMES_FILE = os.path.join(REPO, "state", "test-times.json")
+TIMES_DIR = os.path.join(REPO, "state", "test-times")
+
+
+def load_times():
+    """파일별 실측 소요 (없으면 {}). 못 읽으면 조용히 빈 값 — 크기로 물러난다."""
+    try:
+        with open(TIMES_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return {k: float(v) for k, v in d.items() if isinstance(v, (int, float))}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def _weights(files):
+    """샤딩 무게 — **잰 시간이 있으면 시간**, 없으면 크기 (REQ-20260905-001).
+
+    종전 무게는 `os.path.getsize` 였다. 「큰 파일이 오래 걸린다」는 가정인데
+    이 저장소에서 거짓이다 — 서버를 띄우는 작은 파일 하나가 큰 grep 시험 열
+    개보다 비싸다. 실측 2026-09-05: 43파일 선택이 297파일 전체보다 오래
+    걸렸다(757초 vs 514초). 무엇을 도느냐는 안 바뀌고 **어느 빈에 넣느냐**만
+    바뀌므로 위험이 없다.
+
+    아는 값이 절반도 안 되면(첫 실행·새 기계) 크기로 물러난다 — 없는 값으로
+    판단하지 않는다. 아는 값이 충분한데 그중 빠진 파일은 **중앙값**으로 친다:
+    0 으로 치면 새 파일이 전부 한 빈에 몰린다.
+    """
+    times = load_times()
+    known = [times[f] for f in files if f in times]
+    if len(known) * 2 < len(files):
+        return {f: os.path.getsize(os.path.join(HERE, f)) for f in files}
+    mid = sorted(known)[len(known) // 2] if known else 1.0
+    return {f: times.get(f, mid) for f in files}
+
+
 def shard(files, n):
-    """파일들을 무게(크기) 내림차순 greedy 로 N 빈에 — 느린 것부터 자리 잡아야
-    꼬리가 짧다 (REQ-20260830-027 2단계). 반환: 빈 리스트들(빈 빈 제외)."""
+    """파일들을 무게 내림차순 greedy 로 N 빈에 — 느린 것부터 자리 잡아야
+    꼬리가 짧다 (REQ-20260830-027 2단계). 무게는 `_weights` 가 정한다
+    (실측 시간 > 크기, REQ-20260905-001). 반환: 빈 리스트들(빈 빈 제외)."""
+    w = _weights(files)
     bins = [[0, []] for _ in range(max(1, n))]
-    for f in sorted(files, key=lambda x: -os.path.getsize(
-            os.path.join(HERE, x))):
+    for f in sorted(files, key=lambda x: -w.get(x, 0)):
         b = min(bins, key=lambda x: x[0])
-        b[0] += os.path.getsize(os.path.join(HERE, f))
+        b[0] += w.get(f, 0)
         b[1].append(f)
     return [b[1] for b in bins if b[1]]
+
+
+def record_times(per_file):
+    """이 실행이 잰 것을 pid 별 파일로 남긴다 — 부모가 합친다.
+
+    한 파일에 바로 쓰면 병렬 샤드 넷이 서로를 덮는다(B4). 재는 것은 자식들이고
+    합치는 것은 부모다.
+    """
+    if not per_file:
+        return
+    try:
+        os.makedirs(TIMES_DIR, exist_ok=True)
+        with open(os.path.join(TIMES_DIR, f"{os.getpid()}.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(per_file, f)
+    except OSError:
+        pass
+
+
+def merge_times():
+    """pid 별 기록을 한 파일로 합친다 (부모만). 새 값이 이긴다 — 시험은 바뀐다."""
+    merged = load_times()
+    try:
+        names = os.listdir(TIMES_DIR)
+    except OSError:
+        return
+    got = False
+    for fn in names:
+        fp = os.path.join(TIMES_DIR, fn)
+        try:
+            with open(fp, encoding="utf-8") as f:
+                merged.update({k: float(v) for k, v in json.load(f).items()})
+            os.unlink(fp)
+            got = True
+        except (OSError, ValueError, TypeError, AttributeError):
+            try:
+                os.unlink(fp)
+            except OSError:
+                pass
+    if not got:
+        return
+    try:
+        tmp = TIMES_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(merged, f)
+        os.replace(tmp, TIMES_FILE)
+    except OSError:
+        pass
 
 
 def matched_files(pats):
@@ -733,6 +817,11 @@ def main():
                 ok, _n = run_sharded(pats, jobs, bump=bump)
             finally:
                 clear()
+                # 샤드 자식들이 남긴 소요를 여기서 합친다 (REQ-20260905-001).
+                # 병렬 경로는 이 함수의 아래쪽 순차 블록을 아예 안 지나므로,
+                # 합치는 자리가 거기에만 있으면 **재고도 안 쓰는** 기록이 된다
+                # (실측: 첫 실행이 297파일을 돌고 4파일만 남겼다).
+                merge_times()
             if ok:
                 mark_green(pats, fp)
                 if full_requested:
@@ -758,15 +847,30 @@ def main():
         bump, clear = jobfile.start(suite.countTestCases(),
                                     args=" ".join(sys.argv[1:4]))
 
+        # 파일별 소요를 잰다 (REQ-20260905-001) — 샤딩 무게의 원천이다.
+        per_file = {}
+
         class _Result(unittest.TextTestResult):
+            def startTest(self, test):
+                self._t0 = time.time()
+                super().startTest(test)
+
             def stopTest(self, test):
                 super().stopTest(test)
+                mod = getattr(test, "__module__", "") or ""
+                if mod.startswith("test_"):
+                    per_file[mod + ".py"] = round(
+                        per_file.get(mod + ".py", 0.0)
+                        + (time.time() - getattr(self, "_t0", time.time())), 3)
                 bump(self.testsRun)
         try:
             res = unittest.TextTestRunner(verbosity=2,
                                           resultclass=_Result).run(suite)
         finally:
             clear()
+            record_times(per_file)
+            if not nested:
+                merge_times()
         ok = res.wasSuccessful()
     finally:
         left = tmproot.drop_run_root(tmp_root, prev_tmpdir)
