@@ -1041,6 +1041,48 @@ def serve_info():
     return out
 
 
+# 하네스별 로그인 흔적 (REQ-20260905-014). section9 은 Claude 기본이되 어느 하네스든
+# 붙어 쓰는 것이 목표라(PROTOCOL 0'), 판을 가르는 자리는 이 표 하나다 — 실행 파일과
+# 로그인 흔적 파일·안내. bin/s9-install 이 같은 표를 들고 설치 끝에 안내한다
+# (두 벌이 갈리는지는 tests/test_login_check.py 가 본다).
+LOGIN_MARKS = {
+    "claude": {"exe": "claude", "mark": ".credentials.json", "home_env": "CLAUDE_CONFIG_DIR",
+               "home": "~/.claude", "how": "터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인"},
+    "codex": {"exe": "codex", "mark": "auth.json", "home_env": "CODEX_HOME",
+              "home": "~/.codex", "how": "`codex login`"},
+    "gemini": {"exe": "gemini", "mark": "oauth_creds.json", "home_env": "",
+               "home": "~/.gemini", "how": "터미널에서 `gemini` 를 한 번 띄워 로그인"},
+}
+
+
+def login_info(marks=None, which=None):
+    """설치된 하네스마다 (실행 파일 있음, 로그인 흔적 있음)."""
+    marks = marks or LOGIN_MARKS
+    which = which or shutil.which
+    out = {}
+    for name, m in marks.items():
+        exe = bool(which(m["exe"]))
+        home = (os.environ.get(m["home_env"]) if m.get("home_env") else "") or m["home"]
+        mark = os.path.exists(os.path.join(os.path.expanduser(home), m["mark"]))
+        out[name] = {"installed": exe, "logged_in": exe and mark, "how": m["how"]}
+    return out
+
+
+def login_verdict(li):
+    """설치된 하네스가 하나도 로그인돼 있지 않으면 warn — 설치가 끝났는데 첫 세션이
+    로그인 화면에서 막히는 것이 실사고(새 머신 설치, 2026-09-05)다."""
+    installed = [k for k, v in li.items() if v["installed"]]
+    logged = [k for k in installed if li[k]["logged_in"]]
+    if not installed:
+        return _v("login", "에이전트 로그인", "warn", "설치된 에이전트 CLI 없음(claude·codex·gemini)",
+                  "하나를 설치하고 로그인하라 — 기본은 Claude Code.")
+    if not logged:
+        k = installed[0]
+        return _v("login", "에이전트 로그인", "warn", f"{', '.join(installed)} 설치됨 · 로그인 없음",
+                  f"{li[k]['how']} — 로그인 없이는 `s9 code` 가 첫 화면에서 막힌다.")
+    return _v("login", "에이전트 로그인", "ok", " · ".join(f"{k} 로그인" for k in logged), None)
+
+
 def hooks_info():
     missing = []
     try:
@@ -1289,6 +1331,7 @@ def system_checks():
             serve_verdict(serve_info()),
             repo_verdict(repo_info()),
             hooks_verdict(hooks_info()),
+            login_verdict(login_info()),
             deps_verdict(deps_info()),
             authz_verdict(authz_info())]
 
@@ -1512,6 +1555,7 @@ def main():
         d["probe_after_fix"] = probe_new_port()
         d["degraded"] = not d["probe_after_fix"]["ok"]
     d["concurrency"] = CONCURRENCY
+    d["login"] = login_info()
     d["advice"] = advise(d)
 
     if args.json:

@@ -420,6 +420,47 @@ def install_other_harnesses():
             say(f"{name}: 미설치 감지 ({probe} 없음) — 생략")
 
 
+# bin/s9-doctor 의 LOGIN_MARKS 와 같은 표 — 이 도구는 doctor 를 import 하지 않는다.
+# 두 벌이 갈리는지는 tests/test_login_check.py 가 본다 (REQ-20260905-014).
+LOGIN_MARKS = {
+    "claude": {"exe": "claude", "mark": ".credentials.json", "home_env": "CLAUDE_CONFIG_DIR",
+               "home": "~/.claude", "how": "터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인"},
+    "codex": {"exe": "codex", "mark": "auth.json", "home_env": "CODEX_HOME",
+              "home": "~/.codex", "how": "`codex login`"},
+    "gemini": {"exe": "gemini", "mark": "oauth_creds.json", "home_env": "",
+               "home": "~/.gemini", "how": "터미널에서 `gemini` 를 한 번 띄워 로그인"},
+}
+
+
+def login_state(marks=None, which=None):
+    marks = marks or LOGIN_MARKS
+    which = which or shutil.which
+    out = {}
+    for name, m in marks.items():
+        exe = bool(which(m["exe"]))
+        home = (os.environ.get(m["home_env"]) if m.get("home_env") else "") or m["home"]
+        mark = os.path.exists(os.path.join(os.path.expanduser(home), m["mark"]))
+        out[name] = {"installed": exe, "logged_in": exe and mark, "how": m["how"]}
+    return out
+
+
+def login_guide(state=None):
+    """설치가 끝났는데 로그인이 없으면 여기서 말한다 — 첫 `s9 code` 가 로그인 화면에서
+    막히는 것이 실사고다(새 머신 설치, 2026-09-05). 설치를 막지는 않는다."""
+    st = login_state() if state is None else state
+    installed = [k for k, v in st.items() if v["installed"]]
+    logged = [k for k in installed if st[k]["logged_in"]]
+    if not installed:
+        say("에이전트 CLI 가 없다 — 기본은 Claude Code: 설치 뒤 `claude` 를 한 번 띄워 로그인하라")
+        return "none"
+    if not logged:
+        for k in installed:
+            say(f"{k} 는 설치됐지만 로그인이 없다 — {st[k]['how']}. 그다음 `s9 code`")
+        return "not-logged-in"
+    say("로그인 확인: " + " · ".join(logged))
+    return "ok"
+
+
 def main():
     # --agents-md <path>: 임의 instructions 파일에 protocol 주입 (copilot/프로젝트용)
     if "--agents-md" in sys.argv:
@@ -437,6 +478,7 @@ def main():
     install_other_harnesses()
     start_dashboard()
     say("section9 install 완료")
+    login_guide()
 
 
 def start_dashboard():

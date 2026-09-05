@@ -16098,7 +16098,32 @@ def do_user_attach(name, machine=None):
         body = body.rstrip("\n") + f"\n- {now_iso()} attach {acct}@{machine}\n"
         write_doc(ppath, meta, body)
     record_machine_account(name, machine, acct)
-    return acct, machine, changed
+    # 두 번째 머신이 붙는 순간이 곧 「여럿·바깥과 오간다」의 판정이다 (REQ-20260905-013).
+    # 동기화 모드는 사람이 껐다 켰다 할 스위치가 아니다 — 한 사람이 두 대에서 같은
+    # 저장소를 쓰기 시작했다는 사실이 판정이고, 그 사실은 여기서 생긴다. 그냥
+    # clone 만 한 사람(머신 하나)에게는 어떤 git 쓰기도 없다(REQ-20260824-051 그대로).
+    if changed and attach_turns_sync_on(meta):
+        sync_set_mode("remote")
+        return acct, machine, changed, True
+    return acct, machine, changed, False
+
+
+def attach_turns_sync_on(meta):
+    """이 attach 로 동기화를 켤 것인가 — 머신 둘 이상 · origin 있음 · 아직 표식 없음."""
+    machines = meta.get("machines") or []
+    if not isinstance(machines, list):
+        machines = [machines]
+    if len(set(machines)) < 2:
+        return False
+    if os.path.exists(SYNC_MARKER) or not os.path.isdir(os.path.join(ROOT, ".git")):
+        return False
+    import subprocess as _sp
+    try:
+        r = _sp.run(["git", "remote", "get-url", "origin"], cwd=ROOT,
+                    capture_output=True, text=True, timeout=10)
+        return r.returncode == 0 and bool(r.stdout.strip())
+    except (OSError, ValueError):
+        return False
 
 
 def do_user_update(name, display=None, email=None, role=None, actor="",
@@ -16434,11 +16459,14 @@ def cmd_user(args):
     elif args.action == "attach":
         name = args.name or die("usage: s9 user attach <name>")
         try:
-            acct, mach, changed = do_user_attach(name, machine=machine)
+            acct, mach, changed, sync_on = do_user_attach(name, machine=machine)
         except ValueError as e:
             die(str(e))
         print(f"{name}: attached {acct}@{mach}"
               + ("" if changed else " (already attached)"))
+        if sync_on:
+            print("두 번째 머신이 붙었다 — 이 저장소는 이제 바깥과 오간다(동기화 remote, "
+                  "표식 .s9-sync). 문서 이벤트마다 commit→pull→push. 끄려면 `s9 sync --off`")
 
     elif args.action == "list":
         users = registered_users()
