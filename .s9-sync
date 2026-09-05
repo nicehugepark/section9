@@ -1,0 +1,1 @@
+remote — 여럿이 쓰는 자리: 문서 이벤트마다 commit → pull --rebase → push (REQ-20260906-001, 2026-09-06)
