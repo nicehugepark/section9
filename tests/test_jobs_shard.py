@@ -105,6 +105,40 @@ class PortSlotsFollowJobs(unittest.TestCase):
                       "샤드 수가 포트 칸으로 안 넘어간다 — 5샤드부터 포트를 다툰다")
 
 
+class RedFilesRetryNarrowly(unittest.TestCase):
+    """붉은 것만 좁혀서 다시 (REQ-20260905-009) — 전체를 되풀이하지 않는다."""
+
+    def _runner(self):
+        spec = importlib.util.spec_from_loader(
+            "s9runner_retry", importlib.machinery.SourceFileLoader("s9runner_retry", RUNNER))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    def test_r1_red_files_come_from_shard_output(self):
+        """R1. 샤드 출력의 FAIL/ERROR 줄에서 파일을 뽑는다 — 중복 없이."""
+        m = self._runner()
+        text = ("ERROR: test_e3 (test_code_read_gate.CodeReadGate.test_e3)\n"
+                "FAIL: test_x (test_close_last.Server.test_x)\n"
+                "FAIL: test_y (test_code_read_gate.CodeReadGate.test_y)\n")
+        self.assertEqual(m.red_files_from(text),
+                         ["test_code_read_gate.py", "test_close_last.py"])
+
+    def test_r2_only_a_few_red_files_are_retried(self):
+        """R2. 붉은 파일 1~3개면 다시, 넷 이상이면 코드 결함이라 다시 안 돈다."""
+        m = self._runner()
+        os.environ.pop("S9_TEST_NO_RETRY", None)
+        self.assertTrue(m.should_retry(["a.py"]))
+        self.assertTrue(m.should_retry(["a.py", "b.py", "c.py"]))
+        self.assertFalse(m.should_retry(["a.py", "b.py", "c.py", "d.py"]))
+        self.assertFalse(m.should_retry([]))
+        os.environ["S9_TEST_NO_RETRY"] = "1"
+        try:
+            self.assertFalse(m.should_retry(["a.py"]))
+        finally:
+            os.environ.pop("S9_TEST_NO_RETRY", None)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

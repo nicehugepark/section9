@@ -532,6 +532,45 @@ def jobs_cap():
     return 4
 
 
+FLAKY_FILE = os.path.join(REPO, "state", "test-flaky.jsonl")
+RETRY_MAX_FILES = 3
+
+
+def red_files_from(text):
+    """샤드 출력에서 붉은 시험의 **파일**을 뽑는다 — `FAIL: name (test_mod.Class.name)`."""
+    out = []
+    for m in re.finditer(r"^(?:FAIL|ERROR): \S+ \((test_[A-Za-z0-9_]+)\.", text, re.M):
+        f = m.group(1) + ".py"
+        if f not in out:
+            out.append(f)
+    return out
+
+
+def should_retry(red):
+    """붉은 파일이 적을 때만(≤3) 그것만 한 번 더 돈다 — 넷 이상은 코드 결함이다.
+
+    실사고 2026-09-05 (REQ-20260905-009): 전체 스위트 20회 중 10회가 간헐 붉음
+    (매번 다른 서버 시험 1~3건, 단독 재실행은 초록)이었고, 그때마다 전체를
+    다시 돌려 하루 1시간 45분을 기다렸다. 규약 17조가 말한 대로 **붉은 것만
+    좁혀서** 다시 돈다 — 붉은 파일 하나는 수초, 전체는 5~13분이다.
+    `S9_TEST_NO_RETRY=1` 이면 재실행하지 않는다(러너 자신을 재는 시험용).
+    """
+    if os.environ.get("S9_TEST_NO_RETRY") == "1":
+        return False
+    return 0 < len(red) <= RETRY_MAX_FILES
+
+
+def record_flaky(files, note):
+    """단독 재실행에서 초록으로 바뀐 파일을 남긴다 — 간헐의 증거이자 격리의 재료."""
+    try:
+        os.makedirs(os.path.dirname(FLAKY_FILE), exist_ok=True)
+        with open(FLAKY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": time.time(), "files": files, "note": note},
+                               ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def run_sharded(pats, jobs, bump=None):
     """병렬 본대 + 직렬 꼬리 (REQ-20260830-027 2단계).
 
@@ -570,6 +609,7 @@ def run_sharded(pats, jobs, bump=None):
         procs.append((pr, out, group))
     ok = True
     done_files = 0
+    red = []                 # 붉은 파일 — 적으면 그것만 한 번 더 돈다
     import time as _time
     pending = list(procs)
     seen_state = {}          # 샤드 출력의 {이름: [다음에 읽을 자리, 본 모듈]}
@@ -595,10 +635,12 @@ def run_sharded(pats, jobs, bump=None):
                 ok = False
                 out.flush()
                 try:
-                    sys.stderr.write(open(out.name, encoding="utf-8",
-                                          errors="replace").read())
+                    text = open(out.name, encoding="utf-8", errors="replace").read()
                 except OSError:
-                    pass
+                    text = ""
+                sys.stderr.write(text)
+                found = red_files_from(text)
+                red.extend(f for f in (found or list(group)) if f not in red)
                 print(f"실패한 샤드: {' '.join(group)}", file=sys.stderr)
         pending = still
     for pr, out, _g in procs:
@@ -615,6 +657,18 @@ def run_sharded(pats, jobs, bump=None):
             bump(done_files)
         if r.returncode != 0:
             ok = False
+            if f not in red:
+                red.append(f)
+    if not ok and should_retry(red):
+        print(f"[좁혀서 다시] 붉은 파일 {len(red)}개만 단독으로 한 번 더 돈다: "
+              f"{' '.join(red)}", file=sys.stderr)
+        r = subprocess.run([sys.executable, HERE, "--no-reuse", *red], env=env,
+                           stdin=subprocess.DEVNULL)
+        if r.returncode == 0:
+            ok = True
+            record_flaky(red, "샤드에서 붉음 · 단독 초록")
+            print(f"[좁혀서 다시] 단독 초록 — 간헐로 기록했다 ({FLAKY_FILE}). "
+                  f"두 번째 보이면 격리하고 REQ 로 세워라.", file=sys.stderr)
     return ok, done_files
 
 
