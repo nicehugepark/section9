@@ -185,6 +185,12 @@ def install_git_hooks():
     say("merge driver OK: merge.s9doc → s9 merge-doc")
 
 
+def remote_control_wanted(argv=None):
+    """원격제어 자동 활성을 **켜 달라고 했나** — 플래그 `--remote-control` 뿐이다."""
+    argv = sys.argv[1:] if argv is None else argv
+    return "--remote-control" in argv
+
+
 def install_claude_hooks():
     src = os.path.join(ROOT, "harness", "claude", "hooks.json")
     if not os.path.exists(src):
@@ -241,14 +247,15 @@ def install_claude_hooks():
             changed = True
 
     # remoteControlAtStartup: 세션 시작 시 remote-control(모바일 앱 제어) 자동 활성화.
-    # 조용히 켜지 않는다 — 최초로 켤 때 고지한다(사용자 settings.json 변경이므로).
-    if "--no-remote-control" not in sys.argv and not settings.get("remoteControlAtStartup"):
+    # **옵트인이다** (REQ-20260905-030, security 지적): 원격에서 이 세션을 조종할 수 있게 하는
+    # 키를 설치가 기본으로 켜지 않는다. 켜는 길은 `--remote-control` 한 가지 — 그때도
+    # 고지한다(사용자 settings.json 변경이므로). 사용자가 이미 켜 둔 것은 건드리지 않는다.
+    if remote_control_wanted() and not settings.get("remoteControlAtStartup"):
         settings["remoteControlAtStartup"] = True
         changed = True
         SET_BY_US.add("remoteControlAtStartup")  # uninstall 이 이것만 되돌린다
-        say("⚑ remoteControlAtStartup=true 로 설정 (세션 시작 시 원격제어 자동 활성 — "
-            "모바일 앱/claude.ai에서 이 세션 제어 가능). 원치 않으면 s9-install --no-remote-control 또는 "
-            "settings.json에서 해당 키 삭제.")
+        say("⚑ remoteControlAtStartup=true 로 설정 (--remote-control: 세션 시작 시 원격제어 자동 활성 — "
+            "모바일 앱/claude.ai에서 이 세션 제어 가능). 끄려면 settings.json 에서 그 키를 지운다.")
 
     if changed:
         os.makedirs(os.path.dirname(settings_path), exist_ok=True)
