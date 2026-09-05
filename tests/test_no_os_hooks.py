@@ -132,7 +132,7 @@ class PlatformDoors(unittest.TestCase):
     """판을 가르는 자리가 늘지 않는다 — 문을 세우면 줄어든다."""
 
     def test_platform_branching_does_not_spread(self):
-        found = _outside_doors(os.path.join(ROOT, "bin", "s9"))
+        found = _outside_doors(os.path.join(ROOT, "bin", "s9.py"))
         counts = {k: len(v) for k, v in found.items()}
         grew = {k: (counts.get(k, 0), cap)
                 for k, cap in PLATFORM_BUDGET.items()
@@ -149,7 +149,7 @@ class PlatformDoors(unittest.TestCase):
 
     def test_the_budget_follows_us_down(self):
         """문을 세워 줄였으면 예산도 내려와야 한다 — 안 내리면 라쳇이 헐겁다."""
-        found = _outside_doors(os.path.join(ROOT, "bin", "s9"))
+        found = _outside_doors(os.path.join(ROOT, "bin", "s9.py"))
         counts = {k: len(v) for k, v in found.items()}
         slack = {k: cap - counts.get(k, 0)
                  for k, cap in PLATFORM_BUDGET.items()
@@ -158,14 +158,14 @@ class PlatformDoors(unittest.TestCase):
 
     def test_the_doors_are_actually_there(self):
         """예산만 있고 문이 없으면 이 시험은 숫자놀이다."""
-        with open(os.path.join(ROOT, "bin", "s9"), encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "bin", "s9.py"), encoding="utf-8") as f:
             src = f.read()
         for door in ("def proc_backend(", "def spawn_backend(",
                      "def spawn_detached(", "def pid_alive("):
             self.assertIn(door, src, f"{door} 문이 사라졌다")
 
     def test_the_numbers_are_visible(self):
-        found = _outside_doors(os.path.join(ROOT, "bin", "s9"))
+        found = _outside_doors(os.path.join(ROOT, "bin", "s9.py"))
         print("\n[판 가르기] 문 밖: "
               + " · ".join(f"{k} {len(v)}" for k, v in sorted(found.items()))
               + f"  (예산 {PLATFORM_BUDGET})")

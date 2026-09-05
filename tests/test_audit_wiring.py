@@ -21,6 +21,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 DOC = """---
 id: REQ-20260901-777-62x6
@@ -119,7 +120,7 @@ class AuditWiring(unittest.TestCase):
             self.assertNotIn("기록 유실 감지", r2.stdout,
                              "유실이 없는데 경보가 났다 — 거짓 경보는 꺼진 탐지기다")
         with self.subTest("w5_the_watcher_loop_carries_the_audit"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             i = src.index("def _rework_loop")
             loop = src[i:i + 1500]

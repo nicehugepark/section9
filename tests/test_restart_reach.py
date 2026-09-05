@@ -42,6 +42,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class RestartReach(unittest.TestCase):
@@ -159,7 +160,7 @@ class RestartReach(unittest.TestCase):
 
             # ---------- ⑦ 서버 가드는 그대로 ----------
         with self.subTest("the_server_guard_is_untouched"):
-                with open(S9, encoding="utf-8") as f:
+                with open(S9_SRC, encoding="utf-8") as f:
                     src = f.read()
                 i = src.find("def restart_session(")
                 self.assertGreater(i, 0)

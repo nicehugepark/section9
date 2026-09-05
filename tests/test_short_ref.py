@@ -43,6 +43,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 INDEX = index_path()
 
 
@@ -152,7 +153,7 @@ class ShortRefRule(unittest.TestCase):
                 # 쓰인 때는 표시용 문자열이 아니라 원본 시각이어야 한다
                 self.assertIn('Date.parse(at || "") || Date.now()', code,
                               "글이 쓰인 때를 받지 않는다")
-                self.assertIn('"at": at,', open(S9, encoding="utf-8").read(),
+                self.assertIn('"at": at,', open(S9_SRC, encoding="utf-8").read(),
                               "서버가 원본 시각을 함께 내주지 않는다")
 
             # ---------- ④ 짐작은 읽기 전용 ----------

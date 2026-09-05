@@ -41,6 +41,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 INDEX = index_path()
 
 
@@ -109,7 +110,7 @@ class TimezoneList(unittest.TestCase):
             # ---------- ④ 모르는 이름은 거절 ----------
         with self.subTest("an_unknown_zone_is_refused_instead_of_silently_falling_back"):
             # 실제 호출은 등록 사용자가 필요하므로 검증 규칙을 그 함수에서 읽는다
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             fn = re.search(r"def do_user_config_set\([\s\S]*?\n\ndef ", src).group(0)
             self.assertIn('key == "timezone"', fn, "시간대를 검증하지 않는다")

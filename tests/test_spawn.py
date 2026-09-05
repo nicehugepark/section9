@@ -22,6 +22,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 os.environ.setdefault("S9_ROOT", tempfile.mkdtemp(prefix="s9spawn-"))
 spec = importlib.util.spec_from_loader(
@@ -107,7 +108,7 @@ class Spawn(unittest.TestCase):
 
     # ---- ③ 떼는 자리들이 그 문을 지난다 (인라인 fork 금지) ------------------
     def test_c1_metrics_detach_uses_the_door(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         body = src[src.index("def metrics_detach("):
                    src.index("def metrics_read(")]
@@ -122,7 +123,7 @@ class Spawn(unittest.TestCase):
 
     def test_c1b_guard_detach_uses_the_door_too(self):
         """감시자도 같은 문을 지난다 — 둘 중 하나만 옮기면 반쪽이다."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         body = src[src.index("def _guard_detach("):
                    src.index("def catalog_with_live(")]
@@ -137,7 +138,7 @@ class Spawn(unittest.TestCase):
 
     def test_c2_the_fork_free_path_exists_at_all(self):
         """윈도우에는 fork 가 없다 — 그 판에서 도는 갈래가 코드에 있어야 한다."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertIn("def _spawn_detached_subprocess(", src)
         self.assertIn("CREATE_NEW_PROCESS_GROUP", src)

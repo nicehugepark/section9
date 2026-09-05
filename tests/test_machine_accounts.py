@@ -24,6 +24,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 HOOK = os.path.join(HERE, "..", "bin", "s9-audit-session")
 
 
@@ -105,7 +106,7 @@ class MachineAccounts(unittest.TestCase):
 
     # N4. 화면이 읽을 수 있게 실려 나간다
     def test_n4_served(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index('parsed.path == "/api/users"')
         self.assertIn("machine_accounts", src[i:i + 2000],
                       "사용자 API 에 머신 이력이 없다")

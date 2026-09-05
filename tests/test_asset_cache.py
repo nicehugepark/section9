@@ -26,6 +26,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load():
@@ -74,7 +75,7 @@ class TheResponse(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
 
     def test_the_response(self):
         """첨부 응답만 캐시된다 — 다른 답까지 캐시하면 낡은 화면이 남는다."""

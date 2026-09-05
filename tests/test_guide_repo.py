@@ -39,6 +39,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
 S9 = os.path.join(ROOT, "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 GEN = os.path.join(ROOT, "bin", "s9-guide-md")
 HTML = os.path.join(ROOT, "web", "guide.html")
 MD = os.path.join(ROOT, "docs", "guide.md")
@@ -140,7 +141,7 @@ class TestGuideRepoSection(unittest.TestCase):
     def test_test_guide_repo_section(self):
         """TestGuideRepoSection 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("both_gate_has_exactly_seven"):
-                tree = ast.parse(io.open(S9, encoding="utf-8").read())
+                tree = ast.parse(io.open(S9_SRC, encoding="utf-8").read())
                 fn = next(n for n in ast.walk(tree)
                           if isinstance(n, ast.FunctionDef) and n.name == "git_can")
                 both = next(n.value for n in fn.body

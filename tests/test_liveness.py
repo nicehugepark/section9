@@ -21,6 +21,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 os.environ.setdefault("S9_ROOT", tempfile.mkdtemp(prefix="s9-live-"))
 spec = importlib.util.spec_from_loader(
@@ -64,7 +65,7 @@ class StripUsesTheSameRule(unittest.TestCase):
     """스트립(/api/agents)의 active 가 자기만의 180 을 들고 있지 않다."""
 
     def test_no_literal_window_in_agents_handler(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         i = src.index('parsed.path == "/api/agents"')
         seg = src[i:i + 2600]

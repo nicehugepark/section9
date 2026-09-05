@@ -43,6 +43,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
 S9 = os.path.join(ROOT, "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 APP = os.path.join(ROOT, "web", "app")
 
 
@@ -300,7 +301,7 @@ def server_dialog_strings(tree):
 class DialogVoice(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.s9src = read(S9)
+        cls.s9src = read(S9_SRC)
         cls.tree = ast.parse(cls.s9src)
         cls.card = read(os.path.join(APP, "card.js"))
         cls.web = web_dialog_strings()

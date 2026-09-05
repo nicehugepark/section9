@@ -43,6 +43,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class TermMention(unittest.TestCase):
@@ -151,7 +152,7 @@ class TermMention(unittest.TestCase):
         self.assertGreater(i, 0, "첨부 경로에 손잡이가 없다")
         self.assertIn("/api/asset?doc=", self.code[i:i + 400],
                       "첨부를 이미 있는 게이트로 내주지 않는다")
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             srv = f.read()
         routes = set(re.findall(r'parsed\.path == "(/api/[\w/-]+)"', srv))
         # 새 파일 서빙 라우트가 조용히 생기면 여기서 걸린다

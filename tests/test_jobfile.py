@@ -26,6 +26,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load(name="s9jb"):
@@ -181,7 +182,7 @@ class TheWriter(Base):
     def test_c5b_watcher_sweep_covers_jobs_dir(self):
         # 문서가 약속한 sweep 이 실재하는가 — 코드 계약 검사 (재검증이 찾은
         # "주장은 있는데 코드가 없다" 재발 방지).
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def rework_watch_tick(")
         j = src.index("\ndef ", i + 10)
         self.assertIn('"jobs"', src[i:j],
@@ -308,7 +309,7 @@ class TheWorkerDeclaration(Base):
 
     def test_w1_spawn_env_carries_job_req(self):
         # 스폰 봉투 계약 — env 조립부에 선언이 실재하는가 (모든 reason 공통 자리).
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def _spawn_worker(")
         j = src.index("\ndef ", i + 10)
         self.assertIn('env["S9_JOB_REQ"] = canon_id(doc_id)', src[i:j],

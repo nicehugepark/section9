@@ -27,6 +27,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load():
@@ -41,7 +42,7 @@ class PortOwnerWording(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.m = _load()
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         # 구간은 **표식으로** 끊는다 — 예전엔 1400자를 세었는데, 그 앞의
         # 주석이 길어지자(REQ-20260902-066) `who += (` 가 창 밖으로 밀려
         # setUpClass 가 ValueError 로 죽었다. 글자 수는 계약이 아니다.

@@ -42,6 +42,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 INDEX = index_path()
 
 
@@ -231,7 +232,7 @@ class ExternalPathCreate(unittest.TestCase):
     # F1. **읽기는 절대 만들지 않는다.** 비밀을 읽을 때마다·커밋 가드·훅에서도
     #     불리는 함수다. 오타 하나가 엉뚱한 자리에 폴더를 만들면 아무도 모른다
     def test_f1_reading_never_creates(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def external_secret_dir(user):")
         body = src[i:src.index("def ensure_external_secret_dir(")]
         for mk in ("makedirs", "mkdir"):
@@ -251,7 +252,7 @@ class ExternalPathApi(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
         i = cls.src.index('parsed.path == "/api/secrets"')
         cls.listing = cls.src[i:cls.src.index('parsed.path == "/api/users"')]
 

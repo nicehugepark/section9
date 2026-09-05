@@ -28,6 +28,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 TMP = tempfile.mkdtemp(prefix="s9rcontract-")
 _prev = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_MACHINE")}
@@ -365,7 +366,7 @@ class TheSessionKeepsItsLineage(RestartCase):
 
     # S19. 폴이 그 실을 실어 준다 (화면의 sid 못박기를 풀 재료)
     def test_s19_the_poll_carries_the_thread(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         head = src.split('elif parsed.path == "/api/chat/target"', 1)[1][:4200]
         self.assertIn("lineage_link()", head,

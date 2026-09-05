@@ -26,6 +26,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 PORT = 19919
 
 
@@ -160,7 +161,7 @@ class ServeGuardApi(unittest.TestCase):
         """G10. 라우트가 실제로 붙어 있다 — 함수만 있고 길이 없으면 화면은
         영영 404 를 받는다(designer 가 그 상태를 '조용히 아무것도 안 그림'으로
         만들어 둬서, 붙지 않아도 아무도 모른다)."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertIn('parsed.path == "/api/serveguard"', src)
         self.assertIn("guard_report(s9_port())", src)

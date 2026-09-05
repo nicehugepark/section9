@@ -18,6 +18,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def sh(*argv, cwd=None, env=None):
@@ -176,7 +177,7 @@ class TransportRepo(unittest.TestCase):
 
     # T5. 손잡이와 폴링이 같은 명령
     def test_t5_handle_and_poll_share_the_command(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertGreaterEqual(src.count('git_run(["pull", "--ff-only"]'), 2)
         self.assertIn("sync_transport_tick()", src)      # serve 루프가 부른다

@@ -29,6 +29,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 FULLSID = "abab1212-cccc-dddd-eeee-ffffffffffff"
 
 
@@ -162,7 +163,7 @@ class AbandonedResume(unittest.TestCase):
         `reason == "wake"` 갈래는 사람 몫(auto_resume_wake_per_day)을 쓰고,
         사람이 세워 둔 요청(stop_mark)까지 되살린다 — 둘 다 워처의 것이 아니다
         (tests/test_wake.py W4 가 붙잡은 사고)."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         import re
         tick = re.search(r"\ndef rework_watch_tick\(.*?\n\ndef ", src, re.S)

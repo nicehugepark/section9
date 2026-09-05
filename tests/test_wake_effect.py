@@ -31,7 +31,8 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
-SRC = open(S9, encoding="utf-8").read()
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
+SRC = open(S9_SRC, encoding="utf-8").read()
 
 
 def _load(name, root=None):

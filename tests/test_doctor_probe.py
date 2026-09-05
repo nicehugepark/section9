@@ -112,7 +112,7 @@ class TheRetractedClaim(unittest.TestCase):
 
     def test_c1_no_survival_claim_in_user_facing_text(self):
         import re
-        for path in (DOCTOR, os.path.join(ROOT, "bin", "s9")):
+        for path in (DOCTOR, os.path.join(ROOT, "bin", "s9.py")):
             src = open(path, encoding="utf-8").read()
             # 주석과 독스트링 안의 「거둔 단언이다」 같은 설명은 두고, 문자열
             # 리터럴(사람에게 나가는 문장)만 본다.

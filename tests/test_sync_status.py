@@ -20,6 +20,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 HOOK = os.path.join(HERE, "..", "bin", "s9-audit-prompt")
 WEB = os.path.join(HERE, "..", "web")
 
@@ -378,7 +379,7 @@ class SyncStatusSurface(unittest.TestCase):
     def test_sync_status_surface(self):
         """S15~S17 — 표면 고정점과 게이트 회귀 (소스 검사)."""
         with self.subTest("s15_no_tree_reverting_git"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             a = src.index("멈춤 표시와 복구 (REQ-20260902-025)")
             b = src.index("# 문서 의미 병합 (REQ-20260902-024")

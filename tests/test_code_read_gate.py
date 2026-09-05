@@ -36,6 +36,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 S9 = os.path.join(REPO, "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 MACHINE = "TESTMACH"
 
 from portpool import free_port, wait_server  # noqa: E402
@@ -361,7 +362,7 @@ class CodeVisibleFunction(unittest.TestCase):
 
         떨어져 있으면 다음에 읽는 사람이 세 번째 게이트를 발명한다.
         """
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         i_code = src.find("\ndef code_visible(")
         i_doc = src.find("\ndef doc_visible(")

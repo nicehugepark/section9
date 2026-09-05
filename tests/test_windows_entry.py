@@ -27,6 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 BIN = os.path.join(REPO, "bin")
 S9 = os.path.join(BIN, "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 sys.path.insert(0, HERE)
 import s9cli  # noqa: E402
 
@@ -176,7 +177,7 @@ class TestKillSignalDoor(unittest.TestCase):
 
     def test_w6b_no_bare_sigkill_left_in_the_tool(self):
         """이름을 그대로 쓰던 자리가 다시 생기면 여기서 붉어진다."""
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         bare = [ln for ln in src.splitlines()
                 if re.search(r"_sig\.SIGKILL|signal\.SIGKILL", ln)
                 and "getattr" not in ln and not ln.lstrip().startswith("#")
@@ -202,7 +203,7 @@ class TestTempDoor(unittest.TestCase):
             self.assertEqual(self.m.tmp_dir(), _t.gettempdir())
 
     def test_w7c_no_hardcoded_slash_tmp_left(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         hits = [ln for ln in src.splitlines()
                 if 'os.environ.get("TMPDIR", "/tmp")' in ln
                 and not ln.lstrip().startswith("#")
@@ -218,7 +219,7 @@ class TestMetricsCollectorSeam(unittest.TestCase):
         cls.m = _load(S9, "s9winentry_metrics")
 
     def test_w9_goes_through_the_seam_not_slash_proc(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def _metrics_is_collector(")
         j = re.compile(r"^def ", re.M).search(src, i + 10).start()
         body = src[i:j]
@@ -277,7 +278,7 @@ class TestShotCandidates(unittest.TestCase):
     """W8 — 그 판의 브라우저는 그 판의 이름으로 찾는다."""
 
     def test_w8_native_windows_branch_exists(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("    candidates = []")
         block = src[i:i + 2000]
         self.assertIn('os.name == "nt"', block,

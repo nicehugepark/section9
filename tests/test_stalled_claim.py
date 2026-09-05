@@ -28,6 +28,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 HOOK = os.path.join(HERE, "..", "bin", "s9-audit-prompt")
 
 
@@ -149,7 +150,7 @@ class StalledClaim(unittest.TestCase):
                 # 판정은 2026-08-29 에 `stall_verdict()` 로 한 번 더 옮겨졌다
                 # (REQ-20260829-036) — 멈춤 하나로 부르던 것이 셋(멈춤·대기·미상)이라
                 # 나뉘었기 때문이다. `stall_mins()` 는 그 함수의 껍데기다.
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("def stall_verdict(")
                 seg = src[i:src.index("\ndef ", i + 10)]
                 self.assertNotIn('r.get("live_kind") in ("session"', seg,
@@ -178,7 +179,7 @@ class StalledClaim(unittest.TestCase):
                 m = _load("s9_stall_mod2", S9)
                 self.assertTrue(callable(getattr(m, "catalog_with_live", None)),
                                 "live 판정이 모듈 최상위에 없다 — CLI 가 쓸 수 없다")
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("def stalled_requests(")
                 self.assertIn("catalog_with_live", src[i:i + 1200],
                               "stalled 이 live 판정을 다시 만들고 있다")

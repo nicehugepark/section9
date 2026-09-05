@@ -19,6 +19,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 TMP = tempfile.mkdtemp(prefix="s9restart-")
 _prev = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_MACHINE")}
@@ -219,7 +220,7 @@ class TestWorkerModel(unittest.TestCase):
 
     # R14. 모든 워커 스폰 경로가 이 인자를 통과한다 (한 군데라도 빠지면 재발)
     def test_r14_all_spawn_sites_covered(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         # 스폰 argv 조립 지점 — Popen 호출 형태가 아니라 argv 형태로 센다
         # (스폰 경로가 _spawn_worker 하나로 합쳐져도 계속 잡힌다)
@@ -447,7 +448,7 @@ class TestModelPolicyWins(unittest.TestCase):
 
     # 읽는 자리가 하나인지 감시 — 두 벌이 되면 한 벌만 고쳐진다
     def test_the_read_sites_go_through_one_judgement(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertEqual(src.count('get("auto_resume_model"'), 1,
                          "정책 칸을 판정 밖에서 또 읽는다")

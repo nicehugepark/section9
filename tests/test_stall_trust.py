@@ -40,6 +40,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load(root):
@@ -342,7 +343,7 @@ class StallTrust(unittest.TestCase):
 
             # ---- C6. 판정이 사는 자리는 하나다 -----------------------------------
         with self.subTest("c6_single_verdict_function"):
-            src = open(S9, encoding="utf-8").read()
+            src = open(S9_SRC, encoding="utf-8").read()
             self.assertIn("def stall_verdict(", src)
             # stall_mins 는 그 함수의 얇은 껍데기여야 한다 — 나이를 다시 재면
             # 두 벌이 된다.

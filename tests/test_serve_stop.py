@@ -26,6 +26,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 PORT = 19909
 
 
@@ -113,7 +114,7 @@ class ServeStop(unittest.TestCase):
 
     def test_t4_stop_is_a_real_flag(self):
         """T4. `--stop` 이 파서에 있다 — 없으면 사용자는 또 찾다 못 찾는다."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertIn('sv.add_argument("--stop", action="store_true"', src)
 
@@ -143,7 +144,7 @@ class ServeStop(unittest.TestCase):
     def test_t7_the_guard_hears_the_signal_while_blocked(self):
         """T7. 감시자가 그 신호를 받을 채비를 하고 돈다 — 보내는 쪽만 고치면
         아무 데도 닿지 않는다."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         i = src.find("def serve_guard_loop(")
         self.assertGreater(i, 0)
@@ -163,7 +164,7 @@ class ServeStop(unittest.TestCase):
         두 벌로 두면 한쪽만 고쳐지는 게 시간 문제다 (SIGTERM→유예→SIGKILL 이
         이미 SSE 장수명 연결 때문에 한 번 다듬어진 경로다).
         """
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertGreaterEqual(src.count("_signal_port("), 4, src.count)
 

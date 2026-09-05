@@ -96,7 +96,7 @@ class TzLive(unittest.TestCase):
 
     # B3. 서버 코드가 기동 시 1회 계산한 값을 붙들지 않는다.
     def test_b3_serve_does_not_freeze_it(self):
-        src = open(os.path.join(HERE, "..", "bin", "s9"),
+        src = open(os.path.join(HERE, "..", "bin", "s9.py"),
                    encoding="utf-8").read()
         self.assertNotRegex(
             src, r"\n    TZ = display_tz\(\)",

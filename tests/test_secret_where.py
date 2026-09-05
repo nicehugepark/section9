@@ -36,6 +36,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 INDEX = index_path()
 
 
@@ -181,7 +182,7 @@ class OnePlaceWrites(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
 
     def test_f1_no_second_writer(self):
         """파일을 여는 자리는 secret_write() 하나뿐이다."""

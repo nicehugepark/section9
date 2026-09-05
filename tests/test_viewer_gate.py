@@ -27,6 +27,7 @@ from unittest import mock
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 S9 = os.path.join(REPO, "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 HOOK = os.path.join(REPO, "bin", "s9-audit-prompt")
 MACHINE = "TESTMACH"
 
@@ -186,7 +187,7 @@ class ViewerGate(unittest.TestCase):
             # G4. 클래스 시험 — do_POST 의 라우트를 소스에서 전수 추출해 viewer 서버에
             #     때린다: 본인 pref 설정 하나만 예외, 나머지 전부 403
         with self.subTest("g4_viewer_post_routes_all_denied"):
-                with open(S9, encoding="utf-8") as f:
+                with open(S9_SRC, encoding="utf-8") as f:
                     src = f.read()
                 i = src.index("def do_POST(self):")
                 j = src.index("except WriteDenied", i)
@@ -233,7 +234,7 @@ class ViewerGate(unittest.TestCase):
 
             # G8. 옆문 없음 — 게이트를 끄는 환경변수 스위치가 소스에 없다
         with self.subTest("g8_no_side_door"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertNotRegex(src, r"S9_(SYSTEM|INTERNAL|BYPASS)_?WRITE")
             i = src.index("def _write_gate(")

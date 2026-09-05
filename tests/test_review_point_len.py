@@ -28,6 +28,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 PROTO = os.path.join(HERE, "..", "harness", "common", "PROTOCOL.md")
 CLAUDE_MD = os.path.join(HERE, "..", "CLAUDE.md")
 SKILL = os.path.join(HERE, "..", "harness", "claude", "skills",
@@ -166,7 +167,7 @@ class ReviewPointLen(unittest.TestCase):
 
     def test_c2_code_and_doc_agree(self):
         """문서의 숫자와 코드의 상수가 어긋나면 규율이 둘이 된다."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertIn("REVIEW_POINT_MAX = 300", src)
         self.assertIn("REVIEW_POINT_BRANCHES = 3", src)

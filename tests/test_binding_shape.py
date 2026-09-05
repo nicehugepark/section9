@@ -30,6 +30,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class BindingShape(unittest.TestCase):
@@ -69,7 +70,7 @@ class BindingShape(unittest.TestCase):
             b = self.m._norm_binding({"agent_transcript_path": list(good)})
             self.assertEqual(b["agent_transcript_path"], good)
         with self.subTest("s6_the_boundary_is_read_and_write"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertIn("return _norm_binding(json.load(f))", src,
                           "읽기 경계에 정규화가 없다")

@@ -23,6 +23,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class Snapshot(unittest.TestCase):
@@ -91,7 +92,7 @@ class Snapshot(unittest.TestCase):
             self.mod.snapshot_dirty()
             self.assertEqual(self.snaps("big.bin"), [])
         with self.subTest("s6_watcher_carries_it"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             loop = src.split("def _rework_loop", 1)
             self.assertEqual(len(loop), 2, "워처 루프를 찾지 못했다")

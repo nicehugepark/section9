@@ -25,6 +25,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 os.environ.setdefault("S9_ROOT", tempfile.mkdtemp(prefix="s9-stale-"))
 spec = importlib.util.spec_from_loader(
@@ -57,7 +58,7 @@ class ServeInfoContract(unittest.TestCase):
     무엇과 다른가'를 알아야 재기동을 결정할 수 있다."""
 
     def test_handler_exists_and_reports_staleness(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertIn('parsed.path == "/api/serveinfo"', src,
                       "서버 상태를 물어볼 창구가 없다")

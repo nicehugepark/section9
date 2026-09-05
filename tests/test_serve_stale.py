@@ -31,6 +31,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 HOOK = os.path.join(HERE, "..", "bin", "s9-audit-prompt")
 HOOK_SESSION = os.path.join(HERE, "..", "bin", "s9-audit-session")
 
@@ -133,7 +134,7 @@ class ServeStale(unittest.TestCase):
     #     잡기 전에 남기면 못 잡고 죽은 프로세스의 지문이 남아, 실제로 응답하는
     #     옛 서버를 가린다. 지문은 지금 듣고 있는 쪽을 가리켜야 한다.
     def test_n5_stamp_after_bind(self):
-        seg = serve_tail(open(S9, encoding="utf-8").read())
+        seg = serve_tail(open(S9_SRC, encoding="utf-8").read())
         bind = seg.index("QuietDisconnectServer((args.host")
         stamp = seg.index("serve-code.json")
         self.assertLess(bind, stamp,
@@ -141,13 +142,13 @@ class ServeStale(unittest.TestCase):
 
     # N6. 포트를 못 잡으면 시끄럽게 죽는다 — 조용히 죽으면 성공으로 읽힌다
     def test_n6_bind_failure_is_loud(self):
-        seg = serve_tail(open(S9, encoding="utf-8").read())
+        seg = serve_tail(open(S9_SRC, encoding="utf-8").read())
         self.assertIn("잡지 못했다", seg)
         self.assertIn("except OSError", seg)
 
     # N3. serve 가 기동 시 지문을 남긴다 — 남기지 않으면 물어볼 데가 없다
     def test_n3_serve_writes_stamp(self):
-        seg = serve_tail(open(S9, encoding="utf-8").read())
+        seg = serve_tail(open(S9_SRC, encoding="utf-8").read())
         self.assertIn("serve-code.json", seg,
                       "serve 가 기동 지문을 디스크에 남기지 않는다")
 

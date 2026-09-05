@@ -37,6 +37,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 TMP = tempfile.mkdtemp(prefix="s9switch-")
 _prev = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_MACHINE")}
@@ -54,7 +55,7 @@ finally:
         else:
             os.environ[k] = v
 
-with open(S9, encoding="utf-8") as _f:
+with open(S9_SRC, encoding="utf-8") as _f:
     SRC = _f.read()
 
 UPSTREAM = {"limits": [

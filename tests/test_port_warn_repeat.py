@@ -23,6 +23,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class PortWarnRepeat(unittest.TestCase):
@@ -85,7 +86,7 @@ class PortWarnRepeat(unittest.TestCase):
         같다"가 아니라 "계속 나쁘다"이고, 회수가 실제로 돌았다는 기록이다.
         조용하게 만들다 사고 기록을 지우면 고침이 새 위험이 된다.
         """
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         # 사다리(REQ-20260904-016) 뒤의 모양: 문(`_port_recover_gate`)이 열리면
         # `if ok:` 가지가 회수를 돌린다. **그 가지**는 침묵 장치를 지나지 않는다.

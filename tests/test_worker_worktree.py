@@ -241,7 +241,7 @@ class WorktreeEnvelope(unittest.TestCase):
     """
 
     def test_b5_worktree_worker_may_commit_its_branch(self):
-        src = open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8").read()
+        src = open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8").read()
         self.assertIn("WORKTREE_GIT_TOOLS", src,
                       "워크트리 봉투가 따로 없다 — 워커가 커밋할 수 없다")
         m = re.search(r"WORKTREE_GIT_TOOLS = \[([^\]]*)\]", src)

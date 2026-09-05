@@ -49,6 +49,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 S9 = os.path.join(REPO, "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load(prefix):
@@ -90,7 +91,7 @@ class NormIsSound(unittest.TestCase):
                 {"agent_transcript_path": [self.real] + list("/tmp/x")})
             self.assertEqual(b["agent_transcript_path"], [self.real])
         with self.subTest("a5_write_boundary_is_the_only_writer"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertEqual(src.count("binding_path(binding[\"machine\"]"), 1)
 
@@ -134,11 +135,11 @@ class ActivityPathsHaveOneBoundary(unittest.TestCase):
                 {"session": "junk", "agent_transcript_path": list("/tmp/없는것")})
             self.assertNotIn("/", paths)
         with self.subTest("h2b_no_scattered_isinstance_defense_remains"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertEqual(src.count("isinstance(atp, list)"), 0)
         with self.subTest("h2c_no_string_default_for_a_list_field"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertEqual(src.count('b.get("agent_transcript_path", "")'), 0)
 

@@ -37,6 +37,7 @@ from webasset import index_path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(os.path.dirname(HERE), "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 # 이 판이 세우는 행 — 화면이 정한 목록이라, 여기 적힌 것이 곧 계약이다.
 SWITCHES = ["auto_resume", "auto_resume_apply", "auto_resume_gh",
@@ -75,7 +76,7 @@ class WorkerSettings(unittest.TestCase):
     def setUpClass(cls):
         with open(index_path(), encoding="utf-8") as f:
             cls.src = f.read()
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             cls.s9 = f.read()
         # 판을 짓는 코드 전부 — 마지막 함수(showWorkerCfg)까지.
         cls.wc = slice_between(cls.src, "/* workercfg.js", "function showWorkerCfg")

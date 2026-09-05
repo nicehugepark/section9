@@ -49,7 +49,7 @@ SMOKE = ("test_state_truth.py", "test_catalog_atomic.py",
          "test_closed_no_worker.py", "test_stdlib_only.py")
 GREEN_STAMP = os.path.join(REPO, "state", "tests-last-green")
 # 이 파일들이 바뀌면 어느 시험이 닿는지 셀 수 없다 — 전체로 물러난다.
-COMMON = ("bin/s9", "tests/__main__.py", "tests/portpool.py",
+COMMON = ("bin/s9", "bin/s9.py", "tests/__main__.py", "tests/portpool.py",
           "tests/tmproot.py", "tests/jobfile.py", "tests/precious.py")
 
 
@@ -523,7 +523,7 @@ def jobs_cap():
     except ValueError:
         pass
     try:
-        src = open(os.path.join(REPO, "bin", "s9"), encoding="utf-8").read()
+        src = open(os.path.join(REPO, "bin", "s9.py"), encoding="utf-8").read()
         m = re.search(r'"test_jobs":\s*int\(_envnum\("S9_MAX_JOBS",\s*(\d+)', src)
         if m:
             return int(m.group(1))

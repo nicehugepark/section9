@@ -32,6 +32,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 HOOK = os.path.join(HERE, "..", "bin", "s9-audit-prompt")
 INSTALL = os.path.join(HERE, "..", "bin", "s9-install")
 
@@ -129,14 +130,14 @@ class StateTruth(unittest.TestCase):
 
             # B1. 이미 끝난 문서에는 붙이지 않는다
         with self.subTest("b1_done_doc_skipped"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("def cmd_commit_note(")
                 self.assertIn('("done", "cancelled")',
                               src[i:src.index("\ndef ", i + 10)])
 
             # F1. done 으로 자동 전이하지 않는다 — 근거 없는 완료는 거짓 진행보다 나쁘다
         with self.subTest("f1_no_auto_done"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("def cmd_commit_note(")
                 seg = src[i:src.index("\ndef ", i + 10)]
                 # 상태를 **읽는** 것은 맞다(끝난 문서를 건너뛰려면 봐야 한다).

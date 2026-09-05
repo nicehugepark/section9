@@ -25,6 +25,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class DocTidyTest(unittest.TestCase):
@@ -212,7 +213,7 @@ class DocTidyTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.docs_bulk("nuke", [self.b], "")
 
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         self.assertIn('"/api/docs/tidy"', src)
         self.assertIn('"/api/trash"', src)
 

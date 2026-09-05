@@ -23,6 +23,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 HOOK = os.path.join(HERE, "..", "bin", "s9-audit-session")
 HOOKS_JSON = os.path.join(HERE, "..", "harness", "claude", "hooks.json")
 
@@ -96,7 +97,7 @@ class CompactSignal(unittest.TestCase):
 
             # N4. 화면이 물어보는 자리에 실려 나간다 — 판정을 두 벌 만들지 않는다
         with self.subTest("n4_served_on_chat_target"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index('parsed.path == "/api/chat/target"')
                 self.assertIn("chat_compacting", src[i:i + 1500],
                               "터미널 상태 응답에 압축 여부가 없다")

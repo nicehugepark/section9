@@ -29,7 +29,8 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
-SRC = open(S9, encoding="utf-8").read()
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
+SRC = open(S9_SRC, encoding="utf-8").read()
 
 TMP = tempfile.mkdtemp(prefix="s9int-")
 # 모듈 import 시점에만 ROOT/MACHINE 고정 — 같은 프로세스의 다른 테스트 모듈에

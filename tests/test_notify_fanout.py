@@ -26,6 +26,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 TMP = tempfile.mkdtemp(prefix="s9-fanout-")
 os.environ["S9_ROOT"] = TMP
@@ -80,7 +81,7 @@ class FanOutContract(unittest.TestCase):
     """구현 계약 — 첫 후보에서 멈추지 않는다."""
 
     def test_loop_does_not_return_on_first_candidate(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         i = src.index("def chat_notify_transition")
         seg = src[i:i + 4200]
@@ -94,7 +95,7 @@ class FanOutContract(unittest.TestCase):
 
 class DigestSurfaces(unittest.TestCase):
     def test_digest_has_a_section_for_it(self):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertIn("받지 못한 전이 통지", src,
                       "digest 가 미수신 통지를 보여주지 않는다")

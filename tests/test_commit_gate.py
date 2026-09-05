@@ -200,7 +200,7 @@ class CommitGate(unittest.TestCase):
                           "코드 커밋인데 스모크가 게이트로 안 돈다")
             self.assertIn("--jobs", seen["argv"], "게이트가 직렬로 돌면 무게 반론이 되살아난다")
         with self.subTest("g8_subagents_count_too"):
-            with open(os.path.join(self.m.ROOT, "bin", "s9"), encoding="utf-8") as f:
+            with open(os.path.join(self.m.ROOT, "bin", "s9.py"), encoding="utf-8") as f:
                 src = f.read()
             self.assertIn("def live_agents(", src, "서브에이전트 판정이 없다")
             self.assertIn("agents = live_agents()", src,

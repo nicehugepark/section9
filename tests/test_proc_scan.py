@@ -39,6 +39,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 from portpool import free_port, wait_server  # noqa: E402
 
@@ -140,7 +141,7 @@ class ProcScope(unittest.TestCase):
 
     def test_s6b_sse_loop_drops_the_scope(self):
         """5분짜리 응답이 5분 낡은 표를 들지 않는다 — 소스 계약."""
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index('parsed.path == "/api/stream/sse"')
         j = src.index("elif parsed.path ==", i + 10)
         self.assertIn("proc_scope_reset()", src[i:j],
@@ -148,7 +149,7 @@ class ProcScope(unittest.TestCase):
 
     def test_s6c_scope_gate_is_one_place(self):
         """문은 메서드마다가 아니라 handle_one_request 한 곳이다."""
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def handle_one_request(self):")
         j = src.index("        def ", i + 10)
         # 문의 자리를 묻지 글자를 묻지 않는다 — 같은 문에 다른 범위가 함께

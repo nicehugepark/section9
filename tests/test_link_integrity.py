@@ -16,6 +16,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 TMP = tempfile.mkdtemp(prefix="s9link-")
 _prev = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_MACHINE", "S9_USER")}
@@ -137,7 +138,7 @@ class TestAutoRepairEntrypoint(unittest.TestCase):
         "기동 경로에 있다"이지 "앞에서 2500자 안에 있다"가 아니다.
         """
         import re
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         i = src.index("def cmd_serve(")
         m = re.compile(r"^def \w+\(", re.M).search(src, i + 1)

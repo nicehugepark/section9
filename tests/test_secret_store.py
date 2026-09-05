@@ -188,7 +188,7 @@ class InstanceIgnore(unittest.TestCase):
     """R1 — 인스턴스 리포는 users/ 를 track 한다. secrets 는 거기서 빠져야 한다."""
 
     def test_r1_instance_gitignore_excludes_secrets(self):
-        src = open(os.path.join(HERE, "..", "bin", "s9"),
+        src = open(os.path.join(HERE, "..", "bin", "s9.py"),
                    encoding="utf-8").read()
         i = src.index("INSTANCE_TRACK_GITIGNORE")
         block = src[i:i + 800]

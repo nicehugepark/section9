@@ -32,6 +32,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class ArticleType(unittest.TestCase):
@@ -127,14 +128,14 @@ class ArticleType(unittest.TestCase):
 
             # B3. 지목만 있고 주제가 없으면 만들지 않는다
         with self.subTest("b3_prefix_only"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("CHAT_ARTICLE_PREFIX.match(t)")
                 self.assertIn("if rest.strip():", src[i:i + 400],
                               "주제 없이 빈 아티클이 생긴다")
 
             # N5. API 가 명시 지정을 받는다 — 화면의 종류 선택이 붙을 자리
         with self.subTest("n5_api_as_type"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index('parsed.path == "/api/chat"')
                 self.assertIn('req.get("as_type")', src[i:i + 3200])
 

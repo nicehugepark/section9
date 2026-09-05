@@ -42,6 +42,7 @@ from webasset import index_path, part
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 INDEX = index_path()
 
 
@@ -226,7 +227,7 @@ class OneDoor(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             cls.src = f.read()
 
     def test_server_route_exists(self):
@@ -613,7 +614,7 @@ class ChangedValueMovesTheQueue(unittest.TestCase):
     def test_pickup_and_spawn_read_the_same_order(self):
         """`s9 next`(이어받기)와 무인 스폰이 그 순서를 본다 — 둘 중 하나라도
         제 기준을 들면 화면에서 올린 것이 실제로는 안 집힌다."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         pick = re.search(r"\ndef next_pickup\(.*?\n\ndef ", src, re.S)
         self.assertIsNotNone(pick)

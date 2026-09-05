@@ -34,6 +34,7 @@ from webasset import index_path   # 브라우저가 받는 한 장을 본다 (RE
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(os.path.dirname(HERE), "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 CSS = os.path.join(os.path.dirname(HERE), "web", "css", "actions.css")
 
 # 화면에 서면 안 되는 낱말. 사람이 터미널에 치는 것은 `s9 assign` 하나뿐이고,
@@ -86,7 +87,7 @@ class Screen(unittest.TestCase):
     def setUpClass(cls):
         with open(index_path(), encoding="utf-8") as f:
             cls.src = f.read()
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             cls.s9 = f.read()
         with open(CSS, encoding="utf-8") as f:
             cls.css = f.read()

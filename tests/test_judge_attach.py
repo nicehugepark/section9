@@ -132,7 +132,7 @@ class JudgeAttach(unittest.TestCase):
             self.assertRegex(fn, r'label: "response"',
                              "판정 근거의 라벨을 정하지 않는다")
         with self.subTest("the_order_and_the_stop_live_in_the_server"):
-                s9 = os.path.join(HERE, "..", "bin", "s9")
+                s9 = os.path.join(HERE, "..", "bin", "s9.py")
                 with open(s9, encoding="utf-8") as f:
                     src = f.read()
                 i = src.find('if parsed.path == "/api/status":')
@@ -180,7 +180,7 @@ class JudgeAttach(unittest.TestCase):
                 # 화면 안에 그런 확장자 목록이 둘이면 이미 갈라진 것이다 (실제로 갈려 있었다)
                 self.assertEqual(len(re.findall(r"png\|jpe\?g\|gif", self.src)), 1,
                                  "확장자 목록이 화면에 두 벌이다")
-                s9 = os.path.join(HERE, "..", "bin", "s9")
+                s9 = os.path.join(HERE, "..", "bin", "s9.py")
                 with open(s9, encoding="utf-8") as f:
                     src = f.read()
                 g = re.search(r'"image": \{([^}]*)\}', src)

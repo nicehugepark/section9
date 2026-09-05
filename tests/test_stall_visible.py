@@ -37,6 +37,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 INDEX = index_path()
 
 
@@ -199,7 +200,7 @@ class StallJudgmentServer(unittest.TestCase):
 
             # S5. 판정을 두 벌 만들지 않는다 — stalled 는 읽기만 한다
         with self.subTest("s5_single_judgment"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("def stalled_requests(")
                 seg = src[i:src.index("\ndef ", i + 10)]
                 self.assertIn("stalled_mins", seg,
@@ -209,7 +210,7 @@ class StallJudgmentServer(unittest.TestCase):
 
             # S6. 화면으로 나가는 통로에 실린다
         with self.subTest("s6_reaches_the_screen"):
-            src = open(S9, encoding="utf-8").read()
+            src = open(S9_SRC, encoding="utf-8").read()
             i = src.index('elif parsed.path == "/api/catalog"')
             j = src.index('elif parsed.path ==', i + 10)   # 다음 갈래 직전까지
             self.assertIn("catalog_with_live()", src[i:j],

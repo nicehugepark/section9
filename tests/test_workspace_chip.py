@@ -41,6 +41,7 @@ from webasset import index_path, part   # 화면은 조각이다 — 계약은 �
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def find_node():
@@ -189,7 +190,7 @@ class WorkspaceChip(unittest.TestCase):
 
             # W5 — 서버가 내는 사유 코드에 빠짐이 없다
         with self.subTest("w5_every_server_reason_has_words"):
-                s9 = read(S9)
+                s9 = read(S9_SRC)
                 codes = set(re.findall(r'(?:^|\s)[MW]\("([a-z-]+)"', s9, re.M))
                 self.assertGreaterEqual(len(codes), 10,
                                         "서버에서 사유 코드를 못 읽었다 — 판정 함수가 바뀌었나")

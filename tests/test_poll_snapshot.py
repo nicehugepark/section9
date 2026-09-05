@@ -23,6 +23,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def s9mod(root):
@@ -137,7 +138,7 @@ class PollSnapshot(unittest.TestCase):
 
     def test_t4b_do_post_rolls_the_epoch(self):
         """카운터를 굴리는 자리는 do_POST 입구 한 곳이다 (분기 금지)."""
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def do_POST(self):")
         j = src.index("def ", i + 10)
         self.assertIn("_POLL_EPOCH[0] += 1", src[i:j],
@@ -154,7 +155,7 @@ class PollSnapshot(unittest.TestCase):
                          "TTL=0 인데 스냅샷이 재사용됐다 — CLI 의미가 바뀐다")
 
     def test_t5b_serve_is_the_only_place_that_raises_ttl(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         hits = [l for l in src.splitlines()
                 if "POLL_SNAPSHOT_SEC = " in l and not l.lstrip().startswith("#")]
         self.assertEqual(len(hits), 2, hits)   # 모듈 기본 0.0 + cmd_serve 2.0
@@ -164,7 +165,7 @@ class PollSnapshot(unittest.TestCase):
         self.assertFalse(hasattr(self.m.chat_target, "_compute"),
                          "chat_target 이 게이트를 지난다 — tail 종료 0.2s 내 "
                          "반영 계약(C9/C18)이 깨진다")
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         self.assertNotIn("@_share_default_pass\ndef chat_target", src)
 
     # ---- T7. sessions 도 같은 게이트 — limit 명시는 우회 ----------------
@@ -179,7 +180,7 @@ class PollSnapshot(unittest.TestCase):
 
     # ---- T9. 응답 캐시는 게이트 **뒤**에 선다 — 두 번째 판정 금지 -------
     def test_t9_response_cache_sits_behind_the_gate(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index('elif parsed.path == "/api/catalog"')
         blk = src[i:src.index("elif parsed.path", i + 10)]
         g = blk.index("catalog_with_live()")

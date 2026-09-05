@@ -37,6 +37,7 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _png(path, w, h, rowfn):
@@ -118,7 +119,7 @@ class ShotBlank(unittest.TestCase):
                        encoding="utf-8").read()
             self.assertIn("[data-noscroll]", css)
         with self.subTest("t6_blank_capture_exits_nonzero"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertIn("sys.exit(5)", src, "백지에 실패 종료 코드가 없다")
             self.assertIn("'확인했다'의 근거로 쓰지 마라", src,

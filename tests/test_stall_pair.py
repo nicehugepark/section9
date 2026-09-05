@@ -58,7 +58,7 @@ def _server_src():
     임계를 화면에도 두는 것은 서버가 그 수를 행에 실어 주지 않기 때문이다
     (REQ-20260830-040). 베낀 값은 언젠가 갈라지므로, 갈라지는 순간 이 시험이
     잡는다 — 근원(서버가 실어 보내기)이 열리면 이 대조는 없어진다."""
-    with open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8") as f:
+    with open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8") as f:
         return f.read()
 
 

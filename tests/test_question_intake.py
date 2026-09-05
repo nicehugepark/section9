@@ -32,6 +32,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 PHOOK = os.path.join(HERE, "..", "bin", "s9-audit-prompt")
 
 # 대시보드에서 실제로 오갔던 모양의 발화들 (세션 로그 question:/chat: 라인 참조)
@@ -152,7 +153,7 @@ class ChatIntakeTest(unittest.TestCase):
                           "생성한 질문이 last_qst 로 묶이지 않았다 — "
                           "Stop 훅이 답을 붙일 대상을 못 찾는다")
         with self.subTest("i4_intake_judgement_is_shared"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertIn("_chat_classifier", src)
             # classify 를 훅에서 로드해 쓰는 구조는 이미 있다 — 판정도 같은 자리에서

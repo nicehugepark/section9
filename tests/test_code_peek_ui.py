@@ -36,6 +36,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def js_func(src, name):
@@ -83,7 +84,7 @@ class CodePeekUI(unittest.TestCase):
     def setUpClass(cls):
         with open(INDEX, encoding="utf-8") as f:
             cls.src = f.read()
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             cls.s9 = f.read()
 
     # ---------- A. 두 벌이 갈라지지 않는다 ----------

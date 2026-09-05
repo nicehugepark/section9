@@ -34,6 +34,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(HERE, "..", "web")
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 # 낱말 → 왜 반려됐고 무엇으로 바뀌었나. 메시지가 곧 다음 사람이 읽을 판정문이다.
 BANNED = {
@@ -217,7 +218,7 @@ def _surfaces():
     for p in sorted(glob.glob(os.path.join(WEB, "*.html"))):
         with open(p, encoding="utf-8") as f:
             out[os.path.basename(p)] = _html_text(f.read())
-    with open(S9, encoding="utf-8") as f:
+    with open(S9_SRC, encoding="utf-8") as f:
         out["bin/s9"] = _py_strings(f.read())
     return out
 

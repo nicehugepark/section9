@@ -22,12 +22,13 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class SecretApi(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
         i = cls.src.index('parsed.path == "/api/secrets"')
         # 끝을 글자 수로 자르면 주석 한 줄에 계약이 슬라이스 밖으로 밀린다
         cls.listing = cls.src[i:cls.src.index('parsed.path == "/api/users"')]

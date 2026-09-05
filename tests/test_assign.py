@@ -16,6 +16,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class Assign(unittest.TestCase):
@@ -126,7 +127,7 @@ class Assign(unittest.TestCase):
 
             # A5. 화면도 같은 문
         with self.subTest("a5_api_uses_the_same_door"):
-                with open(S9, encoding="utf-8") as f:
+                with open(S9_SRC, encoding="utf-8") as f:
                     src = f.read()
                 self.assertIn('parsed.path == "/api/assign"', src)
                 self.assertIn('via="dashboard")', src.split('parsed.path == "/api/assign"', 1)[1][:600])

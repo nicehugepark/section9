@@ -25,6 +25,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class NoteArgOrder(unittest.TestCase):
@@ -73,7 +74,7 @@ class NoteArgOrder(unittest.TestCase):
             r = self.cli("user", "--role", "admin", "add", "bob")
             self.assertNotIn("unrecognized arguments", r.stdout + r.stderr)
         with self.subTest("a7_the_rule_is_asked_of_the_parser"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertIn("sub.choices.get(sys.argv[1])", src,
                           "정규화가 파서에게 묻지 않는다")

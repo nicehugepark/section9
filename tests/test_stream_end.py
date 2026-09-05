@@ -19,6 +19,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 S9 = os.path.join(ROOT, "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 WEB = os.path.join(ROOT, "web", "app")
 
 
@@ -37,7 +38,7 @@ class TheServerCarriesTheEnd(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = read(S9)
+        cls.src = read(S9_SRC)
 
     def test_the_end_info_exists_and_reads_the_binding(self):
         m = re.search(r"def stream_end_info\(session, path\):([\s\S]{0,2200})",

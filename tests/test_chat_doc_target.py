@@ -20,6 +20,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load(name, path):
@@ -123,7 +124,7 @@ class ChatDocTarget(unittest.TestCase):
 
             # N5. 화면이 집어 준 것이 앞머리 표기보다 우선한다
         with self.subTest("n5_explicit_doc_wins"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("def chat_audit(text, sender, sid8, doc=")
                 seg = src[i:i + 1600]
                 self.assertIn("if doc:", seg)

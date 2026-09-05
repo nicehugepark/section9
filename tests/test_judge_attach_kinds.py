@@ -32,6 +32,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load():
@@ -73,7 +74,7 @@ class TheMark(unittest.TestCase):
             self.assertEqual(self.fn("/tmp/x.qqq"), "[File: /tmp/x.qqq]")
             self.assertEqual(self.fn("/tmp/noext"), "[File: /tmp/noext]")
         with self.subTest("it_reads_from_the_one_table"):
-            src = open(S9, encoding="utf-8").read()
+            src = open(S9_SRC, encoding="utf-8").read()
             i = src.find("def asset_mark(")
             self.assertGreater(i, 0)
             self.assertIn("TYPE_GROUPS", src[i:i + 900],
@@ -85,7 +86,7 @@ class TheLabel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.m = _load()
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
 
     def test_the_label(self):
         """판정의 근거는 질문이 아니다."""
@@ -112,7 +113,7 @@ class OneTrip(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
 
     def test_status_takes_attachments(self):
         i = self.src.find('if parsed.path == "/api/status":')

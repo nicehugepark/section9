@@ -35,6 +35,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 DOC = "REQ-20260829-999-62x6"
 PID = 424242
@@ -159,7 +160,7 @@ class TheCommand(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
 
     def test_the_command(self):
         """명령이 있어야 사람이 쓴다 — 함수만 있으면 아무도 못 부른다."""

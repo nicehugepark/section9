@@ -124,7 +124,7 @@ class ServeConcurrency(unittest.TestCase):
             #     대입 자리의 글자가 아니라 **실제로 쓰이는 값**을 잰다. 리터럴만 보면
             #     이름 뒤에서 5로 내려가도 시험이 침묵한다.
         with self.subTest("f1_queue_size_contract"):
-                src = open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8").read()
+                src = open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8").read()
                 self.assertIsNotNone(
                     re.search(r"ThreadingHTTPServer\.request_queue_size\s*=\s*"
                               r"SERVE_BACKLOG", src),
@@ -139,7 +139,7 @@ class ServeConcurrency(unittest.TestCase):
             #  ThreadingHTTPServer 의 자식이라는 사실까지 함께 계약한다 — 이름만 보면
             #  단일 스레드 부모로 바꿔치기해도 이 시험이 침묵한다.)
         with self.subTest("r1_server_is_threaded"):
-            src = open(os.path.join(HERE, "..", "bin", "s9"), encoding="utf-8").read()
+            src = open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8").read()
             flat = src.replace(" ", "")
             self.assertIn("QuietDisconnectServer((", flat,
                           "serve 바인드 지점이 사라졌다")

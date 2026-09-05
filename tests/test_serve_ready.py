@@ -23,6 +23,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 S9 = os.path.join(ROOT, "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 sys.path.insert(0, HERE)
 import portpool  # noqa: E402
 
@@ -200,7 +201,7 @@ class TheWiring(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = open(S9, encoding="utf-8").read()
+        cls.src = open(S9_SRC, encoding="utf-8").read()
 
     def _body(self, name):
         return self.src.split(f"def {name}(", 1)[1].split("\ndef ", 1)[0]

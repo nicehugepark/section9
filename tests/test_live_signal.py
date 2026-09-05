@@ -23,6 +23,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def loopback_ok():
@@ -325,7 +326,7 @@ class TestSpawnPidRecord(unittest.TestCase):
             # _spawn_worker 하나로 합치면서(반려·후속·항목재개가 각자 Popen을 갖고 있었다)
             # 더 강한 불변식으로 바꾼다 — 경로가 하나면 누락될 경로가 없다.
         with self.subTest("l12_all_spawn_sites_record_pid"):
-            with open(S9, encoding="utf-8") as f:
+            with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             spawns = src.count('wp = subprocess.Popen(argv,')
             self.assertEqual(spawns, 1, "워커 스폰 경로가 둘 이상으로 갈라졌다")

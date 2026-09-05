@@ -22,6 +22,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 PDF_FIXTURE = os.path.join(HERE, "fixtures", "web_print_ko.pdf")
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
 
@@ -33,7 +34,7 @@ SECRET = "청령포유배지"
 
 def s9_const(name):
     """bin/s9 에 선언된 정수 상수를 읽는다 — 테스트가 숫자를 중복 선언하지 않게."""
-    with open(S9, encoding="utf-8") as f:
+    with open(S9_SRC, encoding="utf-8") as f:
         m = re.search(rf"^{name}\s*=\s*([0-9_]+)", f.read(), re.M)
     assert m, f"{name} 상수가 bin/s9 에 없다"
     return int(m.group(1).replace("_", ""))

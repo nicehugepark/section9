@@ -27,6 +27,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _ok(label, **kw):
@@ -394,7 +395,7 @@ class Metrics(unittest.TestCase):
         guard = self.m._guard_paths(9909, self.tmp)
         self.assertNotEqual(os.path.dirname(p["lock"]),
                             os.path.dirname(guard["lock"]))
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def metrics_loop(")
         j = src.index("def _metrics_main(")
         self.assertNotIn("_guard_", src[i:j])
@@ -452,14 +453,14 @@ class Metrics(unittest.TestCase):
                          "pid 1(init)을 수집기로 봤다")
         self.assertTrue(self.m._metrics_is_collector(10**9),
                         "/proc 에 없는 pid 는 판정을 미루지 않고 참으로 둔다")
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         self.assertIn("_metrics_is_collector(pid)", src,
                       "stop 이 그 물음을 지나지 않는다")
 
     def test_h4_start_says_it_keeps_going_out_and_how_to_stop(self):
         """켜는 사람이 무엇을 켰는지 알아야 한다 — 비콘 고지."""
-        with open(S9, encoding="utf-8") as f:
+        with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         blk = src.split('if action == "start":', 1)[1][:1400]
         self.assertIn("밖으로 나간다", blk)
@@ -554,7 +555,7 @@ class CrossingLoad(unittest.TestCase):
         `_peak_tick` 을 부른다. 이 구조가 없으면 주기를 늘리는 순간 봉우리가
         통째로 사라진다(REQ-20260903-004 가 세운 것).
         """
-        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin", "s9"), encoding="utf-8").read()
+        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin", "s9.py"), encoding="utf-8").read()
         loop = src.split("def metrics_loop", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("_peak_tick()", loop)
         self.assertIn("min(1.0, left)", loop,

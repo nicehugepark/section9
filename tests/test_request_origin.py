@@ -17,6 +17,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class RequestOrigin(unittest.TestCase):
@@ -64,7 +65,7 @@ class RequestOrigin(unittest.TestCase):
                 # 훅·채팅 입구가 그 플래그를 붙인다
                 with open(os.path.join(HERE, "..", "bin", "s9-audit-prompt"), encoding="utf-8") as f:
                     self.assertIn('"--origin", "human"', f.read())
-                with open(S9, encoding="utf-8") as f:
+                with open(S9_SRC, encoding="utf-8") as f:
                     self.assertIn('"--user", sender or "dashboard", "--origin", "human"', f.read())
 
             # O2. 에이전트 파생

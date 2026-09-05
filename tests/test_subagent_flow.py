@@ -49,6 +49,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 # 순수 블록은 여럿일 수 있다(merge core · unread core) — 전부 이어 붙여 돌린다.
 CORE_RE = re.compile(
@@ -282,7 +283,7 @@ class ServerContract(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = read(S9)
+        cls.src = read(S9_SRC)
 
     def test_the_agent_stream_route_exists(self):
         self.assertIn('parsed.path == "/api/agentstream"', self.src)

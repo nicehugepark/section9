@@ -237,7 +237,7 @@ class TheWiring(unittest.TestCase):
     """R1. 스폰 경로는 여전히 하나다 — 재시도가 새 Popen 을 파지 않는다."""
 
     def test_r1_the_watcher_asks_before_it_spawns(self):
-        src = open(os.path.join(ROOT, "bin", "s9"), encoding="utf-8").read()
+        src = open(os.path.join(ROOT, "bin", "s9.py"), encoding="utf-8").read()
         body = src.split("def rework_watch_tick", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("_spawn_retry_tick", body,
                       "워처가 즉사를 묻지 않는다 — 529 한 번이 다시 10분을 잠근다")

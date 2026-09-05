@@ -273,7 +273,7 @@ class DialogSafeFocus(unittest.TestCase):
                 end = keys[i + 1][1] if i + 1 < len(keys) else len(body)
                 slices[name] = body[at:end]
 
-            with open(os.path.join(ROOT, "bin", "s9"), encoding="utf-8") as f:
+            with open(os.path.join(ROOT, "bin", "s9.py"), encoding="utf-8") as f:
                 s9 = f.read()
             # 갈래를 내는 함수 하나만 본다 — 파일 전체를 훑으면 「자리」의
             # main/worktree 같은 남의 kind 가 섞여 든다.

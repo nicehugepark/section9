@@ -23,6 +23,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 class NoteAnchor(unittest.TestCase):
@@ -99,7 +100,7 @@ class NoteAnchor(unittest.TestCase):
 
             # N4. 채팅 경로가 앵커를 문서까지 나른다
         with self.subTest("n4_chat_path_carries"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index("def chat_append_doc(")
                 self.assertIn("--anchor", src[i:i + 900])
                 j = src.index('parsed.path == "/api/chat"')
@@ -112,7 +113,7 @@ class NoteAnchor(unittest.TestCase):
             #     세션이 없으면 통째로 실패했다 — 사용자가 캡처로 지적했다:
             #     "메모를 보내지 못했습니다 — 지금 붙어 있는 세션이 없습니다".
         with self.subTest("n6_note_path_needs_no_session"):
-                src = open(S9, encoding="utf-8").read()
+                src = open(S9_SRC, encoding="utf-8").read()
                 i = src.index('parsed.path == "/api/note"')
                 seg = src[i:i + 1800]
                 self.assertIn("chat_append_doc", seg)
@@ -122,7 +123,7 @@ class NoteAnchor(unittest.TestCase):
 
             # N5. 수신함 줄에도 실린다 — 무엇을 대고 한 말인지 없으면 답할 수 없다
         with self.subTest("n5_inbox_carries"):
-            src = open(S9, encoding="utf-8").read()
+            src = open(S9_SRC, encoding="utf-8").read()
             i = src.index("def chat_send(")
             self.assertIn('line["anchor"]', src[i:i + 2500])
 

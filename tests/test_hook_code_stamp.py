@@ -28,6 +28,7 @@ from webasset import index_path   # 화면은 조각이다 — 계약은 이어 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load(name, path):
@@ -128,14 +129,14 @@ class HookStamp(unittest.TestCase):
 
     # H9. serve 기동이 **둘 다**를 지문으로 남긴다 — 남기지 않으면 물어볼 데가 없다
     def test_h9_serve_stamps_both(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         self.assertIn("SERVE_CODE_STAMP = running_code_stamp()", src)
         self.assertIn("serve-code.json", serve_tail(src))
 
     # H10. /api/serveinfo 도 같은 지문으로 판정한다 — 화면과 CLI 가 갈리면
     #      둘 중 어느 쪽을 믿어야 하는지가 또 하나의 문제가 된다
     def test_h10_serveinfo_uses_same_stamp(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index('parsed.path == "/api/serveinfo"')
         seg = src[i:i + 900]
         self.assertIn("running_code_stamp()", seg)
@@ -144,7 +145,7 @@ class HookStamp(unittest.TestCase):
     # H11. 훅 경로는 채팅 판정자를 **실제로 로드하는 그 경로**여야 한다.
     #      지문과 로드가 다른 파일을 가리키면 배너는 또 엉뚱한 것을 본다.
     def test_h11_hook_path_matches_the_loaded_one(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("_chat_classifier = mod.classify")
         seg = src[max(0, i - 900):i]
         self.assertIn("hook_path()", seg,

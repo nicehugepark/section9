@@ -322,7 +322,7 @@ def _show_gate_failure(r):
 # `COMMON` 이고 여기는 그 사본이다 — 훅은 시험 러너를 import 하지 않는다(그
 # import 하나가 포트풀·임시자리까지 끌고 온다). 두 목록이 갈리는지는
 # tests/test_wide_gate.py 가 값으로 대 본다.
-WIDE = ("bin/s9", "tests/__main__.py", "tests/portpool.py",
+WIDE = ("bin/s9", "bin/s9.py", "tests/__main__.py", "tests/portpool.py",
         "tests/tmproot.py", "tests/jobfile.py", "tests/precious.py")
 
 

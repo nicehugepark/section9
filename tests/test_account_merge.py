@@ -32,6 +32,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
 
 
 def _load(name="s9merge"):
@@ -121,7 +122,7 @@ class ARowStaysSelectable(Base):
         self.assertEqual(self.m.account_switchable(self.m.account_rows()), 0)
         _login(self.prof("second@ex.com"), "second@ex.com")
         self.assertEqual(self.m.account_switchable(self.m.account_rows()), 1)
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.find('elif parsed.path == "/api/accounts"')
         self.assertGreater(i, 0)
         self.assertIn("switchable", src[i:i + 600],
@@ -148,7 +149,7 @@ class SettleNeverDeletes(Base):
 
     def test_a4b_no_rmtree_in_settle(self):
         """경위는 docstring 에 남아도 좋다 — 코드에 남으면 안 된다."""
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.find("def account_settle(")
         j = src.find("\ndef ", i + 10)
         body = src[i:j].split('"""')[-1]
@@ -182,7 +183,7 @@ class SettleNeverDeletes(Base):
         self.m.account_rows(settle=False)
         self.assertEqual(_fingerprint(self.base), before,
                          "조회가 디렉토리를 바꿨다")
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.find('elif parsed.path == "/api/chat/target"')
         j = src.find('elif parsed.path == "/api/accounts"', i)
         self.assertIn("settle=False", src[i:j],
@@ -241,7 +242,7 @@ class RemoveIsGuarded(Base):
         self.assertTrue(os.path.isdir(outside), "링크 너머를 지웠다")
 
     def test_a8c_api_and_cli_both_exist(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         self.assertTrue("/api/account/remove" in src, "제거 API 가 없다")
         i = src.find("def cmd_account(")
         self.assertGreater(i, 0)
@@ -252,7 +253,7 @@ class GoingHomeClearsTheEnv(unittest.TestCase):
     """A9 — @home 으로 돌아가는데 프로필이 상속되면 조용히 무효가 된다."""
 
     def test_a9_restart_loop_pops_the_config_dir(self):
-        src = open(S9, encoding="utf-8").read()
+        src = open(S9_SRC, encoding="utf-8").read()
         i = src.find("m = _consume_restart_marker()")
         self.assertGreater(i, 0)
         blk = src[i:i + 1600]
@@ -270,7 +271,7 @@ class TheServerSpeaksPolitelyHere(unittest.TestCase):
     모든 message 문장이 존대 어미로 끝난다."""
 
     def test_every_remove_message_ends_politely(self):
-        s9 = os.path.join(HERE, "..", "bin", "s9")
+        s9 = os.path.join(HERE, "..", "bin", "s9.py")
         with open(s9, encoding="utf-8") as f:
             src = f.read()
         i = src.index("def account_remove(")
