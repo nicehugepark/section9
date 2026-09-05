@@ -4548,9 +4548,9 @@ def _pull_if_stale():
         pass
     try:
         before = _sync_git("rev-parse", "HEAD").stdout.strip()
-        r = _sync_git("pull", "--rebase", "--autostash", "-q", timeout=8)
+        r = _sync_pull_cmd(timeout=8)
         if r.returncode != 0:
-            _sync_git("rebase", "--abort", timeout=6)
+            _sync_abort_rebase()
         else:
             _sync_pull_stamp()
             # 바뀐 문서만 (REQ-20260902-035 §3) — 기준 커밋을 못 얻었으면
@@ -10224,6 +10224,21 @@ def _sync_git(*argv, timeout=6):
                           encoding="utf-8", errors="replace", timeout=timeout)
 
 
+def _sync_pull_cmd(timeout=8):
+    """당겨서 얹는다 — `pull --rebase` 가 아니라 **fetch 뒤 원격 추적 가지에 rebase**.
+
+    pull 은 FETCH_HEAD 를 읽는다. 같은 저장소에서 fetch 둘이 겹치면(대시보드의
+    sync 루프 + CLI 의 sync) 그 파일에 같은 줄이 둘 남아 「Cannot rebase onto
+    multiple branches」로 선다 — 실측 2026-09-06 08:36~08:47, 세 번 중 한 번,
+    FETCH_HEAD 2줄 모두 for-merge. 원격 추적 가지(refs/remotes/origin/<가지>)는
+    둘이 겹쳐 써도 같은 값이라 경합이 없다. 반환은 마지막 git 의 결과다.
+    """
+    f = _sync_git("fetch", "--quiet", timeout=timeout)
+    if f.returncode != 0:
+        return f
+    return _sync_git("rebase", "--autostash", "-q", "@{u}", timeout=timeout)
+
+
 _SYNC_FAIL_TS = os.path.join(ROOT, "state", ".sync-fail.ts")
 _SYNC_EVENTS = os.path.join(ROOT, "state", "sync.jsonl")
 SYNC_PUSH_RETRIES = 3          # 거부(non-fast-forward)는 장애가 아니다 — 곧바로 다시 민다
@@ -10634,8 +10649,7 @@ def sync_run(reason="", transport=True):
 
             def _pull(attempt):
                 t0 = _time.time()
-                pl = _sync_git("pull", "--rebase", "--autostash", "-q",
-                               timeout=8)
+                pl = _sync_pull_cmd(timeout=8)
                 kind = "" if pl.returncode == 0 else _sync_fail_kind(pl.stderr)
                 _sync_event(reason, "pull", t0, pl, attempt=attempt, kind=kind)
                 if pl.returncode == 0:

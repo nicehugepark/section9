@@ -47,7 +47,8 @@ class SyncClassify(unittest.TestCase):
 
         def fake(*argv, timeout=6):
             self.calls.append(argv)
-            op = argv[0]
+            # 「당기기」는 fetch 뒤 rebase 다 — 대본의 "pull" 은 그 rebase 에 답한다
+            op = "pull" if argv[:2] == ("rebase", "--autostash") else argv[0]
             if op == "diff":
                 return CP(out="vault/x.md\n")
             if op in q and q[op]:
@@ -78,7 +79,7 @@ class SyncClassify(unittest.TestCase):
         self.assertEqual([e["attempt"] for e in pushes], [0, 1])
         self.assertEqual(pushes[0]["kind"], "rejected")
         # 재시도 사이에 pull 이 한 번 더 있었다
-        self.assertEqual(sum(1 for c in self.calls if c[0] == "pull"), 2)
+        self.assertEqual(sum(1 for c in self.calls if c[:2] == ("rebase", "--autostash")), 2)
 
     # C2. 거부가 이어져도 백오프는 없다 — 다음 이벤트가 다시 민다
     def test_c2_repeated_rejection_ends_without_backoff(self):
@@ -110,7 +111,7 @@ class SyncClassify(unittest.TestCase):
             self.calls.append(argv)
             if argv[0] == "diff":
                 return CP(out="vault/x.md\n")
-            if argv[0] == "pull":
+            if argv[:2] == ("rebase", "--autostash"):
                 raise subprocess.TimeoutExpired("git", timeout)
             return CP()
         with mock.patch.object(self.m, "_sync_git", fake), \
@@ -154,7 +155,7 @@ class SyncClassify(unittest.TestCase):
             self.calls.append(argv)
             if argv[0] == "diff":
                 return CP(out="vault/x.md\n")
-            if argv[0] == "pull":
+            if argv[:2] == ("rebase", "--autostash"):
                 return CP(1, self.CONF)
             if argv[:2] == ("rebase", "--abort"):
                 return CP(128, "fatal: could not move back to bd8e852\n")
@@ -167,6 +168,17 @@ class SyncClassify(unittest.TestCase):
         self.assertIn(("rebase", "--quit"), self.calls)
         self.assertIn(("checkout", "-q", "-B", "main", "bd8e852a5ad7714c714132385533c5a8985feb92"),
                       self.calls)
+
+    # C12. 당기기는 pull 이 아니라 fetch → rebase @{u} — FETCH_HEAD 경합을 피한다 (실측 2026-09-06)
+    def test_c12_pull_is_fetch_then_rebase_onto_upstream(self):
+        r = self.run_sync({})
+        self.assertEqual(r, "ok")
+        verbs = [c[0] for c in self.calls]
+        self.assertNotIn("pull", verbs, "pull 은 FETCH_HEAD 를 읽는다 — 겹친 fetch 에 선다")
+        i_fetch = verbs.index("fetch")
+        i_rebase = next(i for i, c in enumerate(self.calls) if c[:2] == ("rebase", "--autostash"))
+        self.assertLess(i_fetch, i_rebase)
+        self.assertEqual(self.calls[i_rebase], ("rebase", "--autostash", "-q", "@{u}"))
 
     # C6. 관측 — commit/pull/push 단계가 한 줄씩
     def test_c6_events_have_stage_ms_rc(self):
