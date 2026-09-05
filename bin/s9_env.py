@@ -259,6 +259,187 @@ def reset_restore(root, which, dry_run=False):
     return {"from": src, "pre": pre}
 
 
+# ---- 옛 흔적 이동 (REQ-20260905-029, 2차) --------------------------------------
+# 1차(025)는 복사 백업·논리 차단·승계까지였다. 2차는 설치 시각 **이전**의 흔적을 같은
+# 파일시스템의 격리 자리로 rename 으로 옮긴다 — 삭제 명령은 없고, 저널이 항목마다
+# 옮기기 전·후를 적어 중간에 죽어도 역순으로 되돌린다. 명시 갈래다: 설치는 부르지 않는다.
+MOVE_WHOLE = ("history.jsonl", "sessions", "session-env", "shell-snapshots", "run", "file-history")
+MOVE_PREFIX = ("daemon",)           # daemon.lock·daemon.log·daemon.status.json·daemon/
+MOVE_NEVER = (".credentials.json", "settings.json", "CLAUDE.md", "agents", "skills",
+              "projects", "backups", "plugins")
+
+
+def moved_root(home=None):
+    """격리 자리 — `<config_dir>.s9-moved/<ts>/` (같은 파일시스템이라 rename 이 원자적이다)."""
+    home = home or config_home()
+    return os.path.realpath(home) + ".s9-moved"
+
+
+def move_plan(home=None, root=None):
+    """무엇을 옮길지 — [(상대경로, 절대경로)]. 설치 표식이 없으면 transcript 는 고르지 않는다
+    (모르면 안 옮긴다). 살아 있는 프로세스 검사는 호출자의 몫."""
+    import glob as _glob
+    home = home or config_home()
+    plan = []
+    for rel in MOVE_WHOLE:
+        p = os.path.join(home, rel)
+        if os.path.lexists(p):
+            plan.append((rel, p))
+    try:
+        for name in sorted(os.listdir(home)):
+            if name.startswith(MOVE_PREFIX) and name not in MOVE_NEVER:
+                plan.append((name, os.path.join(home, name)))
+    except OSError:
+        pass
+    if root and installed_at(root):
+        for jl in sorted(_glob.glob(os.path.join(home, "projects", "*", "*.jsonl"))):
+            if not predates_install(jl, root):
+                continue
+            rel = os.path.relpath(jl, home)
+            plan.append((rel, jl))
+            d = jl[:-len(".jsonl")]
+            if os.path.isdir(d):
+                plan.append((os.path.relpath(d, home), d))
+    return plan
+
+
+def _procs_alive(names=("claude",)):
+    """이름이 그 글자로 시작하는 살아 있는 프로세스 — /proc 만 본다(다른 판이면 빈 목록)."""
+    out = []
+    try:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open(f"/proc/{pid}/comm", encoding="utf-8", errors="replace") as f:
+                    comm = f.read().strip()
+            except OSError:
+                continue
+            # 정확히 그 이름만 — `claude-metrics`·`claude-oom-guard` 같은 상주 데몬은 세션이 아니다
+            # (실측 2026-09-05: 앞글자 일치는 이 기계에서 영원히 거부했다).
+            if comm in names:
+                out.append((int(pid), comm))
+    except OSError:
+        pass
+    return out
+
+
+def move_old(home=None, root=None, now=None, dry_run=False, alive=None, rename=None):
+    """옛 흔적을 격리 자리로 옮긴다. 반환 dict(dir, moved=[(rel, dst)], plan, refused).
+
+    저널 `journal.jsonl`: {"phase":"started"} → 항목마다 {"rel","src","dst","state":"moving"} 를
+    **옮기기 전에** 쓰고 옮긴 뒤 {"state":"ok"} → {"phase":"done"}. 되돌리기는 ok 항목을
+    역순으로 rename 한다. 살아 있는 claude 가 있으면 거부한다(열린 파일을 옮기지 않는다).
+    """
+    home = home or config_home()
+    alive = _procs_alive() if alive is None else alive
+    plan = move_plan(home, root)
+    if alive:
+        return {"dir": "", "moved": [], "plan": plan,
+                "refused": "claude 가 살아 있다: " + ", ".join(f"{p}({c})" for p, c in alive[:5])}
+    if not plan or dry_run:
+        return {"dir": "", "moved": [], "plan": plan, "refused": ""}
+    rename = rename or os.replace
+    ts = (now or datetime.datetime.now()).strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(moved_root(home), ts)
+    n = 1
+    while os.path.exists(dest):
+        n += 1
+        dest = os.path.join(moved_root(home), f"{ts}-{n}")
+    old_umask = os.umask(0o077)
+    try:
+        os.makedirs(dest)
+    finally:
+        os.umask(old_umask)
+    journal = os.path.join(dest, "journal.jsonl")
+
+    def _log(rec):
+        with open(journal, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            f.flush(); os.fsync(f.fileno())
+
+    _log({"phase": "started", "home": os.path.realpath(home), "at": ts, "n": len(plan)})
+    moved = []
+    for rel, src in plan:
+        dst = os.path.join(dest, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        _log({"rel": rel, "src": src, "dst": dst, "state": "moving"})
+        try:
+            rename(src, dst)
+        except OSError as e:
+            _log({"rel": rel, "state": "failed", "errno": e.errno, "error": str(e)})
+            return {"dir": dest, "moved": moved, "plan": plan,
+                    "refused": f"{rel}: {e} — 여기서 멈췄다. `s9 env unmove {os.path.basename(dest)}` 로 되돌린다"}
+        _log({"rel": rel, "state": "ok"})
+        moved.append((rel, dst))
+    _log({"phase": "done", "moved": len(moved)})
+    return {"dir": dest, "moved": moved, "plan": plan, "refused": ""}
+
+
+def moved_list(home=None):
+    r = moved_root(home)
+    try:
+        return sorted(n for n in os.listdir(r) if os.path.isfile(os.path.join(r, n, "journal.jsonl")))
+    except OSError:
+        return []
+
+
+def _journal(dest):
+    recs = []
+    try:
+        with open(os.path.join(dest, "journal.jsonl"), encoding="utf-8") as f:
+            for ln in f:
+                ln = ln.strip()
+                if ln:
+                    recs.append(json.loads(ln))
+    except (OSError, ValueError):
+        pass
+    return recs
+
+
+def move_restore(home=None, which=None, dry_run=False, rename=None):
+    """저널의 ok 항목을 **역순**으로 원위치에 rename 한다 — 원위치에 무엇이 생겼으면 그것을
+    `.s9-conflict-<시각>` 로 비켜 세운다. moving 인데 ok 가 없는 항목(옮기다 죽음)은 dst 가
+    있으면 되돌리고 없으면 건너뛴다. 끝나면 격리 디렉토리가 비고 저널만 남는다."""
+    home = home or config_home()
+    lst = moved_list(home)
+    which = which if which and which != "latest" else (lst[-1] if lst else "")
+    dest = os.path.join(moved_root(home), which)
+    recs = _journal(dest)
+    if not recs:
+        raise FileNotFoundError(f"이동 저널이 없다: {dest}")
+    rename = rename or os.replace
+    entries = {}
+    order = []
+    for r in recs:
+        if "rel" in r:
+            if r["rel"] not in entries:
+                order.append(r["rel"])
+                entries[r["rel"]] = dict(r)
+            else:
+                entries[r["rel"]].update(r)
+    back, aside = [], []
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    for rel in reversed(order):
+        e = entries[rel]
+        if e.get("state") == "failed" or not os.path.lexists(e.get("dst", "")):
+            continue
+        src = e["src"]
+        if os.path.lexists(src):
+            side = f"{src}.s9-conflict-{ts}"
+            aside.append((src, side))
+            if not dry_run:
+                rename(src, side)
+        back.append((rel, src))
+        if not dry_run:
+            os.makedirs(os.path.dirname(src), exist_ok=True)
+            rename(e["dst"], src)
+    if not dry_run:
+        with open(os.path.join(dest, "journal.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"phase": "restored", "at": ts, "n": len(back)}, ensure_ascii=False) + "\n")
+    return {"dir": dest, "back": back, "aside": aside}
+
+
 def installed_at_path(root):
     return os.path.join(root, "state", "installed_at")
 

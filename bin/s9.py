@@ -18023,6 +18023,12 @@ def cmd_env(args):
         at = env.installed_at(ROOT)
         print(f"설치 표식: {datetime.datetime.fromtimestamp(at).isoformat(timespec='seconds') if at else '없음'}")
         print(f"백업 {len(bks)}개 — {env.backups_root()}" + (f" (마지막 {bks[-1]})" if bks else ""))
+        mv = env.moved_list()
+        if mv:
+            print(f"옮겨 둔 옛 흔적 {len(mv)}벌 — {env.moved_root()} (되돌리기: s9 env unmove <시각>)")
+        pending = env.move_plan(root=ROOT)
+        if pending:
+            print(f"아직 제자리에 있는 옛 흔적 {len(pending)}개 — 옮기려면: s9 env move (먼저 s9 env move --dry-run)")
         return
     if act == "backups":
         for n in env.list_backups():
@@ -18073,7 +18079,33 @@ def cmd_env(args):
         do_user_config_set(who, "pref_승계", new, actor="s9 env inherit")
         print(f"{len(chosen)}줄을 {who} 의 개인 설정(pref_승계)에 넣었다 — `s9 user config {who} pref_승계 ''` 로 비운다")
         return
-    die("usage: s9 env status|backups|backup|restore [시각|latest] [--dry-run]|inherit [시각]")
+    if act == "move":
+        # 2차 정리 (REQ-20260905-029): 옛 흔적을 격리 자리로 rename — 삭제 없음, 저널, 되돌리기.
+        r = env.move_old(root=ROOT, dry_run=args.dry_run)
+        if r["refused"]:
+            die(f"옮기지 않는다 — {r['refused']}")
+        if not r["plan"]:
+            print("옮길 옛 흔적이 없다")
+            return
+        if args.dry_run:
+            print(f"(예정) {len(r['plan'])}개를 {env.moved_root()}/<시각>/ 로 옮긴다 — 삭제가 아니라 이동이다:")
+            for rel, _p in r["plan"][:40]:
+                print(f"  {rel}")
+            if len(r["plan"]) > 40:
+                print(f"  … 외 {len(r['plan']) - 40}개")
+            return
+        print(f"{len(r['moved'])}개를 {r['dir']} 로 옮겼다 — 되돌리려면: s9 env unmove {os.path.basename(r['dir'])}")
+        return
+    if act == "unmove":
+        r = env.move_restore(which=args.which, dry_run=args.dry_run)
+        tag = "(예정) " if args.dry_run else ""
+        for rel, src in r["back"]:
+            print(f"  {tag}{rel} → {src}")
+        for src, side in r["aside"]:
+            print(f"  {tag}원위치에 생긴 것은 옆으로: {os.path.basename(side)}")
+        print(f"{tag}{len(r['back'])}개를 {r['dir']} 에서 되돌렸다")
+        return
+    die("usage: s9 env status|backups|backup|restore [시각|latest] [--dry-run]|inherit [시각]|move [--dry-run]|unmove [시각|latest] [--dry-run]")
 
 
 def cmd_code(args):
@@ -25198,7 +25230,7 @@ def main():
     sc.set_defaults(fn=cmd_secret)
 
     ev = sub.add_parser("env", help="기존 환경의 승계·정리·백업 (설치 전 설정의 백업·되돌리기·승계)")
-    ev.add_argument("env_action", choices=["status", "backups", "backup", "restore", "inherit"])
+    ev.add_argument("env_action", choices=["status", "backups", "backup", "restore", "inherit", "move", "unmove"])
     ev.add_argument("which", nargs="?", help="restore/inherit: 백업 시각(YYYYMMDD-HHMMSS) 또는 latest")
     ev.add_argument("--dry-run", action="store_true", help="restore: 무엇이 바뀔지만 본다")
     ev.add_argument("--user", help="inherit: 개인 설정을 넣을 사용자(기본 현재 사용자)")
