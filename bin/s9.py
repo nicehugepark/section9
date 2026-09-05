@@ -443,6 +443,44 @@ def resolve_user(explicit=None, with_source=False):
     return result if with_source else result[0]
 
 
+_GIT_IDENTITY_CACHE = None
+
+
+def _git_identity():
+    """git 설정 파일에서 user.name·user.email — **프로세스를 띄우지 않는다.**
+
+    resolve_user 는 뜨거운 길이라 여기서 git 을 부르면 호출마다 프로세스 하나고,
+    subprocess 를 흉내 내는 시험들(자동 갱신·워커 스폰)이 그 호출에 걸려 붉는다
+    (실측 2026-09-06 e0eb4f7: s9_code_args u1/u4·claim_liveness). 파일은 셋 —
+    저장소 .git/config 가 전역(~/.gitconfig · ~/.config/git/config)보다 앞선다.
+    """
+    global _GIT_IDENTITY_CACHE
+    if _GIT_IDENTITY_CACHE is not None:
+        return _GIT_IDENTITY_CACHE
+    ident = {}
+    files = [os.path.join(ROOT, ".git", "config"),
+             os.path.expanduser("~/.gitconfig"),
+             os.path.expanduser("~/.config/git/config")]
+    for path in files:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                in_user = False
+                for ln in f:
+                    t = ln.strip()
+                    if t.startswith("["):
+                        in_user = t.lower().replace(" ", "") == "[user]"
+                        continue
+                    if in_user and "=" in t and not t.startswith(("#", ";")):
+                        k, _, v = t.partition("=")
+                        k = k.strip().lower()
+                        if k in ("name", "email") and k not in ident:
+                            ident[k] = v.strip().strip('"')
+        except OSError:
+            continue
+    _GIT_IDENTITY_CACHE = ident
+    return ident
+
+
 def _user_by_git_identity():
     """git 이 아는 이 사람(user.name·user.email)과 맞는 등록 사용자 — 이름·github·이메일.
 
@@ -451,17 +489,8 @@ def _user_by_git_identity():
     user.name=nicehugepark 을 알고 있었다 — 등록 사용자와 같은 이름이다. 새 계정을
     지어내기 전에 그 증거를 본다. 어느 것도 안 맞으면 빈 문자열.
     """
-    import subprocess as _sp
-    try:
-        r = _sp.run(["git", "config", "--get-regexp", r"^user\.(name|email)$"],
-                    cwd=ROOT, capture_output=True, text=True, timeout=5)
-    except (OSError, _sp.SubprocessError):
-        return ""
-    ident = {}
-    for ln in (r.stdout or "").splitlines():
-        k, _, v = ln.partition(" ")
-        ident[k.strip()] = v.strip()
-    name, email = ident.get("user.name", ""), ident.get("user.email", "").lower()
+    ident = _git_identity()
+    name, email = ident.get("name", ""), ident.get("email", "").lower()
     if not (name or email):
         return ""
     try:
