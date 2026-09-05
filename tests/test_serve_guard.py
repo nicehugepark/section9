@@ -53,7 +53,7 @@ class GuardLoopTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="s9guard-")
         os.makedirs(os.path.join(self.root, "state"))
-        self.port = 18999          # 아무도 bind 하지 않는다(주입 루프 전용)
+        self.port = 20999          # 아무도 bind 하지 않는다(주입 루프 전용) — 풀·프로브 밖
         self.slept = []
 
     def _records(self):

@@ -11,6 +11,10 @@ devops-engineer 가 코드를 읽다 찾았다(REQ-20260904-013): `probe_new_por
 import importlib.machinery
 import importlib.util
 import os
+import shutil
+import tempfile
+import sys
+import subprocess
 import socket
 import unittest
 
@@ -82,8 +86,67 @@ class TheProbe(unittest.TestCase):
         self.assertIn(r["port"], self.m.PROBE_PORTS)
         lo, hi = min(self.m.PROBE_PORTS), max(self.m.PROBE_PORTS)
         self.assertLess(hi, 32768, "커널 임시 범위와 겹친다")
-        self.assertGreaterEqual(lo, self.m.POOL_LO)
-        self.assertLessEqual(hi, self.m.POOL_HI)
+        self.assertGreaterEqual(lo, self.m.POOL_LO, "우리 대역 아래다")
+        self.assertGreater(lo, self.m.POOL_HI, "프로브가 풀과 겹친다 — 칸이 늘면 시험 서버가 그 자리를 잡는다")
+        self.assertLess(hi, 32768)
+
+    def test_p4_the_pool_never_reaches_the_probes(self):
+        """P4. 칸을 아무리 넓혀도 풀 꼭대기는 회수 대역 안이고 프로브 아래다.
+
+        실사고 2026-09-05 (REQ-20260905-005): 칸 8 로 풀이 19056 까지 자랐는데
+        회수 대역은 18999 에서 끝나, 19089 의 감시자 둘이 스위트 뒤에 남았다.
+        두 파일의 상수가 갈리면 바로 그 사고다 — 여기서 못박는다.
+        """
+        code = ("import portpool as p; print(p.POOL_BASE, p.POOL_SIZE, p.SLOT_SIZE)")
+        for slots in ("4", "8", "16", "64"):
+            r = subprocess.run([sys.executable, "-c", code], cwd=HERE,
+                               capture_output=True, text=True, timeout=60,
+                               env={**os.environ, "S9_TEST_PORT_SLOTS": slots})
+            base, size, slot = map(int, r.stdout.split())
+            top = base + size - 1
+            self.assertGreaterEqual(base, self.m.POOL_LO)
+            self.assertLessEqual(top, self.m.POOL_HI,
+                                 f"칸 {slots}: 풀 꼭대기 {top} 가 회수 대역 밖이다")
+            self.assertLess(top, min(self.m.PROBE_PORTS), f"칸 {slots}: 프로브와 겹친다")
+            self.assertGreaterEqual(slot, 8, f"칸 {slots}: 칸이 8포트보다 좁다")
+
+    def test_p5_a_reparented_supervisor_in_the_pool_is_an_orphan(self):
+        """P5. 재양육된 풀 포트의 감시자는 고아다 — 자식만 죽이면 되살아난다."""
+        rows = [(15248, 1, 3000,
+                 "/usr/bin/python3 /x/bin/s9 serve --supervise --guard-run --port 19089 --host 127.0.0.1"),
+                (17682, 15248, 3000, "python3 /x/bin/s9 serve --host 127.0.0.1 --port 19089")]
+        _serves, orphans, _chromes = self.m.scan(rows, live_runs=set())
+        self.assertIn(15248, [p for p, _a, _c in orphans], "풀 안 감시자가 고아로 안 보인다")
+
+    def test_p6_nothing_in_the_pool_dies_while_a_suite_runs(self):
+        """P6. 스위트가 도는 동안은 풀의 재양육 서버를 거두지 않는다.
+
+        감시자는 double fork 로 일부러 재양육된다 — 살아 있는 실행 루트가 있으면
+        그것은 시험 중인 물건이다. 실사고 2026-09-05: 대시보드 틱이 돌고 있는
+        시험의 감시자를 죽여 전체가 292→521초, 3건 붉음.
+        """
+        rows = [(15248, 1, 30,
+                 "/usr/bin/python3 /x/bin/s9 serve --supervise --guard-run --port 19089 --host 127.0.0.1")]
+        _s, orphans, _c = self.m.scan(rows, live_runs={4242})
+        self.assertEqual(orphans, [], "도는 스위트의 감시자를 고아로 봤다")
+
+    def test_p7_live_runs_come_from_run_roots_with_living_owners(self):
+        """P7. 살아 있는 실행 = 주인이 살아 있는 s9run-<pid>- 루트."""
+        base = tempfile.mkdtemp(prefix="s9probe-")
+        try:
+            os.makedirs(os.path.join(base, f"s9run-{os.getpid()}-abc"))
+            os.makedirs(os.path.join(base, "s9run-999999999-dead"))
+            self.assertEqual(self.m.live_test_runs(base), {os.getpid()})
+            # 러너가 TMPDIR 을 실행 루트로 돌린 자식 안에서 불려도 형제를 본다
+            inner = os.path.join(base, f"s9run-{os.getpid()}-abc")
+            orig = self.m.tempfile.gettempdir
+            self.m.tempfile.gettempdir = lambda: inner
+            try:
+                self.assertIn(os.getpid(), self.m.live_test_runs())
+            finally:
+                self.m.tempfile.gettempdir = orig
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
 
     def test_p4_the_listener_really_answers(self):
         """P4. 흉내가 아니라 진짜로 — 리스너가 서고 실제 연결이 닿는다."""

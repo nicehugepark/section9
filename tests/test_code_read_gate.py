@@ -84,7 +84,33 @@ def _req(port, path, host_header=None, tries=14):
             last = e
             time.sleep(delay)
             delay = min(delay * 1.7, 2.0)
-    raise last
+    # 실패는 범인을 지목해야 한다 (REQ-20260905-005 실측: 전체 스위트에서
+    # 간헐적으로 timed out — 그 순간 포트를 누가 쥐고 있었는지 없이는 못 쫓는다).
+    who = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True,
+                         timeout=10).stdout
+    who = [ln for ln in who.splitlines() if f":{port} " in ln]
+    ps = subprocess.run(["ps", "-eo", "pid,ppid,etimes,args"], capture_output=True,
+                        text=True, timeout=10).stdout
+    ps = [ln for ln in ps.splitlines() if f"--port {port}" in ln]
+    # 살아 있는데 답이 없으면 **어디서 자고 있는지** 서버에게 묻는다 — serve 는
+    # SIGUSR1 에 모든 스레드의 스택을 <S9_ROOT>/state/serve-threads.txt 에 쓴다.
+    stacks = ""
+    for ln in ps:
+        pid = int(ln.split()[0])
+        try:
+            env = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+            root = next((e.split(b"=", 1)[1].decode() for e in env
+                         if e.startswith(b"S9_ROOT=")), "")
+            import signal as _sig
+            os.kill(pid, _sig.SIGUSR1)
+            time.sleep(1.0)
+            dump = os.path.join(root, "state", "serve-threads.txt")
+            stacks += "\n".join(open(dump, encoding="utf-8", errors="replace")
+                                 .read().splitlines()[-80:])
+        except (OSError, StopIteration, ValueError) as e:
+            stacks += f"(스택 덤프 실패: {e})"
+    raise type(last)(f"{last} — :{port} 리스너 {who or '없음'} · 프로세스 {ps or '없음'}"
+                     f"\n--- 서버 스레드 스택 ---\n{stacks}")
 
 
 class CodeReadGate(unittest.TestCase):

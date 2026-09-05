@@ -74,7 +74,14 @@ POOL_BASE = int(os.environ.get("S9_TEST_PORT_BASE", "18800"))
 # 넘겨주고, 칸마다 32포트를 유지하도록 풀 폭도 함께 넓힌다(18800~ 대역은
 # 커널 임시 범위 32768 아래라 여유가 크다).
 POOL_SLOTS = max(1, int(os.environ.get("S9_TEST_PORT_SLOTS", "4")))
+# 풀의 꼭대기 — bin/s9-doctor 의 POOL_HI 와 같은 값이어야 한다. 회수는 그 대역
+# 안에서만 도니, 풀이 그 위로 자라면 거기 남은 서버·감시자는 아무도 거두지
+# 않는다 (실사고 2026-09-05, REQ-20260905-005: 칸 8 → 19056 까지 자라 19089 의
+# 감시자 둘이 남았다). 프로브 자리(19990~)도 그 위다. 칸이 많아 꼭대기를 넘으면
+# 칸을 좁히지 않고 풀을 접는다 — 칸마다 8포트는 남는다.
+POOL_TOP = 19989
 POOL_SIZE = int(os.environ.get("S9_TEST_PORT_SIZE", str(max(128, POOL_SLOTS * 32))))
+POOL_SIZE = min(POOL_SIZE, POOL_TOP + 1 - POOL_BASE)
 SLOT_SIZE = max(8, POOL_SIZE // POOL_SLOTS)
 LOCK_DIR = os.path.join(tempfile.gettempdir(), "s9-portpool")
 

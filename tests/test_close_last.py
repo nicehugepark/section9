@@ -87,7 +87,10 @@ class ServerClosesLast(unittest.TestCase):
         buf = b""
         t0 = time.time()
         while True:
-            chunk = c.recv(65536)
+            try:
+                chunk = c.recv(65536)
+            except ConnectionResetError:
+                break                # 서버가 리셋으로 놓았다 — 놓은 것은 놓은 것이다
             if not chunk:
                 break                # 서버의 FIN
             buf += chunk

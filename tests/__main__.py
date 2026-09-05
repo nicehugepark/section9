@@ -761,7 +761,7 @@ def main():
     # test_session_wake, test_link_integrity, …). 루트를 나중에 세우면 그것들이
     # 문 밖에 생겨 그대로 남는다 — 전체 스위트 1회에 22개가 그렇게 샜다.
     tmp_root, prev_tmpdir = tmproot.make_run_root()
-    ok, empty, leaked = False, [], []
+    ok, empty, leaked, ran = False, [], [], False
     pats, fp, lock_fh = [], None, None
     try:
         raw = sys.argv[1:]
@@ -841,6 +841,7 @@ def main():
             bump, clear = jobfile.start(len(files),
                                         args=" ".join(sys.argv[1:4]))
             try:
+                ran = True
                 ok, _n = run_sharded(pats, jobs, bump=bump)
             finally:
                 clear()
@@ -900,6 +901,7 @@ def main():
                 last_ts[0] = now
                 bump(self.testsRun)
         try:
+            ran = True
             res = unittest.TextTestRunner(verbosity=2,
                                           resultclass=_Result).run(suite)
         finally:
@@ -916,6 +918,13 @@ def main():
             print(f"[임시자리 회수/끝난 뒤] 테스트가 남긴 {len(left)}개를 "
                   f"거뒀다: {head}", file=sys.stderr)
         leaked = [] if nested else _reap("끝난 뒤")
+        if ran and not nested:
+            # 이 실행이 남긴 풀 서버·감시자는 이 실행이 거둔다 (REQ-20260905-005).
+            # 실행 루트를 지운 **뒤**여야 한다 — doctor 는 살아 있는 실행 루트가
+            # 있으면 풀의 재양육 서버를 시험 중인 것으로 보고 미룬다. 아무것도
+            # 안 돈 호출(재사용·변경 없음)에는 걸지 않는다 — 그 호출은 게이트가
+            # 자주 부르고, 2초를 얹으면 「즉시」라는 계약이 깨진다.
+            portpool._reclaim_orphans()
     if leaked:
         # 거뒀더라도 실패로 센다 — 조용히 치우면 다음에 또 생긴다.
         print(f"실패: 테스트가 사용자 대시보드 포트에 서버 {len(leaked)}개를 "
