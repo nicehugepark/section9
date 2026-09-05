@@ -120,6 +120,54 @@ class SyncClassify(unittest.TestCase):
         self.assertIn(("rebase", "--abort"), self.calls)
         self.assertTrue(self.backoff())
 
+    UNTRACKED = ("error: The following untracked working tree files would be overwritten by merge:\n"
+                 "\tusers/sjpark/machines.json\n"
+                 "Please move or remove them before you merge.\nAborting\n")
+
+    # C10. 추적 안 되는 파일이 pull 을 막으면 비켜 세우고 한 번 더 당긴다 (jade 실사고 2026-09-06)
+    def test_c10_untracked_file_is_rescued_and_pull_retried(self):
+        os.makedirs(os.path.join(self.root, "users", "sjpark"))
+        with open(os.path.join(self.root, "users", "sjpark", "machines.json"), "w") as f:
+            f.write("{}")
+        r = self.run_sync({"pull": [CP(1, self.UNTRACKED), CP(0)]})
+        self.assertEqual(r, "ok")
+        pulls = [e for e in self.events() if e["stage"] == "pull"]
+        self.assertEqual([e["attempt"] for e in pulls], [0, 1])
+        self.assertEqual(pulls[0]["kind"], "untracked")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "users", "sjpark", "machines.json")),
+                         "막던 파일이 제자리에 그대로다")
+        rescued = [p for p, _, fs in os.walk(os.path.join(self.root, "state", "sync-rescue"))
+                   if "machines.json" in fs]
+        self.assertEqual(len(rescued), 1, "지운 것이 아니라 옮긴 것이어야 한다")
+        self.assertFalse(self.backoff())
+
+    # C11. rebase --abort 가 실패하면 --quit 뒤 가지를 orig-head 로 되돌린다 — 잔재를 남기지 않는다
+    def test_c11_failed_abort_quits_and_restores_the_branch(self):
+        rb = os.path.join(self.root, ".git", "rebase-merge")
+        os.makedirs(rb)
+        with open(os.path.join(rb, "orig-head"), "w") as f:
+            f.write("bd8e852a5ad7714c714132385533c5a8985feb92\n")
+        with open(os.path.join(rb, "head-name"), "w") as f:
+            f.write("refs/heads/main\n")
+
+        def fake(*argv, timeout=6):
+            self.calls.append(argv)
+            if argv[0] == "diff":
+                return CP(out="vault/x.md\n")
+            if argv[0] == "pull":
+                return CP(1, self.CONF)
+            if argv[:2] == ("rebase", "--abort"):
+                return CP(128, "fatal: could not move back to bd8e852\n")
+            return CP()
+        with mock.patch.object(self.m, "_sync_git", fake), \
+                mock.patch.object(self.m, "sync_mode", lambda: "remote"), \
+                mock.patch("time.sleep", lambda s: None):
+            r = self.m.sync_run("t")
+        self.assertEqual(r, "pull-conflict")
+        self.assertIn(("rebase", "--quit"), self.calls)
+        self.assertIn(("checkout", "-q", "-B", "main", "bd8e852a5ad7714c714132385533c5a8985feb92"),
+                      self.calls)
+
     # C6. 관측 — commit/pull/push 단계가 한 줄씩
     def test_c6_events_have_stage_ms_rc(self):
         self.run_sync({})

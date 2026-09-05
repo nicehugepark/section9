@@ -10180,10 +10180,78 @@ def _sync_fail_kind(stderr):
     if re.search(r"non-fast-forward|fetch first|\[rejected\]|"
                  r"failed to push some refs", t):
         return "rejected"
+    if re.search(r"untracked working tree files would be overwritten", t):
+        return "untracked"   # 추적 안 되는 파일이 자리를 막는다 — 비켜 세우면 된다
     if re.search(r"CONFLICT|could not apply|Resolve all conflicts|"
                  r"unmerged|needs merge", t):
         return "conflict"
     return "net"
+
+
+def _sync_rescue_untracked(stderr):
+    """pull 을 막은 「추적 안 되는 파일」을 state/sync-rescue/<시각>-untracked/ 로 옮긴다.
+
+    실사고 jade 2026-09-06 01:19: s9 가 스스로 쓰는 users/<나>/machines.json 이
+    로컬 commit 에도 들어 있고 작업 나무에도 새로 생겨 있었다. pull --rebase 가
+    「untracked working tree files would be overwritten」로 서고, 이어진 abort 마저
+    실패해 rebase 잔재가 남았다 — 그 뒤의 sync 는 전부 pull-fail 이었다. 지우지
+    않고 옮긴다(옆으로 세운 것은 sync-rescue 에 남는다). 옮긴 경로 목록을 준다.
+    """
+    paths = []
+    took = False
+    for ln in str(stderr or "").splitlines():
+        if "would be overwritten" in ln:
+            took = True
+            continue
+        if took:
+            if ln.startswith(("\t", "        ")):
+                paths.append(ln.strip())
+            elif ln.strip():
+                break
+    if not paths:
+        return []
+    dest = os.path.join(_SYNC_RESCUE_DIR, f"{now_iso()[:19].replace(':', '')}-untracked")
+    moved = []
+    for rel in paths:
+        src = os.path.join(ROOT, rel)
+        if not os.path.lexists(src):
+            continue
+        dst = os.path.join(dest, rel)
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.replace(src, dst)
+            moved.append(rel)
+        except OSError:
+            pass
+    return moved
+
+
+def _sync_abort_rebase():
+    """rebase 를 물린다 — abort 가 실패하면 잔재를 비우고 가지를 원위치로 되돌린다.
+
+    `rebase --abort` 가 「could not move back to <sha>」로 실패한 실사고(jade
+    2026-09-06)가 있다. 그때 .git/rebase-merge 가 남으면 그 뒤의 pull 이 전부
+    「rebase in progress」로 선다. orig-head·head-name 을 읽어 --quit 뒤 가지를
+    그 자리로 돌려놓는다 — 로컬 commit 은 하나도 잃지 않는다.
+    """
+    ab = _sync_git("rebase", "--abort", timeout=6)
+    if ab.returncode == 0:
+        return True
+    rb = os.path.join(ROOT, ".git", "rebase-merge")
+    if not os.path.isdir(rb):
+        return ab.returncode == 0
+    try:
+        with open(os.path.join(rb, "orig-head"), encoding="utf-8") as f:
+            orig = f.read().strip()
+        with open(os.path.join(rb, "head-name"), encoding="utf-8") as f:
+            branch = f.read().strip().replace("refs/heads/", "") or "main"
+    except OSError:
+        return False
+    _sync_git("rebase", "--quit", timeout=6)
+    _sync_git("checkout", "-q", "-B", branch, orig, timeout=6)
+    _sync_log(f"↺ rebase --abort 실패 → --quit 뒤 {branch} 를 {orig[:7]} 로 되돌렸다 "
+              f"(로컬 commit 보존)")
+    return True
 
 
 # 워커 즉사의 세 갈래 (REQ-20260903-018). `_sync_fail_kind` 와 같은 규율이다:
@@ -10505,7 +10573,15 @@ def sync_run(reason="", transport=True):
                 if pl.returncode == 0:
                     _sync_pull_stamp()
                 if pl.returncode != 0:
-                    _sync_git("rebase", "--abort", timeout=6)
+                    _sync_abort_rebase()
+                    if kind == "untracked" and attempt == 0:
+                        # 자리를 막은 것이 추적 안 되는 파일이면(십중팔구 s9 가
+                        # 스스로 쓴 것) 비켜 세우고 곧바로 한 번 더 당긴다.
+                        moved = _sync_rescue_untracked(pl.stderr)
+                        _sync_log(f"↺ pull({reason}): 추적 안 되는 파일 {len(moved)}개를 "
+                                  f"sync-rescue 로 비켜 세우고 다시 당긴다 — {moved[:3]}")
+                        if moved:
+                            return _pull(attempt + 1)
                     # 충돌은 장애가 아니다 — 물러나 봐야 같은 충돌이다. 병합
                     # 드라이버(REQ-20260902-024)와 표면화(-025)의 몫이다.
                     if kind == "net":
