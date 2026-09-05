@@ -438,8 +438,44 @@ def resolve_user(explicit=None, with_source=False):
             # 보인다.** 실제로 그랬다. whoami_info 는 이미 이 매칭을 했는데
             # 여기만 안 해서 화면과 CLI 의 판정이 갈렸다.
             acct = getpass.getuser()
-            result = (_user_by_os_account(acct) or acct, "os-account")
+            result = (_user_by_os_account(acct) or _user_by_git_identity() or acct,
+                      "os-account")
     return result if with_source else result[0]
+
+
+def _user_by_git_identity():
+    """git 이 아는 이 사람(user.name·user.email)과 맞는 등록 사용자 — 이름·github·이메일.
+
+    jade 실사고 2026-09-06: 운영체제 계정 sjpark 이 os_accounts 에 없어 「sjpark」이
+    조용히 사용자로 섰고 users/sjpark 이 생겨 동기화까지 됐다. 그 머신의 git 은
+    user.name=nicehugepark 을 알고 있었다 — 등록 사용자와 같은 이름이다. 새 계정을
+    지어내기 전에 그 증거를 본다. 어느 것도 안 맞으면 빈 문자열.
+    """
+    import subprocess as _sp
+    try:
+        r = _sp.run(["git", "config", "--get-regexp", r"^user\.(name|email)$"],
+                    cwd=ROOT, capture_output=True, text=True, timeout=5)
+    except (OSError, _sp.SubprocessError):
+        return ""
+    ident = {}
+    for ln in (r.stdout or "").splitlines():
+        k, _, v = ln.partition(" ")
+        ident[k.strip()] = v.strip()
+    name, email = ident.get("user.name", ""), ident.get("user.email", "").lower()
+    if not (name or email):
+        return ""
+    try:
+        for u in registered_users():
+            prof = user_profile(u)
+            emails = prof.get("emails") or []
+            emails = [str(e).lower() for e in (emails if isinstance(emails, list) else [emails])]
+            if name and (name == u or name == str(prof.get("github") or "")):
+                return u
+            if email and email in emails:
+                return u
+    except Exception:
+        pass
+    return ""
 
 
 def _user_by_os_account(acct):
@@ -1260,7 +1296,10 @@ def machine_register(fp, name=None):
     (그것이 곧 충돌이고, 판정은 machine_fp_conflict 가 한다).
     반환: 등록부의 그 fp 항목(dict) 또는 None(쓸 자리가 없을 때)."""
     name = name or _fp_user()
-    if not name:
+    if not name or name not in registered_users():
+        # 미등록 이름(운영체제 계정 폴백)에는 등록부를 만들지 않는다 — 만드는
+        # 순간 users/<계정>/ 이 생겨 사용자로 보이고 동기화까지 된다(jade 실사고
+        # 2026-09-06, REQ-20260906-008). 등록은 s9 user add/attach 의 몫이다.
         return None
     path = machines_registry_path(name)
     reg = _read_json(path)
