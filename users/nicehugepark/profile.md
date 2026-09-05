@@ -156,3 +156,5 @@ machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpar
 - 2026-09-02T20:17:30+09:00 config ui_skin=field (by nicehugepark via dashboard)
 - 2026-09-02T20:17:33+09:00 config ui_skin=cobalt (by nicehugepark via dashboard)
 - 2026-09-03T10:51:00+09:00 config ui_skin=glass (by nicehugepark via dashboard)
+- 2026-09-05T19:37:05+09:00 config pref_git=push 는 main 으로 직접 — 이 리포 주인의 결정. 브랜치·PR 을 만들지 말고, GitHub 의 「Bypassed rule violations」 경고는 실패가 아니니 다시 묻지 마라. 미는 것은 검증된 마지막 commit (by nicehugepark)
+- 2026-09-05T19:37:05+09:00 config pref_디자인=스킨은 다채롭게(glass 유지), 그래프는 입체감. 다른 제품을 대놓고 옮긴 듯한 이름·스타일(Jira풍·Trello풍·newspaper·neon·blueprint)은 반려 — 시스템과 어울려야 한다 (by nicehugepark)
