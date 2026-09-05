@@ -268,41 +268,128 @@ def current_user():
     return g if os.path.isdir(os.path.join(ROOT, "users", g)) else ""
 
 
-def link_into(src_dir, dst_dir, label):
+COLLISION_PREFIX = "s9-"
+PLACED = []      # 이번 설치가 ~/.claude 에 놓은 것 — [{kind, name, path, how}]
+COLLIDED = []    # 이름이 겹쳐 s9- 로 비켜 선 것 — [{kind, name, theirs, ours}]
+
+
+def placed_manifest_path(home=None):
+    """설치가 놓은 것의 목록 — uninstall(REQ-20260905-027)이 이것만 걷는다."""
+    return os.path.join(home or claude_home(), ".section9-install.json")
+
+
+def _read_placed(home=None):
+    try:
+        with open(placed_manifest_path(home), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"placed": [], "collided": []}
+
+
+def _write_placed(home=None):
+    data = {"placed": PLACED, "collided": COLLIDED, "root": ROOT}
+    with open(placed_manifest_path(home), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+
+
+def _rename_frontmatter_name(text, new_name):
+    """에이전트·스킬 md 의 frontmatter `name:` 을 새 이름으로 — 없으면 그대로.
+    Claude Code 는 파일 이름이 아니라 이 필드로 에이전트를 세운다."""
+    import re as _re
+    m = _re.search(r"^---\s*\n(.*?)\n---", text, _re.S)
+    if not m:
+        return text
+    fm = _re.sub(r"(?m)^name:\s*.+$", f"name: {new_name}", m.group(1), count=1)
+    return text[:m.start(1)] + fm + text[m.end(1):]
+
+
+def _copy_renamed(src, dst, new_name):
+    """겹친 이름의 우리 항목을 s9-<이름> 으로 복사 — 파일이면 name 을 바꿔 쓰고,
+    디렉토리(스킬)면 SKILL.md 의 name 을 바꾼다. 복사본은 마커로 소유를 표시한다."""
+    if os.path.isdir(src):
+        shutil.copytree(src, dst)
+        sk = os.path.join(dst, "SKILL.md")
+        if os.path.isfile(sk):
+            with open(sk, encoding="utf-8") as f:
+                t = f.read()
+            with open(sk, "w", encoding="utf-8") as f:
+                f.write(_rename_frontmatter_name(t, new_name))
+        open(os.path.join(dst, ".section9-copy"), "w", encoding="utf-8").close()
+    else:
+        with open(src, encoding="utf-8") as f:
+            t = f.read()
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write(_rename_frontmatter_name(t, new_name))
+
+
+def _ours(path, prev_placed):
+    """이 경로가 section9 이 놓은 것인가 — 링크면 가리키는 곳으로, 복사면 마커·이전 목록으로."""
+    if os.path.islink(path):
+        return os.path.realpath(path).startswith(os.path.realpath(ROOT))
+    if os.path.isdir(path) and os.path.exists(os.path.join(path, ".section9-copy")):
+        return True
+    return any(e.get("path") == path for e in prev_placed)
+
+
+def link_into(src_dir, dst_dir, label, kind=None):
     """src_dir 항목들을 dst_dir 에 symlink. section9 안을 가리키는 기존
-    링크만 갱신/제거 대상 — 사용자의 다른 스킬/에이전트는 건드리지 않는다."""
+    링크만 갱신/제거 대상 — 사용자의 다른 스킬/에이전트는 건드리지 않는다.
+
+    이름이 겹치면(REQ-20260905-026) 덮어쓰지도 조용히 빠지지도 않는다 — 사용자의 것은
+    그대로 두고 우리 것을 `s9-<이름>` 으로 비켜 세운 뒤(frontmatter name 도 함께),
+    완료 화면에 겹친 이름을 말한다. 전역 접두(s9-*)를 쓰지 않는 이유: 역할 이름
+    (designer·architect …)은 규약·위임 지시문·다른 하네스가 같은 글자로 부르는 이름이라
+    겹칠 때만 비켜 서는 것이 하네스-무관(0'조)에 맞다."""
     if not os.path.isdir(src_dir):
         return
+    kind = kind or ("agent" if "agent" in label else "skill")
     os.makedirs(dst_dir, exist_ok=True)
+    prev = _read_placed(os.path.dirname(dst_dir)).get("placed", [])
     for name in sorted(os.listdir(src_dir)):
         if name.startswith(".") or name == "README.md":
             continue
         src = os.path.join(src_dir, name)
         dst = os.path.join(dst_dir, name)
-        marker = os.path.join(dst, ".section9-copy") if os.path.isdir(dst) else None
-        if os.path.islink(dst):
-            if os.path.realpath(dst).startswith(os.path.realpath(ROOT)):
-                os.remove(dst)  # section9 소유 링크 → 갱신
+        if os.path.lexists(dst) and _ours(dst, prev):
+            if os.path.islink(dst) or os.path.isfile(dst):
+                os.remove(dst)
             else:
-                say(f"  skip (남의 링크): {dst}")
-                continue
-        elif os.path.exists(dst) and marker and os.path.exists(marker):
-            import shutil
-            shutil.rmtree(dst)  # 우리가 복사한 항목 → 갱신
-        elif os.path.exists(dst):
-            say(f"  skip (기존 항목 존재): {dst}")
+                shutil.rmtree(dst)  # 우리가 복사한 항목 → 갱신
+        elif os.path.lexists(dst):
+            # 남의 것 — 그대로 두고 우리 것은 s9- 로 비켜 선다
+            stem, ext = os.path.splitext(name) if os.path.isfile(src) else (name, "")
+            alt_name = COLLISION_PREFIX + stem
+            alt = os.path.join(dst_dir, alt_name + ext)
+            if os.path.lexists(alt):
+                if _ours(alt, prev):
+                    (os.remove if (os.path.islink(alt) or os.path.isfile(alt)) else shutil.rmtree)(alt)
+                else:
+                    say(f"  skip (겹침, {alt_name} 도 남의 것): {dst}")
+                    COLLIDED.append({"kind": kind, "name": stem, "theirs": dst, "ours": ""})
+                    continue
+            _copy_renamed(src, alt, alt_name)
+            PLACED.append({"kind": kind, "name": alt_name, "path": alt, "how": "copy"})
+            COLLIDED.append({"kind": kind, "name": stem, "theirs": dst, "ours": alt})
+            say(f"  겹침: {name} 은 이미 당신의 것이 있다 — 그대로 두고 우리 것은 {alt_name} 으로")
             continue
+        # 제 이름이 비었다 — 전에 비켜 세운 우리 사본(s9-<이름>)이 남아 있으면 걷는다.
+        # 안 걷으면 designer 와 s9-designer 가 둘 다 서서 위임이 갈린다.
+        stem, ext = os.path.splitext(name) if os.path.isfile(src) else (name, "")
+        stale = os.path.join(dst_dir, COLLISION_PREFIX + stem + ext)
+        if os.path.lexists(stale) and _ours(stale, prev):
+            (os.remove if (os.path.islink(stale) or os.path.isfile(stale)) else shutil.rmtree)(stale)
         try:
             os.symlink(src, dst)
+            PLACED.append({"kind": kind, "name": name, "path": dst, "how": "link"})
             say(f"  {label}: {name} -> ~/.claude/{os.path.basename(dst_dir)}/")
         except OSError:
             # Windows 비관리자 등 symlink 불가 → 복사 fallback (마커로 소유 표시)
-            import shutil
             if os.path.isdir(src):
                 shutil.copytree(src, dst)
                 open(os.path.join(dst, ".section9-copy"), "w", encoding="utf-8").close()
             else:
                 shutil.copy2(src, dst)
+            PLACED.append({"kind": kind, "name": name, "path": dst, "how": "copy"})
             say(f"  {label}: {name} (copy fallback) -> {dst}")
 
 
@@ -359,6 +446,12 @@ def install_skills_agents():
     ok, bad = validate_agents(os.path.join(home, "agents"))
     for b in bad:
         say(f"  ⚠ 에이전트 결함: {b}")
+    _write_placed(home)
+    if COLLIDED:
+        names = ", ".join(f"{c['name']}({c['kind']})" for c in COLLIDED)
+        say(f"⚑ 이름이 겹친 항목 {len(COLLIDED)}개 — 당신 것을 그대로 두고 우리 것은 "
+            f"{COLLISION_PREFIX}이름 으로 세웠다: {names}. 규약이 부르는 역할(designer 등)이 "
+            f"당신 것으로 가면 동작이 다를 수 있다 — 당신 것을 치우면 다음 설치에서 제 이름으로 선다.")
     # ⚑ 핵심: 에이전트/스킬은 '세션 시작 시점'에만 로드된다(Claude Code 동작).
     #   세션 도중 설치했다면 이 세션에선 스폰 불가 → 재시작해야 활성화.
     say(f"agents/skills 설치·검증 OK ({ok}개 에이전트 유효). "
