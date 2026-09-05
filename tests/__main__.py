@@ -737,11 +737,30 @@ def full_suite_green(repo=None):
     return bool(fp) and green_seen(patterns([]), fp, cover=False)
 
 
+def full_green_age(repo=None):
+    """마지막 **전체 스위트** 초록 기록의 나이(초) — 나무가 달라도 센다. 없으면 None.
+
+    넓게 닿는 파일의 작은 변경을 커밋할 때 게이트가 묻는다 (REQ-20260905-009):
+    지금 나무의 전체 초록은 없어도, 몇 시간 안에 전체가 초록이었고 스모크∪변경이
+    지금 초록이면 커밋을 세우지 않는다 — 전체는 뒤에 한 번 돌려 두면 된다.
+    """
+    try:
+        with open(_reuse_path(patterns([])), encoding="utf-8") as f:
+            at = float(json.load(f).get("at") or 0)
+    except (OSError, ValueError, TypeError):
+        return None
+    return max(0.0, time.time() - at) if at else None
+
+
 def main():
     # 돌리지 않고 묻기만 하는 갈래 (REQ-20260903-012) — 커밋 게이트가 쓴다.
     # 임시 루트도 만들지 않는다: 이 갈래는 시험을 한 건도 돌지 않는다.
     if "--is-green" in sys.argv[1:]:
         return 0 if full_suite_green() else 1
+    if "--full-green-age" in sys.argv[1:]:
+        age = full_green_age()
+        print("none" if age is None else int(age))
+        return 0
     # 스위트 안에서 러너를 또 띄우는 시험이 있다(test_runner_patterns·
     # test_tmp_hygiene). 그 안쪽 실행이 바깥 실행의 세계를 청소하면 안 된다 —
     # 포트 회수는 '임시 작업공간에서 뜬 대시보드 서버'를 죽이는데, 그게 바로
@@ -807,6 +826,19 @@ def main():
             argv = sorted(set(argv) | set(SMOKE))
             full_requested = False
         pats = patterns(argv)
+        # 이 실행이 **어떤 종류인가** (REQ-20260905-006 2차). 사용자가 물은 것은
+        # 1차와 같다: 얼마나 기다리나. 같은 「14/211건」이라도 전체 스위트(4분+)
+        # 와 스모크(20초대)는 기다림의 성격이 다르다.
+        #
+        # **판정은 여기 한 줄뿐이다.** 잡 파일의 `args` 로 되짚을 수도 있었지만
+        # 그것은 이미 아는 값을 문자열에서 다시 알아내려는 두 번째 판정이고,
+        # 실제로 틀린다: `args` 는 `sys.argv[1:4]` 라 네 번째 낱말부터 잘리고
+        # (`--no-reuse --jobs 8 foo` 는 전체로 읽힌다), `--changed` 는 명령줄에
+        # 고른 파일이 아예 안 적혀 있어 되짚을 길이 없다. 여기서는 **고르기가
+        # 끝난 뒤의 argv** 를 보므로 그 갈래가 전부 제자리에 온다:
+        # 빈 argv = 전체(게이트가 전체로 물러난 경우 포함) · smoke = 스모크 ·
+        # 그 밖(패턴·`--changed` 가 고른 파일) = 표적.
+        job_kind = "full" if not argv else ("smoke" if smoke else "targeted")
         # **같은 것을 두 번 돌지 않는다** (REQ-20260903-010).
         # ① 이 선택이 지금 나무 지문으로 이미 통과했으면 그대로 쓴다.
         # ② 같은 선택이 돌고 있으면 기다렸다가 그 결과를 받는다.
@@ -838,7 +870,7 @@ def main():
             if not files:
                 print(f"no tests matched: {', '.join(pats)}", file=sys.stderr)
                 return 1
-            bump, clear = jobfile.start(len(files),
+            bump, clear = jobfile.start(len(files), kind=job_kind,
                                         args=" ".join(sys.argv[1:4]))
             try:
                 ran = True
@@ -872,7 +904,7 @@ def main():
             return 1
         # 잡 파일 (REQ-20260830-022): 이 실행이 도는 동안 화면 헤더 칩과 카드가
         # "테스트 N분째 · M건" 을 그린다. 안쪽 실행(S9_TESTS_NESTED)은 안 쓴다.
-        bump, clear = jobfile.start(suite.countTestCases(),
+        bump, clear = jobfile.start(suite.countTestCases(), kind=job_kind,
                                     args=" ".join(sys.argv[1:4]))
 
         # 파일별 소요를 잰다 (REQ-20260905-001) — 샤딩 무게의 원천이다.
