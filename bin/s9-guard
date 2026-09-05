@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 
 # 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
@@ -347,34 +348,27 @@ def wide_change_verdict(staged):
     return (wide, r.returncode == 0)
 
 
-# 넓게 닿는 파일의 **작은** 변경은 전체 스위트를 기다리지 않는다 (REQ-20260905-009).
-# 실사고 2026-09-05: 라벨 한 줄(REQ-20260905-006)에 러너·서버 33줄이 딸려 이 문이
-# 전체 스위트(4~5분, 간헐 실패 날엔 8~13분)를 요구했고, 그 실행이 또 멈춰
-# 커밋이 한 시간 밀렸다. 문은 「모르는 것을 막는다」가 목적이지 「매번 전체를
-# 돌린다」가 목적이 아니다. 아래 둘이 함께 참이면 지나간다 — ① 넓은 파일의
-# 변경이 WIDE_SMALL_LINES 줄 이하(추가+삭제) ② 마지막 전체 초록이
-# WIDE_FRESH_SEC 안. 스모크∪담긴 시험(staged_tests_gate)은 그대로 돈다.
-# 큰 변경·낡은 초록은 종전대로 막는다. 전체는 뒤에 한 번 돌려 두면 된다.
-WIDE_SMALL_LINES = 60
-WIDE_FRESH_SEC = 6 * 3600
+# 전체 스위트는 **commit 뒤 배경에서** 돈다 (REQ-20260905-010, quality-assurance 판정).
+# 넓게 닿는 파일의 커밋마다 전체(4~5분, 간헐 날엔 8~13분)를 commit 전에 물리면
+# 하루 174분을 기다리고(2026-09-05 실측: 라벨 한 줄이 한 시간), 뒤에 돌리면
+# 5분이다 — 12~35배. 그래서 문은 셋으로 갈린다:
+#   ① 이 나무의 전체 초록 기록이 있으면 비용 0 으로 지나간다(종전).
+#   ② **붉음 라쳇** — 마지막 전체 실행이 붉었고 그것이 마지막 초록보다 새로우면
+#      code 커밋을 세운다. 붉은 파일의 시험을 담은 커밋(고치러 온 것)과
+#      `S9_FIX_RED=<REQ>` 는 지나간다.
+#   ③ 그 밖에는 스모크∪담긴 시험(staged_tests_gate)만 보고 지나가며, commit 뒤
+#      post-commit 훅이 `s9-guard --after-commit` 으로 전체를 detached 로 띄운다.
+#      붉으면 러너가 state/tests-last-red.json 을 남겨 다음 커밋이 ②에 걸린다.
+LAST_RED = os.path.join(ROOT, "state", "tests-last-red.json")
+ASYNC_DIR = os.path.join(ROOT, "state", "tests-async")
 
 
-def wide_diff_lines(staged):
-    """담긴 넓은 파일의 변경 줄 수(추가+삭제). 못 재면 아주 큰 수 — 모르면 막는다."""
-    wide = [f for f in staged if f.replace("\\", "/") in WIDE]
-    if not wide:
-        return 0
+def _read_json(path):
     try:
-        r = subprocess.run(["git", "diff", "--cached", "--numstat", "--", *wide],
-                           capture_output=True, encoding="utf-8", errors="replace",
-                           cwd=ROOT, timeout=30, env=clean_git_env())
-        n = 0
-        for ln in r.stdout.splitlines():
-            a, d = ln.split("\t")[:2]
-            n += (int(a) if a.isdigit() else 10**6) + (int(d) if d.isdigit() else 10**6)
-        return n
-    except Exception:
-        return 10**6
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 def full_green_age():
@@ -390,18 +384,73 @@ def full_green_age():
         return None
 
 
-_UNSET = object()
+def red_ratchet(staged, red=None, green_age=None, now=None, fix_env=None):
+    """(막나, 붉은 파일들) — 마지막 붉음이 마지막 초록보다 새로우면 막는다.
 
-
-def wide_small_and_fresh(staged, lines=_UNSET, age=_UNSET):
-    """작은 변경 + 신선한 전체 초록인가 — 게이트를 세우지 않을 조건.
-
-    `age=None` 은 「전체 초록 기록이 없다」는 실제 값이라 재지 않는다는 뜻이
-    아니다 — 시험이 그 경우를 넘긴다.
+    예외 둘: 붉은 파일의 시험이 담겨 있다(고치러 온 커밋) · `S9_FIX_RED` 가
+    설정돼 있다(사유는 커밋 메시지에). 기록이 없거나 못 읽으면 막지 않는다.
     """
-    lines = wide_diff_lines(staged) if lines is _UNSET else lines
-    age = full_green_age() if age is _UNSET else age
-    return lines <= WIDE_SMALL_LINES and age is not None and age <= WIDE_FRESH_SEC
+    red = _read_json(LAST_RED) if red is None else red
+    if not red or not red.get("at"):
+        return (False, [])
+    now = time.time() if now is None else now
+    green_age = full_green_age() if green_age is None else green_age
+    green_at = None if green_age is None else now - green_age
+    if green_at is not None and green_at >= float(red["at"]):
+        return (False, [])                  # 붉음 뒤에 초록이 있었다
+    files = [str(f) for f in (red.get("files") or [])]
+    fix_env = os.environ.get("S9_FIX_RED", "") if fix_env is None else fix_env
+    if fix_env.strip():
+        return (False, files)
+    if files and any(os.path.basename(s.replace("\\", "/")) in files for s in staged):
+        return (False, files)
+    return (True, files)
+
+
+def head_touches_wide():
+    try:
+        r = subprocess.run(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+                           capture_output=True, encoding="utf-8", errors="replace",
+                           cwd=ROOT, timeout=30, env=clean_git_env())
+        return [f for f in r.stdout.split() if f in WIDE]
+    except Exception:
+        return []
+
+
+def after_commit():
+    """post-commit: 넓은 파일이 담긴 커밋이면 전체 스위트를 배경에서 띄운다.
+
+    기다리지 않는다 — 단일비행(hold_run_lock)·같은 지문 재사용(green_seen)은
+    러너가 이미 안다. 로그는 state/tests-async/<sha7>.log.
+    """
+    if not head_touches_wide():
+        return 0
+    try:
+        r = subprocess.run([sys.executable or "python3", os.path.join(ROOT, "tests"),
+                            "--is-green"], capture_output=True, cwd=ROOT, timeout=120,
+                           env=clean_git_env())
+        if r.returncode == 0:
+            return 0                        # 이 나무는 이미 초록이다
+    except Exception:
+        pass
+    try:
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                             encoding="utf-8", cwd=ROOT, timeout=10,
+                             env=clean_git_env()).stdout.strip() or "head"
+        os.makedirs(ASYNC_DIR, exist_ok=True)
+        log = open(os.path.join(ASYNC_DIR, f"{sha}.log"), "ab")
+        env = clean_git_env()
+        env.pop("S9_TESTS_NESTED", None)
+        subprocess.Popen([sys.executable or "python3", os.path.join(ROOT, "tests"),
+                          "--jobs", "8"], stdout=log, stderr=subprocess.STDOUT,
+                         stdin=subprocess.DEVNULL, cwd=ROOT, env=env,
+                         start_new_session=True)
+        print(f"s9-guard: 전체 스위트를 배경에서 띄웠다 — state/tests-async/{sha}.log "
+              f"(붉으면 다음 커밋이 라쳇에 걸린다)", file=sys.stderr)
+    except Exception as e:
+        print(f"s9-guard: 배경 전체 실행을 못 띄웠다 ({e}) — `python3 tests/` 를 손으로",
+              file=sys.stderr)
+    return 0
 
 
 def wide_change_gate(staged, verdict=None):
@@ -423,22 +472,20 @@ def wide_change_gate(staged, verdict=None):
     wide, green = verdict if verdict is not None else wide_change_verdict(staged)
     if not wide or green:
         return
-    if wide_small_and_fresh(staged):
-        print("s9-guard: 넓게 닿는 파일이 담겼지만 변경이 작고 최근 전체 초록이 "
-              "있어 세우지 않습니다 — 스모크와 담긴 시험은 그대로 돌립니다. "
-              "여유가 날 때 `python3 tests/` 를 한 번 돌려 두세요.", file=sys.stderr)
-        return
-    print("s9-guard: 넓게 닿는 파일이 담겼는데 이 상태에서 전체 스위트가 "
-          "통과한 기록이 없습니다 — 커밋을 멈춥니다.", file=sys.stderr)
-    for f in wide[:10]:
-        print(f"  - {f}", file=sys.stderr)
-    print("  이 파일들은 어느 시험에 닿을지 셀 수 없어, 담긴 시험과 스모크만으로는",
+    blocked, files = red_ratchet(staged)
+    if blocked:
+        print("s9-guard: 마지막 전체 스위트가 붉었고 그 뒤 초록이 없습니다 — "
+              "붉음 라쳇이 code 커밋을 멈춥니다.", file=sys.stderr)
+        for f in files[:10]:
+            print(f"  - 붉었던 파일: {f}", file=sys.stderr)
+        print("  그 파일을 고쳐 담거나(자동 통과), 그 파일만 돌려 초록이면 "
+              "`python3 tests/` 로 전체를 다시 초록으로 두세요. 이 커밋이 그 "
+              "고침이 아니면 `S9_FIX_RED=<REQ-id> git commit …` 으로 사유와 함께 "
+              "지나갑니다.", file=sys.stderr)
+        sys.exit(1)
+    print("s9-guard: 넓게 닿는 파일이 담겼습니다 — 스모크와 담긴 시험만 보고 "
+          "지나가고, 전체 스위트는 commit 뒤 배경에서 돕니다(state/tests-async/).",
           file=sys.stderr)
-    print("  깨진 곳을 못 봅니다. 한 번 돌리고 다시 커밋하세요:", file=sys.stderr)
-    print("      python3 tests/", file=sys.stderr)
-    print("  (통과하면 그 기록이 남아 다음 커밋은 그냥 지나갑니다.)",
-          file=sys.stderr)
-    sys.exit(1)
 
 
 def secret_gate(staged):
@@ -481,6 +528,8 @@ def secret_gate(staged):
 
 
 def main():
+    if "--after-commit" in sys.argv[1:]:
+        return after_commit()
     out = subprocess.run(["git", "diff", "--cached", "--name-only"],
                          capture_output=True,
                              encoding="utf-8", errors="replace", cwd=ROOT)

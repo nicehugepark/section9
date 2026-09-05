@@ -533,6 +533,7 @@ def jobs_cap():
 
 
 FLAKY_FILE = os.path.join(REPO, "state", "test-flaky.jsonl")
+LAST_RUN_RED = []            # 마지막 병렬 실행의 붉은 파일 (record_last_red 재료)
 RETRY_MAX_FILES = 3
 
 
@@ -659,6 +660,7 @@ def run_sharded(pats, jobs, bump=None):
             ok = False
             if f not in red:
                 red.append(f)
+    LAST_RUN_RED[:] = red
     if not ok and should_retry(red):
         print(f"[좁혀서 다시] 붉은 파일 {len(red)}개만 단독으로 한 번 더 돈다: "
               f"{' '.join(red)}", file=sys.stderr)
@@ -789,6 +791,33 @@ def full_suite_green(repo=None):
     # cover=False: 「전체가 초록이었나」는 전체 기록으로만 답한다 — 부분집합
     # 기록으로 그렇다고 답하면 넓은 변경의 커밋 문이 거짓 초록을 본다.
     return bool(fp) and green_seen(patterns([]), fp, cover=False)
+
+
+LAST_RED = os.path.join(REPO, "state", "tests-last-red.json")
+
+
+def record_last_red(files, fp=None):
+    """전체 실행이 붉었다는 기록 — 커밋 문의 **붉음 라쳇** 재료 (REQ-20260905-010).
+
+    전체 스위트는 commit 뒤 배경에서 돈다. 그래서 붉음은 막는 대신 **남겨야**
+    한다: 마지막 붉음이 마지막 초록보다 새로우면 다음 code 커밋을 세운다.
+    """
+    try:
+        os.makedirs(os.path.dirname(LAST_RED), exist_ok=True)
+        with open(LAST_RED, "w", encoding="utf-8") as f:
+            json.dump({"at": time.time(), "fingerprint": fp or "",
+                       "files": list(files)}, f, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+def last_red():
+    """마지막 전체 붉음 기록 또는 None."""
+    try:
+        with open(LAST_RED, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 def full_green_age(repo=None):
@@ -938,6 +967,8 @@ def main():
                 merge_times()
             if ok:
                 mark_green(pats, fp)
+            elif full_requested:
+                record_last_red(LAST_RUN_RED, fp)
                 if full_requested:
                     write_green_stamp()
             drop_run_lock(lock_fh)

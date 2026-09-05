@@ -138,6 +138,19 @@ class RedFilesRetryNarrowly(unittest.TestCase):
         finally:
             os.environ.pop("S9_TEST_NO_RETRY", None)
 
+    def test_r3_a_red_full_run_leaves_a_record(self):
+        """R3. 전체 실행이 붉으면 state/tests-last-red.json 에 붉은 파일과 시각이 남는다."""
+        m = self._runner()
+        import json, tempfile, time
+        d = tempfile.mkdtemp(prefix="s9red-")
+        m.LAST_RED = os.path.join(d, "state", "tests-last-red.json")
+        t0 = time.time()
+        m.record_last_red(["test_a.py", "test_b.py"], "fp1")
+        rec = json.load(open(m.LAST_RED, encoding="utf-8"))
+        self.assertEqual(rec["files"], ["test_a.py", "test_b.py"])
+        self.assertGreaterEqual(rec["at"], t0)
+        self.assertEqual(rec["fingerprint"], "fp1")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
