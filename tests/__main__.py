@@ -853,8 +853,7 @@ def main():
     # 기억된 원격은 **전체 실행**에만 쓴다 — 스모크·게이트·표적·--changed 는 이
     # 머신의 작업 나무(미커밋 포함)를 재야 하는 자리라 여기서 돈다. 실측 2026-09-05:
     # 기억시키자 커밋 문의 스모크까지 원격으로 가서 게이트가 넘어졌다.
-    wants_full = (not [a for a in argv0 if not a.startswith("-")]
-                  and not any(f in argv0 for f in ("--smoke", "--gate", "--changed")))
+    wants_full = remote_run.is_full_invocation(argv0)
     rkey = None if "--local" in argv0 else (remote_run.remote_key() if (explicit or wants_full) else None)
     if rkey and os.environ.get("S9_TESTS_NESTED") != "1":
         raw = [a for a in sys.argv[1:] if a not in ("--remember", "--local")]
@@ -907,7 +906,8 @@ def main():
     ok, empty, leaked, ran = False, [], [], False
     pats, fp, lock_fh = [], None, None
     try:
-        raw = sys.argv[1:]
+        # 원격 손잡이는 여기서 걷는다 — 패턴으로 읽히면 「고르지 못한 패턴」이 된다
+        raw = [a for a in sys.argv[1:] if a not in ("--local", "--remember")]
         jobs = 0
         if "--jobs" in raw:
             i = raw.index("--jobs")

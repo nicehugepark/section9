@@ -47,6 +47,27 @@ def remote_key(argv=None):
         return None
 
 
+def is_full_invocation(argv):
+    """이 호출이 「전체」인가 — 패턴이 없고 스모크·게이트·변경 선택이 아니다.
+
+    `--jobs N`·`--remote KEY` 의 값은 패턴이 아니다(실측 2026-09-05: `--jobs 16` 의
+    16 을 패턴으로 세어 전체 실행이 원격으로 안 갔다).
+    """
+    rest = []
+    skip = False
+    for a in argv:
+        if skip:
+            skip = False
+            continue
+        if a in ("--jobs", "--remote"):
+            skip = True
+            continue
+        rest.append(a)
+    if any(f in rest for f in ("--smoke", "--gate", "--changed")):
+        return False
+    return not [a for a in rest if not a.startswith("-")]
+
+
 def remember(key):
     os.makedirs(os.path.dirname(REMOTE_KEY_FILE), exist_ok=True)
     with open(REMOTE_KEY_FILE, "w", encoding="utf-8") as f:
@@ -74,13 +95,18 @@ def remote_script(url, sha, dest, jobs, pats_argv, user=""):
     편다 — 보내고 말고가 없고, 원격은 언제나 진짜 git 저장소다.
     """
     short = sha[:7]
-    ident = f"S9_USER={_sh_quote(user)} " if user else ""
+    # 정체는 환경변수로 강제하지 않는다 — S9_USER 를 실행 전체에 걸면 제 사용자를
+    # 만드는 시험 30여 건이 그 값을 물려받아 붉는다(실측 2026-09-05, 34건). 대신
+    # 원격 OS 계정을 이 머신의 사용자에게 **attach** 해 둔다 — 그러면 whoami 가
+    # os-account 로 그 사람을 찾고, 관리자만 보는 손잡이를 재는 시험도 선다.
+    attach = (f"S9_ROOT=$D python3 bin/s9 user attach {_sh_quote(user)} >/dev/null 2>&1 || true; "
+              if user else "")
     pats = " ".join(_sh_quote(a) for a in pats_argv)
     return (f"set -e; D={dest}; [ -d $D/.git ] || git clone -q {_sh_quote(url)} $D; "
             f"cd $D && git fetch -q origin +refs/ci/{short}:refs/ci/{short} "
             f"&& git checkout -q -f {sha} && git clean -qfd; "
             f"S9_ROOT=$D python3 bin/s9 index rebuild >/dev/null 2>&1 || true; "
-            f"{ident}S9_MAX_JOBS={jobs} S9_TEST_REMOTE= python3 tests/ --jobs {jobs} "
+            f"{attach}S9_MAX_JOBS={jobs} S9_TEST_REMOTE= python3 tests/ --jobs {jobs} "
             f"--no-reuse {pats}")
 
 

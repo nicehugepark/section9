@@ -38,9 +38,22 @@ class RemoteRun(unittest.TestCase):
         line = remote_run.remote_script("git@github.com:o/r.git", sha, "~/section9-ci/x",
                                         16, ["test_a.py"], user="nicehugepark")
         for part in ("git clone -q", "refs/ci/0123456", "-q -f " + sha,
-                     "index rebuild", "S9_USER='nicehugepark'", "--jobs 16", "'test_a.py'"):
+                     "index rebuild", "user attach 'nicehugepark'", "--jobs 16", "'test_a.py'"):
+            self.assertIn(part, line)
+        self.assertNotIn("S9_USER=", line, "정체를 환경변수로 강제하면 제 사용자를 만드는 시험이 붉는다")
+        for part in ():
             self.assertIn(part, line)
         self.assertNotIn("tar", line, "GitHub 이 축이다 — 보내는 것이 있으면 안 된다")
+
+    def test_k4_full_means_no_pattern_and_jobs_is_not_a_pattern(self):
+        """K4. 전체 = 패턴 없음. `--jobs 16` 의 16 과 `--remote jade` 의 jade 는 패턴이 아니다."""
+        f = remote_run.is_full_invocation
+        self.assertTrue(f([]))
+        self.assertTrue(f(["--jobs", "16"]))
+        self.assertTrue(f(["--jobs", "16", "--no-reuse", "--remote", "jade"]))
+        self.assertFalse(f(["--jobs", "16", "jobs_shard"]))
+        self.assertFalse(f(["--smoke", "--jobs", "4"]))
+        self.assertFalse(f(["--changed"]))
 
     def test_k3_the_secret_is_only_ever_substituted(self):
         """K3. 원격 명령은 `s9 secret run` 의 치환({{secret:KEY}})으로만 선다 — 값을 읽는 코드가 없다."""
