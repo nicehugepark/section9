@@ -17815,6 +17815,17 @@ def next_free_port(lo=9910, hi=9950, host="127.0.0.1"):
     return 0
 
 
+def _launched_here(root, port):
+    """내 저장소가 그 포트에 대시보드를 띄운 흔적 — state/serve-code.json 의 port 가
+    같고 그 pid 가 살아 있으면 참. 응답에 root 가 없는 옛 서버를 가르는 재료다."""
+    try:
+        with open(os.path.join(root, "state", "serve-code.json"), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return int(d.get("port") or 0) == int(port) and pid_alive(d.get("pid"))
+
+
 def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=None):
     """(포트, 사유) — 남이 쓰는 포트는 피한다 (REQ-20260905-016).
 
@@ -17845,10 +17856,16 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
     port = port or s9_port(root)
     info = serveinfo_at(port) if _info is None else _info(port)
     if info is not None:
-        # root 가 없는 답은 이 조항 이전의 서버다 — 가를 재료가 없으니 종전대로
-        # 내 것으로 본다(옮기면 멀쩡한 내 대시보드가 둘이 된다).
-        if "root" not in info or \
-                os.path.realpath(str(info.get("root") or "")) == os.path.realpath(root):
+        if "root" in info:
+            if os.path.realpath(str(info.get("root") or "")) == os.path.realpath(root):
+                return port, "mine"
+        elif _launched_here(root, port):
+            # root 가 없는 답은 이 조항 이전의 서버다 — 답으로는 못 가르니 **내
+            # 저장소가 그 포트에 띄운 흔적**(state/serve-code.json 의 port + 살아
+            # 있는 pid)으로 가른다. 예전엔 무조건 내 것으로 봤는데, jade 실측
+            # 2026-09-06: 다른 리눅스 사용자의 옛 section9 이 9909 에 앉아 있었고
+            # 그것을 내 것으로 읽어 포트를 안 옮겼다(REQ-20260906-004). 흔적이
+            # 있으면 종전대로 재사용한다 — 멀쩡한 내 대시보드를 둘로 만들지 않는다.
             return port, "mine"
         why = "other"
     else:

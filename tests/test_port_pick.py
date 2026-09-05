@@ -58,6 +58,34 @@ class PickPort(unittest.TestCase):
         self.assertEqual(self._port_file(), "9912")
         self.assertEqual(self.m.s9_port(self.root), 9912, "그 뒤의 호출이 새 포트를 따르지 않는다")
 
+    def test_p6_a_rootless_answer_from_a_stranger_moves_me(self):
+        """P6. 응답에 root 가 없고 내 저장소의 기동 흔적도 없으면 남의 것 — 옮긴다.
+
+        jade 실측 2026-09-06: 다른 리눅스 사용자의 옛 section9 이 9909 에 앉아 있었고,
+        그 옛 판은 serveinfo 에 root 를 안 실었다. 예전 조항은 그것을 내 것으로 봤다.
+        """
+        port, why = self.m.pick_dashboard_port(
+            9909, root=self.root, _info=lambda p: {"started": "x"}, _next=lambda: 9910)
+        self.assertEqual((port, why), (9910, "other"))
+        self.assertEqual(self._port_file(), "9910")
+
+    def test_p7_a_rootless_answer_from_my_own_launch_is_still_mine(self):
+        """P7. 같은 root 없는 응답이라도 내 저장소가 그 포트에 띄운 흔적(살아 있는 pid)이 있으면 내 것."""
+        import json
+        os.makedirs(os.path.join(self.root, "state"), exist_ok=True)
+        with open(os.path.join(self.root, "state", "serve-code.json"), "w", encoding="utf-8") as f:
+            json.dump({"port": 9909, "pid": os.getpid(), "started": "x"}, f)
+        port, why = self.m.pick_dashboard_port(
+            9909, root=self.root, _info=lambda p: {"started": "x"}, _next=lambda: 9910)
+        self.assertEqual((port, why), (9909, "mine"))
+        self.assertEqual(self._port_file(), "")
+        # 흔적의 포트가 다르면 흔적이 아니다
+        with open(os.path.join(self.root, "state", "serve-code.json"), "w", encoding="utf-8") as f:
+            json.dump({"port": 9911, "pid": os.getpid(), "started": "x"}, f)
+        port, why = self.m.pick_dashboard_port(
+            9909, root=self.root, _info=lambda p: {"started": "x"}, _next=lambda: 9910)
+        self.assertEqual((port, why), (9910, "other"))
+
     def test_p3_a_busy_port_moves_and_a_free_port_stays(self):
         """P3. 답은 없는데 bind 가 안 되면 옮기고, 비어 있으면 그대로."""
         port, why = self.m.pick_dashboard_port(
