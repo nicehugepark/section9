@@ -17877,6 +17877,34 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
     return new, why
 
 
+INHERIT_ASKED = "env-inherit-offered"
+
+
+def inherit_offer_once(state_dir=None, out=print):
+    """첫 `s9 code` 에서 승계 후보가 있으면 한 줄 알리고 표식을 남긴다. 반환 True=알렸다.
+    후보 0·이미 알림·백업 없음이면 조용히 False."""
+    sd = state_dir or os.path.join(ROOT, "state")
+    mark = os.path.join(sd, INHERIT_ASKED)
+    if os.path.exists(mark):
+        return False
+    try:
+        env = _env_module()
+        bks = env.list_backups()
+        if not bks:
+            return False
+        n = len(env.inherit_candidates(os.path.join(env.backups_root(), bks[-1])))
+        os.makedirs(sd, exist_ok=True)
+        with open(mark, "w", encoding="utf-8") as f:
+            f.write(bks[-1] + "\n")
+    except Exception:
+        return False
+    if n <= 0:
+        return False
+    out(f"◌ 예전 Claude 설정(CLAUDE.md·메모리)에 옮길 만한 줄 {n}개가 있습니다 — "
+        f"section9 에서도 지킬 것만 고르려면 `s9 env inherit` (고르지 않으면 아무것도 바뀌지 않습니다)")
+    return True
+
+
 def _env_module():
     import importlib.util
     spec = importlib.util.spec_from_file_location(
@@ -18010,6 +18038,10 @@ def cmd_code(args):
         if r.returncode != 0:
             die("s9-install 실패 — 수동 실행 후 다시 시도하라: bin/s9-install")
         print("◌ 설치 완료 — 지금 시작하는 세션부터 자동 audit이 적용된다.")
+    # 첫 사용의 승계 제안 (REQ-20260905-025): 설치가 조용히 옮겨 둔 예전 설정에
+    # 옮길 만한 줄이 있으면 **한 번만** 알린다 — 묻지 않고 넣지도 않는다. 세 길이
+    # 나란히 있다: 설치 시 조용한 백업(기본) · `s9-install --backup ask` · 여기.
+    inherit_offer_once()
     try:
         u, src_kind = resolve_user(None, with_source=True)
         if src_kind == "os-account" and not user_role(u):

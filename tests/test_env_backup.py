@@ -93,6 +93,34 @@ class EnvBackup(unittest.TestCase):
         self.assertTrue(any("제목은 명사구" in l for l in lines))
         self.assertTrue(all(src in ("CLAUDE.md", "projects/p1/memory/MEMORY.md") for src, _ in cands))
 
+    def test_e6_first_s9_code_offers_inherit_once_and_never_writes(self):
+        """E6. 첫 s9 code 는 승계 후보가 있으면 한 줄 알리고 표식을 남긴다 — 두 번째는 조용, 개인 설정은 손대지 않는다."""
+        import importlib.machinery
+        xdg = tempfile.mkdtemp(prefix="s9xdg-")
+        keep = {k: os.environ.get(k) for k in ("XDG_STATE_HOME", "CLAUDE_CONFIG_DIR", "S9_ROOT")}
+        os.environ["XDG_STATE_HOME"] = xdg
+        os.environ["CLAUDE_CONFIG_DIR"] = self.home
+        os.environ["S9_ROOT"] = self.root
+        try:
+            s9path = os.path.join(HERE, "..", "bin", "s9.py")
+            spec = importlib.util.spec_from_loader("s9_inherit_t", importlib.machinery.SourceFileLoader("s9_inherit_t", s9path))
+            s9 = importlib.util.module_from_spec(spec); spec.loader.exec_module(s9)
+            sd = os.path.join(self.root, "state")
+            said = []
+            self.assertFalse(s9.inherit_offer_once(state_dir=sd, out=said.append), "백업이 없으면 제안도 없다")
+            self.assertFalse(os.path.exists(os.path.join(sd, s9.INHERIT_ASKED)), "백업 없음은 표식을 남기지 않는다 — 나중에 백업이 생기면 그때 한 번 알린다")
+            self.m.backup(home=self.home)  # 목적지는 XDG_STATE_HOME 아래 — 설치와 같은 길
+            self.assertTrue(s9.inherit_offer_once(state_dir=sd, out=said.append))
+            self.assertEqual(len(said), 1); self.assertIn("s9 env inherit", said[0]); self.assertIn("3개", said[0])
+            self.assertTrue(os.path.exists(os.path.join(sd, s9.INHERIT_ASKED)))
+            self.assertFalse(s9.inherit_offer_once(state_dir=sd, out=said.append), "두 번째는 조용하다")
+            self.assertEqual(len(said), 1)
+            self.assertFalse(os.path.exists(os.path.join(self.root, "users")), "제안은 개인 설정에 아무것도 쓰지 않는다")
+        finally:
+            for k, v in keep.items():
+                if v is None: os.environ.pop(k, None)
+                else: os.environ[k] = v
+
 
 if __name__ == "__main__":
     unittest.main()
