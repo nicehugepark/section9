@@ -5,8 +5,9 @@ registered_on: DESKTOP-TEHV1KR
 role: admin
 emails: ["claude01.pfe@example.invalid"]
 github: nicehugepark
-os_accounts: ["sjpark1"]
-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-06T01:15:37+09:00"}]
+os_accounts: ["sjpark1", "sjpark"]
+machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-06T01:15:37+09:00"}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-06T01:31:21+09:00"}]
+machines: ["eek-p620"]
 ---
 
 ## Notes
@@ -166,3 +167,5 @@ machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpar
 - 2026-09-05T20:44:24+09:00 config ui_tone=phosphor (by nicehugepark via dashboard)
 - 2026-09-05T20:48:28+09:00 config ui_tone=graphite (by nicehugepark via dashboard)
 - 2026-09-05T22:16:48+09:00 config ui_density=normal (by nicehugepark via dashboard)
+- 2026-09-06T01:31:21+09:00 attach sjpark@eek-p620
+- 2026-09-06T01:31:21+09:00 처음 본 머신 sjpark@eek-p620 (Linux)
