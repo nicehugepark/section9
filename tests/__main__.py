@@ -533,6 +533,16 @@ def jobs_cap():
 
 
 FLAKY_FILE = os.path.join(REPO, "state", "test-flaky.jsonl")
+# 샤드·직렬 꼬리의 시간 상한 (REQ-20260905-021). 러너는 **절대 멈추지 않는다** —
+# 실측 2026-09-05: 배경 전체 실행이 304/305 에서 20분 정지(서버 무응답 계열)했고
+# 그 뒤에 선 러너·커밋 문이 30분을 기다렸다. 넘기면 죽이고 그 파일들을 붉음으로 적는다.
+SHARD_TIMEOUT_SEC = float(os.environ.get("S9_SHARD_TIMEOUT", "900"))
+
+
+def overdue(started, now, limit=None):
+    """이 샤드가 상한을 넘겼나."""
+    limit = SHARD_TIMEOUT_SEC if limit is None else limit
+    return limit > 0 and (now - started) > limit
 LAST_RUN_RED = []            # 마지막 병렬 실행의 붉은 파일 (record_last_red 재료)
 RETRY_MAX_FILES = 3
 
@@ -591,6 +601,7 @@ def run_sharded(pats, jobs, bump=None):
     # 놀았다. 칸을 맞춘 뒤 6→343 · 8→317 · 10→295초 (2026-09-05, 14코어).
     env = {**os.environ, "S9_TESTS_NESTED": "1",
            "S9_TEST_PORT_SLOTS": str(max(4, jobs))}
+    t_start = time.time()
     for group in shard(body, jobs):
         out = tempfile.NamedTemporaryFile(mode="w+", suffix=".shard",
                                           delete=False)
@@ -627,6 +638,20 @@ def run_sharded(pats, jobs, bump=None):
         still = []
         for pr, out, group in pending:
             if pr.poll() is None:
+                if overdue(t_start, _time.time()):
+                    # 상한 초과 — 죽이고 붉음으로 센다. 무엇이 멈췄는지는 그 샤드의
+                    # 출력(마지막 줄)이 말한다.
+                    try:
+                        pr.kill()
+                    except OSError:
+                        pass
+                    pr.wait(timeout=10)
+                    ok = False
+                    red.extend(f for f in group if f not in red)
+                    print(f"[상한] 샤드가 {int(SHARD_TIMEOUT_SEC)}초를 넘겨 죽였다: "
+                          f"{' '.join(group)}", file=sys.stderr)
+                    done_files += len(group)
+                    continue
                 still.append((pr, out, group))
                 continue
             done_files += len(group)
@@ -651,8 +676,20 @@ def run_sharded(pats, jobs, bump=None):
         except OSError:
             pass
     for f in tail:      # 직렬 꼬리 — 부모 프로세스에서, 공유 상태를 독점하고
-        r = subprocess.run([sys.executable, HERE, f], env=env,
-                           stdin=subprocess.DEVNULL)   # 꼬리도 같은 규칙
+        try:
+            r = subprocess.run([sys.executable, HERE, f], env=env,
+                               stdin=subprocess.DEVNULL,   # 꼬리도 같은 규칙
+                               timeout=SHARD_TIMEOUT_SEC or None)
+        except subprocess.TimeoutExpired:
+            print(f"[상한] 직렬 꼬리 {f} 가 {int(SHARD_TIMEOUT_SEC)}초를 넘겨 죽였다",
+                  file=sys.stderr)
+            ok = False
+            if f not in red:
+                red.append(f)
+            done_files += 1
+            if bump:
+                bump(done_files)
+            continue
         done_files += 1
         if bump:
             bump(done_files)

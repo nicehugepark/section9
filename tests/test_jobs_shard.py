@@ -152,6 +152,25 @@ class RedFilesRetryNarrowly(unittest.TestCase):
         self.assertEqual(rec["fingerprint"], "fp1")
 
 
+class ShardsHaveADeadline(unittest.TestCase):
+    """샤드에 시간 상한 (REQ-20260905-021) — 러너는 절대 멈추지 않는다."""
+
+    def test_r4_a_shard_over_the_limit_is_killed_and_counted_red(self):
+        """R4. 상한을 넘긴 샤드는 죽이고 붉음으로 센다; 직렬 꼬리도 같은 상한."""
+        spec = importlib.util.spec_from_loader(
+            "s9runner_dl", importlib.machinery.SourceFileLoader("s9runner_dl", RUNNER))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        self.assertTrue(m.overdue(0.0, 901.0, limit=900.0))
+        self.assertFalse(m.overdue(0.0, 100.0, limit=900.0))
+        self.assertFalse(m.overdue(0.0, 10**9, limit=0))        # 0 = 상한 없음
+        src = open(RUNNER, encoding="utf-8").read()
+        blk = src.split("def run_sharded", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("overdue(t_start", blk, "샤드 대기 루프에 상한이 없다")
+        self.assertIn("pr.kill()", blk, "상한을 넘긴 샤드를 죽이지 않는다")
+        self.assertIn("timeout=SHARD_TIMEOUT_SEC", blk, "직렬 꼬리에 상한이 없다")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
