@@ -844,6 +844,47 @@ def main():
         age = full_green_age()
         print("none" if age is None else int(age))
         return 0
+    # 원격에서 돌린다 (REQ-20260905-012) — `--remote KEY` · S9_TEST_REMOTE · state/test-remote.
+    # 이 머신은 보내고 기다리고 기록만 한다. `--remember` 는 KEY 를 파일에 남겨
+    # 다음부터 `python3 tests/` 만 쳐도 원격으로 간다(--local 로 한 번 끈다).
+    import remote_run
+    argv0 = sys.argv[1:]
+    explicit = "--remote" in argv0
+    # 기억된 원격은 **전체 실행**에만 쓴다 — 스모크·게이트·표적·--changed 는 이
+    # 머신의 작업 나무(미커밋 포함)를 재야 하는 자리라 여기서 돈다. 실측 2026-09-05:
+    # 기억시키자 커밋 문의 스모크까지 원격으로 가서 게이트가 넘어졌다.
+    wants_full = (not [a for a in argv0 if not a.startswith("-")]
+                  and not any(f in argv0 for f in ("--smoke", "--gate", "--changed")))
+    rkey = None if "--local" in argv0 else (remote_run.remote_key() if (explicit or wants_full) else None)
+    if rkey and os.environ.get("S9_TESTS_NESTED") != "1":
+        raw = [a for a in sys.argv[1:] if a not in ("--remember", "--local")]
+        if "--remote" in raw:
+            i = raw.index("--remote"); raw = raw[:i] + raw[i + 2:]
+        if "--remember" in sys.argv[1:]:
+            remote_run.remember(rkey)
+        jobs = 16
+        if "--jobs" in raw:
+            i = raw.index("--jobs"); jobs = int(raw[i + 1]); raw = raw[:i] + raw[i + 2:]
+        pats_argv = [a for a in raw if a not in ("--no-reuse",)]
+        fp = tree_fingerprint()
+        full = not [a for a in pats_argv if not a.startswith("--")]
+        # 원격이 못 도는 것(LOCAL_ONLY)은 갈라 이 머신이 마저 돈다
+        selected = matched_files(patterns([a for a in pats_argv if not a.startswith("--")]))
+        local_part = [f for f in selected if f in remote_run.LOCAL_ONLY]
+        remote_part = [f for f in selected if f not in remote_run.LOCAL_ONLY]
+        rc = remote_run.run_remote(rkey, remote_part, jobs=jobs, fingerprint=fp)
+        _sha, dirty = remote_run.head_state()
+        if local_part:
+            print(f"[원격] 이 머신에서 마저 돈다: {' '.join(local_part)}", file=sys.stderr)
+            r2 = subprocess.run([sys.executable, HERE, "--local", "--no-reuse", *local_part],
+                                stdin=subprocess.DEVNULL)
+            rc = rc or r2.returncode
+        if rc == 0 and full and fp and not dirty:
+            mark_green(patterns([]), fp)
+            print("[원격] 전체 초록 — 이 나무의 초록 기록을 남겼다", file=sys.stderr)
+        elif rc != 0 and full:
+            record_last_red(["(원격)"], fp)
+        return rc
     # 스위트 안에서 러너를 또 띄우는 시험이 있다(test_runner_patterns·
     # test_tmp_hygiene). 그 안쪽 실행이 바깥 실행의 세계를 청소하면 안 된다 —
     # 포트 회수는 '임시 작업공간에서 뜬 대시보드 서버'를 죽이는데, 그게 바로

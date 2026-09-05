@@ -708,7 +708,7 @@ def _envnum(name, default, cast=float):
 #   SERVE_BACKLOG   받아들이기 큐. 32는 재접속 폭풍(브라우저 F5·SSE 재연결)
 #                   에서 넘쳐, 커널이 SYN 을 버리면 화면이 「죽은」 것으로 보인다.
 KEEPALIVE_IDLE = _envnum("S9_KEEPALIVE_IDLE", 20.0)
-CLOSE_LAST_WAIT_SEC = _envnum("S9_CLOSE_LAST_WAIT", 1.0)   # 상대가 먼저 닫을 틈 — urllib 은 수 ms 안에 닫는다
+CLOSE_LAST_WAIT_SEC = _envnum("S9_CLOSE_LAST_WAIT", 3.0)   # 상대가 먼저 닫을 틈 — urllib 은 수 ms 안에 닫지만 8샤드 부하에선 1초를 넘긴 실측(close_last t1 1/10)이 있다
 MAX_CONNS = int(_envnum("S9_MAX_CONNS", 256, int))
 SERVE_BACKLOG = int(_envnum("S9_SERVE_BACKLOG", 128, int))
 

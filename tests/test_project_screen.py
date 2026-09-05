@@ -30,6 +30,7 @@ B2(실연동)에서 계약이 하나 늘었다 — **관문이 하나인가**. �
 """
 import json
 import os
+import shutil
 import re
 import subprocess
 import time

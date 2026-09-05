@@ -8,6 +8,7 @@ webasset·portpool 처럼 제 이름의 헬퍼로 산다.
 import base64
 import json
 import os
+import shutil
 import re
 import socket
 import struct

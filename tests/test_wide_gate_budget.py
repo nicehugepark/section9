@@ -42,7 +42,7 @@ class RedRatchet(unittest.TestCase):
         """T2. 붉음 뒤에 초록이 있었으면 막지 않는다 · 기록이 없어도 막지 않는다."""
         self.assertFalse(self.m.red_ratchet(["bin/s9.py"], red=self.red,
                                             green_age=100, now=1500, fix_env="")[0])
-        self.assertFalse(self.m.red_ratchet(["bin/s9.py"], red=None,
+        self.assertFalse(self.m.red_ratchet(["bin/s9.py"], red={},
                                             green_age=None, now=1500, fix_env="")[0])
 
     def test_t3_the_fix_and_the_declared_exception_pass(self):

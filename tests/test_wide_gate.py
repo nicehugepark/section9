@@ -67,7 +67,10 @@ class TheGateAsks(unittest.TestCase):
 
         err = io.StringIO()
         code = None
+        # 붉음 라쳇의 기록은 이 시험의 것이 아니다 — 없는 자리로 돌린다
+        red_path = os.path.join(tempfile.mkdtemp(prefix="s9wg-"), "none.json")
         with mock.patch.object(self.guard.subprocess, "run", fake), \
+                mock.patch.object(self.guard, "LAST_RED", red_path), \
                 mock.patch.object(sys, "stderr", err):
             try:
                 self.guard.wide_change_gate(staged)
@@ -81,14 +84,22 @@ class TheGateAsks(unittest.TestCase):
         self.assertIsNone(code)
         self.assertFalse(asked, "넓지 않은 커밋에까지 기록을 묻는다")
 
-    # W3. 넓은 파일 + 기록 없음 = 막고, 돌릴 명령을 그대로 보인다.
-    def test_w3_wide_without_a_record_is_refused(self):
+    # W3. 넓은 파일 + 기록 없음 = **막지 않는다** — 전체는 commit 뒤 배경에서
+    # (REQ-20260905-010). 대신 그 사실을 말한다.
+    def test_w3_wide_without_a_record_runs_the_suite_after(self):
         code, err, asked = self._run(["bin/s9", "web/app/card.js"], rc=1)
         self.assertTrue(asked, "묻지도 않고 지나갔다")
-        self.assertEqual(code, 1)
-        self.assertIn("bin/s9", err, "무엇이 걸렸는지 안 말한다")
-        self.assertIn("python3 tests/", err,
-                      "막기만 하고 무엇을 하면 되는지 안 알려 준다")
+        self.assertIsNone(code, "기록이 없다고 커밋을 세웠다 — 전체는 뒤에 돈다")
+        self.assertIn("배경", err, "전체가 뒤에 돈다는 말이 없다")
+
+    # W3b. 붉음 라쳇 — 마지막 전체가 붉었고 그 뒤 초록이 없으면 막고, 붉은 파일을 말한다.
+    def test_w3b_a_red_suite_blocks_until_green(self):
+        red = {"at": 10 ** 12, "files": ["test_conn_reap.py"]}
+        with mock.patch.object(self.guard, "_read_json", lambda _p: red):
+            code, err, _asked = self._run(["bin/s9"], rc=1)
+        self.assertEqual(code, 1, "붉은 전체 뒤의 code 커밋을 막지 않았다")
+        self.assertIn("test_conn_reap.py", err, "무엇이 붉었는지 안 말한다")
+        self.assertIn("S9_FIX_RED", err, "지나가는 길을 안 알려 준다")
 
     # W4. 넓은 파일 + 기록 있음 = 그냥 지나간다 (비용 0).
     def test_w4_wide_with_a_record_passes(self):
@@ -103,9 +114,10 @@ class TheGateAsks(unittest.TestCase):
 
     # W5b. 경로 구분자가 역슬래시여도 같은 파일이다 (윈도우).
     def test_w5b_backslash_paths_count(self):
-        code, _err, asked = self._run(["bin\\s9"], rc=1)
+        code, err, asked = self._run(["bin\\s9"], rc=1)
         self.assertTrue(asked, "윈도우 경로로 오면 넓은 파일을 못 알아본다")
-        self.assertEqual(code, 1)
+        self.assertIsNone(code)
+        self.assertIn("배경", err, "넓은 파일로 안 세어 아무 말이 없다")
 
 
 class TheAnswerIsARecord(unittest.TestCase):
