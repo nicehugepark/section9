@@ -245,6 +245,7 @@ def install_claude_hooks():
     if "--no-remote-control" not in sys.argv and not settings.get("remoteControlAtStartup"):
         settings["remoteControlAtStartup"] = True
         changed = True
+        SET_BY_US.add("remoteControlAtStartup")  # uninstall 이 이것만 되돌린다
         say("⚑ remoteControlAtStartup=true 로 설정 (세션 시작 시 원격제어 자동 활성 — "
             "모바일 앱/claude.ai에서 이 세션 제어 가능). 원치 않으면 s9-install --no-remote-control 또는 "
             "settings.json에서 해당 키 삭제.")
@@ -271,6 +272,7 @@ def current_user():
 COLLISION_PREFIX = "s9-"
 PLACED = []      # 이번 설치가 ~/.claude 에 놓은 것 — [{kind, name, path, how}]
 COLLIDED = []    # 이름이 겹쳐 s9- 로 비켜 선 것 — [{kind, name, theirs, ours}]
+SET_BY_US = set()  # settings.json 에 설치가 처음 켠 키 — uninstall 이 이것만 되돌린다
 
 
 def placed_manifest_path(home=None):
@@ -287,7 +289,9 @@ def _read_placed(home=None):
 
 
 def _write_placed(home=None):
-    data = {"placed": PLACED, "collided": COLLIDED, "root": ROOT}
+    prev = _read_placed(home)
+    keys = sorted(set(prev.get("settings_keys") or []) | SET_BY_US)
+    data = {"placed": PLACED, "collided": COLLIDED, "root": ROOT, "settings_keys": keys}
     with open(placed_manifest_path(home), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
 
@@ -514,6 +518,144 @@ def install_other_harnesses():
             say(f"{name}: 미설치 감지 ({probe} 없음) — 생략")
 
 
+def strip_managed_block(path):
+    """instructions 파일에서 우리 블록만 걷는다 — 마커 밖은 그대로. 빈 파일이 되면 지운다."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            cur = f.read()
+    except OSError:
+        return False
+    if BEGIN_MARK not in cur or END_MARK not in cur:
+        return False
+    pre = cur.split(BEGIN_MARK)[0]
+    post = cur.split(END_MARK, 1)[1]
+    new = (pre.rstrip("\n") + "\n" if pre.strip() else "") + post.lstrip("\n")
+    if new.strip():
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new)
+    else:
+        os.remove(path)
+    return True
+
+
+def uninstall(home=None, root=None, bring_back=True, dry_run=False, out=None):
+    """설치가 놓은 것만 걷는다 (REQ-20260905-027). 반환 dict(removed=[…], brought_back=…).
+
+    걷는 것: settings.json 의 section9 훅(다른 훅은 보존)·설치가 켠 키 · agents/skills 의
+    우리 링크·사본(목록 파일 + ROOT 를 가리키는 링크 + .section9-copy 마커) · GEMINI.md /
+    AGENTS.md 의 우리 블록 · 저장소 git 훅 넷과 merge driver · state/installed_at · 목록 파일.
+    안 건드리는 것: 저장소(vault·CLAUDE.md)·자격증명·백업. bring_back=True 면 마지막 설치
+    백업을 되돌린다(원위치의 새 파일은 .s9-conflict-<시각> 으로 비켜 선다 — 잃지 않는다).
+    """
+    out = out or say
+    home = home or claude_home()
+    root = root or ROOT
+    removed = []
+
+    def _rm(path, what):
+        removed.append((what, path))
+        if dry_run or not os.path.lexists(path):
+            return
+        if os.path.islink(path) or os.path.isfile(path):
+            os.remove(path)
+        else:
+            shutil.rmtree(path)
+
+    # ① settings.json — 우리 훅과 우리가 켠 키만
+    man = _read_placed(home)
+    sp = os.path.join(home, "settings.json")
+    try:
+        with open(sp, encoding="utf-8") as f:
+            settings = json.load(f)
+    except (OSError, ValueError):
+        settings = None
+    if isinstance(settings, dict):
+        changed = False
+        hooks = settings.get("hooks") or {}
+        for event in list(hooks.keys()):
+            kept = [e for e in hooks[event]
+                    if not any(owned_hook(h.get("command", "")) for h in e.get("hooks", []))]
+            if kept != hooks[event]:
+                changed = True
+                removed.append(("hook", f"{sp}:{event}"))
+                if kept:
+                    hooks[event] = kept
+                else:
+                    del hooks[event]
+        if "hooks" in settings and not settings["hooks"]:
+            del settings["hooks"]; changed = True
+        for k in man.get("settings_keys") or []:
+            if k in settings:
+                del settings[k]; changed = True
+                removed.append(("settings-key", f"{sp}:{k}"))
+        if changed and not dry_run:
+            with open(sp, "w", encoding="utf-8") as f:
+                json.dump(settings, f, ensure_ascii=False, indent=2); f.write("\n")
+    # ② agents/skills — 목록 + ROOT 를 가리키는 링크 + 사본 마커
+    listed = {e.get("path") for e in man.get("placed") or []}
+    for sub in ("agents", "skills"):
+        d = os.path.join(home, sub)
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            path = os.path.join(d, name)
+            ours = (path in listed
+                    or (os.path.islink(path) and os.path.realpath(path).startswith(os.path.realpath(root)))
+                    or (os.path.isdir(path) and os.path.exists(os.path.join(path, ".section9-copy"))))
+            if ours:
+                _rm(path, sub[:-1])
+    # ③ 다른 하네스의 우리 블록
+    for path in (os.path.expanduser("~/.gemini/GEMINI.md"), os.path.expanduser("~/.codex/AGENTS.md")):
+        if os.path.isfile(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    has = BEGIN_MARK in f.read()
+            except OSError:
+                has = False
+            if has:
+                removed.append(("block", path))
+                if not dry_run:
+                    strip_managed_block(path)
+    # ④ 저장소 git 훅과 merge driver
+    hd = git_hooks_dir(root)
+    if hd:
+        for name in ("post-merge", "post-checkout", "pre-commit", "post-commit"):
+            p = os.path.join(hd, name)
+            try:
+                with open(p, encoding="utf-8") as f:
+                    mine = "s9" in f.read()
+            except OSError:
+                mine = False
+            if mine:
+                _rm(p, "git-hook")
+        removed.append(("git-config", "merge.s9doc"))
+        if not dry_run:
+            for key in ("merge.s9doc.driver", "merge.s9doc.name"):
+                subprocess.run(["git", "config", "--unset-all", key], cwd=root, capture_output=True)
+    # ⑤ 표식·목록
+    _rm(os.path.join(root, "state", "installed_at"), "marker")
+    _rm(placed_manifest_path(home), "manifest")
+    # ⑥ 되돌리기 — 설치 전 백업이 있으면
+    back = None
+    if bring_back:
+        try:
+            env = _load_env_module()
+            bks = env.list_backups()
+            if bks:
+                back = {"which": bks[-1], "result": getattr(env, "restore")(bks[-1], dry_run=dry_run)}
+        except Exception as e:
+            back = {"error": str(e)}
+    for what, path in removed:
+        out(f"  {'(예정) ' if dry_run else ''}걷음 {what}: {path}")
+    if back and back.get("which"):
+        out(f"  {'(예정) ' if dry_run else ''}설치 전 백업 {back['which']} 을 되돌렸다 — 원위치의 새 파일은 .s9-conflict-<시각> 으로 비켜 세웠다")
+    elif back and back.get("error"):
+        out(f"  ⚠ 되돌리기 실패: {back['error']} — `s9 env` 의 되돌리기로 다시")
+    out(f"section9 uninstall {'미리보기' if dry_run else '완료'} — 저장소·문서·자격증명·백업은 그대로다. "
+        f"다시 쓰려면 bin/s9-install.")
+    return {"removed": removed, "brought_back": back}
+
+
 # bin/s9-doctor 의 LOGIN_MARKS 와 같은 표 — 이 도구는 doctor 를 import 하지 않는다.
 # 두 벌이 갈리는지는 tests/test_login_check.py 가 본다 (REQ-20260905-014).
 LOGIN_MARKS = {
@@ -540,8 +682,10 @@ def login_state(marks=None, which=None):
 
 def _load_env_module():
     import importlib.util
+    # 설치자와 같은 디렉토리의 것 — 둘은 함께 실려 간다. ROOT 로 지으면 임시 ROOT
+    # (시험·워크트리)에서 못 찾아 백업·되돌리기가 조용히 빠진다.
     spec = importlib.util.spec_from_file_location(
-        "s9_env", os.path.join(ROOT, "bin", "s9_env.py"))
+        "s9_env", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_env.py"))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
@@ -609,6 +753,9 @@ def login_guide(state=None):
 
 
 def main():
+    if "--uninstall" in sys.argv:
+        uninstall(bring_back="--keep" not in sys.argv, dry_run="--dry-run" in sys.argv)
+        return
     # --agents-md <path>: 임의 instructions 파일에 protocol 주입 (copilot/프로젝트용)
     if "--agents-md" in sys.argv:
         i = sys.argv.index("--agents-md")

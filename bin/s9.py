@@ -17914,6 +17914,106 @@ def _env_module():
     return m
 
 
+def cmd_uninstall(args):
+    """설치가 놓은 것만 걷는다 (REQ-20260905-027) — 본체는 bin/s9-install --uninstall."""
+    import subprocess
+    exe = os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9-install")
+    argv = [sys.executable, exe, "--uninstall"]
+    if args.keep:
+        argv.append("--keep")
+    if args.dry_run:
+        argv.append("--dry-run")
+    r = subprocess.run(argv, stdin=subprocess.DEVNULL)
+    sys.exit(r.returncode)
+
+
+def dashboard_alive_here(root=None, info_at=None, connect=None):
+    """이 저장소의 대시보드가 그 포트를 쥐고 있는가 — (port, 판정, serveinfo).
+
+    판정: "mine"(이 저장소가 답한다) · "silent"(포트는 열려 있는데 답이 없다) ·
+    "other"(다른 저장소가 답한다) · "free"(닫혀 있다). 비우는 쪽은 free 와 other 만 지나간다.
+    실사고(2026-09-05 22:39): 응답 없는 서버를 「없다」로 읽고 살아 있는 저장소의 state/ 를
+    비웠다 — 포트가 열려 있다는 것과 답한다는 것은 다른 사실이고, 열려 있는데 말이 없으면
+    내 것일 수 있으니 세우지 않는다(bin/s9-doctor D4 와 같은 규율).
+    """
+    import socket as _socket
+    root = root or ROOT
+    try:
+        with open(os.path.join(root, "state", "port"), encoding="utf-8") as f:
+            port = int(f.read().strip())
+    except (OSError, ValueError):
+        port = int(os.environ.get("S9_PORT") or 9909)
+    info_at = info_at or serveinfo_at
+
+    def _connect(p):
+        try:
+            _socket.create_connection(("127.0.0.1", p), 1.0).close()
+            return True
+        except OSError:
+            return False
+    connect = connect or _connect
+    if not connect(port):
+        return port, "free", None
+    info = info_at(port)
+    if not info or not info.get("root"):
+        return port, "silent", info
+    if os.path.realpath(info.get("root")) == os.path.realpath(root):
+        return port, "mine", info
+    return port, "other", info
+
+
+def cmd_reset(args):
+    """기계 상태(state/·index/)를 백업 뒤 처음으로 (REQ-20260905-028). 문서는 그대로다."""
+    env = _env_module()
+    if args.list:
+        bks = env.reset_backups(ROOT)
+        print(f"reset 백업 {len(bks)}개 — {env.reset_root(ROOT)}")
+        for n in bks:
+            print(f"  {n}")
+        return
+    port, verdict, _info = dashboard_alive_here()
+    if verdict == "mine" and not args.dry_run:
+        die(f"대시보드가 :{port} 에서 이 저장소를 쓰고 있다 — 먼저 세워라: s9 serve --stop  (그 뒤 다시 s9 reset)")
+    if verdict == "silent" and not args.dry_run:
+        die(f"포트 :{port} 가 열려 있는데 답이 없다 — 이 저장소의 대시보드일 수 있으니 비우지 않는다. "
+            f"세우고 다시: s9 serve --stop")
+    if args.restore_which:
+        r = env.reset_restore(ROOT, args.restore_which, dry_run=args.dry_run)
+        if args.dry_run:
+            print(f"(예정) {r['from']} 에서 {', '.join(r['dirs'])} 을 되돌린다")
+        else:
+            print(f"{r['from']} 을 되돌렸다 — 되돌리기 직전 상태는 {r.get('pre') or '(비어 있어 안 남김)'}")
+            cmd_init(args)
+        return
+    gone = env.reset_clear(ROOT, dry_run=True)
+    if not gone:
+        print("비울 것이 없다 — 이미 처음 상태다")
+        return
+    print(f"비울 것 {len(gone)}개 (state/·index/ 안) — 문서(vault·users·projects)는 건드리지 않는다")
+    if args.dry_run:
+        for p in gone[:40]:
+            print(f"  (예정) {os.path.relpath(p, ROOT)}")
+        if len(gone) > 40:
+            print(f"  … 외 {len(gone) - 40}개")
+        return
+    if not args.yes:
+        if not sys.stdin.isatty():
+            die("터미널이 아니다 — 정말 비우려면 --yes 를 붙여라 (백업은 자동으로 남는다)")
+        try:
+            ans = input("정말 비우나? 'reset' 이라고 치면 진행 (백업은 자동으로 남는다): ").strip()
+        except EOFError:
+            ans = ""
+        if ans != "reset":
+            print("그만둔다 — 아무것도 바뀌지 않았다")
+            return
+    bdir = env.reset_backup(ROOT)
+    env.reset_clear(ROOT)
+    cmd_init(args)
+    tag = os.path.basename(bdir) if bdir else ""
+    print(f"처음 상태로 비웠다. 지우기 전 상태는 {bdir or '(없음)'} 에 있다"
+          + (f" — 되돌리려면: s9 reset --restore {tag}" if tag else ""))
+
+
 def cmd_env(args):
     """기존 환경의 승계·정리·백업 (REQ-20260905-025): status · backups · backup · restore · inherit."""
     env = _env_module()
@@ -25103,6 +25203,18 @@ def main():
     ev.add_argument("--dry-run", action="store_true", help="restore: 무엇이 바뀔지만 본다")
     ev.add_argument("--user", help="inherit: 개인 설정을 넣을 사용자(기본 현재 사용자)")
     ev.set_defaults(fn=cmd_env)
+
+    un = sub.add_parser("uninstall", help="설치가 놓은 것만 걷는다 — 훅·스킬·에이전트·git 훅·표식 (저장소·문서·자격증명은 그대로)")
+    un.add_argument("--keep", action="store_true", help="설치 전 백업을 되돌리지 않는다")
+    un.add_argument("--dry-run", action="store_true", help="무엇을 걷을지만 본다")
+    un.set_defaults(fn=cmd_uninstall)
+
+    rs = sub.add_parser("reset", help="기계 상태(state/·index/)를 백업 뒤 처음으로 — 문서는 그대로")
+    rs.add_argument("--dry-run", action="store_true", help="무엇을 비울지만 본다")
+    rs.add_argument("--yes", action="store_true", help="묻지 않고 비운다(터미널이 아닐 때 필수)")
+    rs.add_argument("--list", action="store_true", help="reset 백업 목록")
+    rs.add_argument("--restore", dest="restore_which", metavar="시각", help="그 reset 백업으로 되돌린다")
+    rs.set_defaults(fn=cmd_reset)
 
     nw = sub.add_parser("now",
                         help="지금 시각을 실측해 응답 머리 형식으로 낸다")

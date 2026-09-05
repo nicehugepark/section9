@@ -181,6 +181,84 @@ def inherit_candidates(bdir):
     return out
 
 
+RESET_DIRS = ("state", "index")   # 기계 상태 — 문서(vault·users·projects)는 아니다
+
+
+def reset_root(root):
+    """저장소의 기계 상태 백업 자리 — ~/.claude 백업과 같은 지붕, 다른 방."""
+    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    tag = os.path.basename(os.path.realpath(root)) or "section9"
+    return os.path.join(base, "section9", "reset", tag)
+
+
+def reset_backup(root, now=None):
+    """state/·index/ 를 통째로 복사해 둔다 (REQ-20260905-028). 반환 백업 디렉토리(없으면 "")."""
+    import shutil as _sh
+    ts = (now or datetime.datetime.now()).strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(reset_root(root), ts)
+    n = 1
+    while os.path.exists(dest):          # 같은 초에 두 번 — 덮어쓰지도 섞지도 않는다
+        n += 1
+        dest = os.path.join(reset_root(root), f"{ts}-{n}")
+    any_ = False
+    for d in RESET_DIRS:
+        src = os.path.join(root, d)
+        if os.path.isdir(src) and os.listdir(src):
+            _sh.copytree(src, os.path.join(dest, d), symlinks=True,
+                         ignore_dangling_symlinks=True, dirs_exist_ok=True)
+            any_ = True
+    if not any_:
+        return ""
+    with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump({"root": os.path.realpath(root), "at": ts, "dirs": list(RESET_DIRS)}, f)
+    return dest
+
+
+def reset_backups(root):
+    r = reset_root(root)
+    try:
+        return sorted(n for n in os.listdir(r) if os.path.isfile(os.path.join(r, n, "manifest.json")))
+    except OSError:
+        return []
+
+
+def reset_clear(root, dry_run=False):
+    """state/·index/ 의 내용물만 비운다 — 디렉토리는 남긴다. 반환 지운 항목 경로들."""
+    import shutil as _sh
+    gone = []
+    for d in RESET_DIRS:
+        base = os.path.join(root, d)
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            p = os.path.join(base, name)
+            gone.append(p)
+            if dry_run:
+                continue
+            if os.path.islink(p) or os.path.isfile(p):
+                os.remove(p)
+            else:
+                _sh.rmtree(p, ignore_errors=True)
+    return gone
+
+
+def reset_restore(root, which, dry_run=False):
+    """reset 백업을 되돌린다 — 지금 state/·index/ 는 먼저 비운다(그 전에 다시 백업)."""
+    import shutil as _sh
+    src = os.path.join(reset_root(root), which)
+    if not os.path.isfile(os.path.join(src, "manifest.json")):
+        raise FileNotFoundError(f"reset 백업이 없다: {src}")
+    if dry_run:
+        return {"from": src, "dirs": [d for d in RESET_DIRS if os.path.isdir(os.path.join(src, d))]}
+    pre = reset_backup(root)
+    reset_clear(root)
+    for d in RESET_DIRS:
+        sd = os.path.join(src, d)
+        if os.path.isdir(sd):
+            _sh.copytree(sd, os.path.join(root, d), symlinks=True, dirs_exist_ok=True)
+    return {"from": src, "pre": pre}
+
+
 def installed_at_path(root):
     return os.path.join(root, "state", "installed_at")
 
