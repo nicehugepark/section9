@@ -9606,6 +9606,109 @@ def rework_kick(doc_id, meta=None, body=None):
         return False
 
 
+# ------------------------------------------------- 끊긴 턴 잇기 (REQ-20260905-023)
+# 네트워크 오류로 턴이 끊기면 Claude Code 는 transcript 에 `isApiErrorMessage` 한 줄
+# ("API Error: Connection lost mid-response …")을 남기고 **멈춘다** — 사람이 무언가
+# 치기 전까지 아무도 잇지 않는다(실측 2026-09-05 20:47, 사용자가 20:49 에 직접 쳤다).
+# 여기서는 30초 틱마다 살아 있는 세션의 transcript 꼬리를 보고, 마지막 뜻있는 줄이
+# 그 오류이고 유예를 넘겼으면 수신함에 「계속」 한 줄을 넣는다 — 대시보드 채팅과
+# 같은 길이라 세션의 Monitor 가 곧바로 깨어 이어서 한다. 같은 오류에 한 번만,
+# 세션당 한 시간에 상한만큼만 — 이어도 또 끊기는 회선이면 사람이 볼 일이다.
+DEAD_TURN_GRACE_SEC = 90
+DEAD_TURN_MAX_PER_HOUR = 3
+DEAD_TURN_STATE = os.path.join(ROOT, "state", "turn-resume.json")
+DEAD_TURN_TEXT = ("앞 턴이 네트워크 오류(API Error: Connection lost)로 끊겼다 — 하던 일을 "
+                  "그 자리에서 이어서 계속하라. 이 줄은 section9 이 자동으로 넣었다"
+                  "(REQ-20260905-023).")
+
+
+def transcript_last_turn(path, tail_bytes=65536):
+    """transcript 꼬리에서 마지막 뜻있는 줄(user/assistant)의 (type, ts, api_error)."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            f.seek(max(0, size - tail_bytes))
+            chunk = f.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    last = None
+    for ln in chunk.splitlines():
+        try:
+            d = json.loads(ln)
+        except ValueError:
+            continue
+        if d.get("type") not in ("user", "assistant"):
+            continue
+        ts = d.get("timestamp") or ""
+        try:
+            t = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            t = 0.0
+        last = (d["type"], t, bool(d.get("isApiErrorMessage")))
+    return last
+
+
+def dead_turn_tick(bindings=None, now=None, send=None, state_path=None, live=None):
+    """끊긴 턴 1틱 — 이은 (session, 오류 시각) 목록을 돌려준다."""
+    import glob as _glob
+    now = time.time() if now is None else now
+    send = send or (lambda text, sid8: chat_send(text, sid8, sender="s9", kind="chat"))
+    live = live or chat_live
+    state_path = state_path or DEAD_TURN_STATE
+    if bindings is None:
+        bindings = []
+        for bp in _glob.glob(_local_binding_glob()):
+            try:
+                with open(bp, encoding="utf-8") as f:
+                    bindings.append(json.load(f))
+            except (OSError, ValueError):
+                continue
+    try:
+        with open(state_path, encoding="utf-8") as f:
+            st = json.load(f) or {}
+    except (OSError, ValueError):
+        st = {}
+    resumed = []
+    for b in bindings:
+        sid = str(b.get("session") or "")[:8]
+        tp = b.get("transcript_path") or ""
+        if not sid or not tp or b.get("ended") or not live(b):
+            continue
+        last = transcript_last_turn(tp)
+        if not last:
+            continue
+        kind, t, api_err = last
+        if kind != "assistant" or not api_err or (now - t) < DEAD_TURN_GRACE_SEC:
+            continue
+        rec = st.get(sid) or {"sent": [], "errs": []}
+        if round(t) in rec["errs"]:
+            continue                                   # 같은 오류엔 한 번만
+        recent = [x for x in rec["sent"] if now - x < 3600]
+        if len(recent) >= DEAD_TURN_MAX_PER_HOUR:
+            continue                                   # 회선이 문제다 — 사람 몫
+        try:
+            send(DEAD_TURN_TEXT, sid)
+        except Exception:
+            continue
+        rec["sent"] = recent + [now]
+        rec["errs"] = (rec["errs"] + [round(t)])[-20:]
+        st[sid] = rec
+        resumed.append((sid, t))
+        try:
+            _guard_log(f"[끊긴 턴] {sid} 의 턴이 {int(now - t)}초 전 네트워크 오류로 끊겨 "
+                     f"「계속」을 넣었다 ({len(rec['sent'])}/{DEAD_TURN_MAX_PER_HOUR} /h)")
+        except Exception:
+            pass
+    if resumed:
+        try:
+            os.makedirs(os.path.dirname(state_path), exist_ok=True)
+            with open(state_path, "w", encoding="utf-8") as f:
+                json.dump(st, f, ensure_ascii=False)
+        except OSError:
+            pass
+    return resumed
+
+
 def rework_watch_tick(grace=None, now=None):
     """반려 재작업 워처 1틱 (REQ-20260823-083) — serve의 데몬 스레드가 30초마다 호출.
     반려된(마지막 전이 review→in-progress) in-progress REQ 중 유예를 넘기고도
@@ -23220,6 +23323,11 @@ def cmd_serve(args):
                 # 한 스레드로 직렬화하면 lock 경합도 줄어든다.
                 try:
                     health_apply()
+                except Exception:
+                    pass
+                # 끊긴 턴 잇기 (REQ-20260905-023) — 같은 30초 틱
+                try:
+                    dead_turn_tick()
                 except Exception:
                     pass
                 time.sleep(30)
