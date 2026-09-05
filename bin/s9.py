@@ -17570,13 +17570,93 @@ def _has_user_prompt(argv):
     return False
 
 
+def serveinfo_at(port, host="127.0.0.1", timeout=1.5):
+    """이 포트에서 답하는 section9 서버의 serveinfo — 없거나 우리 것이 아니면 None."""
+    import urllib.request as _rq
+    try:
+        with _rq.urlopen(f"http://{host}:{port}/api/serveinfo", timeout=timeout) as r:
+            d = json.loads(r.read().decode("utf-8", "replace"))
+        return d if isinstance(d, dict) and "started" in d else None
+    except Exception:
+        return None
+
+
+def next_free_port(lo=9910, hi=9950, host="127.0.0.1"):
+    import socket as _sock
+    for p in range(lo, hi):
+        s = _sock.socket()
+        try:
+            s.bind((host, p))
+            return p
+        except OSError:
+            continue
+        finally:
+            s.close()
+    return 0
+
+
+def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=None):
+    """(포트, 사유) — 남이 쓰는 포트는 피한다 (REQ-20260905-016).
+
+    같은 리눅스 서버에 여러 사람이 각자 section9 을 설치하면 9909 에 남의
+    서버가 먼저 앉아 있다. 사유 넷: `mine`(내 저장소의 서버가 답한다 — 그대로
+    재사용) · `free`(아무도 없고 bind 된다 — 그대로) · `other`(다른 저장소의
+    section9 이 답한다) · `busy`(답은 없는데 bind 가 안 된다 — 다른 프로그램).
+    뒤의 둘은 9910~9949 에서 빈 포트를 골라 `state/port` 에 적는다 — 그 뒤의
+    모든 호출(s9_port)·훅·화면 링크가 그 포트를 따른다. 사람이 `S9_PORT` 로
+    못박은 값은 그대로 둔다(그건 사람의 결정이다).
+    """
+    root = root or ROOT
+    port = port or s9_port(root)
+    info = serveinfo_at(port) if _info is None else _info(port)
+    if info is not None:
+        # root 가 없는 답은 이 조항 이전의 서버다 — 가를 재료가 없으니 종전대로
+        # 내 것으로 본다(옮기면 멀쩡한 내 대시보드가 둘이 된다).
+        if "root" not in info or \
+                os.path.realpath(str(info.get("root") or "")) == os.path.realpath(root):
+            return port, "mine"
+        why = "other"
+    else:
+        def _can_bind(p):
+            import socket as _sock
+            s = _sock.socket()
+            try:
+                s.bind(("127.0.0.1", p))
+                return True
+            except OSError:
+                return False
+            finally:
+                s.close()
+        if (_bindable or _can_bind)(port):
+            return port, "free"
+        why = "busy"
+    if os.environ.get("S9_PORT"):
+        return port, why                    # 사람이 못박았다 — 옮기지 않는다
+    new = (_next or next_free_port)()
+    if not new:
+        return port, why
+    try:
+        os.makedirs(os.path.join(root, "state"), exist_ok=True)
+        with open(os.path.join(root, "state", "port"), "w", encoding="utf-8") as f:
+            f.write(str(new))
+    except OSError:
+        pass
+    return new, why
+
+
 def cmd_code(args):
     """통합 진입 명령 (REQ-20260824-032): 대시보드를 보장(이미 떠 있으면 스킵)하고
     이 터미널에서 claude를 실행한다 — 한 명령으로 관제(대시보드)+대화(터미널) 시작.
     대시보드 채팅은 이 터미널 세션으로 cross-session 메시지를 전달한다."""
     import socket
     import subprocess
-    port = s9_port()
+    port, why = pick_dashboard_port()
+    if why == "other":
+        print(f"포트 {s9_port()} 는 다른 저장소의 section9 이 쓰고 있다 — {port} 로 띄운다 "
+              f"(state/port 에 적어 두었다)")
+    elif why == "busy":
+        print(f"포트 {s9_port()} 는 다른 프로그램이 쓰고 있다 — {port} 로 띄운다 "
+              f"(state/port 에 적어 두었다)")
     # 연결됨 ≠ 준비됨 (REQ-20260904-015). 예전엔 connect 한 번 성공이면 「실행
     # 중」을 찍었는데, WSL 중계는 아무도 안 듣는 포트에도 connect 를 받아 준다.
     # 우리 서버가 실제로 답하는지를 왕복으로 본다.
@@ -21022,7 +21102,10 @@ def git_do(what, actor="", proxy_for=""):
 
 def cmd_serve(args):
     if args.port is None:
-        args.port = s9_port()
+        args.port, _why = pick_dashboard_port()
+        if _why in ("other", "busy"):
+            print(f"포트 {s9_port()} 는 남이 쓰고 있다 — {args.port} 로 띄운다 (state/port)",
+                  file=sys.stderr)
     # 감시자 (REQ-20260825-096) — 이 프로세스는 감시자를 떼어 놓고 곧 돌아간다.
     if getattr(args, "stop_guard", False):
         if _guard_alive(args.port) is None:
@@ -21983,6 +22066,11 @@ def cmd_serve(args):
                 # 결정할 것이 아니다. 여기서는 사실만 내보낸다.
                 cur = running_code_stamp()
                 self._json({"started": SERVE_STARTED,
+                            # 이 서버가 어느 저장소의 것인가 (REQ-20260905-016) —
+                            # 같은 서버에 여러 사람이 각자 설치하면 9909 에 남의
+                            # section9 이 답한다. 그것을 내 것으로 읽으면 남의
+                            # 화면을 내 것으로 안다.
+                            "root": ROOT,
                             "code_stamp": SERVE_CODE_STAMP,
                             "disk_stamp": cur,
                             "changed": stale_parts(SERVE_CODE_STAMP, cur),
