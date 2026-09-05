@@ -11,6 +11,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 DOCTOR = os.path.join(HERE, "..", "bin", "s9-doctor")
 INSTALL = os.path.join(HERE, "..", "bin", "s9-install")
+S9 = os.path.join(HERE, "..", "bin", "s9")
 
 
 def _load(name, path):
@@ -25,7 +26,9 @@ class LoginCheck(unittest.TestCase):
         """L1. doctor 와 install 의 LOGIN_MARKS 가 같다 — 갈리면 설치 안내와 진단이 다른 말을 한다."""
         d = _load("s9doc_login", DOCTOR)
         i = _load("s9inst_login", INSTALL)
+        s = _load("s9_login", S9)
         self.assertEqual(d.LOGIN_MARKS, i.LOGIN_MARKS)
+        self.assertEqual(d.LOGIN_MARKS, s.LOGIN_MARKS, "s9 code 의 문이 doctor 와 다른 표를 든다")
 
     def test_l2_installed_but_not_logged_in_is_a_warning_with_the_way_in(self):
         """L2. 실행 파일은 있는데 흔적이 없으면 warn 이고 로그인하는 길을 말한다; 있으면 ok."""

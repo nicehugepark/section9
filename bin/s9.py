@@ -17721,6 +17721,54 @@ def _has_user_prompt(argv):
     return False
 
 
+# 하네스별 로그인 흔적 (REQ-20260905-014) — bin/s9-doctor · bin/s9-install 과 같은 표.
+# 세 벌이 갈리는지는 tests/test_login_check.py 가 본다. `s9 code` 가 들어가는 문이
+# 여기다: 설치 안내만으로는 부족하다 — 실제로 막히는 자리는 첫 `s9 code` 다.
+LOGIN_MARKS = {
+    "claude": {"exe": "claude", "mark": ".credentials.json", "home_env": "CLAUDE_CONFIG_DIR",
+               "home": "~/.claude", "how": "터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인"},
+    "codex": {"exe": "codex", "mark": "auth.json", "home_env": "CODEX_HOME",
+              "home": "~/.codex", "how": "`codex login`"},
+    "gemini": {"exe": "gemini", "mark": "oauth_creds.json", "home_env": "",
+               "home": "~/.gemini", "how": "터미널에서 `gemini` 를 한 번 띄워 로그인"},
+}
+
+
+def login_state(marks=None, which=None):
+    marks = marks or LOGIN_MARKS
+    which = which or shutil.which
+    out = {}
+    for name, m in marks.items():
+        exe = bool(which(m["exe"]))
+        home = (os.environ.get(m["home_env"]) if m.get("home_env") else "") or m["home"]
+        mark = os.path.exists(os.path.join(os.path.expanduser(home), m["mark"]))
+        out[name] = {"installed": exe, "logged_in": exe and mark, "how": m["how"]}
+    return out
+
+
+def ensure_claude_login(run=None, state=None):
+    """`s9 code` 의 문 — 로그인이 없으면 여기서 로그인시키고, 안 되면 들어가지 않는다.
+
+    설치(s9-install)는 안내만 한다 — 실제로 막히는 자리는 첫 `s9 code` 라(사용자
+    지적 2026-09-05 21:34) 여기서 `claude auth login` 을 직접 돌린다. 반환:
+    "ok" · "logged-in-now" · "not-installed" · "failed".
+    """
+    import subprocess as _sp
+    st = (state or login_state)()
+    c = st.get("claude") or {}
+    if not c.get("installed"):
+        return "not-installed"
+    if c.get("logged_in"):
+        return "ok"
+    print("◌ Claude Code 로그인이 없다 — 먼저 로그인한다 (claude auth login)…")
+    try:
+        (run or (lambda argv: _sp.call(argv)))(["claude", "auth", "login"])
+    except OSError:
+        return "failed"
+    st = (state or login_state)()
+    return "logged-in-now" if (st.get("claude") or {}).get("logged_in") else "failed"
+
+
 def serveinfo_at(port, host="127.0.0.1", timeout=1.5):
     """이 포트에서 답하는 section9 서버의 serveinfo — 없거나 우리 것이 아니면 None."""
     import urllib.request as _rq
@@ -17859,6 +17907,12 @@ def cmd_code(args):
     # (REQ-20260827-032). 예전에는 여기서 `~/.claude` 만 봐서, 계정을 바꾼
     # 세션이 "설치돼 있다"고 판단하고 훅 없이 그대로 돌았다 — 자가 치유는
     # 있었는데 **보는 곳이 틀렸다.**
+    # 로그인 (REQ-20260905-014): 없으면 여기서 로그인시킨다 — 끝나지 않으면 안 들어간다
+    _login = ensure_claude_login()
+    if _login == "failed":
+        die("Claude Code 로그인이 끝나지 않았다 — `claude auth login` 뒤 다시 `s9 code`")
+    elif _login == "logged-in-now":
+        print("✓ 로그인 확인 — 계속한다")
     hooked = hooks_installed()
     if not hooked:
         print("◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…")
