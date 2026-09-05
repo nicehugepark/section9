@@ -68,6 +68,19 @@ class PickPort(unittest.TestCase):
             9909, root=self.root, _info=lambda p: None, _bindable=lambda p: True)
         self.assertEqual((port, why), (9909, "free"))
 
+
+    def test_p5_an_auto_moved_port_comes_back_when_the_default_is_mine_again(self):
+        """P5. 자동으로 옮긴 포트는 기본 포트에 내 서버가 답하면 되돌아온다 — 표식(port.auto)이 재료."""
+        port, why = self.m.pick_dashboard_port(
+            9909, root=self.root, _info=lambda p: {"started": "x", "root": "/other"},
+            _next=lambda: 9913)
+        self.assertEqual((port, why), (9913, "other"))
+        self.assertTrue(os.path.exists(os.path.join(self.root, "state", "port.auto")))
+        port, why = self.m.pick_dashboard_port(
+            None, root=self.root, _info=lambda p: {"started": "x", "root": self.root})
+        self.assertEqual((port, why), (9909, "mine"))
+        self.assertEqual(self._port_file(), "", "되돌아왔는데 state/port 가 남아 있다")
+
     def test_p4_a_pinned_port_is_never_moved(self):
         """P4. 사람이 S9_PORT 로 못박았으면 옮기지 않는다 — 그건 사람의 결정이다."""
         os.environ["S9_PORT"] = "9909"

@@ -17758,6 +17758,21 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
     못박은 값은 그대로 둔다(그건 사람의 결정이다).
     """
     root = root or ROOT
+    # 자동으로 옮겨 적은 포트(state/port.auto)는 **되돌아온다** — 기본 포트에 내
+    # 서버가 답하면 그 사실이 곧 판정이다. 실사고 2026-09-05 19:32: 시험이 새는
+    # 환경으로 실저장소에 9910 을 적었고, 그 뒤 두 시간 동안 재시작·화면이 전부
+    # 9910 을 보며 사용자의 9909 는 옛 코드로 남았다.
+    auto = os.path.join(root, "state", "port.auto")
+    if port is None and os.path.exists(auto) and not os.environ.get("S9_PORT"):
+        base_info = serveinfo_at(9909) if _info is None else _info(9909)
+        if base_info is not None and ("root" not in base_info or os.path.realpath(
+                str(base_info.get("root") or "")) == os.path.realpath(root)):
+            for f in (auto, os.path.join(root, "state", "port")):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+            return 9909, "mine"
     port = port or s9_port(root)
     info = serveinfo_at(port) if _info is None else _info(port)
     if info is not None:
@@ -17790,6 +17805,8 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
         os.makedirs(os.path.join(root, "state"), exist_ok=True)
         with open(os.path.join(root, "state", "port"), "w", encoding="utf-8") as f:
             f.write(str(new))
+        with open(auto, "w", encoding="utf-8") as f:      # 자동으로 적었다는 표식
+            f.write(f"{why} {now_iso()}\n")
     except OSError:
         pass
     return new, why
