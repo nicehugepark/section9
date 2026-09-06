@@ -146,3 +146,17 @@ if __name__ == "__main__":
         self.assertEqual(open(os.path.join(st, "port")).read(), "9909")
         self.assertFalse(os.path.exists(os.path.join(st, "port.auto")))
 
+    # P10. 방금 닫은 포트(TIME_WAIT 연결이 남은 포트)는 free 다 — 실제 서버와 같은 조건으로 잰다 (REQ-20260906-085)
+    def test_p10_a_just_closed_port_is_still_bindable(self):
+        import socket, threading
+        import sys as _sys; _sys.path.insert(0, HERE)
+        import portpool
+        srv = portpool.pool_socket(); port = srv.getsockname()[1]
+        def serve_one():
+            c, _ = srv.accept(); c.recv(1); c.close()      # 서버 쪽이 먼저 닫는다 → 서버 쪽 TIME_WAIT
+        t = threading.Thread(target=serve_one); t.start()
+        cl = socket.create_connection(("127.0.0.1", port)); cl.sendall(b"x"); t.join(2); cl.close(); srv.close()
+        self.assertTrue(self.m.port_bindable(port), "TIME_WAIT 만으로 포트를 남의 것으로 읽는다")
+        port2, why = self.m.pick_dashboard_port(port, root=self.root, _info=lambda p: None, _next=lambda: port + 1)
+        self.assertEqual((port2, why), (port, "free"))
+

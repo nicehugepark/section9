@@ -18533,6 +18533,24 @@ def windows_listen_owner(port, _lines=None):
     return pid, name
 
 
+def port_bindable(port, host="127.0.0.1"):
+    """이 포트에 서버를 앉힐 수 있나 — **실제 서버와 같은 조건**으로 bind 해 본다
+    (REQ-20260906-085). HTTPServer 는 allow_reuse_address 라 방금 닫은 포트(TIME_WAIT
+    연결이 남은 포트)에도 앉는다. 예전 검사는 SO_REUSEADDR 없이 bind 해 정지 직후의
+    포트를 「남이 쓴다」로 읽었다 — 맥 실측 2026-09-06 14:39: --stop 2초 뒤 --supervise 가
+    리스너 없는 9909 를 버리고 9910 에 앉았다."""
+    import socket as _sock
+    s = _sock.socket()
+    try:
+        s.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
+        s.bind((host, int(port)))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
 def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=None,
                       _foreign=None):
     """(포트, 사유) — 남이 쓰는 포트는 피한다 (REQ-20260905-016).
@@ -18577,17 +18595,7 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
             return port, "mine"
         why = "other"
     else:
-        def _can_bind(p):
-            import socket as _sock
-            s = _sock.socket()
-            try:
-                s.bind(("127.0.0.1", p))
-                return True
-            except OSError:
-                return False
-            finally:
-                s.close()
-        if (_bindable or _can_bind)(port):
+        if (_bindable or port_bindable)(port):
             own = (_foreign or windows_listen_owner)(port)
             # 이름을 못 읽은 소유자는 남으로 치지 않는다 — 모르는 것을 「남」으로 읽으면
             # 멀쩡한 내 포트를 버린다
