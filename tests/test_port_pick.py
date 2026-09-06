@@ -28,6 +28,9 @@ class PickPort(unittest.TestCase):
             "s9_portpick", importlib.machinery.SourceFileLoader("s9_portpick", S9))
         self.m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.m)
+        # 윈도우 쪽 목록은 이 파일의 관심이 아니다 — 있는 그대로 두면 WSL 에서 netstat.exe
+        # 를 실제로 부른다. 그 갈래는 test_win_neighbor 가 _foreign 주입으로 잰다.
+        self.m.windows_listen_owner = lambda port, _lines=None: None
 
     def tearDown(self):
         for k, v in self._env.items():

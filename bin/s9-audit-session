@@ -525,6 +525,13 @@ def main():
                                capture_output=True,
                                    encoding="utf-8", errors="replace", env=env,
                                timeout=10)
+            # 세션의 프로젝트 (REQ-20260906-052): `s9 code --project` 가 환경으로
+            # 넘긴 것을 바인딩에 적는다 — cmd_new 의 resolve_project 가 읽는다.
+            if os.environ.get("S9_PROJECT"):
+                subprocess.run([*S9_ARGV, "bind", "project",
+                                os.environ["S9_PROJECT"]],
+                               capture_output=True, encoding="utf-8",
+                               errors="replace", env=env, timeout=10)
             subprocess.run([*S9_ARGV, "bind", "ended", ""],
                            capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
         except Exception:

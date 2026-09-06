@@ -420,6 +420,21 @@ def run(env, *argv, inp=None):
                           encoding="utf-8", errors="replace", env=env, timeout=15)
 
 
+# 프롬프트 첫 줄의 프로젝트 표기 (REQ-20260906-052): `[프로젝트: slug]` · `[project: slug]`.
+# 훅은 이것을 **신호로만** 넘긴다(--project-tag) — 판정은 cmd_new 의 resolve_project
+# 한 곳이 한다. `#slug` 는 마크다운 제목·이슈 번호와 충돌해 쓰지 않는다(architect).
+PROJECT_TAG = re.compile(
+    r"^\[\s*(?:프로젝트|project)\s*:\s*([A-Za-z0-9][A-Za-z0-9_.-]*)\s*\]\s*", re.I)
+
+
+def project_tag(line):
+    """(slug, 표기를 뗀 첫 줄) — 표기가 없으면 ("", 원래 줄). 원문(body)은 손대지 않는다."""
+    m = PROJECT_TAG.match(line)
+    if not m:
+        return "", line
+    return m.group(1), (line[m.end():].strip() or line)
+
+
 def session_role(env):
     """이 세션 주체의 시스템 역할 — `s9 user current` → `s9 user role <name>`.
     실패·미등록이면 ""(강제하지 않는다 — 기존 흐름 그대로)."""
@@ -780,8 +795,9 @@ def main():
             f"으로 직접 등록하고 규약대로 상태를 관리하라. s9 = ~/section9/bin/s9")
         return
 
-    # request
-    title = first_line[:TITLE_MAX] + ("…" if len(first_line) > TITLE_MAX else "")
+    # request — 첫 줄 표기 `[프로젝트: slug]` 는 제목에서 떼고 --project-tag 로 넘긴다
+    ptag, tline = project_tag(first_line)
+    title = tline[:TITLE_MAX] + ("…" if len(tline) > TITLE_MAX else "")
     # 첨부도 원문 (REQ-20260825-002): [Image #N] 참조를 캐시 실경로로 body에 보존
     body = prompt
     atts = attachment_paths(prompt, data.get("session_id") or "")
@@ -789,10 +805,16 @@ def main():
         body += "\n\n[첨부]\n" + "\n".join(f"- {p}" for p in atts)
     # 원문은 stdin으로 전달 (s9 new가 비-tty stdin을 body로 읽음 — /dev/stdin 불요, Windows 호환)
     out = run(env, "new", "request", "--title", title,
-              "--tag", "auto-audit", "--origin", "human", inp=body)   # 사람 입구 (REQ-20260902-018)
+              "--tag", "auto-audit", "--origin", "human",   # 사람 입구 (REQ-20260902-018)
+              *(["--project-tag", ptag] if ptag else []), inp=body)
     if out.returncode != 0:
         return  # audit 실패가 프롬프트를 막으면 안 됨
     doc_id = out.stdout.split()[0]
+    # 프로젝트가 안 붙었고 후보가 둘 이상이면 cmd_new 가 「프로젝트 미정 — 후보」 한 줄을
+    # 낸다 — 그대로 싣는다. 고르는 것은 리드·사람의 몫이다(LLM 자동 기입 없음).
+    projhint = " ".join(l.strip() for l in out.stdout.splitlines()[1:]
+                        if "프로젝트 미정" in l)
+    projhint = f"{projhint} " if projhint else ""
     run(env, "log", f"prompt {doc_id} 기록: {title}")
     run(env, "last", doc_id)  # Stop hook의 응답 캡처 대상
     cur = run(env, "user", "current")
@@ -875,7 +897,7 @@ def main():
                     "`s9 user switch` 로 등록 사용자를 지정하라.")
     attnote = (f"첨부 {len(atts)}건이 body에 기록되었다. " if atts else "")
     emit(pend +
-        f"[section9 audit] 이 프롬프트는 {doc_id} 로 자동 기록되었다 (Request 분류). {attnote}"
+        f"[section9 audit] 이 프롬프트는 {doc_id} 로 자동 기록되었다 (Request 분류). {attnote}{projhint}"
         f"현재 요청 주체: {who}.{warn}{untitled}{approvals}{reopened}{loose}{stalled}{stale_serve}{sync_late}{blocked}{review}{wkwarn} "
         f"이 세션에서 s9 를 호출할 때는 반드시 `S9_SESSION={session}` 을 앞에 붙여라. 규약: "
         f"(1) 제목은 원문 복사가 아니라 20자 이내의 이해하기 쉬운 명사구로 교체하라 — "

@@ -414,13 +414,16 @@ def whoami_info():
         st_on = stream_mirror_on(name or raw)
     except Exception:
         st_on = True
+    # 같은 이름의 저장소가 한 노트북에 둘(윈도우 네이티브·WSL)이면 화면만 보고는 어느
+    # 쪽인지 못 가른다 — root 경로와 OS 를 함께 준다 (REQ-20260906-055).
+    where = {"root": ROOT, "os": os_platform()}
     if name:
         return {"workspace": workspace, "user": name, "display": user_profile(name).get("display", ""),
                 "role": user_role(name), "machine": current_machine(),
-                "registered": True, "stream_mirror": st_on}
-    return {"user": raw, "display": "", "role": "",
+                "registered": True, "stream_mirror": st_on, **where}
+    return {"workspace": workspace, "user": raw, "display": "", "role": "",
             "machine": current_machine(), "registered": False,
-            "stream_mirror": st_on}
+            "stream_mirror": st_on, **where}
 
 
 def resolve_user(explicit=None, with_source=False):
@@ -2293,6 +2296,55 @@ def doc_origin(meta):
     return str((meta or {}).get("origin") or "")
 
 
+def resolve_project(args, user, session):
+    """새 문서가 어느 프로젝트에 붙는가 — 판정은 여기 **한 곳** (REQ-20260906-052).
+
+    훅·채팅·화면은 신호(--project-tag 등)만 넘기고 판정하지 않는다 — 하네스가
+    바뀌어도 `s9 new` 만 부르면 같은 답이 나와야 한다(PROTOCOL 0'조).
+
+    우선순위(위가 이김):
+      ① 명시 --project — 의도된 행동이라 등록 프로젝트에 contribute 권한이 없으면 die.
+      ② 프롬프트 첫 줄 표기 `[프로젝트: slug]` — 훅이 --project-tag 로 넘긴 것.
+      ③ 세션 바인딩 project — `s9 code --project` · `s9 bind project`.
+      ④ 사용자가 contribute 할 수 있는 프로젝트가 **하나뿐**이면 그것.
+      ⑤ 빈 값 — 후보를 돌려주어 부르는 쪽이 「프로젝트 미정」 한 줄을 낼 수 있게.
+    ②③④ 자동 신호는 권한이 없거나 미등록이면 die 하지 않고 다음 단계로 내려간다 —
+    잘못 붙는 것이 안 붙는 것보다 나쁘다(격리 경계를 조용히 넘는다). 직전 요청의
+    승계·LLM 추정은 넣지 않는다(화제 전환을 조용히 오귀속시킨다, product-owner 판정).
+
+    반환 (slug, source, candidates): source ∈ explicit|tag|session|only|"" —
+    프론트매터 project_source 로 남아 오귀속 추적·회귀 시험의 판정 근거가 된다.
+    """
+    proj = args.project
+    if proj:
+        slug = _project_ref_to_slug(proj)
+        if load_project(slug) and not project_can(slug, user, "contribute"):
+            die(f"권한 없음: '{user}'({project_role(slug, user) or '미참여'})는 "
+                f"프로젝트 '{slug}'에 문서를 생성할 수 없다 (contributor 이상 필요)")
+        return slug, "explicit", []
+    if args.doc_type not in ("request", "question", "article"):
+        return "", "", []
+
+    def usable(ref):
+        # 자동 신호는 **등록된** 프로젝트만 — 오타 slug 로 유령 프로젝트를 만들지 않는다
+        slug = _project_ref_to_slug(ref)
+        return slug if load_project(slug) and project_can(slug, user, "contribute") else ""
+
+    tag = (getattr(args, "project_tag", None) or "").strip()
+    if tag and usable(tag):
+        return usable(tag), "tag", []
+    if session:
+        b = read_binding(current_machine(), session) or {}
+        bound = (b.get("project") or "").strip() if isinstance(b.get("project"), str) else ""
+        if bound and usable(bound):
+            return usable(bound), "session", []
+    mine = sorted({p["slug"] for p in user_projects(user)
+                   if p.get("slug") and project_can(p["slug"], user, "contribute")})
+    if len(mine) == 1:
+        return mine[0], "only", []
+    return "", "", mine
+
+
 def cmd_new(args):
     # 관계에는 이유가 남는다 (REQ-20260827-030) — `s9 link` 와 같은 규칙이다.
     # 입구가 둘인데 한쪽만 막으면 다른 입구로 그대로 샌다.
@@ -2314,22 +2366,10 @@ def cmd_new(args):
     if getattr(args, "assignee", None):
         user = args.assignee            # 담당자 지정 — 생성자는 그대로 남는다
 
-    # 프로젝트 매핑 + 인가 게이트(가드레일):
-    # - 명시적 --project = 의도된 행동 → 등록 프로젝트면 contribute 권한 필요(없으면 거부).
-    # - 자동매핑(감사 훅 경로 등, --project 없음) = 하드차단 안 함(감사 무결성).
-    #   단 기여 불가(viewer/만료)면 자동 기입하지 않음(빈값).
-    proj = args.project
-    if proj:
-        slug = _project_ref_to_slug(proj)
-        if load_project(slug) and not project_can(slug, user, "contribute"):
-            die(f"권한 없음: '{user}'({project_role(slug, user) or '미참여'})는 "
-                f"프로젝트 '{slug}'에 문서를 생성할 수 없다 (contributor 이상 필요)")
-        proj = slug
-    elif args.doc_type in ("request", "question", "article"):
-        mine = user_projects(user)
-        if len(mine) == 1 and project_can(mine[0]["slug"], user, "contribute"):
-            proj = mine[0]["slug"]
-    proj = proj or ""
+    # 프로젝트 매핑 + 인가 게이트(가드레일) — 판정은 resolve_project 한 곳:
+    # 명시적 --project 만 거부(die)하고, 자동 신호는 권한이 없으면 빈 값으로
+    # 내려간다(감사 무결성 — 훅 경로를 하드차단하지 않는다).
+    proj, proj_source, proj_candidates = resolve_project(args, user, session)
 
     # 멱등 가드는 훅이 만든 카드(auto-audit)에만 적용한다 — 사람이 같은 본문으로
     # 일부러 여러 건을 만드는 경우까지 막으면 안 된다 (테스트·일괄 등록 회귀)
@@ -2360,6 +2400,7 @@ def cmd_new(args):
             "creator": creator, "origin": origin,
             "origin_actor": origin_actor, "origin_req": origin_req,
             "project": proj,
+            "project_source": proj_source,   # 어느 신호로 붙었나 (빈 값은 키 생략)
             # 짧은 id(REQ-20260906-009)는 정식 id 로 — 짧은 채 적히면 뒤의 정규화가
             # 못 찾아 지운다(실제 사고 2026-09-06: 044 의 parent 가 사라졌다, REQ-20260906-048)
             "parent": full_doc_id(args.parent) if args.parent else "", "children": [],
@@ -2401,6 +2442,11 @@ def cmd_new(args):
     finally:
         release_lock()
     print(f"{doc_id}  {os.path.relpath(path, ROOT)}")
+    if not proj and proj_candidates:
+        # 후보만 낸다 — 고르는 것은 사람·리드의 몫이다(LLM 자동 기입 없음). 훅은
+        # 이 줄을 그대로 additionalContext 에 싣는다.
+        print(f"◌ 프로젝트 미정 — 후보: {', '.join(proj_candidates)} "
+              f"→ s9 set {doc_id} project=<slug>")
     try:
         maybe_sync(f"new {doc_id}")   # REQ-048: 생성마다 순차 동기화
     except Exception:
@@ -18227,7 +18273,48 @@ def _launched_here(root, port):
     return int(d.get("port") or 0) == int(port) and pid_alive(d.get("pid"))
 
 
-def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=None):
+WIN_NETSTAT_EXE = "/mnt/c/Windows/System32/netstat.exe"
+WIN_TASKLIST_EXE = "/mnt/c/Windows/System32/tasklist.exe"
+
+
+def windows_listen_owner(port, _lines=None):
+    """WSL 안에서, 윈도우 쪽이 그 포트를 LISTEN 중이면 (pid, 이미지 이름) — 아니면
+    None (REQ-20260906-055).
+
+    같은 노트북에 윈도우 네이티브 section9 과 WSL section9 을 함께 두면 서로의
+    9909 가 부딪힌다. WSL 리스너는 윈도우 `127.0.0.1` 로 중계되지만 **윈도우
+    리스너는 WSL 안에서 보이지 않는다** — bind 는 되고 답은 없으니 `free` 로
+    읽혀 같은 포트에 둘이 앉고, WSL 이 찍어 준 링크를 윈도우 브라우저로 열면
+    윈도우 쪽 화면이 나온다. 그래서 WSL 에서는 윈도우의 목록(`netstat.exe -ano`)
+    을 한 번 더 본다. 소유자가 WSL 중계(dllhost 등, `_is_wsl_relay`)면 그것은 우리
+    쪽이 공개한 포트의 흔적(닫은 뒤 62초까지, DOC-20260906-003)이라 남이 아니다.
+    상태 낱말은 언어팩을 타므로 읽지 않는다 — 듣는 줄은 상대 주소가 `:0` 이다.
+    WSL 이 아니거나 도구가 없으면 None — 아무것도 달라지지 않는다.
+    """
+    if os_platform() != "WSL" or not os.path.exists(WIN_NETSTAT_EXE):
+        return None
+    lines = _lines or (lambda argv: _ps_lines(argv, timeout=25))
+    want, pid = f":{int(port)}", 0
+    for ln in lines((WIN_NETSTAT_EXE, "-ano", "-p", "TCP")):
+        c = ln.split()
+        if (len(c) >= 4 and c[0].upper() == "TCP" and c[1].endswith(want)
+                and c[2].endswith(":0") and c[-1].isdigit()):
+            pid = int(c[-1])
+            break
+    if not pid:
+        return None
+    name = ""
+    if os.path.exists(WIN_TASKLIST_EXE):
+        for ln in lines((WIN_TASKLIST_EXE, "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH")):
+            ln = ln.strip()
+            if ln.startswith('"'):
+                name = ln.split('","')[0].strip('"')
+                break
+    return pid, name
+
+
+def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=None,
+                      _foreign=None):
     """(포트, 사유) — 남이 쓰는 포트는 피한다 (REQ-20260905-016).
 
     같은 리눅스 서버에 여러 사람이 각자 section9 을 설치하면 9909 에 남의
@@ -18281,8 +18368,17 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
             finally:
                 s.close()
         if (_bindable or _can_bind)(port):
-            return port, "free"
-        why = "busy"
+            own = (_foreign or windows_listen_owner)(port)
+            # 이름을 못 읽은 소유자는 남으로 치지 않는다 — 모르는 것을 「남」으로 읽으면
+            # 멀쩡한 내 포트를 버린다
+            if own and own[1] and not _is_wsl_relay(own[1]):
+                # 윈도우 쪽 프로그램이 듣는다 — WSL 에선 bind 가 되지만 브라우저는
+                # 그쪽으로 간다 (REQ-20260906-055)
+                why = "windows"
+            else:
+                return port, "free"
+        else:
+            why = "busy"
     if os.environ.get("S9_PORT"):
         return port, why                    # 사람이 못박았다 — 옮기지 않는다
     new = (_next or next_free_port)()
@@ -18530,6 +18626,30 @@ def cmd_env(args):
     die("usage: s9 env status|backups|backup|restore [시각|latest] [--dry-run]|inherit [시각]|move [--dry-run]|unmove [시각|latest] [--dry-run]")
 
 
+def code_project(explicit):
+    """`s9 code` 세션에 묶을 프로젝트 (REQ-20260906-052).
+
+    명시 --project 는 등록 프로젝트여야 한다(미등록이면 die — 오타로 유령 세션을
+    만들지 않는다). 없으면 ROOT 추론: projects/ 밑 **등록된** slug 디렉토리가
+    하나뿐이면 그것, 둘 이상이면 빈 값 — 그때는 `s9 code --project <slug>` 가 답이다.
+    contribute 권한은 여기서 보지 않는다 — 세션 바인딩은 자동 신호라 cmd_new 의
+    resolve_project 가 권한 없으면 빈 값으로 내린다.
+    """
+    if explicit:
+        slug = _project_ref_to_slug(explicit)
+        if not load_project(slug):
+            die(f"등록되지 않은 프로젝트: {explicit} — 목록은 `s9 project ls`")
+        return slug
+    try:
+        names = sorted(os.listdir(PROJECT_SPACE))
+    except OSError:
+        return ""
+    found = [n for n in names
+             if not n.startswith(".") and os.path.isdir(os.path.join(PROJECT_SPACE, n))
+             and load_project(n)]
+    return found[0] if len(found) == 1 else ""
+
+
 def cmd_code(args):
     """통합 진입 명령 (REQ-20260824-032): 대시보드를 보장(이미 떠 있으면 스킵)하고
     이 터미널에서 claude를 실행한다 — 한 명령으로 관제(대시보드)+대화(터미널) 시작.
@@ -18543,6 +18663,9 @@ def cmd_code(args):
     elif why == "busy":
         print(f"포트 {s9_port()} 는 다른 프로그램이 쓰고 있다 — {port} 로 띄운다 "
               f"(state/port 에 적어 두었다)")
+    elif why == "windows":
+        print(f"포트 {s9_port()} 는 윈도우 쪽 프로그램이 듣고 있다(WSL 에서는 bind 가 "
+              f"되지만 브라우저는 그쪽으로 간다) — {port} 로 띄운다 (state/port 에 적어 두었다)")
     # 연결됨 ≠ 준비됨 (REQ-20260904-015). 예전엔 connect 한 번 성공이면 「실행
     # 중」을 찍었는데, WSL 중계는 아무도 안 듣는 포트에도 connect 를 받아 준다.
     # 우리 서버가 실제로 답하는지를 왕복으로 본다.
@@ -18629,9 +18752,16 @@ def cmd_code(args):
         # 정식 진입 마커 (REQ-032): 훅이 바인딩에 entry=code 기록 → 채팅 자동
         # 대상 선택에서 이 세션이 최우선이 된다
         os.environ["S9_ENTRY"] = "code"
+        # 세션의 프로젝트 (REQ-20260906-052): 세션 id 는 claude 가 만들므로 여기서는
+        # 환경으로 넘기고, SessionStart 훅(s9-audit-session)이 바인딩 project 로 옮긴다.
+        _proj = code_project(getattr(args, "project", None))
+        if _proj:
+            os.environ["S9_PROJECT"] = _proj
         if os.environ.get("S9_CODE_DRYRUN"):
             print(json.dumps(base_cmd, ensure_ascii=False))  # 테스트 시임
             return
+        if _proj:
+            print(f"◌ 이 세션의 프로젝트: {_proj} — 프롬프트가 요청 문서가 되면 여기에 붙는다")
         # 이 래퍼가 든 코드의 나이를 남긴다 (REQ-20260901-017 R3) — 서버가
         # 그 지문으로 「창 다시 열기 필요」를 화면에 실을 수 있다.
         wrapper_stamp_sweep()
@@ -22467,12 +22597,23 @@ def git_do(what, actor="", proxy_for=""):
 
 
 
+def serve_port_for(args, _pick=None):
+    """serve 가 앉을 포트와 사유. `--port` 는 사람의 결정, `--restart` 는 **내 포트를
+    다시 띄우라**는 뜻이라 옮기지 않는다 (실사고 2026-09-06 12:12: 재시작이 먼저
+    포트를 고르는데 옛 서버가 제때 답하지 못해 `busy` 로 읽혀 9910 으로 옮겨 앉았고,
+    9909 의 옛 서버는 그대로 남아 둘이 됐다, REQ-20260906-055). 나머지가 pick 이다."""
+    if args.port is not None:
+        return args.port, "given"
+    if getattr(args, "restart", False):
+        return s9_port(), "restart"
+    return (_pick or pick_dashboard_port)()
+
+
 def cmd_serve(args):
-    if args.port is None:
-        args.port, _why = pick_dashboard_port()
-        if _why in ("other", "busy"):
-            print(f"포트 {s9_port()} 는 남이 쓰고 있다 — {args.port} 로 띄운다 (state/port)",
-                  file=sys.stderr)
+    args.port, _why = serve_port_for(args)
+    if _why in ("other", "busy", "windows"):
+        print(f"포트 {s9_port()} 는 남이 쓰고 있다 — {args.port} 로 띄운다 (state/port)",
+              file=sys.stderr)
     # 감시자 (REQ-20260825-096) — 이 프로세스는 감시자를 떼어 놓고 곧 돌아간다.
     if getattr(args, "stop_guard", False):
         if _guard_alive(args.port) is None:
@@ -25661,6 +25802,10 @@ def main():
                     "low/normal/high/urgent (기본 50)")
     np.add_argument("--user")
     np.add_argument("--project")
+    np.add_argument("--project-tag", dest="project_tag",
+                    help="프롬프트 첫 줄 표기 [프로젝트: slug] 를 훅이 넘기는 자리 — "
+                         "자동 신호라 권한이 없으면 거부하지 않고 빈 값으로 둔다 "
+                         "(REQ-20260906-052)")
     np.add_argument("--parent")
     np.add_argument("--derived-from")
     np.add_argument("--relates", action="append")
@@ -26212,6 +26357,10 @@ def main():
 
     cd2 = sub.add_parser("code", help="대시보드 보장 + 이 터미널에서 claude 실행 (통합 진입)")
     cd2.add_argument("--no-claude", action="store_true", help="대시보드만 보장(테스트용)")
+    cd2.add_argument("--project",
+                     help="이 세션의 프로젝트 — 프롬프트가 요청 문서가 될 때 여기에 "
+                          "붙는다. 없으면 projects/ 밑 slug 가 하나일 때 그것으로 "
+                          "추론한다 (REQ-20260906-052)")
     cd2.add_argument("claude_args", nargs=argparse.REMAINDER,
                      help="claude에 그대로 전달할 인자 "
                           "(예: s9 code --permission-mode acceptEdits)")

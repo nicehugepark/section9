@@ -64,7 +64,10 @@ function renderWhoami(){
     return;
   }
   el.className = "who";
-  el.innerHTML = `<b>${esc(w.user)}</b> @ ${esc(w.machine || "")} [${esc(w.role || "member")}]`
+  // 어느 저장소의 화면인지 — 같은 노트북의 윈도우 네이티브·WSL 이 둘 다 「section9」
+  // 라 이름만으로는 못 가른다 (REQ-20260906-055). 경로는 tooltip, OS 는 글자.
+  const where = w.os ? ` <span class="where" title="${esc(w.root || "")}">${esc(w.os)}</span>` : "";
+  el.innerHTML = `<b>${esc(w.user)}</b> @ ${esc(w.machine || "")}${where} [${esc(w.role || "member")}]`
     + (asUser ? ` <span class="as">→ @${esc(asUser)} 시점</span>` : "");
 }
 

@@ -170,9 +170,13 @@ async function refreshUsage(){
 /* 브라우저 탭 제목 = 워크스페이스명 · 선택 프로젝트 (REQ-20260824-064) —
    다중 워크스페이스 대시보드를 브라우저 탭에서 구분한다. */
 function updateTitle(){
-  const ws = (window.__whoami || {}).workspace || "section9";
+  const w = window.__whoami || {};
+  const ws = w.workspace || "section9";
   const pj = ($("#f-project") || {}).value || "";
-  document.title = pj ? `${ws} · ${pj}` : ws;
+  // 같은 이름의 저장소가 한 노트북에 둘(윈도우 네이티브·WSL)이면 탭 제목의 OS 가
+  // 어느 쪽인지 가른다 (REQ-20260906-055)
+  const os = w.os ? ` [${w.os}]` : "";
+  document.title = (pj ? `${ws} · ${pj}` : ws) + os;
 }
 
 function stopChat(){
