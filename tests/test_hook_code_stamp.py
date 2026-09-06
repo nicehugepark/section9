@@ -161,7 +161,7 @@ class Banner(unittest.TestCase):
     def test_h12_banner_names_reported_files(self):
         body = open(index_path(),
                     encoding="utf-8").read()
-        i = body.index("서버가 옛 코드로 돌고 있습니다")
+        i = body.index("서버가 옛 코드로 실행 중입니다")
         seg = body[max(0, i - 700):i + 700]
         self.assertIn("d.changed", seg,
                       "서버가 알려준 바뀐 파일을 쓰지 않는다")

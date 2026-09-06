@@ -185,7 +185,7 @@ class PortGuard(unittest.TestCase):
         self.assertNotEqual(v["action"], "recover")   # 경고(watch)는 남는다
         self.assertNotIn(("--recover", "--yes"), self.calls)
         self.assertTrue(any("지속" in w for w in v["held"]), v["held"])
-        self.assertTrue(any("세운다" in m for m in self.logged),
+        self.assertTrue(any("중단" in m for m in self.logged),
                         "세운 이유가 기록에 없다 — 다음 아홉 번에 각각의 이유가 있어야 한다")
 
     def test_l2_sustained_85_runs_the_harmless_fix_first(self):
@@ -291,7 +291,7 @@ class PortGuard(unittest.TestCase):
                                                          "count": 16384}}))
         s9._doctor = _doctor
         s9.port_guard_tick()
-        self.assertTrue(any("고아 회수" in m for m in self.logged))
+        self.assertTrue(any("부모가 사라진 프로세스 정리" in m for m in self.logged))
 
 
 if __name__ == "__main__":

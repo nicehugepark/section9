@@ -228,7 +228,7 @@ class TestReworkWatcher(unittest.TestCase):
         self.assertTrue(any(isinstance(s, str) and s.startswith("Bash(python3 tests/")
                             for s in argv), argv)
         p = [s for s in argv if isinstance(s, str) and R4 in s][0]
-        self.assertIn("무인 적용 모드", p)
+        self.assertIn("자동 적용 모드", p)
         self.assertIn("web/·vault/·tests/", p)
         self.assertIn("<<참고>>", p)  # F3: 노트 격리 프레이밍 유지
         self.cli("eeee5555", "last", R4, "--add")

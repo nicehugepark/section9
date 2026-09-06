@@ -129,12 +129,12 @@ class TestMachineFp(unittest.TestCase):
         m.machine_fp()
         self.assertEqual(self._rj(self.reg)[fp]["hostname"], "other-box")
         r = self.cli("index", "rebuild")               # rc 0 — pull 을 막지 않는다
-        self.assertIn("지문 충돌", r.stderr)
+        self.assertIn("fingerprint 충돌", r.stderr)
         self.assertIn("S9_ORIGIN", r.stderr)
         self.assertIn("other-box", r.stderr)
         # 충돌이 없으면 조용하다
         self._registry(fp, HOST)
-        self.assertNotIn("지문 충돌", self.cli("index", "rebuild").stderr)
+        self.assertNotIn("fingerprint 충돌", self.cli("index", "rebuild").stderr)
 
     # S5. 거부 — 충돌 상태의 s9 new 는 실패하고 파일을 만들지 않는다
     def test_s5_new_refused_under_conflict(self):
@@ -144,7 +144,7 @@ class TestMachineFp(unittest.TestCase):
         r = self.cli("new", "request", "--title", "충돌 중 발번", "--summary", "s",
                      "--size", "S", "--body", "b", expect=None)
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("지문 충돌", r.stderr + r.stdout)
+        self.assertIn("fingerprint 충돌", r.stderr + r.stdout)
         self.assertIn("S9_ORIGIN", r.stderr + r.stdout)
         self.assertEqual(self._vault_files(), before)
 
@@ -156,7 +156,7 @@ class TestMachineFp(unittest.TestCase):
         r = self.cli("new", "request", "--title", "해제 후 발번", "--summary", "s",
                      "--size", "S", "--body", "b", env=env)
         self.assertRegex(r.stdout.split()[0], r"^REQ-\d{8}-\d{3}-zzzz$")
-        self.assertNotIn("지문 충돌", self.cli("index", "rebuild", env=env).stderr)
+        self.assertNotIn("fingerprint 충돌", self.cli("index", "rebuild", env=env).stderr)
 
     # S7. 레거시·격리 — 고정·등록은 vault 를 만지지 않고, 접미 없는 파일은 그대로다
     def test_s7_legacy_untouched(self):

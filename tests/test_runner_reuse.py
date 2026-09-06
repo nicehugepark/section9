@@ -336,4 +336,4 @@ class FullCovers(unittest.TestCase):
         「안 돌았다」만 보이면 사람이 문을 의심한다 — 오늘 그 의심에 값을 치렀다.
         """
         src = open(_runner, encoding="utf-8").read()
-        self.assertIn("전체 스위트가 이미 초록이다", src)
+        self.assertIn("전체 테스트가 이미 통과했다", src)

@@ -50,7 +50,7 @@ class TheServerCarriesTheEnd(unittest.TestCase):
         # 서명 검사(reached/limit) 안에서만 나오는지를 잰다(독스트링의 사례
         # 언급은 코드가 아니다).
         whys = re.findall(r'out\["end_why"\] = "([^"]+)"', body)
-        self.assertEqual(whys, ["사용 한도 소진"],
+        self.assertEqual(whys, ["사용 한도 다 씀"],
                          "판별 서명 밖의 사유가 생겼다: %r" % whys)
 
     def test_stream_events_merges_it_for_dead_sessions_only(self):

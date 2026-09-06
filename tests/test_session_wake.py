@@ -44,7 +44,7 @@ class TestWake(unittest.TestCase):
                      mock.patch.object(mod, "chat_live", lambda *_a, **_k: True):
                     r = mod.wake_session()
                 self.assertFalse(r["ok"])
-                self.assertIn("살아있는 세션", r["reason"])
+                self.assertIn("실행 중인 세션", r["reason"])
 
             # W2. 세션이 없으면 창을 띄운다 — 실행 인자에 s9 code가 들어간다
         with self.subTest("w2_spawns_terminal"):

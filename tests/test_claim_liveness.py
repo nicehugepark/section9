@@ -180,7 +180,7 @@ class ClaimLiveness(unittest.TestCase):
         prompt = seen["argv"][2]
         self.assertIn("본래 프롬프트", prompt)
         self.assertIn("git status --short", prompt)
-        self.assertIn("덮어쓰지 말고 물러나", prompt)
+        self.assertIn("덮어쓰지 말고 멈춰서", prompt)
         self.assertIn("git checkout", prompt)   # 금지 목록에 있어야 한다
 
 

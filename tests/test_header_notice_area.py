@@ -79,7 +79,7 @@ class HeaderNoticeArea(unittest.TestCase):
         body = self._fn("renderGuard")
         self.assertIn("자동 복구가 멈췄습니다", body,
                       "복구가 멈춘 사실을 말하는 문장이 사라졌다")
-        self.assertIn("다시 뜨지 않", body,
+        self.assertIn("다시 시작되지 않", body,
                       "다음에 무슨 일이 생기는지 말하지 않으면 행동으로 못 잇는다")
         self.assertIn("s9 serve --supervise", body,
                       "감시자를 다시 세울 명령이 사라졌다")

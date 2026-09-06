@@ -181,7 +181,7 @@ class TestWakeCarriesAccount(unittest.TestCase):
              mock.patch.object(mod, "chat_live", lambda *_a, **_k: True):
             r = mod.wake_session(account="새-계정")
         self.assertFalse(r["ok"])
-        self.assertIn("살아있는 세션", r["reason"])
+        self.assertIn("실행 중인 세션", r["reason"])
 
 
 INDEX = index_path()

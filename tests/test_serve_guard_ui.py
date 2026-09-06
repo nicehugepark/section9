@@ -136,7 +136,7 @@ class ServeGuardUI(unittest.TestCase):
     def test_stalled_state_says_what_happens_next(self):
         """'이제 안 되살아난다'는 결과까지 말해야 행동으로 이어진다."""
         copy = " ".join(self._copy())
-        self.assertIn("다시 뜨지 않", copy,
+        self.assertIn("다시 시작되지 않", copy,
                       "자동 복구가 멈추면 다음에 무슨 일이 생기는지 말해야 한다")
 
     # ---------- ⑥ 명령은 대신 실행하지 않는다 ----------
