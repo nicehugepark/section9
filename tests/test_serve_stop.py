@@ -168,6 +168,33 @@ class ServeStop(unittest.TestCase):
             src = f.read()
         self.assertGreaterEqual(src.count("_signal_port("), 4, src.count)
 
+    # T8. 포트 점유 pid 는 판을 가리지 않는다 — ss 가 없는 판(맥)에서는 _port_owner_pid 가 답한다
+    def test_t8_listener_pids_do_not_depend_on_ss(self):
+        m = self.mod
+        with mock.patch.object(m, "proc_backend", lambda: "ps"), \
+                mock.patch.object(m, "_port_owner_pid", lambda port: 4242 if port == PORT else 0):
+            self.assertEqual(m._port_listener_pids(PORT), [4242])
+            self.assertEqual(m._port_listener_pids(PORT + 1), [])
+
+    # T9. 이 저장소의 serve 프로세스만 — 다른 clone 과 serve 아닌 s9 는 빼고
+    def test_t9_root_serve_pids_are_only_this_repo(self):
+        m = self.mod
+        me = os.path.join(os.path.realpath(self.tmp), "bin", "s9")
+        table = {11: f"python3 {me} serve --supervise --port 9909",
+                 12: f"python3 {me} serve --host 127.0.0.1 --port 9909",
+                 13: f"python3 {me} ls",
+                 14: "python3 /elsewhere/section9/bin/s9 serve --port 9909",
+                 os.getpid(): f"python3 {me} serve --stop"}
+        with mock.patch.object(m, "proc_table", lambda *a, **k: table):
+            self.assertEqual(m._root_serve_pids(), [11, 12])
+
+    # T10. 사람이 칠 확인 명령은 판마다 다르다 — 맥에 ss 를 권하지 않는다
+    def test_t10_stop_hint_matches_the_platform(self):
+        m = self.mod
+        self.assertIn("lsof", m._stop_hint(9909, "macOS"))
+        self.assertIn("ss -ltnp", m._stop_hint(9909, "Linux"))
+        self.assertIn("netstat", m._stop_hint(9909, "Windows"))
+
 
 if __name__ == "__main__":
     unittest.main()

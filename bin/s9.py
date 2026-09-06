@@ -20563,23 +20563,58 @@ def _port_listener_pids(port):
 
     `--restart` 안에 인라인으로 있던 것을 꺼냈다 (REQ-20260826-036) — `--stop`
     이 같은 일을 해야 하는데, 두 벌로 두면 한쪽만 고쳐지는 게 시간 문제다.
+    판을 가리지 않는다 (REQ-20260906-077): 예전엔 리눅스 전용 `ss -ltnp` 만 물어
+    맥에서는 빈 목록이었고 `--stop` 이 아무도 못 내린 채 「아직 사용 중」으로 죽었다
+    (맥미니 실제 발생 2026-09-06). 리눅스는 ss(여러 pid), 그 밖은 `_port_owner_pid`
+    (맥·BSD 는 lsof, 윈도우는 netstat) — 같은 문(proc_backend)을 지난다.
     """
     import subprocess as _sp
-    try:
-        out = _sp.run(["ss", "-ltnp"], capture_output=True,
-                      encoding="utf-8", errors="replace",
-                      timeout=5).stdout
-    except Exception:
-        return []
-    pids = []
-    for line in out.splitlines():
-        if f":{port} " not in line:
+    pids = set()
+    if proc_backend() == "proc" and shutil.which("ss"):
+        try:
+            out = _sp.run(["ss", "-ltnp"], capture_output=True,
+                          encoding="utf-8", errors="replace",
+                          timeout=5).stdout
+        except Exception:
+            out = ""
+        for line in out.splitlines():
+            if f":{port} " not in line:
+                continue
+            for tok in line.split("pid=")[1:]:
+                pid = tok.split(",")[0].strip()
+                if pid.isdigit():
+                    pids.add(int(pid))
+    owner = _port_owner_pid(port)
+    if owner:
+        pids.add(int(owner))
+    pids.discard(os.getpid())
+    return sorted(pids)
+
+
+def _root_serve_pids(root=None):
+    """이 저장소의 `bin/s9 serve …` 프로세스들(서버·감시자) — 포트로 못 찾을 때의
+    마지막 수단이고, `--stop` 이 끝에 남은 것을 거둘 때의 목록이다 (REQ-20260906-077).
+    다른 clone 의 serve 는 경로가 달라 잡히지 않는다."""
+    tag = os.path.join(os.path.realpath(root or ROOT), "bin", "s9")
+    out = []
+    for pid, cmd in (proc_table() or {}).items():
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
             continue
-        for tok in line.split("pid=")[1:]:
-            pid = tok.split(",")[0].strip()
-            if pid.isdigit() and int(pid) != os.getpid():
-                pids.append(int(pid))
-    return pids
+        if pid != os.getpid() and tag in str(cmd) and " serve" in str(cmd):
+            out.append(pid)
+    return sorted(out)
+
+
+def _stop_hint(port, platform=None):
+    """포트가 안 풀렸을 때 사람이 칠 한 줄 — 판마다 도구가 다르다."""
+    p = platform or os_platform()
+    if p == "Windows":
+        return f"netstat -ano | findstr :{port}"
+    if p == "macOS":
+        return f"lsof -nP -iTCP:{port} -sTCP:LISTEN"
+    return f"ss -ltnp | grep {port}"
 
 
 def _signal_port(port, sig):
@@ -22874,17 +22909,39 @@ def cmd_serve(args):
                 die(f"감시자가 종료되지 않았다 (pid {held}) — 지금 서버를 내리면 "
                     f"되살아난다. 잠시 뒤 다시 시도하거나 그 pid 를 직접 확인하라")
             print("감시자 종료됨")
-        if not _port_busy(args.host, args.port):
+        n = 0
+        if _port_busy(args.host, args.port):
+            n = _signal_port(args.port, _sig.SIGTERM)
+            if n == 0:
+                # 포트로 못 찾았다(판의 도구가 없거나 중계 뒤) — 이 저장소의 serve 프로세스를
+                # 프로세스 표에서 찾아 내린다 (REQ-20260906-077)
+                for pid in _root_serve_pids():
+                    try:
+                        os.kill(pid, _sig.SIGTERM); n += 1
+                    except OSError:
+                        pass
+            if not _wait_port_free(args.host, args.port, tries=10):
+                # SSE 장수명 연결 탓에 SIGTERM 만으로는 늦게 풀린다 (--restart 와 같다)
+                _signal_port(args.port, sig_kill())
+                for pid in _root_serve_pids():
+                    try:
+                        os.kill(pid, sig_kill())
+                    except OSError:
+                        pass
+                if not _wait_port_free(args.host, args.port, tries=20):
+                    die(f"포트 {args.port} 가 아직 사용 중이다 — "
+                        f"`{_stop_hint(args.port)}` 로 점유 프로세스를 확인하라")
+        else:
             print(f"포트 {args.port}: 내릴 서버가 없다")
-            return
-        n = _signal_port(args.port, _sig.SIGTERM)
-        if not _wait_port_free(args.host, args.port, tries=10):
-            # SSE 장수명 연결 탓에 SIGTERM 만으로는 늦게 풀린다 (--restart 와 같다)
-            _signal_port(args.port, sig_kill())
-            if not _wait_port_free(args.host, args.port, tries=20):
-                die(f"포트 {args.port} 가 아직 사용 중이다 — "
-                    f"`ss -ltnp | grep {args.port}` 로 점유 프로세스를 확인하라")
-        print(f"대시보드 정지: 포트 {args.port} (서버 {n}개) — "
+        # 남은 것까지 — 감시자·옛 서버·다른 포트의 잔여 serve (「--stop 이면 전부 꺼져야 한다」)
+        left = _root_serve_pids()
+        for pid in left:
+            try:
+                os.kill(pid, _sig.SIGTERM)
+            except OSError:
+                pass
+        print(f"대시보드 정지: 포트 {args.port} (서버 {n}개"
+              + (f", 남은 serve 프로세스 {len(left)}개 정리" if left else "") + ") — "
               f"다시 띄우려면 `s9 serve --supervise --port {args.port}`")
         return
     if getattr(args, "guard_run", False):
