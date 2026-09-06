@@ -15159,6 +15159,37 @@ def cmd_commit_note(args):
         print(f"{i}: commit {sha} 기록")
 
 
+# ── 금지 용어 경고 (REQ-20260906-045): 규약 2조·용어표 DOC-20260906-002 의 왼쪽 낱말.
+# 규약에 적는 것만으로는 부족했다 — 에이전트가 규약을 읽고도 「배경」을 썼다(2026-09-06).
+# 남기는 자리(s9 note)에서 걸러 경고한다. 기록은 막지 않는다 — 막으면 기록이 사라진다.
+BANNED_TERMS = (
+    ("붉음", "실패"), ("붉다", "실패"), ("붉었", "실패했"), ("초록 기록", "통과 기록"), ("초록이", "통과가"),
+    ("작업 나무", "working tree"), ("나무가 더럽", "commit 하지 않은 변경이 있"),
+    ("흔들린다", "간헐적으로 실패한다(flaky)"), ("살아 있는 세션", "실행 중인 세션"), ("살아있는 세션", "실행 중인 세션"),
+    ("걷어낸다", "제거한다"), ("걷어냈", "제거했"), ("물러난다", "재시도를 미룬다"),
+    ("옆문", "우회"), ("봉투", "프롬프트 템플릿"), ("잔재", "남은 파일"), ("배경에서", "백그라운드에서"),
+    ("배경 실행", "백그라운드 실행"), ("무인 작업자", "백그라운드 작업자"), ("라쳇", "실패 시 커밋 차단"),
+    ("전체 스위트", "전체 테스트"), ("표적 실행", "지정 테스트 실행"), ("비밀 이름", "시크릿 이름"),
+    ("낱말", "용어"), ("실사고", "실제 사고"),
+)
+
+
+def banned_terms_in(text):
+    """본문에 든 금지 용어 — [(낱말, 대체어)]. 코드·경로(백틱 안)는 보지 않는다."""
+    import re as _re
+    plain = _re.sub(r"`[^`]*`", " ", str(text or ""))
+    return [(a, b) for a, b in BANNED_TERMS if a in plain]
+
+
+def warn_banned_terms(text, where=""):
+    hits = banned_terms_in(text)
+    if hits:
+        print(f"⚠ 용어 {len(hits)}건 — 규약 2조·용어표 DOC-20260906-002: "
+              + " · ".join(f"「{a}」→「{b}」" for a, b in hits[:6])
+              + (f" ({where})" if where else ""), file=sys.stderr)
+    return hits
+
+
 def cmd_note(args):
     """문서의 ## Notes 섹션 끝에 타임스탬프 붙은 내용 append (작업 기록용)."""
     path = find_path(args.id)
@@ -15274,6 +15305,7 @@ def cmd_note(args):
                                        "[File: /" in text) else 0
     print(f"{args.id}: note appended ({len(text)} chars)"
           + (f" · 첨부 {moved}개 이전" if moved else ""))
+    warn_banned_terms(text, f"note {args.id}")
     try:
         maybe_sync(f"note {args.id}")
     except Exception:
