@@ -45,7 +45,7 @@ bin/s9-install
 | 출력 줄 | 뜻 |
 |---|---|
 | `dirs OK: …` | `vault/ users/ state/ index/` 등 빈 구조 생성 |
-| `git hooks OK: post-merge, post-checkout, pre-commit(guard), post-commit(기록)` | pull 뒤 인덱스 재생성, 커밋 검사 |
+| `git hooks OK: post-merge, post-checkout, pre-commit(guard), post-commit(기록)` | pull 뒤 인덱스 재생성, commit 검사 |
 | `claude hooks …` | `~/.claude/settings.json` 에 section9 훅 추가(다른 훅은 보존) |
 | `skill(공용): s9-… -> ~/.claude/skills/` · `agent(공용): s9-agnt-… -> ~/.claude/agents/` | 스킬 13개·에이전트 29개 링크 |
 | `대시보드 기동: http://127.0.0.1:9909/` | 이미 실행 중이면 `대시보드 이미 실행 중` |
@@ -110,7 +110,7 @@ cd ~/section9 && s9 code        # 하루의 시작 — 대시보드 확인 + Cla
 s9 digest                                  # 진행 중인 일 요약
 s9 ls --status in-progress                 # 한 줄 목록 (--user <이름> 으로 좁힌다)
 s9 show REQ-20260906-040                   # 문서 전체 (--meta 는 frontmatter 만)
-s9 sync --status                           # 동기화 상태 · 아직 보내지 못한 커밋
+s9 sync --status                           # 동기화 상태 · 아직 보내지 못한 commit
 s9 doctor                                  # 네트워크·포트·훅 진단
 s9 serve --restart                         # 대시보드 재시작 (코드를 갱신했을 때)
 ```
@@ -138,7 +138,7 @@ s9 code
 같으면 attach 없이도 같은 사용자로 해석된다.
 
 확인: 첫 기계의 Board 에 있던 카드가 두 번째 기계의 Board 에도 보이면 된다. 안 보이면
-`s9 sync --status` 로 아직 보내지 못한 커밋이 있는지, `git push` 가 권한 오류를 내는지 본다 —
+`s9 sync --status` 로 아직 보내지 못한 commit 이 있는지, `git push` 가 권한 오류를 내는지 본다 —
 두 번째 기계의 ssh 키가 GitHub 에 등록돼 있어야 한다.
 
 `state/`(포트·세션·수신함)와 `index/` 는 기계마다 따로다. 충돌한 문서는 `s9 sync resolve <id>`

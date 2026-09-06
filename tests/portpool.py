@@ -30,10 +30,16 @@
    루프는 0.1초 간격 400회였다. 호스트가 말라 공개가 늦어지는 바로 그때
    파일마다 400회씩 두드려 고갈을 가속했다(스위트 14파일 = 최대 5,600
    커넥션). 고장이 부하를 키우는 되먹임을 끊는 것이 첫째다.
-2. **포트는 고정 풀에서 돌려쓴다** — 윈도우 동적 범위(49152~)와 커널 임시
-   범위(32768~) **아래**의 128개(18800~18927). 리스너를 동적 범위 안에 두면
+2. **포트는 고정 대역 안에서 한 바퀴씩 돌며 쓴다** — 윈도우 동적 범위(49152~)와
+   커널 임시 범위(32768~) **아래**의 18800~23999. 리스너를 동적 범위 안에 두면
    중계가 쓰려던 포트와 부딪히고, 임시 범위 안에 두면 남의 아웃바운드 연결과
-   부딪힌다. 번호가 예측 가능해야 고아 서버 회수도 쉽다.
+   부딪힌다. 대역이 고정이라 고아 서버 회수(s9-doctor --sweep)도 그 안만 본다.
+   대역 안에서는 **방금 닫은 포트를 다시 잡지 않는다** (REQ-20260905-007):
+   윈도우 중계는 리눅스 리스너가 닫힌 뒤에도 그 포트를 약 62초 LISTEN 으로
+   공개하고(실측 2026-09-06), 그 위에 새 리스너가 서면 부하에서 연결이 중계에
+   가로채여 서버에 닿지 않는다. 칸(slot)마다 커서를 잠금 파일에 남겨 다음
+   프로세스가 이어서 돌게 하면, 같은 포트는 칸 한 바퀴(수백 회 할당) 뒤에나
+   다시 나온다.
 
 두 규율 모두 tests/test_port_pool.py 가 강제한다(범위 검사 · 임시 포트 직접
 bind 적발 · 촘촘한 재시도 루프 적발).
@@ -71,8 +77,14 @@ POOL_BASE = int(os.environ.get("S9_TEST_PORT_BASE", "18800"))
 # 쓰며 같은 포트를 두고 다툰다. 실측 2026-09-05: 4·6·10 샤드가 각각 525·518·
 # 520초로 **평평했다**. 코어는 83% 놀고 있었다. 칸을 맞춘 뒤 6→343 · 8→317 ·
 # 10→295초 — 그래서 상한 표(S9_MAX_JOBS)의 기본도 4 에서 8 로 올렸다. 러너가 `--jobs` 를 그대로
-# 넘겨주고, 칸마다 32포트를 유지하도록 풀 폭도 함께 넓힌다(18800~ 대역은
-# 커널 임시 범위 32768 아래라 여유가 크다).
+# 넘겨준다.
+#
+# **풀은 대역 전체(18800~23999)이고 칸은 그것을 나눈 몫이다** (REQ-20260905-007).
+# 칸당 32포트로 두고 실행마다 0 부터 돌려쓰던 때는 직전 실행이, 또 같은 실행의
+# 앞 파일이 닫은 포트를 60초 안에 다시 잡았고, 그 포트는 윈도우 중계가 아직
+# 공개 중이라 부하에서 연결이 서버에 닿지 않았다. 칸을 넓히고 커서를 이어
+# 돌리면(_claim_slot·_save_cursor) 같은 포트는 칸 한 바퀴 뒤에나 돌아온다 —
+# 리스너 공개 자체는 윈도우 동적 포트를 거의 먹지 않는다(위 표 +1/10개).
 POOL_SLOTS = max(1, int(os.environ.get("S9_TEST_PORT_SLOTS", "4")))
 # 풀의 꼭대기 — bin/s9-doctor 의 POOL_HI 와 같은 값이어야 한다. 회수는 그 대역
 # 안에서만 도니, 풀이 그 위로 자라면 거기 남은 서버·감시자는 아무도 거두지
@@ -81,10 +93,35 @@ POOL_SLOTS = max(1, int(os.environ.get("S9_TEST_PORT_SLOTS", "4")))
 # 풀 18800~23999 · 비움 · 프로브 30000~ · 더미 31999. 칸이 많아 꼭대기를 넘으면
 # 칸을 좁히지 않고 풀을 접는다 — 칸마다 8포트는 남는다.
 POOL_TOP = 23999
-POOL_SIZE = int(os.environ.get("S9_TEST_PORT_SIZE", str(max(128, POOL_SLOTS * 32))))
+POOL_SIZE = int(os.environ.get("S9_TEST_PORT_SIZE", str(POOL_TOP + 1 - POOL_BASE)))
 POOL_SIZE = min(POOL_SIZE, POOL_TOP + 1 - POOL_BASE)
 SLOT_SIZE = max(8, POOL_SIZE // POOL_SLOTS)
-LOCK_DIR = os.path.join(tempfile.gettempdir(), "s9-portpool")
+
+
+def _shared_tmp():
+    """실행끼리 나눠 쓰는 임시 자리 — 러너의 실행 전용 루트(s9run-*) **밖**이어야 한다.
+
+    러너(tests/tmproot.py)는 실행마다 전용 루트를 세워 TMPDIR 을 그리로 돌리고
+    끝나면 통째로 지운다. 샤드 자식은 그 TMPDIR 을 물려받아 portpool 을 부르므로
+    잠금을 gettempdir() 아래 두면 실행마다 새 잠금·새 커서가 생기고 끝나면 사라진다
+    — 다른 실행과 칸을 나누지도, 직전 실행에 이어 돌지도 못한다(2026-09-06 실측:
+    잇단 실행이 매번 18802·21401 같은 칸 첫머리를 다시 잡았다). 그래서 루트 이름이
+    s9run- 이면 그 부모를 쓴다. S9_PORTPOOL_DIR 은 시험이 격리할 때 쓰는 문이다.
+    """
+    forced = os.environ.get("S9_PORTPOOL_DIR")
+    if forced:
+        return forced
+    try:
+        from tmproot import RUN_PREFIX
+    except ImportError:
+        RUN_PREFIX = "s9run-"
+    t = os.path.realpath(tempfile.gettempdir())
+    while os.path.basename(t).startswith(RUN_PREFIX):
+        t = os.path.dirname(t)
+    return os.path.join(t, "s9-portpool")
+
+
+LOCK_DIR = _shared_tmp()
 
 WIN_DYNAMIC_START = 49152          # 윈도우 기본 동적 포트 시작
 EPHEMERAL_FALLBACK = (32768, 60999)  # /proc 을 못 읽을 때의 리눅스 기본값
@@ -123,7 +160,7 @@ def _claim_slot():
     전부 차 있으면(스위트 5개 이상 동시 실행) pid 로 나눠 공유한다 — 그때도
     bind 확인이 있으니 실패가 아니라 경합만 조금 늘어난다.
     """
-    global _slot, _slot_fd
+    global _slot, _slot_fd, _cursor
     if _slot is not None:
         return _slot
     order = [(os.getpid() + i) % POOL_SLOTS for i in range(POOL_SLOTS)]
@@ -139,11 +176,36 @@ def _claim_slot():
                     os.close(fd)
                     continue
                 _slot, _slot_fd = cand, fd
+                _cursor = _load_cursor(fd)
                 return _slot
         except OSError:
             pass
     _slot = order[0]
+    # 잠금 없이 칸을 나눠 쓰는 처지(칸이 다 찼거나 잠금이 없는 판) — 이어 돌
+    # 기록이 없으니 pid 로 자리를 흩어 같은 포트를 동시에 노리는 일을 줄인다.
+    _cursor = (os.getpid() * 7919) % SLOT_SIZE
     return _slot
+
+
+# 칸의 커서는 잠금 파일에 남는다 — 프로세스가 바뀌어도 칸은 **이어서** 돈다.
+# 같은 실행의 앞 샤드가, 또 직전 실행이 닫은 포트를 60초 안에 다시 잡지 않으려면
+# 시작점이 매번 0 이어서는 안 된다(REQ-20260905-007). 파일이 비었거나 쓰레기면
+# 0 에서 시작한다 — 예외로 풀을 세우지 않는다.
+def _load_cursor(fd):
+    try:
+        raw = os.pread(fd, 32, 0).decode("ascii", "replace").strip()
+        return int(raw) % SLOT_SIZE
+    except (OSError, ValueError):
+        return 0
+
+
+def _save_cursor():
+    if _slot_fd is None:
+        return
+    try:
+        os.pwrite(_slot_fd, f"{_cursor:<31d}\n".encode("ascii"), 0)
+    except OSError:
+        pass
 
 
 def slot_ports():
@@ -242,7 +304,8 @@ def pool_socket(base=None, size=None):
     호출자에게 있다.
     """
     global _cursor
-    ports = slot_ports() if base is None and size is None else pool_ports(base, size)
+    own = base is None and size is None
+    ports = slot_ports() if own else pool_ports(base, size)
     n = len(ports)
 
     def _grab():
@@ -258,6 +321,8 @@ def pool_socket(base=None, size=None):
                     s = _try_bind(ports[(start + i) % n])
                     if s is not None:
                         _cursor = (start + i + 1) % n
+                        if own:
+                            _save_cursor()
                         return s
         return None
 

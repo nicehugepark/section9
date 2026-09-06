@@ -20,6 +20,8 @@ import ast
 import os
 import re
 import socket
+import subprocess
+import sys
 import tempfile
 import time
 import textwrap
@@ -220,12 +222,106 @@ class ForeignListens(unittest.TestCase):
             portpool.WIN_NETSTAT, portpool._foreign = saved_exe, saved
 
 
+class RotatingCursor(unittest.TestCase):
+    """포트는 대역 전체를 한 바퀴 돌며 쓴다 — 방금 닫은 포트를 다시 잡지 않는다 (REQ-20260905-007).
+
+    실측 2026-09-06(이 머신): 리눅스 리스너를 닫은 뒤 윈도우 중계는 그 포트를 **약 62초**
+    더 LISTEN 으로 공개하고, 그동안 그 포트로의 connect 는 성공한 뒤 곧 reset 된다.
+    그 공개가 남은 포트에 새 서버를 올리면 조용할 때는 도달하지만(40/40), 부하에서는
+    중계의 갱신이 늦어 연결이 서버에 닿지 않는다(서버는 select 에서 놀고 대기열 0).
+    칸당 32포트를 실행마다 0 부터 돌려쓰던 구조가 그 전제를 만든다 — 직전 실행이,
+    또 같은 실행의 앞 파일이 닫은 포트를 60초 안에 다시 잡았다. 그래서 칸을 대역
+    전체로 넓히고 커서를 칸 잠금 파일에 남겨 다음 프로세스가 **이어서** 돌게 한다.
+    """
+
+    def _spawn(self, tmp, k, slots="1"):
+        code = ("import portpool as p; "
+                f"print(*[p.free_port() for _ in range({k})])")
+        r = subprocess.run([sys.executable, "-c", code], cwd=HERE,
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, "S9_TEST_PORT_SLOTS": slots,
+                                "S9_PORTPOOL_DIR": os.path.join(tmp, "s9-portpool")})
+        self.assertEqual(r.returncode, 0, r.stderr[-600:])
+        return [int(x) for x in r.stdout.split()]
+
+    def test_r1_slots_divide_the_whole_band(self):
+        """R1. 칸 폭은 대역 전체를 나눈 것 — 칸 32개까지도 칸당 100포트 이상."""
+        code = ("import portpool as p; print(p.POOL_BASE, p.POOL_SIZE, p.SLOT_SIZE, p.POOL_TOP)")
+        for slots in ("4", "8", "16", "32"):
+            r = subprocess.run([sys.executable, "-c", code], cwd=HERE,
+                               capture_output=True, text=True, timeout=60,
+                               env={**os.environ, "S9_TEST_PORT_SLOTS": slots})
+            base, size, slot, top = map(int, r.stdout.split())
+            self.assertLessEqual(slot * int(slots), size)
+            self.assertLessEqual(base + size - 1, top)
+            self.assertGreaterEqual(slot, 100, f"칸 {slots}: 칸당 {slot}포트 — 한 실행 안에서 감긴다")
+
+    def test_r2_successive_allocations_never_repeat(self):
+        """R2. 한 프로세스 안의 잇단 할당은 포트를 되풀이하지 않고 앞으로만 간다.
+
+        40회로 잰다 — 이 판에서 bind+listen 한 번이 약 12ms 다(2026-09-06 실측:
+        26,000회 = 304초). 되풀이하지 않는 근거는 횟수가 아니라 구조다: 칸이 100
+        포트 이상(R1)이고 커서가 한 방향으로만 돌면 칸 한 바퀴 안에서는 같은 포트가
+        나올 수 없다. 여기서는 그 「한 방향」을 본다.
+        """
+        got = [portpool.free_port() for _ in range(40)]
+        self.assertEqual(len(set(got)), 40, f"되풀이한 포트: {sorted(x for x in got if got.count(x) > 1)[:8]}")
+        ring = portpool.slot_ports()
+        idx = [ring.index(x) for x in got]
+        steps = [(b - a) % len(ring) for a, b in zip(idx, idx[1:])]
+        self.assertTrue(all(0 < st < len(ring) // 2 for st in steps), f"커서가 되돌아간다: {steps}")
+
+    def test_r3_the_next_process_continues_where_the_last_stopped(self):
+        """R3. 같은 칸을 잇달아 잡는 두 프로세스는 이어서 돈다 — 교집합 0, 순서 이어짐."""
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._spawn(tmp, 5)
+            second = self._spawn(tmp, 5)
+        self.assertFalse(set(first) & set(second), f"직전 프로세스의 포트를 다시 잡았다: {first} / {second}")
+        self.assertGreater(min(second), max(first), f"이어 돌지 않는다: {first} → {second}")
+
+    def test_r5_the_lock_dir_survives_the_run_root(self):
+        """R5. 잠금·커서는 러너의 실행 전용 루트(s9run-*) 밖에 산다 — 실행이 끝나도 남는다.
+
+        실측 2026-09-06: 샤드 자식이 TMPDIR=<s9run-…> 을 물려받아 잠금을 그 안에
+        만들었고, 실행 뒤 루트와 함께 지워져 다음 실행이 매번 칸 첫머리(18802·21401)
+        를 다시 잡았다 — 60초 안의 재사용, 바로 피하려던 그 자리다.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "s9run-1234-ab")
+            os.makedirs(root)
+            code = "import portpool as p; print(p.LOCK_DIR)"
+            env = {k: v for k, v in os.environ.items() if k != "S9_PORTPOOL_DIR"}
+            r = subprocess.run([sys.executable, "-c", code], cwd=HERE, capture_output=True,
+                               text=True, timeout=60, env={**env, "TMPDIR": root})
+            self.assertEqual(r.returncode, 0, r.stderr[-400:])
+            self.assertEqual(r.stdout.strip(), os.path.join(os.path.realpath(tmp), "s9-portpool"))
+
+    def test_r4_a_broken_cursor_file_still_allocates(self):
+        """R4. 잠금 파일의 커서가 쓰레기여도 예외 없이 칸 안의 자리를 준다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = os.path.join(tmp, "s9-portpool")
+            os.makedirs(d)
+            with open(os.path.join(d, "slot0.lock"), "w") as f:
+                f.write("not-a-number\n")
+            got = self._spawn(tmp, 3)
+        self.assertEqual(len(got), 3)
+        self.assertTrue(all(portpool.POOL_BASE <= x <= portpool.POOL_TOP for x in got), got)
+
+
 class BoundedReuse(unittest.TestCase):
     def test_distinct_ports_are_capped(self):
-        """할당을 몇 번 하든 서로 다른 포트 수는 풀 크기 이하."""
-        seen = {portpool.free_port() for _ in range(portpool.POOL_SIZE * 5)}
-        self.assertLessEqual(len(seen), portpool.POOL_SIZE)
-        self.assertTrue(seen <= set(portpool.pool_ports()))
+        """할당을 몇 번 하든 서로 다른 포트 수는 풀 크기 이하 — 칸은 풀 안의 고리다.
+
+        예전엔 풀의 다섯 배를 실제로 뽑아 셌는데, 풀이 대역 전체(5200)가 된 뒤로는
+        그것이 26,000회 bind+listen = 304초다(2026-09-06 실측, 회당 약 12ms — WSL
+        중계가 listen 마다 일한다). 상한은 고리의 구조에서 온다: 칸의 포트 목록이
+        풀 안이고 서로 다르면, 커서가 그 위를 몇 바퀴 돌든 그 밖으로 못 나간다.
+        """
+        ring = portpool.slot_ports()
+        self.assertEqual(len(set(ring)), portpool.SLOT_SIZE)
+        self.assertTrue(set(ring) <= set(portpool.pool_ports()))
+        seen = {portpool.free_port() for _ in range(20)}
+        self.assertTrue(seen <= set(ring), seen - set(ring))
 
     def test_repeated_runs_reuse_the_same_ports(self):
         """반복 할당은 같은 구간을 돌려쓴다 — 쓰는 포트 번호가 계속 늘지 않는다.
@@ -235,8 +331,8 @@ class BoundedReuse(unittest.TestCase):
         '구간 밖으로 새지 않는다'와 '총량이 슬롯 크기 이하다' 두 가지다.)
         """
         slot = set(portpool.slot_ports())
-        first = {portpool.free_port() for _ in range(portpool.SLOT_SIZE * 2)}
-        second = {portpool.free_port() for _ in range(portpool.SLOT_SIZE * 2)}
+        first = {portpool.free_port() for _ in range(20)}
+        second = {portpool.free_port() for _ in range(20)}
         self.assertTrue(first <= slot, first - slot)
         self.assertTrue(second <= slot, second - slot)
         self.assertLessEqual(len(first | second), portpool.SLOT_SIZE)
