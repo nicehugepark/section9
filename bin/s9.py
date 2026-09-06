@@ -18226,8 +18226,7 @@ def cmd_instance(args):
             s.close()
     if inst_port:
         os.makedirs(os.path.join(target, "state"), exist_ok=True)
-        with open(os.path.join(target, "state", "port"), "w", encoding="utf-8") as f:
-            f.write(str(inst_port))
+        _pin_port(inst_port, target)        # 인스턴스의 포트는 사람의 결정 — --stop 이 잊지 않는다 (REQ-20260906-085)
         print(f"   대시보드 포트: {inst_port} (state/port — 9909의 기본 워크스페이스와 공존)")
     git("add", "-A")
     git("-c", "user.name=s9-instance", "-c", "user.email=s9@local",
@@ -22957,10 +22956,16 @@ def _forget_auto_port(root=None):
     다음 기동이 기본 포트부터 다시 고르게 (REQ-20260906-083). 맥 실측 2026-09-06 14:20: 정지 직후
     재기동이 9910 으로 올라갔고 state/port 가 9910 으로 남아 그 뒤의 링크가 전부 그쪽을 봤다."""
     root = root or ROOT
-    auto = os.path.join(root, "state", "port.auto")
-    if not os.path.exists(auto):
+    st = os.path.join(root, "state")
+    auto, pinned, portf = (os.path.join(st, "port.auto"), os.path.join(st, "port.pinned"),
+                           os.path.join(st, "port"))
+    # 사람이 정한 포트(port.pinned)는 잊지 않는다. 표식이 아무것도 없는 state/port 는 옛 코드가
+    # 자동으로 옮겨 적은 것이다(맥 실측 2026-09-06 14:44: port.auto 없는 9910 이 남아 --stop 뒤
+    # 재기동이 또 9910 으로 갔다) — 잊는다. 다음 기동이 기본 포트를 다시 재고, 남이 있으면
+    # 그때 다시 옮긴다.
+    if os.path.exists(pinned) or not os.path.exists(portf):
         return False
-    for f in (auto, os.path.join(root, "state", "port")):
+    for f in (auto, portf):
         try:
             os.remove(f)
         except OSError:
@@ -22976,6 +22981,8 @@ def _pin_port(port, root=None):
         os.makedirs(os.path.join(root, "state"), exist_ok=True)
         with open(os.path.join(root, "state", "port"), "w", encoding="utf-8") as f:
             f.write(str(int(port)))
+        with open(os.path.join(root, "state", "port.pinned"), "w", encoding="utf-8") as f:
+            f.write(now_iso() + "\n")           # 사람의 결정이라는 표식 — --stop 이 잊지 않는다
         try:
             os.remove(os.path.join(root, "state", "port.auto"))
         except OSError:
