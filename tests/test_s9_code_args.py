@@ -206,7 +206,7 @@ class TestCodeArgs(unittest.TestCase):
                 self.assertIn("훅 미설치", r.stdout)
                 self.assertTrue(os.path.exists(
                     os.path.join(home2, ".claude", "settings.json")))
-                self.assertIn("미로그인", r.stdout)   # credentials 없음 → 로그인 예고
+                self.assertIn("로그인이 없다", r.stdout)   # credentials 없음 → 로그인 예고 (문구는 REQ-20260906-072)
                 self.assertIn('["claude"', r.stdout)  # 그 후 실행은 계속된다
 
             # P2. preflight: 미등록 사용자 + 비대화형 → 등록 안내만 출력(멈추지 않음)
