@@ -5,16 +5,16 @@
 만들 때만 쓰이는 장치는 사고가 나는 자리(무인 워커·서브에이전트)에 없는 것과 같다.
 
 이 저장소가 네 번 겪은 것: 같은 파일 하나(web/index.html)에 여러 주체가 붙어
-**남의 미커밋 작업이 조용히 사라졌다.** 워크트리는 그것을 없애지 않는다 —
+**남의 미커밋 작업이 조용히 사라졌다.** worktree는 그것을 없애지 않는다 —
 **보이는 충돌로 바꾼다.**
 
 다만 그냥 갈면 vault·index·state 까지 갈려 진실이 두 벌이 된다. 그래서
-**코드는 갈리고 데이터는 하나다**: 작업 디렉터리만 워크트리, `S9_ROOT` 는 언제나
+**코드는 갈리고 데이터는 하나다**: 작업 디렉터리만 worktree, `S9_ROOT` 는 언제나
 본 저장소.
 
 거두는 자리도 함께 만든다. 안 거두면 쌓이고, 오늘 실제로 그 잔재가 사고를 냈다 —
-지워진 워크트리 경로를 가리키는 훅이 조용히 죽어 있었다 (REQ-20260828-014).
-다만 **남길 것이 있으면 남긴다**: 미커밋 변경이나 안 합친 커밋이 있는 워크트리를
+지워진 worktree 경로를 가리키는 훅이 조용히 죽어 있었다 (REQ-20260828-014).
+다만 **남길 것이 있으면 남긴다**: 미커밋 변경이나 안 합친 커밋이 있는 worktree를
 거두는 것은 이 기능이 막으려던 바로 그 소실이다.
 
 격리: S9_ROOT=mktemp git repo. 실행: python3 tests/ worker_worktree
@@ -105,7 +105,7 @@ class WorkerWorktree(unittest.TestCase):
                         "합쳤는데 본 저장소에 없다")
         self.assertEqual(self.m.worktree_list(), [], "합친 뒤 거두지 않았다")
 
-    # B1. 미커밋 변경이 남은 워크트리는 거두지 않는다 — 그게 이 기능의 존재 이유다.
+    # B1. 미커밋 변경이 남은 worktree는 거두지 않는다 — 그게 이 기능의 존재 이유다.
     def test_b1_sweep_keeps_dirty_worktree(self):
         cwd, _e, name = self.m.worker_workspace(
             "REQ-z", {"worker_worktree": True}, self.root)
@@ -153,9 +153,9 @@ class WorktreeAutoCommit(unittest.TestCase):
     """B6·B7 — 워커가 커밋을 안 하고 끝나면 리드가 대신 박는다.
 
     실사고 2026-08-28 16:16~17:56. 무인 작업자가 REQ-20260828-025 를 **구현까지
-    끝내고 문서에 완료 보고까지 적었는데**, 그 코드가 워크트리 안에만 있고
+    끝내고 문서에 완료 보고까지 적었는데**, 그 코드가 worktree 안에만 있고
     커밋되지 않아 본 저장소에는 한 줄도 없었다. 화면에는 39분째 "진행 중" 으로
-    떠 있었고 사용자가 "진짜 진행중인건가" 로 발견했다. 워크트리 네 개가 전부
+    떠 있었고 사용자가 "진짜 진행중인건가" 로 발견했다. worktree 네 개가 전부
     그 상태였다.
 
     그날 오전에 봉투(allowedTools)에 git add·commit 을 이미 넣어 뒀다. **손을
@@ -227,13 +227,13 @@ class WorktreeAutoCommit(unittest.TestCase):
 
 
 class WorktreeEnvelope(unittest.TestCase):
-    """B5 — 워크트리 워커는 자기 가지에 커밋할 수 있어야 한다.
+    """B5 — worktree 워커는 자기 가지에 커밋할 수 있어야 한다.
 
-    실사고 2026-08-28 15:07: 워크트리에서 돈 무인 작업자가 REQ-20260828-007 을
+    실사고 2026-08-28 15:07: worktree에서 돈 무인 작업자가 REQ-20260828-007 을
     고쳐 놓고 **커밋하지 못했다** — 봉투(allowedTools)에 git 이 없었다. 규율은
     "자기 가지에 커밋하라"인데 그럴 손이 없었던 것이다. 변경은 작업 트리에만
     남았고, 사용자 화면에는 아무것도 반영되지 않은 채 두 시간이 지났다.
-    커밋할 수 없는 워크트리는 소실 장치다 — 거두는 순간 다 사라진다.
+    커밋할 수 없는 worktree는 소실 장치다 — 거두는 순간 다 사라진다.
 
     다만 넓히지 않는다: 담고(add)·박고(commit)·보는(status·diff) 것까지다.
     push 도 checkout·reset 도 주지 않는다 — 앞엣것은 바깥으로 나가는 일이고
@@ -243,7 +243,7 @@ class WorktreeEnvelope(unittest.TestCase):
     def test_b5_worktree_worker_may_commit_its_branch(self):
         src = open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8").read()
         self.assertIn("WORKTREE_GIT_TOOLS", src,
-                      "워크트리 봉투가 따로 없다 — 워커가 커밋할 수 없다")
+                      "worktree 봉투가 따로 없다 — 워커가 커밋할 수 없다")
         m = re.search(r"WORKTREE_GIT_TOOLS = \[([^\]]*)\]", src)
         self.assertIsNotNone(m, "WORKTREE_GIT_TOOLS 를 읽을 수 없다")
         body = m.group(1)

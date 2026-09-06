@@ -1,19 +1,19 @@
 """작업자를 낡은 자리에 앉히지 않는다 (REQ-20260829-028-62x6).
 
-실측 2026-08-29 16:51. 워크트리 아홉이 살아 있었고 방금 뜬 셋이 전부
+실측 2026-08-29 16:51. worktree 아홉이 살아 있었고 방금 뜬 셋이 전부
 `3e029be`(11:54) 를 가리켰다 — 그 뒤 다섯 시간 동안 본 저장소에 **2,638줄이
 미커밋으로 쌓였다**(web/index.html 1,276줄 · bin/s9 · 새 시험 일곱). 그래서 그
 작업자들은 오늘 오후에 만든 것이 하나도 없는 자리에 앉아 있었고, 고칠 코드를
 못 찾아 아무것도 못 하고 물러났다(REQ-20260827-079·REQ-20260828-041).
 
-워크트리는 **마지막 커밋의 체크아웃**이지 작업 트리의 복사가 아니다. 그러니
+worktree는 **마지막 커밋의 체크아웃**이지 작업 트리의 복사가 아니다. 그러니
 판정은 하나다 — *기준선이 신선할 때만 갈라 준다.* 다만 "저장소가 더러우면
 거부"는 이 저장소에서 상수 True 라 무인 작업자가 영영 안 뜬다(그건 오늘의 다른
 병이다). 그래서 **거부가 아니라 자리 바꾸기**다: 코드가 더러우면 본 저장소로
 보내고, 겹치면 천장 있는 대기를 시킨다.
 
 같은 날 둘째 실측: `worker_worktree_name()` 이 매 스폰에 `int(time.time())` 을
-붙여 재스폰이 곧 새 워크트리였다 — 한 문서가 워크트리를 넷까지 만들었다.
+붙여 재스폰이 곧 새 worktree였다 — 한 문서가 worktree를 넷까지 만들었다.
 셋째: `_worktree_autocommit` 이 `git commit` 의 반환코드를 안 봐서, 게이트가
 거부해도 성공으로 보이고 sweep 이 30초마다 무한히 다시 불렀다.
 
@@ -157,7 +157,7 @@ class Repo(unittest.TestCase):
         self.addCleanup(self._clean)
 
     def _clean(self):
-        """저장소를 커밋된 상태로 되돌리고 워크트리·리스·표식을 거둔다."""
+        """저장소를 커밋된 상태로 되돌리고 worktree·리스·표식을 거둔다."""
         for w in (self.m.worktree_list() or []):
             _git(self.root, "worktree", "remove", "--force", w["path"])
         _git(self.root, "branch", "--format=%(refname:short)")
@@ -184,9 +184,9 @@ class Repo(unittest.TestCase):
 
 
 class Decision(Repo):
-    """A. 자리 판정 — 워크트리냐 본 저장소냐."""
+    """A. 자리 판정 — worktree냐 본 저장소냐."""
 
-    # W1. 깨끗하면 워크트리다 — 격리는 공짜일 때 쓴다.
+    # W1. 깨끗하면 worktree다 — 격리는 공짜일 때 쓴다.
     def test_w1_clean_repo_gets_a_worktree(self):
         d = self.decide(self.doc_tests)
         self.assertEqual(d["kind"], "worktree", d)
@@ -197,7 +197,7 @@ class Decision(Repo):
         self.dirty("bin/s9")
         self.assertEqual(self.decide(self.doc_none)["kind"], "main")
 
-    # W3. 데이터만 더러운 것은 워크트리를 막지 않는다.
+    # W3. 데이터만 더러운 것은 worktree를 막지 않는다.
     #     S9_ROOT 가 본 저장소를 가리키므로 기준선과 무관하다 — 그것까지
     #     세면 이 저장소는 늘 더럽고 판정은 상수가 된다.
     def test_w3_dirty_data_does_not_block(self):
@@ -243,12 +243,12 @@ class Decision(Repo):
         self.assertEqual(d["kind"], "main", d)
         self.assertEqual(d["reason"], "worktree-pile", d)
 
-    # W9. 한 문서에 둘째 워크트리를 만들지 않는다.
+    # W9. 한 문서에 둘째 worktree를 만들지 않는다.
     #     — 오늘 w-829-011 이 넷이 된 그 자리.
     def test_w9_one_worktree_per_document(self):
         cwd, _e, name = self.m.worker_workspace(self.doc_tests, self.on,
                                                 self.root)
-        self.assertTrue(name, "첫 워크트리를 못 만들었다")
+        self.assertTrue(name, "첫 worktree를 못 만들었다")
         with open(os.path.join(cwd, "wip.txt"), "w") as f:
             f.write("아직 쓰는 중\n")     # dirty — 잃을 것이 있다
         before = len(self.m.worktree_list())
@@ -260,14 +260,14 @@ class Decision(Repo):
         self.assertEqual(name2, "")
         self.assertEqual(cwd2, self.root)
         self.assertEqual(len(self.m.worktree_list()), before,
-                         "한 문서가 워크트리를 둘 만들었다")
+                         "한 문서가 worktree를 둘 만들었다")
 
-    # W9b. 이름에 시간을 넣지 않는다 — 재스폰이 곧 새 워크트리이던 원인.
+    # W9b. 이름에 시간을 넣지 않는다 — 재스폰이 곧 새 worktree이던 원인.
     def test_w9b_the_name_is_stable_for_a_document(self):
         a = self.m.worker_worktree_name(self.doc_tests)
         time.sleep(1.05)
         b = self.m.worker_worktree_name(self.doc_tests)
-        self.assertEqual(a, b, "스폰마다 이름이 달라진다 — 워크트리가 쌓인다")
+        self.assertEqual(a, b, "스폰마다 이름이 달라진다 — worktree가 쌓인다")
 
     # W9c. 주인이 죽고 남길 것도 없는 자리는 되쓴다(거두고 새로).
     def test_w9c_a_dead_and_empty_worktree_is_recycled(self):
@@ -288,7 +288,7 @@ class Decision(Repo):
             ok = self.m._spawn_worker(self.doc_none, meta, "p", "rework")
         self.assertTrue(ok, "스폰 자체가 막혔다")
         self.assertEqual(seen["cwd"], self.root,
-                         "미커밋 코드가 있는데 워크트리에 앉혔다")
+                         "미커밋 코드가 있는데 worktree에 앉혔다")
 
     # W11. 스코프가 겹치지 않으면 갈라 준다 — 격리를 공짜로 버리지 않는다.
     def test_w11_disjoint_scope_still_gets_a_worktree(self):
@@ -306,7 +306,7 @@ class Decision(Repo):
 
 
 class Leases(Repo):
-    """B. 본 저장소 방벽 — 워크트리를 안 쓰면 격리가 사라진다.
+    """B. 본 저장소 방벽 — worktree를 안 쓰면 격리가 사라진다.
 
     이미 있는 것은 복구(`snapshot_dirty`)와 커밋 게이트(`concurrent_gate`)뿐이고
     **예방이 없다.** 그것을 스폰 시점 파일 리스로 세운다.
@@ -473,7 +473,7 @@ class CommitDiscipline(Repo):
 class Reaping(Repo):
     """D. 거두기 — 남길 것이 있으면 지우지 않는다. 다만 조용히 쌓이지도 않는다."""
 
-    # S2. 주인이 죽고 하루가 지난 dirty 워크트리는 **지워지지 않고**
+    # S2. 주인이 죽고 하루가 지난 dirty worktree는 **지워지지 않고**
     #     경과 시간과 함께 사람 앞에 올라온다.
     def test_s2_a_stale_worktree_is_raised_not_removed(self):
         cwd, _e, name = self.m.worker_workspace(self.doc_tests, self.on,
@@ -489,7 +489,7 @@ class Reaping(Repo):
         self.assertTrue(os.path.isdir(cwd), "남길 것이 있는데 지웠다")
         rows = [r for r in self.m.undelivered_requests()
                 if r.get("id") == self.doc_tests]
-        self.assertTrue(rows, "묵은 워크트리가 사람 앞에 안 올라온다")
+        self.assertTrue(rows, "묵은 worktree가 사람 앞에 안 올라온다")
         self.assertIn("시간", rows[0].get("detail", ""),
                       f"경과 시간이 없다: {rows[0]}")
 
@@ -528,15 +528,15 @@ class Visible(Repo):
 
     # V3. 손잡이의 답은 **두 칸**이고, 자리 말은 예외일 때만 선다.
     def test_v3_wake_says_the_place_only_when_it_is_an_exception(self):
-        """자리 이름(`본 저장소`·`워크트리`)은 깃을 아는 사람의 말이라 창에
+        """자리 이름(`본 저장소`·`worktree`)은 깃을 아는 사람의 말이라 창에
         세우지 않는다 (REQ-20260830-007). 뜻도 **말할 것이 있을 때만** 선다
         (REQ-20260830-049): main 갈래의 「바로 보입니다」는 기대대로인 사실이라
         말할 것이 없고, 없는 `note` 가 곧 "창을 세우지 마라"는 답이다. 여기에
         빈 문자열이라도 실리면 화면은 창을 세우고, 그 창이 자기가 가리키는
         카드를 가린다.
 
-        경계: 여기서 지키는 것은 **자리 말이 사라지지 않는 것**이다 — 워크트리
-        갈래에서 `note` 가 비면 워크트리에서 고친 화면을 9909 에서 영영 찾는
+        경계: 여기서 지키는 것은 **자리 말이 사라지지 않는 것**이다 — worktree
+        갈래에서 `note` 가 비면 worktree에서 고친 화면을 9909 에서 영영 찾는
         그 헛수고가 돌아온다(V3 의 본래 이유)."""
         self.dirty("web/index.html")
         with _spawn_patch():
@@ -547,14 +547,14 @@ class Visible(Repo):
         self.assertNotIn("note", res,
                          "말할 것이 없는 갈래(main)가 부가 칸을 실었다 — "
                          "빈 칸 하나가 창을 세운다")
-        for word in ("본 저장소", "워크트리"):
+        for word in ("본 저장소", "worktree"):
             self.assertNotIn(word, res["message"],
                              "창에 깃 낱말이 그대로 섰다")
 
     def test_v3b_the_worktree_branch_keeps_its_one_extra_line(self):
-        """워크트리 갈래만 창이 선다 — 부가 한 줄이 그 창의 존재 이유다.
+        """worktree 갈래만 창이 선다 — 부가 한 줄이 그 창의 존재 이유다.
 
-        여기서는 저장소를 더럽히지 않는다: 깨끗하면 워커가 워크트리에 앉고
+        여기서는 저장소를 더럽히지 않는다: 깨끗하면 워커가 worktree에 앉고
         (Decision W1), 그 마커를 읽어 부가 줄이 실린다 — 갈래를 손으로 심지
         않고 실제 경로를 그대로 지난다."""
         with _spawn_patch():
@@ -563,7 +563,7 @@ class Visible(Repo):
         self.assertEqual(res["message"], self.m.WAKE_SPAWNED_KO, res)
         self.assertEqual(res.get("note"),
                          self.m.WS_MEANS_KO["worktree"] + ".", res)
-        for word in ("본 저장소", "워크트리", "커밋", "사본"):
+        for word in ("본 저장소", "worktree", "커밋", "사본"):
             self.assertNotIn(word, res["note"],
                              "부가 줄에 사용자 세계 밖의 낱말이 섰다: %s" % word)
 

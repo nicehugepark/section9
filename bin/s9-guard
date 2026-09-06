@@ -226,14 +226,14 @@ GIT_ENV_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
 def clean_git_env(env=None):
     """훅이 물려받은 git 환경을 벗겨서 준다 (REQ-20260829-005).
 
-    git 은 훅에 GIT_DIR 을 넘긴다. 워크트리에서 커밋하면 그 값은
+    git 은 훅에 GIT_DIR 을 넘긴다. worktree에서 커밋하면 그 값은
     `<repo>/.git/worktrees/<이름>` 이다. 이 환경을 물려받은 자식이 `git init` 을
     부르면 — `-C <다른 경로>` 를 붙였든 말든 — GIT_DIR 이 이기므로 그 자리를
     다시 init 하고, 작업 트리가 없다고 판단해 **공용 .git/config 에
     core.bare=true 를 박는다**. 그 순간 본 체크아웃에서 status·add·commit 이
     전부 'must be run in a work tree' 로 거부된다.
 
-    2026-08-29 에 실제로 이 경로로 매분 뒤집혔다: serve 의 워크트리 자동 보존
+    2026-08-29 에 실제로 이 경로로 매분 뒤집혔다: serve 의 worktree 자동 보존
     커밋 → 이 훅 → 스테이지 테스트 → 임시 리포에 `git init`. 파일은 멀쩡해서
     커밋하려는 순간에야 드러난다.
     """

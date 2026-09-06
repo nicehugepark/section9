@@ -1,12 +1,12 @@
-"""설치자가 워크트리에서도 훅을 심는다 (REQ-20260829-035 에서 건진 조각).
+"""설치자가 worktree에서도 훅을 심는다 (REQ-20260829-035 에서 건진 조각).
 
-워크트리의 `.git` 은 디렉토리가 아니라 파일이다. `<repo>/.git/hooks` 를 지어내면
+worktree의 `.git` 은 디렉토리가 아니라 파일이다. `<repo>/.git/hooks` 를 지어내면
 없는 자리를 가리키고, 설치자는 그것을 "저장소 아님"으로 오판해 훅을 **말없이**
-심지 않았다. 무인 작업자는 워크트리에서 돌므로 그 자리에 훅이 없으면 커밋
+심지 않았다. 무인 작업자는 worktree에서 돌므로 그 자리에 훅이 없으면 커밋
 게이트도 커밋 기록도 없다.
 
 같은 판정이 `bin/s9-doctor` 에 이미 있었다 — 시험은 고쳤는데 설치자는 안 고친
-반쪽이었고, 그 조각이 워크트리에 20시간 갇혀 있었다.
+반쪽이었고, 그 조각이 worktree에 20시간 갇혀 있었다.
 """
 import os
 import subprocess
@@ -37,7 +37,7 @@ class InstallHooksPath(unittest.TestCase):
         self.m = _load()
 
     def test_h1_asks_git_instead_of_building_the_path(self):
-        """경로를 짓지 않고 git 에게 묻는다 — 지어내면 워크트리에서 틀린다."""
+        """경로를 짓지 않고 git 에게 묻는다 — 지어내면 worktree에서 틀린다."""
         src = open(INSTALL, encoding="utf-8").read()
         self.assertIn("--git-path", src)
         self.assertNotIn('os.path.join(ROOT, ".git", "hooks")', src)
@@ -51,7 +51,7 @@ class InstallHooksPath(unittest.TestCase):
                              os.path.realpath(os.path.join(d, ".git", "hooks")))
 
     def test_h3_worktree_gets_a_real_place_not_a_made_up_one(self):
-        """워크트리에서도 빈 문자열이 아니라 실재하는 자리를 준다."""
+        """worktree에서도 빈 문자열이 아니라 실재하는 자리를 준다."""
         with tempfile.TemporaryDirectory() as d:
             main = os.path.join(d, "main")
             os.makedirs(main)
@@ -64,9 +64,9 @@ class InstallHooksPath(unittest.TestCase):
             wt = os.path.join(d, "wt")
             _git(main, "worktree", "add", "-q", wt)
             self.assertTrue(os.path.isfile(os.path.join(wt, ".git")),
-                            "워크트리의 .git 은 파일이어야 이 시험이 뜻을 가진다")
+                            "worktree의 .git 은 파일이어야 이 시험이 뜻을 가진다")
             got = self.m.git_hooks_dir(wt)
-            self.assertTrue(got, "워크트리에서 빈 자리를 주면 훅을 말없이 안 심는다")
+            self.assertTrue(got, "worktree에서 빈 자리를 주면 훅을 말없이 안 심는다")
             self.assertTrue(os.path.isabs(got))
 
     def test_h4_outside_a_repo_is_still_empty(self):

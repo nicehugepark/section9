@@ -4446,7 +4446,7 @@ def worker_running(req_id, win=WORKER_WIN, now=None, alias=None):
     """이 REQ 를 맡아 **지금 도는** 무인 워커 — 있으면 {"pid","age"}, 없으면 None.
 
     실사고 2026-08-29 11:04~11:39 (REQ-20260829-016-62x6): 반려 한 건에 워커가
-    넷 떴다. 간격은 쿨다운 그대로였다. 워크트리 넷이 같은 문제에 같은 답을 따로
+    넷 떴다. 간격은 쿨다운 그대로였다. worktree 넷이 같은 문제에 같은 답을 따로
     냈고, 시간당 상한 6건을 다 써서 11:43 사람의 깨우기가 막혔다.
 
     원인은 클레임의 눈이다. `rework_claimed` 는 세션 바인딩과 위임 기여만 본다.
@@ -6046,7 +6046,7 @@ def hooks_installed(root=None):
     """이 설정 디렉토리에 이 워크스페이스의 section9 훅이 **살아 있게** 있는가.
 
     문자열 포함으로 보면 죽은 경로를 놓친다 (REQ-20260828-014). 실사고: 임시
-    워크트리에서 실행된 설치가 남긴 `<ROOT>/state/worktrees/probe/bin/s9-audit-*`
+    worktree에서 실행된 설치가 남긴 `<ROOT>/state/worktrees/probe/bin/s9-audit-*`
     가 settings.json 에 남았고, 그 경로는 ROOT 를 부분문자열로 품는다 —
     `ROOT in txt` 는 참이라 "설치됨"으로 읽혔다. 훅 명령은 `2>/dev/null || true`
     라 없는 파일을 불러도 조용하다: SessionStart 가 바인딩을 안 써 대시보드가
@@ -8721,9 +8721,9 @@ def chat_notify_transition(doc_id, old, new, note, actor):
     return sent[0]
 
 
-# 워크트리 워커에게만 더 주는 손 — 담고·박고·보는 것까지다.
+# worktree 워커에게만 더 주는 손 — 담고·박고·보는 것까지다.
 # push 는 바깥으로 나가는 일이고, checkout·reset·stash 는 남의 작업을 지우는
-# 손이라 주지 않는다. 워크트리 안이라 해도 그 셋은 자기 것을 지운다.
+# 손이라 주지 않는다. worktree 안이라 해도 그 셋은 자기 것을 지운다.
 WORKTREE_GIT_TOOLS = ["Bash(git add:*)", "Bash(git commit:*)",
                       "Bash(git status:*)", "Bash(git diff:*)",
                       "Bash(git log:*)"]
@@ -8845,7 +8845,7 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     dec = workspace_decision(doc_id, cfg)
     scope = dec.get("scope") or set()
     if wait is None and dec["kind"] == "main":
-        # 워크트리를 안 쓰면 격리가 사라진다. 대체물은 둘이다 — 동시에 도는
+        # worktree를 안 쓰면 격리가 사라진다. 대체물은 둘이다 — 동시에 도는
         # 작업자 수의 천장과, 같은 파일에 두 손이 붙는 것을 막는 리스.
         cap = int(cfg.get("auto_resume_max_inflight", 2) or 2)
         mine = canon_id(doc_id)
@@ -8913,11 +8913,11 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     # 알고 켜는 스위치여야 하고, 기본은 꺼짐이다.
     if cfg.get("auto_resume_gh"):
         perm = perm + ["Bash(gh:*)"]
-    # 워크트리 워커는 자기 가지에 커밋할 손이 있어야 한다 (REQ-20260828-011).
+    # worktree 워커는 자기 가지에 커밋할 손이 있어야 한다 (REQ-20260828-011).
     # 실사고 2026-08-28 15:07: 규율은 "자기 가지에 커밋하라"인데 봉투에 git 이
     # 없어 워커가 고쳐 놓고 커밋하지 못했고, 변경이 작업 트리에만 남아 사용자
     # 화면에는 두 시간 동안 아무것도 반영되지 않았다. **커밋할 수 없는
-    # 워크트리는 소실 장치다** — 거두는 순간 다 사라진다.
+    # worktree는 소실 장치다** — 거두는 순간 다 사라진다.
     if wt_name:
         perm = perm + WORKTREE_GIT_TOOLS
     # 충돌 규율은 봉투와 같은 자리에 둔다 — 프롬프트마다 따로 적으면 갈린다.
@@ -8925,7 +8925,7 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     # 디스크에서 사라졌고(커밋 전이라 git 복구 불가), 다른 건에서는 리드의
     # 커밋에 워커의 진행 중 편집이 섞여 반쪽 상태가 됐다 (REQ-20260826-021).
     if wt_name:
-        # 워크트리 모드에서는 규율이 뒤집힌다: 남의 것을 볼 수 없으니 피할 것도
+        # worktree 모드에서는 규율이 뒤집힌다: 남의 것을 볼 수 없으니 피할 것도
         # 없고, 대신 **커밋을 해야** 리드가 합칠 수 있다 (3단계). 커밋을 막으면
         # 워커의 일이 그 자리를 거둘 때 함께 사라진다.
         prompt = prompt + (
@@ -9236,7 +9236,7 @@ def _workspace_marker(doc_id):
 
 # 작업 자리가 **사람에게 뜻하는 것** (REQ-20260830-007).
 #
-# 자리 이름(`본 저장소`·`워크트리`)은 깃을 아는 사람의 말이다. 다섯 번의 반려가
+# 자리 이름(`본 저장소`·`worktree`)은 깃을 아는 사람의 말이다. 다섯 번의 반려가
 # 가리킨 것이 하나였다 — "깃을 모르는 사람에게 이 사실은 읽을 것도 할 일도
 # 아니다"(REQ-20260829-030). 그래도 **뜻은 남는다**: 사람이 알아야 하는 것은
 # 자리 이름이 아니라 "내가 지금 보는 화면에서 그 결과를 볼 수 있나" 하나다.
@@ -9273,7 +9273,7 @@ WAKE_SPAWNED_KO = "멈춰 있던 작업이 다시 이어집니다."
 def _wake_note(doc_id):
     """깨우기 성공에 덧붙일 **예외 사실 한 줄** — 없으면 빈 문자열.
 
-    말할 것이 있는 갈래는 워크트리 하나다: 고친 것이 지금 보는 화면에 바로
+    말할 것이 있는 갈래는 worktree 하나다: 고친 것이 지금 보는 화면에 바로
     들어오지 않는다는 사실은 결과를 보러 가는 순간 사람을 헤매게 한다. main
     갈래의 「바로 보입니다」는 기대대로인 사실이라 말할 것이 없다 — 그 자리에
     창을 세우면 창이 자기가 가리키는 카드를 가린다(designer 실측)."""
@@ -9442,7 +9442,7 @@ def wake_request(doc_id, actor="", win=None):
     if _spawn_wake(cid, meta, mins=mins, by=actor, out=out):
         # 어디에 앉혔는지는 **말할 것이 있을 때만** 함께 말한다
         # (REQ-20260829-028-62x6 V3 → REQ-20260830-049 로 개정). 자리가 다르면
-        # 사람이 확인할 자리도 다르다 — 워크트리에서 고친 화면은 9909 에 영영
+        # 사람이 확인할 자리도 다르다 — worktree에서 고친 화면은 9909 에 영영
         # 안 나타난다. **자리 이름 대신 그 뜻을 말하고**(REQ-20260830-007),
         # 기대대로인 갈래(main)에는 아무 말도 얹지 않는다: 없는 `note` 가 곧
         # "창을 세우지 마라"는 답이다(_wake_note 주석).
@@ -14020,8 +14020,8 @@ def undelivered_requests():
     축인 **"산출물이 도착했나"** 가 없었다.
 
     실사고 2026-08-28: 무인 작업자가 REQ-20260828-025 를 구현하고 문서에 완료
-    보고까지 적었는데 코드는 워크트리 안에만 있었다. 화면에는 39분째 "진행 중"
-    이었고 사용자가 "진짜 진행중인건가" 로 발견했다. 워크트리 넷이 전부 그랬다.
+    보고까지 적었는데 코드는 worktree 안에만 있었다. 화면에는 39분째 "진행 중"
+    이었고 사용자가 "진짜 진행중인건가" 로 발견했다. worktree 넷이 전부 그랬다.
     두 축은 아무리 정밀해도 이걸 못 잡는다 — 붙은 이도 없고 문서는 방금
     움직였으니까.
 
@@ -15065,7 +15065,7 @@ def judge_health(actor, age=None, pid_alive=None, log_line="", recorded="",
                뒤집지 않는다)
     gone       기록 자리가 **등록됐는데 사라졌다** (REQ-20260828-041 라운드1).
                '경로를 안 적었다'와 '적어 둔 파일이 없어졌다'는 다른 사실인데
-               둘 다 unknown 이었다. 워크트리가 거둬지면 그 안에서 돌던
+               둘 다 unknown 이었다. worktree가 거둬지면 그 안에서 돌던
                서브에이전트의 transcript 가 통째로 사라지고, unknown 은
                health_apply 가 되쓰지 않으므로 문서의 `running` 이 **영원히**
                남았다 — 그 REQ 는 보이지도 깨워지지도 않는다(실사고: 041 자신).
@@ -15323,7 +15323,7 @@ def cmd_commit_note(args):
     """
     import subprocess
     # **커밋을 읽는 자리는 훅이 발화한 저장소다** (REQ-20260828-036).
-    # 워크트리에서 커밋하면 post-commit 이 거기서 뜨는데 `S9_ROOT` 는 본
+    # worktree에서 커밋하면 post-commit 이 거기서 뜨는데 `S9_ROOT` 는 본
     # 저장소로 못박혀 있다(코드는 갈리고 데이터는 하나다). 그래서 cwd=ROOT 로
     # `git log -1` 을 돌면 **본 저장소의 마지막 커밋 — 남의 것**을 읽는다.
     # 결과가 둘이었다: 워커가 자기 REQ 에 아무 흔적도 못 남기고(→ loose 놓침),
@@ -15341,7 +15341,7 @@ def cmd_commit_note(args):
 
     where = ROOT
     here = os.environ.get("PWD") or os.getcwd()
-    # **같은 저장소의 워크트리일 때만** 그 자리를 읽는다. 훅은 워크트리에서
+    # **같은 저장소의 worktree일 때만** 그 자리를 읽는다. 훅은 worktree에서
     # 발화하므로 거기 커밋을 읽어야 하지만, 전혀 다른 저장소 안에서 s9 를
     # 부른 경우까지 따라가면 남의 커밋을 이 vault 에 적게 된다.
     if here and os.path.isdir(here) and _common(here) and \
@@ -22364,7 +22364,7 @@ def catalog_with_live(stall_win=None):
         r["live"] = False
         if r.get("status") != "in-progress":
             continue
-        # 어느 자리에서 도는가 (REQ-20260829-028-62x6 V5). 워크트리에서 고친
+        # 어느 자리에서 도는가 (REQ-20260829-028-62x6 V5). worktree에서 고친
         # 화면은 살아 있는 서버에 안 나타나므로, 사람이 무엇을 확인할 수
         # 있는지가 자리에 달려 있다. 통로는 이미 있는 스폰 마커다.
         ws = _workspace_marker(r["id"])
@@ -25280,7 +25280,7 @@ def cmd_serve(args):
                 # 같은 틱에 미커밋 변경을 떠 둔다 (REQ-20260826-021). 규율에
                 # 기대지 않는 유일한 장치 — 누가 무엇으로 덮든 원본은 이미
                 # 딴 데 있다. 실패해도 워처는 계속 돈다.
-                # 주인이 떠난 빈 워크트리를 같은 틱에 거둔다 (REQ-011 2단계).
+                # 주인이 떠난 빈 worktree를 같은 틱에 거둔다 (REQ-011 2단계).
                 # 남길 것이 있는 자리는 건드리지 않는다.
                 try:
                     worktree_sweep()
@@ -25485,16 +25485,16 @@ WORKTREE_HOME = os.path.join(ROOT, "state", "worktrees")
 
 
 def _wt_root():
-    """워크트리에서 돌더라도 **데이터의 본 저장소**를 가리킨다.
+    """worktree에서 돌더라도 **데이터의 본 저장소**를 가리킨다.
 
-    ROOT 는 `$S9_ROOT` 가 있으면 그것을, 없으면 `bin/s9` 의 부모를 쓴다. 워크트리
-    안에서는 후자가 그 워크트리라, 아무것도 안 하면 문서·상태까지 함께 갈린다.
+    ROOT 는 `$S9_ROOT` 가 있으면 그것을, 없으면 `bin/s9` 의 부모를 쓴다. worktree
+    안에서는 후자가 그 worktree라, 아무것도 안 하면 문서·상태까지 함께 갈린다.
     """
     return ROOT
 
 
 def worktree_list():
-    """이 저장소의 워크트리들 — (경로, 가지). 본 저장소는 뺀다."""
+    """이 저장소의 worktree들 — (경로, 가지). 본 저장소는 뺀다."""
     import subprocess
     try:
         r = subprocess.run(["git", "worktree", "list", "--porcelain"],
@@ -25516,7 +25516,7 @@ def worktree_list():
 
 
 WORKTREE_OWNERS = os.path.join(ROOT, "state", "worktree_owners")
-WORKTREE_MIN_AGE = 600      # 주인을 모르는 워크트리는 이만큼 지나야 거둔다
+WORKTREE_MIN_AGE = 600      # 주인을 모르는 worktree는 이만큼 지나야 거둔다
 
 
 def worktree_owner_path(name):
@@ -25524,7 +25524,7 @@ def worktree_owner_path(name):
 
 
 def worktree_owner_write(name, info):
-    """이 워크트리가 누구 것인가 — 거둘 때 살아 있는 주인을 지우지 않으려고 쓴다."""
+    """이 worktree가 누구 것인가 — 거둘 때 살아 있는 주인을 지우지 않으려고 쓴다."""
     try:
         os.makedirs(WORKTREE_OWNERS, exist_ok=True)
         with open(worktree_owner_path(name), "w", encoding="utf-8") as f:
@@ -25583,7 +25583,7 @@ def worktree_state(name):
 
 
 def worktree_add(name, owner=None):
-    """워크트리 하나를 세우고 주인을 적는다. 반환: (경로, 가지) 또는 (None, "")."""
+    """worktree 하나를 세우고 주인을 적는다. 반환: (경로, 가지) 또는 (None, "")."""
     import subprocess
     if not re.fullmatch(r"[A-Za-z0-9._-]+", name or ""):
         return None, ""
@@ -25603,7 +25603,7 @@ def worktree_add(name, owner=None):
     return path, f"wt/{name}"
 
 
-# 워크트리에 **없는** 것이 곧 사본의 결함이다: 데이터(state/·vault/·users/)는
+# worktree에 **없는** 것이 곧 사본의 결함이다: 데이터(state/·vault/·users/)는
 # S9_ROOT 로 본 저장소를 함께 쓰므로 사본 문제가 아니고, 코드만 갈린다.
 WORKTREE_SHARED_DIRS = ("state/", "vault/", "users/", "index/", "streams/")
 
@@ -25611,7 +25611,7 @@ WORKTREE_SHARED_DIRS = ("state/", "vault/", "users/", "index/", "streams/")
 def repo_code_dirty(root=None):
     """본 저장소에 **커밋되지 않은 코드 변경**이 있는가 (파일 목록으로).
 
-    워크트리는 마지막 커밋의 사본이다 — 오늘 고친 것이 아직 커밋 전이면 그
+    worktree는 마지막 커밋의 사본이다 — 오늘 고친 것이 아직 커밋 전이면 그
     자리에는 그 코드가 **없다**. 실사고 2026-08-29 15:10: 사람이 누른 깨우기가
     실제로 워커를 띄웠는데, 워커는 자기 자리에 고칠 코드가 없어 "여기서 고쳐
     커밋하면 합칠 때 오늘 것을 되돌린다"며 blocked 로 물러났다. 창은 깨웠다고
@@ -25641,8 +25641,8 @@ def repo_code_dirty(root=None):
 
 
 # ---- 자리 판정 (REQ-20260829-028-62x6) ------------------------------------
-# 워크트리는 **마지막 커밋의 체크아웃**이지 작업 트리의 복사가 아니다. 미커밋
-# 작업이 쌓여 있을수록 그 자리는 과거다 — 2026-08-29 16:51 에 살아 있던 워크트리
+# worktree는 **마지막 커밋의 체크아웃**이지 작업 트리의 복사가 아니다. 미커밋
+# 작업이 쌓여 있을수록 그 자리는 과거다 — 2026-08-29 16:51 에 살아 있던 worktree
 # 아홉이 전부 다섯 시간 전 커밋을 가리켰고, 그 위에 앉은 작업자 셋은 고칠 코드를
 # 자기 사본에서 찾지 못해 아무것도 못 하고 물러났다 (DOC-20260829-001-62x6).
 #
@@ -25653,7 +25653,7 @@ SPINE = ("bin/s9", "web/index.html")   # 이 저장소가 통째로 기대는 �
 # 등뼈는 파일 둘이 아니라 **자리**이기도 하다 (REQ-20260829-027). 화면이
 # `web/index.html` 껍데기 + `web/css/`·`web/app/` 조각으로 갈리면서, 로직은
 # 조각으로 옮겨 갔는데 등뼈 판정은 옛 한 파일만 셌다. 그대로 두면 조각이
-# 미커밋인 채로 워크트리가 열리고, 그 자리의 검증(9909·tests 의 ../web)이
+# 미커밋인 채로 worktree가 열리고, 그 자리의 검증(9909·tests 의 ../web)이
 # 과거를 본다 — 오늘 아홉 개를 만든 그 사고와 같은 모양이다.
 SPINE_UNDER = ("web/css/", "web/app/")
 LIVE_VERIFY = ("web/",)                # 9909 서버·tests 의 ../web 상대경로
@@ -25696,7 +25696,7 @@ def declared_scope(doc_id, text=None):
 
     추측하지 않는다. 모르면 모른다고 하고, 그때는 보수적으로 본 저장소를 고른다:
     틀리는 방향이 비대칭이기 때문이다. 본 저장소로 잘못 보내면 보이는 충돌
-    하나지만, 워크트리로 잘못 보내면 2026-08-29 처럼 다섯 시간이 조용히 사라진다.
+    하나지만, worktree로 잘못 보내면 2026-08-29 처럼 다섯 시간이 조용히 사라진다.
     """
     if text is None:
         p = locate(doc_id) or locate(canon_id(doc_id))
@@ -25718,10 +25718,10 @@ def declared_scope(doc_id, text=None):
 
 
 def _doc_worktree(doc_id, rows=None):
-    """이 문서가 **이미 가진** 워크트리 — (이름, 주인정보). 없으면 ("", {}).
+    """이 문서가 **이미 가진** worktree — (이름, 주인정보). 없으면 ("", {}).
 
     2026-08-29: `w-829-011-62x6-` 이 타임스탬프만 다른 채 넷 있었다. 이름에
-    시간을 넣으니 재스폰이 곧 새 워크트리였고, 아홉까지 늘어난 것은 sweep 이
+    시간을 넣으니 재스폰이 곧 새 worktree였고, 아홉까지 늘어난 것은 sweep 이
     게을러서가 아니라 **스폰이 무제한으로 만들었기 때문**이다.
     """
     want = canon_id(doc_id)
@@ -25744,12 +25744,12 @@ def _doc_worktree(doc_id, rows=None):
 
 
 def workspace_decision(doc_id, cfg, scope=None, dirty=None):
-    """워크트리냐 본 저장소냐 — **판정은 여기 한 곳에만 있다**.
+    """worktree냐 본 저장소냐 — **판정은 여기 한 곳에만 있다**.
 
     반환 {"kind": "main"|"worktree", "reason": 코드, "scope": set|None,
-          "blocking": [겹친 경로], "wt": 이미 있는 워크트리 이름}
+          "blocking": [겹친 경로], "wt": 이미 있는 worktree 이름}
 
-    핵심 통찰: **워크트리가 놓치는 것은 코드뿐이다.** `worker_workspace` 가
+    핵심 통찰: **worktree가 놓치는 것은 코드뿐이다.** `worker_workspace` 가
     `S9_ROOT` 를 본 저장소로 못박으므로 vault/·state/·index/·users/ 의 미커밋은
     기준선과 아무 상관이 없다 — 워커는 그것들을 본 저장소에서 읽는다. 그것까지
     세면 이 저장소는 늘 더럽고 판정은 상수가 되지만, **코드만 세면 판정이 다시
@@ -25781,7 +25781,7 @@ def workspace_decision(doc_id, cfg, scope=None, dirty=None):
             return d
     if scope and any(p.startswith(LIVE_VERIFY) for p in scope):
         # 살아 있는 서버(9909)는 본 저장소를 읽고 tests 는 ../web 를 읽는다 —
-        # 워크트리에서 고친 화면은 그 서버에 영영 안 나타난다.
+        # worktree에서 고친 화면은 그 서버에 영영 안 나타난다.
         return M("live-verify")
     if scope and any(p == "bin/s9" or p.startswith("bin/s9-") for p in scope):
         return M("self-edit")          # 샌드박스가 자기 도구를 자른다
@@ -25790,7 +25790,7 @@ def workspace_decision(doc_id, cfg, scope=None, dirty=None):
         return W("fresh")
     spine = [p for p in dirty if p in SPINE or p.startswith(SPINE_UNDER)]
     if spine:
-        # 등뼈가 미커밋이면 스코프가 겹치지 않아도 워크트리는 낡은 자리다:
+        # 등뼈가 미커밋이면 스코프가 겹치지 않아도 worktree는 낡은 자리다:
         # 시험이 `HERE/../bin/s9` 를 읽고 화면 검증이 9909 를 보기 때문에
         # 검증 자체가 거짓말을 한다. **오늘의 사고를 정면으로 막는 줄이다.**
         return M("dirty-spine", spine)
@@ -25803,7 +25803,7 @@ def workspace_decision(doc_id, cfg, scope=None, dirty=None):
 
 
 # ---- 파일 리스 — 본 저장소에서 여럿이 돌 때의 방벽 -------------------------
-# 워크트리를 안 쓰기로 하면 격리가 사라진다. 대체물 없이는 이 설계가 성립하지
+# worktree를 안 쓰기로 하면 격리가 사라진다. 대체물 없이는 이 설계가 성립하지
 # 않는다. 본 저장소에 이미 있는 것은 복구(`snapshot_dirty`)와 반쪽 커밋
 # 차단(`s9-guard concurrent_gate`) 둘뿐이고, 빠진 것은 **예방**이다.
 #
@@ -26013,12 +26013,12 @@ def _wait_clear(doc_id):
 def worker_worktree_name(doc_id):
     """문서당 하나 — **이름에 시간을 넣지 않는다** (REQ-20260829-028-62x6).
 
-    `int(time.time())` 을 붙이던 시절에는 재스폰이 곧 새 워크트리였다. 한
+    `int(time.time())` 을 붙이던 시절에는 재스폰이 곧 새 worktree였다. 한
     문서가 넷을 만들었고 아홉까지 쌓였다.
     """
     return f"w-{safe_name(canon_id(doc_id))[-12:]}"
 def _worktree_drop(name, force=False):
-    """워크트리 하나를 자리째 거둔다 (가지·주인 기록까지). 반환: 거뒀나."""
+    """worktree 하나를 자리째 거둔다 (가지·주인 기록까지). 반환: 거뒀나."""
     import subprocess
     st = worktree_state(name)
     if not os.path.isdir(st["path"]):
@@ -26041,7 +26041,7 @@ def worker_workspace(doc_id, cfg, cwd, dec=None):
     """워커가 일할 자리 (REQ-20260828-011 2단계 · REQ-20260829-028 판정).
 
     기본은 지금까지와 같다 — 담당 세션의 작업 디렉터리(본 저장소). 계정 설정
-    `worker_worktree` 를 켜면 **기준선이 신선할 때만** 워커에게 자기 워크트리를
+    `worker_worktree` 를 켜면 **기준선이 신선할 때만** 워커에게 자기 worktree를
     준다. 그러면 남의 미커밋 편집을 **볼 수도 덮을 수도 없고**, 겹치면 합칠 때
     충돌로 드러난다 — 이 저장소가 네 번 겪은 조용한 소실이 보이는 충돌로 바뀐다.
 
@@ -26053,7 +26053,7 @@ def worker_workspace(doc_id, cfg, cwd, dec=None):
     코드를 가르려다 진실을 가르는 짓이다.
 
     못 만들면 조용히 원래 자리로 물러난다. 갈라 주는 것은 편의지 전제가 아니다.
-    반환: (cwd, env 추가분, 워크트리 이름).
+    반환: (cwd, env 추가분, worktree 이름).
     """
     import time as _time
     dec = workspace_decision(doc_id, cfg) if dec is None else dec
@@ -26083,7 +26083,7 @@ def worker_workspace(doc_id, cfg, cwd, dec=None):
 
 
 def worktree_merge(name):
-    """워커의 가지를 본 저장소로 들여오고 워크트리를 거둔다 (3단계).
+    """워커의 가지를 본 저장소로 들여오고 worktree를 거둔다 (3단계).
 
     합치는 것은 리드 몫이다 — 워커는 자기 가지에 커밋만 한다. 충돌하면 git 이
     막는다. **그게 이득이다**: 지금은 그 자리에서 남의 것이 사라진다.
@@ -26118,7 +26118,7 @@ def worktree_merge(name):
 
 
 def _worktree_autocommit(name, own=None):
-    """주인이 떠난 워크트리의 미커밋을 그 가지에 박는다 (REQ-20260828-025).
+    """주인이 떠난 worktree의 미커밋을 그 가지에 박는다 (REQ-20260828-025).
 
     거두지 않고 남긴다 — 박은 뒤에는 "안 합친 커밋" 이 되어 리드가
     `s9 worktree ls` 에서 보고 합친다.
@@ -26127,7 +26127,7 @@ def _worktree_autocommit(name, own=None):
     반환코드를 안 보고 stderr 를 버렸다. 그래서 pre-commit 게이트가 거부해도
     성공처럼 보였고, sweep 이 30초 뒤에 또 불렀다 — 2026-08-29 16:51 부터
     `WT-AUTOCOMMIT` 두 줄이 30초 간격으로 끝없이 찍히며 진짜 신호를 덮었고,
-    그 워크트리들은 여전히 미커밋인 채였다. **실패가 안 보이는 자동 커밋은
+    그 worktree들은 여전히 미커밋인 채였다. **실패가 안 보이는 자동 커밋은
     장치가 아니라 거짓말이다.** 세 번 실패하면 그만두고 `s9 loose` 에 올린다.
     반환: 박았나.
     """
@@ -26192,7 +26192,7 @@ def _worktree_forget(name):
 def _doc_is_terminal(doc_id):
     """이 요청이 끝났나 (done·blocked) — R5. 합칠 것이 없는 자리는 즉시 거둔다.
 
-    끝난 요청의 빈 워크트리를 `WORKTREE_MIN_AGE` 만큼 붙들고 있을 이유가 없다.
+    끝난 요청의 빈 worktree를 `WORKTREE_MIN_AGE` 만큼 붙들고 있을 이유가 없다.
     """
     if not doc_id:
         return False
@@ -26206,7 +26206,7 @@ def _doc_is_terminal(doc_id):
 
 
 def _worktree_raise(name, own, age):
-    """묵은 워크트리를 **문서에** 한 번만 올린다 (R3).
+    """묵은 worktree를 **문서에** 한 번만 올린다 (R3).
 
     `s9 loose` 는 리드가 볼 때만 보이고 로그는 흘러간다. 사람이 나중에 다시
     보는 자리는 문서다 — 다만 한 번만 적는다. 30초마다 같은 줄을 붙이면
@@ -26237,9 +26237,9 @@ def _worktree_raise(name, own, age):
 
 
 def worktree_sweep(now=None):
-    """주인이 떠난 빈 워크트리를 거둔다 — **남길 것이 있으면 남긴다**.
+    """주인이 떠난 빈 worktree를 거둔다 — **남길 것이 있으면 남긴다**.
 
-    안 거두면 쌓인다. 그리고 그 잔재는 조용하다: 지워진 워크트리 경로를 가리키는
+    안 거두면 쌓인다. 그리고 그 잔재는 조용하다: 지워진 worktree 경로를 가리키는
     훅 8개가 아무 소리 없이 죽어 있었다 (REQ-20260828-014). 그렇다고 미커밋
     변경이나 안 합친 커밋을 지우면 이 기능이 막으려던 바로 그 소실이 된다.
     반환: 거둔 이름들.
@@ -26273,8 +26273,8 @@ def worktree_sweep(now=None):
         if st["dirty"]:
             # **커밋은 규율이 아니라 장치여야 한다** (REQ-20260828-025).
             # 실사고 2026-08-28: 무인 작업자가 구현을 끝내고 문서에 완료 보고까지
-            # 적었는데 그 코드가 워크트리 안에만 있었다. 화면에는 39분째 "진행 중"
-            # 으로 떠 있었고 사용자가 발견했다. 워크트리 넷이 전부 그랬다.
+            # 적었는데 그 코드가 worktree 안에만 있었다. 화면에는 39분째 "진행 중"
+            # 으로 떠 있었고 사용자가 발견했다. worktree 넷이 전부 그랬다.
             # 그날 오전에 봉투에 git add·commit 을 이미 넣어 뒀는데도 안 했다 —
             # 손을 쥐여 주는 것만으로는 안 된다. 주인이 떠났으면 리드가 대신 박는다.
             _worktree_autocommit(name, own)
@@ -26295,7 +26295,7 @@ def cmd_worktree(args):
     """코드는 갈리고 데이터는 하나다 (REQ-20260828-011).
 
     같은 파일을 두 주체가 동시에 고쳐 **남의 미커밋 작업이 조용히 사라진** 일이
-    이 저장소에서 네 번 났다. 워크트리는 그것을 없애지 않는다 — **보이는 충돌로
+    이 저장소에서 네 번 났다. worktree는 그것을 없애지 않는다 — **보이는 충돌로
     바꾼다.** 지금은 그 자리에서 소실되고 나중에야 알아챈다.
 
     다만 그냥 만들면 `vault`·`index`·`state` 까지 갈려 **진실이 두 벌**이 된다.
@@ -26306,7 +26306,7 @@ def cmd_worktree(args):
     if act == "ls":
         rows = worktree_list()
         # 되찾는 값을 보인다 (REQ-20260829-028-62x6 V6). 강제가 아니라 유인이다:
-        # 미커밋 코드가 있는 동안은 워크트리가 낡은 자리라 작업자를 본 저장소로
+        # 미커밋 코드가 있는 동안은 worktree가 낡은 자리라 작업자를 본 저장소로
         # 보내는데, 그 이유와 되돌리는 값(커밋)이 어디에도 안 보였다.
         dirty = repo_code_dirty()
         if dirty:

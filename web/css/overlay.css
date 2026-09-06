@@ -268,7 +268,7 @@
    쓰고 이 창은 tone 을 따라가므로, 그 색을 빌리면 밝은 테마에서 글자가 묻힌다.
    계기판 언어 그대로: 색면 없이 1px 보더 하나, 위계는 글자색으로. */
 .dlgatt{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-/* 이모지 폴백을 함께 준다 (REQ-20260829-035 가 워크트리에서 건진 조각) —
+/* 이모지 폴백을 함께 준다 (REQ-20260829-035 가 worktree에서 건진 조각) —
    칩 앞머리가 🖼/📎 라서, mono 하나만 물리면 그 글리프가 없는 자리에서
    두부 상자가 된다. `.term`·`.ccterm` 은 같은 이유로 이미 폴백을 쓴다. */
 .dlgatt .chip{display:inline-flex;align-items:center;gap:6px;

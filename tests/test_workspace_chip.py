@@ -1,8 +1,8 @@
 """화면이 **작업 자리**를 사람에게 말한다 (REQ-20260829-030-62x6).
 
-무인 작업자는 워크트리(격리된 사본)에 앉는 것이 기본이지만, 아직 커밋되지 않은
+무인 작업자는 worktree(격리된 사본)에 앉는 것이 기본이지만, 아직 커밋되지 않은
 코드가 있으면 그 사본이 낡은 자리가 되므로 본 저장소에 앉는다(REQ-20260829-028).
-**말없이 다르게 동작하면 다음 사람이 또 헤맨다** — 워크트리에서 고친 화면은 지금
+**말없이 다르게 동작하면 다음 사람이 또 헤맨다** — worktree에서 고친 화면은 지금
 도는 서버에 영영 안 나타나므로, 무엇을 어디서 확인할지가 자리에 달려 있다.
 
 이 시험이 붙잡는 계약 넷:
@@ -184,7 +184,7 @@ class WorkspaceChip(unittest.TestCase):
                 # 풀 것이 없는 자리에 할 일을 지어내지 않는다 — 매번 참인 문장은 안 읽힌다
                 self.assertNotIn("commit 하면", r["self"])
                 self.assertNotIn("commit 하면", r["wt"])
-                # 워크트리 이름(w-xxxx)은 화면에서 내렸다 — cd 할 사람의 값이고,
+                # worktree 이름(w-xxxx)은 화면에서 내렸다 — cd 할 사람의 값이고,
                 # 그 자리는 s9 worktree ls 다 (REQ-20260830-001 tech-writer 판정).
                 self.assertNotIn("w-829-030-62x6", r["wt"])
 
@@ -242,11 +242,11 @@ class WorkspaceChip(unittest.TestCase):
                     s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
                     return re.sub(r"//[^\n]*", "", s)
 
-                for word in ("본 저장소", "워크트리"):
+                for word in ("본 저장소", "worktree"):
                     self.assertNotIn(word, code_only(self.card_html),
                                      f"보드 카드가 다시 '{word}' 를 말한다")
                 notice = code_only(part("app/notice.js"))
-                for word in ("본 저장소", "워크트리", "commit 하면"):
+                for word in ("본 저장소", "worktree", "commit 하면"):
                     self.assertNotIn(word, notice,
                                      f"헤더가 다시 '{word}' 를 말한다")
 

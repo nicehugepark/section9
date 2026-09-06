@@ -1,14 +1,14 @@
-"""git 훅은 워크트리에서 돌아도 문서를 본 저장소에 쓴다 (REQ-20260828-011 후속).
+"""git 훅은 worktree에서 돌아도 문서를 본 저장소에 쓴다 (REQ-20260828-011 후속).
 
-실사고 2026-08-28 15:07. 무인 작업자가 워크트리에서 REQ-20260828-007 을 고치고
-커밋했더니, post-commit 훅이 남기는 "커밋 기록" 노트가 **워크트리 사본의
+실사고 2026-08-28 15:07. 무인 작업자가 worktree에서 REQ-20260828-007 을 고치고
+커밋했더니, post-commit 훅이 남기는 "커밋 기록" 노트가 **worktree 사본의
 vault/** 에 쓰였다. 본 저장소의 문서에는 아무 흔적이 없었다.
 
-원인: 훅이 `git rev-parse --show-toplevel` 로 자리를 정한다. 워크트리에서 그 값은
-워크트리다. 코드가 갈리는 것은 의도지만(REQ-20260828-011) **데이터가 갈리는 것은
+원인: 훅이 `git rev-parse --show-toplevel` 로 자리를 정한다. worktree에서 그 값은
+worktree다. 코드가 갈리는 것은 의도지만(REQ-20260828-011) **데이터가 갈리는 것은
 정확히 그때 막기로 한 것**이다 — 워커가 남긴 노트를 대시보드가 못 보게 된다.
 
-그래서 훅은 스크립트는 제 자리(워크트리)의 것을 쓰되 `S9_ROOT` 는 **본 저장소**로
+그래서 훅은 스크립트는 제 자리(worktree)의 것을 쓰되 `S9_ROOT` 는 **본 저장소**로
 못박는다. 본 저장소는 `--git-common-dir` 의 부모다.
 
 실행: python3 tests/ git_hook_root
@@ -73,7 +73,7 @@ class HookRoot(unittest.TestCase):
             body = open(p, encoding="utf-8").read()
             self.assertIn("git-common-dir", body,
                           f"{name}: 자리를 --show-toplevel 로만 정한다 — "
-                          f"워크트리에서 데이터가 갈린다")
+                          f"worktree에서 데이터가 갈린다")
             self.assertIn("S9_ROOT=", body,
                           f"{name}: S9_ROOT 를 본 저장소로 못박지 않는다")
 
@@ -87,7 +87,7 @@ class HookRoot(unittest.TestCase):
                                  capture_output=True, text=True)
             self.assertEqual(os.path.realpath(out.stdout.strip()),
                              os.path.realpath(self.root),
-                             "워크트리에서 본 저장소를 못 찾는다")
+                             "worktree에서 본 저장소를 못 찾는다")
         finally:
             _git(self.root, "worktree", "remove", "--force", wt)
 

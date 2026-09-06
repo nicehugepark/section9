@@ -121,7 +121,7 @@ class HealthReportTest(unittest.TestCase):
 
         전제가 갈린 자리다 (REQ-20260828-041 라운드1). 종전엔 '경로 미등록'과
         '등록됐는데 파일이 없다'가 똑같이 unknown 이었고, health_apply 는
-        unknown 을 되쓰지 않으므로 문서의 running 이 영원히 남았다. 워크트리가
+        unknown 을 되쓰지 않으므로 문서의 running 이 영원히 남았다. worktree가
         거둬지면 그 안에서 돌던 서브에이전트가 정확히 이 모양이 된다 — 실사고
         2026-08-29: REQ-041 자신이 그 상태로 하루 종일 '누가 붙어 있음'이라
         판정돼 화면에서 깨우기가 사라지고 wake 는 busy 로 거부됐다.

@@ -4,16 +4,16 @@
 대시보드 터미널은 세션이 꺼져있다 … 세션깨우기를 하면 새 터미널 창이 하나 더
 열리는데 그럼에도 아직 no session 이다."
 
-전역 `~/.claude/settings.json` 의 section9 훅 8개가 전부 사라진 워크트리
+전역 `~/.claude/settings.json` 의 section9 훅 8개가 전부 사라진 worktree
 경로(`<ROOT>/state/worktrees/probe/bin/…`)를 가리키고 있었다. 훅 명령은
 `2>/dev/null || true` 라 없는 파일을 불러도 아무 소리를 내지 않는다 —
 SessionStart 가 바인딩을 안 쓰고, 대시보드는 살아 있는 세션을 못 본다.
 프롬프트 audit 도 같이 죽는다. **이 저장소가 가장 경계하는 조용한 실패다.**
 
 자가 치유(`cmd_code` preflight)는 있었는데 눈이 문자열이었다:
-`"s9-audit-prompt" in txt and ROOT in txt` — 죽은 워크트리 경로가 ROOT 를
+`"s9-audit-prompt" in txt and ROOT in txt` — 죽은 worktree 경로가 ROOT 를
 부분문자열로 품고 있어 "설치됨"으로 통과했다. 그래서 훅을 **경로로 열어 보게**
-하고, 애초에 워크트리 경로가 전역 설정에 적히지 않게 막는다.
+하고, 애초에 worktree 경로가 전역 설정에 적히지 않게 막는다.
 
 실행: python3 tests/ hook_target_alive
 """
@@ -93,7 +93,7 @@ class HookTargetAlive(unittest.TestCase):
                         "실재하는 훅인데 미설치로 읽는다")
 
     def test_b1_dead_worktree_path_is_not_installed(self):
-        """지워진 워크트리 잔재 — 경로가 ROOT 를 부분문자열로 품는다."""
+        """지워진 worktree 잔재 — 경로가 ROOT 를 부분문자열로 품는다."""
         self._make("s9-audit-session", "s9-audit-prompt")
         gone = os.path.join(self.root, "state", "worktrees", "probe", "bin",
                             "s9-audit-session")
@@ -126,9 +126,9 @@ class HookTargetAlive(unittest.TestCase):
 
 
 class InstallFromWorktree(unittest.TestCase):
-    """B3 — 전역 설정에는 워크트리가 아니라 메인 저장소 경로가 적힌다.
+    """B3 — 전역 설정에는 worktree가 아니라 메인 저장소 경로가 적힌다.
 
-    전역 `settings.json` 은 워크트리보다 오래 산다. 워크트리 경로를 적으면 그
+    전역 `settings.json` 은 worktree보다 오래 산다. worktree 경로를 적으면 그
     디렉토리가 지워진 순간 훅 전부가 조용한 no-op 이 된다 — 이번 사고의 원인.
     """
 
@@ -160,7 +160,7 @@ class InstallFromWorktree(unittest.TestCase):
                         "s9-install 에 main_worktree_root() 가 없다")
         self.assertEqual(os.path.realpath(m.main_worktree_root(self.wt)),
                          os.path.realpath(self.main),
-                         "워크트리에서 실행한 설치가 워크트리 경로를 심는다")
+                         "worktree에서 실행한 설치가 worktree 경로를 심는다")
 
     def test_b3b_plain_dir_is_itself(self):
         m = _load("s9inst_plain", INSTALL)

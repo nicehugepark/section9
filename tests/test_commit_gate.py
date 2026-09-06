@@ -18,8 +18,8 @@
 
 그리고 그 게이트가 **실제로 걸려 있는지**를 이 시험이 판정한다(G7·G11). 여기에
 같은 종류의 조용한 성공이 하나 더 있었다 — 자리를 `<ROOT>/.git/hooks` 로
-지어냈던 탓에, `.git` 이 파일인 워크트리에서는 늘 '저장소 아님'으로 읽혀 훅이
-사라져도 통과가 났다. 무인 워커가 커밋하는 자리가 바로 워크트리다
+지어냈던 탓에, `.git` 이 파일인 worktree에서는 늘 '저장소 아님'으로 읽혀 훅이
+사라져도 통과가 났다. 무인 워커가 커밋하는 자리가 바로 worktree다
 (REQ-20260829-001). 자리는 git 에게 묻고, 건너뛰는 경우는 '저장소가 아닐 때'
 하나로 좁힌다.
 
@@ -70,8 +70,8 @@ def _git(*argv, cwd):
 def _is_repo(path):
     """저장소인가 — `.git` 이 디렉토리인지로 묻지 않는다.
 
-    워크트리의 `.git` 은 파일이라 그 질문은 늘 '아니오'를 낸다. 무인 워커가
-    커밋하는 자리가 바로 워크트리이므로, 그 오판은 게이트 시험 전체를
+    worktree의 `.git` 은 파일이라 그 질문은 늘 '아니오'를 낸다. 무인 워커가
+    커밋하는 자리가 바로 worktree이므로, 그 오판은 게이트 시험 전체를
     조용히 건너뛰게 만든다 (REQ-20260829-001)."""
     r = _git("rev-parse", "--is-inside-work-tree", cwd=path)
     return r.returncode == 0 and r.stdout.strip() == "true"
@@ -95,7 +95,7 @@ def hook_state(root):
     """그 자리의 pre-commit 은 어떤 상태인가 — 셋을 또렷이 가른다.
 
     `no-repo` 만이 건너뛸 이유다. 예전 코드는 파일이 없다는 사실 하나로
-    `no-repo` 와 `missing` 을 뭉갰고, 워크트리에서는 늘 앞의 것으로 읽혀
+    `no-repo` 와 `missing` 을 뭉갰고, worktree에서는 늘 앞의 것으로 읽혀
     훅이 사라져도 시험이 OK 를 냈다 (REQ-20260829-001)."""
     if not _is_repo(root):
         return "no-repo", ""
@@ -222,8 +222,8 @@ class CommitGate(unittest.TestCase):
 class HooksDirIsAskedOfGit(unittest.TestCase):
     """G11. 훅 자리는 경로를 지어내지 말고 git 에게 묻는다.
 
-    실제 워크트리 하나를 만들어 확인한다 — 이 리포의 상태에 기대면, 본
-    체크아웃에서 돌 때 우연히 통과하고 정작 문제가 나는 자리(워크트리)는
+    실제 worktree 하나를 만들어 확인한다 — 이 리포의 상태에 기대면, 본
+    체크아웃에서 돌 때 우연히 통과하고 정작 문제가 나는 자리(worktree)는
     검사되지 않는다.
     """
 
@@ -243,7 +243,7 @@ class HooksDirIsAskedOfGit(unittest.TestCase):
         cls.wt = os.path.join(cls.base, "wt")
         r = _git("worktree", "add", "-q", "-b", "wt1", cls.wt, cwd=cls.repo)
         if r.returncode != 0:
-            raise unittest.SkipTest(f"워크트리를 못 만들었다: {r.stderr}")
+            raise unittest.SkipTest(f"worktree를 못 만들었다: {r.stderr}")
 
     @classmethod
     def tearDownClass(cls):
@@ -253,9 +253,9 @@ class HooksDirIsAskedOfGit(unittest.TestCase):
         """G11. 훅 자리는 경로를 지어내지 말고 git 에게 묻는다."""
         with self.subTest("worktree_dot_git_is_a_file"):
             self.assertTrue(os.path.isfile(os.path.join(self.wt, ".git")),
-                            "워크트리의 .git 이 파일이 아니다 — 전제가 바뀌었다")
+                            "worktree의 .git 이 파일이 아니다 — 전제가 바뀌었다")
             self.assertFalse(os.path.isdir(os.path.join(self.wt, ".git", "hooks")),
-                             "손으로 이은 <워크트리>/.git/hooks 가 있다")
+                             "손으로 이은 <worktree>/.git/hooks 가 있다")
         with self.subTest("worktree_resolves_to_common_hooks_dir"):
             got = _hooks_dir(self.wt)
             want = os.path.join(self.repo, ".git", "hooks")
@@ -278,7 +278,7 @@ class HooksDirIsAskedOfGit(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as f:
                 f.write('#!/bin/sh\nexec "$MAIN/bin/s9-guard" "$@"\n')
             self.addCleanup(os.remove, path)
-            # 워크트리에서 물어도 공용 자리의 그 훅이 보여야 한다
+            # worktree에서 물어도 공용 자리의 그 훅이 보여야 한다
             self.assertEqual(hook_state(self.wt)[0], "ok")
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@
 
 · `/api/catalog` 의 in-progress 6건 전부 `stalled_mins=None` → 화면에 깨우기
   버튼이 **한 개도 그려지지 않는다.** 버튼이 없으니 '기능이 없다'로 읽힌다.
-· 그중 REQ-041 자신은 좀비 클레임이었다: 사라진 워크트리를 가리키는
+· 그중 REQ-041 자신은 좀비 클레임이었다: 사라진 worktree를 가리키는
   transcript 때문에 `judge_health` 가 'unknown' 을 내고, `health_apply` 는
   unknown 을 되쓰지 않아 `result: running` 이 영원히 남는다. 그 running 이
   `delegated_live` 를 참으로 만들어 버튼도 없애고 wake 도 `busy` 로 거부한다.
@@ -14,7 +14,7 @@
 · 오늘 스폰 20슬롯 중 17건을 자동 경로(rework·followup)가 먹었고, 16:48 이후
   사람이 누르는 깨우기는 전부 capped 였다. 사람 손잡이가 무인 워처와 예산을
   다투는 설계 자체가 결함이다.
-· 스폰이 성공해도 워커가 마지막 커밋 사본(워크트리)에 앉아 오늘 만든 미커밋
+· 스폰이 성공해도 워커가 마지막 커밋 사본(worktree)에 앉아 오늘 만든 미커밋
   코드가 없어 blocked 로 물러났다 — 성공 응답이 거짓말이 된다.
 
 실행: python3 tests/ wake_reach
@@ -67,7 +67,7 @@ class TheDeadClaimLetsGo(unittest.TestCase):
     def test_w1_a_vanished_transcript_is_a_failure_not_unknown(self):
         """등록된 기록 자리가 사라졌으면 그건 '모른다'가 아니라 '끝났다'다.
 
-        워크트리가 거둬지면 그 안에서 돌던 서브에이전트의 transcript 경로가
+        worktree가 거둬지면 그 안에서 돌던 서브에이전트의 transcript 경로가
         통째로 사라진다. 종전엔 unknown 이라 health_apply 가 되쓰지 않았고,
         문서의 running 이 영원히 남아 그 REQ 는 보이지도 깨워지지도 않았다."""
         st, why = self.m.judge_health("sub:frontend-developer:a1dfeb13",
@@ -258,7 +258,7 @@ class ThePersonHasTheirOwnBudget(unittest.TestCase):
 
 
 class TheWorkerSitsWhereTheCodeIs(unittest.TestCase):
-    """W7 — 워크트리가 오늘 코드를 갖지 못하면 주지 않는다."""
+    """W7 — worktree가 오늘 코드를 갖지 못하면 주지 않는다."""
 
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="s9wwt-")
@@ -293,7 +293,7 @@ class TheWorkerSitsWhereTheCodeIs(unittest.TestCase):
         self.assertEqual(env.get("S9_ROOT"), self.root)
 
     def test_w7b_uncommitted_code_keeps_the_worker_in_the_main_repo(self):
-        """워크트리는 마지막 커밋 사본이다 — 오늘 만든 것이 거기 없다.
+        """worktree는 마지막 커밋 사본이다 — 오늘 만든 것이 거기 없다.
 
         실사고: 15:10 의 깨우기 스폰은 실제로 떴지만 고쳐야 할 코드가 그 자리에
         없어 워커가 '오늘 것을 되돌린다'며 blocked 로 물러났다. 창은 깨웠다고
@@ -313,7 +313,7 @@ class TheWorkerSitsWhereTheCodeIs(unittest.TestCase):
             f.write("{}")
         cwd, _e, name = self.m.worker_workspace(
             "REQ-z", {"worker_worktree": True}, self.root)
-        self.assertTrue(name, "데이터 자리의 변경까지 워크트리를 막았다")
+        self.assertTrue(name, "데이터 자리의 변경까지 worktree를 막았다")
         self.assertNotEqual(cwd, self.root)
 
 

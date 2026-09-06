@@ -144,7 +144,7 @@ class RunRoot(unittest.TestCase):
 
 
 class DoctorSweep(unittest.TestCase):
-    """러너 밖에서도 닫는다 — 옛 체크아웃·워크트리의 러너 사본은 그대로 흘린다.
+    """러너 밖에서도 닫는다 — 옛 체크아웃·worktree의 러너 사본은 그대로 흘린다.
 
     그 자리는 매분 도는 회수 틱(s9-doctor --sweep)이 맡는다. 러너와 규칙이
     같아야 한다: 우리 표식만, 살아 있는 실행 루트는 남긴다.

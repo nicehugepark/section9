@@ -304,7 +304,7 @@
      (REQ-20260830-049) — 창이 설지 말지의 판정을 진단이 건너뛰면, 진단으로
      캡처해 고친 것이 사람이 보는 화면이 아니게 된다. `wakespawn`(main 갈래)은
      그래서 **아무 창도 세우지 않는 것이 정답**이고, 창이 서는 성공은
-     `wakespawnws`(워크트리 갈래) 하나다. stallProbe 가 낸 선례와 같은 자리. */
+     `wakespawnws`(worktree 갈래) 하나다. stallProbe 가 낸 선례와 같은 자리. */
   if (m[1] === "wakewait" || m[1] === "wakespawn" || m[1] === "wakespawnws"){
     // 서버 실문장(bin/s9 WAKE_SPAWNED_KO · WS_MEANS_KO.worktree)의 사본 —
     // 어긋나면 진단으로 캡처해 고친 창이 사람이 보는 창이 아니게 된다.

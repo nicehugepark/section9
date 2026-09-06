@@ -87,7 +87,7 @@ function termBindInput(T){
   });
   ta.addEventListener("paste", e => {            // L5 — 클립보드 파일 · 긴 텍스트 접기
     const cd = e.clipboardData || {};
-    /* 그림만 거르지 않는다 (REQ-20260829-035 가 워크트리에서 건진 조각).
+    /* 그림만 거르지 않는다 (REQ-20260829-035 가 worktree에서 건진 조각).
        같은 터미널의 drop 과 📎 는 무엇이든 받는데 붙여넣기만 `^image/` 로
        걸러, pdf·mp4·csv 를 붙이면 **조용히 사라졌다** — 사람은 붙였다고 믿고
        근거 없이 말을 보낸다. 무엇으로 적을지는 서버가 정하므로 화면은 종류를

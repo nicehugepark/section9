@@ -6,11 +6,11 @@
 뒤집혀 있었고, 되돌려도 1분 안에 다시 뒤집혔다.
 
 경로는 이렇다:
-  serve 가 주인 떠난 워크트리를 자동 보존하며 `git commit`
+  serve 가 주인 떠난 worktree를 자동 보존하며 `git commit`
   → git 이 pre-commit 훅에 GIT_DIR=<repo>/.git/worktrees/<이름> 을 넘긴다
   → 훅이 스테이지 테스트를 띄운다
   → 테스트가 임시 리포에 `git init` 을 부른다
-  → GIT_DIR 이 `-C <임시경로>` 를 이겨 그 워크트리 자리를 다시 init 하고,
+  → GIT_DIR 이 `-C <임시경로>` 를 이겨 그 worktree 자리를 다시 init 하고,
     작업 트리가 없다고 판단해 **공용 .git/config 에 core.bare=true** 를 박는다.
 
 그래서 계약 둘을 못박는다: (1) 훅이 자식에게 주는 환경에는 GIT_* 가 없다.

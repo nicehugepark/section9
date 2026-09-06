@@ -356,7 +356,7 @@ class DialogVoice(unittest.TestCase):
         실제로 어긋나 있었다(designer 실측). V3 과 같은 병의 다른 자리다.
 
         049 로 답이 **두 칸**이 됐다: `message`(한 절, 결과 그 자체)와
-        `note`(예외 사실 한 줄, 워크트리 갈래에만). 두 칸을 다 비춰야 진단이
+        `note`(예외 사실 한 줄, worktree 갈래에만). 두 칸을 다 비춰야 진단이
         사람이 보는 창과 같다 — main 갈래는 `note` 가 없어 아예 창이 서지
         않는 것까지가 답본의 몫이다."""
         def module_const(name):
@@ -379,7 +379,7 @@ class DialogVoice(unittest.TestCase):
                              "깨우기 성공 문장에 반말이 섞였다: %r" % s)
         flat = re.sub(r"\s+", " ", read(os.path.join(APP, "diag.js")))
         self.assertIn('message: "%s", note: "%s"}' % (title, note), flat,
-                      "워크트리 갈래 답본이 서버 실문장(두 칸)과 다르다 — "
+                      "worktree 갈래 답본이 서버 실문장(두 칸)과 다르다 — "
                       "캡처가 사람이 보는 창을 비추지 못한다")
         self.assertIn('message: "%s"}' % title, flat,
                       "main 갈래 답본이 서버 실문장과 다르다")

@@ -877,7 +877,7 @@ def repo_verdict(r):
                   "저장소: 작업 트리를 찾지 못했다",
                   "이 자리가 git 저장소가 맞는지 확인하라 — 커밋 검사(pre-commit 훅)도 "
                   "감사 기록도 여기에 기댄다.")
-    # 미커밋 코드가 있으면 무인 작업자가 워크트리 대신 본 저장소로 간다
+    # 미커밋 코드가 있으면 무인 작업자가 worktree 대신 본 저장소로 간다
     # (REQ-20260829-028-62x6). 되찾는 값이 커밋이라는 것을 여기서도 말한다 —
     # 강제가 아니라 유인이다. 고장이 아니므로 등급은 ok 그대로 둔다.
     dirty = list(r.get("code_dirty") or [])
@@ -885,11 +885,11 @@ def repo_verdict(r):
     if dirty:
         tail = (f" · 커밋하지 않은 코드 변경 {len(dirty)}건({', '.join(dirty[:3])}"
                 + (" 외" if len(dirty) > 3 else "")
-                + ") — 그동안 백그라운드 작업자는 워크트리 대신 본 저장소에 앉는다")
+                + ") — 그동안 백그라운드 작업자는 worktree 대신 본 저장소에 앉는다")
     return _v("repo", "저장소", "ok",
               f"저장소: {r.get('branch') or '?'} · "
-              f"워크트리 {r.get('worktrees') or 0}개" + tail,
-              ("커밋하면 작업자가 다시 자기 워크트리를 받는다."
+              f"worktree {r.get('worktrees') or 0}개" + tail,
+              ("커밋하면 작업자가 다시 자기 worktree를 받는다."
                if dirty else None))
 
 
@@ -928,7 +928,7 @@ def deps_verdict(x):
 def git_hooks_dir(cwd):
     """훅 자리는 경로를 짓지 말고 git 에게 묻는다.
 
-    워크트리의 .git 은 디렉토리가 아니라 파일이라 <repo>/.git/hooks 를 지어내면
+    worktree의 .git 은 디렉토리가 아니라 파일이라 <repo>/.git/hooks 를 지어내면
     없는 자리를 가리킨다 — 그러면 '설치 안 됨'을 '저장소 아님'으로 오판한다
     (REQ-20260829-001 이 게이트 시험 쪽에서 만난 그 함정)."""
     try:
@@ -1162,7 +1162,7 @@ def sweep_stale_tmp(base="/tmp", now=None, age=TMP_STALE_AGE):
     """테스트가 /tmp 에 흘린 임시 자리를 거둔다 (REQ-20260829-003).
 
     러너(tests/__main__.py)가 실행 전용 루트로 문을 닫았지만, 옛 체크아웃과
-    워크트리의 러너 사본은 그대로 흘린다. 이 회수는 캡처 회수와 같은 틱에서
+    worktree의 러너 사본은 그대로 흘린다. 이 회수는 캡처 회수와 같은 틱에서
     돌아 시간축에서도 닫는다.
 
     규칙은 캡처 회수와 같다 — **우리 표식이 있는 것만**. 이름이 s9 로 시작하지
@@ -1215,7 +1215,7 @@ def repo_info():
         return r.stdout.strip() if r.returncode == 0 else None
     wl = g("worktree", "list") or ""
     # 데이터 자리(state/·vault/·users/·index/·streams/)는 세지 않는다 — 워커가
-    # S9_ROOT 로 본 저장소를 함께 쓰므로 워크트리 기준선과 무관하다.
+    # S9_ROOT 로 본 저장소를 함께 쓰므로 worktree 기준선과 무관하다.
     shared = ("state/", "vault/", "users/", "index/", "streams/")
     # `g()` 는 stdout 을 strip 하므로 첫 줄의 앞 공백이 사라진다 — porcelain 은
     # 상태 두 글자가 자리로 의미를 갖는 형식이라 그대로 자르면 ` M bin/s9` 가

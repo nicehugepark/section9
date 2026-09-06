@@ -5,18 +5,18 @@
 "내가 쓰지 않은 코드가 있다", 08-28 셋이 한 파일에 동시에 붙음). 네 번 다 같은
 파일 하나였다 — `web/index.html`.
 
-워크트리는 그 충돌을 **없애지 않는다. 보이는 충돌로 바꾼다.** 지금은 그 자리에서
+worktree는 그 충돌을 **없애지 않는다. 보이는 충돌로 바꾼다.** 지금은 그 자리에서
 소실되고 나중에야 알아챈다.
 
 **다만 그냥 만들면 더 나빠진다.** 이 저장소에는 코드만 있는 게 아니라 데이터가
-같이 산다(vault·index·state·users). 워크트리를 그냥 쓰면 데이터도 갈려 **진실이
+같이 산다(vault·index·state·users). worktree를 그냥 쓰면 데이터도 갈려 **진실이
 두 벌**이 된다 — 이 저장소의 제1 원칙("판정이 두 벌이면 한 벌만 고쳐진다")을
 정면으로 어긴다.
 
 그래서 `S9_ROOT` 를 본 저장소로 못박는다. 실측으로 갈라지는 것을 보였다:
 
-    S9_ROOT 고정   워크트리의 s9 가 **살아 있는 문서**를 본다
-    S9_ROOT 없음   워크트리에 커밋돼 있던 **옛 사본**을 본다
+    S9_ROOT 고정   worktree의 s9 가 **살아 있는 문서**를 본다
+    S9_ROOT 없음   worktree에 커밋돼 있던 **옛 사본**을 본다
 
 실행: python3 tests/ worktree
 """
@@ -63,13 +63,13 @@ class Worktree(unittest.TestCase):
                     self.assertIsNone(re.fullmatch(m.group(1), bad), bad)
                 self.assertIsNotNone(re.fullmatch(m.group(1), "designer-1"))
 
-            # R1. 워크트리 자리는 저장소에 담기지 않는다
+            # R1. worktree 자리는 저장소에 담기지 않는다
         with self.subTest("r1_not_committed"):
             r = subprocess.run(["git", "check-ignore", "-q",
                                 "state/worktrees/anything"],
                                cwd=os.path.join(HERE, ".."), timeout=15)
             self.assertEqual(r.returncode, 0,
-                             "워크트리 자리가 저장소에 담긴다")
+                             "worktree 자리가 저장소에 담긴다")
 
 if __name__ == "__main__":
     unittest.main()

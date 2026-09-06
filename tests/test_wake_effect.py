@@ -4,10 +4,10 @@
 그런데 사용자는 두 번째로 반려했다 — '거부하지 않는다'와 '실제로 일이 붙는다'는
 다른 명제이고, 깨진 자리는 늘 뒤쪽이었다. 실측 근거:
 
-· 15:10 wake(REQ-079): 워커가 떴는데 앉은 자리가 마지막 커밋 사본(워크트리)이라
+· 15:10 wake(REQ-079): 워커가 떴는데 앉은 자리가 마지막 커밋 사본(worktree)이라
   오늘 만든 것이 없었다. 워커가 스스로 blocked 로 물러났다 — 창은 깨웠다고 말하고
   카드는 그대로. **성공 응답이 거짓말이 된다.**
-· 16:36 rework(041): 로그 0바이트·pid 사망·워크트리 소멸. 기여는 running 인 채
+· 16:36 rework(041): 로그 0바이트·pid 사망·worktree 소멸. 기여는 running 인 채
   좀비로 남아 다음 깨우기를 busy 로 거부했다.
 · 11:04~11:39(REQ-016): 같은 REQ 에 워커가 넷 떴다. `SPAWN_WIN`(600초)과
   쿨다운(600초)이 같아서, 화면의 '기동 중' 앰버가 꺼지는 바로 그 순간 쿨다운이
@@ -490,7 +490,7 @@ class TheWorktreeIsNotHandedOutBlind(unittest.TestCase):
         cwd, env, name = self.m.worker_workspace(
             "REQ-x", {"worker_worktree": True}, self.root)
         self.assertEqual((cwd, env, name), (self.root, {}, ""))
-        self.assertEqual(calls, [], "미커밋인데 워크트리를 만들러 갔다")
+        self.assertEqual(calls, [], "미커밋인데 worktree를 만들러 갔다")
         self.assertTrue(any("WT-SKIP(dirty)" in l for l in logs),
                         f"왜 본 저장소에 앉혔는지 아무 데도 안 남는다: {logs}")
 
