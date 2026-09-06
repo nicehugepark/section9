@@ -237,6 +237,25 @@ def _detect_root(data):
         os.environ["S9_ROOT"] = cwd
 
 
+def _session_belongs_here(data):
+    """이 세션이 section9 의 것인가 (REQ-20260906-074) — 아니면 훅은 아무것도 하지 않는다.
+
+    훅은 ~/.claude 에 전역으로 서므로 이 기계의 **모든** Claude 세션에서 돈다. 명시된
+    S9_ROOT 가 있으면 우리 세션이고(`s9 code`·백그라운드 작업자가 준다), 없으면 세션 cwd 가
+    이 훅이 실린 저장소(또는 _detect_root 가 승격한 인스턴스) 안이어야 한다. 실제 발생
+    2026-09-06 13:30(맥미니): section9 밖 디렉토리의 기존 작업 프롬프트가 vault 에
+    기록되고 GitHub 로 동기화됐다 — 주인이 「기존 것이 섞이면 안 된다」고 한 바로 그 일."""
+    if os.environ.get("S9_ROOT"):
+        return True
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cwd = (data.get("cwd") or "").strip() or os.getcwd()
+    try:
+        r, c = os.path.realpath(root), os.path.realpath(cwd)
+    except OSError:
+        return False
+    return c == r or c.startswith(r + os.sep)
+
+
 def _sweep_orphans(root):
     """세션 시작 시 고아 캡처·테스트 서버 회수 (REQ-20260825-099).
 
@@ -334,6 +353,8 @@ def main():
     event = sys.argv[1] if len(sys.argv) > 1 else "event"
     data = json.load(sys.stdin)
     _detect_root(data)
+    if not _session_belongs_here(data):
+        return                      # 남의 세션 — 기록도 주입도 없다 (REQ-20260906-074)
     session = (data.get("session_id") or "unknown")[:8]
     env = dict(os.environ)
     env["S9_SESSION"] = session

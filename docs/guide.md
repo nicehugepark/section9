@@ -91,7 +91,7 @@ section9 install 완료
 | 디렉토리 골격 | `vault/ users/ projects/ state/ index/` |
 | git 훅 넷 | `.git/hooks/` — post-merge·post-checkout(인덱스 재생성 + 설치 재실행), pre-commit(s9-guard: 보호 경로·동시 작업 검사), post-commit(commit 을 요청 문서에 기록) |
 | merge driver | `merge.s9doc` — 문서가 양쪽에서 바뀌면 줄이 아니라 뜻으로 합칩니다 |
-| Claude Code 훅 | `~/.claude/settings.json` — 명령에 `/section9/bin/` 이 든 항목만 우리 것으로 보고 교체·추가합니다. 여러분의 다른 훅·설정은 그대로입니다 |
+| Claude Code 훅 | `~/.claude/settings.json` — 명령에 `/section9/bin/` 이 든 항목만 우리 것으로 보고 교체·추가합니다. 여러분의 다른 훅·설정은 그대로입니다. 이 훅은 **section9 디렉토리 안에서 연 세션에서만** 움직입니다 — 다른 디렉토리의 작업은 기록하지도 건드리지도 않고, 등록되지 않은 계정의 세션은 잇는 길만 안내합니다(REQ-20260906-074) |
 | 스킬 13 · 역할 에이전트 29 | `~/.claude/skills/` · `~/.claude/agents/` |
 | 설치 전 백업 | `~/.local/state/section9/backups/claude/<시각>/` — settings.json·CLAUDE.md·메모리. **자격증명은 읽지도 복사하지도 않습니다.** 되돌리기는 7장 |
 

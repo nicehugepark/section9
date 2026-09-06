@@ -228,7 +228,7 @@ section9 install 완료
   <tr><td>디렉토리 골격</td><td><code>vault/ users/ projects/ state/ index/</code></td></tr>
   <tr><td>git 훅 넷</td><td><code>.git/hooks/</code> — post-merge·post-checkout(인덱스 재생성 + 설치 재실행), pre-commit(s9-guard: 보호 경로·동시 작업 검사), post-commit(commit 을 요청 문서에 기록)</td></tr>
   <tr><td>merge driver</td><td><code>merge.s9doc</code> — 문서가 양쪽에서 바뀌면 줄이 아니라 뜻으로 합칩니다</td></tr>
-  <tr><td>Claude Code 훅</td><td><code>~/.claude/settings.json</code> — 명령에 <code>/section9/bin/</code> 이 든 항목만 우리 것으로 보고 교체·추가합니다. 여러분의 다른 훅·설정은 그대로입니다</td></tr>
+  <tr><td>Claude Code 훅</td><td><code>~/.claude/settings.json</code> — 명령에 <code>/section9/bin/</code> 이 든 항목만 우리 것으로 보고 교체·추가합니다. 여러분의 다른 훅·설정은 그대로입니다. 이 훅은 <b>section9 디렉토리 안에서 연 세션에서만</b> 움직입니다 — 다른 디렉토리의 작업은 기록하지도 건드리지도 않고, 등록되지 않은 계정의 세션은 잇는 길만 안내합니다(REQ-20260906-074)</td></tr>
   <tr><td>스킬 13 · 역할 에이전트 29</td><td><code>~/.claude/skills/</code> · <code>~/.claude/agents/</code></td></tr>
   <tr><td>설치 전 백업</td><td><code>~/.local/state/section9/backups/claude/&lt;시각&gt;/</code> — settings.json·CLAUDE.md·메모리. <b>자격증명은 읽지도 복사하지도 않습니다.</b> 되돌리기는 <a href="#undo">7장</a></td></tr>
 </table></div>

@@ -250,6 +250,38 @@ def _detect_root(data):
             and os.path.isdir(os.path.join(cwd, "vault")):
         os.environ["S9_ROOT"] = cwd
 
+
+def _session_belongs_here(data):
+    """이 세션이 section9 의 것인가 (REQ-20260906-074) — 아니면 훅은 아무것도 하지 않는다.
+
+    훅은 ~/.claude 에 전역으로 서므로 이 기계의 **모든** Claude 세션에서 돈다. 명시된
+    S9_ROOT 가 있으면 우리 세션이고(`s9 code`·백그라운드 작업자가 준다), 없으면 세션 cwd 가
+    이 훅이 실린 저장소(또는 _detect_root 가 승격한 인스턴스) 안이어야 한다. 실제 발생
+    2026-09-06 13:30(맥미니): section9 밖 디렉토리의 기존 작업 프롬프트가 vault 에
+    기록되고 GitHub 로 동기화됐다 — 주인이 「기존 것이 섞이면 안 된다」고 한 바로 그 일."""
+    if os.environ.get("S9_ROOT"):
+        return True
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cwd = (data.get("cwd") or "").strip() or os.getcwd()
+    try:
+        r, c = os.path.realpath(root), os.path.realpath(cwd)
+    except OSError:
+        return False
+    return c == r or c.startswith(r + os.sep)
+
+
+def _account_registered():
+    """지금 세션의 계정이 users/ 에 등록돼 있나 — OS 계정 이름 그대로의 폴백은 등록이 아니다."""
+    try:
+        env = dict(os.environ)
+        cur = subprocess.run([*S9_ARGV, "user", "current"], capture_output=True,
+                             encoding="utf-8", errors="replace", env=env, timeout=15)
+        name = (cur.stdout or "").strip().split()[0] if cur.returncode == 0 and cur.stdout.strip() else ""
+        root = os.environ.get("S9_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return bool(name) and os.path.isdir(os.path.join(root, "users", name))
+    except Exception:
+        return True                          # 판정을 못 하면 기록하는 쪽이 안전하다
+
 def is_command(text):
     """슬래시 커맨드 판별 (REQ-20260825-014) — startswith('/')는 절대경로
     메시지("/home/… 이 경로도 문제가 있다")까지 커맨드로 오인해 audit이
@@ -637,6 +669,14 @@ def main():
         return
     data = json.load(sys.stdin)
     _detect_root(data)
+    if not _session_belongs_here(data):
+        return                      # 남의 세션 — 기록도 주입도 없다 (REQ-20260906-074)
+    if not _account_registered():
+        # 등록되지 않은 계정은 기록하지 않는다 (REQ-20260906-074) — 미등록 OS 계정 이름으로
+        # 요청이 생겨 동기화되면 남의 저장소에 낯선 작성자가 선다. 잇는 길만 말한다.
+        emit(" ◈ 이 계정은 section9 에 등록돼 있지 않아 이 세션은 기록하지 않는다 — "
+             "이미 있는 이름에 잇는다: `s9 user attach <이름>` (새 사람이면 `s9 user add <이름>`). ")
+        return
     prompt = (data.get("prompt") or "").strip()
     # audit 대상이 아닌 턴(명령·시스템 통지)도 **응답은 한다** — 시각 헤딩 지시는
     # 그래서 여기서도 나간다. 규칙에 예외를 만들면 규칙이 곧 죽는다 (REQ-024).
