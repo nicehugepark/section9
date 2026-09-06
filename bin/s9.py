@@ -19077,7 +19077,7 @@ def _tunnel_reap_group(pgid, grace=2.0):
         _time.sleep(0.1)
     if _tunnel_group_alive(pgid):
         try:
-            os.killpg(int(pgid), _sig.SIGKILL)
+            os.killpg(int(pgid), sig_kill())
         except OSError:
             pass
         _time.sleep(0.1)
@@ -19085,31 +19085,9 @@ def _tunnel_reap_group(pgid, grace=2.0):
 
 
 def _tunnel_lock(lport, root=None):
-    """감시자 단일성 (serve 감시자의 `_guard_lock` 과 같은 꼴)."""
+    """감시자 단일성 (serve 감시자의 `_guard_lock` 과 같은 문)."""
     p = _tunnel_paths(lport, root)
-    try:
-        import fcntl
-    except ImportError:
-        fcntl = None
-    try:
-        os.makedirs(p["state"], exist_ok=True)
-        f = open(p["lock"], "a+", encoding="utf-8")
-    except OSError:
-        return None
-    if fcntl is not None:
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            f.close()
-            return None
-    try:
-        f.seek(0)
-        f.truncate()
-        f.write(f"{os.getpid()}\n")
-        f.flush()
-    except OSError:
-        pass
-    return f
+    return _hold_lock_file(p["state"], p["lock"])
 
 
 def tunnel_start(secret, lport, rport, root=None, keep=False, user=None):
@@ -19263,7 +19241,7 @@ def tunnel_stop(lport, root=None):
             _time.sleep(0.1)
         if pid_alive(sup):
             try:
-                os.kill(int(sup), _sig.SIGKILL)
+                os.kill(int(sup), sig_kill())
             except OSError:
                 pass
     if ch:
@@ -21503,17 +21481,16 @@ def serve_guard_loop(port, host="127.0.0.1", root=None, spawn=None,
     return "max-rounds"
 
 
-def _guard_lock(port, root=None):
-    """감시자 단일성. 잠금을 잡으면 파일 객체(프로세스 수명 동안 보유),
-    이미 다른 감시자가 잡고 있으면 None."""
-    p = _guard_paths(port, root)
+def _hold_lock_file(state_dir, path):
+    """감시자 단일성 잠금 — 잡으면 파일 객체(프로세스 수명 동안 보유), 남이 잡고 있으면 None.
+    serve 감시자와 ssh 터널 감시자가 같은 문을 지난다 — fcntl 은 여기 한 곳에서만 부른다."""
     try:
         import fcntl
     except ImportError:      # 윈도우 — 잠금 없이 진행(감시자 중복은 포트 검사로 수렴)
         fcntl = None
     try:
-        os.makedirs(p["state"], exist_ok=True)
-        f = open(p["lock"], "a+", encoding="utf-8")
+        os.makedirs(state_dir, exist_ok=True)
+        f = open(path, "a+", encoding="utf-8")
     except OSError:
         return None
     if fcntl is not None:
@@ -21530,6 +21507,13 @@ def _guard_lock(port, root=None):
     except OSError:
         pass
     return f
+
+
+def _guard_lock(port, root=None):
+    """감시자 단일성. 잠금을 잡으면 파일 객체(프로세스 수명 동안 보유),
+    이미 다른 감시자가 잡고 있으면 None."""
+    p = _guard_paths(port, root)
+    return _hold_lock_file(p["state"], p["lock"])
 
 
 def _guard_ask_stop(port, pid=None, root=None):
