@@ -1,0 +1,110 @@
+/* tablet.css — 태블릿(가로 1024x768 · 세로 768x1024) 보정 (REQ-20260906-092)
+
+   왜 새 파일이고 왜 맨 뒤인가. 폭 규칙은 컴포넌트와 스킨이 말해 놓은 것을 **덮는
+   쪽**이라 목록의 마지막에 서야 한다. responsive.css 는 여섯째라 actions·skins·
+   density·calm·tidy·overlay 가 그 뒤에 오고, 스킨은 `[data-skin="calm"] .col` 처럼
+   특이도까지 한 급 위다 — 순서로도 특이도로도 못 이기던 자리였다. 이 파일이 순서를
+   되찾고, 그래도 모자란 곳(스킨이 안여백을 다시 적는 탭·타입바·열)은 특이도를
+   같은 급으로 맞추거나 의사요소로 과녁만 얹는다.
+
+   데스크탑(1181px 이상 · 손가락이 아닌 입력)에서는 아래 어느 규칙도 서지 않는다.
+   미디어 밖에 있는 선언은 `:root` 의 두 값과 `position:relative` 뿐이고, 그 값이
+   0 이면 과녁 확장은 크기가 0 이다.
+
+   두 미디어가 같은 값을 켜는 이유: 폭으로만 재면 iPad Pro 가로(1366px)가 빠지고,
+   입력 장치로만 재면 터치 화면을 쓰는 노트북이 헛되이 커진다. 둘 중 하나면 켠다. */
+
+:root{--tap-y:0px;--tap-min:0px}
+@media (max-width:1180px){:root{--tap-y:5px;--tap-min:44px}}
+@media (pointer:coarse){:root{--tap-y:5px;--tap-min:44px}}
+
+/* ── 과녁은 칠이 아니다 ────────────────────────────────────────────────
+   탭과 계기줄은 스킨마다 안여백이 달라(pill·밑줄·inverse) 안여백을 키우면 스킨
+   수만큼 모양이 흔들린다. 보이는 모양은 그대로 두고 누를 자리만 위아래로 늘린다 —
+   좌우로는 늘리지 않는다(옆 탭의 과녁과 겹쳐 오조작이 된다). 의사요소는 이벤트의
+   대상이 되지 않으므로 클릭은 그대로 단추가 받는다. */
+.tabs button,.stats .stat{position:relative}
+.tabs button::after,.stats .stat::after{content:none;position:absolute;
+  left:0;right:0;top:calc(-1 * var(--tap-y));bottom:calc(-1 * var(--tap-y))}
+@media (max-width:1180px){.tabs button::after,.stats .stat::after{content:""}}
+@media (pointer:coarse){.tabs button::after,.stats .stat::after{content:""}}
+
+/* 타입바는 목록 안쪽 붙박이라 위로 넓힌 과녁이 스크롤 상자에 잘린다 — 여기서는
+   상자 자체를 키운다. 단추는 내용을 세로 가운데에 두므로 min-height 만으로 선다.
+   `.tb.tb` 는 `[data-skin="calm"] .typebar .tb` 와 같은 급을 만들려는 것이고,
+   이 파일이 뒤에 있으므로 같은 급이면 이긴다. */
+.typebar .tb.tb{min-height:var(--tap-min)}
+/* 목록의 '더 보기'·연 것 닫기·문서 머리의 전이 단추. 벨트의 ▶/⏸ (.deed.ico) 는
+   REQ-20260830-043 이 27px 로 확정한 값이라 건드리지 않는다. */
+.more.more{min-height:var(--tap-min)}
+.acts button:not(.ico){min-height:var(--tap-min)}
+
+@media (max-width:1180px){
+  /* ── 헤더가 세로를 덜 먹게 ──
+     세로 768px 화면에서 헤더가 175px(23%)이었다. 좌우 여백을 줄여 필터가 한 줄에
+     더 들어가게 하고, 늘어난 손끝 높이만큼을 그 자리에서 되찾는다. */
+  .hrow1{padding:12px 16px 0;gap:18px}
+  .hrow2{padding:6px 16px;gap:10px 10px}
+  .hrow3{padding:6px 16px}
+  .hrow2 input[type="text"]{width:170px}
+  .hrow2 select{max-width:170px}
+  /* 필터도 손끝으로 누른다 — 네이티브 select 는 안여백이 아니라 높이로 잰다 */
+  .hrow2 input[type="text"],.hrow2 select,.hrow2 .chk{min-height:var(--tap-min)}
+  .hrow2 .chk input{width:18px;height:18px}
+
+  /* ── 문서 머리가 헤더 뒤로 사라지지 않게 ──
+     header 와 .viewer .dhead 가 둘 다 top:0 에 붙어 z-index 10 인 헤더가 이긴다.
+     --hh 는 docs.js 가 실측해 넣는 헤더 높이다(줄바꿈·스킨·사용량 줄에 따라 변한다). */
+  .viewer .dhead{top:var(--hh,0px)}
+
+  /* ── Stream 의 대화 영역이 화면 밖으로 넘치지 않게 ──
+     .term 의 `100vh - 150px` 은 헤더 높이를 손으로 적은 값이라, 헤더가 175~215px 인
+     태블릿에서 영역이 화면 아래로 삐져나가 안쪽 스크롤과 페이지 스크롤이 겹쳤다.
+     옆 목록(--docsh)이 이미 실측을 쓰고 있으니 이쪽도 같은 자로 잰다.
+     74px = main 위아래 여백 + 스트림 머리 줄. */
+  .term{max-height:calc(100vh - var(--hh,150px) - 74px)}
+
+  /* ── 목록 레일 폭 ──
+     330px 고정이 768px 폭에서 43%를 가져가 본문이 366px 만 남았다. 폭에 비례하되
+     읽을 수 있는 최소는 지킨다. 스킨들이 각자 폭을 적어 두어 같은 급으로 맞춘다. */
+  .doclist,[data-skin] .doclist{width:clamp(256px,28vw,300px)}
+
+  /* ── Board 열 ──
+     열 최소폭이 210~288px 이라 다섯 열이 1024px 가로에 안 들어가고 마지막 열이
+     잘렸다 — 태블릿은 오버레이 스크롤바라 옆으로 밀 수 있다는 표시도 안 보인다.
+     최소폭을 낮춰 다섯 열이 한 화면에 서게 한다(열은 flex 로 남는 폭을 나눠 갖는다). 가로 스크롤 자체는 설계된
+     동작이라 없애지 않는다(열이 더 늘면 그대로 스크롤된다). */
+  [data-skin] .col,[data-skin][data-density] .col{
+    flex:1 1 176px;min-width:176px;width:auto}
+
+  /* ── Audit 표 ──
+     .tblwrap 이 overflow-x:auto 인데 표가 width:100% 라 넘칠 일이 없었다 — 스크롤
+     대신 칸이 눌렸다. 최소폭을 줘야 그 스크롤이 실제로 선다. */
+  .audit table{min-width:680px}
+}
+
+@media (max-width:900px){
+  /* 세로 자세(768px). 본문에 폭을 더 준다. */
+  .hrow2 input[type="text"]{width:140px}
+  .hrow2 select{max-width:140px}
+  .viewer{--vpad:18px}
+
+  /* ── 라벨을 값 위로 쌓는다 ──
+     `td:first-child{width:150px;white-space:nowrap}` 이 366px 짜리 본문에서 라벨에
+     150px 을 가져가 값 칸이 185px 로 눌렸다: 요약·목표가 열두 자마다 끊기고
+     doclink 가 토큰 한가운데서 잘렸다. 두 칸을 위아래로 쌓으면 값이 폭을 다 쓴다.
+     칸 구분선은 줄(tr)로 옮긴다 — 라벨과 값 사이에 선이 생기면 두 줄로 읽힌다. */
+  .metatbl tr{display:block;border-bottom:1px solid var(--hairline)}
+  .metatbl tr:last-child{border-bottom:0}
+  .metatbl td{display:block;border-bottom:0;padding:0}
+  .metatbl td:first-child{width:auto;white-space:normal;padding:9px 0 0}
+  .metatbl td:last-child{padding:3px 0 10px}
+
+  /* ── 「만든 사람 · 맡은 사람」 한 줄 ──
+     `.lineage .lincell{min-width:0}` 이 셀을 0 까지 줄여, 366px 본문에서 라벨이
+     「만 든 사 람」 처럼 글자마다 끊겼다(우리말은 기본이 아무 데서나 끊긴다).
+     낱말은 붙여 두고 접히는 것은 셀 단위로 — 라벨과 값이 갈리지 않게. */
+  .lineage{word-break:keep-all;gap:5px 12px}
+  .lineage .lincell{min-width:auto}
+  .lineage .doclink{white-space:nowrap}
+}

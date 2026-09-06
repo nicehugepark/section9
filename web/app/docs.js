@@ -228,6 +228,13 @@ async function renderDocs(rows){
 // 줄바꿈·비동기로 붙는 사용량 줄에 따라 달라져서, 고정 상수(150px)로는 판이 화면
 // 밖으로 밀리거나 목록이 짧게 잘렸다 (REQ-20260826-004).
 function sizeDocs(){
+  // 헤더의 실제 높이 — 붙박이 문턱을 재는 자다 (REQ-20260906-092).
+  // 태블릿에서는 헤더가 175~215px 이라, 같은 top:0 에 붙는 문서 머리(.dhead)가
+  // 통째로 헤더 뒤에 깔렸다. Stream 의 .term 도 이 값으로 높이를 잡는다.
+  // 판(.docs)이 없는 탭에서도 필요하므로 아래 이른 반환보다 먼저 잰다.
+  const hdr = document.querySelector("header");
+  if (hdr) document.documentElement.style.setProperty(
+    "--hh", Math.round(hdr.getBoundingClientRect().height) + "px");
   const docs = $("#view .docs");
   if (!docs) return;
   // 문서 기준 offset(rect.top + scrollY) — 페이지가 스크롤된 상태에서 재면
