@@ -163,11 +163,14 @@ def install_git_hooks():
              'S9_ROOT="$MAIN" exec "$PY" "$TOP/bin/s9-guard"\n')
     # 커밋이 스스로 문서에 남는다 (REQ-20260828-005) — 구현이 끝나는 지점은
     # 커밋인데 그것을 문서에 옮기는 일이 손에 맡겨져 있어 몇 시간씩 밀렸다.
+    # 자기 sha 를 먼저 잡는다 — commit-note 가 문서를 고치면 sync(remote) 가 곧바로 문서
+    # 커밋을 얹어 HEAD 가 바뀐다(REQ-20260906-020). 배경 전체 실행은 그 sha 를 본다.
     cnote = ('#!/bin/sh\n' + py + where +
+             'SHA="$(git rev-parse HEAD)"\n'
              'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9" commit-note '
              '>/dev/null 2>&1 || true\n'
              # 전체 스위트는 commit 뒤 배경에서 (REQ-20260905-010)
-             'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9-guard" --after-commit || true\n')
+             'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9-guard" --after-commit "$SHA" || true\n')
     for name, body in [("post-merge", sync), ("post-checkout", sync),
                        ("pre-commit", guard), ("post-commit", cnote)]:
         p = os.path.join(hooks_dir, name)

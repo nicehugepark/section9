@@ -407,9 +407,12 @@ def red_ratchet(staged, red=None, green_age=None, now=None, fix_env=None):
     return (True, files)
 
 
-def head_touches_wide():
+def head_touches_wide(sha="HEAD"):
+    """그 커밋(기본 HEAD)이 넓은 파일에 닿는가. post-commit 은 **자기 sha** 를 넘긴다 —
+    훅이 도는 사이 sync(remote) 가 문서 커밋을 얹어 HEAD 가 바뀌면(실측 2026-09-06,
+    code 커밋 셋에 배경 실행이 한 번도 안 떴다) HEAD 는 이미 남의 커밋이다."""
     try:
-        r = subprocess.run(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+        r = subprocess.run(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha or "HEAD"],
                            capture_output=True, encoding="utf-8", errors="replace",
                            cwd=ROOT, timeout=30, env=clean_git_env())
         return [f for f in r.stdout.split() if f in WIDE]
@@ -442,13 +445,15 @@ def full_run_in_flight(jobs_dir=None):
     return 0
 
 
-def after_commit():
-    """post-commit: 넓은 파일이 담긴 커밋이면 전체 스위트를 배경에서 띄운다.
+def after_commit(sha=None):
+    """post-commit: 넓은 파일이 담긴 커밋이면 전체 스위트를 배경에서 띄운다. sha 는 훅이
+    잡아 넘긴 그 커밋 — HEAD 는 그 사이 바뀌었을 수 있다(REQ-20260906-020).
 
     기다리지 않는다 — 단일비행(hold_run_lock)·같은 지문 재사용(green_seen)은
     러너가 이미 안다. 로그는 state/tests-async/<sha7>.log.
     """
-    if not head_touches_wide():
+    sha = sha or "HEAD"
+    if not head_touches_wide(sha):
         return 0
     try:
         r = subprocess.run([sys.executable or "python3", os.path.join(ROOT, "tests"),
@@ -467,7 +472,7 @@ def after_commit():
               f"그 결과가 붉으면 다음 커밋이 라쳇에 걸린다.", file=sys.stderr)
         return 0
     try:
-        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+        sha = subprocess.run(["git", "rev-parse", "--short", sha], capture_output=True,
                              encoding="utf-8", cwd=ROOT, timeout=10,
                              env=clean_git_env()).stdout.strip() or "head"
         os.makedirs(ASYNC_DIR, exist_ok=True)
@@ -571,7 +576,9 @@ def secret_gate(staged):
 
 def main():
     if "--after-commit" in sys.argv[1:]:
-        return after_commit()
+        k = sys.argv.index("--after-commit")
+        sha = sys.argv[k + 1] if len(sys.argv) > k + 1 and not sys.argv[k + 1].startswith("-") else None
+        return after_commit(sha)
     out = subprocess.run(["git", "diff", "--cached", "--name-only"],
                          capture_output=True,
                              encoding="utf-8", errors="replace", cwd=ROOT)

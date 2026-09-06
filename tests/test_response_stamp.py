@@ -116,7 +116,7 @@ class ResponseStamp(unittest.TestCase):
                 if "KST" not in txt:
                     missing.append(n)
                 # 각자 자기 이름을 쓰도록 박혀 있어야 한다 — 일반 안내로는 안 지켜진다
-                elif f"KST - {n[:-3]}]`" not in txt:
+                elif f"KST - {n[:-3].removeprefix('s9-agnt-')}]`" not in txt:   # 이름 공간은 벗긴 역할명 (REQ-20260906-017)
                     unnamed.append(n)
             self.assertEqual(missing, [], f"시각 규칙이 빠진 에이전트: {missing}")
             self.assertEqual(unnamed, [], f"자기 이름이 박히지 않은 에이전트: {unnamed}")
