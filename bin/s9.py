@@ -47,6 +47,9 @@ CATALOG = os.path.join(INDEX, "catalog.jsonl")
 # 증분 카탈로그의 덧붙임 파일 (REQ-20260902-035). index/ 안이라 파생물로
 # 남고 동기화에 얹히지 않는다. 상한을 넘으면 접어서 base 로 돌린다.
 CATALOG_DELTA = CATALOG + ".delta"
+# 리드의 이름 (REQ-20260906-022, 주인 결정 2026-09-06): 사람이 부르는 이름이자 응답 머리의 이름.
+# 귀속(lead:<모델>)은 그대로 — 이름은 사람이 부르는 것, 귀속은 기계가 세는 것.
+LEAD_NAME = "타치코마"
 try:
     CATALOG_DELTA_MAX = max(1, int(os.environ.get(
         "S9_CATALOG_DELTA_MAX") or 200))

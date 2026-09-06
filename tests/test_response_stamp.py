@@ -71,7 +71,7 @@ class ResponseStamp(unittest.TestCase):
         with self.subTest("heading_names_the_speaker"):
             m = re.search(STAMP_RE, hook("아무 말"))
             self.assertIsNotNone(m)
-            self.assertEqual(m.group(3), "lead")
+            self.assertEqual(m.group(3), "타치코마")
         with self.subTest("injected_time_is_real_and_kst"):
             ctx = hook("아무 말")
             m = re.search(STAMP_RE, ctx)
@@ -102,8 +102,8 @@ class ResponseStamp(unittest.TestCase):
             self.assertIn("date '+%Y-%m-%d %H:%M:%S %Z'", src,
                           "주입이 없는 환경에서 시각을 얻을 방법을 알려줘야 한다 — "
                           "시간대는 %Z 로 따라가야 한다 (REQ-20260828-024)")
-            self.assertIn("lead", src, "응답 주체 이름 규칙이 공통 규약에 없다")
-            self.assertIn("KST - lead]`", src, "표기 형태가 규약과 어긋난다")
+            self.assertIn("타치코마", src, "응답 주체 이름 규칙이 공통 규약에 없다")
+            self.assertIn("KST - 타치코마]`", src, "표기 형태가 규약과 어긋난다")
             self.assertNotIn("# `[2026", src, "제목 기호(#)가 규약에 남아 있다")
         with self.subTest("every_role_agent_carries_the_rule"):
             names = [n for n in os.listdir(AGENTS) if n.endswith(".md")

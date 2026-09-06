@@ -91,10 +91,10 @@ class MeasuredStamp(unittest.TestCase):
 
     def test_now_as_prints_the_whole_head_line(self):
         """모델이 형식을 지어낼 자리가 없다 — 줄째로 준다."""
-        line = self._now("--as", "lead")
-        self.assertTrue(line.startswith("`[") and line.endswith(" - lead]`"),
+        line = self._now("--as", "타치코마")
+        self.assertTrue(line.startswith("`[") and line.endswith(" - 타치코마]`"),
                         line)
-        self.assertRegex(line[2:-len(" - lead]`")], STAMP)
+        self.assertRegex(line[2:-len(" - 타치코마]`")], STAMP)
 
     def test_timezone_follows_the_setting_not_a_constant(self):
         """KST 상수가 아니다 — 시각도 라벨도 함께 따라간다."""
@@ -126,7 +126,7 @@ class ResponseHookHasNoConstant(unittest.TestCase):
             self.assertTrue(fixed.startswith(f"`[{now} - designer]`"), fixed)
             self.assertEqual(drift, 1800)
         with self.subTest("m6_numeric_offset_label"):
-            text = "`[2026-09-03 20:00:00 +09:00 - lead]`\n\n본문"
+            text = "`[2026-09-03 20:00:00 +09:00 - 타치코마]`\n\n본문"
             fixed, _ = self.m.correct_stamp(text, now)
             self.assertEqual(fixed.count("`["), 1, fixed)
         with self.subTest("m7_no_hardcoded_kst_left"):
@@ -149,7 +149,7 @@ class InstructionSaysMeasure(unittest.TestCase):
         with self.subTest("m9_says_measure_before_writing"):
             self.assertIn("답을 쓰기 직전에 재라", ctx)
         with self.subTest("m10_hands_over_the_command"):
-            self.assertIn("now --as lead", ctx)
+            self.assertIn("now --as 타치코마", ctx)
         with self.subTest("m11_injected_value_is_labelled_as_arrival"):
             # 「현재 시각」이라 부르면 그대로 베껴 쓴다. 이 값이 무엇인지 말한다.
             self.assertIn("도착한 시각", ctx)
@@ -162,7 +162,7 @@ class InstructionSaysMeasure(unittest.TestCase):
         proto = _read(PROTOCOL)
         with self.subTest("m12_protocol"):
             self.assertIn("답을 쓰기 직전에 재라", proto)
-            self.assertIn("s9 now --as lead", proto)
+            self.assertIn("s9 now --as 타치코마", proto)
         with self.subTest("m13_claude_md_is_generated_from_it"):
             # Claude 세션이 실제로 읽는 것은 이 파일이다. 원천을 고쳤는데
             # 생성물이 안 따라오면 고친 것이 아니다.

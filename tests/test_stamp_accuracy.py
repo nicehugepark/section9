@@ -46,32 +46,32 @@ class ResponseStamp(unittest.TestCase):
     def test_response_stamp(self):
         """ResponseStamp 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("r1_stale_stamp_is_corrected"):
-            text = "`[2026-08-26 23:20:04 KST - lead]`\n\n작업했다."
+            text = "`[2026-08-26 23:20:04 KST - 타치코마]`\n\n작업했다."
             fixed, drift = self.m.correct_stamp(text, NOW)
-            self.assertTrue(fixed.startswith(f"`[{NOW} - lead]`"), fixed)
+            self.assertTrue(fixed.startswith(f"`[{NOW} - 타치코마]`"), fixed)
             self.assertEqual(drift, 596)
             self.assertIn("작업했다.", fixed)
         with self.subTest("r2_role_name_is_preserved"):
             text = "`[2026-08-26 23:20:04 KST - designer]`\n\n표를 그렸다."
             fixed, _ = self.m.correct_stamp(text, NOW)
             self.assertIn("- designer]`", fixed)
-            self.assertNotIn("- lead]`", fixed)
+            self.assertNotIn("- 타치코마]`", fixed)
         with self.subTest("r3_missing_stamp_is_added"):
             fixed, drift = self.m.correct_stamp("도장 없이 시작하는 응답", NOW)
-            self.assertTrue(fixed.startswith(f"`[{NOW} - lead]`"), fixed)
+            self.assertTrue(fixed.startswith(f"`[{NOW} - 타치코마]`"), fixed)
             self.assertIsNone(drift)
             self.assertIn("도장 없이 시작하는 응답", fixed)
         with self.subTest("r4_accurate_stamp_survives_unchanged"):
-            text = f"`[{NOW} - lead]`\n\n본문"
+            text = f"`[{NOW} - 타치코마]`\n\n본문"
             fixed, drift = self.m.correct_stamp(text, NOW)
             self.assertEqual(fixed, text)
             self.assertEqual(drift, 0)
         with self.subTest("r5_only_the_head_is_a_stamp"):
-            text = "설명한다. 형식은 `[2026-08-26 23:20:04 KST - lead]` 이다."
+            text = "설명한다. 형식은 `[2026-08-26 23:20:04 KST - 타치코마]` 이다."
             fixed, drift = self.m.correct_stamp(text, NOW)
-            self.assertIn("`[2026-08-26 23:20:04 KST - lead]` 이다.", fixed)
+            self.assertIn("`[2026-08-26 23:20:04 KST - 타치코마]` 이다.", fixed)
             self.assertIsNone(drift)          # 머리에 없었으니 새로 붙는다
-            self.assertTrue(fixed.startswith(f"`[{NOW} - lead]`"), fixed)
+            self.assertTrue(fixed.startswith(f"`[{NOW} - 타치코마]`"), fixed)
 
 if __name__ == "__main__":
     unittest.main()

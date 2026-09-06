@@ -306,7 +306,7 @@ function originWho(r){
   const a = String((r && r.origin_actor) || "");
   if (!a) return "";
   if (a.startsWith("sub:")) return a.slice(4);
-  if (a.startsWith("lead")) return "리드";
+  if (a.startsWith("lead")) return "타치코마";   // 리드의 이름 (REQ-20260906-022)
   if (a.startsWith("worker")) return "백그라운드 작업";
   return a;
 }

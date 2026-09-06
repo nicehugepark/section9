@@ -39,6 +39,8 @@ if os.name == "nt":
             pass
 
 S9 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "s9")
+# 리드의 이름 (REQ-20260906-022) — 도장이 없을 때 붙이는 이름. bin/s9.py LEAD_NAME 과 같아야 한다.
+LEAD_NAME = "타치코마"
 # `bin/s9` 를 부르는 argv (REQ-20260903-005). 경로 하나만 넘기면 **윈도우에서
 # 부를 수가 없다** — 그 판에는 shebang 이 없어 확장자 없는 스크립트가
 # `CreateProcess` 를 통과하지 못한다(WinError 193/2). 판을 갈라 분기하는 대신
@@ -96,7 +98,7 @@ def correct_stamp(text, now_str):
     """
     m = STAMP_RE.match(text or "")
     if not m:
-        return f"`[{now_str} - lead]`\n\n" + (text or ""), None
+        return f"`[{now_str} - {LEAD_NAME}]`\n\n" + (text or ""), None
     try:
         fmt = "%Y-%m-%d %H:%M:%S"
         drift = int(abs((datetime.datetime.strptime(now_str[:19], fmt)
