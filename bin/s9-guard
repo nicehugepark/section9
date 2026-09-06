@@ -240,6 +240,11 @@ def clean_git_env(env=None):
     e = dict(os.environ if env is None else env)
     for k in GIT_ENV_VARS:
         e.pop(k, None)
+    # commit 때 쓴 손잡이는 자식에게 물려주지 않는다 — 검사가 돌리는 시험이 S9_FIX_RED 를
+    # 물려받으면 실패 시 커밋 차단을 재는 시험(test_wide_gate W3b)이 그 값 때문에 통과로
+    # 읽힌다(실제 발생 2026-09-06 12:38, REQ-20260906-064 의 commit 에서).
+    for k in ("S9_FIX_RED", "S9_ALLOW_CONCURRENT", "S9_GIT_OK"):
+        e.pop(k, None)
     return e
 
 
@@ -279,7 +284,7 @@ def _show_gate_failure(r):
 
     예전엔 출력의 **마지막 25줄**만 찍었다. 순차라면 그 자리가 실패 요약이지만,
     게이트는 `--jobs 4` 로 돈다 — 실패한 샤드의 출력이 먼저 나오고 통과한
-    샤드가 뒤에 온다. 그래서 「실패합니다」라고 말한 뒤 **초록 결과를 보여
+    샤드가 뒤에 온다. 그래서 「실패합니다」라고 말한 뒤 **통과 결과를 보여
     줬다.** 2026-09-04 에 그 화면을 세 번 보고도 원인을 못 읽었다.
 
     막기만 하고 이유를 안 보여 주는 문은 사람이 `--no-verify` 를 배우게 한다.
@@ -328,11 +333,11 @@ WIDE = ("bin/s9", "bin/s9.py", "tests/__main__.py", "tests/portpool.py",
 
 
 def wide_change_verdict(staged):
-    """(넓은 파일 목록, 지금 이 나무가 전체 초록인가) — **묻기만** 한다.
+    """(넓은 파일 목록, 지금 이 나무가 전체 통과인가) — **묻기만** 한다.
 
     시험을 한 건도 돌리지 않는다. 게이트가 시험을 돌리기 **전에** 떠 둬야
     그 실행의 부산물이 판정을 뒤집지 못한다 (REQ-20260904-003).
-    고장 나면 초록으로 답한다 — 문이 고장 나 모든 커밋을 막으면 그날로 뽑힌다.
+    고장 나면 통과로 답한다 — 문이 고장 나 모든 커밋을 막으면 그날로 뽑힌다.
     """
     wide = [f for f in staged if f.replace("\\", "/") in WIDE]
     if not wide:
@@ -352,13 +357,13 @@ def wide_change_verdict(staged):
 # 넓게 닿는 파일의 커밋마다 전체(4~5분, 간헐 날엔 8~13분)를 commit 전에 물리면
 # 하루 174분을 기다리고(2026-09-05 실측: 라벨 한 줄이 한 시간), 뒤에 돌리면
 # 5분이다 — 12~35배. 그래서 문은 셋으로 갈린다:
-#   ① 이 나무의 전체 초록 기록이 있으면 비용 0 으로 지나간다(종전).
-#   ② **붉음 라쳇** — 마지막 전체 실행이 붉었고 그것이 마지막 초록보다 새로우면
-#      code 커밋을 세운다. 붉은 파일의 시험을 담은 커밋(고치러 온 것)과
+#   ① 이 나무의 전체 통과 기록이 있으면 비용 0 으로 지나간다(종전).
+#   ② **실패 시 커밋 차단** — 마지막 전체 실행이 실패했고 그것이 마지막 통과보다 새로우면
+#      code 커밋을 세운다. 실패한 파일의 시험을 담은 커밋(고치러 온 것)과
 #      `S9_FIX_RED=<REQ>` 는 지나간다.
 #   ③ 그 밖에는 스모크∪담긴 시험(staged_tests_gate)만 보고 지나가며, commit 뒤
 #      post-commit 훅이 `s9-guard --after-commit` 으로 전체를 detached 로 띄운다.
-#      붉으면 러너가 state/tests-last-red.json 을 남겨 다음 커밋이 ②에 걸린다.
+#      실패하면 러너가 state/tests-last-red.json 을 남겨 다음 커밋이 ②에 걸린다.
 LAST_RED = os.path.join(ROOT, "state", "tests-last-red.json")
 ASYNC_DIR = os.path.join(ROOT, "state", "tests-async")
 
@@ -372,7 +377,7 @@ def _read_json(path):
 
 
 def full_green_age():
-    """마지막 전체 초록의 나이(초). 모르면 None."""
+    """마지막 전체 통과의 나이(초). 모르면 None."""
     try:
         r = subprocess.run([sys.executable or "python3",
                             os.path.join(ROOT, "tests"), "--full-green-age"],
@@ -385,9 +390,9 @@ def full_green_age():
 
 
 def red_ratchet(staged, red=None, green_age=None, now=None, fix_env=None):
-    """(막나, 붉은 파일들) — 마지막 붉음이 마지막 초록보다 새로우면 막는다.
+    """(막나, 실패한 파일들) — 마지막 실패가 마지막 통과보다 새로우면 막는다.
 
-    예외 둘: 붉은 파일의 시험이 담겨 있다(고치러 온 커밋) · `S9_FIX_RED` 가
+    예외 둘: 실패한 파일의 시험이 담겨 있다(고치러 온 커밋) · `S9_FIX_RED` 가
     설정돼 있다(사유는 커밋 메시지에). 기록이 없거나 못 읽으면 막지 않는다.
     """
     red = _read_json(LAST_RED) if red is None else red
@@ -397,7 +402,7 @@ def red_ratchet(staged, red=None, green_age=None, now=None, fix_env=None):
     green_age = full_green_age() if green_age is None else green_age
     green_at = None if green_age is None else now - green_age
     if green_at is not None and green_at >= float(red["at"]):
-        return (False, [])                  # 붉음 뒤에 초록이 있었다
+        return (False, [])                  # 실패 뒤에 통과가 있었다
     files = [str(f) for f in (red.get("files") or [])]
     fix_env = os.environ.get("S9_FIX_RED", "") if fix_env is None else fix_env
     if fix_env.strip():
@@ -463,7 +468,7 @@ def after_commit(sha=None):
                             "--is-green"], capture_output=True, cwd=ROOT, timeout=120,
                            env=clean_git_env())
         if r.returncode == 0:
-            return 0                        # 이 나무는 이미 초록이다
+            return 0                        # 이 나무는 이미 통과다
     except Exception:
         pass
     # 전체 실행은 한 번에 하나 (REQ-20260905-022). 연속 commit 마다 하나씩 띄우면
@@ -483,7 +488,7 @@ def after_commit(sha=None):
         env = clean_git_env()
         env.pop("S9_TESTS_NESTED", None)
         # 커밋 때 쓴 손잡이(S9_FIX_RED·S9_ALLOW_CONCURRENT)는 배경 실행에 물려주지
-        # 않는다 — 물려주면 라쳇 시험이 스스로를 못 재고(실측: test_wide_gate w3b 붉음),
+        # 않는다 — 물려주면 라쳇 시험이 스스로를 못 재고(실측: test_wide_gate w3b 실패),
         # 그 실행이 남긴 판정도 손잡이가 낀 것이 된다.
         for k in ("S9_FIX_RED", "S9_ALLOW_CONCURRENT", "S9_GIT_OK"):
             env.pop(k, None)
@@ -514,10 +519,10 @@ def wide_change_gate(staged, verdict=None):
     실사고: `bin/s9` 한 줄(REQ-20260902-017 `_local_binding_glob`)이 커밋에
     담기지 않은 시험 18건을 깨뜨렸다. 위의 `staged_tests_gate` 는 담긴 시험과
     스모크 12파일만 보는데 그 열둘과 깨진 여덟 파일은 하나도 겹치지 않았다 —
-    게이트는 초록을 보고 통과시켰고 커밋은 붉은 채로 들어갔다.
+    게이트는 통과를 보고 통과시켰고 커밋은 실패한 채로 들어갔다.
 
     그렇다고 매 커밋에 전체를 물리지 않는다(분 단위라 규율이 먼저 죽는다).
-    **돌리지 않고 묻는다**: 지금 이 나무 지문으로 전체가 초록이었던 기록이
+    **돌리지 않고 묻는다**: 지금 이 나무 지문으로 전체가 통과였던 기록이
     있나(`python3 tests/ --is-green`, REQ-20260903-010 의 선택별 green 기록).
     있으면 비용 0으로 지나가고, 없을 때만 막으며 돌릴 명령을 그대로 보인다.
 
@@ -607,7 +612,28 @@ def commit_mark_clear():
         pass
 
 
+def commit_msg_terms(path):
+    """commit 메시지의 용어 검사 (REQ-20260906-064) — 경고만, 막지 않는다. 리드의 commit
+    메시지가 「실패한 것 셋」을 색의 비유로 적었고, 그 말이 로그로 남아 다음 사람이
+    읽는다."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            msg = "".join(ln for ln in f if not ln.startswith("#"))
+    except OSError:
+        return 0
+    try:
+        subprocess.run([sys.executable or "python3", os.path.join(ROOT, "bin", "s9"),
+                        "terms", "check", "--where", "commit 메시지"], input=msg,
+                       encoding="utf-8", errors="replace", timeout=20,
+                       env=clean_git_env())
+    except Exception:
+        pass
+    return 0
+
+
 def main():
+    if sys.argv[1:2] == ["commit-msg"] and len(sys.argv) > 2:
+        return commit_msg_terms(sys.argv[2])
     if "--after-commit" in sys.argv[1:]:
         k = sys.argv.index("--after-commit")
         sha = sys.argv[k + 1] if len(sys.argv) > k + 1 and not sys.argv[k + 1].startswith("-") else None
@@ -633,8 +659,8 @@ def _pre_commit_gates():
     concurrent_gate(staged)
     # **넓은 변경 판정을 먼저 묻는다** (REQ-20260904-003). 아래 게이트가 시험을
     # 돌리면 그 실행이 나무를 건드려(임시 파일·복원되는 파일) 지문이 움직이고,
-    # 그러면 방금 만든 전체 초록 기록을 이 문이 못 알아본다 — 사람이 시키는 대로
-    # `python3 tests/` 를 돌려 초록을 만들어도 커밋이 또 막힌다(실측 2026-09-04:
+    # 그러면 방금 만든 전체 통과 기록을 이 문이 못 알아본다 — 사람이 시키는 대로
+    # `python3 tests/` 를 돌려 통과를 만들어도 커밋이 또 막힌다(실측 2026-09-04:
     # 13:12 에 `--is-green` 이 0 이었는데 13:19 커밋에서 같은 문이 막았다).
     # 묻는 값은 **커밋 시점의 나무**여야 한다. 그래서 판정을 먼저 뜨고,
     # 막을지는 시험 게이트 뒤에 정한다 — 순서가 바뀌어도 사람이 보는 차례
