@@ -5,7 +5,8 @@
 (whoami)와 admin 전용 ?as= 로 한다. 검증 의미(비멤버 비가시/멤버 가시/admin
 전부/무소속 작성자만/audit 스코프)는 구모델 테스트와 동일하게 보존.
 - /api/users?scope=machine → 이 머신(registered_on) 등록 계정만
-- doc_visible: admin=전부, 프로젝트 문서=활성 멤버만, 무소속=작성자만
+- doc_visible: admin=전부, 프로젝트 문서=활성 멤버만, 무소속=담당·만든 사람만
+  (만든 사람도 본다 — REQ-20260906-009)
 
 격리: S9_ROOT=mktemp + S9_MACHINE 고정 — 라이브 vault를 건드리지 않는다.
 실행: python3 tests/test_access_isolation.py

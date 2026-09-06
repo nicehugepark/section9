@@ -936,7 +936,25 @@ def full_green_age(repo=None):
     return max(0.0, time.time() - at) if at else None
 
 
+USAGE = """usage: python3 tests/ [패턴 …] [--jobs N] [--no-reuse] [--smoke] [--changed]
+                        [--remote <비밀 이름> [--remember]] [--local] [--is-green] [--full-green-age]
+
+  패턴 …          파일 이름 조각으로 골라 실행 (예: port_pool roster_api). 없으면 전체.
+  --jobs N        병렬 샤드 수 (기본은 CPU·포트 구간에 맞춘 값)
+  --no-reuse      같은 내용의 통과 기록이 있어도 다시 실행
+  --smoke         스모크 테스트만
+  --remote KEY    전체 실행을 원격 머신(s9 secret 의 시크릿 이름 KEY)에서; --remember 로 기억
+  --local         기억된 원격을 이번만 끈다
+  --is-green      지금 내용의 전체 통과 기록이 있으면 0, 없으면 1 (실행 안 함)
+  --full-green-age  마지막 전체 통과 기록의 나이(초)
+"""
+
+
 def main():
+    # --help 는 아무것도 실행하지 않는다 (REQ-20260906-041: --help 가 원격 전체 실행을 띄운 실제 사고)
+    if any(a in ("--help", "-h") for a in sys.argv[1:]):
+        print(USAGE)
+        return 0
     # 돌리지 않고 묻기만 하는 갈래 (REQ-20260903-012) — 커밋 게이트가 쓴다.
     # 임시 루트도 만들지 않는다: 이 갈래는 시험을 한 건도 돌지 않는다.
     if "--is-green" in sys.argv[1:]:

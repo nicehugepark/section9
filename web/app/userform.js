@@ -77,7 +77,7 @@ function showUserForm(u, host, isAdminEdit){
     </table>
     <div class="secmsg" id="cf-stream-msg"></div>
     ${mySecrets ? `
-    <div class="cfg-h">비밀 키 — 값은 이 화면에 나오지 않습니다</div>
+    <div class="cfg-h">시크릿 — 값은 이 화면에 나오지 않습니다</div>
     <div class="path secnote">API 키처럼 남이 보면 안 되는 값입니다. <b>키 이름만 보입니다.</b> 넣은 값은 저장한 뒤 다시 볼 수 없으니, 잊었으면 새 값으로 덮어쓰세요.</div>
     <div id="sec-list" class="secempty">불러오는 중…</div>
     <div class="secform">
@@ -102,7 +102,7 @@ function showUserForm(u, host, isAdminEdit){
       <button type="button" id="sec-add">＋ 저장소 안에 넣기</button>
     </div>
     <div class="secmsg" id="sec-msg"></div>
-    <div class="secsub">바깥 폴더 — 저장소 밖에 둘 비밀의 자리</div>
+    <div class="secsub">바깥 폴더 — 저장소 밖에 둘 시크릿의 자리</div>
     <div class="path secnote">저장소는 다른 사람과 공유됩니다. 그래서 저장소 밖 폴더 하나를 더 쓸 수 있습니다 — <b>없는 폴더는 저장할 때 만들어 드립니다</b>(나만 읽을 수 있게). 경로를 정하면 <b>위의 넣기에서 “저장소 밖”을 고를 수 있습니다</b> — 정하기 전에는 그 칸이 잠겨 있습니다. 이미 그 폴더에 둔 파일도 함께 읽습니다: <b>파일 이름이 곧 키 이름</b>입니다.</div>
     <div class="secform">
       <input class="uf" id="sec-ext" style="width:330px" autocomplete="off" spellcheck="false"
@@ -238,13 +238,13 @@ function showUserForm(u, host, isAdminEdit){
   const extState = host.querySelector("#sec-ext-state");
   const EXTSAY = {
     ok:      ["on",   "읽는 중",
-              "이 폴더의 파일도 비밀로 함께 읽고 있고, 위의 넣기에서 여기에 넣을 수 있습니다."],
+              "이 폴더의 파일도 시크릿으로 함께 읽고 있고, 위의 넣기에서 여기에 넣을 수 있습니다."],
     missing: ["warn", "폴더 없음",
-              "지워졌거나 연결이 끊긴 것 같습니다. 지금은 저장소 안의 비밀만 씁니다 — 경로 저장을 다시 누르면 만듭니다."],
+              "지워졌거나 연결이 끊긴 것 같습니다. 지금은 저장소 안의 시크릿만 씁니다 — 경로 저장을 다시 누르면 만듭니다."],
     inrepo:  ["bad",  "쓰면 안 됩니다",
               "이 저장소 안의 폴더입니다. 저장소는 다른 사람과 공유되니 밖에 두는 뜻이 없습니다 — 저장소 밖 경로로 바꿔 주세요."],
     unset:   ["",     "정하지 않음",
-              "저장소 안에 둔 비밀만 씁니다."],
+              "저장소 안에 둔 시크릿만 씁니다."],
     unknown: ["",     "확인 못 함",
               "지금 이 폴더를 읽고 있는지 알아내지 못했습니다."],
   };
@@ -350,7 +350,7 @@ function showUserForm(u, host, isAdminEdit){
     try{ d = await (await fetch("/api/secrets")).json(); }catch(e){}
     if (!d || !Array.isArray(d.keys)){
       secList.className = "secempty";
-      secList.innerHTML = `비밀 목록을 받아오지 못했습니다.
+      secList.innerHTML = `시크릿 목록을 받아오지 못했습니다.
         <button type="button" class="gefix" id="sec-retry">다시 불러오기</button>`;
       const rt = host.querySelector("#sec-retry");
       if (rt) rt.addEventListener("click", loadSecrets);
@@ -366,7 +366,7 @@ function showUserForm(u, host, isAdminEdit){
     extSay(d.external_state || "unset", d.external_path || "");
     if (!d.keys.length){
       secList.className = "secempty";
-      secList.textContent = "아직 넣은 비밀이 없습니다 — 아래에 키 이름과 값을 넣으면 여기에 줄이 쌓입니다.";
+      secList.textContent = "아직 넣은 시크릿이 없습니다 — 아래에 키 이름과 값을 넣으면 여기에 줄이 쌓입니다.";
       return;
     }
     secList.className = "mhwrap";

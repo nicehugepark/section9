@@ -91,8 +91,8 @@ class SecretUI(unittest.TestCase):
         with self.subTest("every_state_is_drawn"):
                 fn = self._fn("loadSecrets")
                 self.assertIn("불러오는 중…", fn, "불러오는 동안 화면이 멈춘 것처럼 보인다")
-                self.assertIn("아직 넣은 비밀이 없습니다", fn, "빈 상태가 없다")
-                self.assertIn("비밀 목록을 받아오지 못했습니다", fn, "받아오기 실패 상태가 없다")
+                self.assertIn("아직 넣은 시크릿이 없습니다", fn, "빈 상태가 없다")
+                self.assertIn("시크릿 목록을 받아오지 못했습니다", fn, "받아오기 실패 상태가 없다")
                 self.assertIn('id="sec-retry"', fn, "실패했을 때 다시 시도할 손잡이가 없다")
                 # 빈 상태가 설명과 같은 회색으로 이어 붙으면 한 문단으로 읽힌다
                 self.assertIn(".secempty{", self.src, "빈 상태를 설명과 구별하지 않는다")
@@ -131,7 +131,7 @@ class SecretUI(unittest.TestCase):
             # ---------- helpers ----------
 
     def _block(self):
-        i = self.src.index('<div class="cfg-h">비밀 키')
+        i = self.src.index('<div class="cfg-h">시크릿')
         j = self.src.index('host.querySelector("#pf-save")')
         return self.src[i:j]
 

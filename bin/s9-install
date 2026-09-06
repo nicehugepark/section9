@@ -728,6 +728,10 @@ def login_guide(state=None):
 
 
 def main():
+    # --help 는 설치하지 않는다 (REQ-20260906-041: --help 가 설치를 한 번 더 실행한 실제 사고)
+    if any(a in ("--help", "-h") for a in sys.argv[1:]):
+        print(__doc__.strip())
+        return 0
     if "--uninstall" in sys.argv:
         uninstall(bring_back="--keep" not in sys.argv, dry_run="--dry-run" in sys.argv)
         return

@@ -1336,6 +1336,39 @@ def system_checks():
             authz_verdict(authz_info())]
 
 
+def tunnel_info(root=None):
+    """ssh 터널 상태 (REQ-20260906-010) — s9 가 못 뜰 때도 읽어야 하니 상태 파일을
+    직접 본다(state/tunnel-<로컬포트>.json). 비밀 이름만 있고 값은 없는 파일이다."""
+    import glob
+    rows = []
+    for fp in sorted(glob.glob(os.path.join(root or ROOT, "state", "tunnel-*.json"))):
+        try:
+            with open(fp, encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            continue
+        r = {k: d.get(k) for k in ("secret", "lport", "rport", "pid", "child_pid",
+                                   "retries", "status", "started", "retry_in")}
+        r["alive"] = owner_alive(int(d.get("pid") or 0))
+        rows.append(r)
+    return rows
+
+
+def tunnel_line(rows):
+    if not rows:
+        return "ssh 터널: 없음"
+    parts = []
+    for r in rows:
+        if not r["alive"]:
+            m = "중단됨"
+        elif r.get("status") == "reconnecting":
+            m = f"연결 대기({r.get('retry_in')}s)"
+        else:
+            m = "실행 중"
+        parts.append(f"{r['lport']}→{r['rport']} {m}(재시도 {r.get('retries') or 0}회)")
+    return f"ssh 터널 {len(rows)}개: " + " · ".join(parts)
+
+
 def diagnose():
     rows = ps_rows()
     serves, orphans, chromes = scan(rows)
@@ -1352,6 +1385,7 @@ def diagnose():
         "shots_bytes": scratch_bytes(),
         "windows_ports": windows_ports(),
         "system": system_checks(),
+        "tunnels": tunnel_info(),
     }
     return d, orphans, chromes
 
@@ -1575,6 +1609,7 @@ def main():
           f"(부모가 사라진 테스트 서버 {len(d['orphan_test_servers'])}개) · "
           f"헤드리스 브라우저 {len(d['headless_chrome'])}개 · "
           f"캡처 산출물 {human(d['shots_bytes'])}")
+    print(tunnel_line(d.get("tunnels") or []))
     # **겹칠 때의 합을 사람이 물을 수 있어야 한다** (REQ-20260903-004).
     # 비용은 총량이 아니라 동시 최고치인데, 상한이 흩어져 있으면 그 합을
     # 아무도 모른다. 여기 한 줄로 세워 둔다 — 값은 bin/s9 의 CONCURRENCY 한 표.

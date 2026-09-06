@@ -505,12 +505,11 @@ def scene4_viewer(fx, X):
     REPORT.check("S4-e", "여럿이 쓰는 자리에서 미등록 열람자는 화면이 거부한다",
                  not stranger, f"sync_mode={fx.mod.sync_mode()!r}")
     REPORT.check("S4-e", "담당은 그 문서를 본다", holder)
-    # 실측으로 드러난 것 — doc_visible 의 마지막 줄은 **담당(user)** 만 본다.
-    # 그래서 project 가 없는 문서는 인계하는 순간 **만든 사람의 화면에서 사라진다**
-    # (함수 설명은 "작성자 본인만" 이라 적혀 있어 둘이 어긋난다). 여기서는 고치지
-    # 않고 사실대로 못박는다 — 고칠 자리는 bin/ 이고, 제안은 REQ 노트에 남겼다.
-    REPORT.check("S4-e", "인계하면 만든 사람의 화면에서는 사라진다 (제안 노트 참조)",
-                 not maker, f"alice={maker}")
+    # 실측으로 드러났던 것(2026-09-06) — doc_visible 의 마지막 줄이 **담당(user)** 만
+    # 봐서, project 없는 문서는 인계하는 순간 만든 사람의 화면에서 사라졌다.
+    # REQ-20260906-009 가 담당·만든 사람 둘 다로 고쳤다 (tests/test_doc_visible_creator.py).
+    REPORT.check("S4-e", "인계해도 만든 사람은 자기 문서를 본다",
+                 maker, f"alice={maker}")
 
 
 def scene5_sync_failure(fx, X):
@@ -558,12 +557,19 @@ def scene5_sync_failure(fx, X):
     try:
         fx.b("sync", check=False)
         fx.a_pull()
-        fx.a("note", X, "A 가 드라이버 없이 적은 줄", user=ALICE, check=False)
+        # 간헐 붉음(REQ-20260906-012)을 다음에 만나면 원인이 판정 줄에 서도록
+        # 세 사실을 함께 적는다: B 의 드라이버가 정말 풀렸는가 · A 의 노트가
+        # origin 까지 갔는가(A 쪽 전송 실패는 check=False 가 삼킨다) · A 의 sync.
+        driver_b = fx.bgit("config", "--get", "merge.s9doc.driver", check=False)
+        a_note = fx.a("note", X, "A 가 드라이버 없이 적은 줄", user=ALICE, check=False)
         fx.b("note", X, "B 가 드라이버 없이 적은 줄", user=BOB, check=False)
-        fx.a("sync", check=False)
+        a_sync = fx.a("sync", check=False)
+        a_ahead = fx.agit("rev-list", "--count", "@{u}..HEAD", check=False)
         out = fx.b("sync", check=False)
         REPORT.check("S5-d", "드라이버가 없으면 「sync: pull-conflict」로 선다",
-                     "conflict" in out, out[:300])
+                     "conflict" in out,
+                     f"{out[:160]} · B driver={driver_b[:60]!r} · A note={a_note[-80:]!r}"
+                     f" · A sync={a_sync[-60:]!r} · A ahead-of-origin={a_ahead!r}")
         REPORT.check("S5-d", "막히면서도 내 줄이 사라지지 않는다",
                      "B 가 드라이버 없이 적은 줄" in fx.b_doc(X)[1])
         res = fx.b("sync", "resolve", X, "--take", "mine", check=False)

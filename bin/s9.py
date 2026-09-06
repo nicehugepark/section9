@@ -6332,7 +6332,7 @@ def cmd_secret(args):
                 "missing": f"external={raw} (그 폴더가 없어 무시된다)",
                 "inrepo": f"external={raw} (저장소 안이라 바깥에 둔 뜻이 없다)",
                 }[external_secret_state(user)]
-        print(f"비밀 {len(keys)}개 (값은 표시하지 않는다) · "
+        print(f"시크릿 {len(keys)}개 (값은 표시하지 않는다) · "
               f"internal={secret_dir(user)} · {tail}")
         return
     key = (args.key or "").strip()
@@ -6365,14 +6365,14 @@ def cmd_secret(args):
         except ValueError as e:
             die(str(e))
         if not places:
-            die(f"그런 비밀이 없다: {key} — 목록은 s9 secret ls")
+            die(f"그런 시크릿이 없다: {key} — 목록은 s9 secret ls")
         ko = {"internal": "저장소 안", "external": "저장소 밖"}
         print(f"삭제: {key} ({' · '.join(ko[p] for p in places)})")
         return
     if args.action == "get":
         val = secret_value(user, key)
         if val is None:
-            die(f"그런 비밀이 없다: {key} — 목록은 s9 secret ls")
+            die(f"그런 시크릿이 없다: {key} — 목록은 s9 secret ls")
         print(val)
         return
     # run — 자리표시자를 실행 시점에 바꾸고, 출력에서 값을 지운다.
@@ -6388,7 +6388,7 @@ def cmd_secret(args):
         def one(m):
             v = secret_value(user, m.group(1))
             if v is None:
-                die(f"그런 비밀이 없다: {m.group(1)}")
+                die(f"그런 시크릿이 없다: {m.group(1)}")
             used.append(v)
             return v
         return re.sub(r"\{\{secret:([A-Za-z0-9][A-Za-z0-9_.-]{0,63})\}\}",
@@ -17324,7 +17324,10 @@ def doc_visible(row, me):
     ⚠ project_can과 같은 자기신고(me) 기반 **가드레일**이다 — 인증이 아니며
     파일 직접 열람이나 me 위장은 막지 못한다 (DOC-20260823-001).
     ① 시스템 admin → 전부. ② 프로젝트 문서(PRJ 자신 포함) → 활성 멤버만.
-    ③ project가 없거나 미등록(정책 부재) → 작성자 본인만.
+    ③ project가 없거나 미등록(정책 부재) → 담당(doc_owner)과 만든 사람
+       (doc_creator) 둘 다. 담당만 보게 하면 `s9 assign` 으로 넘기는 순간
+       만든 사람의 화면에서 자기 문서가 사라진다 (REQ-20260906-009,
+       두 머신 실측 tests/p5_live.py 장면 4).
     HTTP 응답 직전에만 적용할 것 — 서버 내부 로직(워처/live 판정)은 무필터."""
     role = user_role(me) if me else ""
     if role == "admin":
@@ -17349,7 +17352,7 @@ def doc_visible(row, me):
             return True
     if pr:
         return bool(project_role(proj, me))
-    return bool(me) and (row.get("user") or "") == me
+    return bool(me) and me in (doc_owner(row), doc_creator(row))
 
 
 def _unregistered_denied():
@@ -18509,6 +18512,10 @@ def cmd_code(args):
                          stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
                          start_new_session=True)
         print(f"대시보드 기동: http://127.0.0.1:{port}/")
+    # 기억해 둔 ssh 터널을 올린다 (REQ-20260906-010, 옵트인: `s9 tunnel … --keep`).
+    # 어느 머신도 여기 적혀 있지 않다 — 목록은 state/tunnels.json 이 준다.
+    for _m in tunnel_autostart():
+        print(f"◌ {_m}")
     if getattr(args, "no_claude", False):
         return  # 테스트/대시보드만
     # ---- preflight (REQ-20260824-052): 환경이 미완인데 claude 부터 띄우면
@@ -18888,6 +18895,453 @@ def print_live_diag(d):
         print()
         for a in advice:
             print(f"→ {a}")
+
+
+# ------------------------------------------- ssh 터널 유지 (REQ-20260906-010)
+# 리드가 손으로 띄운 `ssh -L` 터널이 끊기면 조용히 사라졌다(실측 2026-09-06
+# 00:5x→08:42, 사유 미기록). 감시자 구조는 `serve --supervise` 와 같다: 자식(ssh)을
+# 띄우고 기다리다, 어떤 이유로든 끝나면 재시도를 미루며(backoff) 다시 띄운다.
+#
+# 여기에는 **어느 머신의 이름도 없다** (projects/section9/CONTEXT.md 「개인 장치의
+# 이름은 코드 밖에 둔다」): 비밀 이름은 인자로만 받고, 값은 읽지 않는다 —
+# `s9 secret run` 의 `{{secret:이름}}` 치환으로만 지난다. 상태 파일에도 이름만 적는다.
+#
+# WSL 규율 (DOC-20260906-001): `-4` 와 `127.0.0.1:` 을 명시한다. 바인드 주소를
+# 생략하면 ssh 가 [::1]·127.0.0.1 둘 다 잡는데 VirtioProxy 중계가 그 조합을 공개하지
+# 않아 브라우저가 「연결 거절」을 본다.
+#
+# 파일: state/tunnel-<로컬포트>.json (pid·시각·재시도 수) · .log · .lock · .stop,
+#       state/tunnels.json (`--keep` — `s9 code` 기동이 다시 올리는 목록, 옵트인).
+TUNNEL_BACKOFF = (1, 2, 5, 15, 30, 60)   # 연속 실패 n회째 대기(초) — 상한 60초, 포기 없음
+TUNNEL_HEALTHY_SEC = 60                  # 이만큼 이어졌으면 건강 — 실패 카운터 리셋
+TUNNEL_STOP_WAIT_SEC = 8                 # --stop 이 감시자 종료를 기다리는 시한
+
+
+def _tunnel_paths(lport, root=None):
+    st = os.path.join(root or ROOT, "state")
+    lp = int(lport)
+    return {"state": st,
+            "json": os.path.join(st, f"tunnel-{lp}.json"),
+            "lock": os.path.join(st, f"tunnel-{lp}.lock"),
+            "stop": os.path.join(st, f"tunnel-{lp}.stop"),
+            "log": os.path.join(st, f"tunnel-{lp}.log"),
+            "keep": os.path.join(st, "tunnels.json")}
+
+
+def _tunnel_now():
+    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def tunnel_cmdline(secret, lport, rport):
+    """ssh 명령줄 한 줄 — 비밀 자리표시자는 실행 시점에 `s9 secret run` 이 바꾼다.
+    ExitOnForwardFailure: 로컬 포트를 못 잡으면 붙어 있는 척하지 말고 끝나라
+    (그래야 감시자가 실패로 세고 다시 시도한다)."""
+    return (f"{{{{secret:{secret}}}}} -4 -N -o ServerAliveInterval=30 "
+            f"-o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes "
+            f"-L 127.0.0.1:{int(lport)}:127.0.0.1:{int(rport)}")
+
+
+def tunnel_read(lport, root=None):
+    try:
+        with open(_tunnel_paths(lport, root)["json"], encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _tunnel_write(lport, d, root=None):
+    p = _tunnel_paths(lport, root)
+    os.makedirs(p["state"], exist_ok=True)
+    d = dict(d)
+    d["updated"] = _tunnel_now()
+    tmp = p["json"] + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, p["json"])
+
+
+def tunnel_alive(lport, root=None):
+    """실행 중인 감시자의 상태 — 상태 파일이 없거나 감시자 pid 가 종료됐으면 None."""
+    st = tunnel_read(lport, root)
+    if st and pid_alive(st.get("pid")):
+        return st
+    return None
+
+
+def tunnel_list(root=None):
+    import glob as _glob
+    rows = []
+    for fp in sorted(_glob.glob(os.path.join(root or ROOT, "state", "tunnel-*.json"))):
+        try:
+            with open(fp, encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            continue
+        d["alive"] = pid_alive(d.get("pid"))
+        rows.append(d)
+    return rows
+
+
+def tunnel_keep_list(root=None):
+    try:
+        with open(_tunnel_paths(0, root)["keep"], encoding="utf-8") as f:
+            rows = json.load(f)
+        return rows if isinstance(rows, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _tunnel_keep_save(rows, root=None):
+    p = _tunnel_paths(0, root)
+    os.makedirs(p["state"], exist_ok=True)
+    tmp = p["keep"] + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(rows, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, p["keep"])
+
+
+def tunnel_keep_add(secret, lport, rport, root=None):
+    rows = [r for r in tunnel_keep_list(root) if int(r.get("lport") or 0) != int(lport)]
+    rows.append({"secret": secret, "lport": int(lport), "rport": int(rport)})
+    _tunnel_keep_save(rows, root)
+
+
+def tunnel_keep_remove(lport, root=None):
+    rows = tunnel_keep_list(root)
+    keep = [r for r in rows if int(r.get("lport") or 0) != int(lport)]
+    if len(keep) != len(rows):
+        _tunnel_keep_save(keep, root)
+    return len(keep) != len(rows)
+
+
+def _tunnel_check(secret, lport, rport, user):
+    """인자 검증 — 감시자가 뜨기 **전에** 거부한다. 값은 읽지 않고 이름만 확인한다."""
+    if not secret or not SECRET_KEY_RE.match(str(secret)):
+        die("시크릿 이름이 필요하다: s9 tunnel <시크릿이름> <로컬포트> <원격포트> "
+            "(목록은 s9 secret ls)")
+    for label, v in (("로컬 포트", lport), ("원격 포트", rport)):
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            n = 0
+        if not (1 <= n <= 65535):
+            die(f"{label}가 잘못됐다: {v!r} — 1~65535 "
+                "(s9 tunnel <비밀이름> <로컬포트> <원격포트>)")
+    if secret not in secret_keys(user):
+        die(f"그런 시크릿이 없다: {secret} — 목록은 s9 secret ls")
+
+
+def _tunnel_kill_group(proc):
+    """자식(`s9 secret run` → sh → ssh)은 제 프로세스 그룹에 있다 — 그룹째 내린다."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if hasattr(os, "killpg"):
+            import signal as _sig
+            os.killpg(proc.pid, _sig.SIGTERM)
+        else:
+            proc.terminate()
+    except OSError:
+        pass
+
+
+def _tunnel_group_alive(pgid):
+    try:
+        os.killpg(int(pgid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, AttributeError, TypeError, ValueError):
+        return False
+
+
+def _tunnel_reap_group(pgid, grace=2.0):
+    """직전 자식의 프로세스 그룹을 **통째로** 정리한다 — SIGTERM, 잠시 뒤 SIGKILL.
+
+    래퍼(`s9 secret run` → sh)가 종료돼도 손자 ssh 는 같은 그룹에서 로컬 포트를
+    쥔 채 남는다(실측 2026-09-06: child_pid 를 kill 하니 ssh 가 살아남아 새 ssh 가
+    「Address already in use」로 5회 연속 실패, 사람이 `kill -TERM -- -<pgid>` 를
+    한 뒤에야 다시 이어졌다 — REQ-20260906-010). 반환: 남아 있던 것을 정리했으면 True."""
+    import signal as _sig
+    import time as _time
+    if not pgid or not hasattr(os, "killpg") or not _tunnel_group_alive(pgid):
+        return False
+    try:
+        os.killpg(int(pgid), _sig.SIGTERM)
+    except OSError:
+        return False
+    end = _time.monotonic() + grace
+    while _time.monotonic() < end and _tunnel_group_alive(pgid):
+        _time.sleep(0.1)
+    if _tunnel_group_alive(pgid):
+        try:
+            os.killpg(int(pgid), _sig.SIGKILL)
+        except OSError:
+            pass
+        _time.sleep(0.1)
+    return True
+
+
+def _tunnel_lock(lport, root=None):
+    """감시자 단일성 (serve 감시자의 `_guard_lock` 과 같은 꼴)."""
+    p = _tunnel_paths(lport, root)
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None
+    try:
+        os.makedirs(p["state"], exist_ok=True)
+        f = open(p["lock"], "a+", encoding="utf-8")
+    except OSError:
+        return None
+    if fcntl is not None:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.close()
+            return None
+    try:
+        f.seek(0)
+        f.truncate()
+        f.write(f"{os.getpid()}\n")
+        f.flush()
+    except OSError:
+        pass
+    return f
+
+
+def tunnel_start(secret, lport, rport, root=None, keep=False, user=None):
+    """감시자를 세션에서 떼어 띄운다. 반환 (상태, 메시지) — started · already · failed."""
+    user = user or resolve_user(None)
+    _tunnel_check(secret, lport, rport, user)
+    lport, rport = int(lport), int(rport)
+    if keep:
+        tunnel_keep_add(secret, lport, rport, root)
+    st = tunnel_alive(lport, root)
+    if st is not None:
+        return "already", (f"터널 {lport}→{rport} 이미 실행 중 — 감시자 pid {st['pid']}, "
+                           f"시크릿 {st.get('secret')}, 재시도 {st.get('retries', 0)}회")
+    stale = tunnel_read(lport, root) or {}
+    if stale.get("child_pid"):
+        # 감시자만 종료되고 ssh 그룹이 남은 경우 — 그대로 두면 새 ssh 가 로컬 포트를
+        # 못 잡아 영원히 재시도한다. 남은 그룹을 먼저 정리한다.
+        _tunnel_reap_group(stale["child_pid"])
+    p = _tunnel_paths(lport, root)
+    os.makedirs(p["state"], exist_ok=True)
+    for fp in (p["stop"], p["json"]):
+        try:
+            os.remove(fp)
+        except OSError:
+            pass
+    argv = [sys.executable, os.path.abspath(__file__), "tunnel", "--run",
+            secret, str(lport), str(rport)]
+    if not spawn_detached(argv, out_path=p["log"], cwd=root or ROOT):
+        return "failed", f"터널 {lport}→{rport} 감시자를 띄우지 못했다"
+    return "started", (f"터널 {lport}→{rport} 기동 (시크릿 {secret}) — 상태는 s9 tunnel --status"
+                       + (" · s9 code 기동 때 다시 올린다 (--keep)" if keep else ""))
+
+
+def tunnel_run_loop(secret, lport, rport, root=None):
+    """감시 루프 — 떼어 낸 자식이 들어오는 문(`tunnel --run`). 사람이 직접 쓸 일은
+    없다. ssh 가 **어떤 이유로든** 끝나면 다시 띄운다(exit 0 도 — 원격 sshd 재시작은
+    정상 종료로 보인다). 멈추는 길은 --stop(stop 파일 + SIGTERM)뿐이다."""
+    import signal as _sig
+    import subprocess as _sp
+    import time as _time
+    lport, rport = int(lport), int(rport)
+    p = _tunnel_paths(lport, root)
+    lock = _tunnel_lock(lport, root)
+    if lock is None:
+        print(f"{lport}→{rport} 감시자가 이미 있다 — 이 프로세스는 종료한다", flush=True)
+        return 0
+    child = {"p": None}
+    stopping = [False]
+
+    def _term(signum, frame):
+        stopping[0] = True
+        _tunnel_kill_group(child["p"])
+    for sg in (_sig.SIGTERM, _sig.SIGINT):
+        try:
+            _sig.signal(sg, _term)
+        except (OSError, ValueError):
+            pass
+    base = {"secret": secret, "lport": lport, "rport": rport, "pid": os.getpid(),
+            "started": _tunnel_now()}
+    argv = [sys.executable, os.path.abspath(__file__), "secret", "run", "--",
+            "sh", "-c", tunnel_cmdline(secret, lport, rport)]
+    fails = retries = 0
+    busy_retry = False   # 직전 시도가 「포트 점유」로 즉시 재시도한 것이었나
+    print(f"[{_tunnel_now()}] {lport}→{rport} 감시 시작 (pid {os.getpid()}, 시크릿 {secret})",
+          flush=True)
+    while not stopping[0] and not os.path.exists(p["stop"]):
+        t0 = _time.monotonic()
+        rc = 1
+        try:
+            off = os.path.getsize(p["log"])
+        except OSError:
+            off = 0
+        try:
+            proc = _sp.Popen(argv, stdin=_sp.DEVNULL, start_new_session=True)
+        except OSError as e:
+            proc = None
+            print(f"[{_tunnel_now()}] {lport}→{rport} ssh 를 띄우지 못했다: {e!r}", flush=True)
+        if proc is not None:
+            child["p"] = proc
+            _tunnel_write(lport, {**base, "child_pid": proc.pid, "since": _tunnel_now(),
+                                  "retries": retries, "status": "up"}, root)
+            rc = proc.wait()
+            child["p"] = None
+        ran = _time.monotonic() - t0
+        if stopping[0] or os.path.exists(p["stop"]):
+            break
+        # ① 다시 띄우기 **전에** 직전 그룹을 정리한다 — 래퍼만 종료되고 손자 ssh 가
+        #    포트를 쥔 채 남으면 새 ssh 는 영원히 bind 에 실패한다.
+        if proc is not None and _tunnel_reap_group(proc.pid):
+            print(f"[{_tunnel_now()}] {lport}→{rport} 래퍼가 종료된 뒤 남은 ssh 그룹"
+                  f"(pgid {proc.pid})을 정리했다", flush=True)
+        tail = _log_tail(p["log"], off)
+        port_busy = any("Address already in use" in ln for ln in tail)
+        retries += 1
+        if port_busy and not busy_retry:
+            # ② 남은 프로세스가 포트를 쥐고 있었다 — backoff 를 늘리지 않고 그룹 정리
+            #    뒤 즉시 한 번 재시도한다. 연속 두 번째면 우리 것이 아니니 backoff.
+            busy_retry = True
+            delay = 0
+            print(f"[{_tunnel_now()}] {lport}→{rport} 로컬 포트 {lport} 를 남은 프로세스가 "
+                  f"쥐고 있었다 — 그룹 정리 뒤 즉시 재시도 (누적 {retries}회)", flush=True)
+            _tunnel_write(lport, {**base, "child_pid": None, "retries": retries,
+                                  "status": "reconnecting", "last_rc": rc,
+                                  "ran_sec": round(ran, 1), "retry_in": 0}, root)
+            continue
+        busy_retry = False
+        fails = 1 if ran >= TUNNEL_HEALTHY_SEC else fails + 1
+        delay = TUNNEL_BACKOFF[min(fails, len(TUNNEL_BACKOFF)) - 1]
+        _tunnel_write(lport, {**base, "child_pid": None, "retries": retries,
+                              "status": "reconnecting", "last_rc": rc,
+                              "ran_sec": round(ran, 1), "retry_in": delay}, root)
+        print(f"[{_tunnel_now()}] {lport}→{rport} ssh 종료({_exit_reason(rc)}, {ran:.0f}s 유지, "
+              f"연속 {fails}회) — {delay}s 뒤 재연결 (누적 {retries}회)", flush=True)
+        end = _time.monotonic() + delay
+        while (_time.monotonic() < end and not stopping[0]
+               and not os.path.exists(p["stop"])):
+            _time.sleep(0.2)
+    _tunnel_kill_group(child["p"])
+    for fp in (p["json"], p["stop"]):
+        try:
+            os.remove(fp)
+        except OSError:
+            pass
+    print(f"[{_tunnel_now()}] {lport}→{rport} 감시 종료 (재시도 {retries}회)", flush=True)
+    try:
+        lock.close()
+    except OSError:
+        pass
+    return 0
+
+
+def tunnel_stop(lport, root=None):
+    """감시자와 ssh 를 내리고 상태 파일·자동 기동 항목을 정리한다(멱등). 반환: 메시지."""
+    import signal as _sig
+    import time as _time
+    lport = int(lport)
+    p = _tunnel_paths(lport, root)
+    st = tunnel_read(lport, root) or {}
+    forgot = tunnel_keep_remove(lport, root)
+    sup, ch = st.get("pid"), st.get("child_pid")
+    was = bool(sup and pid_alive(sup))
+    if was:
+        os.makedirs(p["state"], exist_ok=True)
+        open(p["stop"], "w").close()
+        try:
+            os.kill(int(sup), _sig.SIGTERM)
+        except OSError:
+            pass
+        end = _time.monotonic() + TUNNEL_STOP_WAIT_SEC
+        while _time.monotonic() < end and pid_alive(sup):
+            _time.sleep(0.1)
+        if pid_alive(sup):
+            try:
+                os.kill(int(sup), _sig.SIGKILL)
+            except OSError:
+                pass
+    if ch:
+        # 감시자 없이 ssh 그룹만 남은 경우도 정리한다 (손자까지)
+        _tunnel_reap_group(ch)
+    for fp in (p["json"], p["stop"]):
+        try:
+            os.remove(fp)
+        except OSError:
+            pass
+    if not st and not forgot:
+        return f"터널 {lport}: 실행 중인 것이 없다"
+    what = "종료" if was else "남은 상태 정리(감시자는 이미 없었다)"
+    return (f"터널 {lport}→{st.get('rport', '?')} {what}"
+            + (" · 자동 기동 목록(state/tunnels.json)에서 제거" if forgot else ""))
+
+
+def tunnel_status_lines(root=None):
+    rows = tunnel_list(root)
+    if not rows:
+        return ["터널 없음 — 띄우려면 s9 tunnel <비밀이름> <로컬포트> <원격포트> [--keep]"]
+    out = []
+    for r in rows:
+        if not r["alive"]:
+            mark = "중단됨 (감시자 없음 — s9 tunnel <로컬포트> --stop 으로 정리)"
+        elif r.get("status") == "reconnecting":
+            mark = f"연결 대기 ({r.get('retry_in')}s 뒤 재시도)"
+        else:
+            mark = "실행 중"
+        out.append(f"{r['lport']}→{r['rport']}  {mark} · 시크릿 {r.get('secret')} · "
+                   f"감시자 pid {r.get('pid')} · 재시도 {r.get('retries', 0)}회 · "
+                   f"시작 {r.get('started', '?')}")
+    return out
+
+
+def tunnel_autostart(root=None):
+    """state/tunnels.json 에 적힌 터널을 올린다 (`s9 code` 기동 때). 반환: 메시지 목록.
+    비밀이 없어진 항목은 거부 사유를 메시지로 돌리고 다음으로 간다 — 한 줄이
+    code 기동 전체를 막지 않는다."""
+    msgs = []
+    for r in tunnel_keep_list(root):
+        try:
+            _, m = tunnel_start(str(r.get("secret") or ""), r.get("lport"), r.get("rport"),
+                                root=root)
+        except SystemExit:
+            m = (f"터널 {r.get('lport')}→{r.get('rport')} 를 올리지 못했다 "
+                 f"(시크릿 {r.get('secret')} — s9 secret ls 로 확인, 지우려면 "
+                 f"s9 tunnel {r.get('lport')} --stop)")
+        msgs.append(m)
+    return msgs
+
+
+def cmd_tunnel(args):
+    if getattr(args, "run", False):
+        return tunnel_run_loop(args.secret, args.lport, args.rport)
+    if getattr(args, "autostart", False):
+        msgs = tunnel_autostart()
+        for m in msgs or ["터널 자동 기동: 적힌 것이 없다 (state/tunnels.json)"]:
+            print(m)
+        return 0
+    if getattr(args, "status", False):
+        for ln in tunnel_status_lines():
+            print(ln)
+        return 0
+    if getattr(args, "stop", False):
+        port = args.lport if args.lport else args.secret
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            die("정리할 로컬 포트를 준다: s9 tunnel <로컬포트> --stop")
+        print(tunnel_stop(port))
+        return 0
+    if not (args.secret and args.lport and args.rport):
+        die("usage: s9 tunnel <시크릿이름> <로컬포트> <원격포트> [--keep] | "
+            "s9 tunnel --status | s9 tunnel <로컬포트> --stop")
+    _, msg = tunnel_start(args.secret, args.lport, args.rport, keep=args.keep)
+    print(msg)
+    return 0
 
 
 def cmd_doctor(args):
@@ -25594,7 +26048,7 @@ def main():
     mt.set_defaults(fn=cmd_metrics)
 
     sc = sub.add_parser("secret",
-                        help="사용자별 비밀값 (보관·조회·명령에서 사용)")
+                        help="사용자별 시크릿 값 (보관·조회·명령에서 사용)")
     sc.add_argument("action", choices=["ls", "set", "get", "rm", "run"])
     sc.add_argument("key", nargs="?", help="set/get/rm 의 키 이름")
     sc.add_argument("cmd", nargs=argparse.REMAINDER,
@@ -25605,6 +26059,19 @@ def main():
     sc.add_argument("--internal", action="store_true",
                     help="rm: 저장소 안의 것만 지운다 (set 의 기본값)")
     sc.set_defaults(fn=cmd_secret)
+
+    tn = sub.add_parser("tunnel",
+                        help="ssh 터널을 띄우고 끊기면 다시 잇는다 (시크릿 이름으로)")
+    tn.add_argument("secret", nargs="?", help="시크릿 이름 (s9 secret ls) — ssh 접속 명령이 든 시크릿")
+    tn.add_argument("lport", nargs="?", help="이 기계에서 열 포트")
+    tn.add_argument("rport", nargs="?", help="원격 머신의 포트")
+    tn.add_argument("--keep", action="store_true",
+                    help="state/tunnels.json 에 적어 s9 code 기동 때마다 올린다 (옵트인)")
+    tn.add_argument("--status", action="store_true", help="터널 상태")
+    tn.add_argument("--stop", action="store_true", help="감시자와 ssh 를 내리고 정리 (s9 tunnel <로컬포트> --stop)")
+    tn.add_argument("--run", action="store_true", help=argparse.SUPPRESS)        # 떼어 낸 감시자의 문
+    tn.add_argument("--autostart", action="store_true", help=argparse.SUPPRESS)  # s9 code 가 지나는 갈래
+    tn.set_defaults(fn=cmd_tunnel)
 
     ev = sub.add_parser("env", help="기존 환경의 승계·정리·백업 (설치 전 설정의 백업·되돌리기·승계)")
     ev.add_argument("env_action", choices=["status", "backups", "backup", "restore", "inherit", "move", "unmove"])

@@ -173,7 +173,7 @@ class WhereWrite(unittest.TestCase):
         self.assertFalse(os.path.exists(self.outer("TOKEN")))
 
     def test_b5_rm_missing_key_is_an_error(self):
-        self.assertIn("그런 비밀이 없다",
+        self.assertIn("그런 시크릿이 없다",
                       self.cli("secret", "rm", "NOPE", expect=1))
 
 
