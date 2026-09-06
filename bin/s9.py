@@ -1776,6 +1776,7 @@ def catalog_row(meta, path, body=""):
         # 계보 간선 원재료 (REQ-20260831-015): 판정 큐 파생(review_family)이
         # 문서를 다시 열지 않고 행만으로 연결 성분을 계산할 근거다.
         "derived_from": meta.get("derived_from", ""),
+        "needs_os": meta.get("needs_os", ""),   # 어느 판에서 해야 하나 (REQ-20260906-080)
         "relates": meta.get("relates", []),
         "session": meta.get("session", ""),
         "tags": meta.get("tags", []),
@@ -2418,6 +2419,7 @@ def cmd_new(args):
             "origin_actor": origin_actor, "origin_req": origin_req,
             "project": proj,
             "project_source": proj_source,   # 어느 신호로 붙었나 (빈 값은 키 생략)
+            "needs_os": getattr(args, "needs_os", "") or "",   # 어느 판에서 해야 하나 (REQ-20260906-080)
             # 짧은 id(REQ-20260906-009)는 정식 id 로 — 짧은 채 적히면 뒤의 정규화가
             # 못 찾아 지운다(실제 사고 2026-09-06: 044 의 parent 가 사라졌다, REQ-20260906-048)
             "parent": full_doc_id(args.parent) if args.parent else "", "children": [],
@@ -11794,7 +11796,7 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
     path = locate(cid)
     meta, body = read_doc(path)
     changed = []
-    for key in ("title", "summary", "goal", "size"):
+    for key in ("title", "summary", "goal", "size", "needs_os"):
         if fields.get(key) is not None:
             meta[key] = fields[key]
             changed.append(key)
@@ -11844,7 +11846,7 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
 
 
 def cmd_set(args):
-    fields = {k: getattr(args, k) for k in ("title", "summary", "goal", "size", "project")}
+    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os")}
     try:
         res = do_set(args.id, fields, actor=resolve_user(None),
                      priority=getattr(args, "priority", None))
@@ -14151,6 +14153,23 @@ def next_pickup(user=None, all_users=False):
             "mins": st["mins"], "reason": st.get("reason", ""), "note": note}
 
 
+def here_requests(platform=None, rows=None):
+    """이 판(운영체제)에서 해야 할 열린 요청들 (REQ-20260906-080) — needs_os 가 이 판인
+    open·blocked·in-progress 요청. Linux 요구는 WSL 도 만족한다. 다른 기계에서 잰 것을
+    GitHub 동기화로 받은 세션이 `s9 next` 에서 먼저 본다 — Remote Control 이 없어도
+    맥에서 재야 할 일이 맥의 세션에 닿는 길."""
+    here = platform or os_platform()
+    ok = {here} | ({"Linux"} if here == "WSL" else set())
+    out = []
+    for r in (rows if rows is not None else load_catalog()):
+        if r.get("type") != "request" or r.get("status") not in ("open", "blocked", "in-progress"):
+            continue
+        need = str(r.get("needs_os") or "").strip()
+        if need and need in ok:
+            out.append(r)
+    return work_order(out) if out else []
+
+
 def cmd_next(args):
     """`s9 next` — 아무도 붙어 있지 않은 미완 중 다음에 집을 것 한 건.
 
@@ -14158,11 +14177,19 @@ def cmd_next(args):
     시작시킨다 — 클레임은 `s9 claim` 이 하던 대로 따로 한다."""
     p = next_pickup(user=getattr(args, "user", None),
                     all_users=getattr(args, "all", False))
+    here = here_requests()
     if getattr(args, "json", False):
-        print(json.dumps(p or {"id": None}, ensure_ascii=False))
+        d = dict(p or {"id": None})
+        d["here"] = [{"id": r["id"], "title": r.get("title", ""), "status": r.get("status", "")} for r in here]
+        print(json.dumps(d, ensure_ascii=False))
         return
+    if here:
+        print(f"이 기계({os_platform()})에서 해야 할 요청 {len(here)}건 — 다른 기계가 여기서 재 달라고 남긴 것:")
+        for r in here:
+            print(f"  {r['id']} {r.get('title', '')} [{r.get('status', '')}] — 착수: s9 status {r['id']} in-progress")
     if not p:
-        print("(이어받을 작업 없음)")
+        if not here:
+            print("(이어받을 작업 없음)")
         return
     extra = f" · {p['reason']}" if p["reason"] else ""
     print(f"{p['id']} {p['title']} — {p['mins']}분째 진전 없음{extra}")
@@ -26195,6 +26222,8 @@ def main():
                     "low/normal/high/urgent (기본 50)")
     np.add_argument("--user")
     np.add_argument("--project")
+    np.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL"],
+                    help="이 요청을 해야 하는 판 (REQ-20260906-080)")
     np.add_argument("--project-tag", dest="project_tag",
                     help="프롬프트 첫 줄 표기 [프로젝트: slug] 를 훅이 넘기는 자리 — "
                          "자동 신호라 권한이 없으면 거부하지 않고 빈 값으로 둔다 "
@@ -26266,6 +26295,8 @@ def main():
     se2.add_argument("--priority", help="우선순위 가중치 1~99 또는 "
                      "low/normal/high/urgent")
     se2.add_argument("--project")
+    se2.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL", ""],
+                     help="이 요청을 해야 하는 판 — 그 판의 세션이 s9 next 로 먼저 본다 (REQ-20260906-080)")
     se2.set_defaults(fn=cmd_set)
 
     lp = sub.add_parser("ls", help="list documents (from catalog)")

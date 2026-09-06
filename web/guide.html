@@ -639,6 +639,7 @@ cd ~/section9 &amp;&amp; bin/s9-install</code></pre>
 </div></div>
 
 <h3>일상 — 무엇이 저절로 되고, 무엇을 손으로 하나</h3>
+<p><b>다른 기계에서 재야 하는 일</b> — 요청에 <code>s9 set &lt;id&gt; --needs-os macOS</code> 처럼 판을 적어 두면, 그 판의 기계에서 여는 다음 세션이 <code>s9 next</code> 에서 「이 기계에서 해야 할 요청」으로 먼저 받습니다. 동기화만 있으면 되고 원격 접속은 필요 없습니다(REQ-20260906-080).</p>
 <div class="tblwrap"><table>
   <tr><th style="width:230px">일</th><th>어떻게 되나</th></tr>
   <tr><td>문서 만들기 · 상태 바꾸기 · 노트</td><td>저절로 commit → pull → push. 상대 기계는 다음 문서 이벤트나 폴링 때 받습니다</td></tr>
