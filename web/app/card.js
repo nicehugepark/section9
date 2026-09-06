@@ -477,6 +477,39 @@ function ownerBadgeHTML(r){
     + ` data-assign="${esc(r.id)}"`
     + ` title="맡은 사람 ${esc(u)} — 눌러서 담당을 바꿉니다">${face}</button>`;
 }
+/* 카드의 프로젝트 표기도 **그 자체가 손잡이**다 (REQ-20260906-053) — 담당
+   배지가 세운 그 문법이고, 새 색·새 단추를 만들지 않는다. 표기가 없던 자리에
+   손잡이만 세우지 않는다: 카드는 여태 이 요청이 어디에 속하는지 말한 적이
+   없었고, 말하지 않는 사실은 고칠 수도 없다.
+
+   자리는 담당 배지·혈통 칩 **다음**, 순위 **앞**이다 — 읽는 순서가 「누가
+   맡았나 → 어디에 속하나 → 얼마나 급한가」가 된다.
+
+   글자는 slug 하나다. 고르는 자리(필터·창)는 `제목 (slug)` 가 맞지만 카드는
+   훑는 자리이고 메타 줄 11px 에는 이미 여섯이 선다 — 제목은 title 로 붙는다.
+   slug 는 사람이 `s9 set <id> --project <slug>` 에서 다시 만나는 글자다.
+
+   손잡이가 아닌 얼굴 셋: 요청이 아닌 문서 · 끝난 문서(TERMINAL) · 관찰 계정.
+   앞의 둘은 담당 배지와 같은 선이고, 관찰 계정은 이 화면 어디에서도 쓰지
+   못하는 계정이라 누를 곳을 주면 거절 창만 돌아온다. 그 셋에서 프로젝트가
+   비어 있으면 아무것도 안 그린다 — 고칠 수 없는 빈 사실을 세울 이유가 없다. */
+function projBtnHTML(r){
+  if (!r) return "";
+  const slug = String(r.project || "").trim();
+  const pr = slug ? (window.__projects || []).find(
+    p => p.slug === slug || p.id === slug) : null;
+  const name = pr ? (pr.title || slug) : slug;
+  const live = r.type === "request" && !TERMINAL.has(r.status)
+    && (window.__whoami || {}).role !== "viewer";
+  if (!live)
+    return slug ? `<span class="proj" title="프로젝트 ${esc(name)}">`
+      + `<b class="pname">${esc(slug)}</b></span>` : "";
+  const tip = slug ? `프로젝트 ${name} — 눌러서 바꿉니다`
+                   : "눌러서 프로젝트를 정합니다";
+  return `<button type="button" class="proj" data-projset="${esc(r.id)}"`
+    + ` title="${esc(tip)}"><b class="pname">`
+    + `${slug ? esc(slug) : "프로젝트 없음"}</b></button>`;
+}
 /* 이 요청에 지금 **사람이 할 수 있는 일**을 짓는 한 함수 (REQ-20260828-041,
    REQ-20260829-024).
 
@@ -1491,7 +1524,7 @@ async function keepDeedFocus(id, fn){
    한 벌만 고쳐진다. 화면이 읽는 것은 `ok` 와 `message` 둘뿐이다.
 
    `ok=false` 는 **오류가 아니라 설명**이다. `capped`(한도 소진)·`busy`(이미
-   붙어 있음)·`moving`(아직 멈춘 게 아님)은 전부 정상적인 답이라, 붉은 실패로
+   붙어 있음)·`moving`(아직 멈춘 게 아님)은 전부 정상적인 답이라, 실패(붉은 잉크)로
    그리지 않는다(창머리 잉크를 .stop 으로 올리지 않는다). */
 /* 눌림 기억의 **교차 청소** (REQ-20260830-042 designer — 배타가 새로 만드는
    유일한 결함).
@@ -1890,6 +1923,7 @@ function cardHTML(r){
     <div class="t">${esc(r.title)}</div>
     <div class="m">
       ${ownerBadgeHTML(r)}${lineageChip(r)}
+      ${projBtnHTML(r)}
       ${prioHTML(r)}
       ${r.size ? `<span class="size">${esc(r.size)}</span>` : ""}
       ${r.tdd ? `<span class="tdd${r.tdd.passed===r.tdd.total?" full":""}" title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">TDD ${r.tdd.passed}/${r.tdd.total}</span>` : ""}
@@ -2179,6 +2213,84 @@ async function assignDoc(id){
   }catch(e){
     s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
       desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.", ok: "닫기"});
+  }
+}
+/* ---- 속할 프로젝트를 바꾼다 (REQ-20260906-053) ---------------------------
+
+   **고를 수 없는 것만 목록에서 뺀다.** 서버(do_set)가 어차피 거절하는 선택지를
+   손에 쥐여 주지 않는다 — 내가 활성 멤버이고 관찰(viewer)이 아닌 프로젝트만
+   목록에 선다. 만료 판정도 화면이 다시 재지 않는다: `/api/projects` 가 멤버마다
+   실어 보내는 `active` 를 읽기만 한다(assignPick 이 세운 그 규율).
+
+   **까닭은 묻지 않는다.** 담당은 사람의 일을 남에게 넘기는 일이라 까닭이
+   사회적 사실이지만, 프로젝트 지정은 분류를 고치는 일이고 되돌리기 쉽다.
+   프로젝트 없는 요청 스무 건을 채우는 데 문장 스무 개를 쓰게 하는 것은 값이
+   맞지 않는다 — 문서 History 의 `project: (없음) → section9` 로 족하다. */
+function projectPick(row){
+  const cur = String((row && row.project) || "").trim();
+  const me = viewMe();
+  const all = window.__projects;
+  /* 못 받은 것과 없는 것은 다른 화면이다 — 못 받은 자리에 「없습니다」를 적으면
+     사람은 없는 사실을 고치러 간다 (assignPick 이 세운 구분). */
+  if (!Array.isArray(all))
+    return {items: [], empty: "프로젝트 목록을 받지 못했습니다"
+            + " — 헤더의 다시 받기를 눌러 보세요."};
+  const mine = all.filter(p => (p.members || []).some(
+    m => m.user === me && m.active && m.role !== "viewer"));
+  const items = mine.map(p => ({
+    key: p.slug,
+    label: (p.title && p.title !== p.slug) ? `${p.title} (${p.slug})` : p.slug,
+    cur: p.slug === cur,
+    note: p.slug === cur ? "지금 이것" : ""}));
+  /* 지금 속한 프로젝트는 멤버에서 빠진 뒤에도 목록에 남는다 — 창이 「지금
+     이것」을 두고 거짓말하면 어디에 속해 있는지 알 길이 없다. */
+  if (cur && !items.some(it => it.cur))
+    items.unshift({key: cur, label: cur, cur: true, note: "지금 이것"});
+  // 되돌릴 길은 맨 위에 — 프로젝트를 정하는 창이 빼는 길도 함께 든다.
+  items.unshift({key: NO_PROJECT, label: "없음", cur: !cur,
+                 note: cur ? "프로젝트에서 뺍니다" : "지금 이것"});
+  return {items, empty: "고를 수 있는 프로젝트가 없습니다"
+          + " — Projects 탭에서 멤버로 들어가면 여기에 뜹니다."};
+}
+async function projectDoc(id){
+  const r = catFind(id) || {};
+  const cur = String(r.project || "").trim();
+  const {items, empty} = projectPick(r);
+  const picked = await s9choose({cap: "프로젝트",
+    ...dlgFor(id, "속할 프로젝트를 바꿉니다"),
+    sub: "어느 프로젝트입니까",
+    desc: "내가 멤버인 프로젝트만 고를 수 있습니다.",
+    items, empty,
+    pickNote: "프로젝트",
+    confirm: {ok: "프로젝트 바꾸기",
+              idle: "지금 그 프로젝트 그대로입니다.",
+              say: it => it.key === NO_PROJECT
+                ? "어느 프로젝트에도 속하지 않게 합니다."
+                : `${it.key} 로 옮깁니다.`},
+    cancel: "그만두기"});
+  if (!picked || !picked.key) return;
+  const next = picked.key === NO_PROJECT ? "" : picked.key;
+  if (next === cur) return;
+  try{
+    const res = await fetch("/api/doc/set", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(withAs({id, project: next}))});
+    const d = await res.json();
+    // 서버의 거부 문장을 **그대로** 옮긴다 — 문구를 두 벌로 만들지 않는다.
+    if (!d.ok){
+      s9dlg({kind: "alert", cap: "프로젝트", doc: shortId(id),
+        title: "프로젝트를 바꾸지 못했습니다", desc: String(d.error || ""),
+        ok: "닫기"});
+      return;
+    }
+    /* 성공에는 창을 세우지 않는다 — 카드의 글자가 바뀌는 것이 곧 답이다.
+       열어 둔 문서도 함께 갱신한다(assignDoc 이 쓰는 그 길). */
+    refreshCatalog(true);
+    reloadShowing(id);
+  }catch(e){
+    s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.",
+      ok: "닫기"});
   }
 }
 /* ---- 진행을 이 컴퓨터로 (REQ-20260902-021 · D1 이관 경로 (b)) --------------

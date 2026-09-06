@@ -137,7 +137,7 @@ class TestSkinAudit(unittest.TestCase):
         # 첫 substring 으로 집으면 나중에 얹힌 자리별 규칙
         # (`.gate>.rvpt .rvcap{…}` 처럼 조상 셀렉터를 단 것)이 앞 파일에 있을 때
         # 그것을 잡아, 잉크와 무관한 조판 규칙을 놓고 잉크를 따진다
-        # (REQ-20260831-015 에서 실제로 그렇게 붉었다).
+        # (REQ-20260831-015 에서 실제로 그렇게 실패했다).
         m = re.search(r"\n\.rvcap\{", self.html)
         self.assertIsNotNone(m, "베이스의 .rvcap 규칙이 없다")
         seg = self.html[m.start() + 1:m.start() + 261]

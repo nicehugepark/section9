@@ -1,7 +1,7 @@
 """원격 전체 통과는 트리가 더러워도 commit 의 사실이다 (REQ-20260906-061).
 
-지문 기록(mark_green)은 더러운 트리에서 생략해야 맞지만, 붉음 라쳇이 보는
-「마지막 초록 시각」까지 없어지면 다음 code 커밋이 옛 붉음에 계속 막힌다
+지문 기록(mark_green)은 더러운 트리에서 생략해야 맞지만, 실패 시 커밋 차단이 보는
+「마지막 통과 시각」까지 없어지면 다음 code 커밋이 옛 실패에 계속 막힌다
 (실측 2026-09-06 12:19). 시각 기록은 따로 남긴다.
 
 실행: python3 tests/ full_green_record
@@ -56,7 +56,7 @@ class FullGreenRecord(unittest.TestCase):
         self.m.record_full_green("abc1234")
         self.assertLess(self.m.full_green_age(), 5.0)
 
-    # F3. 붉음 뒤의 시각 기록이면 라쳇이 열린다 — 게이트가 실제로 읽는 값
+    # F3. 실패 뒤의 시각 기록이면 라쳇이 열린다 — 게이트가 실제로 읽는 값
     def test_f3_a_red_older_than_the_time_record_does_not_block(self):
         self.m.LAST_RED = os.path.join(self.d, "state", "tests-last-red.json")
         self.m.record_last_red(["test_x.py"], "fp")

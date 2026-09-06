@@ -98,9 +98,9 @@ class Reuse(unittest.TestCase):
         """**내용이 그대로면 지문도 그대로다** (REQ-20260903-012).
 
         예전 지문은 mtime 이었다. 그런데 스위트를 돌리는 것만으로 mtime 이
-        움직이는 파일이 있어서(내용 동일·mtime 이동), 전체가 초록이어도 끝난
-        순간 지문이 달라졌다 — 그 초록 기록은 아무도 못 쓰고, 넓은 변경의
-        커밋 문은 방금 초록을 본 사람에게도 「돌려라」만 되풀이한다.
+        움직이는 파일이 있어서(내용 동일·mtime 이동), 전체가 통과여도 끝난
+        순간 지문이 달라졌다 — 그 통과 기록은 아무도 못 쓰고, 넓은 변경의
+        커밋 문은 방금 통과를 본 사람에게도 「돌려라」만 되풀이한다.
 
         실행 중인 저장소를 건드리지 않으려고, 이 시험은 **자기 저장소**를
         하나 세워 그 안에서 잰다.
@@ -131,7 +131,7 @@ class Reuse(unittest.TestCase):
         예전 지문은 `HEAD 해시 + 미커밋 변경`이었다. 커밋은 파일 내용을 하나도
         안 바꾸면서 HEAD 를 바꾸므로, 같은 나무인데 지문이 달라졌다 — 실측
         2026-09-04: 한 무더기를 셋으로 나눠 커밋했더니 첫 커밋이 들어간 순간
-        방금 만든 전체 초록 기록이 무효가 되어 둘째·셋째가 각각 다시 시험을
+        방금 만든 전체 통과 기록이 무효가 되어 둘째·셋째가 각각 다시 시험을
         물었다(40초 + 5분). 재사용이 「커밋 한 번에 한 번만」 듣는 셈이라
         쪼개 넣을수록 손해였다.
         """
@@ -273,9 +273,9 @@ if __name__ == "__main__":
 
 
 class FullCovers(unittest.TestCase):
-    """전체가 초록이면 그 안의 어떤 선택도 초록이다 (REQ-20260904-005).
+    """전체가 통과면 그 안의 어떤 선택도 통과다 (REQ-20260904-005).
 
-    왜 필요한가(실측 2026-09-04): 전체 297파일을 초록으로 돌린 **직후** 커밋
+    왜 필요한가(실측 2026-09-04): 전체 297파일을 통과로 돌린 **직후** 커밋
     문이 그 안의 234파일을 고르면 `_selection_key` 가 달라 「처음 보는 조합」이
     되고, 방금 통과한 시험을 5분에 걸쳐 다시 돌렸다. 재사용 계층이 있는데도
     커밋마다 분 단위를 무는 자리가 여기였다.
@@ -295,7 +295,7 @@ class FullCovers(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_one_file_is_covered_by_a_green_whole(self):
-        """C1. 전체가 F 로 초록이면 한 파일짜리 선택도 이미 통과다."""
+        """C1. 전체가 F 로 통과면 한 파일짜리 선택도 이미 통과다."""
         self.m.mark_green(self.full, "fp1")
         self.assertTrue(self.m.green_seen(["test_port_pool.py"], "fp1"))
 
@@ -320,10 +320,10 @@ class FullCovers(unittest.TestCase):
         self.assertFalse(self.m.green_seen(["test_alpha.py"], "fp1"))
 
     def test_is_green_asks_only_the_whole(self):
-        """C6. 「전체가 초록이었나」는 전체 기록으로만 답한다.
+        """C6. 「전체가 통과였나」는 전체 기록으로만 답한다.
 
         부분집합 기록으로 그렇다고 답하면 넓은 변경의 커밋 문(WIDE gate)이
-        거짓 초록을 보고 붉은 나무를 통과시킨다.
+        거짓 통과를 보고 실패한 나무를 통과시킨다.
         """
         self.m.mark_green(["test_alpha.py"], "fp1")
         self.assertFalse(self.m.green_seen(self.full, "fp1", cover=False))

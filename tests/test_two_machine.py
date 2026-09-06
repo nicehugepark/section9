@@ -6,8 +6,8 @@
 현행 결함이다. 이 파일은 그 재현을 회귀 시험으로 고정한다.
 
 **이 파일의 S4~S7 은 지금 코드에서 빨강이어야 옳다.** P0 의 목적이 빨간
-시험이다 — 초록으로 만드는 것은 후속 REQ 의 몫이고, 각 시험의 docstring 에
-어느 REQ 가 그것을 초록으로 만드는지 적었다:
+시험이다 — 통과로 만드는 것은 후속 REQ 의 몫이고, 각 시험의 docstring 에
+어느 REQ 가 그것을 통과로 만드는지 적었다:
 
     016  귀속 게이트 단일화 (exec_verdict 하나 — 잠정 키 machine)
     017  세션 바인딩 불가침 (남의 바인딩은 판정에 쓰지 않고 고쳐 쓰지 않는다)
@@ -111,7 +111,7 @@ class TestReworkWatcherAcrossMachines(unittest.TestCase):
 
         현행: alpha 의 `rework_claimed` 는 beta 바인딩을 보지만 생존 신호
         (pid·transcript·inbox tail)가 전부 alpha 에 없어 '죽은 세션'으로 읽고
-        스폰한다(repro_reassign [1], Popen 2회). 초록으로 만드는 것: 016(게이트
+        스폰한다(repro_reassign [1], Popen 2회). 통과로 만드는 것: 016(게이트
         단일화 — 다른 머신의 클레임은 로컬 생존 신호로 판정하지 않는다) →
         020(리스: 다른 머신은 벽시계만)."""
         fx, X = self.fx, self.X
@@ -190,7 +190,7 @@ class TestHookListsAcrossMachines(unittest.TestCase):
 
         `reopened_requests` 에는 user·machine 필터가 없다(deep-diver [b]). 훅
         (s9-audit-prompt)이 이 목록을 "이번 턴에서 우선 이어서" 로 주입하므로
-        bob 의 리드 세션이 워처보다 먼저 남의 일을 받는다. 초록: 016 (목록
+        bob 의 리드 세션이 워처보다 먼저 남의 일을 받는다. 통과: 016 (목록
         4곳이 exec_verdict 를 쓴다)."""
         fx, X = self.fx, self.X
         out = fx.cli("beta", "reopened", user="bob")
@@ -204,7 +204,7 @@ class TestHookListsAcrossMachines(unittest.TestCase):
 
         `next_pickup` 은 user 만 보고 machine 을 안 본다. 같은 사람이라도
         문서의 리스는 alpha 세션 A 에 있으니 beta 가 집으면 두 머신이 같은
-        문서를 동시에 만진다. 초록: 016 (잠정 키 machine) / 020 (신선한 리스는
+        문서를 동시에 만진다. 통과: 016 (잠정 키 machine) / 020 (신선한 리스는
         다른 머신에 not-mine)."""
         fx, X = self.fx, self.X
         nxt = fx.cli("beta", "next", "--json", user="alice")
@@ -238,7 +238,7 @@ class TestDependentsAcrossMachines(unittest.TestCase):
         `trigger_dependents` 는 카탈로그 전수를 돌며 blocked_by 에 done id 가
         있으면 `do_transition(in-progress, auto=True)` 한다 — 문서가 누구의
         것이든(deep-diver [e]). Y 는 alice 가 alpha 세션 A 에서 막아 둔 문서다.
-        초록: 016 (trigger_dependents 가 exec_verdict 를 쓴다)."""
+        통과: 016 (trigger_dependents 가 exec_verdict 를 쓴다)."""
         fx, X, Y = self.fx, self.X, self.Y
         mod = fx.load_mod("beta")
         self.assertEqual(fx.doc("beta", Y)[0].get("status"), "blocked")
@@ -281,7 +281,7 @@ class TestBindingCollisionAcrossMachines(unittest.TestCase):
 
         `chat_live` 는 `pid_alive(attach_pid)` 를 보고, pid 는 그 머신에서만
         뜻이 있다(deep-diver [f]). 고르면 사용자의 채팅이 아무도 읽지 않는
-        수신함으로 간다. 초록: 017 (남의 바인딩은 판정에 쓰지 않는다 — D7 ㉠
+        수신함으로 간다. 통과: 017 (남의 바인딩은 판정에 쓰지 않는다 — D7 ㉠
         track 해제까지 가면 파일 자체가 오지 않는다)."""
         fx = self.fx
         mod = fx.load_mod("beta")

@@ -85,7 +85,7 @@ class TestDashboardChat(unittest.TestCase):
                 headers={"Content-Type": "application/json"})
         # 붙자마자 끊기는 갈래가 낮은 비율로 있다 — 윈도우 쪽 중계가 그 자리를
         # 함께 듣는다(REQ-20260902-006). 되걸지 않으면 스위트가 길어질 때
-        # `RemoteDisconnected` 로 넘어지고, 홀로는 늘 초록이라 원인이 안 보인다
+        # `RemoteDisconnected` 로 넘어지고, 홀로는 늘 통과라 원인이 안 보인다
         # (실측 2026-09-04, 전체 실행 중 1회). (REQ-20260903-012)
         for attempt in range(3):
             try:

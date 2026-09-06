@@ -448,7 +448,18 @@ section9 install 완료
 <pre><code>~/section9/bin/s9 project add pay --name "결제 시스템"
 PRJ-20260824-002  (pay)  owner=&lt;이름&gt;
   ↳ 에셋 공간: projects/pay/ — CONTEXT.md(진입점) + assets/</code></pre>
-<p><b>요청을 넣기</b> — 일을 시킬 때 <i>"이건 pay 프로젝트 건이야"</i>라고 밝히면 타치코마가 그 프로젝트로 귀속시킵니다. 귀속된 요청이 접수되면 그 프로젝트의 <b>CONTEXT.md 가 세션에 자동 주입</b>됩니다 — 배경 설명을 매번 반복하지 않아도 됩니다.</p>
+<p><b>요청이 어느 프로젝트의 것인지는 이렇게 정해집니다</b> (REQ-20260906-050) — 추측하지 않고, 아래 순서에서 <b>처음 맞는 것</b> 하나로 정합니다. 어느 길로 붙었는지는 요청 문서의 <code>project_source</code> 에 남습니다.</p>
+<div class="tblwrap"><table>
+<thead><tr><th>순서</th><th>신호</th><th><code>project_source</code></th></tr></thead>
+<tbody>
+<tr><td>①</td><td>터미널에서 <code>s9 new request --project pay</code> 로 직접 준 값. 권한이 없으면 거절됩니다</td><td><code>explicit</code></td></tr>
+<tr><td>②</td><td>프롬프트 <b>첫 줄</b>의 표기 <code>[프로젝트: pay]</code> 또는 <code>[project: pay]</code> — 훅이 떼어 넘기고 제목에서는 지웁니다</td><td><code>tag</code></td></tr>
+<tr><td>③</td><td>세션에 묶인 프로젝트 — <code>s9 code --project pay</code> 로 열었거나, <code>projects/</code> 에 등록된 프로젝트가 <b>하나뿐</b>이면 그것. 세션 도중에는 <code>s9 bind project pay</code> 로 바꿉니다</td><td><code>session</code></td></tr>
+<tr><td>④</td><td>내가 기여(contribute)할 수 있는 프로젝트가 <b>하나뿐</b>이면 그것</td><td><code>only</code></td></tr>
+<tr><td>⑤</td><td>위에 아무것도 없으면 <b>빈 값</b>. 타치코마에게 「프로젝트 미정 — 후보: a, b」 한 줄이 주입되고, 사람은 나중에 <code>s9 set &lt;id&gt; --project pay</code> 또는 Board 카드에서 붙입니다</td><td>(없음)</td></tr>
+</tbody></table></div>
+<p>②③④ 는 권한이 없거나 등록되지 않은 slug 면 조용히 다음 순서로 내려갑니다. <b>직전 요청의 프로젝트를 물려받지 않고, 문장을 읽어 추측하지도 않습니다</b> — 화제가 바뀐 프롬프트가 옛 프로젝트에 조용히 붙는 것보다 빈 값이 낫습니다. 상단 <b>프로젝트</b> 필터의 「미지정」으로 빈 것을 모아 볼 수 있습니다.</p>
+<p>귀속된 요청이 접수되면 그 프로젝트의 <b>CONTEXT.md 가 세션에 자동 주입</b>됩니다 — 배경 설명을 매번 반복하지 않아도 됩니다.</p>
 <p><b>멤버와 역할</b> — 프로젝트를 고르면 열리는 정보 패널에서 멤버 추가·역할 변경·만료일·제거를 인라인으로 합니다. 상단 <b>프로젝트</b> 필터로 골라도 Board·Docs·Graph 위에 같은 패널이 열립니다.</p>
 <div class="tblwrap"><table>
   <tr><th style="width:130px">역할</th><th>할 수 있는 일</th></tr>

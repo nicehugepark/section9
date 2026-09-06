@@ -237,7 +237,7 @@ def _reclaim_orphans():
 # 없다 — 피할 수는 있다: 윈도우 쪽 목록을 프로세스당 한 번 읽어 그 포트는 **뒤로
 # 미룬다**. 빼는 것이 아니라 미루는 것이다 — 실측 2026-09-06: 직전 실행이 쓴 칸의
 # 32포트가 전부 아직 공개 중이었고, 빼 버리면 풀이 그 자리에서 마른다(port_pool
-# 시험 3건이 그렇게 붉었다). 안 공개된 포트가 남아 있는 동안만 그쪽을 먼저 쓴다.
+# 시험 3건이 그렇게 실패했다). 안 공개된 포트가 남아 있는 동안만 그쪽을 먼저 쓴다.
 # 윈도우가 아니면 빈 집합이라 아무것도 달라지지 않는다.
 WIN_NETSTAT = "/mnt/c/Windows/System32/netstat.exe"
 _foreign = None
@@ -379,29 +379,34 @@ def wait_server(port, host="127.0.0.1", timeout=WAIT_TIMEOUT, _connect=None):
 
     반환: 성공까지 걸린 시도 횟수. 실패하면 RuntimeError.
     """
-    def _default():
+    def _default(left=None):
         # **연결됨 ≠ 준비됨.** WSL virtioproxy 에서는 아무도 듣지 않는 포트에도
         # connect 가 성공한다 — 중계가 대신 받고 곧 RST 를 던진다. 그래서
         # connect 만으로 판정하면 서버가 뜨기 전에 루프를 빠져나가고, 뒤이은
         # 요청이 ConnectionReset 으로 깨진다(terminal_api·agent_relay·live_signal
         # 앞쪽 테스트가 그렇게 흔들렸다). 응답의 첫 바이트까지 봐야 진짜다.
-        with socket.create_connection((host, port), 1.0) as c:
+        # 시도 안의 소켓 timeout 도 남은 시간 안에 둔다 (REQ-20260906-051) — 상한은
+        # 잠을 재우는 자리만이 아니라 붙잡히는 자리에도 서야 한다.
+        left = timeout if left is None else max(0.05, left)
+        with socket.create_connection((host, port), min(1.0, left)) as c:
             c.sendall(f"GET / HTTP/1.0\r\nHost: {host}:{port}\r\n\r\n"
                       .encode())
-            c.settimeout(2.0)
+            c.settimeout(min(2.0, left))
             head = c.recv(5)
         if not head.startswith(b"HTTP/"):
             raise OSError(f"{host}:{port} — 연결은 됐지만 HTTP 응답이 없다 "
                           f"(중계가 받아준 가짜 연결)")
 
-    connect = _connect or _default
     deadline = time.monotonic() + timeout
     delay = WAIT_FIRST
     attempts = 0
     while True:
         attempts += 1
         try:
-            connect()
+            if _connect is not None:
+                _connect()
+            else:
+                _default(deadline - time.monotonic())
             return attempts
         except OSError:
             left = deadline - time.monotonic()

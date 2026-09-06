@@ -148,6 +148,35 @@ class TestMachineFp(unittest.TestCase):
         self.assertIn("S9_ORIGIN", r.stderr + r.stdout)
         self.assertEqual(self._vault_files(), before)
 
+    # S9. 같은 머신의 다른 clone 이 지문을 먼저 잡았으면 이 clone 은 root 를 섞은 다른 지문 (REQ-20260906-057)
+    def test_s9_second_clone_on_the_same_machine_gets_its_own_fingerprint(self):
+        m = self.m
+        base = m._machine_fp_compute()
+        with open(self.reg, "w", encoding="utf-8") as f:
+            json.dump({base: {"hostname": HOST, "first_seen": "2026-09-01T00:00:00+09:00",
+                              "root": "/elsewhere/section9"}}, f)
+        fp = m.machine_fp()
+        self.assertNotEqual(fp, base)
+        self.assertEqual(self._rj(self.local)["machine_fp"], fp)
+        reg = self._rj(self.reg)
+        self.assertEqual(reg[base]["root"], "/elsewhere/section9", "남의 항목을 덮어썼다")
+        self.assertEqual(os.path.realpath(reg[fp]["root"]), os.path.realpath(self.tmp))
+        self.assertIsNone(m.machine_fp_conflict())
+
+    # S10. 이미 고정된 clone 을 옮겼으면 등록부의 root 만 따라온다 — 옛 등록부(root 없음)도 채운다
+    def test_s10_a_moved_clone_updates_its_root_and_legacy_rows_get_one(self):
+        m = self.m
+        fp = m.machine_fp()
+        self.assertEqual(os.path.realpath(self._rj(self.reg)[fp]["root"]), os.path.realpath(self.tmp))
+        with open(self.reg, "w", encoding="utf-8") as f:
+            json.dump({fp: {"hostname": HOST, "first_seen": "2026-09-01T00:00:00+09:00",
+                            "root": "/old/place"}}, f)
+        self.assertEqual(m.machine_fp(), fp, "고정된 지문이 바뀌었다")
+        self.assertEqual(os.path.realpath(self._rj(self.reg)[fp]["root"]), os.path.realpath(self.tmp))
+        self._registry(fp, HOST)                       # 옛 모양 — root 없음
+        m.machine_fp()
+        self.assertIn("root", self._rj(self.reg)[fp])
+
     # S6. 해제 — S9_ORIGIN 으로 같은 머신이 다른 지문으로 발번한다
     def test_s6_origin_releases(self):
         fp = self.m.machine_fp()

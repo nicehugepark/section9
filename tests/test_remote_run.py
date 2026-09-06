@@ -36,7 +36,7 @@ class RemoteRun(unittest.TestCase):
         """K5. vault/·state/ 의 미커밋은 지문 밖 — 세지 않는다; bin/ 의 미커밋은 센다.
 
         commit 훅이 REQ 문서에 commit 노트를 붙이므로 commit 직후의 나무는 늘 vault/
-        하나가 더럽다. 그것을 세면 초록 기록은 영영 안 남는다(실측 2026-09-06).
+        하나가 더럽다. 그것을 세면 통과 기록은 영영 안 남는다(실측 2026-09-06).
         """
         import subprocess
         d = tempfile.mkdtemp(prefix="s9rr-tree-")
@@ -63,9 +63,9 @@ class RemoteRun(unittest.TestCase):
         for part in ("git clone -q", "refs/ci/0123456", "-q -f " + sha,
                      "index rebuild", "user attach 'nicehugepark'", "--jobs 16", "'test_a.py'"):
             self.assertIn(part, line)
-        self.assertNotIn("S9_USER=", line, "정체를 환경변수로 강제하면 제 사용자를 만드는 시험이 붉는다")
+        self.assertNotIn("S9_USER=", line, "정체를 환경변수로 강제하면 제 사용자를 만드는 시험이 실패한다")
         # 원격은 파일 목록을 명시로 받아 「전체」가 아니다 — 실패 파일 표식(RED_MARK)을
-        # 찍게 하는 손잡이가 한 줄에 있어야 이 머신이 무엇이 붉은지 안다
+        # 찍게 하는 손잡이가 한 줄에 있어야 이 머신이 무엇이 실패했는지 안다
         # (실측 2026-09-06 ee223fa: 표식이 없어 「실패 파일을 못 읽었다」, REQ-20260906-060).
         self.assertIn("S9_TEST_WORKER=1 python3 tests/", line)
         self.assertNotIn("tar", line, "GitHub 이 축이다 — 보내는 것이 있으면 안 된다")

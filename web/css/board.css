@@ -170,7 +170,17 @@
    버튼에 얹는 옷(배경·테두리·안쪽 여백·제 글꼴)을 전부 벗겨 **여태 보이던 글자
    그대로**로 되돌린다 — 순서 표기가 어느 날 갑자기 pill 로 부풀면 그건 새 기능이
    아니라 화면이 흔들린 것이다. background 는 none 이다(이 화면의 색면 금지). */
+/* 카드의 프로젝트 표기(.proj)는 순위 표기와 **같은 옷**을 입는다
+   (REQ-20260906-053) — 새 색·새 크기·새 단추를 만들지 않고, 누를 수 있다는
+   말도 저 아래 `.pname` 의 점선 하나로 한다. 손잡이가 아닌 얼굴(span)만
+   커서를 되돌린다. */
 .prio{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap;
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-weight:500;letter-spacing:0;color:var(--muted);
+  background:none;border:0;padding:0;margin:0;font-size:inherit;
+  line-height:inherit;cursor:pointer;-webkit-appearance:none;appearance:none}
+/* 같은 옷 한 벌 더 — 시험(test_priority_handle)이 `.prio{` 규칙을 그 이름으로 찾는다 */
+.proj{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
   font-weight:500;letter-spacing:0;color:var(--muted);
   background:none;border:0;padding:0;margin:0;font-size:inherit;
@@ -180,7 +190,10 @@
    판이 밑줄밭이 된다. 얹으면 그 자리에서 점선이 돋고(pfull 이 이미 쓰는 그
    약속), 키보드 초점에는 늘 보이는 테두리로 답한다. */
 .prio:hover .pname{border-bottom:1px dotted currentColor}
+.proj:hover .pname{border-bottom:1px dotted currentColor}
 .prio:focus-visible{outline:2px solid var(--text);outline-offset:3px;border-radius:2px}
+span.proj{cursor:default}
+.proj:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 .prio .pnum{font-style:normal;font-weight:400;color:var(--faint);letter-spacing:0}
 /* 낮음도 흐림(--faint)으로 지우지 않는다 — 10~11px에서 대비 3:1을 못 넘긴다.
    조용함은 색을 빼서가 아니라 무게(400)로 만든다. */

@@ -283,7 +283,7 @@ class TheGaugeCountsPerPlace(unittest.TestCase):
     실사고 2026-09-04: 계기가 전역 하나여서, 서로 **다른 두 자리**를 동시에
     훑는 정상 동작이 `max_inflight = 2` 로 잡혔다. 단일비행은 자리마다
     (`_STREAMS_FLIGHT` 가 d 로 갈려 있다) 접는 장치인데 계기만 전역이었다.
-    부하가 있을 때만 겹쳐서 「병렬에서만 붉다」로 보였고, 커밋을 막았다.
+    부하가 있을 때만 겹쳐서 「병렬에서만 실패한다」로 보였고, 커밋을 막았다.
     """
 
     def setUp(self):

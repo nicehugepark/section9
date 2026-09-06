@@ -244,9 +244,13 @@ class OneDoor(unittest.TestCase):
                       "누가 바꿨는지를 클라이언트 말로 적는다")
 
     def test_cli_shares_the_door(self):
+        # cmd_set 은 do_set 한 문을 부르고(REQ-20260906-053), 그 문이 apply_priority 를 지난다
         body = re.search(r"\ndef cmd_set\(args\):(.*?)\n\ndef ", self.src, re.S)
         self.assertIsNotNone(body)
-        self.assertIn("apply_priority(", body.group(1),
+        self.assertIn("do_set(", body.group(1), "CLI 가 제 손으로 문서를 쓴다 — 문을 지나야 한다")
+        door = re.search(r"\ndef do_set\(.*?\n\ndef ", self.src, re.S)
+        self.assertIsNotNone(door)
+        self.assertIn("apply_priority(", door.group(0),
                       "CLI 가 제 규칙을 따로 들고 있다 — 두 벌이면 갈라진다")
 
 

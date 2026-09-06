@@ -132,7 +132,7 @@ class TestCmdWrappers(unittest.TestCase):
         """복제는 갈라진다 — 열한 벌이 도구 이름 말고는 같은 글자여야 한다."""
         # 도구 이름이 **이름으로 서는 자리**만 지운다 — 통째로 replace 하면
         # `s9` 가 `s9-doctor` 의 앞머리와 오류 문구의 `s9:` 까지 먹어 벌마다
-        # 다른 글자가 나온다(이 시험이 처음 붉어진 이유가 그것이었다).
+        # 다른 글자가 나온다(이 시험이 처음 실패한 이유가 그것이었다).
         norm = {}
         for name in WRAPPED:
             body = open(os.path.join(BIN, name + ".cmd"),
@@ -176,7 +176,7 @@ class TestKillSignalDoor(unittest.TestCase):
             self.assertEqual(self.m.sig_kill(), signal.SIGTERM)
 
     def test_w6b_no_bare_sigkill_left_in_the_tool(self):
-        """이름을 그대로 쓰던 자리가 다시 생기면 여기서 붉어진다."""
+        """이름을 그대로 쓰던 자리가 다시 생기면 여기서 실패한다."""
         src = open(S9_SRC, encoding="utf-8").read()
         bare = [ln for ln in src.splitlines()
                 if re.search(r"_sig\.SIGKILL|signal\.SIGKILL", ln)
@@ -232,7 +232,7 @@ class TestMetricsCollectorSeam(unittest.TestCase):
     def test_w9b_a_foreign_process_is_not_ours(self):
         """남의 프로세스를 우리 것으로 보면 `metrics stop` 이 그것을 죽인다.
 
-        윈도우에서 이 시험이 처음 붉어졌을 때 원인은 판정이 아니라 **프로세스
+        윈도우에서 이 시험이 처음 실패해졌을 때 원인은 판정이 아니라 **프로세스
         표가 통째로 비어 있는 것**이었다 (`_ps_lines` 의 인코딩). 그래서 여기서
         표부터 확인한다 — 못 보는 판에서 「모른다」로 참을 돌려주는 것은 규율이고,
         볼 수 있는 판에서 참이 나오면 결함이다.
@@ -244,7 +244,7 @@ class TestMetricsCollectorSeam(unittest.TestCase):
             self.assertTrue(self.m.pid_alive(p.pid),
                             "이 판에서 프로세스를 아예 못 본다 — 판정 이전의 결함")
             # 갓 뜬 자식은 exec 가 끝나기 전 잠깐 **명령줄이 비어 있다**. 그
-            # 순간을 재면 「모른다」가 나오고, 이 시험은 규율대로 참을 받아 붉어진다
+            # 순간을 재면 「모른다」가 나오고, 이 시험은 규율대로 참을 받아 실패한다
             # — 제품이 아니라 재는 때가 틀린 것이다. 명령줄이 보일 때까지 기다린다.
             for _ in range(50):
                 self.m.proc_cache_clear()

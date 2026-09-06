@@ -180,6 +180,28 @@ class SyncClassify(unittest.TestCase):
         self.assertLess(i_fetch, i_rebase)
         self.assertEqual(self.calls[i_rebase], ("rebase", "--autostash", "-q", "@{u}"))
 
+    # C13. 남이 담아 둔(git add) 변경이 있으면 이 회차를 건너뛴다 — pull 의 자동 보관이
+    #      index 를 풀어 버리기 때문 (실제 발생 2026-09-06 12:38, REQ-20260906-066)
+    def test_c13_staged_changes_of_someone_else_skip_the_round(self):
+        def fake(*argv, timeout=6):
+            self.calls.append(argv)
+            if argv == ("diff", "--cached", "--name-only"):
+                return CP(out="bin/s9.py\nvault/x.md\n")
+            if argv[0] == "diff":
+                return CP(out="vault/x.md\n")
+            return CP()
+        with mock.patch.object(self.m, "_sync_git", fake), \
+                mock.patch.object(self.m, "sync_mode", lambda: "remote"), \
+                mock.patch("time.sleep", lambda s: None):
+            r = self.m.sync_run("t")
+        self.assertNotEqual(r, "ok")
+        self.assertFalse([c for c in self.calls if c[:1] == ("rebase",)], "담아 둔 것이 있는데 rebase 했다")
+        self.assertFalse([c for c in self.calls if c[:1] == ("commit",)])
+        # sync 제 경로만 담겨 있으면 평소대로 간다
+        self.calls.clear()
+        r = self.run_sync({})
+        self.assertEqual(r, "ok")
+
     # C6. 관측 — commit/pull/push 단계가 한 줄씩
     def test_c6_events_have_stage_ms_rc(self):
         self.run_sync({})

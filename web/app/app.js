@@ -180,6 +180,22 @@ function fillProjects(){
   while (el.options.length > 1) el.remove(1);
   const scoped = mineActive() ? mineProjects() : projects;
   el.options[0].textContent = mineActive() ? `프로젝트: 내 것(${scoped.length})` : "프로젝트: 전체";
+  /* 「프로젝트 없음」 — 치울 더미가 남아 있을 때만 선다 (REQ-20260906-053).
+     건수를 이 옵션에만 붙이는 까닭: 이 필터를 켠 채 카드의 프로젝트를 바꾸면
+     그 카드가 목록에서 빠지는데, 7 → 6 으로 줄어드는 숫자가 「어디로 갔나」에
+     답한다 — 성공 창을 세우지 않고도 결과가 보인다.
+     '내 것만' ON 에서는 세우지 않는다: mine 가드가 `mine.has(r.project)` 로
+     먼저 걸러 프로젝트 없는 문서는 한 건도 안 보이므로, 남겨 두면 고르는 순간
+     조용한 빈 결과가 된다 (미등록 slug 를 숨기는 그 규칙과 같다). */
+  if (!mineActive()){
+    const none = catalog.filter(r => !r.project).length;
+    if (none){
+      const o = document.createElement("option");
+      o.value = NO_PROJECT;
+      o.textContent = `프로젝트 없음 (${none})`;
+      el.appendChild(o);
+    }
+  }
   const known = new Set();
   scoped.forEach(p => {
     known.add(p.slug);
@@ -288,7 +304,9 @@ function filtered(skipQ, skipType, skip){
   return workOrder(catalog).filter(r => {
     if (mine && !mine.has(r.project)) return false;
     if (!off("user") && u && r.user !== u) return false;
-    if (!off("project") && p && r.project !== p) return false;
+    // 「프로젝트 없음」은 slug 가 아니라 빈 값을 묻는 조건이다 (REQ-20260906-053)
+    if (!off("project") && p
+        && (p === NO_PROJECT ? !!r.project : r.project !== p)) return false;
     if (!off("tag") && t && !(r.tags||[]).includes(t)) return false;
     if (!typeOff && ty && r.type !== ty) return false;
     if (q){

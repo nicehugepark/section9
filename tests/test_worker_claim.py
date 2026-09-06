@@ -129,7 +129,7 @@ class WorkerClaim(unittest.TestCase):
         """판정만 돌려주면 화면·로그가 이유를 지어낸다 — 근거를 함께 낸다."""
         # 나이는 **이 시험이 실제로 흘려보낸 시간**에 대 본다 (REQ-20260904-003).
         # 상수 60초에 대면 「마커가 제 나이를 안다」가 아니라 「이 기계가 60초
-        # 안에 두 줄을 지난다」를 재게 되고, 부하가 걸린 병렬 실행에서 붉어진다.
+        # 안에 두 줄을 지난다」를 재게 되고, 부하가 걸린 병렬 실행에서 실패한다.
         t0 = time.time()
         self.marker(self.live.pid)
         got = self.m.worker_running(self.RID)

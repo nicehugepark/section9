@@ -13,7 +13,7 @@ A 의 `s9 sync` 는 진짜 네트워크(ssh 터널 위의 git://)로 밀고 당�
 위장이 아니라 사실이다.
 
 **이것은 회귀 게이트가 아니라 사람이 부르는 실측 도구다.** 두 번째 컴퓨터가
-없는 자리에서 붉어질 것을 게이트로 세우지 않는다 — 게이트는 test_p5_field.py 고,
+없는 자리에서 실패할 것을 게이트로 세우지 않는다 — 게이트는 test_p5_field.py 고,
 이 파일의 얼굴(tests/test_p5_live.py)은 사람이 `p5_live` 라고 지목한 실행에서만
 깨어난다. 전체 스위트도, 샤드 자식도 그 낱말을 넘기지 않으므로 조용히 건너뛴다.
 
@@ -557,7 +557,7 @@ def scene5_sync_failure(fx, X):
     try:
         fx.b("sync", check=False)
         fx.a_pull()
-        # 간헐 붉음(REQ-20260906-012)을 다음에 만나면 원인이 판정 줄에 서도록
+        # 간헐 실패(REQ-20260906-012)을 다음에 만나면 원인이 판정 줄에 서도록
         # 세 사실을 함께 적는다: B 의 드라이버가 정말 풀렸는가 · A 의 노트가
         # origin 까지 갔는가(A 쪽 전송 실패는 check=False 가 삼킨다) · A 의 sync.
         driver_b = fx.bgit("config", "--get", "merge.s9doc.driver", check=False)

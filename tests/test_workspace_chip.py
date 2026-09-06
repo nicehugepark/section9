@@ -348,7 +348,7 @@ class WorkspaceChip(unittest.TestCase):
             self.assertIn("끝난 뒤에 이 화면에 보입니다", r["b"]["title"])
             # 풀 것이 없는 자리에 할 일을 지어내지 않는다
             self.assertNotIn("commit 하면", r["b"]["descHtml"])
-            # 대기·자리는 고장이 아니다 — 붉은 눈썹을 달지 않는다
+            # 대기·자리는 고장이 아니다 — 실패한 눈썹을 달지 않는다
             self.assertIs(r["a"]["stop"], False)
         with self.subTest("w17_nothing_to_show_opens_nothing"):
                 r = self.run_js("wsOpen('REQ-A'); wsOpen('없는-문서');"

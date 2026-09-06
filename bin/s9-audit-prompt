@@ -609,13 +609,25 @@ def _stamp_who():
         return None, None
 
 
+def terms_feedback():
+    """직전 응답에 금지 용어가 있었으면 한 줄 (REQ-20260906-064) — Stop 훅이 적어 둔 것을
+    읽어 지운다. 개인 설정과 같은 자리(모든 경로)에서 싣는다."""
+    try:
+        env = _EMIT_ENV or dict(os.environ)
+        r = run(env, "terms", "pending")
+        line = (r.stdout or "").strip() if r.returncode == 0 else ""
+        return f" ◈ {line} " if line else ""
+    except Exception:
+        return ""
+
+
 def emit(context):
     print(json.dumps({
         "suppressOutput": True,
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
             "additionalContext": (stamp_context(*_stamp_who())
-                                  + turn_prefs() + context),
+                                  + turn_prefs() + terms_feedback() + context),
         },
     }, ensure_ascii=False))
 

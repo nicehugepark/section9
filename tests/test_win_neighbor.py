@@ -8,6 +8,7 @@ WSL 리스너는 윈도우 127.0.0.1 로 중계되지만 윈도우 리스너는 
 """
 import importlib.machinery
 import importlib.util
+import io
 import os
 import shutil
 import tempfile
@@ -95,6 +96,19 @@ class WindowsNeighbor(unittest.TestCase):
         self.assertEqual(self.m.serve_port_for(a, _pick=boom), (9944, "given"))
         a = types.SimpleNamespace(port=None, restart=False)
         self.assertEqual(self.m.serve_port_for(a, _pick=lambda: (9910, "busy")), (9910, "busy"))
+
+    # N6. 윈도우 네이티브에서 s9 tunnel 은 사유로 거부 — 감시자가 뜨기 전에 (REQ-20260906-058)
+    def test_n6_tunnel_refuses_on_native_windows_with_a_reason(self):
+        with unittest.mock.patch.object(self.m.sys, "stderr", new_callable=io.StringIO) as err, \
+                self.assertRaises(SystemExit):
+            self.m._tunnel_check("anykey", 9919, 9909, "nobody", _nt=True)
+        self.assertIn("sh", err.getvalue())
+        self.assertIn("WSL", err.getvalue())
+        # 유닉스 판에서는 그 사유로 죽지 않는다 — 다음 검사(이름)로 넘어간다
+        with unittest.mock.patch.object(self.m.sys, "stderr", new_callable=io.StringIO) as err, \
+                self.assertRaises(SystemExit):
+            self.m._tunnel_check("", 9919, 9909, "nobody", _nt=False)
+        self.assertNotIn("WSL", err.getvalue())
 
     # N4. whoami 가 root 경로와 OS 를 준다 — 두 화면을 가르는 재료
     def test_n4_whoami_says_which_root_and_os(self):

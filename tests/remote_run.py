@@ -9,8 +9,8 @@
 `refs/ci/<sha7>` 로 origin 에 push 한다 ② 원격은 같은 origin 의 clone(없으면 만든다)
 에서 그 ref 를 받아 그 커밋을 펴고 `python3 tests/ --jobs N` 을 돌린다 — 출력은
 그대로 흘려보낸다 ③ 종료 코드가 0 이고 이 머신에 미커밋 변경이 없었으면 HEAD 의
-나무 지문으로 초록 기록을 남긴다 — 커밋 문·재사용이 그대로 인정한다. 미커밋
-변경은 원격에 실리지 않는다(돌긴 돌되 초록 기록은 안 남긴다).
+나무 지문으로 통과 기록을 남긴다 — 커밋 문·재사용이 그대로 인정한다. 미커밋
+변경은 원격에 실리지 않는다(돌긴 돌되 통과 기록은 안 남긴다).
 """
 import os
 import subprocess
@@ -91,7 +91,7 @@ def head_state(repo=None, skip=FP_SKIP):
     skip 아래(문서·상태)의 변경은 지문에도 안 들고 시험 결과도 안 바꾸니 세지
     않는다. 실측 2026-09-06: commit 훅이 그 commit 을 REQ 문서에 노트로 붙이므로
     commit 직후의 나무는 **언제나** vault/ 한 파일이 더러웠고, 그래서 post-commit
-    배경 실행이 초록 기록을 한 번도 남기지 못했다(「미커밋 변경 1개 …」).
+    배경 실행이 통과 기록을 한 번도 남기지 못했다(「미커밋 변경 1개 …」).
     """
     repo = repo or REPO
     sha = _git("-C", repo, "rev-parse", "HEAD").stdout.strip()
@@ -115,7 +115,7 @@ def remote_script(url, sha, dest, jobs, pats_argv, user=""):
     """
     short = sha[:7]
     # 정체는 환경변수로 강제하지 않는다 — S9_USER 를 실행 전체에 걸면 제 사용자를
-    # 만드는 시험 30여 건이 그 값을 물려받아 붉는다(실측 2026-09-05, 34건). 대신
+    # 만드는 시험 30여 건이 그 값을 물려받아 실패한다(실측 2026-09-05, 34건). 대신
     # 원격 OS 계정을 이 머신의 사용자에게 **attach** 해 둔다 — 그러면 whoami 가
     # os-account 로 그 사람을 찾고, 관리자만 보는 손잡이를 재는 시험도 선다.
     attach = (f"S9_ROOT=$D python3 bin/s9 user attach {_sh_quote(user)} >/dev/null 2>&1 || true; "
@@ -139,7 +139,7 @@ def _ssh(key, remote_cmd, stdin=None, stream=True, timeout=None):
     """원격에서 remote_cmd 를 돈다 — 비밀은 치환으로만.
 
     종료 코드는 **원격이 마지막 줄에 찍는 표식**으로 받는다. `s9 secret run` 과
-    ssh 를 거치며 코드가 0 으로 뭉개진 실측(2026-09-05: 원격 FAILED 가 초록으로
+    ssh 를 거치며 코드가 0 으로 뭉개진 실측(2026-09-05: 원격 FAILED 가 통과로
     보고됨)이 있어, 파이프의 반환값을 믿지 않는다. 출력은 그대로 흘려보낸다.
     """
     marked = f"({remote_cmd}); echo {RC_MARK}$?"
@@ -187,7 +187,7 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
                on_red=None):
     """push(ci ref) → 원격이 받아 실행 → 기록. 반환: 원격 종료 코드.
 
-    미커밋 변경이 있으면 돌리되 **초록 기록은 남기지 않는다** — 그 지문은 원격이
+    미커밋 변경이 있으면 돌리되 **통과 기록은 남기지 않는다** — 그 지문은 원격이
     돈 나무의 것이 아니다.
     """
     name = name or os.path.basename(REPO)
@@ -199,7 +199,7 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
         return 1
     if dirty:
         print(f"[원격] 미커밋 변경 {dirty}개는 원격에 실리지 않는다 — HEAD {sha[:7]} 를 돈다. "
-              f"초록 기록은 남기지 않는다(commit 뒤 다시 돌면 남는다)", file=sys.stderr)
+              f"통과 기록은 남기지 않는다(commit 뒤 다시 돌면 남는다)", file=sys.stderr)
     t0 = time.time()
     r = _git("push", "-q", "-f", "origin", f"HEAD:refs/ci/{sha[:7]}")
     if r.returncode != 0:
@@ -214,11 +214,11 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     global LAST_TOOK
     LAST_TOOK = took
     if r.returncode == 0:
-        print(f"[원격] 초록 ({took:.0f}초)", file=sys.stderr)
+        print(f"[원격] 통과 ({took:.0f}초)", file=sys.stderr)
         if on_green and not dirty:
             on_green(fingerprint)
     else:
-        print(f"[원격] 붉음 rc={r.returncode} ({took:.0f}초)", file=sys.stderr)
+        print(f"[원격] 실패 rc={r.returncode} ({took:.0f}초)", file=sys.stderr)
         if on_red:
             on_red()
     return r.returncode

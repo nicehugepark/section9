@@ -341,6 +341,8 @@ class StallRendersTheSame(unittest.TestCase):
             _const(self.src, "LEASE_TTL"), _const(self.src, "docCreator"),
             g("originWho"), g("originBits"), g("lineageTell"), g("lineageChip"),
             g("badgeFace"), g("ownerBadgeHTML"),
+            # 프로젝트 자리 (REQ-20260906-053) — 메타 줄의 조각, 없으면 render 가 멎는다
+            g("projBtnHTML"),
             g("leaseElsewhere"), g("canTakeover"), g("elsewhereRowHTML"),
             g("slowRowHTML"), g("stoppedRowHTML"),
             g("stopBtnHTML"), g("holdTell"), g("holdTellHTML"),
@@ -382,7 +384,7 @@ class StallRendersTheSame(unittest.TestCase):
         # 안 멈춘 것 — 손잡이도 점도 없어야 한다
         {"id": "REQ-D", "type": "request", "status": "open",
          "title": "선행", "user": "u"},
-        # 도는 중 — 초록
+        # 도는 중 — 통과
         {"id": "REQ-E", "type": "request", "status": "in-progress",
          "title": "돈다", "user": "u", "live": True, "live_age": 3},
         # ---- 세우기 네 갈래 (REQ-20260830-035) — 카드와 문서가 같아야 한다 ----

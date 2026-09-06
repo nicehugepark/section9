@@ -20,7 +20,7 @@ class PickPort(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="s9port-")
         # 환경은 빌려 쓰고 돌려준다 — 같은 샤드의 다음 시험이 S9_ROOT 를 물려받으면
-        # 남의 임시 루트에서 돈다(실측 2026-09-05: project_api·whoami 등 8파일 붉음).
+        # 남의 임시 루트에서 돈다(실측 2026-09-05: project_api·whoami 등 8파일 실패).
         self._env = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_PORT")}
         os.environ["S9_ROOT"] = self.root
         os.environ.pop("S9_PORT", None)

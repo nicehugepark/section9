@@ -1,11 +1,11 @@
-"""일 안 하는 요청이 초록으로 보인다 (REQ-20260827-027-62x6).
+"""일 안 하는 요청이 통과로 보인다 (REQ-20260827-027-62x6).
 
 무인 워커는 **죽은 세션의 id 를 물려받아** 뜬다 (`--resume` — 컨텍스트 승계가
 목적이다). 그런데 그 세션의 바인딩에는 죽기 전 리드가 등록해 둔 REQ 들이 통째로
 남아 있다. 워커가 019 하나를 재작업하러 되살아나자, 그 바인딩의 활동 **하나**가
 019 와 022 를 **함께** 초록으로 점멸시켰다. 022 에는 아무도 붙어 있지 않았다.
 
-병행 REQ 를 다 초록으로 켜는 것 자체는 의도된 설계다 (REQ-20260823-079): 리드는
+병행 REQ 를 다 통과로 켜는 것 자체는 의도된 설계다 (REQ-20260823-079): 리드는
 실제로 여러 건을 오간다. 하지만 **워커는 정의상 한 건짜리다** — 스폰될 때 대상
 REQ 하나를 받고 그 한 턴만 돌고 죽는다. 그러니 워커 바인딩의 활동은 그 한 건에만
 직접 증거여야 한다.
@@ -116,7 +116,7 @@ class LiveWorkerScope(unittest.TestCase):
             srv.terminate()
             srv.wait(timeout=5)
 
-    # N1. 워커가 재작업 중인 그 한 건만 직접 증거(초록)
+    # N1. 워커가 재작업 중인 그 한 건만 직접 증거(통과)
     def test_live_worker_scope(self):
         """LiveWorkerScope 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("n1_worker_target_is_live"):
@@ -124,7 +124,7 @@ class LiveWorkerScope(unittest.TestCase):
                 self.assertTrue(r["live"], r)
                 self.assertEqual(r.get("live_kind"), "direct", r)
 
-            # N2. 같은 바인딩에 남아 있던 다른 건은 초록이 아니다 — 간접까지만
+            # N2. 같은 바인딩에 남아 있던 다른 건은 통과가 아니다 — 간접까지만
         with self.subTest("n2_left_behind_is_not_live"):
                 r = self.rows[self.Y]
                 self.assertFalse(r["live"], r)

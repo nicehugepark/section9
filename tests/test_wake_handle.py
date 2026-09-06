@@ -18,7 +18,7 @@ REQ-20260828-036 은 그 물음의 **보여주기 절반**만 냈다 — 점의 
   ③ **화면이 이유를 짓지 않는다.** 서버가 준 `message` 를 그대로 띄운다.
      `action` 으로 문구를 갈라 쓰는 순간 같은 말이 서버와 화면 두 벌이 된다.
   ④ **`ok=false` 는 오류가 아니라 설명이다.** `capped`(한도 소진)·`busy`(이미
-     붙어 있음)·`moving`(아직 멈춘 게 아님)은 정상적인 답이다 — 붉은 실패의
+     붙어 있음)·`moving`(아직 멈춘 게 아님)은 정상적인 답이다 — 실패한 실패의
      옷을 입히면 사람은 고장으로 읽고 다시 누르지 않는다.
   ⑤ **연타는 막고 실패는 다시 누를 수 있다.** 도는 중에는 눌리지 않지만, 못
      깨운 것을 다시 못 누르게 잠그는 것은 벌주는 화면이다.
@@ -148,7 +148,7 @@ class WakeHandle(unittest.TestCase):
                 cap = re.search(r'<span class="dlgcap\$\{([^}]*)\}', self.src)
                 self.assertIsNotNone(cap, "창머리 잉크를 정하는 자리를 못 찾았다")
                 self.assertIn("o.stop", cap.group(1),
-                              "알림이면 무엇이든 붉어진다 — 설명도 고장으로 읽힌다")
+                              "알림이면 무엇이든 실패한다 — 설명도 고장으로 읽힌다")
 
             # ---------- ⑤ 연타는 막고 실패는 다시 ----------
         with self.subTest("no_double_press_but_a_failure_can_be_pressed_again"):

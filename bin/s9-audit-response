@@ -281,6 +281,12 @@ def main():
     text, model = last_assistant_text(tp)
     if not text:
         return
+    # 응답의 용어도 검사한다 (REQ-20260906-064) — 다음 턴의 프롬프트 훅이 한 줄로 되비춘다.
+    # 리드가 실패를 색의 비유로 말하던 버릇으로 되돌아간 것을 사용자가 먼저 봤다(2026-09-06 12:24).
+    try:
+        run(env, "terms", "check", "--record", inp=text)
+    except Exception:
+        pass
     active = run(env, "last", "--active").stdout.strip()
     pend = pending_questions(env)
     # 질문이 걸려 있으면 답은 **질문 문서로 간다** (REQ-20260827-031).

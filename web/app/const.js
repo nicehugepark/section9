@@ -2,6 +2,11 @@
 "use strict";   // 조각마다 다시 선언한다 — classic script 의 엄격 모드는 파일 단위다
 const STATUSES = ["draft","open","in-progress","blocked","review","done","cancelled"];
 const TERMINAL = new Set(["done","cancelled"]);
+/* 「프로젝트 없음」을 가리키는 내부 토큰 (REQ-20260906-053).
+   빈 문자열을 쓸 수 없다 — 프로젝트 필터의 첫 옵션(전체)이 이미 빈 값이고,
+   고르는 창에서도 빈 key 는 「고르지 않음」과 구별되지 않는다. slug 로는 쓸 수
+   없는 글자를 넣어 두 뜻이 겹치지 않게 한다. 서버로 나갈 때는 빈 문자열이다. */
+const NO_PROJECT = "__none__";
 const SCOLOR = {draft:"var(--c-draft)",open:"var(--c-open)","in-progress":"var(--c-inprogress)",
   blocked:"var(--c-blocked)",review:"var(--c-review)",done:"var(--c-done)",
   cancelled:"var(--c-cancelled)",published:"var(--c-published)"};

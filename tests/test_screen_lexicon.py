@@ -229,7 +229,7 @@ class ScreenLexicon(unittest.TestCase):
         cls.surfaces = _surfaces()
 
     def test_the_sweep_actually_read_the_screen(self):
-        """게이트가 빈 문자열을 훑고 초록이 되는 일이 없게 — 먼저 눈을 확인한다.
+        """게이트가 빈 문자열을 훑고 통과가 되는 일이 없게 — 먼저 눈을 확인한다.
 
         문자열 추출이 조용히 실패하면 이 시험은 영원히 통과하고, 그때부터
         게이트는 없는 것과 같아진다(이 저장소가 파이프 종료코드에서 배운 것)."""

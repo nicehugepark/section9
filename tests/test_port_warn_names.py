@@ -42,7 +42,7 @@ class PortWarnNames(unittest.TestCase):
         with self.subTest("p2_it_never_claims_a_share_it_cannot_know"):
             # **주석이 아니라 실제로 찍히는 문장**을 본다. 처음엔 소스 블록을 통째로
             # 훑었는데, 이 결함의 내력을 적어 둔 주석에 그 문구가 들어 있어 테스트가
-            # 헛되이 붉어졌다 — 계약은 코드가 하는 말이지 코드에 대한 설명이 아니다.
+            # 헛되이 실패했다 — 계약은 코드가 하는 말이지 코드에 대한 설명이 아니다.
             code = "\n".join(l for l in self.warn.splitlines()
                              if not l.strip().startswith("#"))
             self.assertNotIn('win.get("sample")', code, "없는 필드를 다시 읽는다")

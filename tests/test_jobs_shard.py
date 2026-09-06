@@ -39,7 +39,7 @@ class TheShard(unittest.TestCase):
             # 각 빈의 첫 파일은 그 빈에서 가장 **무겁다** — 느린 것부터 자리
             # 잡아야 꼬리가 짧다. 무게는 크기가 아니라 `_weights` 가 정한다
             # (실측 시간 > 크기, REQ-20260905-001) — 여기서 크기를 다시 못박으면
-            # 무게를 고칠 때마다 이 시험이 헛되이 붉어진다.
+            # 무게를 고칠 때마다 이 시험이 헛되이 실패한다.
             w = self.m._weights(files)
             for b in bins:
                 self.assertEqual(w[b[0]], max(w[f] for f in b))
@@ -106,7 +106,7 @@ class PortSlotsFollowJobs(unittest.TestCase):
 
 
 class RedFilesRetryNarrowly(unittest.TestCase):
-    """붉은 것만 좁혀서 다시 (REQ-20260905-009) — 전체를 되풀이하지 않는다."""
+    """실패한 것만 좁혀서 다시 (REQ-20260905-009) — 전체를 되풀이하지 않는다."""
 
     def _runner(self):
         spec = importlib.util.spec_from_loader(
@@ -125,7 +125,7 @@ class RedFilesRetryNarrowly(unittest.TestCase):
                          ["test_code_read_gate.py", "test_close_last.py"])
 
     def test_r2_only_a_few_red_files_are_retried(self):
-        """R2. 붉은 파일 1~3개면 다시, 넷 이상이면 코드 결함이라 다시 안 돈다."""
+        """R2. 실패한 파일 1~3개면 다시, 넷 이상이면 코드 결함이라 다시 안 돈다."""
         m = self._runner()
         os.environ.pop("S9_TEST_NO_RETRY", None)
         self.assertTrue(m.should_retry(["a.py"]))
@@ -139,7 +139,7 @@ class RedFilesRetryNarrowly(unittest.TestCase):
             os.environ.pop("S9_TEST_NO_RETRY", None)
 
     def test_r3_a_red_full_run_leaves_a_record(self):
-        """R3. 전체 실행이 붉으면 state/tests-last-red.json 에 붉은 파일과 시각이 남는다."""
+        """R3. 전체 실행이 실패하면 state/tests-last-red.json 에 실패한 파일과 시각이 남는다."""
         m = self._runner()
         import json, tempfile, time
         d = tempfile.mkdtemp(prefix="s9red-")
@@ -156,7 +156,7 @@ class ShardsHaveADeadline(unittest.TestCase):
     """샤드에 시간 상한 (REQ-20260905-021) — 러너는 절대 멈추지 않는다."""
 
     def test_r4_a_shard_over_the_limit_is_killed_and_counted_red(self):
-        """R4. 상한을 넘긴 샤드는 죽이고 붉음으로 센다; 직렬 꼬리도 같은 상한."""
+        """R4. 상한을 넘긴 샤드는 죽이고 실패로 센다; 직렬 꼬리도 같은 상한."""
         spec = importlib.util.spec_from_loader(
             "s9runner_dl", importlib.machinery.SourceFileLoader("s9runner_dl", RUNNER))
         m = importlib.util.module_from_spec(spec)

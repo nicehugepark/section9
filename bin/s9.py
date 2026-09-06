@@ -456,7 +456,7 @@ def _git_identity():
     """git 설정 파일에서 user.name·user.email — **프로세스를 띄우지 않는다.**
 
     resolve_user 는 뜨거운 길이라 여기서 git 을 부르면 호출마다 프로세스 하나고,
-    subprocess 를 흉내 내는 시험들(자동 갱신·워커 스폰)이 그 호출에 걸려 붉는다
+    subprocess 를 흉내 내는 시험들(자동 갱신·워커 스폰)이 그 호출에 걸려 실패한다
     (실측 2026-09-06 e0eb4f7: s9_code_args u1/u4·claim_liveness). 파일은 셋 —
     저장소 .git/config 가 전역(~/.gitconfig · ~/.config/git/config)보다 앞선다.
     """
@@ -1302,10 +1302,12 @@ def _machine_fp_origin():
     return (re.sub(r"[^0-9a-z]", "", ov)[:4] or "0000") if ov else ""
 
 
-def _machine_fp_compute():
-    """머신명+홈 경로에서 파생한 지문 4자(base36). 순수 계산 — 어디에도 쓰지 않는다."""
+def _machine_fp_compute(salt=""):
+    """머신명+홈 경로에서 파생한 지문 4자(base36). 순수 계산 — 어디에도 쓰지 않는다.
+    `salt` 는 같은 머신의 둘째 clone 을 가르는 재료(그 clone 의 root 경로,
+    REQ-20260906-057) — 비면 종전 값 그대로다."""
     import hashlib
-    h = int(hashlib.sha1((current_machine() + "|" + os.path.expanduser("~"))
+    h = int(hashlib.sha1((current_machine() + "|" + os.path.expanduser("~") + salt)
                          .encode("utf-8")).hexdigest(), 16)
     digits = "0123456789abcdefghijklmnopqrstuvwxyz"
     out = ""
@@ -1347,9 +1349,15 @@ def machine_register(fp, name=None):
     if not isinstance(reg, dict):
         reg = {}
     cur = reg.get(fp)
+    here = os.path.realpath(ROOT)
     if isinstance(cur, dict) and cur.get("hostname"):
-        return cur
-    reg[fp] = {"hostname": current_machine(), "first_seen": now_iso()}
+        if cur["hostname"] != current_machine() or cur.get("root") == here:
+            return cur
+        # 같은 머신이 잡은 항목인데 root 가 없거나(옛 등록부) 다르다(clone 을 옮겼다 —
+        # 둘째 clone 이면 machine_fp 가 여기 오기 전에 다른 지문을 받는다) → root 갱신
+        cur["root"] = here
+    else:
+        reg[fp] = {"hostname": current_machine(), "first_seen": now_iso(), "root": here}
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(reg, f, ensure_ascii=False, indent=1, sort_keys=True)
@@ -1377,6 +1385,14 @@ def machine_fp():
     fp = str(local.get("machine_fp") or "").strip().lower()
     if not re.fullmatch(r"[0-9a-z]{4}", fp or ""):
         fp = _machine_fp_compute()
+        # 같은 머신(같은 hostname·홈)의 **다른 clone** 이 이 지문을 먼저 잡았으면 이 clone
+        # 은 root 를 섞은 다른 지문을 받는다 (REQ-20260906-057) — 한 OS 에 clone 둘,
+        # 원격 시험용 clone 옆의 본 clone. 등록부로는 같은 hostname 이라 충돌로 안
+        # 잡히고, 잡아 봐야 사람이 S9_ORIGIN 을 정해야 했다. 고정 전이라 여기서 가른다.
+        cur = _read_json(machines_registry_path(me)).get(fp)
+        if (isinstance(cur, dict) and cur.get("hostname") == current_machine()
+                and cur.get("root") and os.path.realpath(cur["root"]) != os.path.realpath(ROOT)):
+            fp = _machine_fp_compute(salt="|" + os.path.realpath(ROOT))
         local["machine_fp"] = fp
         os.makedirs(os.path.dirname(lpath), exist_ok=True)
         fd = os.open(lpath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -6584,7 +6600,7 @@ def _streams_names_shared(d):
         # 계기는 **자리마다** 센다 (REQ-20260904-003). 단일비행은 `_STREAMS_FLIGHT`
         # 가 자리(d)로 갈려 있듯 «그 자리»의 겹침을 접는 장치다. 그런데 계기는
         # 전역 하나였어서, 서로 **다른 두 자리**를 동시에 훑는 정상 동작이
-        # max_inflight 2 로 잡혔다 — 부하가 있을 때만 나타나 「병렬에서만 붉다」로
+        # max_inflight 2 로 잡혔다 — 부하가 있을 때만 나타나 「병렬에서만 실패한다」로
         # 보였다(실측 2026-09-04, 커밋 게이트).
         #
         # 자리마다 세면 이 값은 계약을 그대로 말한다: **한 자리를 동시에 몇 번
@@ -10656,6 +10672,18 @@ def _sync_commit_busy():
             continue
         if age < SYNC_COMMIT_BUSY_STALE_SEC:
             return why
+    # 누가 `git add` 로 담아 둔 것이 있으면 이 회차를 건너뛴다 (REQ-20260906-066).
+    # pull 의 자동 보관(autostash)은 되돌려 놓을 때 index 를 잃는다 — 실제 발생
+    # 2026-09-06 12:38: 검사에 막힌 commit 을 다시 시도하는 사이 sync 가 돌아 담아 둔
+    # 61파일이 풀렸고 두 번째 commit 에 3파일만 들어갔다. sync 제 데이터 경로는
+    # 세지 않는다(앞 회차가 add 만 하고 죽었을 수 있다).
+    try:
+        r = _sync_git("diff", "--cached", "--name-only")
+        names = [n.strip() for n in (r.stdout or "").splitlines() if n.strip()]
+    except Exception:
+        names = []
+    if any(not n.startswith(tuple(SYNC_DATA_PATHS)) for n in names):
+        return "staged"
     return ""
 
 
@@ -11573,6 +11601,7 @@ def cmd_status(args):
         # 읽을 수 있는 실패로 끝낸다 — 그리고 아래 성공 줄은 찍히지 않는다.
         die(f"{e}")
     print(f"{args.id}: {old} -> {args.new_status}")
+    warn_banned_terms(args.note or "", f"status {args.id}")   # 전이 노트도 기록이다 (REQ-20260906-064)
     try:
         update_active_reqs(args.id, args.new_status)
     except Exception:
@@ -11720,47 +11749,85 @@ def cmd_link(args):
         pass
 
 
-def cmd_set(args):
-    path = find_path(args.id)
+def do_set(doc_id, fields, actor="", via="", priority=None):
+    """제목·요약·goal·size·project 를 바꾸는 **한 문** — CLI(`s9 set`)와 대시보드
+    (POST /api/doc/set)가 여기를 부른다 (REQ-20260906-053). 반환 {"ok","changed",…};
+    거절은 ValueError.
+
+    project 를 바꾸는 규칙: 새 프로젝트가 등록돼 있으면 **바꾸는 사람이 그 프로젝트에
+    contribute 할 수 있어야** 한다(cmd_new 의 명시 --project 와 같은 문). 미등록 slug 는
+    거절한다 — 화면에서 고르는 값이라 오타를 문서에 남길 이유가 없다. History 한 줄이
+    남고 project_source 는 `manual` 이 된다(자동 판정 셋과 갈린다)."""
+    cands = resolve_id(doc_id)
+    if not cands:
+        raise ValueError(f"그런 문서가 없다: {doc_id}")
+    cid = cands[0]["id"]
+    path = locate(cid)
     meta, body = read_doc(path)
     changed = []
-    for key in ("title", "summary", "goal", "size", "project"):
-        val = getattr(args, key)
-        if val is not None:
-            meta[key] = val
+    for key in ("title", "summary", "goal", "size"):
+        if fields.get(key) is not None:
+            meta[key] = fields[key]
             changed.append(key)
-    if getattr(args, "priority", None) is not None:
+    if fields.get("project") is not None:
+        new = str(fields["project"]).strip()
+        old = str(meta.get("project") or "").strip()
+        if new and not load_project(new):
+            raise ValueError(f"「{new}」이라는 프로젝트가 없습니다 — 목록을 새로 받아 다시 골라 주세요 "
+                             f"(터미널: s9 project ls)")
+        actor = actor or resolve_user(None)
+        if new and not project_can(new, actor, "contribute"):
+            raise ValueError(f"「{new}」에 요청을 넣을 권한이 없습니다 — {actor} 는 "
+                             f"{project_role(new, actor) or '멤버가 아님'}이고, contributor 이상이어야 "
+                             f"합니다. Projects 탭에서 멤버 권한을 확인해 주세요.")
+        if new != old:
+            meta["project"] = new
+            meta["project_source"] = "manual"
+            ts = now_iso()
+            line = (f"- {ts} project: {old or '(없음)'} -> {new or '(없음)'} (by {actor}"
+                    + (f" via {via}" if via else "") + ")\n")
+            body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
+                else (body.rstrip("\n") + "\n\n## History\n" + line)
+            changed.append("project")
+    if priority is not None:
         # 값 해석도 근거 기록도 화면과 **같은 문**을 지난다 (REQ-20260829-029).
-        # 거부되면 문서를 건드리지 않고 끝낸다 — 잘못된 입력이 기존 값을
-        # 지우면 사람이 매긴 우선순위가 소리 없이 사라진다.
-        try:
-            _old, _new, body = apply_priority(meta, body, args.priority)
-        except ValueError as e:
-            die(str(e))
+        _old, _new, body = apply_priority(meta, body, priority)
         changed.append("priority")
     if not changed:
-        die("nothing to set (use --title/--summary/--goal/--size/--project"
-            "/--priority)")
+        return {"ok": True, "id": cid, "changed": [], "message": f"{cid}: 바뀐 것 없음"}
     # 순서만 바꾼 것은 진전이 아니다 — 갱신 시각은 멈춤 판정의 시계라
     # 여기서 되감으면 우선순위를 만지는 것만으로 경보가 꺼진다
     # (apply_priority 주석). 다른 필드가 함께 바뀐 때에만 새로 찍는다.
     if changed != ["priority"]:
         meta["updated"] = now_iso()
-
     acquire_lock()
     try:
         write_doc(path, meta, body)
         rebuild_index(quiet=True)
     finally:
         release_lock()
-    print(f"{args.id}: updated {', '.join(changed)}")
     try:
-        maybe_sync(f"set {args.id}")
+        maybe_sync(f"set {cid}")
     except Exception:
         pass
+    return {"ok": True, "id": cid, "changed": changed, "project": meta.get("project", ""),
+            "message": f"{cid}: updated {', '.join(changed)}"}
+
+
+def cmd_set(args):
+    fields = {k: getattr(args, k) for k in ("title", "summary", "goal", "size", "project")}
+    try:
+        res = do_set(args.id, fields, actor=resolve_user(None),
+                     priority=getattr(args, "priority", None))
+    except ValueError as e:
+        die(str(e))
+    if not res["changed"]:
+        die("nothing to set (use --title/--summary/--goal/--size/--project"
+            "/--priority)")
+    print(res["message"])
     # 프롬프트가 특정 프로젝트로 확정된 순간 — 컨텍스트 진입점을 안내 (1단계 경로 안내)
-    if "project" in changed and meta.get("project"):
-        guide = context_guide(meta["project"])
+    if "project" in res["changed"] and res.get("project"):
+        guide = context_guide(res["project"])
         if guide:
             print(guide)
 
@@ -15231,7 +15298,9 @@ def cmd_commit_note(args):
 # 규약에 적는 것만으로는 부족했다 — 에이전트가 규약을 읽고도 「배경」을 썼다(2026-09-06).
 # 남기는 자리(s9 note)에서 걸러 경고한다. 기록은 막지 않는다 — 막으면 기록이 사라진다.
 BANNED_TERMS = (
-    ("붉음", "실패"), ("붉다", "실패"), ("붉었", "실패했"), ("초록 기록", "통과 기록"), ("초록이", "통과가"),
+    # 시험 결과의 비유 — 화면 색을 말하는 줄(「붉은 글자」「초록 점」)은 banned_terms_in 이 건너뛴다
+    ("붉음", "실패"), ("붉다", "실패"), ("붉었", "실패했"), ("붉으면", "실패하면"), ("붉은", "실패한"),
+    ("붉어", "실패해"), ("붉는", "실패하는"), ("초록", "통과"),
     ("작업 나무", "working tree"), ("나무가 더럽", "commit 하지 않은 변경이 있"),
     ("흔들린다", "간헐적으로 실패한다(flaky)"), ("살아 있는 세션", "실행 중인 세션"), ("살아있는 세션", "실행 중인 세션"),
     ("걷어낸다", "제거한다"), ("걷어냈", "제거했"), ("물러난다", "재시도를 미룬다"),
@@ -15244,11 +15313,60 @@ BANNED_TERMS = (
 )
 
 
+# 색을 말하는 줄 — 「붉은 글자」「초록 점」은 화면의 색이지 시험 결과의 비유가 아니다
+_COLOR_CONTEXT = re.compile(r"글자|점\b|점멸|점으로|점이|점은| 점|색|화소|네모|잉크|링\b|창|이모지|축|상자|얼굴|옷|●|◎|앰버|주황|녹색|채운|칩|마크|컬러|타일|뛴다|뛰었|톤|판에|사다리")
+
+
 def banned_terms_in(text):
-    """본문에 든 금지 용어 — [(낱말, 대체어)]. 코드·경로(백틱 안)는 보지 않는다."""
-    import re as _re
-    plain = _re.sub(r"`[^`]*`", " ", str(text or ""))
-    return [(a, b) for a, b in BANNED_TERMS if a in plain]
+    """본문에 든 금지 용어 — [(용어, 대체어)]. 코드·경로(백틱 안)는 보지 않고, 화면 색을
+    말하는 줄은 건너뛴다(REQ-20260906-064)."""
+    plain = re.sub(r"`[^`]*`", " ", str(text or ""))
+    hits = []
+    for a, b in BANNED_TERMS:
+        for m in re.finditer(re.escape(a), plain):
+            around = plain[max(0, m.start() - 6):m.end() + 8]     # 「붉은 글자」「초록 점멸」이 드는 폭
+            if _COLOR_CONTEXT.search(around):
+                continue                     # 「붉은 글자」「초록 점」 — 색이다
+            hits.append((a, b))
+            break
+    return hits
+
+
+def terms_warn_path(session=""):
+    """직전 응답의 용어 경고를 다음 턴까지 나르는 파일 (REQ-20260906-064) —
+    Stop 훅이 적고 UserPromptSubmit 훅이 읽어 지운다. 세션 단위."""
+    sid = safe_name((session or os.environ.get("S9_SESSION") or "unknown")[:8])
+    return os.path.join(ROOT, "state", f"terms-warn-{sid}.json")
+
+
+def cmd_terms(args):
+    """`s9 terms check [--json] [--record]` — 표준입력의 글에서 금지 용어를 찾는다.
+    `--record` 는 세션 파일에 남긴다(응답 훅). `s9 terms pending` 은 그 파일을 읽어
+    한 줄로 내고 지운다(프롬프트 훅). 검사 자체는 늘 0 으로 끝난다 — 막지 않는다."""
+    if args.what == "pending":
+        path = terms_warn_path()
+        rec = _read_json(path)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        hits = rec.get("hits") if isinstance(rec, dict) else None
+        if hits:
+            print("직전 응답의 용어 " + str(len(hits)) + "건 — "
+                  + " · ".join(f"「{a}」→「{b}」" for a, b in hits[:6])
+                  + " (규약 2조·DOC-20260906-002: 화면·기록·응답 모두 같은 규칙)")
+        return 0
+    text = sys.stdin.read()
+    hits = banned_terms_in(text)
+    if args.json:
+        print(json.dumps([list(h) for h in hits], ensure_ascii=False))
+    elif hits:
+        warn_banned_terms(text, args.where or "")
+    if args.record and hits:
+        os.makedirs(os.path.join(ROOT, "state"), exist_ok=True)
+        with open(terms_warn_path(), "w", encoding="utf-8") as f:
+            json.dump({"at": now_iso(), "hits": [list(h) for h in hits]}, f, ensure_ascii=False)
+    return 0
 
 
 def warn_banned_terms(text, where=""):
@@ -19200,8 +19318,15 @@ def tunnel_keep_remove(lport, root=None):
     return len(keep) != len(rows)
 
 
-def _tunnel_check(secret, lport, rport, user):
+def _tunnel_check(secret, lport, rport, user, _nt=None):
     """인자 검증 — 감시자가 뜨기 **전에** 거부한다. 값은 읽지 않고 이름만 확인한다."""
+    if (os.name == "nt") if _nt is None else _nt:
+        # 감시자는 ssh 를 `sh -c` 로 띄운다 — 윈도우 네이티브에는 sh 가 없다 (REQ-20260906-058).
+        # 반쯤 되는 척하지 않고 사유로 거부한다.
+        die("윈도우 네이티브에서는 s9 tunnel 을 지원하지 않는다 — 감시자가 ssh 를 sh -c 로 "
+            "띄우는데 이 판에는 sh 가 없다. WSL 안의 section9 에서 쓰거나, 터미널에서 "
+            "`ssh -N -L 127.0.0.1:<로컬포트>:127.0.0.1:<원격포트> <호스트>` 를 직접 띄워라 "
+            "(docs/11-windows.md 알려진 제약)")
     if not secret or not SECRET_KEY_RE.match(str(secret)):
         die("시크릿 이름이 필요하다: s9 tunnel <시크릿이름> <로컬포트> <원격포트> "
             "(목록은 s9 secret ls)")
@@ -19508,10 +19633,55 @@ def cmd_tunnel(args):
     return 0
 
 
+SHARED_CLONE_OPEN = ("여는 길: OS 마다 제 파일시스템에 따로 clone 하고 GitHub 로 동기화한다 — "
+                     "docs/11-windows.md 「함께 쓰기」")
+
+
+def shared_clone_reason(root=None, platform=None, serve_root=None):
+    """이 clone 을 두 OS 가 함께 쓰고 있으면 그 사유 한 줄, 아니면 빈 문자열
+    (REQ-20260906-056).
+
+    `state/` 는 이 머신의 살림(pid·잠금·절대경로·바인딩)이고, 윈도우와 WSL 은 서로의
+    pid 를 못 보는 **두 머신**이다. 같은 clone 을 /mnt/c 로 나눠 쓰면 상대의 잠금·
+    감시자·커밋 표식이 전부 「죽었다」로 읽혀 회수·중복 스폰이 난다. 자리마다 고치지
+    않고 문 하나로 거부한다 — s9-install 과 s9 doctor 가 이 함수를 본다.
+    판정 둘: ① WSL 인데 root 가 윈도우 드라이브(/mnt/<x>/) 위다 ② 마지막 대시보드를
+    띄운 root(state/serve-code.json)가 다른 OS 의 경로 모양이다.
+    """
+    root = root or ROOT
+    platform = platform or os_platform()
+    if serve_root is None:
+        try:
+            with open(os.path.join(root, "state", "serve-code.json"), encoding="utf-8") as f:
+                serve_root = str(json.load(f).get("root") or "")
+        except (OSError, ValueError):
+            serve_root = ""
+    if platform == "WSL" and re.match(r"^/mnt/[A-Za-z]/", root):
+        return (f"WSL 인데 이 clone 은 윈도우 드라이브 위에 있다 ({root}) — 두 OS 가 한 state/ 를 "
+                f"나눠 쓰면 서로의 pid·잠금·경로를 「죽은 것」으로 읽는다. {SHARED_CLONE_OPEN}")
+    posix_like = bool(re.match(r"^/", serve_root))
+    win_like = bool(re.match(r"^[A-Za-z]:[\\/]", serve_root))
+    if platform == "Windows" and posix_like:
+        return (f"다른 OS(WSL·리눅스)가 이 clone 의 대시보드를 띄운 흔적이 있다 "
+                f"(state/serve-code.json root={serve_root}). {SHARED_CLONE_OPEN}")
+    if platform != "Windows" and win_like:
+        return (f"윈도우가 이 clone 의 대시보드를 띄운 흔적이 있다 "
+                f"(state/serve-code.json root={serve_root}). {SHARED_CLONE_OPEN}")
+    return ""
+
+
 def cmd_doctor(args):
     """`s9 doctor` — 진단 본체는 bin/s9-doctor (독립 실행 가능해야 한다:
     s9 자체가 못 뜨는 상황에서도 써야 하는 도구라 별도 파일로 둔다)."""
     import subprocess as _sp
+    shared = shared_clone_reason()
+    if getattr(args, "shared_clone", False):
+        # s9-install 이 설치 전에 묻는 문 (REQ-20260906-056) — 사유가 있으면 1
+        if shared:
+            print("s9: 이 clone 은 두 OS 가 함께 쓰는 자리다 — " + shared, file=sys.stderr)
+        sys.exit(1 if shared else 0)
+    if shared:
+        print("⚠ " + shared, file=sys.stderr)
     if getattr(args, "live", False):
         # 이 갈래만 s9 안에서 돈다: 판정 함수들이 여기 살기 때문이다.
         # 두 벌로 만들면 한 벌만 고쳐진다.
@@ -24327,6 +24497,15 @@ def cmd_serve(args):
                     self._json({"ok": True, "id": req.get("id"),
                                 "old": old, "new": tto, "freed": freed,
                                 "auto_resume": spawned, "notified": notified})
+                elif parsed.path == "/api/doc/set":
+                    # 카드에서 프로젝트 바꾸기 — CLI(`s9 set`)와 같은 문(do_set) (REQ-20260906-053)
+                    try:
+                        res = do_set(str(req.get("id") or ""),
+                                     {"project": req.get("project")},
+                                     actor=actor, via="dashboard")
+                    except ValueError as e:
+                        res = {"ok": False, "error": str(e)}
+                    self._json(res)
                 elif parsed.path == "/api/assign":
                     # 담당자 변경 — CLI 와 같은 문(do_assign) (REQ-20260902-019)
                     res = do_assign(str(req.get("id") or ""),
@@ -25984,6 +26163,12 @@ def main():
     dg.add_argument("--budget", type=int, help="최대 문자 수 (기본: user config digest_budget 또는 2500)")
     dg.set_defaults(fn=cmd_digest)
 
+    tm = sub.add_parser("terms", help="금지 용어 검사: terms check [--json] [--record] (stdin) · terms pending")
+    tm.add_argument("what", choices=["check", "pending"])
+    tm.add_argument("--json", action="store_true")
+    tm.add_argument("--record", action="store_true")
+    tm.add_argument("--where", default="")
+    tm.set_defaults(fn=cmd_terms)
     nt = sub.add_parser("note", help="append work note to a document's Notes")
     nt.add_argument("id")
     # nargs="*" 인 이유 (REQ-20260826-041): "?" 였을 때
@@ -26195,6 +26380,8 @@ def main():
                     help="동적 포트를 독차지한 WSL 포트 중계 프로세스 종료 (REQ-100)")
     dc.add_argument("--yes", action="store_true",
                     help="--recover 확인 프롬프트 생략")
+    dc.add_argument("--shared-clone", action="store_true",
+                    help="두 OS 가 함께 쓰는 clone 이면 사유를 찍고 1 (s9-install 이 설치 전에 묻는다)")
     dc.add_argument("--live", action="store_true",
                     help="세션이 실행 중인지 이 기계에서 어떻게 재는지 "
                          "(맥·윈도우·리눅스 진단 — REQ-20260829-037)")

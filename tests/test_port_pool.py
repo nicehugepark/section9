@@ -343,7 +343,7 @@ class BoundedReuse(unittest.TestCase):
         SO_REUSEADDR 없이 붙으면 안 된다 — 풀은 TIME_WAIT 자리를 일부러
         '비어 있다'고 판정한다(_try_bind 의 근거: 실서버 HTTPServer 는
         allow_reuse_address 로 그 자리를 다시 잡는다). 여기서만 더 엄한
-        기준으로 붙으면 스위트가 포트를 데울수록 이 시험이 붉어진다 —
+        기준으로 붙으면 스위트가 포트를 데울수록 이 시험이 실패한다 —
         2026-09-04 전체 실행 네 번이 전부 이 자리에서 넘어졌다
         (Errno 98; 그때 18800 에 TIME_WAIT 27개, LISTEN 은 0개).
         """
@@ -399,6 +399,21 @@ class BoundedReuse(unittest.TestCase):
 class WaitBackoff(unittest.TestCase):
     """서버 대기는 '시도 횟수'가 비용이다 — 커넥션 1개 = 호스트 동적 포트 1개."""
 
+    def test_deadline_holds_even_when_a_connection_hangs(self):
+        """상한은 잠자는 자리만이 아니라 붙잡히는 자리에도 선다 (REQ-20260906-051).
+
+        중계에 잡힌 연결은 connect 는 되고 답이 없다 — 예전엔 시도마다 recv 2초를
+        꼬박 기다려 40초 상한이 3분으로 늘었다(046 기준선 run4 실측). 듣기만 하고
+        답하지 않는 소켓으로 그 모양을 만든다."""
+        srv = portpool.pool_socket()          # 풀의 포트 — 듣기만 하고 답하지 않는다
+        try:
+            t0 = time.monotonic()
+            with self.assertRaises(RuntimeError):
+                portpool.wait_server(srv.getsockname()[1], timeout=1.5)
+            self.assertLess(time.monotonic() - t0, 3.0, "상한이 시도 안의 대기에 먹혔다")
+        finally:
+            srv.close()
+
     def test_gives_up_after_few_attempts(self):
         """40초를 기다리더라도 두드리는 횟수는 30회 이하 — 예전엔 400회였다."""
         calls = []
@@ -452,7 +467,7 @@ class WaitBackoff(unittest.TestCase):
             # attempts` 가 따로 못박는다.
             #
             # `== 1` 은 「이 기계가 첫 시도 안에 뜬다」를 함께 재고 있었다 —
-            # 부하가 걸린 병렬 실행에서 5가 나와 붉었다(실측 2026-09-04).
+            # 부하가 걸린 병렬 실행에서 5가 나와 실패했다(실측 2026-09-04).
             n = portpool.wait_server(port, timeout=10)
             self.assertGreaterEqual(n, 1)
             self.assertLessEqual(n, 30, "백오프 예산을 넘겨 잡혔다")

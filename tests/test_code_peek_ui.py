@@ -109,7 +109,7 @@ class CodePeekUI(unittest.TestCase):
     def test_a2_the_regex_is_built_from_the_mirror(self):
         """경로를 집는 정규식은 목록에서 **만들어진다** — 손으로 적지 않는다.
 
-        손으로 `(bin|docs|…)` 를 적어 두면 위 시험이 초록인 채로 정규식만
+        손으로 `(bin|docs|…)` 를 적어 두면 위 시험이 통과인 채로 정규식만
         낡는다. 목록에서 join 하면 한 곳만 고치면 된다.
         """
         m = re.search(r"const CODE_REL_RE = new RegExp\((.*?)\);", self.src, re.S)

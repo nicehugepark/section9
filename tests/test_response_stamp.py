@@ -82,7 +82,7 @@ class ResponseStamp(unittest.TestCase):
             # 창을 10분으로 둔다 (REQ-20260904-003). 이 검사가 잡으려는 것은
             # **고정값**과 **다른 시간대**인데, 시간대가 어긋나면 최소 30분이고
             # 고정값은 며칠씩 벌어진다 — 10분으로도 둘 다 잡힌다. 반대로 창이
-            # 좁으면 부하가 걸린 병렬 실행에서 멀쩡한 값이 붉어진다.
+            # 좁으면 부하가 걸린 병렬 실행에서 멀쩡한 값이 실패한다.
             self.assertLess(abs((now - got).total_seconds()), 600,
                             "주입 시각이 지금과 다르다 — 고정값이나 다른 시간대다")
         with self.subTest("no_heading_marker"):

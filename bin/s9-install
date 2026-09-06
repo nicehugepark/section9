@@ -175,8 +175,11 @@ def install_git_hooks():
              '>/dev/null 2>&1 || true\n'
              # 전체 스위트는 commit 뒤 배경에서 (REQ-20260905-010)
              'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9-guard" --after-commit "$SHA" || true\n')
+    # commit 메시지의 용어 검사 (REQ-20260906-064) — 경고만
+    cmsg = ('#!/bin/sh\n' + py + where +
+            'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9-guard" commit-msg "$1" || true\n')
     for name, body in [("post-merge", sync), ("post-checkout", sync),
-                       ("pre-commit", guard), ("post-commit", cnote)]:
+                       ("pre-commit", guard), ("post-commit", cnote), ("commit-msg", cmsg)]:
         p = os.path.join(hooks_dir, name)
         with open(p, "w", encoding="utf-8") as f:
             f.write(body)
@@ -594,7 +597,7 @@ def uninstall(home=None, root=None, bring_back=True, dry_run=False, out=None):
     # ④ 저장소 git 훅과 merge driver
     hd = git_hooks_dir(root)
     if hd:
-        for name in ("post-merge", "post-checkout", "pre-commit", "post-commit"):
+        for name in ("post-merge", "post-checkout", "pre-commit", "post-commit", "commit-msg"):
             p = os.path.join(hd, name)
             try:
                 with open(p, encoding="utf-8") as f:
@@ -743,6 +746,15 @@ def main():
             sys.exit(1)
         managed_block(os.path.abspath(sys.argv[i + 1]), "custom")
         return
+    # 두 OS 가 함께 쓰는 clone 은 설치 전에 거부한다 (REQ-20260906-056) — 판정은
+    # bin/s9 의 shared_clone_reason 한 곳, 여기서는 묻기만 한다.
+    r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "s9"),
+                        "doctor", "--shared-clone"], capture_output=True, encoding="utf-8",
+                       errors="replace", env={**os.environ, "S9_ROOT": ROOT})
+    if r.returncode != 0:
+        print((r.stderr or r.stdout).strip() or "s9-install: 두 OS 가 함께 쓰는 clone 이다",
+              file=sys.stderr)
+        return 2
     install_dirs()
     install_git_hooks()
     # 기존 환경 백업 (REQ-20260905-025) — settings.json 을 병합하기 **전에**. 모드 셋을
@@ -808,7 +820,7 @@ def start_dashboard():
 
 if __name__ == "__main__":
     try:
-        main()
+        sys.exit(main() or 0)
     except Exception as e:
         # 조용한 실패를 성공으로 돌려주지 않는다 (REQ-20260903-005). 예전에는
         # `--quiet` 이면 0 으로 끝냈고, 그래서 네이티브 윈도우에서 설치가

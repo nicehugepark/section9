@@ -52,7 +52,7 @@ class TurnAttached(unittest.TestCase):
         # 바인딩 파일은 `testbox__<sid>.json` 인데 모듈이 직접 부르는
         # `catalog_with_live` 는 os.environ 의 머신 이름으로 자리를 찾는다.
         # subprocess 봉투에만 심어 두면 스위트 전체를 돌 때 **앞 시험이 흘린
-        # 값** 덕에 우연히 초록이고, 단독으로 돌리면 붉다 — 실제로 그랬다.
+        # 값** 덕에 우연히 통과가고, 단독으로 돌리면 실패한다 — 실제로 그랬다.
         cls.prev_machine = os.environ.get("S9_MACHINE")
         os.environ["S9_MACHINE"] = "testbox"
         cls.env = {**os.environ, "S9_ROOT": cls.root, "S9_MACHINE": "testbox"}

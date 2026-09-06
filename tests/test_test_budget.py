@@ -101,7 +101,7 @@ class TestBudget(unittest.TestCase):
     def test_the_ratchet_tightens_when_we_do_better(self):
         """줄였으면 기준선도 따라 내려와야 한다 — 안 내리면 라쳇이 헐거워진다.
 
-        느슨함을 조금 둔다(3): 파일 하나를 지웠다고 곧바로 붉어지면 사람이
+        느슨함을 조금 둔다(3): 파일 하나를 지웠다고 곧바로 실패하면 사람이
         이 시험을 미워하게 되고, 미움받는 게이트는 오래 못 산다.
         """
         b = read_budget() or {}

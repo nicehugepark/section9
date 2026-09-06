@@ -123,7 +123,7 @@ class TheProbe(unittest.TestCase):
 
         감시자는 double fork 로 일부러 재양육된다 — 살아 있는 실행 루트가 있으면
         그것은 시험 중인 물건이다. 실사고 2026-09-05: 대시보드 틱이 돌고 있는
-        시험의 감시자를 죽여 전체가 292→521초, 3건 붉음.
+        시험의 감시자를 죽여 전체가 292→521초, 3건 실패.
         """
         rows = [(15248, 1, 30,
                  "/usr/bin/python3 /x/bin/s9 serve --supervise --guard-run --port 19089 --host 127.0.0.1")]

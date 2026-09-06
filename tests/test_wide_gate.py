@@ -3,11 +3,11 @@
 실사고 2026-09-03. `bin/s9` 한 줄(REQ-20260902-017 `_local_binding_glob` —
 바인딩을 이 머신 것만 보게 한 것)이 **커밋에 담기지 않은 시험 18건**을
 깨뜨렸다. 커밋 게이트(`staged_tests_gate`)는 담긴 시험과 스모크 12파일만
-보는데, 깨진 여덟 파일은 그 열둘과 하나도 겹치지 않았다 — 게이트는 초록을
-보고 통과시켰고 커밋은 붉은 채로 들어갔다.
+보는데, 깨진 여덟 파일은 그 열둘과 하나도 겹치지 않았다 — 게이트는 통과를
+보고 통과시켰고 커밋은 실패한 채로 들어갔다.
 
 고치는 방향은 「매 커밋에 전체를 돌린다」가 아니다(분 단위라 규율이 먼저
-죽는다). **돌리지 않고 묻는다**: 지금 이 나무 지문으로 전체가 초록이었던
+죽는다). **돌리지 않고 묻는다**: 지금 이 나무 지문으로 전체가 통과였던
 기록이 있나. 있으면 비용 0으로 지나가고, 없을 때만 막는다.
 
 실행: python3 tests/ wide_gate
@@ -67,7 +67,7 @@ class TheGateAsks(unittest.TestCase):
 
         err = io.StringIO()
         code = None
-        # 붉음 라쳇의 기록은 이 시험의 것이 아니다 — 없는 자리로 돌린다
+        # 실패 시 커밋 차단의 기록은 이 시험의 것이 아니다 — 없는 자리로 돌린다
         red_path = os.path.join(tempfile.mkdtemp(prefix="s9wg-"), "none.json")
         with mock.patch.object(self.guard.subprocess, "run", fake), \
                 mock.patch.object(self.guard, "LAST_RED", red_path), \
@@ -92,20 +92,20 @@ class TheGateAsks(unittest.TestCase):
         self.assertIsNone(code, "기록이 없다고 커밋을 세웠다 — 전체는 뒤에 돈다")
         self.assertIn("백그라운드", err, "전체가 뒤에 돈다는 말이 없다")
 
-    # W3b. 붉음 라쳇 — 마지막 전체가 붉었고 그 뒤 초록이 없으면 막고, 붉은 파일을 말한다.
+    # W3b. 실패 시 커밋 차단 — 마지막 전체가 실패했고 그 뒤 통과가 없으면 막고, 실패한 파일을 말한다.
     def test_w3b_a_red_suite_blocks_until_green(self):
         red = {"at": 10 ** 12, "files": ["test_conn_reap.py"]}
         with mock.patch.object(self.guard, "_read_json", lambda _p: red):
             code, err, _asked = self._run(["bin/s9"], rc=1)
-        self.assertEqual(code, 1, "붉은 전체 뒤의 code 커밋을 막지 않았다")
-        self.assertIn("test_conn_reap.py", err, "무엇이 붉었는지 안 말한다")
+        self.assertEqual(code, 1, "실패한 전체 뒤의 code 커밋을 막지 않았다")
+        self.assertIn("test_conn_reap.py", err, "무엇이 실패했는지 안 말한다")
         self.assertIn("S9_FIX_RED", err, "지나가는 길을 안 알려 준다")
 
     # W4. 넓은 파일 + 기록 있음 = 그냥 지나간다 (비용 0).
     def test_w4_wide_with_a_record_passes(self):
         code, _err, asked = self._run(["bin/s9"], rc=0)
         self.assertTrue(asked)
-        self.assertIsNone(code, "초록 기록이 있는데도 막았다")
+        self.assertIsNone(code, "통과 기록이 있는데도 막았다")
 
     # W5. 문이 고장 나도 커밋을 막지 않는다 — 막으면 그날로 문이 뽑힌다.
     def test_w5_a_broken_gate_never_blocks(self):
@@ -136,13 +136,13 @@ class TheAnswerIsARecord(unittest.TestCase):
         with open(self.runner._reuse_path(pats), "w", encoding="utf-8") as f:
             json.dump({"fingerprint": fp, "at": 0, "n": len(pats)}, f)
 
-    # W6. 기록이 없으면 「모른다」 — 초록으로 세지 않는다.
+    # W6. 기록이 없으면 「모른다」 — 통과로 세지 않는다.
     def test_w6_no_record_is_not_green(self):
         with mock.patch.object(self.runner, "tree_fingerprint",
                                lambda *_a: "abc"):
             self.assertFalse(self.runner.full_suite_green())
 
-    # W7. 같은 지문의 기록이 있으면 초록이다.
+    # W7. 같은 지문의 기록이 있으면 통과다.
     def test_w7_matching_record_is_green(self):
         self._write("abc")
         with mock.patch.object(self.runner, "tree_fingerprint",
@@ -156,7 +156,7 @@ class TheAnswerIsARecord(unittest.TestCase):
                                lambda *_a: "zzz"):
             self.assertFalse(self.runner.full_suite_green())
 
-    # W8. 지문을 못 재면(git 밖 등) 모른다고 답한다 — 모르는 것은 초록이 아니다.
+    # W8. 지문을 못 재면(git 밖 등) 모른다고 답한다 — 모르는 것은 통과가 아니다.
     def test_w8_no_fingerprint_is_not_green(self):
         self._write("abc")
         with mock.patch.object(self.runner, "tree_fingerprint",

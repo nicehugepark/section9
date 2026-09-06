@@ -53,7 +53,7 @@ class NoteAttach(unittest.TestCase):
         return self.cli("show", self.id)
 
     def asset(self, name):
-        # 달을 못박으면 달이 넘어가는 날 시험이 통째로 붉는다 (2026-09-01 실사고)
+        # 달을 못박으면 달이 넘어가는 날 시험이 통째로 실패한다 (2026-09-01 실사고)
         ym = datetime.date.today()
         return os.path.join(self.tmp, "vault", "requests", "%04d" % ym.year,
                             "%02d" % ym.month, "assets", self.id, name)
