@@ -289,17 +289,11 @@ class GuardProcessTest(unittest.TestCase):
 
     @staticmethod
     def _pids(port):
-        out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True,
-                             timeout=10).stdout
-        pids = []
-        for line in out.splitlines():
-            if f":{port} " not in line:
-                continue
-            for tok in line.split("pid=")[1:]:
-                p = tok.split(",")[0].strip()
-                if p.isdigit():
-                    pids.append(int(p))
-        return pids
+        """그 포트를 듣고 있는 pid 들 — 본체와 **같은 문**(`_port_owner_pid`)을
+        지난다. 예전엔 `ss -ltnp` 를 직접 불렀는데 맥에는 ss 가 없어 4건이
+        FileNotFoundError 로 오류났다 (REQ-20260906-010)."""
+        pid = s9._port_owner_pid(port)
+        return [pid] if pid else []
 
     @staticmethod
     def _guard_pids(port):

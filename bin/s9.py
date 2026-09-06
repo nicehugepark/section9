@@ -4935,7 +4935,14 @@ def iso_epoch(ts):
 # 세션이 화면에서 영원히 `idle` 이었다 (2026-08-29) — 수신함도 전송도 살아 있는데
 # 판정만 틀렸다. 문이 여럿이면 플랫폼 구멍도 여럿이 된다: 문을 하나로 모은다.
 
-PROC_TTL = 1.0          # ps 는 fork 다 — 폴 한 바퀴 안에서는 한 번만 본다
+# TTL 캐시는 **윈도우 갈래만** 지난다 (REQ-20260906-013·015). 예전엔 `ps` 도
+# 1초를 캐시했다 — 폴 한 바퀴가 세션 수만큼 fork 하지 않게 하려던 값인데,
+# 그 일은 이제 요청 스코프(`proc_scope`)와 단일비행(`_proc_table_shared`)이
+# 한다. 남은 1초는 맥에서 「tail 을 죽였는데 아직 live」·「즉사한 워커가 아직
+# 클레임」을 만들었다 (맥미니 실측 2026-09-06: test_worker_claim·
+# test_dashboard_chat c9·c18·c20·test_proc_scan s5·s9·test_wake_effect r5).
+# 윈도우는 조회 한 번이 powershell 1~2초라 낡음이 fork 보다 싸다 — 거기만 남긴다.
+PROC_TTL = 1.0
 _PROC_CACHE = {"how": "", "t": -1.0, "v": {}}
 
 # **한 요청 = 한 번의 훑기** (REQ-20260901-024). `/proc` 갈래는 TTL 캐시를
@@ -5243,11 +5250,12 @@ def proc_table(ttl=PROC_TTL, now=None):
     (tests/test_dashboard_chat.py C9·C18 이 그 계약을 붙잡고 있다).
     맥을 고치려다 여기를 깨면 사용자가 당장 겪는다.
 
-    `ps` 갈래에서만 캐시한다. 거기서는 조회 한 번이 fork 한 번이고, 대시보드
-    폴 한 바퀴가 세션 수만큼 이 물음을 던진다(`session_rows` 는 바인딩마다
-    `chat_live` 와 `_inbox_watch_alive` 를 각각 부른다). 수백 번 포크하는 것과
-    판정이 1초 낡는 것 중 후자가 싸다 — 수신 대기는 초 단위로 뒤집히는 값이
-    아니다. 이 1초가 맥에서 치르는 값이고, 그것이 이 설계의 유일한 값이다.
+    `ps` 갈래는 한때 1초 TTL 로 캐시했다 — 조회 한 번이 fork 한 번이고 폴
+    한 바퀴가 세션 수만큼 이 물음을 던지기 때문이었다. 그 중복은 아래의
+    스코프·단일비행이 지우므로, 이제 `ps` 갈래도 캐시하지 않는다. 1초의
+    낡음이 맥에서 리눅스와 다른 답을 냈다 — 죽인 직후의 tail·워커가 아직
+    살아 있다고 읽혔다 (REQ-20260906-013·015). TTL 은 `win` 갈래만 지난다:
+    거기서는 조회 한 번이 powershell 1~2초라 낡음이 비용보다 싸다.
 
     **그 대신 `/proc` 갈래는 범위로 접는다** (REQ-20260901-024). "싸다"는
     전제가 틀렸다: 폴 한 바퀴가 세션 수만큼 훑고(실측 `session_rows` 228회 ·
@@ -5268,9 +5276,9 @@ def proc_table(ttl=PROC_TTL, now=None):
 
 
 def _proc_table_uncached(how, ttl, now):
-    """스코프 밖의 본체 — `ps`/`win` 만 TTL 캐시를 지난다 (사유는 위 docstring)."""
+    """스코프 밖의 본체 — `win` 만 TTL 캐시를 지난다 (사유는 위 docstring)."""
     import time as _t
-    if how == "proc":
+    if how != "win":
         return _proc_table_shared(how)
     nowt = _t.time() if now is None else now
     if _PROC_CACHE["how"] == how and nowt - _PROC_CACHE["t"] < ttl:
@@ -7697,8 +7705,13 @@ def _consume_restart_marker():
     import glob as _glob
     import time as _time
     me = os.getpid()
-    for mp in _glob.glob(os.path.join(ROOT, "state", "terminal",
-                                      "restart-*.json")):
+    mine = None
+    # 낡은 것을 **먼저 전부** 치우고 나서 내 것을 돌려준다. 내 마커를 만나는
+    # 즉시 돌아가면 그 뒤에 놓인 낡은 마커가 남는데, 어느 것이 뒤에 놓이는지는
+    # 파일 시스템의 glob 순서다 — 리눅스에서는 우연히 맞고 맥(APFS)에서는
+    # 남았다 (REQ-20260906-015, test_session_restart r2).
+    for mp in sorted(_glob.glob(os.path.join(ROOT, "state", "terminal",
+                                             "restart-*.json"))):
         try:
             with open(mp, encoding="utf-8") as f:
                 m = json.load(f)
@@ -7713,13 +7726,13 @@ def _consume_restart_marker():
             except OSError:
                 pass
             continue
-        if m.get("wrapper_pid") == me:
+        if mine is None and m.get("wrapper_pid") == me:
             try:
                 os.remove(mp)
             except OSError:
                 pass
-            return m
-    return None
+            mine = m
+    return mine
 
 
 def spawn_terminal(inner, manual):
@@ -7741,9 +7754,13 @@ def spawn_terminal(inner, manual):
         # 로만 새 창을 받는다 — 셸 문자열이 아니라 **AppleScript 문자열**로
         # 감싸야 해서 따옴표 규칙이 다르다.
         say = inner.replace("\\", "\\\\").replace('"', '\\"')
-        cands.append(["osascript",
-                      "-e", f'tell application "Terminal" to do script "{say}"',
-                      "-e", 'tell application "Terminal" to activate'])
+        # 도구가 있을 때만 후보다 — 다른 판의 후보와 같은 규칙이다. 없는데
+        # 후보에 넣으면 「창을 열었다」고 답하고 아무것도 안 뜬다
+        # (REQ-20260906-013, test_session_wake w3).
+        if shutil.which("osascript"):
+            cands.append(["osascript",
+                          "-e", f'tell application "Terminal" to do script "{say}"',
+                          "-e", 'tell application "Terminal" to activate'])
     is_wsl = os_platform() == "WSL"
     if is_wsl:
         wt = None
@@ -8417,6 +8434,12 @@ def read_claude_oauth(cfg, platform=None, run=None):
     except (OSError, ValueError):
         pass
     if (platform or sys.platform) != "darwin":
+        return None
+    # Keychain 항목은 계정의 것이라 **기본 설정 자리(~/.claude)** 의 것으로만 읽는다 —
+    # 다른 설정 디렉토리(프로필·빈 슬롯)에 물려주면 자격증명 없는 자리가 남의 사용량을
+    # 단다 (REQ-20260906-014, test_switch_residue r1_6 이 맥에서 드러냈다).
+    if os.path.realpath(os.path.expanduser(cfg or "")) != os.path.realpath(
+            os.path.expanduser("~/.claude")):
         return None
     try:
         import subprocess as _sp
@@ -18399,8 +18422,10 @@ def login_second_signal(name, home, platform=None, run=None):
     if name != "claude":
         return False
     cfg = os.path.expanduser(home)
+    default_home = (os.path.realpath(cfg)
+                    == os.path.realpath(os.path.expanduser("~/.claude")))
     cands = [os.path.join(cfg, ".claude.json")]
-    if os.path.realpath(cfg) == os.path.realpath(os.path.expanduser("~/.claude")):
+    if default_home:
         cands.append(os.path.expanduser("~/.claude.json"))     # 기본 자리만 바깥에 있다
     for p in cands:
         try:
@@ -18409,7 +18434,10 @@ def login_second_signal(name, home, platform=None, run=None):
                     return True
         except OSError:
             pass
-    if (platform or sys.platform) == "darwin":
+    # Keychain 항목은 계정(사용자)의 것이지 설정 디렉토리의 것이 아니다 — 다른
+    # 설정 디렉토리(프로필·시험의 임시 자리)에 「로그인됨」을 물려주면 그 자리는
+    # 자격증명이 없는데도 문이 열린다 (REQ-20260906-015, test_login_check l4).
+    if default_home and (platform or sys.platform) == "darwin":
         try:
             r = (run or subprocess.run)(["security", "find-generic-password", "-s",
                                          "Claude Code-credentials"],
@@ -20816,7 +20844,39 @@ def _boot_epoch():
         with open("/proc/uptime", encoding="utf-8") as f:
             return int(time.time() - float(f.read().split()[0]))
     except (OSError, ValueError, IndexError):
-        return 0
+        pass
+    # 맥·BSD — `sysctl kern.boottime` 이 `{ sec = 1781396544, usec = … } …` 꼴로 답한다.
+    m = re.search(r"sec\s*=\s*(\d+)", _sysctl("kern.boottime"))
+    return int(m.group(1)) if m else 0
+
+
+def _sysctl(name, timeout=5):
+    """`sysctl -n <name>` 의 첫 줄 (없으면 ""). 맥·BSD 의 계기 원천이다 —
+    /proc 이 없는 판에서 같은 계기를 다른 자리에서 읽는다 (REQ-20260906-014)."""
+    if os.path.isdir("/proc/self"):
+        return ""
+    lines = _ps_lines(("sysctl", "-n", name), timeout=timeout)   # 없으면 []
+    return lines[0].strip() if lines else ""
+
+
+def _tcp_counts_bsd():
+    """`netstat -an -p tcp` 로 센 {tcp_inuse, tcp_tw} — /proc/net/sockstat 의
+    대응물. 없거나 실패하면 빈 dict (모르는 것은 싣지 않는다)."""
+    if os.path.isdir("/proc/self"):
+        return {}
+    inuse = tw = 0
+    seen = False
+    for ln in _ps_lines(("netstat", "-an", "-p", "tcp"), timeout=10):
+        c = ln.split()
+        if len(c) < 6 or not c[0].startswith("tcp"):
+            continue
+        seen = True
+        st = c[-1]
+        if st == "TIME_WAIT":
+            tw += 1
+        elif st not in ("LISTEN", "CLOSED"):
+            inuse += 1
+    return {"tcp_inuse": inuse, "tcp_tw": tw} if seen else {}
 
 
 def _probe(label, host, port=443, ip=None, sni=None, http_path=None,
@@ -20905,7 +20965,8 @@ _PEAK = {"tcp_inuse": 0, "sockets": 0}
 
 
 def _peak_tick():
-    """지금 값을 봉우리에 반영한다 — /proc 한 번 읽기라 1초마다 돌아도 싸다."""
+    """지금 값을 봉우리에 반영한다 — /proc 한 번 읽기라 1초마다 돌아도 싸다.
+    /proc 이 없는 판은 `netstat` 한 번이다(맥미니 실측 6ms)."""
     try:
         with open("/proc/net/sockstat", encoding="utf-8") as f:
             for line in f:
@@ -20915,8 +20976,12 @@ def _peak_tick():
                 elif line.startswith("sockets:"):
                     _PEAK["sockets"] = max(_PEAK["sockets"],
                                            int(line.split()[2]))
+        return
     except (OSError, ValueError, IndexError):
         pass
+    tcp = _tcp_counts_bsd()
+    if tcp:
+        _PEAK["tcp_inuse"] = max(_PEAK["tcp_inuse"], tcp["tcp_inuse"])
 
 
 def _peak_take():
@@ -20977,7 +21042,10 @@ def _sys_sample():
         s["load1"], s["load5"] = float(p[0]), float(p[1])
         s["procs"] = p[3]
     except (OSError, ValueError, IndexError):
-        pass
+        try:
+            s["load1"], s["load5"], _ = os.getloadavg()      # 맥·BSD
+        except (OSError, AttributeError):
+            pass
     try:
         mem = {}
         with open("/proc/meminfo", encoding="utf-8") as f:
@@ -20988,7 +21056,7 @@ def _sys_sample():
         s["mem_total_mb"] = mem.get("MemTotal")
         s["mem_avail_mb"] = mem.get("MemAvailable")
     except (OSError, ValueError, IndexError):
-        pass
+        s.update(_mem_bsd())
     try:
         with open("/proc/net/sockstat", encoding="utf-8") as f:
             for line in f:
@@ -21000,14 +21068,19 @@ def _sys_sample():
                 elif line.startswith("sockets:"):
                     s["sockets"] = int(line.split()[2])
     except (OSError, ValueError, IndexError):
-        pass
+        s.update(_tcp_counts_bsd())
     # 임시 포트 여유 — 동시 호출이 많을 때 밖으로 못 나가는 가장 흔한 사유다.
     try:
         with open("/proc/sys/net/ipv4/ip_local_port_range", encoding="utf-8") as f:
             lo, hi = (int(x) for x in f.read().split()[:2])
         s["ephemeral_total"] = hi - lo + 1
     except (OSError, ValueError, IndexError):
-        pass
+        try:
+            lo = int(_sysctl("net.inet.ip.portrange.first"))
+            hi = int(_sysctl("net.inet.ip.portrange.last"))
+            s["ephemeral_total"] = hi - lo + 1
+        except ValueError:
+            pass
     s["conntrack"] = _read_first("/proc/sys/net/netfilter/nf_conntrack_count",
                                  int)
     s["conntrack_max"] = _read_first("/proc/sys/net/netfilter/nf_conntrack_max",
@@ -21017,9 +21090,38 @@ def _sys_sample():
         with open("/proc/sys/fs/file-nr", encoding="utf-8") as f:
             fdnr = int(f.read().split()[0])
     except (OSError, ValueError, IndexError):
-        pass
+        try:
+            fdnr = int(_sysctl("kern.num_files")) or None     # 맥·BSD
+        except ValueError:
+            pass
     s["open_files"] = fdnr
     return {k: v for k, v in s.items() if v is not None}
+
+
+def _mem_bsd():
+    """맥의 {mem_total_mb, mem_avail_mb} — `sysctl hw.memsize` 와 `vm_stat`
+    (free + inactive + speculative 페이지 × 페이지 크기). 못 읽으면 빈 dict."""
+    if os.path.isdir("/proc/self"):
+        return {}
+    out = {}
+    try:
+        out["mem_total_mb"] = int(_sysctl("hw.memsize")) // (1024 * 1024)
+    except ValueError:
+        pass
+    page, pages = 4096, {}
+    for ln in _ps_lines(("vm_stat",), timeout=10):
+        m = re.search(r"page size of (\d+)", ln)
+        if m:
+            page = int(m.group(1))
+            continue
+        k, _, v = ln.partition(":")
+        v = v.strip().rstrip(".")
+        if k.startswith("Pages ") and v.isdigit():
+            pages[k[6:]] = int(v)
+    if pages:
+        avail = sum(pages.get(k, 0) for k in ("free", "inactive", "speculative"))
+        out["mem_avail_mb"] = avail * page // (1024 * 1024)
+    return out
 
 
 def metrics_sample(root=None):
@@ -21430,7 +21532,19 @@ def _open_out(out_path):
 
 
 def _spawn_detached_fork(argv, out_path=None, cwd=None):
-    """POSIX — double fork + setsid. 손자가 init 에게 입양돼 세션과 무관해진다."""
+    """POSIX — double fork + setsid. 손자가 init 에게 입양돼 세션과 무관해진다.
+
+    **스레드가 둘 이상인 프로세스에서는 `os.fork()` 를 부르지 않는다**
+    (REQ-20260906-018). 파이썬 3.12 부터 그 자리에서 DeprecationWarning 을
+    찍는데(다른 스레드가 쥔 잠금이 자식에 복제돼 교착할 수 있다), 그 경고가
+    옳다 — 서버·`serve --supervise` 는 계기·감시 스레드를 먼저 띄운다. 그럴 때는
+    `subprocess` 갈래로 간다: C 수준 fork+exec 라 자식에서 파이썬 코드가 돌지
+    않고, `start_new_session` 이 setsid 다. 부모가 먼저 끝나면 자식은 init 에게
+    입양된다 — 계약(부모 곧 귀환·자식 생존)은 같다.
+    """
+    import threading as _th
+    if _th.active_count() > 1:
+        return _spawn_detached_subprocess(argv, out_path, cwd)
     try:
         pid = os.fork()
     except OSError:

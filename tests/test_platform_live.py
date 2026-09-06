@@ -54,7 +54,12 @@ finally:
         else:
             os.environ[k] = v
 
-BACKENDS = ("proc", "ps")     # 이 기계에서 실제로 돌려 볼 수 있는 두 갈래
+# 이 기계에서 **실제로 돌려 볼 수 있는** 갈래만 — `proc` 은 /proc 이 있는 판
+# (리눅스·WSL)에서만 답을 낸다. 맥에서 강제하면 표가 비어 열 건이 거짓으로
+# 실패했다 (REQ-20260906-013). NATIVE 는 강제 없이 이 기계가 고르는 갈래다.
+HAS_PROC = os.path.isdir("/proc/self")
+NATIVE = "proc" if HAS_PROC else "ps"
+BACKENDS = ("proc", "ps") if HAS_PROC else ("ps",)
 
 
 def backend(name):
@@ -113,7 +118,7 @@ class TestBackendGate(unittest.TestCase):
         """S1·S6. 판정이 지나는 문은 하나고, 문이 없으면 조용히 거짓이다."""
         with self.subTest("s1_linux_uses_proc"):
             mod.proc_cache_clear()
-            self.assertEqual(mod.proc_backend(), "proc")
+            self.assertEqual(mod.proc_backend(), NATIVE)
         with self.subTest("s1b_proc_table_sees_myself"):
             for name in BACKENDS:
                 with self.subTest(backend=name), Backend(name):
@@ -257,14 +262,25 @@ class TestChatLive(unittest.TestCase):
 class TestCache(unittest.TestCase):
     """S7. 폴 한 바퀴가 세션 수만큼 `ps` 를 포크하지 않는다."""
 
-    def test_s7_ps_is_forked_once_within_ttl(self):
+    def test_s7_ps_is_forked_once_within_a_request(self):
+        """중복을 지우는 것은 TTL 이 아니라 요청 스코프다 (REQ-20260906-013) —
+        TTL 은 죽인 직후를 낡게 읽어 맥에서 리눅스와 다른 답을 냈다."""
         with Backend("ps"):
             with mock.patch.object(mod, "_proc_table_read",
                                    wraps=mod._proc_table_read) as spy:
-                for _ in range(5):
-                    mod.proc_table()
+                with mod.proc_scope():
+                    for _ in range(5):
+                        mod.proc_table()
                 self.assertEqual(spy.call_count, 1,
-                                 "ttl 안에서 프로세스 목록을 여러 번 읽었다")
+                                 "한 요청 안에서 프로세스 목록을 여러 번 읽었다")
+        with self.subTest("s7c_outside_a_request_every_call_is_fresh"):
+            with Backend("ps"):
+                with mock.patch.object(mod, "_proc_table_read",
+                                       wraps=mod._proc_table_read) as spy:
+                    mod.proc_table()
+                    mod.proc_table()
+                    self.assertEqual(spy.call_count, 2,
+                                     "스코프 밖이 낡은 표를 돌려줬다")
 
     def test_s7b_clear_forces_a_reread(self):
         with Backend("ps"):
@@ -286,8 +302,9 @@ class TestPortOwner(unittest.TestCase):
         srv.listen(4)
         port = srv.getsockname()[1]
         try:
-            with Backend("proc"):
-                self.assertEqual(mod._port_owner_pid(port), os.getpid())
+            if HAS_PROC:
+                with Backend("proc"):
+                    self.assertEqual(mod._port_owner_pid(port), os.getpid())
             if shutil.which("lsof"):
                 with Backend("ps"):
                     self.assertEqual(mod._port_owner_pid(port), os.getpid(),
@@ -395,7 +412,7 @@ class TestDoctorLive(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             d = json.loads(r.stdout)
             self.assertIn(d["backend"], ("proc", "ps", "win", "none"))
-            self.assertEqual(d["backend"], "proc")      # 이 기계는 리눅스다
+            self.assertEqual(d["backend"], NATIVE)      # 강제 없이 이 기계의 갈래
             self.assertIn("os", d)
             self.assertIn("processes", d)
             self.assertGreater(d["processes"], 0)
@@ -523,7 +540,7 @@ class TestWindowsBackend(unittest.TestCase):
             with Backend("win"):
                 self.assertEqual(mod.proc_backend(), "win")
         with self.subTest("w2_listening_matches_the_linux_answer"):
-            with Backend("proc"):
+            with Backend(NATIVE):
                 want = {p: mod._inbox_watch_alive(p)
                         for p in (self.sid, "00000000", "")}
             self.assertTrue(want[self.sid], "이 기계에서 tail 이 안 잡혔다")

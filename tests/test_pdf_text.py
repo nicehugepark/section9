@@ -321,6 +321,8 @@ class TestPdfText(unittest.TestCase):
 
             # S1/S12 — 실물 한글 PDF 1MB (있는 머신에서만)
         with self.subTest("s1b_real_korean_manual"):
+            if not os.path.exists(REAL_KO):
+                self.skipTest("실물 표본이 이 기계에 없다: " + REAL_KO)
             t0 = time.time()
             t = s9.attach_text(REAL_KO)
             took = time.time() - t0

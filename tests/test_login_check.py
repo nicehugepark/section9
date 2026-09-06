@@ -7,6 +7,7 @@ import importlib.util
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DOCTOR = os.path.join(HERE, "..", "bin", "s9-doctor")
@@ -83,12 +84,25 @@ class LoginCheck(unittest.TestCase):
                 calls.append(argv)
                 class R: returncode = 0
                 return R()
-            home = tempfile.mkdtemp(prefix="s9login5-")
-            self.assertTrue(m.login_second_signal("claude", home, platform="darwin", run=run))
-            self.assertEqual(calls[0][:3], ["security", "find-generic-password", "-s"])
-            self.assertFalse(m.login_second_signal("claude", home, platform="linux", run=run),
-                             "리눅스에서 Keychain 을 묻는다")
-            self.assertFalse(m.login_second_signal("codex", home, platform="darwin", run=run))
+            # Keychain 항목은 계정의 것이라 **기본 설정 자리(~/.claude)** 에서만
+            # 묻는다 — 다른 설정 디렉토리(프로필·시험 자리)에 물려주면 자격증명이
+            # 없는 자리가 「로그인됨」이 된다 (REQ-20260906-015, 맥미니 실측: l4 가
+            # 임시 자리에서 참을 받았다). 집을 임시 자리로 옮겨 기본 자리를 흉내 낸다.
+            fake_home = tempfile.mkdtemp(prefix="s9login5-")
+            home = os.path.join(fake_home, ".claude")
+            os.makedirs(home)
+            with mock.patch("os.path.expanduser",
+                            lambda p: p.replace("~", fake_home, 1) if p.startswith("~") else p):
+                self.assertTrue(m.login_second_signal("claude", home, platform="darwin", run=run))
+                self.assertEqual(calls[0][:3], ["security", "find-generic-password", "-s"])
+                self.assertFalse(m.login_second_signal("claude", home, platform="linux", run=run),
+                                 "리눅스에서 Keychain 을 묻는다")
+                self.assertFalse(m.login_second_signal("codex", home, platform="darwin", run=run))
+                other = tempfile.mkdtemp(prefix="s9login5o-")
+                n = len(calls)
+                self.assertFalse(m.login_second_signal("claude", other, platform="darwin", run=run),
+                                 "기본 자리가 아닌 설정 디렉토리에 Keychain 을 물려줬다")
+                self.assertEqual(len(calls), n, "다른 자리인데 Keychain 을 물었다")
 
     def test_l6_the_three_second_signals_are_one(self):
         """L6. 세 벌(s9·install·doctor)의 둘째 신호가 같은 코드다 — 갈리면 설치·진단·s9 code 가 다른 말을 한다."""
@@ -118,7 +132,11 @@ class LoginCheck(unittest.TestCase):
     def test_l8_usage_credentials_come_from_the_keychain_on_mac(self):
         """L8. 사용량 조회의 자격증명도 맥에서는 Keychain 에서 온다 — 파일이 없어도 (REQ-20260906-071)."""
         s = _load("s9_login8", S9)
-        home = tempfile.mkdtemp(prefix="s9login8-")
+        # Keychain 은 기본 설정 자리(~/.claude)의 것으로만 읽는다 (REQ-20260906-014) —
+        # 집을 임시 자리로 옮겨 기본 자리를 흉내 낸다 (l5 와 같은 방법).
+        fake_home = tempfile.mkdtemp(prefix="s9login8-")
+        home = os.path.join(fake_home, ".claude")
+        os.makedirs(home)
         calls = []
 
         def run(argv, **kw):
@@ -127,11 +145,18 @@ class LoginCheck(unittest.TestCase):
                 returncode = 0
                 stdout = '{"claudeAiOauth": {"accessToken": "t", "subscriptionType": "max"}}'
             return R()
-        self.assertIsNone(s.read_claude_oauth(home, platform="linux", run=run))
-        got = s.read_claude_oauth(home, platform="darwin", run=run)
-        self.assertEqual(got.get("subscriptionType"), "max")
-        self.assertEqual(calls[-1][:3], ["security", "find-generic-password", "-s"])
-        with open(os.path.join(home, ".credentials.json"), "w", encoding="utf-8") as f:
-            f.write('{"claudeAiOauth": {"accessToken": "f", "subscriptionType": "pro"}}')
-        self.assertEqual(s.read_claude_oauth(home, platform="darwin", run=run).get("subscriptionType"), "pro")
+        with mock.patch("os.path.expanduser",
+                        lambda p: p.replace("~", fake_home, 1) if p.startswith("~") else p):
+            self.assertIsNone(s.read_claude_oauth(home, platform="linux", run=run))
+            got = s.read_claude_oauth(home, platform="darwin", run=run)
+            self.assertEqual(got.get("subscriptionType"), "max")
+            self.assertEqual(calls[-1][:3], ["security", "find-generic-password", "-s"])
+            other = tempfile.mkdtemp(prefix="s9login8o-")
+            n = len(calls)
+            self.assertIsNone(s.read_claude_oauth(other, platform="darwin", run=run),
+                              "기본 자리가 아닌 슬롯이 Keychain 의 자격증명을 물려받았다")
+            self.assertEqual(len(calls), n)
+            with open(os.path.join(home, ".credentials.json"), "w", encoding="utf-8") as f:
+                f.write('{"claudeAiOauth": {"accessToken": "f", "subscriptionType": "pro"}}')
+            self.assertEqual(s.read_claude_oauth(home, platform="darwin", run=run).get("subscriptionType"), "pro")
 

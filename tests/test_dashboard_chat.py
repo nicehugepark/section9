@@ -296,7 +296,12 @@ class TestDashboardChat(unittest.TestCase):
         # 환경에선 상위 하네스 pid일 수 있으므로 '살아있는 프로세스로 갱신됨'만 검증
         pid = int(b["attach_pid"])
         self.assertNotEqual(pid, 999999997)          # 낡은 값이 교체됨
-        self.assertTrue(os.path.exists(f"/proc/{pid}"))
+        try:                                         # /proc 은 리눅스에만 있다
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            self.fail(f"attach_pid {pid} 가 살아 있는 프로세스가 아니다")
+        except PermissionError:
+            pass                                     # 남의 프로세스지만 살아 있다
         self.assertFalse(b.get("ended"))
 
     # C5. 훅 주입: SessionStart 컨텍스트에 수신함 경로 + Monitor arming 지시

@@ -1080,8 +1080,10 @@ def login_second_signal(name, home, platform=None, run=None):
     if name != "claude":
         return False
     cfg = os.path.expanduser(home)
+    default_home = (os.path.realpath(cfg)
+                    == os.path.realpath(os.path.expanduser("~/.claude")))
     cands = [os.path.join(cfg, ".claude.json")]
-    if os.path.realpath(cfg) == os.path.realpath(os.path.expanduser("~/.claude")):
+    if default_home:
         cands.append(os.path.expanduser("~/.claude.json"))     # 기본 자리만 바깥에 있다
     for p in cands:
         try:
@@ -1090,7 +1092,10 @@ def login_second_signal(name, home, platform=None, run=None):
                     return True
         except OSError:
             pass
-    if (platform or sys.platform) == "darwin":
+    # Keychain 항목은 계정(사용자)의 것이지 설정 디렉토리의 것이 아니다 — 다른
+    # 설정 디렉토리(프로필·시험의 임시 자리)에 「로그인됨」을 물려주면 그 자리는
+    # 자격증명이 없는데도 문이 열린다 (REQ-20260906-015, test_login_check l4).
+    if default_home and (platform or sys.platform) == "darwin":
         try:
             r = (run or subprocess.run)(["security", "find-generic-password", "-s",
                                          "Claude Code-credentials"],

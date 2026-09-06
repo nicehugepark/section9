@@ -23,7 +23,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
 
 # 임시 포트를 뽑지 않는다 — 고정 풀에서 돌려쓴다 (REQ-20260825-100)
-from portpool import free_port, wait_server  # noqa: E402
+from portpool import free_port, wait_server
+
+
+def thread_count(pid):
+    """그 프로세스의 스레드 수 — 리눅스는 /proc/<pid>/task, 맥·BSD 는
+    `ps -M -p <pid>` (머리글 한 줄 + 스레드 한 줄씩). 이 시험이 재는 것은
+    「연결을 놓아 주면 스레드가 준다」이고, 그 계기는 판마다 자리가 다를 뿐
+    같은 값이다 (REQ-20260906-014)."""
+    try:
+        return len(os.listdir(f"/proc/{pid}/task"))
+    except OSError:
+        pass
+    out = subprocess.run(["ps", "-M", "-p", str(pid)], capture_output=True,
+                         text=True, timeout=10).stdout.splitlines()
+    return max(len(out) - 1, 0)  # noqa: E402
 
 IDLE = 2.0          # 시험용 유휴 상한 (초) — 서버에 환경변수로 준다
 MAXC = 12           # 시험용 동시 연결 상한 (상한 시험 전용)
@@ -66,7 +80,7 @@ class ConnBase(unittest.TestCase):
             env=cls.env, stdout=subprocess.DEVNULL,
             stderr=open(cls.errlog, "wb"))
         wait_server(cls.port)
-        cls.base = len(os.listdir(f"/proc/{cls.srv.pid}/task"))
+        cls.base = thread_count(cls.srv.pid)
 
     @classmethod
     def tearDownClass(cls):
@@ -80,7 +94,7 @@ class ConnBase(unittest.TestCase):
 
     # --- 도구 ---
     def threads(self):
-        return len(os.listdir(f"/proc/{self.srv.pid}/task"))
+        return thread_count(self.srv.pid)
 
     def conn(self, timeout=10):
         """연결 하나. **램프업+재시도**로 연다.

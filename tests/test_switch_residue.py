@@ -407,7 +407,7 @@ class SessionStage(unittest.TestCase):
                 mock.patch.object(mod, "pid_cmdline",
                                   lambda p: "python bin/s9 code"), \
                 mock.patch("os.kill",
-                           lambda pid, sig: self.kills.append((pid, sig))):
+                           lambda pid, sig: sig and self.kills.append((pid, sig))):
             return mod.restart_session(sid, **kv)
 
 

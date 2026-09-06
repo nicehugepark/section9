@@ -98,7 +98,7 @@ class RestartCase(unittest.TestCase):
     def setUp(self):
         os.makedirs(HOME_PROFILE, exist_ok=True)
         os.makedirs(PROFILES, exist_ok=True)
-        self.kills = []
+        self.kills = []      # 시그널 0 은 생존 탐침이라 세지 않는다 (REQ-20260906-015)
         self.stack = [
             mock.patch.object(mod, "_pid_is_claude", lambda p: True),
             # S9_MACHINE 은 모듈 로드 시점에만 세워진다 — 실행 중 조회는
@@ -128,7 +128,7 @@ class RestartCase(unittest.TestCase):
                 mock.patch.object(mod, "pid_cmdline",
                                   lambda p: "python bin/s9 code"),
                 mock.patch("os.kill",
-                           lambda pid, sig: self.kills.append((pid, sig))))
+                           lambda pid, sig: sig and self.kills.append((pid, sig))))
 
     def session(self, sid, entries, profile=HOME_PROFILE):
         full = f"{sid}-full-session-id"

@@ -150,13 +150,14 @@ class StopNeverShootsTheSession(unittest.TestCase):
 
     # S1. 사고 재현 조건 — attach pid 생존·busy 트랜스크립트(가드 전부 통과
     #     상태)여도 os.kill 은 한 번도 불리지 않는다. 지시는 수신함으로.
+    #     (시그널 0 은 pid_alive 의 생존 탐침이라 신호로 세지 않는다 — REQ-20260906-015)
     def test_s1_live_busy_session_gets_zero_signals(self):
         sid = "cafe0001"
         busy_tp = write_transcript([asst("tool_use", [{"type": "tool_use"}])])
         self.binding(sid, attach_pid=os.getpid(), transcript=busy_tp)
         calls = []
         with mock.patch.object(mod.os, "kill",
-                               lambda pid, sig: calls.append((pid, sig))):
+                               lambda pid, sig: sig and calls.append((pid, sig))):
             r = mod.stop_request(DOC, actor="nicehugepark")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "signaled")
@@ -183,7 +184,7 @@ class StopNeverShootsTheSession(unittest.TestCase):
              mock.patch.object(mod, "_stop_note", lambda *a, **k: None), \
              mock.patch("time.sleep", lambda s: None), \
              mock.patch.object(mod.os, "kill",
-                               lambda pid, sig: calls.append((pid, sig))):
+                               lambda pid, sig: sig and calls.append((pid, sig))):
             r = mod.stop_request(DOC, actor="nicehugepark")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "stopped")
@@ -199,7 +200,7 @@ class StopNeverShootsTheSession(unittest.TestCase):
             raise ValueError("수신함 없음")
         with mock.patch.object(mod, "chat_send", boom), \
              mock.patch.object(mod.os, "kill",
-                               lambda pid, sig: calls.append((pid, sig))):
+                               lambda pid, sig: sig and calls.append((pid, sig))):
             r = mod.stop_request(DOC, actor="nicehugepark")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "no-recipient")
