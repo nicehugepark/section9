@@ -181,6 +181,7 @@ function updateTitle(){
 
 function stopChat(){
   if (!TERM) return;
+  (TERM.unfit || []).forEach(f => { try{ f(); }catch(e){} });   // 판 크기 재기 중단 (REQ-20260906-089)
   const ta = $("#chat-in");                        // 컴포저 보존 — 복귀 시 복원
   if (ta) termKeep.draft = ta.value;
   termKeep.atts = (TERM.atts || []).filter(a => a.path && !a.up);

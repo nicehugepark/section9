@@ -50,6 +50,39 @@ async function ccFetchTry(url, ms, key){
   }
   return null;
 }
+/* 터미널 판은 **남은 화면을 정확히** 차지한다 (REQ-20260906-089). 예전엔 CSS 가
+   calc(100vh - 168px) 로 위쪽 높이를 어림잡았는데, 「서버가 옛 코드」 같은 띠가 하나
+   더 서면 그만큼 아래가 잘리고 body 에 세로 스크롤이 생겼다(주인 지적 2026-09-06 18:39).
+   자리는 재서 정한다: 판의 윗변에서 창 바닥까지. 위쪽 형제(헤더·필터·띠)의 크기가
+   바뀌면 다시 잰다. */
+function fitTerm(){
+  const root = document.getElementById("cc-root");
+  if (!root) return;
+  const top = root.getBoundingClientRect().top + window.scrollY;
+  let h = Math.max(240, Math.floor(window.innerHeight - top - 12));
+  root.style.height = h + "px";
+  // 판 아래에 남는 여백(#view 의 안쪽 여백·body 여백)은 어림잡지 않고 잰다 — 한 번 세운 뒤
+  // 문서가 창보다 길면 그만큼 더 줄인다.
+  const over = document.documentElement.scrollHeight - window.innerHeight;
+  if (over > 0){
+    h = Math.max(240, h - over);
+    root.style.height = h + "px";
+  }
+}
+function watchTermFit(T){
+  fitTerm();
+  const onResize = () => fitTerm();
+  window.addEventListener("resize", onResize);
+  T.unfit = [() => window.removeEventListener("resize", onResize)];
+  if (typeof ResizeObserver === "function"){
+    const ro = new ResizeObserver(() => fitTerm());
+    const view = document.getElementById("view");
+    let el = view ? view.previousElementSibling : null;
+    while (el){ ro.observe(el); el = el.previousElementSibling; }
+    T.unfit.push(() => ro.disconnect());
+  }
+}
+
 function renderTerminal(){
   // 셸 1회 생성(L0). 살아있는 셸은 render()의 조기 반환 가드가 지키므로
   // 여기 도달 = 탭 새 진입. 이후 이 DOM은 탭을 떠날 때까지 재생성되지 않는다.
@@ -90,6 +123,7 @@ function renderTerminal(){
       <div id="cc-agents"></div>
       <div class="ag sub"><span class="g">○</span> <span id="cc-src">transcript</span><span class="r" id="cc-meta"></span></div>
     </div></div>`;
+  watchTermFit(T);
   termBindInput(T);
   termStripBind(T);
   termJumpBind(T);        // 바닥으로 내려가는 손잡이 (REQ-20260827-061)
