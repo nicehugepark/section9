@@ -921,18 +921,43 @@ def last_red():
         return None
 
 
+FULL_GREEN = os.path.join(REPO, "state", "tests-full-green.json")
+
+
+def record_full_green(sha=""):
+    """전체 스위트가 **어느 commit 에서** 통과했다는 시각 기록 — 지문 기록과 별개다.
+
+    원격은 commit 된 나무를 돈다. 그 통과는 이 머신의 작업 트리가 더럽든 말든
+    그 commit 의 사실인데, 지문 기록(mark_green)은 더러운 트리에선 생략해야 맞다
+    (그 지문으로 다음 실행을 건너뛰면 거짓 초록). 그래서 붉음 라쳇이 보는 「마지막
+    초록 시각」은 여기 따로 남긴다 — 실측 2026-09-06 12:19: ae99971 원격 통과가
+    있었는데 트리가 더러워 아무 기록도 없었고, 다음 code 커밋이 ee223fa 의 붉음에
+    계속 막혔다(REQ-20260906-061).
+    """
+    try:
+        os.makedirs(os.path.dirname(FULL_GREEN), exist_ok=True)
+        with open(FULL_GREEN, "w", encoding="utf-8") as f:
+            json.dump({"at": time.time(), "sha": (sha or "")[:7]}, f)
+    except OSError:
+        pass
+
+
 def full_green_age(repo=None):
     """마지막 **전체 스위트** 초록 기록의 나이(초) — 나무가 달라도 센다. 없으면 None.
 
     넓게 닿는 파일의 작은 변경을 커밋할 때 게이트가 묻는다 (REQ-20260905-009):
     지금 나무의 전체 초록은 없어도, 몇 시간 안에 전체가 초록이었고 스모크∪변경이
     지금 초록이면 커밋을 세우지 않는다 — 전체는 뒤에 한 번 돌려 두면 된다.
+    두 기록 중 새것을 센다: 지문 기록(이 트리의 통과)과 시각 기록(commit 의 통과).
     """
-    try:
-        with open(_reuse_path(patterns([])), encoding="utf-8") as f:
-            at = float(json.load(f).get("at") or 0)
-    except (OSError, ValueError, TypeError):
-        return None
+    ats = []
+    for path in (_reuse_path(patterns([])), FULL_GREEN):
+        try:
+            with open(path, encoding="utf-8") as f:
+                ats.append(float(json.load(f).get("at") or 0))
+        except (OSError, ValueError, TypeError):
+            pass
+    at = max(ats) if ats else 0
     return max(0.0, time.time() - at) if at else None
 
 
@@ -1001,9 +1026,14 @@ def main():
             r2 = subprocess.run([sys.executable, HERE, "--local", "--no-reuse", *local_part],
                                 stdin=subprocess.DEVNULL)
             rc = rc or r2.returncode
-        if rc == 0 and full and fp and not dirty:
-            mark_green(patterns([]), fp)
-            print("[원격 머신] 전체 통과 — 이 working tree 의 통과 기록을 남겼다", file=sys.stderr)
+        if rc == 0 and full:
+            record_full_green(_sha)          # commit 의 통과 — 트리가 더러워도 사실이다
+            if fp and not dirty:
+                mark_green(patterns([]), fp)
+                print("[원격 머신] 전체 통과 — 이 working tree 의 통과 기록을 남겼다", file=sys.stderr)
+            else:
+                print(f"[원격 머신] 전체 통과 — commit {(_sha or '')[:7]} 의 통과 시각을 남겼다"
+                      "(작업 트리에 미커밋 변경이 있어 지문 기록은 생략)", file=sys.stderr)
         elif rc != 0 and full:
             record_last_red(remote_run.LAST_RED or ["(원격 머신)"], fp)
         if full:
@@ -1140,6 +1170,7 @@ def main():
                 mark_green(pats, fp)
                 if full_requested:
                     write_green_stamp()
+                    record_full_green(_git(REPO, "rev-parse", "HEAD") or "")
             elif full_requested:
                 # 7442b68 이 이 두 줄 사이에 elif 를 끼워 넣으면서 초록 도장이 붉은
                 # 갈래로 밀려 들어갔다 — 붉은 전체가 --changed 의 기준을 찍고, 초록은
