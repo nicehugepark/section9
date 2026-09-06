@@ -48,7 +48,7 @@ class SyncClassify(unittest.TestCase):
         def fake(*argv, timeout=6):
             self.calls.append(argv)
             # 「당기기」는 fetch 뒤 rebase 다 — 대본의 "pull" 은 그 rebase 에 답한다
-            op = "pull" if argv[:2] == ("rebase", "-q") else argv[0]
+            op = "pull" if argv[:2] == ("rebase", "--autostash") else argv[0]
             if op == "diff":
                 return CP(out="vault/x.md\n")
             if op in q and q[op]:
@@ -79,7 +79,7 @@ class SyncClassify(unittest.TestCase):
         self.assertEqual([e["attempt"] for e in pushes], [0, 1])
         self.assertEqual(pushes[0]["kind"], "rejected")
         # 재시도 사이에 pull 이 한 번 더 있었다
-        self.assertEqual(sum(1 for c in self.calls if c[:2] == ("rebase", "-q")), 2)
+        self.assertEqual(sum(1 for c in self.calls if c[:2] == ("rebase", "--autostash")), 2)
 
     # C2. 거부가 이어져도 백오프는 없다 — 다음 이벤트가 다시 민다
     def test_c2_repeated_rejection_ends_without_backoff(self):
@@ -111,7 +111,7 @@ class SyncClassify(unittest.TestCase):
             self.calls.append(argv)
             if argv[0] == "diff":
                 return CP(out="vault/x.md\n")
-            if argv[:2] == ("rebase", "-q"):
+            if argv[:2] == ("rebase", "--autostash"):
                 raise subprocess.TimeoutExpired("git", timeout)
             return CP()
         with mock.patch.object(self.m, "_sync_git", fake), \
@@ -155,7 +155,7 @@ class SyncClassify(unittest.TestCase):
             self.calls.append(argv)
             if argv[0] == "diff":
                 return CP(out="vault/x.md\n")
-            if argv[:2] == ("rebase", "-q"):
+            if argv[:2] == ("rebase", "--autostash"):
                 return CP(1, self.CONF)
             if argv[:2] == ("rebase", "--abort"):
                 return CP(128, "fatal: could not move back to bd8e852\n")
@@ -176,18 +176,22 @@ class SyncClassify(unittest.TestCase):
         verbs = [c[0] for c in self.calls]
         self.assertNotIn("pull", verbs, "pull 은 FETCH_HEAD 를 읽는다 — 겹친 fetch 에 선다")
         i_fetch = verbs.index("fetch")
-        i_rebase = next(i for i, c in enumerate(self.calls) if c[:2] == ("rebase", "-q"))
+        i_rebase = next(i for i, c in enumerate(self.calls) if c[:2] == ("rebase", "--autostash"))
         self.assertLess(i_fetch, i_rebase)
-        self.assertEqual(self.calls[i_rebase], ("rebase", "-q", "@{u}"))
-        self.assertFalse([c for c in self.calls if c[:1] == ("stash",)], "깨끗한 트리에 보관을 걸었다")
+        self.assertEqual(self.calls[i_rebase], ("rebase", "--autostash", "-q", "@{u}"))
+        self.assertFalse([c for c in self.calls if c[:1] == ("stash",)], "sync 가 제 보관함을 만든다 — 되돌리기 실패가 기록을 삼킨다(REQ-20260906-082)")
 
-    # C13. 남이 담아 두거나 고치는 중인 것이 있으면 보관해 두고 rebase 한 뒤 **index 째** 되돌린다 —
-    #      예전의 자동 보관(--autostash)은 되돌릴 때 index 를 잃었다 (실제 발생 2026-09-06 12:38, REQ-20260906-066)
-    def test_c13_dirty_tree_is_kept_with_its_index_across_the_pull(self):
+    # C13. 남이 담아 둔(git add) 변경은 pull 뒤 다시 담긴다 — autostash 가 index 를 풀어도
+    #      (REQ-20260906-066); sync 제 경로는 되담지 않고, 직접 보관(stash)은 쓰지 않는다(082)
+    def test_c13_staged_paths_are_restaged_after_the_pull(self):
+        os.makedirs(os.path.join(self.root, "bin"), exist_ok=True)
+        with open(os.path.join(self.root, "bin", "s9.py"), "w") as f:
+            f.write("# staged\n")
+
         def fake(*argv, timeout=6):
             self.calls.append(argv)
-            if argv[:2] == ("status", "--porcelain"):
-                return CP(out="M  bin/s9.py\n")
+            if argv[:3] == ("diff", "--cached", "--name-only") and "--" not in argv:
+                return CP(out="bin/s9.py\nvault/x.md\n")
             if argv[0] == "diff":
                 return CP(out="vault/x.md\n")
             return CP()
@@ -197,13 +201,11 @@ class SyncClassify(unittest.TestCase):
             r = self.m.sync_run("t")
         self.assertEqual(r, "ok")
         verbs = [c[:2] for c in self.calls]
-        i_keep = verbs.index(("stash", "push"))
-        i_reb = verbs.index(("rebase", "-q"))
-        i_back = verbs.index(("stash", "pop"))
-        self.assertLess(i_keep, i_reb)
-        self.assertLess(i_reb, i_back)
-        self.assertIn("--index", self.calls[i_back], "index 없이 되돌리면 담아 둔 것이 풀린다")
-        self.assertNotIn("--autostash", sum((list(c) for c in self.calls), []))
+        i_reb = verbs.index(("rebase", "--autostash"))
+        i_add = next(i for i, c in enumerate(self.calls) if c[:2] == ("add", "--") and "bin/s9.py" in c)
+        self.assertLess(i_reb, i_add, "되담기가 pull 앞에 있다")
+        self.assertNotIn("vault/x.md", self.calls[i_add], "sync 제 경로까지 되담는다")
+        self.assertFalse([c for c in self.calls if c[:1] == ("stash",)])
 
     # C6. 관측 — commit/pull/push 단계가 한 줄씩
     def test_c6_events_have_stage_ms_rc(self):

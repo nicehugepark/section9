@@ -47,7 +47,7 @@ class TransportUnit(unittest.TestCase):
         def fake(*argv, timeout=6):
             # 「당기기」는 fetch 뒤 rebase @{u} 다(REQ-20260906-001, FETCH_HEAD 경합) —
             # 이 시험은 망을 오가는 단계만 세므로 그 rebase 를 pull 로 센다
-            self.calls.append("pull" if argv[:2] == ("rebase", "-q") else argv[0])
+            self.calls.append("pull" if argv[:2] == ("rebase", "--autostash") else argv[0])
             if argv[0] == "diff":
                 return CP(out="vault/x.md\n")
             return CP()
