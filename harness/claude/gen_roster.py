@@ -224,6 +224,38 @@ SKILLS = {
 - 위 경로들을 실제로 시도해 본 뒤에도 불가능할 때만 "실브라우저 미검증"을 명시한다 —
   단, WSL에서 Windows 브라우저 경로를 **시도조차 안 하고** 미검증 처리하는 것은 금지.
 
+## 엔진은 둘이다 — Chrome 만으로 검증을 끝내지 않는다 (Safari/WebKit, REQ-20260906-093)
+
+주인 지시(2026-09-06): **UX 는 반드시 Safari 에서도 확인한다. Mac 에서도 확인한다.**
+대시보드는 iPad·Mac 의 Safari 에서 쓰이고, WebKit 은 Blink 와 다르게 그린다 —
+`:has()`·`clamp()` 지원 시점, `pointer:coarse` 판정, sticky 안의 의사요소, `min-height`
+가 있는 flex 항목의 높이, 100vh 와 주소창, 폭 0 인 오버레이 스크롤바. Chrome 캡처
+한 벌은 검증의 절반이다. 경로는 순서대로 시도한다:
+
+1. **실제 Safari** — Mac 또는 iPad 가 닿으면 그 Safari 로 같은 URL 을 열어 캡처한다.
+   사람이 열어야 하면 행동 요청 가이드(PROTOCOL 14조)로 절차를 준다.
+2. **Playwright WebKit** — Safari 가 없으면 WebKit 엔진으로 찍는다. 이 WSL 에서는
+   **Windows 쪽**에 둔다 — 리눅스 WebKit 은 root 권한의 시스템 라이브러리가 필요하고
+   원격 테스트 머신도 같았다(2026-09-06 실측, REQ-20260906-093). Windows 는 관리자
+   권한 없이 된다. 자리는 `C:\\Temp\\s9-webkit` (지워졌으면 아래 세 줄이 곧 복구 절차):
+   ```
+   mkdir -p /mnt/c/Temp/s9-webkit && cd /mnt/c/Temp/s9-webkit
+   Z=$(curl -sL https://nodejs.org/dist/latest-v22.x/ | grep -o 'node-v22[0-9.]*-win-x64.zip' | head -1)
+   curl -sL -o node.zip https://nodejs.org/dist/latest-v22.x/$Z && python3 -m zipfile -e node.zip . && rm node.zip
+   ```
+   그 폴더에 `run-npx.cmd`(PATH 앞에 그 node 폴더를 두고 `npx --yes playwright %*`)를
+   만들고 `cmd.exe /c C:\\Temp\\s9-webkit\\run-npx.cmd install webkit`. 찍기:
+   ```
+   cmd.exe /c "C:\\Temp\\s9-webkit\\run-npx.cmd screenshot --browser=webkit --viewport-size=768,1024 --wait-for-timeout=4000 http://127.0.0.1:9909/#board C:\\Temp\\s9-webkit\\wk-board-768.png"
+   ```
+   → `/mnt/c/Temp/s9-webkit/wk-board-768.png` 를 Read 로 본다. 이것을 `s9 shot --engine webkit`
+   으로 감싸는 일은 REQ-20260906-098. WebKit 에서 갈리는 것을 계산값으로 확인해야 하면
+   같은 폴더의 `probe.js`(playwright API, `page.evaluate`)를 본보기로 쓴다.
+3. 둘 다 불가능하면 산출물에 **「Safari(WebKit) 미검증」** 을 명시하고, review 가 아니라
+   blocked 로 올린다 — 여는 조건은 「사람이 Safari 에서 확인」이다.
+
+태블릿 폭(768x1024·1024x768)은 WebKit 으로도 찍는다 — 그 태블릿이 곧 iPad 다.
+
 ## 손이 얹힌 얼굴까지 찍는다 (REQ-20260830-043 2차 반려의 교훈)
 
 `s9 shot` 은 정적이라 **:hover·:focus-visible·:active 가 캡처에 안 나온다** — 쉼
