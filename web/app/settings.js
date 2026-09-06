@@ -286,11 +286,12 @@ function machineHistoryHTML(u){
    아니다** — 펼친 속을 `md2html` 로 그린다. 머리말(`---`)은 이름과 설명뿐이라
    행이 이미 말한 것이고, 보기에서는 걷는다. 고칠 때만 원문 상자로 넘어간다. */
 let rosterOpen = null;   // {scope, kind, owner, name, editing} — 한 번에 하나만 펼친다
+let rosterProject = null;  // 프로젝트 범위에서 고른 slug (REQ-20260906-095)
 let rosterMore = {};     // "scope|owner|kind" → 그 종류를 전량 펼쳤나
 
 const ROSTER_SCOPE = {
   user:    ["내 것", "어느 프로젝트에서나 씁니다"],
-  project: ["프로젝트", "이 프로젝트에서만 씁니다"],
+  project: ["프로젝트", "고른 프로젝트에서만 씁니다"],
   common:  ["공용", "Claude Code 에 기본으로 놓입니다 · 읽기 전용"],
 };
 // 종류는 이제 소제목이 말한다 — 행마다 붙던 `agent`/`skill` 작은 글자를 걷고,
@@ -362,8 +363,9 @@ async function showRoster(v){
         ? `<button type="button" class="more" data-rmore="${esc(mk)}">${list.length - shown.length}개 더 보기</button>` : ""}`;
   };
 
-  const group = (title, sub, scope, owner, list, addForm) => `<div class="cfg-h gname">${esc(title)}</div>
+  const group = (title, sub, scope, owner, list, addForm, pick) => `<div class="cfg-h gname">${esc(title)}</div>
     <div class="path" style="margin:-4px 0 2px">${esc(sub)}</div>
+    ${pick || ""}
     ${kindBlock(scope, owner, "agent", list.filter(r => r.kind === "agent"))}
     ${kindBlock(scope, owner, "skill", list.filter(r => r.kind === "skill"))}
     ${addForm || ""}`;
@@ -384,11 +386,41 @@ async function showRoster(v){
     ? group(ROSTER_SCOPE.user[0], ROSTER_SCOPE.user[1], "user", me, mine,
             addForm("user", me, mine.length ? "" : "내가 만든 에이전트·스킬이 없습니다. 추가하면 어느 프로젝트에서나 씁니다."))
     : `<div class="cfg-h">내 것</div><p class="empty">미등록 계정입니다 — 터미널에서 <code>s9 user add &lt;이름&gt;</code> 으로 등록하면 내 에이전트·스킬을 둘 수 있습니다.</p>`;
-  for (const slug of (projects.length ? projects : (window.__projects||[]).map(p => p.slug).filter(Boolean))){
-    const list = rows.filter(r => r.scope === "project" && r.owner === slug);
+  /* 프로젝트는 얼마든지 늘어난다 — 그래서 범위는 **한 묶음**이고, 그 안에서
+     프로젝트를 고른다. 묶음을 프로젝트 수만큼 늘어놓으면 열 개짜리 저장소에서는
+     이 판이 열 번 반복되는 목록이 된다.
+     기본으로 고를 프로젝트는 셋 중 먼저 맞는 것이다: ① 이 화면에서 마지막으로
+     고른 것 ② 헤더의 프로젝트 필터가 좁혀 둔 것 ③ 목록의 첫 프로젝트. 어떤
+     slug 도 코드에 적지 않는다 — 기본 프로젝트도 여럿 중 하나일 뿐이다. */
+  const pjSlugs = [];
+  for (const p of (window.__projects || []))
+    if (p && p.slug && !pjSlugs.includes(p.slug)) pjSlugs.push(p.slug);
+  for (const s of projects) if (!pjSlugs.includes(s)) pjSlugs.push(s);
+  const pjLabel = slug => {
+    const p = (window.__projects || []).find(x => x && x.slug === slug);
+    return (p && p.title && p.title !== slug) ? `${p.title} (${slug})` : slug;
+  };
+  const pjHas = slug => rows.some(r => r.scope === "project" && r.owner === slug);
+  if (!pjSlugs.includes(rosterProject)){
+    const headed = (($("#f-project") || {}).value || "");
+    rosterProject = pjSlugs.includes(headed) ? headed : (pjSlugs[0] || null);
+  }
+  if (rosterProject){
+    const list = rows.filter(r => r.scope === "project" && r.owner === rosterProject);
     const editable = list.some(r => r.editable) || !list.length;
-    html += group(`${ROSTER_SCOPE.project[0]} ${slug}`, ROSTER_SCOPE.project[1], "project", slug, list,
-                  editable ? addForm("project", slug, list.length ? "" : "이 프로젝트에 둔 에이전트·스킬이 없습니다.") : "");
+    /* 하나뿐일 때도 칸은 선다 — 늘어날 자리라는 것을 화면이 말해야 한다.
+       비어 있는 프로젝트에 `· 없음` 을 붙이는 까닭: 고르기 전에 어디에 무엇이
+       있는지 알 수 있으면 빈 판을 열어 보는 걸음이 없어진다. */
+    const pick = `<select id="ro-proj" class="uf rpsel" aria-label="에이전트·스킬을 둘 프로젝트">${
+        pjSlugs.map(sl => `<option value="${esc(sl)}"${sl === rosterProject ? " selected" : ""}>${
+          esc(pjLabel(sl))}${pjHas(sl) ? "" : " · 없음"}</option>`).join("")}</select>`;
+    html += group(ROSTER_SCOPE.project[0], ROSTER_SCOPE.project[1], "project", rosterProject, list,
+                  editable ? addForm("project", rosterProject,
+                                     list.length ? "" : "이 프로젝트에 둔 에이전트·스킬이 없습니다.") : "",
+                  pick);
+  } else {
+    html += `<div class="cfg-h gname">${ROSTER_SCOPE.project[0]}</div>
+      <p class="empty">아직 프로젝트가 없습니다 — 터미널에서 <code>s9 project add &lt;slug&gt;</code> 로 만들면 그 프로젝트에서만 쓰는 에이전트·스킬을 여기서 둘 수 있습니다.</p>`;
   }
   html += group(ROSTER_SCOPE.common[0], ROSTER_SCOPE.common[1], "common", "", common, "")
        + `<div class="path" style="margin-top:10px">공용은 Claude Code 에 기본으로 놓이는 것이라 여기서 고칠 수 없습니다. <code>harness/claude/gen_roster.py</code> 를 고치고 <code>s9-install</code> 을 다시 실행하세요.</div>
@@ -407,6 +439,13 @@ async function showRoster(v){
     el.addEventListener("keydown", ev => {
       if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); openRow(el); }
     });
+  });
+  const pjSel = v.querySelector("#ro-proj");
+  if (pjSel) pjSel.addEventListener("change", () => {
+    rosterProject = pjSel.value;
+    // 다른 프로젝트로 옮기면 펼쳐 둔 항목은 이 목록의 것이 아니다 — 접는다.
+    if (rosterOpen && rosterOpen.scope === "project") rosterOpen = null;
+    showRoster(v);
   });
   v.querySelectorAll("[data-rmore]").forEach(b => b.addEventListener("click", () => {
     rosterMore[b.dataset.rmore] = true; showRoster(v);
