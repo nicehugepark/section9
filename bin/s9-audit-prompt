@@ -271,16 +271,21 @@ def _session_belongs_here(data):
 
 
 def _account_registered():
-    """지금 세션의 계정이 users/ 에 등록돼 있나 — OS 계정 이름 그대로의 폴백은 등록이 아니다."""
+    """지금 세션의 계정이 등록돼 있나 (REQ-20260906-074). `s9 user current` 의 출처가
+    os-account(OS 계정 이름 그대로의 폴백)이면서 users/<이름>/ 이 없을 때만 미등록이다 —
+    바인딩·S9_USER·별칭(os_accounts)으로 잡힌 이름은 등록된 사람이다."""
     try:
-        env = dict(os.environ)
-        cur = subprocess.run([*S9_ARGV, "user", "current"], capture_output=True,
-                             encoding="utf-8", errors="replace", env=env, timeout=15)
-        name = (cur.stdout or "").strip().split()[0] if cur.returncode == 0 and cur.stdout.strip() else ""
+        cur = run(dict(os.environ), "user", "current")
+        text = (cur.stdout or "").strip()
+        if cur.returncode != 0 or not text:
+            return True                      # 판정을 못 하면 기록하는 쪽이 안전하다
+        name = text.split()[0]
+        if "os-account" not in text:
+            return True
         root = os.environ.get("S9_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return bool(name) and os.path.isdir(os.path.join(root, "users", name))
+        return os.path.isdir(os.path.join(root, "users", name))
     except Exception:
-        return True                          # 판정을 못 하면 기록하는 쪽이 안전하다
+        return True
 
 def is_command(text):
     """슬래시 커맨드 판별 (REQ-20260825-014) — startswith('/')는 절대경로

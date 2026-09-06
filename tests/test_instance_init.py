@@ -124,8 +124,9 @@ class TestInstanceInit(unittest.TestCase):
             # I5. 회귀: cwd가 s9 루트가 아니면 명시 S9_ROOT 유지(감지 미발동)
         with self.subTest("i5_no_detection_outside_root"):
                 sandbox = tempfile.mkdtemp(prefix="s9plain-")
-                env = {**self.env, "S9_ROOT": sandbox}
+                env = {**self.env, "S9_ROOT": sandbox, "S9_USER": "tester"}
                 sh(S9, "init", env=env)
+                sh(S9, "user", "add", "tester", env=env)   # 미등록 계정은 기록하지 않는다 (REQ-20260906-074)
                 payload = {"session_id": "plainsess-x", "cwd": "/tmp",
                            "prompt": "샌드박스 대시보드에 새 시계 위젯을 추가해줘"}
                 r = sh(PHOOK, env=env, inp=json.dumps(payload))
