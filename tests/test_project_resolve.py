@@ -191,11 +191,17 @@ class ProjectResolve(unittest.TestCase):
         # 미등록 slug 를 명시하면 거부
         with self.assertRaises(SystemExit):
             m.code_project("zzz")
-        with open(S9_SRC, encoding="utf-8") as f:
-            src = f.read()
-        self.assertIn('os.environ["S9_PROJECT"]', src)
-        with open(HOOK_SESSION, encoding="utf-8") as f:
-            self.assertIn('"bind", "project"', f.read())
+        # 세션 훅을 실제로 돌린다 — S9_PROJECT 가 바인딩 project 로 적히는지 (동작 시험;
+        # 소스 글자 대조는 test_test_budget 의 라쳇에 걸린다, REQ-20260906-062)
+        payload = json.dumps({"session_id": "projsess-full-id", "source": "startup"})
+        r = subprocess.run([HOOK_SESSION, "start"], input=payload, capture_output=True,
+                           text=True, timeout=30,
+                           env={**self.base, "S9_ENTRY": "code", "S9_PROJECT": "pa",
+                                "S9_PORT": "1"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        b = m.read_binding("testbox", "projsess") or {}
+        self.assertEqual(b.get("project"), "pa", b)
+        self.assertEqual(b.get("entry"), "code", b)
 
     # S10. 세션 바인딩의 slug 에 권한이 없으면 ④ 로 내려간다
     def test_s10_unauthorized_binding_falls_through(self):
