@@ -893,6 +893,9 @@ def repo_verdict(r):
                if dirty else None))
 
 
+PY_FLOOR = (3, 10)     # pyproject.toml requires-python — 여기와 그 파일이 같은 값이어야 한다
+
+
 def deps_verdict(x):
     req = list(x.get("missing_required") or [])
     opt = list(x.get("missing_optional") or [])
@@ -900,6 +903,19 @@ def deps_verdict(x):
         return _v("deps", "도구", "critical",
                   f"도구: 필수 없음 — {', '.join(req)}",
                   "이게 없으면 s9 자체가 돌지 않는다.")
+    py = tuple(x.get("python") or ())
+    if py and py[:2] < PY_FLOOR:
+        # 맥의 기본 python3 는 3.9 (CommandLineTools) 다 — 하한을 말해 주는 자리가 없어
+        # 시험 22파일이 원인 모를 TypeError(staticmethod 호출, 3.10+) 로 깨졌다
+        # (REQ-20260906-017-2n7g, 맥미니 실측 2026-09-06). 막지는 않는다 — 하네스의
+        # 대부분은 3.9 에서도 돌므로 거부는 진단이 아니라 고장이다.
+        cur = ".".join(str(n) for n in py[:3])
+        floor = ".".join(str(n) for n in PY_FLOOR)
+        return _v("deps", "도구", "warn",
+                  f"파이썬: {cur} < {floor} (pyproject requires-python)",
+                  f"시험 일부와 3.{PY_FLOOR[1]}+ 문법에 기댄 기능이 깨진다. {floor} 이상을 "
+                  "설치해 `python3` 가 그것을 가리키게 하라 "
+                  "(맥: brew install python@3.12 · 우분투: apt install python3.12).")
     if opt:
         return _v("deps", "도구", "warn",
                   f"도구: 선택 없음 — {', '.join(opt)}",
@@ -1229,7 +1245,8 @@ def deps_info():
         missing_opt.append("chrome(캡처)")
     if not shutil.which("powershell.exe"):
         missing_opt.append("powershell.exe(윈도우 포트 조회)")
-    return {"missing_required": missing_req, "missing_optional": missing_opt}
+    return {"missing_required": missing_req, "missing_optional": missing_opt,
+            "python": tuple(sys.version_info[:3])}
 
 
 # 역할 진실은 GitHub 권한이고 profile 의 role 은 캐시다 (REQ-20260902-034).

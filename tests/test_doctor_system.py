@@ -15,6 +15,7 @@ sysinit 을 73초 붙잡아 그동안 아무것도 리슨하지 못했다, REQ-2
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -187,6 +188,26 @@ class DepsVerdict(unittest.TestCase):
                                      "missing_optional": []})
             self.assertEqual(v["level"], "critical")
             self.assertIn("git", v["line"])
+        with self.subTest("old_python_is_warn_with_the_floor_named"):
+            # 맥 기본 python3(3.9) — 하한을 말해 주는 자리 (REQ-20260906-017-2n7g)
+            v = doctor.deps_verdict({"missing_required": [],
+                                     "missing_optional": [],
+                                     "python": (3, 9, 6)})
+            self.assertEqual(v["level"], "warn")
+            self.assertIn("3.9.6", v["line"])
+            self.assertIn("3.10", v["line"])
+            self.assertIn("brew install", v["advice"])
+        with self.subTest("floor_python_is_ok"):
+            v = doctor.deps_verdict({"missing_required": [],
+                                     "missing_optional": [],
+                                     "python": (3, 10, 0)})
+            self.assertEqual(v["level"], "ok")
+        with self.subTest("floor_matches_pyproject"):
+            with open(os.path.join(HERE, "..", "pyproject.toml"),
+                      encoding="utf-8") as f:
+                m = re.search(r'requires-python\s*=\s*">=(\d+)\.(\d+)"', f.read())
+            self.assertIsNotNone(m, "pyproject 의 requires-python 을 못 읽었다")
+            self.assertEqual(doctor.PY_FLOOR, (int(m.group(1)), int(m.group(2))))
         with self.subTest("optional_missing_is_warn"):
             v = doctor.deps_verdict({"missing_required": [],
                                      "missing_optional": ["chrome"]})
