@@ -18807,6 +18807,21 @@ def code_project(explicit):
     return found[0] if len(found) == 1 else ""
 
 
+def first_run_identity(u, known, ask):
+    """첫 실행의 신원 잇기 (REQ-20260906-075) — (동사, 이름).
+
+    두 번째 기계에서는 내 이름이 이미 저장소에 있다(users/<이름>). 그 이름을 치면
+    **attach**(이 컴퓨터의 OS 계정을 그 사람에게 잇는다)이지 add 가 아니다 — 예전엔 무조건
+    add 를 돌려 「이미 있다」로 실패했고 계정은 미등록인 채 남았다(맥미니 실제 발생
+    2026-09-06 13:30: 그 뒤 기록이 OS 계정 이름으로 붙었다). 없는 이름이면 add 로 새로
+    만든다. Enter 는 OS 계정 이름 그대로 새 사람이다."""
+    known = list(known or [])
+    hint = f" — 이미 있는 이름: {', '.join(known)}" if known else ""
+    name = (ask(f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. 이름(Enter={u}){hint}: ")
+            or "").strip() or u
+    return ("attach" if name in known else "add"), name
+
+
 def cmd_code(args):
     """통합 진입 명령 (REQ-20260824-032): 대시보드를 보장(이미 떠 있으면 스킵)하고
     이 터미널에서 claude를 실행한다 — 한 명령으로 관제(대시보드)+대화(터미널) 시작.
@@ -18880,11 +18895,14 @@ def cmd_code(args):
         u, src_kind = resolve_user(None, with_source=True)
         if src_kind == "os-account" and not user_role(u):
             if sys.stdin.isatty():
-                name = input(f"◌ 미등록 사용자다. 등록할 이름(Enter={u}): ").strip() or u
-                subprocess.run([os.path.realpath(__file__), "user", "add",
-                                name], stdin=subprocess.DEVNULL)
+                verb, name = first_run_identity(u, registered_users(), input)
+                subprocess.run([os.path.realpath(__file__), "user", verb, name],
+                               stdin=subprocess.DEVNULL)
             else:
-                print(f"◌ 미등록 사용자({u}) — 등록하려면: s9 user add {u}")
+                known = registered_users()
+                print(f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 "
+                      f"잇는다: s9 user attach <이름>" + (f" ({', '.join(known)})" if known else "")
+                      + f" · 새 사람이면: s9 user add {u}")
     except Exception:
         pass
     # 추적 파일에 남은 자율 실행 키를 이 머신의 local.json 으로 (REQ-20260902-031)

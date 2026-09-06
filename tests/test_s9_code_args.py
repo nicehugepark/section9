@@ -216,7 +216,8 @@ class TestCodeArgs(unittest.TestCase):
                 r = subprocess.run([S9, "code"], capture_output=True, text=True,
                                    env=env2, timeout=30, stdin=subprocess.DEVNULL)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-                self.assertIn("미등록 사용자", r.stdout)
+                self.assertIn("등록돼 있지 않다", r.stdout)     # 문구는 REQ-20260906-075
+                self.assertIn("s9 user attach", r.stdout)     # 이미 있는 이름에 잇는 길을 먼저 말한다
                 self.assertIn('["claude"', r.stdout)
 
             # G4. 회귀: --no-claude 는 대시보드만 — dry-run 출력(JSON exec 라인) 없음
