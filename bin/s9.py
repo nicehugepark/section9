@@ -22992,6 +22992,50 @@ def _pin_port(port, root=None):
         return False
 
 
+RESTART_REVIVE_WAIT_SEC = 40   # 감시자가 되살리기를 기다리는 상한 (양보 5s + 백오프 + 기동)
+
+
+def _restart_under_guard(host, port, held):
+    """감시자(pid held)가 지키는 포트의 재기동 — 옛 서버만 내리고, 감시자가 되살린
+    새 서버가 답할 때까지 기다린 뒤 **돌아온다** (REQ-20260906-006-2n7g).
+
+    감시자의 설계는 「--restart 가 포트를 잡으면 양보한다」였다. 그 갈래는 사람이
+    터미널에서 앞단 서버를 원할 때만 맞고, 훅·규약이 「s9 serve --restart 로 다시
+    띄워라」라고 시키는 에이전트 셸에서는 명령이 영영 돌아오지 않는 서버가 된다.
+    감시자가 없을 때의 앞단 갈래는 그대로다 — 윈도우처럼 fcntl 이 없어 감시자 판정이
+    None 인 판도 그쪽이다.
+    """
+    import signal as _sig
+    import time as _t
+    old = serveinfo_at(port, host)
+    old_started = (old or {}).get("started")
+    killed = _signal_port(port, _sig.SIGTERM)
+    if killed == 0:
+        for pid in _root_serve_pids():
+            try:
+                os.kill(pid, _sig.SIGTERM); killed += 1
+            except OSError:
+                pass
+    print(f"기존 서버 {killed}개 종료 — 감시자(pid {held})가 되살리기를 기다린다…")
+    if not _wait_port_free(host, port, tries=10):
+        # SSE 장수명 연결 탓에 SIGTERM 만으로는 늦게 풀린다 (--stop 과 같다)
+        _signal_port(port, sig_kill())
+        if not _wait_port_free(host, port, tries=20):
+            die(f"포트 {port} 가 아직 사용 중이다 — "
+                f"`{_stop_hint(port)}` 로 점유 프로세스를 확인하라")
+    # 시계가 아니라 횟수로 기다린다 — 시험이 sleep 을 갈아끼우면 즉시 끝난다
+    for _ in range(int(RESTART_REVIVE_WAIT_SEC / 0.5)):
+        new = serveinfo_at(port, host)
+        if new is not None and new.get("started") != old_started:
+            print(f"재기동 완료: http://{host}:{port}/ (감시자 pid {held} 가 되살렸다, "
+                  f"started {new.get('started')})")
+            return
+        _t.sleep(0.5)
+    die(f"감시자(pid {held})가 {RESTART_REVIVE_WAIT_SEC}초 안에 포트 {port} 를 되살리지 "
+        f"않았다 — state/serve-guard.log 를 확인하라 (감시자가 물러났으면 "
+        f"`s9 serve --supervise` 로 다시 세운다)")
+
+
 def cmd_serve(args):
     _given = args.port is not None
     _base = s9_port()
@@ -23114,6 +23158,12 @@ def cmd_serve(args):
     if _port_busy(args.host, args.port):
         if getattr(args, "restart", False):
             import signal as _sig
+            held = _guard_alive(args.port)
+            if held is not None:
+                # 감시자가 있으면 되살리기는 감시자의 몫이다 — 이 프로세스가 서버가 되면
+                # 명령이 돌아오지 않는다 (맥 실측 2026-09-06 14:34, REQ-20260906-006-2n7g:
+                # 에이전트 셸에서 120초 뒤 백그라운드로 밀렸고 세션과 함께 죽을 서버가 됐다).
+                return _restart_under_guard(args.host, args.port, held)
             killed = _signal_port(args.port, _sig.SIGTERM)
             if killed:
                 print(f"기존 서버 {killed}개 종료 — 포트 대기 중…")

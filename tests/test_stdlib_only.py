@@ -41,9 +41,51 @@ def local_helpers():
             and n != "__main__.py"}
 
 
+def stdlib_names():
+    """표준 라이브러리 최상위 모듈 이름 집합.
+
+    `sys.stdlib_module_names` 는 3.10 에서 생겼다 — 맥의 기본 python3 는 3.9
+    (CommandLineTools) 라 그 속성이 없어 이 스모크 시험이 AttributeError 로 오류나고
+    커밋 검사가 모든 code 커밋을 막았다 (REQ-20260906-011-2n7g, 맥 실측 2026-09-06).
+    3.9 이하에서는 같은 답을 파일 시스템에서 만든다: 내장 모듈 ∪ stdlib 디렉터리의
+    .py/패키지 ∪ lib-dynload 의 확장 모듈.
+    """
+    names = getattr(sys, "stdlib_module_names", None)
+    if names:
+        return set(names)
+    import sysconfig
+    out = set(sys.builtin_module_names)
+    for key in ("stdlib", "platstdlib"):
+        d = sysconfig.get_paths().get(key)
+        if not d or not os.path.isdir(d):
+            continue
+        for sub in (d, os.path.join(d, "lib-dynload")):
+            try:
+                entries = os.listdir(sub)
+            except OSError:
+                continue
+            for n in entries:
+                if n.startswith("__"):          # __pycache__, __phello__ …
+                    continue
+                if n.endswith(".py"):
+                    out.add(n[:-3])
+                elif ".so" in n or n.endswith(".pyd"):
+                    out.add(n.split(".")[0])
+                elif os.path.isdir(os.path.join(sub, n)) and n != "site-packages":
+                    out.add(n)
+    return out
+
+
 class TestStdlibOnly(unittest.TestCase):
+    def test_stdlib_names_are_known_on_this_python(self):
+        # 3.9 의 폴백도 3.10+ 의 목록과 같은 핵심을 알아야 한다 — 비면 헛통과다
+        names = stdlib_names()
+        for m in ("os", "sys", "json", "ast", "sqlite3", "ssl", "unittest"):
+            self.assertIn(m, names, m)
+        self.assertNotIn("site-packages", names)
+
     def test_no_third_party_imports(self):
-        allowed = set(sys.stdlib_module_names) | local_helpers()
+        allowed = stdlib_names() | local_helpers()
         bad = []
         for path in py_sources():
             with open(path, encoding="utf-8") as f:
