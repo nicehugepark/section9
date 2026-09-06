@@ -1109,6 +1109,12 @@ def resolve_id(doc_id):
     return [r for r in rows if r["id"].startswith(doc_id + "-")]
 
 
+def full_doc_id(doc_id):
+    """짧은 지칭(REQ-20260906-009)을 정식 id 하나로 — 후보가 정확히 하나일 때만 바꾼다."""
+    rows = resolve_id(str(doc_id or "").strip())
+    return rows[0]["id"] if len(rows) == 1 else str(doc_id or "").strip()
+
+
 SHORT_REF_RE = re.compile(r"(?<![\w-])((?:REQ|DOC|SES|QST))-(\d{1,3})(?![\w-])")
 
 
@@ -2354,8 +2360,11 @@ def cmd_new(args):
             "creator": creator, "origin": origin,
             "origin_actor": origin_actor, "origin_req": origin_req,
             "project": proj,
-            "parent": args.parent or "", "children": [],
-            "derived_from": args.derived_from or "", "relates": args.relates or [],
+            # 짧은 id(REQ-20260906-009)는 정식 id 로 — 짧은 채 적히면 뒤의 정규화가
+            # 못 찾아 지운다(실제 사고 2026-09-06: 044 의 parent 가 사라졌다, REQ-20260906-048)
+            "parent": full_doc_id(args.parent) if args.parent else "", "children": [],
+            "derived_from": full_doc_id(args.derived_from) if args.derived_from else "",
+            "relates": args.relates or [],
             "relates_why": ({r: (getattr(args, "why", "") or "").strip()
                              for r in args.relates} if args.relates else {}),
             "refs_docs": args.ref_doc or [], "refs_links": args.ref_link or [],
@@ -12860,10 +12869,23 @@ def link_audit(fix=False):
                     meta["parent"] = ""
                     mark(did)
             elif par not in docs:
-                issues.append(f"{did}: 부모 {par} 미존재")
-                if fix:
-                    meta["parent"] = ""
-                    mark(did)
+                # 짧은 id(REQ-20260906-009)면 지우지 말고 정식 id 로 — 지우면 관계가
+                # 사라진다(실제 사고 2026-09-06, REQ-20260906-048: 044 의 부모가 사라졌다)
+                cands = [d for d in docs if d.startswith(par + "-")]
+                if len(cands) == 1:
+                    issues.append(f"{did}: 부모 {par} 는 짧은 id — {cands[0]} 로")
+                    if fix:
+                        meta["parent"] = cands[0]
+                        mark(did)
+                        pm = docs[cands[0]][1]
+                        if did not in (pm.get("children") or []):
+                            pm["children"] = list(pm.get("children") or []) + [did]
+                            mark(cands[0])
+                else:
+                    issues.append(f"{did}: 부모 {par} 미존재")
+                    if fix:
+                        meta["parent"] = ""
+                        mark(did)
             else:
                 pm = docs[par][1]
                 if did not in (pm.get("children") or []):
@@ -22507,12 +22529,14 @@ def cmd_serve(args):
             if os.environ.get("S9_SERVE_SUPERVISED") == "1":
                 raise SystemExit(EXIT_PORT_BUSY)
             return
-    # 관계 무결성 자동 복구 (REQ-20260825-061): 기동 시 1회 — 사람이 명령을
-    # 기억하지 않아도 깨진 관계가 쌓이지 않는다. 실패해도 서버는 뜬다.
+    # 관계 무결성 검사 (REQ-20260825-061): 기동 시 1회 **읽기만** — 고치지 않는다.
+    # 기동이 문서를 고쳐 쓰면 두 머신이 각자 제 코드 판대로 같은 문서를 고쳐 동기화로
+    # 오간다(실제 사고 2026-09-06, REQ-20260906-048: 원격 머신의 기동이 parent·children
+    # 을 지웠다). 고치는 것은 사람이 부르는 `s9 linkcheck --fix` 뿐이다.
     try:
-        _iss, _fx = link_audit(fix=True)
-        if _fx:
-            print(f"관계 무결성 자동 복구: {_fx}건")
+        _iss, _fx = link_audit(fix=False)
+        if _iss:
+            print(f"관계 무결성: 문제 {len(_iss)}건 — 고치려면 s9 linkcheck --fix")
     except Exception:
         pass
     import http.server

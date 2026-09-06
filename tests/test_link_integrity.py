@@ -130,7 +130,11 @@ class TestAutoRepairEntrypoint(unittest.TestCase):
     의존하지 않는다 — 서버 기동 경로에 자동 복구가 걸려 있고, 규약에
     3층 관계 규칙이 명시돼 있다."""
     def test_serve_auto_repairs(self):
-        """serve 기동 경로에 자동 복구가 있다.
+        """serve 기동 경로는 관계를 **검사만** 한다 — 고치지 않는다 (REQ-20260906-048 개정).
+
+        REQ-20260825-061 은 기동 시 자동 복구(fix=True)였다. 두 머신이 같은 문서를 각자
+        제 코드 판대로 고쳐 쓰고 그것이 동기화로 오간 실제 사고(2026-09-06) 뒤,
+        기동은 읽기만 하고 고치는 것은 `s9 linkcheck --fix` 뿐으로 바꿨다.
 
         검사 범위를 **함수 전체**로 잡는다. 앞서 2500자 창으로 잘랐더니,
         cmd_serve 에 감시자 분기(REQ-20260825-096)가 들어오면서 link_audit 이
@@ -143,7 +147,9 @@ class TestAutoRepairEntrypoint(unittest.TestCase):
         i = src.index("def cmd_serve(")
         m = re.compile(r"^def \w+\(", re.M).search(src, i + 1)
         body = src[i:m.start() if m else len(src)]
-        self.assertIn("link_audit(fix=True)", body,
+        self.assertNotIn("link_audit(fix=True)", body,
+                         "기동이 문서를 고쳐 쓰면 두 머신의 문서가 서로 오간다 (REQ-20260906-048)")
+        self.assertIn("link_audit(fix=False)", body,
                       "serve 기동 경로에 자동 복구가 없다")
 
     def test_protocol_documents_model(self):
