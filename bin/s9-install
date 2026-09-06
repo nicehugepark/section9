@@ -165,7 +165,11 @@ def install_git_hooks():
     # 커밋인데 그것을 문서에 옮기는 일이 손에 맡겨져 있어 몇 시간씩 밀렸다.
     # 자기 sha 를 먼저 잡는다 — commit-note 가 문서를 고치면 sync(remote) 가 곧바로 문서
     # 커밋을 얹어 HEAD 가 바뀐다(REQ-20260906-020). 배경 전체 실행은 그 sha 를 본다.
+    # 진행 중 표식은 **commit-note 보다 먼저** 지운다 (REQ-20260906-030) —
+    # commit-note 가 문서를 고치면 sync 가 곧바로 커밋을 걸고, 표식이 남아 있으면
+    # 그 sync 가 제 자신의 post-commit 을 「진행 중인 다른 커밋」으로 오인해 미룬다.
     cnote = ('#!/bin/sh\n' + py + where +
+             'rm -f "$MAIN/state/commit-in-progress"\n'
              'SHA="$(git rev-parse HEAD)"\n'
              'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9" commit-note '
              '>/dev/null 2>&1 || true\n'
@@ -619,7 +623,7 @@ def uninstall(home=None, root=None, bring_back=True, dry_run=False, out=None):
     for what, path in removed:
         out(f"  {'(예정) ' if dry_run else ''}걷음 {what}: {path}")
     if back and back.get("which"):
-        out(f"  {'(예정) ' if dry_run else ''}설치 전 백업 {back['which']} 을 되돌렸다 — 원위치의 새 파일은 .s9-conflict-<시각> 으로 비켜 세웠다")
+        out(f"  {'(예정) ' if dry_run else ''}설치 전 백업 {back['which']} 을 되돌렸다 — 원위치의 새 파일은 .s9-conflict-<시각> 으로 이름을 바꿔 두었다")
     elif back and back.get("error"):
         out(f"  ⚠ 되돌리기 실패: {back['error']} — `s9 env` 의 되돌리기로 다시")
     out(f"section9 uninstall {'미리보기' if dry_run else '완료'} — 저장소·문서·자격증명·백업은 그대로다. "

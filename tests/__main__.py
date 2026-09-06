@@ -35,7 +35,7 @@ def _reap(label):
     """
     reaped = portpool.reap_stray_dashboard_servers()
     for p in reaped:
-        print(f"[포트 회수/{label}] {portpool.describe_stray(p)}",
+        print(f"[포트 정리/{label}] {portpool.describe_stray(p)}",
               file=sys.stderr)
     return reaped
 
@@ -313,7 +313,7 @@ def hold_run_lock(pats):
     # 0 은 「안 기다린다」로 읽힌다.
     how_long = (f"{REUSE_WAIT_SEC // 60}분" if REUSE_WAIT_SEC >= 60
                 else f"{REUSE_WAIT_SEC}초")
-    print("같은 시험이 이미 돌고 있다 — 새로 돌리지 않고 그 결과를 기다린다 "
+    print("같은 테스트가 이미 실행 중이다 — 새로 실행하지 않고 그 결과를 기다린다 "
           f"(최대 {how_long}, S9_TESTS_WAIT 로 조절).", file=sys.stderr)
     end = time.time() + REUSE_WAIT_SEC
     while time.time() < end:
@@ -322,7 +322,7 @@ def hold_run_lock(pats):
             return f, True
         except OSError:
             time.sleep(2.0)
-    print("기다림이 끝났다 — 앞 실행이 안 끝나 그냥 돈다.", file=sys.stderr)
+    print("대기 시간이 끝났다 — 앞 실행이 안 끝나 그냥 실행한다.", file=sys.stderr)
     return None, True
 
 
@@ -760,7 +760,7 @@ def run_sharded(pats, jobs, bump=None, skip=()):
                 red.append(f)
     LAST_RUN_RED[:] = red
     if not ok and should_retry(red):
-        print(f"[좁혀서 다시] 붉은 파일 {len(red)}개만 단독으로 한 번 더 돈다: "
+        print(f"[좁혀서 다시] 실패한 파일 {len(red)}개만 단독으로 한 번 더 실행한다: "
               f"{' '.join(red)}", file=sys.stderr)
         r = subprocess.Popen([sys.executable, HERE, "--no-reuse", *red], env=env,
                              stdin=subprocess.DEVNULL)
@@ -769,9 +769,9 @@ def run_sharded(pats, jobs, bump=None, skip=()):
         RETRY_PROCS.remove(r)
         if r.returncode == 0:
             ok = True
-            record_flaky(red, "샤드에서 붉음 · 단독 초록")
-            print(f"[좁혀서 다시] 단독 초록 — 간헐로 기록했다 ({FLAKY_FILE}). "
-                  f"두 번째 보이면 격리하고 REQ 로 세워라.", file=sys.stderr)
+            record_flaky(red, "샤드에서 실패 · 단독 실행은 통과")
+            print(f"[좁혀서 다시] 단독 실행은 통과 — 간헐 실패(flaky)로 기록했다 ({FLAKY_FILE}). "
+                  f"두 번째 보이면 격리하고 REQ 로 등록하라.", file=sys.stderr)
     return ok, done_files
 
 
@@ -949,6 +949,10 @@ def main():
     # 이 머신은 보내고 기다리고 기록만 한다. `--remember` 는 KEY 를 파일에 남겨
     # 다음부터 `python3 tests/` 만 쳐도 원격으로 간다(--local 로 한 번 끈다).
     import remote_run
+    import async_notify
+    # 결과 알림 표식(S9_TESTS_ASYNC)은 여기서 걷는다 (REQ-20260906-029) — 샤드·안쪽
+    # 러너·시험 속 러너가 물려받으면 저마다 수신함에 쓴다. 알리는 것은 이 실행 하나다.
+    notify_env = async_notify.take_env()
     argv0 = sys.argv[1:]
     explicit = "--remote" in argv0
     # 기억된 원격은 **전체 실행**에만 쓴다 — 스모크·게이트·표적·--changed 는 이
@@ -975,15 +979,20 @@ def main():
         rc = remote_run.run_remote(rkey, remote_part, jobs=jobs, fingerprint=fp)
         _sha, dirty = remote_run.head_state()
         if local_part:
-            print(f"[원격] 이 머신에서 마저 돈다: {' '.join(local_part)}", file=sys.stderr)
+            print(f"[원격 머신] 이 머신에서 마저 실행한다: {' '.join(local_part)}", file=sys.stderr)
             r2 = subprocess.run([sys.executable, HERE, "--local", "--no-reuse", *local_part],
                                 stdin=subprocess.DEVNULL)
             rc = rc or r2.returncode
         if rc == 0 and full and fp and not dirty:
             mark_green(patterns([]), fp)
-            print("[원격] 전체 초록 — 이 나무의 초록 기록을 남겼다", file=sys.stderr)
+            print("[원격 머신] 전체 통과 — 이 working tree 의 통과 기록을 남겼다", file=sys.stderr)
         elif rc != 0 and full:
-            record_last_red(["(원격)"], fp)
+            record_last_red(remote_run.LAST_RED or ["(원격 머신)"], fp)
+        if full:
+            # 결과가 스스로 도착한다 (REQ-20260906-029) — 백그라운드 실행일 때만 움직인다
+            async_notify.notify_full_result(rc == 0, remote_run.LAST_RED,
+                                            remote_run.LAST_TOOK, len(selected),
+                                            where="원격 머신", env=notify_env)
         return rc
     # 스위트 안에서 러너를 또 띄우는 시험이 있다(test_runner_patterns·
     # test_tmp_hygiene). 그 안쪽 실행이 바깥 실행의 세계를 청소하면 안 된다 —
@@ -994,7 +1003,7 @@ def main():
         _reap("시작 전")      # 지난 실행의 잔재는 이번 실행의 책임이 아니다
         stale = tmproot.sweep_stale()
         if stale:
-            print(f"[임시자리 회수/시작 전] 지난 실행 잔재 {len(stale)}개",
+            print(f"[임시자리 정리/시작 전] 지난 실행이 남긴 파일 {len(stale)}개",
                   file=sys.stderr)
     # 이 실행이 만드는 임시 자리는 전부 여기 안에 생기고 끝나면 함께 사라진다
     # (REQ-20260829-003). 84개 파일에 tearDown 을 심는 대신 문을 여기서 닫는다.
@@ -1005,6 +1014,7 @@ def main():
     # 문 밖에 생겨 그대로 남는다 — 전체 스위트 1회에 22개가 그렇게 샜다.
     tmp_root, prev_tmpdir = tmproot.make_run_root()
     ok, empty, leaked, ran = False, [], [], False
+    t_start = time.time()
     pats, fp, lock_fh = [], None, None
     try:
         # 원격 손잡이는 여기서 걷는다 — 패턴으로 읽히면 「고르지 못한 패턴」이 된다
@@ -1038,7 +1048,7 @@ def main():
             sel = changed_selection()
             if sel == [] and not smoke:
                 print("변경 없음 — 마지막 전체 green 이후 시험에 닿는 파일이 "
-                      "바뀌지 않았다. 아무것도 돌리지 않는다.", file=sys.stderr)
+                      "바뀌지 않았다. 아무것도 실행하지 않는다.", file=sys.stderr)
                 return 0
             if sel is not None:
                 argv = sel          # 파일명 자체가 부분일치 패턴으로 먹힌다
@@ -1077,7 +1087,7 @@ def main():
             # 무엇이 덮었는지 말한다 — 「안 돌았다」만 보이면 사람이 문을
             # 의심한다 (REQ-20260904-005).
             why = ("이 선택이 방금 통과했다" if _green_fp(pats) == fp
-                   else "이 나무에서 전체 스위트가 이미 초록이다")
+                   else "이 working tree 에서 전체 테스트가 이미 통과했다")
             print(f"바뀐 것이 없다 — {why}. 다시 돌지 않는다 "
                   "(`--no-reuse` 로 강제).", file=sys.stderr)
             return 0
@@ -1118,6 +1128,14 @@ def main():
                 # 안 찍던 자리. 도장은 초록에만 (REQ-20260905-025 에서 실측).
                 record_last_red(LAST_RUN_RED, fp)
             drop_run_lock(lock_fh)
+            if full_requested:
+                if not ok:
+                    # 원격 머신에서 돌 때 이 줄을 이 머신의 remote_run 이 걷어 실패 파일을
+                    # 안다 — 출력을 다시 해석하지 않고 표식 한 줄로 넘긴다.
+                    print(async_notify.RED_MARK + " ".join(LAST_RUN_RED), flush=True)
+                # 결과가 스스로 도착한다 (REQ-20260906-029) — 백그라운드 실행일 때만 움직인다
+                async_notify.notify_full_result(ok, LAST_RUN_RED, time.time() - t_start,
+                                                len(files), where="로컬", env=notify_env)
             return 0 if ok else 1
         # 로컬 서버에 두드리는 시험 전부에 되걸기를 입힌다 (REQ-20260904-003) —
         # 되걸기 없이 두드리는 파일이 15개였고, 실행마다 희생자가 바뀌었다.
@@ -1178,7 +1196,7 @@ def main():
         if left:
             # 거두되 조용히 치우지 않는다 — 접두어가 범인을 가리킨다.
             head = ", ".join(left[:8]) + (" …" if len(left) > 8 else "")
-            print(f"[임시자리 회수/끝난 뒤] 테스트가 남긴 {len(left)}개를 "
+            print(f"[임시자리 정리/끝난 뒤] 테스트가 남긴 {len(left)}개를 "
                   f"거뒀다: {head}", file=sys.stderr)
         leaked = [] if nested else _reap("끝난 뒤")
         if ran and not nested:
@@ -1191,7 +1209,7 @@ def main():
     if leaked:
         # 거뒀더라도 실패로 센다 — 조용히 치우면 다음에 또 생긴다.
         print(f"실패: 테스트가 사용자 대시보드 포트에 서버 {len(leaked)}개를 "
-              f"남겼다(거뒀다). 세션 훅을 돌리는 테스트는 S9_PORT 로 격리하라.",
+              f"남겼다(정리했다). 세션 훅을 실행하는 테스트는 S9_PORT 로 격리하라.",
               file=sys.stderr)
         return 1
     if empty:

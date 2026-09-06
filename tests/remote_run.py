@@ -130,6 +130,9 @@ def remote_script(url, sha, dest, jobs, pats_argv, user=""):
 
 
 RC_MARK = "__S9_REMOTE_RC="
+RED_MARK = "__S9_FULL_RED="       # 원격 러너가 끝에 찍는 실패 파일 목록 (async_notify 와 같은 글자)
+LAST_RED = []                     # 마지막 run_remote 가 걷은 실패 파일
+LAST_TOOK = 0.0                   # 마지막 run_remote 의 소요(초)
 
 
 def _ssh(key, remote_cmd, stdin=None, stream=True, timeout=None):
@@ -152,6 +155,9 @@ def _ssh(key, remote_cmd, stdin=None, stream=True, timeout=None):
                 rc = int(line[len(RC_MARK):].strip())
             except ValueError:
                 rc = 1
+            continue
+        if line.startswith(RED_MARK):
+            LAST_RED[:] = line[len(RED_MARK):].split()
             continue
         if stream:
             sys.stdout.write(line); sys.stdout.flush()
@@ -205,6 +211,8 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     r = _ssh(key, remote_script(url, sha, dest, jobs, pats_argv, user=_local_user()),
              stream=True, timeout=3600)
     took = time.time() - t0
+    global LAST_TOOK
+    LAST_TOOK = took
     if r.returncode == 0:
         print(f"[원격] 초록 ({took:.0f}초)", file=sys.stderr)
         if on_green and not dirty:

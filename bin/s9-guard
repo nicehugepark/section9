@@ -198,7 +198,7 @@ def concurrent_gate(staged):
         return
     print("s9-guard: 다른 작업자가 붙어 있는 중에, 그 사이 바뀐 파일을 "
           "담으려 합니다.", file=sys.stderr)
-    print("  지금 도는 작업자:", file=sys.stderr)
+    print("  지금 실행 중인 작업자:", file=sys.stderr)
     for w in workers[:5]:
         print(f"    {w}", file=sys.stderr)
     print("  최근에 바뀐 스테이지 파일:", file=sys.stderr)
@@ -208,7 +208,7 @@ def concurrent_gate(staged):
         print(f"    - {f}  ({when} 바뀜)", file=sys.stderr)
     print("`git add <경로>` 는 '내 변경'이 아니라 '그 파일의 지금 상태'를 담습니다 —",
           file=sys.stderr)
-    print("남이 쓰는 중이면 남의 미완성이 이 커밋의 일부가 됩니다(2026-08-26 21:42 실사고).",
+    print("남이 쓰는 중이면 남의 미완성이 이 커밋의 일부가 됩니다(2026-08-26 21:42 실제 사고).",
           file=sys.stderr)
     print("`git diff --cached` 로 담기는 내용을 실제로 읽고, 네 것만 맞으면",
           file=sys.stderr)
@@ -266,9 +266,9 @@ def staged_tests_gate(staged):
                        env=clean_git_env())
     if r.returncode == 0:
         return
-    print("s9-guard: 커밋 게이트(담긴 시험 ∪ 스모크)가 실패합니다 — 커밋을 멈춥니다.",
+    print("s9-guard: 커밋 검사(담긴 테스트 ∪ 스모크 테스트)가 실패합니다 — 커밋을 멈춥니다.",
           file=sys.stderr)
-    print(f"  대상: 스모크 12파일 ∪ {' '.join(names) or '(담긴 시험 없음)'}",
+    print(f"  대상: 스모크 테스트 12파일 ∪ {' '.join(names) or '(담긴 테스트 없음)'}",
           file=sys.stderr)
     _show_gate_failure(r)
     sys.exit(1)
@@ -311,7 +311,7 @@ def _show_gate_failure(r):
             last = min(len(lines), i + 12) - 1
     else:
         # 표식이 없으면 샤드가 **죽은** 것이다 — 끊긴 자리가 곧 단서다.
-        print("  실패 표식이 없다 — 샤드가 도중에 죽었을 수 있다. 끊긴 자리:",
+        print("  실패 표식이 없다 — 샤드가 도중에 종료됐을 수 있다. 끊긴 자리:",
               file=sys.stderr)
         for ln in lines[-15:]:
             print(f"  {ln}", file=sys.stderr)
@@ -452,6 +452,9 @@ def after_commit(sha=None):
     기다리지 않는다 — 단일비행(hold_run_lock)·같은 지문 재사용(green_seen)은
     러너가 이미 안다. 로그는 state/tests-async/<sha7>.log.
     """
+    # 표식은 post-commit 훅의 첫 줄이 지운다 — 여기서도 지운다: 템플릿을 새로 놓기
+    # 전의 훅(rm 줄이 없는 것)으로 커밋해도 잔재가 5분 동안 sync 를 세우지 않도록.
+    commit_mark_clear()
     sha = sha or "HEAD"
     if not head_touches_wide(sha):
         return 0
@@ -468,8 +471,8 @@ def after_commit(sha=None):
     # 있는 전체 실행이 있으면 그 결과가 라쳇을 판정한다 — 새 것은 띄우지 않는다.
     live = full_run_in_flight()
     if live:
-        print(f"s9-guard: 전체 스위트가 이미 돌고 있다(pid {live}) — 새로 띄우지 않는다. "
-              f"그 결과가 붉으면 다음 커밋이 라쳇에 걸린다.", file=sys.stderr)
+        print(f"s9-guard: 전체 테스트가 이미 실행 중이다(pid {live}) — 새로 띄우지 않는다. "
+              f"그 결과가 실패면 고쳐질 때까지 다음 code 커밋이 막힌다.", file=sys.stderr)
         return 0
     try:
         sha = subprocess.run(["git", "rev-parse", "--short", sha], capture_output=True,
@@ -484,6 +487,11 @@ def after_commit(sha=None):
         # 그 실행이 남긴 판정도 손잡이가 낀 것이 된다.
         for k in ("S9_FIX_RED", "S9_ALLOW_CONCURRENT", "S9_GIT_OK"):
             env.pop(k, None)
+        # 결과가 스스로 도착한다 (REQ-20260906-029): 이 표식이 있을 때만 러너가 끝에
+        # 수신함·REQ 노트·실패 요청을 쓴다. 손으로 돌린 실행은 이 표식이 없어 조용하다.
+        # sha 도 함께 — HEAD 는 그 사이 문서 커밋으로 바뀌었을 수 있다.
+        env["S9_TESTS_ASYNC"] = "1"
+        env["S9_TESTS_ASYNC_SHA"] = sha
         # 원격이 기억돼 있으면(state/test-remote, REQ-20260905-012) 러너가 알아서
         # 원격으로 보낸다 — 48코어면 1분 안이고 중계 계열 간헐도 없다.
         remote = os.path.exists(os.path.join(ROOT, "state", "test-remote"))
@@ -492,10 +500,10 @@ def after_commit(sha=None):
                          stdout=log, stderr=subprocess.STDOUT,
                          stdin=subprocess.DEVNULL, cwd=ROOT, env=env,
                          start_new_session=True)
-        print(f"s9-guard: 전체 스위트를 배경에서 띄웠다{' (원격)' if remote else ''} — "
-              f"state/tests-async/{sha}.log (붉으면 다음 커밋이 라쳇에 걸린다)", file=sys.stderr)
+        print(f"s9-guard: 전체 테스트를 백그라운드에서 시작했다{' (원격 머신)' if remote else ''} — "
+              f"state/tests-async/{sha}.log (실패하면 고쳐질 때까지 다음 code 커밋이 막힌다)", file=sys.stderr)
     except Exception as e:
-        print(f"s9-guard: 배경 전체 실행을 못 띄웠다 ({e}) — `python3 tests/` 를 손으로",
+        print(f"s9-guard: 백그라운드 전체 테스트를 시작하지 못했다 ({e}) — `python3 tests/` 를 손으로",
               file=sys.stderr)
     return 0
 
@@ -521,17 +529,17 @@ def wide_change_gate(staged, verdict=None):
         return
     blocked, files = red_ratchet(staged)
     if blocked:
-        print("s9-guard: 마지막 전체 스위트가 붉었고 그 뒤 초록이 없습니다 — "
-              "붉음 라쳇이 code 커밋을 멈춥니다.", file=sys.stderr)
+        print("s9-guard: 마지막 전체 테스트가 실패했고 그 뒤 통과 기록이 없습니다 — "
+              "실패가 고쳐질 때까지 code 커밋을 막습니다.", file=sys.stderr)
         for f in files[:10]:
-            print(f"  - 붉었던 파일: {f}", file=sys.stderr)
-        print("  그 파일을 고쳐 담거나(자동 통과), 그 파일만 돌려 초록이면 "
-              "`python3 tests/` 로 전체를 다시 초록으로 두세요. 이 커밋이 그 "
+            print(f"  - 실패한 파일: {f}", file=sys.stderr)
+        print("  그 파일을 고쳐 담거나(자동 통과), 그 파일만 실행해 통과하면 "
+              "`python3 tests/` 로 전체 통과 기록을 다시 남기세요. 이 커밋이 그 "
               "고침이 아니면 `S9_FIX_RED=<REQ-id> git commit …` 으로 사유와 함께 "
               "지나갑니다.", file=sys.stderr)
         sys.exit(1)
-    print("s9-guard: 넓게 닿는 파일이 담겼습니다 — 스모크와 담긴 시험만 보고 "
-          "지나가고, 전체 스위트는 commit 뒤 배경에서 돕니다(state/tests-async/).",
+    print("s9-guard: 넓게 닿는 파일이 담겼습니다 — 스모크 테스트와 담긴 테스트만 검사하고 "
+          "지나가고, 전체 테스트는 commit 뒤 백그라운드에서 실행됩니다(state/tests-async/).",
           file=sys.stderr)
 
 
@@ -574,11 +582,50 @@ def secret_gate(staged):
     sys.exit(1)
 
 
+def commit_mark_path():
+    return os.path.join(ROOT, "state", "commit-in-progress")
+
+
+def commit_mark_set():
+    """「지금 commit 이 진행 중」표식 (REQ-20260906-030). git 은 pre-commit 이 도는
+    동안 HEAD 를 읽어 둔 채 기다리는데, 그 사이 sync 가 문서 커밋을 얹으면 이 커밋이
+    `cannot lock ref 'HEAD'` 로 실패한다. sync_run 은 이 표식을 보면 그 회차를 미룬다.
+    post-commit 훅이 지우고, 거부·예외로 post-commit 이 없는 경우는 main 이 지운다;
+    둘 다 못 지운 잔재는 5분이 지나면 sync 가 무시한다."""
+    try:
+        os.makedirs(os.path.dirname(commit_mark_path()), exist_ok=True)
+        with open(commit_mark_path(), "w", encoding="utf-8") as f:
+            f.write(f"pid {os.getpid()} {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+    except OSError:
+        pass
+
+
+def commit_mark_clear():
+    try:
+        os.remove(commit_mark_path())
+    except OSError:
+        pass
+
+
 def main():
     if "--after-commit" in sys.argv[1:]:
         k = sys.argv.index("--after-commit")
         sha = sys.argv[k + 1] if len(sys.argv) > k + 1 and not sys.argv[k + 1].startswith("-") else None
         return after_commit(sha)
+    commit_mark_set()
+    try:
+        _pre_commit_gates()
+    except SystemExit as e:
+        if e.code not in (0, None):
+            commit_mark_clear()      # 거부된 커밋에는 post-commit 이 없다
+        raise
+    except BaseException:
+        commit_mark_clear()
+        raise
+    # 통과 — 표식은 남긴다. commit 이 실제로 HEAD 를 쓰고 post-commit 이 지운다.
+
+
+def _pre_commit_gates():
     out = subprocess.run(["git", "diff", "--cached", "--name-only"],
                          capture_output=True,
                              encoding="utf-8", errors="replace", cwd=ROOT)
