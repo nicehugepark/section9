@@ -258,5 +258,103 @@ class TheRealServer(unittest.TestCase):
         self.assertTrue(again["mine"])
 
 
+class TheHandshakeWindow(unittest.TestCase):
+    """W4. 알리기 전 창은 요청을 하나만 받지 않는다 (REQ-20260906-046).
+
+    serve 는 listen 뒤 자기왕복이 끝나야 주소를 알리는데, 그 사이 요청을 받는
+    자리가 handle_request 한 번뿐이었다. 밖의 클라이언트(시험의 wait_server)가
+    그 한 자리를 먼저 차지하면 서버 자신의 왕복은 backlog 에 남고, 부모는
+    recv 2초를 다 기다린 뒤에야 serve_forever 로 들어간다 — 그 2초 창에 온
+    다음 요청(W3)도 같이 기다려 timed out 됐다(1ms 간격으로 첫 자리를 노리면
+    8회 중 4회). 창 안에서도 요청은 **끝날 때까지 계속** 받아야 한다."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.m = _load()
+
+    def _server(self):
+        import http.server
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b'{"started": "X"}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        # portpool 밖의 커널 임의 포트 — 이 서버는 밖에 알리지 않고 곧 닫는다.
+        return srv, srv.server_address[1]
+
+    def _get(self, port, deadline=1.0):
+        import time
+        # 갓 공개된 포트의 거부 창(WSL 중계, 실측 7%)만 짧게 되건다 — 여기서
+        # 재는 것은 거부가 아니라 **붙은 뒤의 대기**다.
+        for _ in range(20):
+            try:
+                c = socket.create_connection(("127.0.0.1", port), 1.0)
+                break
+            except ConnectionRefusedError:
+                time.sleep(0.05)
+        else:
+            raise AssertionError("포트가 1초 넘게 거부한다")
+        with c:
+            c.sendall(b"GET / HTTP/1.0\r\n\r\n")
+            c.settimeout(deadline)
+            return c.recv(5)
+
+    def test_w4_an_outsider_taking_the_first_slot_does_not_starve_the_probe(self):
+        """W4. 밖의 요청이 먼저 자리를 차지해도 자기왕복과 그 다음 요청이 각각
+        1초 안에 답을 받는다."""
+        import time
+        srv, port = self._server()
+        try:
+            seen = {}
+
+            def probe():
+                seen["outsider"] = self._get(port)         # 첫 자리를 뺏는다
+                t0 = time.monotonic()
+                r = self.m.dashboard_ready("127.0.0.1", port, expect_started="X")
+                seen["probe_sec"] = time.monotonic() - t0
+                seen["next"] = self._get(port)             # W3 의 자리
+                return r
+
+            r = self.m.serve_handshake(srv, probe)
+            self.assertTrue(r["ready"] and r["mine"], r)
+            self.assertEqual(r["attempts"], 1)
+            self.assertTrue(seen["outsider"].startswith(b"HTTP/"))
+            self.assertTrue(seen["next"].startswith(b"HTTP/"))
+            self.assertLess(seen["probe_sec"], 1.0,
+                            "자기왕복이 밖의 요청 뒤에서 기다린다")
+        finally:
+            srv.server_close()
+
+    def test_w4b_the_pump_stops_and_the_timeout_is_restored(self):
+        """W4b. 왕복이 끝나면 임시 펌프는 멈추고 timeout 은 원래 값으로 —
+        serve_forever 가 그대로 이어받는다."""
+        srv, port = self._server()
+        try:
+            srv.timeout = None
+            before = threading.active_count()
+            r = self.m.serve_handshake(
+                srv, lambda: self.m.dashboard_ready("127.0.0.1", port))
+            self.assertTrue(r["ready"], r)
+            self.assertIsNone(srv.timeout)
+            # 펌프 스레드는 끝났다 — 핸들러 스레드는 keep-alive 로 남을 수 있어
+            # 펌프 하나만 센다.
+            for _ in range(50):
+                if threading.active_count() <= before + 1:
+                    break
+                import time
+                time.sleep(0.02)
+            self.assertLessEqual(threading.active_count(), before + 1)
+        finally:
+            srv.server_close()
+
 if __name__ == "__main__":
     unittest.main()

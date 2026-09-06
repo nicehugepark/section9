@@ -20150,6 +20150,42 @@ def dashboard_ready(host, port, expect_started=None, _connect=None, _sleep=None)
                 "why": "" if mine in (None, True) else "답이 오는데 내 것이 아니다 — 점거"}
 
 
+def serve_handshake(srv, probe, poll=0.2):
+    """listen 뒤·serve_forever 앞의 창 — `probe` 가 끝날 때까지 요청을 **계속**
+    받는다 (REQ-20260906-046).
+
+    예전엔 이 창에서 `handle_request()` 를 **한 번**만 돌렸다. 밖의 클라이언트
+    (시험의 wait_server, 훅, 브라우저)가 그 한 자리를 먼저 차지하면 서버 자신의
+    왕복 연결은 backlog 에 남고, 부모는 recv 2초를 다 기다린 뒤에야
+    serve_forever 로 들어갔다 — 그 2초 창에 온 다음 요청도 같이 기다려
+    timed out 됐다(실측: 1ms 간격으로 첫 자리를 노리면 8회 중 4회, 서버 stderr
+    에 「자기왕복이 안 됐다 · TimeoutError」). 창의 크기가 아니라 자리의 수가
+    결함이었다: 자리는 하나가 아니라 **끝날 때까지** 여야 한다.
+
+    펌프는 `poll` 간격으로 handle_request 를 되풀이하다 probe 가 돌아오면
+    멈추고 timeout 을 원래 값으로 돌린다 — serve_forever 가 그대로 이어받는다.
+    반환은 probe 의 반환이다.
+    """
+    done = threading.Event()
+    before = srv.timeout
+
+    def _pump():
+        srv.timeout = poll
+        try:
+            while not done.is_set():
+                srv.handle_request()
+        finally:
+            srv.timeout = before
+
+    t = threading.Thread(target=_pump, daemon=True)
+    t.start()
+    try:
+        return probe()
+    finally:
+        done.set()
+        t.join(poll + 2.0)
+
+
 def _port_busy(host, port, timeout=0.4):
     """포트 점유 판정 — **bind 시도**로 확인한다 (REQ-20260825-075).
     connect() 기반 판정은 WSL2 미러 네트워킹에서 아무도 듣지 않는 포트에도
@@ -24656,13 +24692,13 @@ def cmd_serve(args):
     # 훅이 「떴다」를 믿고 붙다가 거부를 만난다. 그래서 남들이 쓸 그 주소로
     # 내가 나에게 물어 **내 답**을 받은 뒤에야 알린다. 답이 오는데 내 것이
     # 아니면 남이 그 자리에 있다(점거) — bind 는 됐어도 붙는 쪽은 남에게 간다.
+    # 그 창에서 요청을 받는 자리는 하나가 아니라 **왕복이 끝날 때까지**다
+    # (REQ-20260906-046) — 밖의 요청이 먼저 붙어도 내 왕복이 backlog 에서
+    # 2초를 기다리지 않는다. serve_handshake 가 그 규율을 쥔다.
     _probe_host = "127.0.0.1" if args.host in ("0.0.0.0", "") else args.host
-    srv.timeout = 3
-    _t = threading.Thread(target=srv.handle_request, daemon=True)
-    _t.start()
-    _self = dashboard_ready(_probe_host, args.port, expect_started=SERVE_STARTED)
-    _t.join(4)
-    srv.timeout = None
+    _self = serve_handshake(
+        srv, lambda: dashboard_ready(_probe_host, args.port,
+                                     expect_started=SERVE_STARTED))
     if _self["ready"] and _self["mine"] is False:
         die(f"포트 {args.port} 에 남이 답한다 — 점거다 (답한 쪽의 기동 시각 "
             f"{_self.get('started')!r}). bind 는 됐지만 붙는 쪽은 그쪽으로 간다.\n"
