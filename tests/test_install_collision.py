@@ -104,6 +104,16 @@ class Collision(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.dst_agents, "designer.md")), "남의 것은 그대로")
         self.assertTrue(os.path.islink(os.path.join(self.dst_agents, "s9-agnt-architect.md")))
 
+    def test_c5_dangling_links_into_the_repo_are_swept(self):
+        """C5. 저장소를 가리키는데 원천이 사라진 링크(흡수된 스킬)는 걷는다 — 남의 끊어진 링크는 둔다."""
+        ours = os.path.join(self.dst_skills, "ux-craft")
+        os.symlink(os.path.join(self.src_skills, "gone"), ours)
+        theirs = os.path.join(self.dst_skills, "their-old")
+        os.symlink("/nonexistent/their-old", theirs)
+        self._install()
+        self.assertFalse(os.path.lexists(ours))
+        self.assertTrue(os.path.lexists(theirs))
+
 
 if __name__ == "__main__":
     unittest.main()

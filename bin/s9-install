@@ -355,6 +355,13 @@ def link_into(src_dir, dst_dir, label, kind=None):
             PLACED.append({"kind": kind, "name": name, "path": dst, "how": "copy"})
             say(f"  {label}: {name} (copy fallback) -> {dst}")
         placed_now.add(dst)
+    # 저장소를 가리키는데 원천이 사라진 링크(예: s9-design 이 흡수한 ux-craft) → 걷는다
+    for fn in os.listdir(dst_dir):
+        path = os.path.join(dst_dir, fn)
+        if os.path.islink(path) and not os.path.exists(path) \
+                and os.path.realpath(path).startswith(os.path.realpath(ROOT)):
+            os.remove(path)
+            say(f"  걷음(끊어진 링크): {fn}")
     # 전에 우리가 이 자리에 놓았는데 이번 원천에는 없는 것(접두 없는 옛 이름) → 걷는다
     for e in prev:
         path = e.get("path") or ""
