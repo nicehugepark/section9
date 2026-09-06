@@ -133,8 +133,12 @@ if __name__ == "__main__":
         open(os.path.join(st, "port"), "w").write("9910"); open(os.path.join(st, "port.auto"), "w").write("busy")
         self.assertTrue(self.m._forget_auto_port(self.root))
         self.assertFalse(os.path.exists(os.path.join(st, "port")))
-        # 사람이 적은 포트(port.auto 없음)는 잊지 않는다
-        open(os.path.join(st, "port"), "w").write("9931")
+        # 표식 없는 state/port 는 옛 코드의 자동 이동이다 — 잊는다 (맥 실측 2026-09-06 14:44)
+        open(os.path.join(st, "port"), "w").write("9910")
+        self.assertTrue(self.m._forget_auto_port(self.root))
+        self.assertFalse(os.path.exists(os.path.join(st, "port")))
+        # 사람이 --port 로 정한 포트(port.pinned)는 잊지 않는다
+        self.m._pin_port(9931, self.root)
         self.assertFalse(self.m._forget_auto_port(self.root))
         self.assertEqual(open(os.path.join(st, "port")).read(), "9931")
 
@@ -145,6 +149,7 @@ if __name__ == "__main__":
         self.assertTrue(self.m._pin_port(9909, self.root))
         self.assertEqual(open(os.path.join(st, "port")).read(), "9909")
         self.assertFalse(os.path.exists(os.path.join(st, "port.auto")))
+        self.assertTrue(os.path.exists(os.path.join(st, "port.pinned")))
 
     # P10. 방금 닫은 포트(TIME_WAIT 연결이 남은 포트)는 free 다 — 실제 서버와 같은 조건으로 잰다 (REQ-20260906-085)
     def test_p10_a_just_closed_port_is_still_bindable(self):
