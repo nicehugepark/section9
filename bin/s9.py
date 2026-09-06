@@ -20592,9 +20592,10 @@ def _port_listener_pids(port):
 
 
 def _root_serve_pids(root=None):
-    """이 저장소의 `bin/s9 serve …` 프로세스들(서버·감시자) — 포트로 못 찾을 때의
-    마지막 수단이고, `--stop` 이 끝에 남은 것을 거둘 때의 목록이다 (REQ-20260906-077).
-    다른 clone 의 serve 는 경로가 달라 잡히지 않는다."""
+    """이 저장소의 상주 프로세스들 — `bin/s9 serve …`(서버·감시자) · `metrics run`(계기) ·
+    `tunnel --run`(터널 감시자). 포트로 못 찾을 때의 마지막 수단이고, `--stop` 이 끝에
+    남은 것을 거둘 때의 목록이다 (REQ-20260906-077·078). 다른 clone 의 것은 경로가 달라
+    잡히지 않는다."""
     tag = os.path.join(os.path.realpath(root or ROOT), "bin", "s9")
     out = []
     for pid, cmd in (proc_table() or {}).items():
@@ -20602,7 +20603,9 @@ def _root_serve_pids(root=None):
             pid = int(pid)
         except (TypeError, ValueError):
             continue
-        if pid != os.getpid() and tag in str(cmd) and " serve" in str(cmd):
+        c = str(cmd)
+        if pid != os.getpid() and tag in c and (" serve" in c or " metrics run" in c
+                                                 or " tunnel --run" in c):
             out.append(pid)
     return sorted(out)
 
@@ -21551,6 +21554,33 @@ def metrics_verdict(recs):
             "boots": len(boots)}
 
 
+def metrics_stop(root=None):
+    """수집기를 내린다 — (내렸나, 한 줄). `s9 metrics stop` 과 `s9 serve --stop` 이 같은 문
+    (REQ-20260906-078: --stop 이면 전부 꺼져야 한다)."""
+    p = _metrics_paths(root)
+    pid = _metrics_alive(root)
+    if pid is None:
+        return False, "수집 중이 아니다"
+    try:
+        os.makedirs(p["dir"], exist_ok=True)
+        open(p["stop"], "w", encoding="utf-8").close()
+    except OSError:
+        pass
+    if pid > 0 and _metrics_is_collector(pid):
+        import signal as _sig
+        try:
+            os.kill(pid, _sig.SIGTERM)
+        except OSError:
+            pass
+        return True, f"중지 요청 (pid {pid})"
+    if pid > 0:
+        # pid 파일이 우리 것이 아닌 프로세스를 가리킨다 — 재사용된 pid 이거나
+        # 위조다. 신호는 보내지 않고 중지 파일만 둔 채 사실을 말한다.
+        return False, (f"pid {pid} 는 수집기가 아니다 — 신호를 보내지 않았다 "
+                       f"(중지 파일은 두었다: {os.path.relpath(p['stop'], ROOT)})")
+    return True, f"중지 요청 (pid {pid})"
+
+
 def cmd_metrics(args):
     root = ROOT
     action = args.action or "status"
@@ -21592,24 +21622,8 @@ def cmd_metrics(args):
         # 프로세스 표에서 보고 무엇인지 몰라 헤맨다.
         return _metrics_main(root, args.interval)
     if action == "stop":
-        pid = _metrics_alive(root)
-        if pid is None:
-            print("수집 중이 아니다")
-            return 0
-        open(p["stop"], "w", encoding="utf-8").close()
-        if pid > 0 and _metrics_is_collector(pid):
-            import signal as _sig
-            try:
-                os.kill(pid, _sig.SIGTERM)
-            except OSError:
-                pass
-        elif pid > 0:
-            # pid 파일이 우리 것이 아닌 프로세스를 가리킨다 — 재사용된 pid 이거나
-            # 위조다. 신호는 보내지 않고 중지 파일만 둔 채 사실을 말한다.
-            print(f"pid {pid} 는 수집기가 아니다 — 신호를 보내지 않았다 "
-                  f"(중지 파일은 두었다: {os.path.relpath(p['stop'], ROOT)})")
-            return 0
-        print(f"중지 요청 (pid {pid})")
+        stopped, msg = metrics_stop(root)
+        print(msg)
         return 0
     if action == "sample":
         s = metrics_sample(root)
@@ -22933,6 +22947,21 @@ def cmd_serve(args):
                         f"`{_stop_hint(args.port)}` 로 점유 프로세스를 확인하라")
         else:
             print(f"포트 {args.port}: 내릴 서버가 없다")
+        # 계기와 터널도 같은 손잡이로 내린다 (REQ-20260906-078) — 따로 떠 있는 까닭은 서버
+        # 밖에서 서버를 재기 위해서지, 따로 살아남기 위해서가 아니다. 터널은 다음 s9 code 가
+        # state/tunnels.json 대로 다시 띄운다.
+        m_ok, m_msg = metrics_stop()
+        if m_ok:
+            print("계기 " + m_msg)
+        t_n = 0
+        try:
+            for row in tunnel_list():
+                if row.get("alive"):
+                    tunnel_stop(row["lport"]); t_n += 1
+        except Exception:
+            pass
+        if t_n:
+            print(f"터널 감시자 {t_n}개 정지 — 다음 s9 code 가 state/tunnels.json 대로 다시 띄운다")
         # 남은 것까지 — 감시자·옛 서버·다른 포트의 잔여 serve (「--stop 이면 전부 꺼져야 한다」)
         left = _root_serve_pids()
         for pid in left:

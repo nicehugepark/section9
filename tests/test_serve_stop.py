@@ -21,6 +21,8 @@ import importlib.machinery
 import importlib.util
 import os
 import tempfile
+import io
+import sys
 import unittest
 from unittest import mock
 
@@ -187,6 +189,33 @@ class ServeStop(unittest.TestCase):
                  os.getpid(): f"python3 {me} serve --stop"}
         with mock.patch.object(m, "proc_table", lambda *a, **k: table):
             self.assertEqual(m._root_serve_pids(), [11, 12])
+
+    # T11. 상주 프로세스 목록은 계기(metrics run)·터널 감시자(tunnel --run)도 든다 (REQ-20260906-078)
+    def test_t11_daemons_include_metrics_and_tunnels(self):
+        m = self.mod
+        me = os.path.join(os.path.realpath(self.tmp), "bin", "s9")
+        table = {21: f"python3 {me} metrics run --interval 30",
+                 22: f"python3 {me} tunnel --run key 9919 9909",
+                 23: f"python3 {me} tunnel --status",
+                 24: f"python3 {me} metrics status"}
+        with mock.patch.object(m, "proc_table", lambda *a, **k: table):
+            self.assertEqual(m._root_serve_pids(), [21, 22])
+
+    # T12. --stop 은 계기와 터널도 같은 손잡이로 내린다
+    def test_t12_stop_takes_metrics_and_tunnels_down_too(self):
+        m = self.mod
+        calls = []
+        with mock.patch.object(m, "_guard_alive", lambda port, root=None: None), \
+                mock.patch.object(m, "_port_busy", lambda h, p: False), \
+                mock.patch.object(m, "_root_serve_pids", lambda root=None: []), \
+                mock.patch.object(m, "metrics_stop", lambda root=None: (calls.append("metrics") or (True, "중지 요청 (pid 7)"))), \
+                mock.patch.object(m, "tunnel_list", lambda root=None: [{"lport": 9919, "alive": True}, {"lport": 9920, "alive": False}]), \
+                mock.patch.object(m, "tunnel_stop", lambda lport, root=None: calls.append(("tunnel", lport)) or ""), \
+                mock.patch.object(sys, "stdout", new_callable=io.StringIO) as out:
+            m.cmd_serve(self._args(stop=True))
+        self.assertEqual(calls, ["metrics", ("tunnel", 9919)])
+        self.assertIn("계기 중지 요청", out.getvalue())
+        self.assertIn("터널 감시자 1개 정지", out.getvalue())
 
     # T10. 사람이 칠 확인 명령은 판마다 다르다 — 맥에 ss 를 권하지 않는다
     def test_t10_stop_hint_matches_the_platform(self):
