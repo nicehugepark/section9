@@ -18,7 +18,7 @@ Claude Code 로 일하는 사람의 **외부기억(external memory)**. 프롬프
 
 리드 에이전트의 이름은 **타치코마**다. 역할 에이전트 29종은 `s9-agnt-<역할>`(예:
 `s9-agnt-designer`), 스킬은 `s9-skl-<스킬>`(예: `s9-skl-tdd`)과 `s9-design`·`s9-protocol` 로
-설치된다 — 다른 도구가 둔 같은 이름의 에이전트·스킬을 덮어쓰지 않는다.
+설치된다 — 다른 도구가 설치한 같은 이름의 에이전트·스킬을 덮어쓰지 않는다.
 
 ## 2. 선행 조건
 
@@ -47,7 +47,7 @@ bin/s9-install
 | `dirs OK: …` | `vault/ users/ state/ index/` 등 빈 구조 생성 |
 | `git hooks OK: post-merge, post-checkout, pre-commit(guard), post-commit(기록)` | pull 뒤 인덱스 재생성, 커밋 검사 |
 | `claude hooks …` | `~/.claude/settings.json` 에 section9 훅 추가(다른 훅은 보존) |
-| `skill(공용): s9-… -> ~/.claude/skills/` · `agent(공용): s9-agnt-… -> ~/.claude/agents/` | 스킬 14개·에이전트 29개 링크 |
+| `skill(공용): s9-… -> ~/.claude/skills/` · `agent(공용): s9-agnt-… -> ~/.claude/agents/` | 스킬 13개·에이전트 29개 링크 |
 | `대시보드 기동: http://127.0.0.1:9909/` | 이미 실행 중이면 `대시보드 이미 실행 중` |
 | `section9 install 완료` | |
 | `예전 설정 N개를 … 에 그대로 복사해 두었습니다 … s9 env restore <시각>` | 설치 전 `~/.claude` 설정의 백업. 되돌리는 명령이 여기 적힌다 |
@@ -103,7 +103,7 @@ cd ~/section9 && s9 code        # 하루의 시작 — 대시보드 확인 + Cla
 - 프롬프트를 치면 요청 문서가 생기고, 리드(타치코마)가 상태를 옮기며 일한다. 사람이 할 일은
   Board 의 REVIEW 열에서 **승인/반려**를 누르는 것이다. 반려하면 백그라운드 작업자가 재작업한다.
 - 문서 이벤트마다 로컬 commit 이 자동으로 쌓인다. `.s9-sync` 의 내용이 `remote` 면 대시보드가
-  2초 안에 묶어 `pull --rebase` → `push` 하고, 조용한 기계도 10~60초마다 pull 한다.
+  2초 안에 묶어 `pull --rebase` → `push` 하고, 작업이 없는 기계도 10~60초마다 pull 한다.
 - 터미널에서 자주 쓰는 명령:
 
 ```bash
@@ -142,7 +142,7 @@ s9 code
 두 번째 기계의 ssh 키가 GitHub 에 등록돼 있어야 한다.
 
 `state/`(포트·세션·수신함)와 `index/` 는 기계마다 따로다. 충돌한 문서는 `s9 sync resolve <id>`
-로 한쪽을 확정하고, 보내지 못한 commit 은 `s9 sync rescue` 로 패치로 뽑는다.
+로 한쪽을 확정하고, 보내지 못한 commit 은 `s9 sync rescue` 로 패치 파일로 내보낸다.
 
 ### ② 팀 인스턴스 저장소
 
@@ -162,7 +162,7 @@ git clone git@github.com:<조직>/<팀 저장소>.git ~/<팀 저장소> && cd ~/
 |---|---|---|
 | 설치 전 `~/.claude` 설정으로 돌아간다 | `s9 env status` → `s9 env restore <시각>` | 백업 목록을 보고 되돌린다. `latest` 도 된다 |
 | 옛 설정을 새 계정으로 물려받는다 | `s9 env inherit` | 백업 안의 개인 설정 후보를 골라 승계 |
-| 설치가 놓은 것만 제거한다 | `s9 uninstall` (`--dry-run` 으로 먼저) | 훅·스킬·에이전트 링크·git 훅 제거. 문서·자격증명은 그대로. 마지막 백업을 되돌린다(`--keep` 이면 안 돌린다) |
+| 설치가 추가한 것만 제거한다 | `s9 uninstall` (`--dry-run` 으로 먼저) | 훅·스킬·에이전트 링크·git 훅 제거. 문서·자격증명은 그대로. 마지막 백업을 되돌린다(`--keep` 이면 되돌리지 않는다) |
 | 이 기계의 상태만 처음으로 | `s9 serve --stop` → `s9 reset` | `state/ index/` 를 백업 뒤 비운다. 문서는 그대로 |
 | 동기화를 이 기계 안에만 둔다 | `s9 sync --off` (다시 켜기 `--on`) | `.s9-sync` 의 내용이 `local`/`remote` 로 바뀐다 |
 
@@ -180,9 +180,9 @@ python3 tests/ --local guide_repo    # 파일 이름 조각으로 골라 실행
 
 ## 9. 알아 둘 것
 
-- **맥**: 설치 절차는 같지만 아직 맥에서 실측하지 않았다. `s9 doctor --live` 의 맥 갈래와
-  사파리 렌더가 열린 요청이다(REQ-20260903-006 · REQ-20260829-037 · REQ-20260829-038).
-- **다른 하네스**: 기본은 Claude Code 다. Gemini·Codex 가 설치돼 있으면 `s9-install` 이
+- **맥**: 설치 절차는 같지만 아직 맥에서 실측하지 않았다. `s9 doctor --live` 의 맥 지원과
+  사파리 렌더링 확인은 아직 open 상태의 요청이다(REQ-20260903-006 · REQ-20260829-037 · REQ-20260829-038).
+- **다른 AI 코딩 도구**: 기본은 Claude Code 다. Gemini·Codex 가 설치돼 있으면 `s9-install` 이
   `GEMINI.md`·`AGENTS.md` 에 규약 블록을 넣는다 — [harness/README.md](harness/README.md).
 - **규약**: 에이전트가 따르는 작업 규약은 [harness/common/PROTOCOL.md](harness/common/PROTOCOL.md)
   한 곳에 있고, `CLAUDE.md` 는 거기서 생성된다. 직접 고치지 않는다.
