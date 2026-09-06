@@ -277,19 +277,39 @@ function machineHistoryHTML(u){
    행은 users 절의 .urow 문법 그대로, 편집기는 행 아래 인라인 펼침 — 대상이
    곧 위치라 오버레이가 필요 없다(designer). 낱말: 에이전트·스킬·설치·원천·
    읽기 전용은 tech-writer 판정, 문장은 ux-writer 안. 화면에 「하네스」는 쓰지
-   않는다 — 사람이 밖에서 만나는 글자는 Claude Code 다. */
-let rosterOpen = null;   // {scope, kind, owner, name} — 한 번에 하나만 펼친다
+   않는다 — 사람이 밖에서 만나는 글자는 Claude Code 다.
+
+   REQ-20260906-091 로 두 가지를 고쳤다. ① **종류를 소제목이 가른다** — 한
+   목록에 40여 줄이 이어지고 `agent`/`skill` 작은 글자 하나로만 갈리던 것을
+   범위마다 「에이전트 N」·「스킬 N」 두 덩이로 나누고, 행에서는 그 글자를 걷어
+   이름을 첫 줄에 세웠다(설명은 둘째 줄, 한 줄로 자른다). ② **읽기는 원문이
+   아니다** — 펼친 속을 `md2html` 로 그린다. 머리말(`---`)은 이름과 설명뿐이라
+   행이 이미 말한 것이고, 보기에서는 걷는다. 고칠 때만 원문 상자로 넘어간다. */
+let rosterOpen = null;   // {scope, kind, owner, name, editing} — 한 번에 하나만 펼친다
+let rosterMore = {};     // "scope|owner|kind" → 그 종류를 전량 펼쳤나
 
 const ROSTER_SCOPE = {
   user:    ["내 것", "어느 프로젝트에서나 씁니다"],
   project: ["프로젝트", "이 프로젝트에서만 씁니다"],
   common:  ["공용", "Claude Code 에 기본으로 놓입니다 · 읽기 전용"],
 };
+// 종류는 이제 소제목이 말한다 — 행마다 붙던 `agent`/`skill` 작은 글자를 걷고,
+// 그 자리를 이름이 가진다. 40여 줄이 한 목록으로 이어지던 공용이 두 덩이로 갈린다.
+const ROSTER_KIND = {agent: "에이전트", skill: "스킬"};
+const ROSTER_SHOWN = 10;   // 종류마다 먼저 보이는 줄 수 (나머지는 `+ N개 더 보기`)
 
 function rosterTemplate(kind, name){
   return kind === "agent"
     ? `---\nname: ${name}\ndescription: (한 줄 설명 — 어떤 일에 부를지)\n---\n\n당신은 ${name} 다.\n`
     : `---\nname: ${name}\ndescription: (한 줄 설명 — 언제 로드할지)\n---\n\n# ${name}\n`;
+}
+
+/* 머리말(`---` 블록)은 이름과 설명뿐이고 그 둘은 행이 이미 말했다 — 보기에서는
+   걷어내고 본문만 그린다. 고칠 때는 원문 그대로 넘긴다(저장 대상이라 한 글자도
+   깎지 않는다). */
+function rosterSplit(src){
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(src || "");
+  return m ? {meta: m[1], body: src.slice(m[0].length)} : {meta: "", body: src || ""};
 }
 
 async function showRoster(v){
@@ -305,13 +325,48 @@ async function showRoster(v){
     return;
   }
   const key = r => `${r.scope}|${r.kind}|${r.owner}|${r.name}`;
-  const rowHTML = r => `<div class="urow rrow" data-rkey="${esc(key(r))}" title="${esc(r.path)}">
-      <span class="st">${esc(r.kind)}</span> <b>${esc(r.name)}</b>
-      <span class="path">${esc(r.desc || "(설명 없음)")}${r.installed ? "" : " · 설치 안 됨 — s9-install 을 실행하면 놓입니다"}</span>
-    </div>${rosterOpen && key(rosterOpen) === key(r) ? `<div class="redit" data-rkey="${esc(key(r))}"></div>` : ""}`;
-  const group = (title, sub, list, addForm) => `<div class="cfg-h gname">${esc(title)}</div>
-    <div class="path" style="margin:-4px 0 6px">${esc(sub)}</div>
-    ${list.length ? `<div class="ulist">${list.map(rowHTML).join("")}</div>` : ""}${addForm || ""}`;
+  const byKey = {}; rows.forEach(r => byKey[key(r)] = r);
+  // 저장하고 돌아온 줄은 설명·경로가 방금 바뀌었다 — 펼친 대상을 새 값으로 갈아
+  // 끼운다(펼침·고치는 중 여부는 화면의 것이라 그대로 들고 간다).
+  if (rosterOpen && !rosterOpen.fresh && byKey[key(rosterOpen)]){
+    rosterOpen = {...byKey[key(rosterOpen)], editing: rosterOpen.editing, saved: rosterOpen.saved};
+  }
+  // 아직 저장하지 않은 새 항목은 서버가 모른다 — 목록에 손으로 끼워 그 줄 아래에
+  // 편집기를 편다. 저장하면 다음 목록에 제 자리로 들어오고 이 임시 줄은 사라진다.
+  if (rosterOpen && rosterOpen.fresh && !byKey[key(rosterOpen)]){
+    const f = {...rosterOpen, desc: "", installed: false};
+    rows.push(f); byKey[key(f)] = f;
+  }
+  const isOpen = r => !!rosterOpen && key(rosterOpen) === key(r);
+
+  const rowHTML = r => `<div class="urow rrow${isOpen(r) ? " on" : ""}" data-rkey="${esc(key(r))}"
+      role="button" tabindex="0" aria-expanded="${isOpen(r) ? "true" : "false"}" title="${esc(r.path || "")}">
+      <span class="rcar" aria-hidden="true">${isOpen(r) ? "▾" : "▸"}</span>
+      <span class="rnm">${esc(r.name)}</span>
+      ${r.installed === false ? `<span class="rtag" title="s9-install 을 실행하면 놓입니다">설치 안 됨</span>` : ""}
+      <span class="rds">${esc(r.desc || "설명이 아직 없습니다")}</span>
+    </div>${isOpen(r) ? `<div class="redit" data-rkey="${esc(key(r))}"></div>` : ""}`;
+
+  // 한 종류 덩이. 펼친 줄이 잘리는 자리에 있으면 그 덩이는 전량으로 편다 —
+  // 열어 둔 것이 접힘에 먹히면 사람은 방금 무엇을 눌렀는지 잃는다.
+  const kindBlock = (scope, owner, kind, list) => {
+    if (!list.length) return "";
+    const mk = `${scope}|${owner}|${kind}`;
+    const openIdx = list.findIndex(isOpen);
+    const all = !!rosterMore[mk] || openIdx >= ROSTER_SHOWN;
+    const shown = all ? list : list.slice(0, ROSTER_SHOWN);
+    return `<div class="rkh"><span class="rkn">${ROSTER_KIND[kind] || esc(kind)}</span>
+        <span class="rkc">${list.length}</span></div>
+      <div class="ulist">${shown.map(rowHTML).join("")}</div>
+      ${shown.length < list.length
+        ? `<button type="button" class="more" data-rmore="${esc(mk)}">${list.length - shown.length}개 더 보기</button>` : ""}`;
+  };
+
+  const group = (title, sub, scope, owner, list, addForm) => `<div class="cfg-h gname">${esc(title)}</div>
+    <div class="path" style="margin:-4px 0 2px">${esc(sub)}</div>
+    ${kindBlock(scope, owner, "agent", list.filter(r => r.kind === "agent"))}
+    ${kindBlock(scope, owner, "skill", list.filter(r => r.kind === "skill"))}
+    ${addForm || ""}`;
   const addForm = (scope, owner, emptyMsg) => `<div class="uform rosteradd" data-scope="${esc(scope)}" data-owner="${esc(owner)}" style="max-width:420px">
       ${emptyMsg ? `<div class="path">${esc(emptyMsg)}</div>` : ""}
       <div style="display:flex;gap:6px;align-items:center">
@@ -326,24 +381,35 @@ async function showRoster(v){
   const common = rows.filter(r => r.scope === "common");
   let html = `<h1 style="margin:0 0 10px">에이전트·스킬</h1>`;
   html += me
-    ? group(ROSTER_SCOPE.user[0], ROSTER_SCOPE.user[1], mine,
+    ? group(ROSTER_SCOPE.user[0], ROSTER_SCOPE.user[1], "user", me, mine,
             addForm("user", me, mine.length ? "" : "내가 만든 에이전트·스킬이 없습니다. 추가하면 어느 프로젝트에서나 씁니다."))
     : `<div class="cfg-h">내 것</div><p class="empty">미등록 계정입니다 — 터미널에서 <code>s9 user add &lt;이름&gt;</code> 으로 등록하면 내 에이전트·스킬을 둘 수 있습니다.</p>`;
   for (const slug of (projects.length ? projects : (window.__projects||[]).map(p => p.slug).filter(Boolean))){
     const list = rows.filter(r => r.scope === "project" && r.owner === slug);
     const editable = list.some(r => r.editable) || !list.length;
-    html += group(`${ROSTER_SCOPE.project[0]} ${slug}`, ROSTER_SCOPE.project[1], list,
+    html += group(`${ROSTER_SCOPE.project[0]} ${slug}`, ROSTER_SCOPE.project[1], "project", slug, list,
                   editable ? addForm("project", slug, list.length ? "" : "이 프로젝트에 둔 에이전트·스킬이 없습니다.") : "");
   }
-  html += group(ROSTER_SCOPE.common[0], ROSTER_SCOPE.common[1], common, "")
-       + `<div class="path" style="margin-top:6px">공용은 Claude Code 에 기본으로 놓이는 것이라 여기서 고칠 수 없습니다. <code>harness/claude/gen_roster.py</code> 를 고치고 <code>s9-install</code> 을 다시 실행하세요.</div>
+  html += group(ROSTER_SCOPE.common[0], ROSTER_SCOPE.common[1], "common", "", common, "")
+       + `<div class="path" style="margin-top:10px">공용은 Claude Code 에 기본으로 놓이는 것이라 여기서 고칠 수 없습니다. <code>harness/claude/gen_roster.py</code> 를 고치고 <code>s9-install</code> 을 다시 실행하세요.</div>
           <div class="path" style="margin-top:14px">방금 고친 것은 다음 세션을 시작할 때부터 쓸 수 있습니다.</div>`;
   v.innerHTML = html;
-  const byKey = {}; rows.forEach(r => byKey[key(r)] = r);
-  v.querySelectorAll(".rrow").forEach(el => el.addEventListener("click", async () => {
+
+  const openRow = el => {
     const r = byKey[el.dataset.rkey];
-    rosterOpen = (rosterOpen && key(rosterOpen) === key(r)) ? null : r;
+    if (!r) return;
+    rosterOpen = isOpen(r) ? null : {...r, editing: false};
     showRoster(v);
+  };
+  v.querySelectorAll(".rrow").forEach(el => {
+    el.addEventListener("click", () => openRow(el));
+    // 손만이 아니라 키보드로도 연다 — 행이 단추 노릇을 하면 단추의 얼굴을 다 갖춘다.
+    el.addEventListener("keydown", ev => {
+      if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); openRow(el); }
+    });
+  });
+  v.querySelectorAll("[data-rmore]").forEach(b => b.addEventListener("click", () => {
+    rosterMore[b.dataset.rmore] = true; showRoster(v);
   }));
   v.querySelectorAll(".rosteradd button").forEach(b => b.addEventListener("click", () => {
     const form = b.closest(".rosteradd");
@@ -356,7 +422,7 @@ async function showRoster(v){
     if (rows.some(r => r.scope === scope && r.owner === owner && r.kind === kind && r.name === name)){
       hint.textContent = "같은 이름이 이미 있습니다. 다른 이름을 쓰거나 그 항목을 열어 고치세요."; return;
     }
-    rosterOpen = {scope, kind, owner, name, editable: true, fresh: true, path: ""};
+    rosterOpen = {scope, kind, owner, name, editable: true, fresh: true, editing: true, path: ""};
     rows.push({...rosterOpen, desc: "", installed: false});
     showRoster(v);
   }));
@@ -366,43 +432,88 @@ async function showRoster(v){
   }
 }
 
+/* 펼친 항목의 속. 얼굴은 둘이다 — **보기**(마크다운으로 그린다)와 **고치기**
+   (원문 그대로 고친다). 공용은 보기뿐이고, 내 것·프로젝트는 「고치기」 한 번으로
+   넘어간다: 여는 까닭의 대부분이 「무엇을 하는 것인지 읽기」라, 원문 상자를
+   기본 얼굴로 세우면 매번 읽을 것을 원문으로 읽게 된다. */
 async function rosterEditor(slot, r, v){
+  const path = r.path || `${r.scope}/${r.kind}/${r.name}`;
+  const ro = !r.editable;
   let content = "";
   if (r.fresh){
     content = rosterTemplate(r.kind, r.name);
   } else {
+    slot.innerHTML = `<div class="uform rbox"><div class="rpath">${esc(path)}</div>
+      <p class="rload">본문을 불러오는 중…</p></div>`;
     try{
       const q = new URLSearchParams({scope: r.scope, kind: r.kind, owner: r.owner, name: r.name});
       const d = await (await fetch("/api/roster/doc?" + q.toString())).json();
       if (d.error) throw new Error(d.error);
       content = d.content || "";
     }catch(e){
-      slot.innerHTML = `<p class="empty">본문을 받아오지 못했습니다 — ${esc(String(e.message || e))}</p>`; return;
+      slot.innerHTML = `<div class="uform rbox"><div class="rpath">${esc(path)}</div>
+        <p class="rload rbad">본문을 받아오지 못했습니다 — ${esc(String(e.message || e))}</p>
+        <div class="racts"><button type="button" class="ro-close">닫기</button></div></div>`;
+      slot.querySelector(".ro-close").addEventListener("click", () => { rosterOpen = null; showRoster(v); });
+      return;
     }
   }
-  const ro = !r.editable;
-  slot.innerHTML = `<div class="uform" style="max-width:720px">
-      <div class="path">${esc(r.path || `${r.scope}/${r.kind}/${r.name}`)}${ro ? " · 읽기 전용" : ""}</div>
-      <textarea class="ro-body" rows="20" spellcheck="false" style="font-family:var(--mono);font-size:12px;width:100%;box-sizing:border-box"${ro ? " readonly" : ""}>${esc(content)}</textarea>
-      <div style="display:flex;gap:6px;align-items:center">
-        ${ro ? "" : `<button type="button" class="ro-save">변경 사항 저장</button>`}
-        <button type="button" class="ro-close">닫기</button>
-        <span class="path ro-msg" style="margin-left:6px"></span>
+
+  if (!r.editing){
+    // 첫 줄이 제 이름을 다시 적은 제목(`# 이름`)이면 걷는다 — 바로 위 행이 방금
+    // 그 이름을 말했고, 같은 낱말이 두 줄 연달아 서면 어느 쪽이 제목인지 흐려진다.
+    let src = rosterSplit(content).body.replace(/^\s*\n/, "");
+    const nl = src.indexOf("\n");
+    if (src.slice(0, nl < 0 ? undefined : nl).trim() === `# ${r.name}`){
+      src = nl < 0 ? "" : src.slice(nl + 1);
+    }
+    const body = md2html(src).trim();
+    slot.innerHTML = `<div class="uform rbox">
+        <div class="rpath">${esc(path)}${ro ? " · 읽기 전용" : ""}</div>
+        <div class="md rmd">${body || `<p class="rload">본문이 아직 없습니다.${ro ? "" : " 고치기를 눌러 적어 주세요."}</p>`}</div>
+        <div class="racts">
+          ${ro ? "" : `<button type="button" class="ro-edit">고치기</button>`}
+          <button type="button" class="ro-close">닫기</button>
+          ${r.saved ? `<span class="rok">저장했습니다</span>` : ""}
+        </div></div>`;
+    slot.querySelector(".ro-close").addEventListener("click", () => { rosterOpen = null; showRoster(v); });
+    const ed = slot.querySelector(".ro-edit");
+    if (ed) ed.addEventListener("click", () => {
+      rosterOpen.editing = true; rosterOpen.saved = false; rosterEditor(slot, rosterOpen, v);
+    });
+    return;
+  }
+
+  slot.innerHTML = `<div class="uform rbox">
+      <div class="rpath">${esc(path)}</div>
+      <textarea class="ro-body" rows="20" spellcheck="false">${esc(content)}</textarea>
+      <div class="racts">
+        <button type="button" class="ro-save">변경 사항 저장</button>
+        <button type="button" class="ro-stop">${r.fresh ? "그만두기" : "고치기 그만두기"}</button>
+        <span class="path ro-msg"></span>
       </div></div>`;
-  slot.querySelector(".ro-close").addEventListener("click", () => { rosterOpen = null; showRoster(v); });
+  const ta = slot.querySelector(".ro-body");
+  slot.querySelector(".ro-stop").addEventListener("click", () => {
+    // 친 것이 남아 있으면 묻고 버린다 — 되돌릴 수 없는 것은 이 한 번뿐이다.
+    if (ta.value !== content && !confirm("고친 것을 저장하지 않고 보기로 돌아갈까요?")) return;
+    if (r.fresh){ rosterOpen = null; showRoster(v); return; }
+    rosterOpen.editing = false; rosterEditor(slot, rosterOpen, v);
+  });
   const save = slot.querySelector(".ro-save");
-  if (save) save.addEventListener("click", async () => {
+  save.addEventListener("click", async () => {
     const msg = slot.querySelector(".ro-msg");
     save.disabled = true; msg.textContent = "저장하는 중…";
     const res = await postJSONRaw("/api/roster/save", {scope: r.scope, kind: r.kind, owner: r.owner,
-                                                       name: r.name, content: slot.querySelector(".ro-body").value});
+                                                       name: r.name, content: ta.value});
     save.disabled = false;
     if (!res.ok){
       // 실패는 편집기 안에 남긴다 — 입력을 지우지 않는 것이 이 절의 되돌리기다
       msg.textContent = `저장하지 못했습니다 — ${res.error || "잠시 뒤 다시 눌러 주세요."}`;
       return;
     }
-    rosterOpen = null;
+    // 저장한 뒤에는 그린 얼굴로 돌아간다 — 방금 저장한 것이 어떻게 보이는지가
+    // 저장됐다는 가장 확실한 증거다.
+    rosterOpen = {...rosterOpen, fresh: false, editing: false, saved: true};
     showRoster(v);
   });
 }

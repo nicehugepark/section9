@@ -22,7 +22,7 @@
 
 /* ------- users 탭 ------- */
 .uform{display:flex;flex-direction:column;gap:6px;padding:10px 14px 14px}
-.uform input,.uform select,.uf{border:1px solid var(--border);padding:5px 9px;
+.uform input,.uform select,.uform textarea,.uf{border:1px solid var(--border);padding:5px 9px;
   font-size:12.5px;background:var(--panel);color:var(--text);font-family:inherit}
 .uf{width:min(300px,100%)}
 .uform button{border:1px solid var(--border);background:var(--panel);color:var(--text);
@@ -332,3 +332,53 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
 .gafter{margin-top:10px}
 .glog{font-family:var(--mono);font-size:11px;line-height:1.7;
   color:var(--muted);margin-top:4px}
+
+/* ------- 에이전트·스킬 (REQ-20260906-091) -------
+   결함 둘을 고친 자리다. 하나, 종류가 안 갈렸다 — 한 목록에 40여 줄이 이어지고
+   `agent`/`skill` 작은 글자 하나가 유일한 표지였다. 둘, 펼친 속이 원문 상자였다
+   — 토큰을 안 입은 `textarea` 라 어느 스킨에서나 흰 판으로 떴다(위 규칙에
+   textarea 를 넣어 막았고, 읽기는 아래 `.rmd` 로 그린다).
+
+   갈래는 색면이 아니라 **소제목과 위계**로 만든다: 종류는 덩이 머리가 말하고,
+   행은 이름(굵기 600·잉크)과 설명(muted·한 줄) 두 층으로 선다. 개수는 모노
+   faint — 메타데이터의 어휘 그대로다. */
+/* 긴 한 줄이 판을 밖으로 밀지 않게 — `.viewer` 는 flex 항목이라 최소폭이 기본값
+   `auto`(내용의 최소폭)다. 아래 `.rds` 의 말줄임은 이 0 이 있어야 성립한다. */
+.docs>.viewer{min-width:0}
+.rkh{display:flex;align-items:baseline;gap:8px;margin:14px 0 2px}
+.rkn{font-size:12px;font-weight:600;color:var(--text);letter-spacing:.01em}
+.rkc{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.06em}
+/* 행 — 두 줄. 삼각은 「눌러 열린다」를 미리 말하는 유일한 표지라 열림에서만
+   잉크가 된다(색면·세로 띠 없음). 폭 12px·들여쓰기 19px 는 정수라 비정수
+   배율에서도 두 줄의 왼끝이 갈리지 않는다. */
+.rrow{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:7px;row-gap:2px}
+.rrow .rcar{flex:0 0 12px;font-family:var(--mono);font-size:9px;color:var(--faint)}
+.rrow .rnm{font-size:13px;font-weight:600;color:var(--text)}
+.rrow .rtag{font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+  color:var(--c-inprogress)}
+.rrow .rds{flex:0 0 100%;box-sizing:border-box;padding-left:19px;font-size:12px;
+  color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rrow.on .rcar,.rrow:hover .rcar{color:var(--text)}
+.rrow:focus-visible{outline:2px solid var(--text);outline-offset:-2px}
+.rrow + .redit{border-bottom:1px solid var(--hairline)}
+/* 펼친 속 — 그 행에 딸린 것이라 행의 이름과 같은 들여쓰기(19px)에서 시작한다. */
+.redit .uform{max-width:760px;padding:10px 0 14px 19px}
+.rpath{font-family:var(--mono);font-size:10.5px;color:var(--faint);word-break:break-all}
+.rload{font-size:12.5px;color:var(--muted);margin:2px 0}
+.rload.rbad{color:var(--c-blocked)}
+.racts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px}
+.rok{font-family:var(--mono);font-size:11px;color:var(--c-done)}
+/* 그린 본문 — 문서 뷰어의 `.md` 를 그대로 입되 설정 판의 밀도로 한 급 접는다.
+   `##` 마다 굵은 선이 그이면 짧은 문서 하나가 여러 판으로 읽힌다. */
+/* 본문이 길어도 목록을 잃지 않게 판 높이를 묶는다 — 옛 원문 상자(rows=20)가
+   하던 일이고, 여기서 「닫기」가 늘 손 닿는 곳에 남는 까닭이다. */
+.rmd{font-size:12.5px;line-height:1.75;max-width:72ch;
+  max-height:56vh;overflow-y:auto;padding-right:10px}
+.rmd>:first-child{margin-top:0}
+.rmd h1{font-size:14.5px;margin:16px 0 6px}
+.rmd h2{font-size:13px;margin-top:18px;padding-bottom:4px;border-bottom-color:var(--hairline)}
+.rmd h3{font-size:12px;margin-top:14px}
+.rmd p,.rmd ul,.rmd ol,.rmd pre{margin:7px 0}
+.rmd pre{font-size:11.5px;line-height:1.6;overflow-x:auto}
+.uform textarea{line-height:1.6;font-family:var(--mono);font-size:12px;
+  width:100%;box-sizing:border-box;resize:vertical}

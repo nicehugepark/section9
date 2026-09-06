@@ -243,7 +243,8 @@
 /* 컨트롤: 라운드 + 반투명 */
 [data-skin="glass"] .hrow2 input[type="text"],[data-skin="glass"] .hrow2 select,
 [data-skin="glass"] .settings-panel select,[data-skin="glass"] .uf,
-[data-skin="glass"] .uform input,[data-skin="glass"] .uform select,
+[data-skin="glass"] .uform input,[data-skin="glass"] .uform textarea,
+[data-skin="glass"] .uform select,
 [data-skin="glass"] .uform button,[data-skin="glass"] .gear,
 [data-skin="glass"] .acts button,[data-skin="glass"] .gmode{border-radius:9px;
   background:var(--gl-card);border-color:var(--gl-line)}
@@ -493,6 +494,7 @@
 [data-skin="slate"] .hrow2{background:var(--panel)}
 [data-skin="slate"] .hrow2 input[type="text"],[data-skin="slate"] .hrow2 select,
 [data-skin="slate"] .settings-panel select,[data-skin="slate"] .uform input,
+[data-skin="slate"] .uform textarea,
 [data-skin="slate"] .uform select,[data-skin="slate"] .uf{
   border-radius:4px;border-color:var(--sl-line)}
 [data-skin="slate"] .hrow2 input[type="text"]:focus,[data-skin="slate"] .hrow2 select:focus{
