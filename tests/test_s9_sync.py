@@ -71,6 +71,15 @@ class TestS9Sync(unittest.TestCase):
                 with open(wip, "w") as f:
                     f.write("# WIP — 나가면 안 된다\n")
                 sh("git", "add", "--", "bin/fake_code.py", cwd=self.root)
+                # 추적 중인 파일의 **수정**도 담아 둔다 — 새 파일은 보관에서 되돌아와도
+                # 다시 담기지만, 수정은 자동 보관이 되돌릴 때 풀어 버렸다(실제 발생
+                # 2026-09-06 12:38, REQ-20260906-066): 두 번째 commit 에 3파일만 들어갔다.
+                gi = os.path.join(self.root, ".gitignore")
+                with open(gi, encoding="utf-8") as f:
+                    gi_before = f.read()
+                with open(gi, "a") as f:
+                    f.write("# staged-edit\n")
+                sh("git", "add", "--", ".gitignore", cwd=self.root)
                 try:
                     r = self.s9("new", "request", "--title", "범위 확인",
                                 "--summary", "s", "--goal", "g", "--size", "S",
@@ -84,8 +93,12 @@ class TestS9Sync(unittest.TestCase):
                     # sync 가 남의 작업 상태를 건드리지 않는다.
                     idx = sh("git", "diff", "--cached", "--name-only", cwd=self.root)
                     self.assertIn("bin/fake_code.py", idx.stdout)
+                    self.assertIn(".gitignore", idx.stdout, "담아 둔 수정이 풀렸다 — index 가 보존되지 않는다")
+                    self.assertNotIn(".gitignore", show.stdout)
                 finally:
-                    sh("git", "reset", "-q", "--", "bin/fake_code.py", cwd=self.root)
+                    sh("git", "reset", "-q", "--", "bin/fake_code.py", ".gitignore", cwd=self.root)
+                    with open(gi, "w", encoding="utf-8") as f:
+                        f.write(gi_before)
                     os.remove(wip)
 
             # Y9. 첨부 이전도 같은 사이클에 실린다 (결함 C)

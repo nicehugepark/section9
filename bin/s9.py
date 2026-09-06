@@ -10310,7 +10310,24 @@ def _sync_pull_cmd(timeout=8):
     f = _sync_git("fetch", "--quiet", timeout=timeout)
     if f.returncode != 0:
         return f
-    return _sync_git("rebase", "--autostash", "-q", "@{u}", timeout=timeout)
+    # 남이 담아 두거나 고치는 중인 것은 **index 째** 보관했다 되돌린다 (REQ-20260906-066).
+    # 예전의 `--autostash` 는 되돌릴 때 index 를 잃었다 — 실제 발생 2026-09-06 12:38:
+    # 검사에 막힌 commit 을 다시 시도하는 사이 sync 가 돌아 담아 둔 61파일이 풀렸고,
+    # 두 번째 commit 에 3파일만 들어갔다. 깨끗한 트리면 보관 없이 바로 rebase 다.
+    dirty = (_sync_git("status", "--porcelain", "--untracked-files=no").stdout or "").strip()
+    if not dirty:
+        return _sync_git("rebase", "-q", "@{u}", timeout=timeout)
+    kept = _sync_git("stash", "push", "-q", "-m", "s9-sync: 남의 작업 보관", timeout=timeout)
+    if kept.returncode != 0:
+        return kept
+    r = _sync_git("rebase", "-q", "@{u}", timeout=timeout)
+    if r.returncode != 0:
+        _sync_abort_rebase()               # 되돌리기 전에 rebase 잔재부터 — 충돌 위에 되돌리지 않는다
+    back = _sync_git("stash", "pop", "-q", "--index", timeout=timeout)
+    if back.returncode != 0:
+        _sync_log("경고: 보관해 둔 남의 작업을 되돌리지 못했다 — `git stash list` 의 "
+                  "「s9-sync: 남의 작업 보관」에 그대로 있다: " + (back.stderr or "").strip()[:200])
+    return r
 
 
 _SYNC_FAIL_TS = os.path.join(ROOT, "state", ".sync-fail.ts")
@@ -10672,18 +10689,6 @@ def _sync_commit_busy():
             continue
         if age < SYNC_COMMIT_BUSY_STALE_SEC:
             return why
-    # 누가 `git add` 로 담아 둔 것이 있으면 이 회차를 건너뛴다 (REQ-20260906-066).
-    # pull 의 자동 보관(autostash)은 되돌려 놓을 때 index 를 잃는다 — 실제 발생
-    # 2026-09-06 12:38: 검사에 막힌 commit 을 다시 시도하는 사이 sync 가 돌아 담아 둔
-    # 61파일이 풀렸고 두 번째 commit 에 3파일만 들어갔다. sync 제 데이터 경로는
-    # 세지 않는다(앞 회차가 add 만 하고 죽었을 수 있다).
-    try:
-        r = _sync_git("diff", "--cached", "--name-only")
-        names = [n.strip() for n in (r.stdout or "").splitlines() if n.strip()]
-    except Exception:
-        names = []
-    if any(not n.startswith(tuple(SYNC_DATA_PATHS)) for n in names):
-        return "staged"
     return ""
 
 
@@ -11822,6 +11827,13 @@ def cmd_set(args):
     except ValueError as e:
         die(str(e))
     if not res["changed"]:
+        if fields.get("project"):
+            # 이미 그 프로젝트다 — 바뀐 것은 없지만 확정은 확정이라 진입점 안내는 낸다
+            print(f"{res['id']}: project {fields['project']} 그대로")
+            guide = context_guide(fields["project"])
+            if guide:
+                print(guide)
+            return
         die("nothing to set (use --title/--summary/--goal/--size/--project"
             "/--priority)")
     print(res["message"])
