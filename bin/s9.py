@@ -18374,9 +18374,8 @@ def login_state(marks=None, which=None, second=None):
 def ensure_claude_login(run=None, state=None):
     """`s9 code` 의 문 — 로그인이 없으면 여기서 로그인시키고, 안 되면 들어가지 않는다.
 
-    설치(s9-install)는 안내만 한다 — 실제로 막히는 자리는 첫 `s9 code` 라(사용자
-    지적 2026-09-05 21:34) 여기서 `claude auth login` 을 직접 돌린다. 반환:
-    "ok" · "logged-in-now" · "not-installed" · "failed".
+    설치(s9-install)는 안내만 한다. 반환: "ok" · "not-installed" · "deferred"(로그인은
+    이어서 뜨는 claude 의 화면이 한다).
     """
     import subprocess as _sp
     st = (state or login_state)()
@@ -18385,18 +18384,14 @@ def ensure_claude_login(run=None, state=None):
         return "not-installed"
     if c.get("logged_in"):
         return "ok"
-    if not sys.stdin.isatty() and run is None:
-        # 무인·파이프에서는 로그인 화면을 띄울 수 없다 — 안내만 남기고 지나간다.
-        # 이어서 뜨는 claude 가 제 로그인 화면을 보인다.
-        print("◌ Claude Code 로그인이 없다 — 터미널에서 `claude auth login` 을 먼저 하라")
-        return "not-tty"
-    print("◌ Claude Code 로그인이 없다 — 먼저 로그인한다 (claude auth login)…")
-    try:
-        (run or (lambda argv: _sp.call(argv)))(["claude", "auth", "login"])
-    except OSError:
-        return "failed"
-    st = (state or login_state)()
-    return "logged-in-now" if (st.get("claude") or {}).get("logged_in") else "failed"
+    # 로그인은 Claude Code 본 화면에 맡긴다 (REQ-20260906-072). 예전엔 여기서
+    # `claude auth login` 을 따로 돌렸는데, 그 자리는 코드를 붙여넣어도 아무 표시가
+    # 없어 사람이 여러 번 붙여넣었다(맥미니 실제 발생 2026-09-06). 이어서 뜨는
+    # claude 의 /login 화면은 붙여넣은 코드를 끝 몇 자만 남기고 마스킹해 보여 주고,
+    # 로그인이 끝나면 그 자리에서 세션이 이어진다 — 우리가 화면을 하나 더 만들 이유가 없다.
+    print("◌ Claude Code 로그인이 없다 — 이어서 뜨는 Claude Code 화면의 안내대로 로그인하면 "
+          "그대로 세션이 시작된다(붙여넣은 코드는 끝 몇 자만 보이게 가려진다).")
+    return "deferred"
 
 
 def serveinfo_at(port, host="127.0.0.1", timeout=1.5):
@@ -18867,11 +18862,7 @@ def cmd_code(args):
     # 세션이 "설치돼 있다"고 판단하고 훅 없이 그대로 돌았다 — 자가 치유는
     # 있었는데 **보는 곳이 틀렸다.**
     # 로그인 (REQ-20260905-014): 없으면 여기서 로그인시킨다 — 끝나지 않으면 안 들어간다
-    _login = ensure_claude_login()
-    if _login == "failed":
-        die("Claude Code 로그인이 끝나지 않았다 — `claude auth login` 뒤 다시 `s9 code`")
-    elif _login == "logged-in-now":
-        print("✓ 로그인 확인 — 계속한다")
+    ensure_claude_login()      # 없으면 안내만 — 로그인 화면은 claude 의 것이다 (REQ-20260906-072)
     hooked = hooks_installed()
     if not hooked:
         print("◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…")
@@ -18904,7 +18895,7 @@ def cmd_code(args):
                   f"config/local.json 으로 옮겼다: {', '.join(_moved)}")
     except Exception:
         pass
-    if not (login_state().get("claude") or {}).get("logged_in"):
+    if False:   # 안내는 ensure_claude_login 이 한 번 낸다 (REQ-20260906-072)
         print("◌ Claude 미로그인 — 이어서 뜨는 Claude Code 화면에서 안내대로 "
               "로그인하면 그대로 세션이 시작된다 (별도 선행 절차 없음).")
     try:

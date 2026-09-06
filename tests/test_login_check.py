@@ -96,3 +96,22 @@ class LoginCheck(unittest.TestCase):
         srcs = [inspect.getsource(_load(n, p).login_second_signal)
                 for n, p in (("s9_l6", S9), ("s9i_l6", INSTALL), ("s9d_l6", DOCTOR))]
         self.assertEqual(srcs[0], srcs[1]); self.assertEqual(srcs[0], srcs[2])
+
+    def test_l7_login_is_left_to_claude_own_screen(self):
+        """L7. 로그인이 없으면 s9 는 안내 한 줄만 내고 지나간다 — 코드 붙여넣기 화면은 claude 의
+        것(끝 몇 자만 보이는 마스킹). 따로 `claude auth login` 을 돌리지 않는다(REQ-20260906-072)."""
+        import io, sys as _sys
+        s = _load("s9_login7", S9)
+        calls = []
+        st = lambda: {"claude": {"installed": True, "logged_in": False, "how": ""}}
+        out = io.StringIO()
+        old = _sys.stdout; _sys.stdout = out
+        try:
+            r = s.ensure_claude_login(run=lambda argv: calls.append(argv), state=st)
+        finally:
+            _sys.stdout = old
+        self.assertEqual(r, "deferred")
+        self.assertEqual(calls, [], "s9 가 제 로그인 단계를 또 돌린다")
+        self.assertIn("가려진다", out.getvalue())
+        self.assertEqual(s.ensure_claude_login(state=lambda: {"claude": {"installed": False}}), "not-installed")
+
