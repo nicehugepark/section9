@@ -19,6 +19,7 @@ import shutil
 import socket
 import struct
 import sys
+import subprocess
 import threading
 import time
 import zlib
@@ -18327,7 +18328,37 @@ LOGIN_MARKS = {
 }
 
 
-def login_state(marks=None, which=None):
+def login_second_signal(name, home, platform=None, run=None):
+    """파일 표식이 없을 때의 둘째 신호 (REQ-20260906-070). 맥의 Claude Code 는 자격증명을
+    파일(.credentials.json)이 아니라 Keychain 에 둔다 — 파일만 보면 로그인 뒤에도 「없다」로
+    읽혀 첫 `s9 code` 가 로그인 화면에서 맴돌았다(맥미니 실제 발생 2026-09-06 13:32).
+    둘: ① 설정 디렉토리의 `.claude.json` 에 oauthAccount 가 있다(모든 판) ② 맥이면
+    Keychain 에 「Claude Code-credentials」 항목이 있다. 값은 읽지 않는다 — 있는지만 본다."""
+    if name != "claude":
+        return False
+    cfg = os.path.expanduser(home)
+    cands = [os.path.join(cfg, ".claude.json")]
+    if os.path.realpath(cfg) == os.path.realpath(os.path.expanduser("~/.claude")):
+        cands.append(os.path.expanduser("~/.claude.json"))     # 기본 자리만 바깥에 있다
+    for p in cands:
+        try:
+            with open(p, encoding="utf-8") as f:
+                if '"oauthAccount"' in f.read():
+                    return True
+        except OSError:
+            pass
+    if (platform or sys.platform) == "darwin":
+        try:
+            r = (run or subprocess.run)(["security", "find-generic-password", "-s",
+                                         "Claude Code-credentials"],
+                                        capture_output=True, timeout=10)
+            return r.returncode == 0
+        except Exception:
+            return False
+    return False
+
+
+def login_state(marks=None, which=None, second=None):
     marks = marks or LOGIN_MARKS
     which = which or shutil.which
     out = {}
@@ -18335,7 +18366,8 @@ def login_state(marks=None, which=None):
         exe = bool(which(m["exe"]))
         home = (os.environ.get(m["home_env"]) if m.get("home_env") else "") or m["home"]
         mark = os.path.exists(os.path.join(os.path.expanduser(home), m["mark"]))
-        out[name] = {"installed": exe, "logged_in": exe and mark, "how": m["how"]}
+        logged = exe and (mark or (second or login_second_signal)(name, home))
+        out[name] = {"installed": exe, "logged_in": logged, "how": m["how"]}
     return out
 
 
@@ -18872,7 +18904,7 @@ def cmd_code(args):
                   f"config/local.json 으로 옮겼다: {', '.join(_moved)}")
     except Exception:
         pass
-    if not os.path.exists(os.path.join(claude_home(), ".credentials.json")):
+    if not (login_state().get("claude") or {}).get("logged_in"):
         print("◌ Claude 미로그인 — 이어서 뜨는 Claude Code 화면에서 안내대로 "
               "로그인하면 그대로 세션이 시작된다 (별도 선행 절차 없음).")
     try:
