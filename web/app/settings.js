@@ -62,6 +62,10 @@ async function renderSettings(){
        「시스템」보다 앞인 이유는 하나다 — 시스템은 읽기만 하는 안내판이고
        저장소는 손잡이가 있는 판이다. 부제는 여기서도 상태를 겸한다. */
     ["repo", "저장소", repoNavSub()],
+    /* 「에이전트·스킬」은 저장소 다음, 시스템 앞이다 — 손잡이가 있는 판이고
+       (내 것·프로젝트는 고친다), 공용은 읽기 전용이라 안내판 성격을 겸한다
+       (REQ-20260906-021). */
+    ["roster", "에이전트·스킬", "내 것 · 프로젝트 · 공용 — 보고 고치기"],
     ["about", "시스템", "저장소·통계·문서 안내"],
   ];
   $("#count").textContent = `Settings — ${me ? "@"+me : "미등록 계정"}`;
@@ -101,6 +105,8 @@ function renderSettingsSection(meAdmin){
         await setUIDim(d, sel.value);
       });
     });
+  } else if (settingsSection === "roster"){
+    showRoster(v);
   } else if (settingsSection === "account"){
     if (!me){ v.innerHTML = `<p class="empty">이 OS 계정(${esc((window.__whoami||{}).user||"?")})은 미등록입니다 — 터미널에서 <code>s9 user add ${esc((window.__whoami||{}).user||"&lt;이름&gt;")}</code> 으로 등록하세요. 다른 이름의 기존 계정에 연결하려면 <code>s9 user attach &lt;이름&gt;</code>.</p>`; return; }
     const u = (window.__users||[]).find(x => x.name === me);
@@ -264,3 +270,139 @@ function machineHistoryHTML(u){
     </tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+
+
+/* ── 에이전트·스킬 (REQ-20260906-021) ──────────────────────────────────────
+   세 범위를 한 판에: 내 것(고친다) → 프로젝트(고친다) → 공용(읽기 전용, 생성물).
+   행은 users 절의 .urow 문법 그대로, 편집기는 행 아래 인라인 펼침 — 대상이
+   곧 위치라 오버레이가 필요 없다(designer). 낱말: 에이전트·스킬·설치·원천·
+   읽기 전용은 tech-writer 판정, 문장은 ux-writer 안. 화면에 「하네스」는 쓰지
+   않는다 — 사람이 밖에서 만나는 글자는 Claude Code 다. */
+let rosterOpen = null;   // {scope, kind, owner, name} — 한 번에 하나만 펼친다
+
+const ROSTER_SCOPE = {
+  user:    ["내 것", "어느 프로젝트에서나 씁니다"],
+  project: ["프로젝트", "이 프로젝트에서만 씁니다"],
+  common:  ["공용", "Claude Code 에 기본으로 놓입니다 · 읽기 전용"],
+};
+
+function rosterTemplate(kind, name){
+  return kind === "agent"
+    ? `---\nname: ${name}\ndescription: (한 줄 설명 — 어떤 일에 부를지)\n---\n\n당신은 ${name} 다.\n`
+    : `---\nname: ${name}\ndescription: (한 줄 설명 — 언제 로드할지)\n---\n\n# ${name}\n`;
+}
+
+async function showRoster(v){
+  const me = getMe();
+  let rows = [];
+  try{
+    const r = await fetch("/api/roster?" + meQ());
+    rows = (await r.json()).rows || [];
+  }catch(e){
+    v.innerHTML = `<h1 style="margin:0 0 10px">에이전트·스킬</h1>
+      <p class="empty">목록을 받아오지 못했습니다. <button class="gefix" type="button" id="ro-retry">다시 불러오기</button></p>`;
+    const rt = $("#ro-retry"); if (rt) rt.addEventListener("click", () => renderSettingsSection(isAdmin()));
+    return;
+  }
+  const key = r => `${r.scope}|${r.kind}|${r.owner}|${r.name}`;
+  const rowHTML = r => `<div class="urow rrow" data-rkey="${esc(key(r))}" title="${esc(r.path)}">
+      <span class="st">${esc(r.kind)}</span> <b>${esc(r.name)}</b>
+      <span class="path">${esc(r.desc || "(설명 없음)")}${r.installed ? "" : " · 설치 안 됨 — s9-install 을 실행하면 놓입니다"}</span>
+    </div>${rosterOpen && key(rosterOpen) === key(r) ? `<div class="redit" data-rkey="${esc(key(r))}"></div>` : ""}`;
+  const group = (title, sub, list, addForm) => `<div class="cfg-h gname">${esc(title)}</div>
+    <div class="path" style="margin:-4px 0 6px">${esc(sub)}</div>
+    ${list.length ? `<div class="ulist">${list.map(rowHTML).join("")}</div>` : ""}${addForm || ""}`;
+  const addForm = (scope, owner, emptyMsg) => `<div class="uform rosteradd" data-scope="${esc(scope)}" data-owner="${esc(owner)}" style="max-width:420px">
+      ${emptyMsg ? `<div class="path">${esc(emptyMsg)}</div>` : ""}
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" class="ro-name" placeholder="code-reviewer" style="flex:1">
+        <button type="button" data-kind="agent">+ 에이전트 추가</button>
+        <button type="button" data-kind="skill">+ 스킬 추가</button>
+      </div>
+      <div class="path">소문자·숫자·하이픈만 씁니다. 그대로 파일 이름이 됩니다.</div>
+    </div>`;
+  const mine = rows.filter(r => r.scope === "user");
+  const projects = [...new Set(rows.filter(r => r.scope === "project").map(r => r.owner))];
+  const common = rows.filter(r => r.scope === "common");
+  let html = `<h1 style="margin:0 0 10px">에이전트·스킬</h1>`;
+  html += me
+    ? group(ROSTER_SCOPE.user[0], ROSTER_SCOPE.user[1], mine,
+            addForm("user", me, mine.length ? "" : "내가 만든 에이전트·스킬이 없습니다. 추가하면 어느 프로젝트에서나 씁니다."))
+    : `<div class="cfg-h">내 것</div><p class="empty">미등록 계정입니다 — 터미널에서 <code>s9 user add &lt;이름&gt;</code> 으로 등록하면 내 에이전트·스킬을 둘 수 있습니다.</p>`;
+  for (const slug of (projects.length ? projects : (window.__projects||[]).map(p => p.slug).filter(Boolean))){
+    const list = rows.filter(r => r.scope === "project" && r.owner === slug);
+    const editable = list.some(r => r.editable) || !list.length;
+    html += group(`${ROSTER_SCOPE.project[0]} ${slug}`, ROSTER_SCOPE.project[1], list,
+                  editable ? addForm("project", slug, list.length ? "" : "이 프로젝트에 둔 에이전트·스킬이 없습니다.") : "");
+  }
+  html += group(ROSTER_SCOPE.common[0], ROSTER_SCOPE.common[1], common, "")
+       + `<div class="path" style="margin-top:6px">공용은 Claude Code 에 기본으로 놓이는 것이라 여기서 고칠 수 없습니다. <code>harness/claude/gen_roster.py</code> 를 고치고 <code>s9-install</code> 을 다시 실행하세요.</div>
+          <div class="path" style="margin-top:14px">방금 고친 것은 다음 세션을 시작할 때부터 쓸 수 있습니다.</div>`;
+  v.innerHTML = html;
+  const byKey = {}; rows.forEach(r => byKey[key(r)] = r);
+  v.querySelectorAll(".rrow").forEach(el => el.addEventListener("click", async () => {
+    const r = byKey[el.dataset.rkey];
+    rosterOpen = (rosterOpen && key(rosterOpen) === key(r)) ? null : r;
+    showRoster(v);
+  }));
+  v.querySelectorAll(".rosteradd button").forEach(b => b.addEventListener("click", () => {
+    const form = b.closest(".rosteradd");
+    const name = (form.querySelector(".ro-name").value || "").trim();
+    const hint = form.querySelector(".path:last-child");
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)){
+      hint.textContent = "이름은 소문자·숫자·하이픈만 쓸 수 있습니다. 예: my-agent"; return;
+    }
+    const scope = form.dataset.scope, owner = form.dataset.owner, kind = b.dataset.kind;
+    if (rows.some(r => r.scope === scope && r.owner === owner && r.kind === kind && r.name === name)){
+      hint.textContent = "같은 이름이 이미 있습니다. 다른 이름을 쓰거나 그 항목을 열어 고치세요."; return;
+    }
+    rosterOpen = {scope, kind, owner, name, editable: true, fresh: true, path: ""};
+    rows.push({...rosterOpen, desc: "", installed: false});
+    showRoster(v);
+  }));
+  if (rosterOpen){
+    const slot = v.querySelector(`.redit[data-rkey="${CSS.escape(key(rosterOpen))}"]`);
+    if (slot) await rosterEditor(slot, rosterOpen, v);
+  }
+}
+
+async function rosterEditor(slot, r, v){
+  let content = "";
+  if (r.fresh){
+    content = rosterTemplate(r.kind, r.name);
+  } else {
+    try{
+      const q = new URLSearchParams({scope: r.scope, kind: r.kind, owner: r.owner, name: r.name});
+      const d = await (await fetch("/api/roster/doc?" + q.toString())).json();
+      if (d.error) throw new Error(d.error);
+      content = d.content || "";
+    }catch(e){
+      slot.innerHTML = `<p class="empty">본문을 받아오지 못했습니다 — ${esc(String(e.message || e))}</p>`; return;
+    }
+  }
+  const ro = !r.editable;
+  slot.innerHTML = `<div class="uform" style="max-width:720px">
+      <div class="path">${esc(r.path || `${r.scope}/${r.kind}/${r.name}`)}${ro ? " · 읽기 전용" : ""}</div>
+      <textarea class="ro-body" rows="20" spellcheck="false" style="font-family:var(--mono);font-size:12px;width:100%;box-sizing:border-box"${ro ? " readonly" : ""}>${esc(content)}</textarea>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${ro ? "" : `<button type="button" class="ro-save">변경 사항 저장</button>`}
+        <button type="button" class="ro-close">닫기</button>
+        <span class="path ro-msg" style="margin-left:6px"></span>
+      </div></div>`;
+  slot.querySelector(".ro-close").addEventListener("click", () => { rosterOpen = null; showRoster(v); });
+  const save = slot.querySelector(".ro-save");
+  if (save) save.addEventListener("click", async () => {
+    const msg = slot.querySelector(".ro-msg");
+    save.disabled = true; msg.textContent = "저장하는 중…";
+    const res = await postJSONRaw("/api/roster/save", {scope: r.scope, kind: r.kind, owner: r.owner,
+                                                       name: r.name, content: slot.querySelector(".ro-body").value});
+    save.disabled = false;
+    if (!res.ok){
+      // 실패는 편집기 안에 남긴다 — 입력을 지우지 않는 것이 이 절의 되돌리기다
+      msg.textContent = `저장하지 못했습니다 — ${res.error || "잠시 뒤 다시 눌러 주세요."}`;
+      return;
+    }
+    rosterOpen = null;
+    showRoster(v);
+  });
+}

@@ -16909,6 +16909,130 @@ def scaffold_asset_space(slug, title=""):
 # 멱등 미러해 네이티브 subagent_type 으로 쓰이게 하고(세션 시작 시 로드되므로
 # 중간 추가분은 다음 세션부터), 무인 워커는 _project_agent_preamble 로 즉석 주입.
 
+# ── 에이전트·스킬 로스터 (REQ-20260906-021): Settings 가 보고 고치는 세 범위 ────────
+ROSTER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+
+
+def _roster_desc(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            meta, _ = fm_parse(f.read())
+        return str(meta.get("description") or "").strip()
+    except OSError:
+        return ""
+
+
+def _roster_paths(scope, kind, owner, name):
+    """(원천 경로, 설치 확인 경로) — scope: common|project|user, kind: agent|skill."""
+    home = claude_home()
+    if scope == "common":
+        base = os.path.join(ROOT, "harness", "claude", "agents" if kind == "agent" else "skills")
+        inst = os.path.join(home, "agents", name + ".md") if kind == "agent" else os.path.join(home, "skills", name)
+    elif scope == "project":
+        base = os.path.join(ROOT, "projects", owner, "agents" if kind == "agent" else "skills")
+        inst = (os.path.join(ROOT, ".claude", "agents", f"{owner}--{name}.md") if kind == "agent"
+                else os.path.join(ROOT, ".claude", "skills", f"{owner}--{name}"))
+    elif scope == "user":
+        base = os.path.join(USERS, owner, "agents" if kind == "agent" else "skills")
+        inst = os.path.join(home, "agents", name + ".md") if kind == "agent" else os.path.join(home, "skills", name)
+    else:
+        raise ValueError(f"unknown scope: {scope}")
+    src = os.path.join(base, name + ".md") if kind == "agent" else os.path.join(base, name, "SKILL.md")
+    return src, inst
+
+
+def _roster_scan(scope, kind, owner, base):
+    rows = []
+    if not os.path.isdir(base):
+        return rows
+    for fn in sorted(os.listdir(base)):
+        if fn.startswith(".") or fn == "README.md":
+            continue
+        full = os.path.join(base, fn)
+        if kind == "agent":
+            if not (fn.endswith(".md") and os.path.isfile(full)):
+                continue
+            name = fn[:-3]
+        else:
+            if not (os.path.isdir(full) and os.path.isfile(os.path.join(full, "SKILL.md"))):
+                continue
+            name = fn
+        src, inst = _roster_paths(scope, kind, owner, name)
+        rows.append({"scope": scope, "kind": kind, "owner": owner, "name": name,
+                     "desc": _roster_desc(src), "path": os.path.relpath(src, ROOT),
+                     "installed": os.path.lexists(inst)})
+    return rows
+
+
+def roster_list(user=""):
+    """세 범위의 에이전트·스킬 — 공용(생성물, 읽기 전용)·프로젝트·사용자(본인)."""
+    out = []
+    for kind in ("agent", "skill"):
+        for r in _roster_scan("common", kind, "", os.path.join(ROOT, "harness", "claude",
+                                                                "agents" if kind == "agent" else "skills")):
+            r["editable"] = False
+            out.append(r)
+    pr = os.path.join(ROOT, "projects")
+    if os.path.isdir(pr):
+        for slug in sorted(os.listdir(pr)):
+            for kind in ("agent", "skill"):
+                for r in _roster_scan("project", kind, slug,
+                                      os.path.join(pr, slug, "agents" if kind == "agent" else "skills")):
+                    r["editable"] = bool(user) and project_can(slug, user, "contribute")
+                    out.append(r)
+    if user and user in registered_users():
+        for kind in ("agent", "skill"):
+            for r in _roster_scan("user", kind, user,
+                                  os.path.join(USERS, user, "agents" if kind == "agent" else "skills")):
+                r["editable"] = True
+                out.append(r)
+    return out
+
+
+def roster_read(scope, kind, owner, name):
+    if not ROSTER_NAME_RE.match(name or "") or kind not in ("agent", "skill"):
+        raise ValueError("이름은 소문자·숫자·하이픈만")
+    src, inst = _roster_paths(scope, kind, owner, name)
+    with open(src, encoding="utf-8") as f:
+        return {"scope": scope, "kind": kind, "owner": owner, "name": name,
+                "path": os.path.relpath(src, ROOT), "installed": os.path.lexists(inst),
+                "content": f.read()}
+
+
+def roster_save(scope, kind, owner, name, content, actor):
+    """프로젝트·사용자 범위의 md 를 쓴다 — 공용(생성물)은 거부. frontmatter 에 name 이 없으면 넣는다."""
+    if scope == "common":
+        raise ValueError("하네스 기본 항목은 생성물이라 여기서 못 고칩니다 — harness/claude/gen_roster.py 를 고치세요")
+    if scope not in ("project", "user") or kind not in ("agent", "skill"):
+        raise ValueError(f"unknown scope/kind: {scope}/{kind}")
+    if not ROSTER_NAME_RE.match(name or ""):
+        raise ValueError("이름은 소문자·숫자·하이픈만 쓸 수 있습니다")
+    if scope == "user":
+        if owner != actor and user_role(actor) != "admin":
+            raise ValueError("다른 사람의 항목은 admin 만 고칠 수 있습니다")
+        if owner not in registered_users():
+            raise ValueError(f"unregistered user: {owner}")
+    else:
+        if not load_project(owner):
+            raise ValueError(f"unknown project: {owner}")
+        if not project_can(owner, actor, "contribute"):
+            raise ValueError("이 프로젝트에 쓰려면 contributor 이상이어야 합니다")
+    text = str(content or "")
+    meta, body = fm_parse(text) if text.lstrip().startswith("---") else ({}, text)
+    if not meta.get("name"):
+        meta = {"name": name, **({"description": ""} if "description" not in meta else {}), **meta}
+        text = fm_dump(meta) + "\n" + body.lstrip("\n")
+    src, inst = _roster_paths(scope, kind, owner, name)
+    os.makedirs(os.path.dirname(src), exist_ok=True)
+    tmp = src + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text if text.endswith("\n") else text + "\n")
+    os.replace(tmp, src)
+    if scope == "project" and kind == "agent":
+        sync_project_agents()      # 화면에서 고친 것이 곧 .claude/agents 에 선다
+    return {"ok": True, "path": os.path.relpath(src, ROOT), "installed": os.path.lexists(inst)}
+
+
 def sync_project_agents():
     """projects/*/agents/*.md → .claude/agents/ 멱등 미러. 매니페스트
     (.s9-managed.json)에 기록된 파일만 정리 — 수동 배치 에이전트는 불가침."""
@@ -23107,6 +23231,15 @@ def cmd_serve(args):
                             "external_path": str((user_config(me) or {}).get(
                                 "external_secrets_path") or "").strip(),
                             "external_state": external_secret_state(me)})
+            elif parsed.path == "/api/roster":
+                # Settings 의 에이전트·스킬 절 (REQ-20260906-021)
+                self._json({"rows": roster_list(viewer_of(qs) or "")})
+            elif parsed.path == "/api/roster/doc":
+                try:
+                    self._json(roster_read(qs.get("scope", [""])[0], qs.get("kind", [""])[0],
+                                           qs.get("owner", [""])[0], qs.get("name", [""])[0]))
+                except (OSError, ValueError) as e:
+                    self._json({"error": str(e)}, 404)
             elif parsed.path == "/api/users":
                 # ?scope=machine → 이 머신에서 등록된 계정만 (me 셀렉터용,
                 # REQ-20260824-017). 무지정은 전체 (Settings 사용자 관리용).
@@ -23505,6 +23638,11 @@ def cmd_serve(args):
                         raise ValueError("영구 소거는 confirm 이 필요하다")
                     self._json(docs_bulk(op, ids, actor,
                                          str(req.get("reason") or "")))
+                elif parsed.path == "/api/roster/save":
+                    # 프로젝트·사용자 범위의 에이전트·스킬 md (REQ-20260906-021)
+                    self._json(roster_save(str(req.get("scope") or ""), str(req.get("kind") or ""),
+                                           str(req.get("owner") or ""), str(req.get("name") or "").strip(),
+                                           req.get("content"), actor))
                 elif parsed.path == "/api/user/add":
                     role = str(req.get("role") or "member")
                     if role != "member" and not is_admin:
