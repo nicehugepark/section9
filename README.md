@@ -154,7 +154,7 @@ cd ~/section9 && s9 instance init git@github.com:<조직>/<팀 저장소>.git   
 git clone git@github.com:<조직>/<팀 저장소>.git ~/<팀 저장소> && cd ~/<팀 저장소> && bin/s9-install && s9 code   # 팀원
 ```
 
-절차·출력·업그레이드 방법은 [docs/guide.md 8장](docs/guide.md#8-운영관리자--인스턴스-만들기와-배포).
+절차·출력·업그레이드 방법은 [docs/guide.md 9장](docs/guide.md#9-운영관리자--인스턴스-저장소-만들기와-배포).
 
 ## 7. 되돌리기 · 제거
 
