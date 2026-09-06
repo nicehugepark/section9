@@ -64,8 +64,10 @@ class RemoteRun(unittest.TestCase):
                      "index rebuild", "user attach 'nicehugepark'", "--jobs 16", "'test_a.py'"):
             self.assertIn(part, line)
         self.assertNotIn("S9_USER=", line, "정체를 환경변수로 강제하면 제 사용자를 만드는 시험이 붉는다")
-        for part in ():
-            self.assertIn(part, line)
+        # 원격은 파일 목록을 명시로 받아 「전체」가 아니다 — 실패 파일 표식(RED_MARK)을
+        # 찍게 하는 손잡이가 한 줄에 있어야 이 머신이 무엇이 붉은지 안다
+        # (실측 2026-09-06 ee223fa: 표식이 없어 「실패 파일을 못 읽었다」, REQ-20260906-060).
+        self.assertIn("S9_TEST_WORKER=1 python3 tests/", line)
         self.assertNotIn("tar", line, "GitHub 이 축이다 — 보내는 것이 있으면 안 된다")
 
     def test_k4_full_means_no_pattern_and_jobs_is_not_a_pattern(self):

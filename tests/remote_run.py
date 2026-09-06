@@ -125,7 +125,7 @@ def remote_script(url, sha, dest, jobs, pats_argv, user=""):
             f"cd $D && git fetch -q origin +refs/ci/{short}:refs/ci/{short} "
             f"&& git checkout -q -f {sha} && git clean -qfd; "
             f"S9_ROOT=$D python3 bin/s9 index rebuild >/dev/null 2>&1 || true; "
-            f"{attach}S9_MAX_JOBS={jobs} S9_TEST_REMOTE= python3 tests/ --jobs {jobs} "
+            f"{attach}S9_MAX_JOBS={jobs} S9_TEST_REMOTE= S9_TEST_WORKER=1 python3 tests/ --jobs {jobs} "
             f"--no-reuse {pats}")
 
 

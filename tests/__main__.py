@@ -1146,11 +1146,14 @@ def main():
                 # 안 찍던 자리. 도장은 초록에만 (REQ-20260905-025 에서 실측).
                 record_last_red(LAST_RUN_RED, fp)
             drop_run_lock(lock_fh)
+            if not ok and (full_requested or os.environ.get("S9_TEST_WORKER")):
+                # 원격 머신에서 돌 때 이 줄을 이 머신의 remote_run 이 걷어 실패 파일을
+                # 안다 — 출력을 다시 해석하지 않고 표식 한 줄로 넘긴다. 원격은 파일
+                # 목록을 명시로 받아 full_requested 가 아니므로 S9_TEST_WORKER 로
+                # 가른다(실측 2026-09-06 ee223fa: 표식이 안 찍혀 「실패 파일을 못
+                # 읽었다」로 알림이 왔다, REQ-20260906-060).
+                print(async_notify.RED_MARK + " ".join(LAST_RUN_RED), flush=True)
             if full_requested:
-                if not ok:
-                    # 원격 머신에서 돌 때 이 줄을 이 머신의 remote_run 이 걷어 실패 파일을
-                    # 안다 — 출력을 다시 해석하지 않고 표식 한 줄로 넘긴다.
-                    print(async_notify.RED_MARK + " ".join(LAST_RUN_RED), flush=True)
                 # 결과가 스스로 도착한다 (REQ-20260906-029) — 백그라운드 실행일 때만 움직인다
                 async_notify.notify_full_result(ok, LAST_RUN_RED, time.time() - t_start,
                                                 len(files), where="로컬", env=notify_env)

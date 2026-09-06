@@ -347,11 +347,11 @@ class TheHandshakeWindow(unittest.TestCase):
             self.assertIsNone(srv.timeout)
             # 펌프 스레드는 끝났다 — 핸들러 스레드는 keep-alive 로 남을 수 있어
             # 펌프 하나만 센다.
-            for _ in range(50):
+            import time
+            for _ in range(40):                 # 최대 1초 — 연결 없는 대기
                 if threading.active_count() <= before + 1:
                     break
-                import time
-                time.sleep(0.02)
+                time.sleep(0.025)
             self.assertLessEqual(threading.active_count(), before + 1)
         finally:
             srv.server_close()

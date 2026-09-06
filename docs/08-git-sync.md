@@ -21,6 +21,7 @@ rebase → push** 한다. 이 문서는 그 동작을 코드(`bin/s9.py` 의 `sy
 | `.s9-sync` | track · 자동 commit | 동기화 모드 마커(2절). track 이라 clone 이 모드를 물려받는다 |
 | `users/*/streams/` | ignore | 대화 기록 미러. 2026-08-27 이력에서 제거(REQ-20260827-047). 다른 기계에서 남의 스트림은 보이지 않는다 |
 | `state/` | ignore | 이 기계의 상태 — 포트·세션 바인딩·수신함·sync 로그·큐. 「누가 무엇을 맡았나」는 문서 frontmatter 의 `lease` 가 옮긴다(REQ-20260902-026) |
+| state/sessions/ | **ignore** — 문서 lease 가 대체 | 세션 바인딩(pid·절대경로)은 이 기계에서만 뜻이 있다 — 2026-09-02 track 해제(REQ-20260902-026). 다른 기계가 알아야 할 「누가 무엇을 맡았나」는 문서 frontmatter 의 `lease` 가 나른다. `approvals_seen.json` 도 같은 폴더라 기계별이다 |
 | `index/` | ignore | 파생물. post-merge/post-checkout 훅이 `s9 index rebuild` 로 다시 만든다 |
 | `docs/ bin/ web/ harness/` | track · 사람이 commit | 설계 문서와 구현. pull 뒤 훅이 `s9-install --quiet` 를 다시 실행한다 |
 
