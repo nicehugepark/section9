@@ -14286,6 +14286,8 @@ def normalize_actor(value):
     s = re.sub(r"\s+", " ", str(value or "")).strip()
     if not s:
         return ""
+    # 에이전트 이름 공간(s9-agnt-, REQ-20260906-017)은 귀속에서 벗긴다 — 문서에는 역할만 남는다
+    s = re.sub(r"(^|:)s9-agnt-", r"\1", s)
     parts = [p.strip() for p in s.split(":")]
     kind = parts[0].lower()
     if kind in ACTOR_KINDS:

@@ -130,8 +130,12 @@
    tech-writer 가 낱말마다 번역할 것/그대로 둘 것을 판정하고, translator 가 옮길 것을
    사람들이 실제 쓰는 어휘로 옮긴다. 화면 어휘가 기계어로 흐르는 것을 이 넷이 막는다 —
    하나라도 빠진 화면 산출물은 반려 대상이다.
+   **에이전트·스킬은 `s9-` 이름 공간에 선다** (REQ-20260906-017, 주인 결정 2026-09-06): 범용
+   역할 이름은 남의 설치와 반드시 겹치므로 Agent 도구의 `subagent_type` 은 `s9-agnt-<역할>`
+   (예: `s9-agnt-designer`), Skill 도구의 이름은 `s9-skl-<스킬>`(예: `s9-skl-tdd`)이다. 규약과
+   보고에 쓰는 **역할명은 접두 없는 `designer`** 그대로이며 훅이 접두를 벗겨 귀속한다.
    **화면 디자인은 designer 에이전트가 기본이다** — 대시보드·UI·스킨 등 시각 작업은 리드가
-   직접 CSS를 만지지 말고 `designer` 에 위임하라(그 에이전트가 `s9-design`·`browser-verify` 스킬을
+   직접 CSS를 만지지 말고 `designer`(`s9-agnt-designer`) 에 위임하라(그 에이전트가 `s9-design`·`s9-skl-browser-verify` 스킬을
    로드한다: 완성도 기준과 이 제품의 시각 언어·금지 목록이 s9-design 한 문서에 있고,
    browser-verify가 실브라우저 검증이다). 문구는 `ux-writer`, 구현은 `frontend-developer` 가 같은 스킬 셋을 쓴다.
    리드의 몫은 제약 전달·캡처 검증·커밋이다. 위임 시 **금지 사항을 항상 함께 전달하라**:

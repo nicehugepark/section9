@@ -172,6 +172,7 @@ def main():
                   "REQ-20260825-066)")
 
     atype = data.get("agent_type") or "subagent"
+    atype = atype[len("s9-agnt-"):] if atype.startswith("s9-agnt-") else atype  # 이름 공간은 벗긴다
     # actor 규격 (REQ-20260825-088): 기동 시 PostToolUse 훅이 등록한
     # sub:<타입>:<agentId8> 과 **같은 문자열**이어야 그 running 항목이 닫힌다.
     aid = (data.get("agent_id") or "")[:8]

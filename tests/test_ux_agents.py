@@ -21,7 +21,7 @@ VISUAL = ("designer", "ux-writer", "frontend-developer")
 
 class TestUxAgents(unittest.TestCase):
     def _read(self, name):
-        with open(os.path.join(AGENTS, name + ".md"), encoding="utf-8") as f:
+        with open(os.path.join(AGENTS, "s9-agnt-" + name + ".md"), encoding="utf-8") as f:  # 이름 공간 (REQ-20260906-017)
             return f.read()
 
     # U1. 세 에이전트 모두 s9-design을 필수 스킬로 로드

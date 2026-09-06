@@ -9,6 +9,22 @@ os.makedirs(SK, exist_ok=True)
 os.makedirs(AG, exist_ok=True)
 
 # ─────────────────────────────── 스킬 ───────────────────────────────
+# 이름 공간 (REQ-20260906-017, 주인 결정 2026-09-06): 범용 역할 이름(designer·tdd …)은
+# 남의 설치와 반드시 겹친다 — 에이전트는 s9-agnt-<역할>, 스킬은 s9-skl-<스킬> 로 선다.
+# 이미 s9- 를 단 이름(s9-design·s9-protocol)은 겹칠 수 없어 그대로 둔다. 역할명(designer)은
+# 보고·귀속·`--as` 에 그대로 쓰고, 훅이 접두를 벗겨 적는다.
+AGENT_PREFIX = "s9-agnt-"
+SKILL_PREFIX = "s9-skl-"
+
+
+def agent_ns(role):
+    return role if role.startswith("s9-") else AGENT_PREFIX + role
+
+
+def skill_ns(skill):
+    return skill if skill.startswith("s9-") else SKILL_PREFIX + skill
+
+
 SKILLS = {
 "s9-protocol": ("section9 외부기억 작업 규약. 어떤 역할이든 작업 기록/조회/상태 관리 전에 로드. 트리거: s9, 요청 문서, 작업 기록, 외부기억.", """
 # section9 작업 규약 (모든 역할 공통)
@@ -647,7 +663,7 @@ PRE_BULLETS = {
 }
 
 TPL = """---
-{model}name: {name}
+{model}name: {agent_name}
 description: {desc}. guru 수준의 {identity} 역할 에이전트 — 이 영역 작업은 이 에이전트에 위임하라.
 ---
 
@@ -674,7 +690,7 @@ description: {desc}. guru 수준의 {identity} 역할 에이전트 — 이 영�
 작업을 시작하기 전에 Skill 도구로 다음 스킬을 반드시 로드하라:
 {skills}
 
-Skill 도구가 없거나 목록에 없으면 `~/section9/harness/claude/skills/<이름>/SKILL.md` 를 직접 Read하라. 어떤 경우에도 스킬 내용을 확인하지 않은 채 작업하지 마라.
+Skill 도구가 없거나 목록에 없으면 `~/section9/harness/claude/skills/<이름>/SKILL.md` 를 직접 Read하라(위 목록의 이름 그대로 — `s9-skl-` 는 section9 의 이름 공간이다). 어떤 경우에도 스킬 내용을 확인하지 않은 채 작업하지 마라.
 
 ## 전문 영역과 기준
 
@@ -720,20 +736,29 @@ WORKFLOW_BLOCK = """
 for name, (identity, desc, bullets, skills, deliverable) in A.items():
     pre = PRE_BULLETS.get(name, [])
     body = TPL.format(
-        name=name, identity=identity, desc=desc,
+        name=name, agent_name=agent_ns(name), identity=identity, desc=desc,
         model=("model: opus\n" if name in MODEL_ROLES else ""),
-        skills="\n".join(f"- **{s}**" for s in skills),
+        skills="\n".join(f"- **{skill_ns(s)}**" for s in skills),
         bullets="\n".join(f"- {b}" for b in [*pre, *bullets]),
         deliverable=deliverable,
         workflow=(WORKFLOW_BLOCK if name in WORKFLOW_ROLES else ""))
-    with open(os.path.join(AG, f"{name}.md"), "w", encoding="utf-8") as f:
+    with open(os.path.join(AG, f"{agent_ns(name)}.md"), "w", encoding="utf-8") as f:
         f.write(body)
 
 for name, (desc, body) in SKILLS.items():
-    d = os.path.join(SK, name)
+    d = os.path.join(SK, skill_ns(name))
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
-        f.write(f"---\nname: {name}\ndescription: {desc}\n---\n{body}")
+        f.write(f"---\nname: {skill_ns(name)}\ndescription: {desc}\n---\n{body}")
+
+# 접두 없는 옛 산출물은 걷는다 — 이름 공간 밖의 파일이 남으면 설치가 그것도 링크한다
+for fn in os.listdir(AG):
+    if fn.endswith(".md") and fn != "README.md" and not fn.startswith(AGENT_PREFIX):
+        os.remove(os.path.join(AG, fn))
+for dn in os.listdir(SK):
+    if os.path.isdir(os.path.join(SK, dn)) and not dn.startswith("s9-"):
+        import shutil as _sh
+        _sh.rmtree(os.path.join(SK, dn))
 
 print(f"agents: {len(A)}, skills: {len(SKILLS)} 생성")
 # 역할-스킬 매핑 요약

@@ -58,7 +58,7 @@ class TestProtocolDelegation(unittest.TestCase):
             # P3. 시각화 3 에이전트 정의가 s9-design 스킬을 참조한다 (U계약 유지)
         with self.subTest("p3_agents_reference_ux_craft"):
             for name in ["designer", "ux-writer", "frontend-developer"]:
-                body = read("harness", "claude", "agents", name + ".md")
+                body = read("harness", "claude", "agents", "s9-agnt-" + name + ".md")
                 self.assertIn("s9-design", body, f"{name}.md에 s9-design 누락")
 
 if __name__ == "__main__":

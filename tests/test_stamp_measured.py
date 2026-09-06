@@ -177,6 +177,7 @@ class InstructionSaysMeasure(unittest.TestCase):
             for f in names:
                 body = _read(os.path.join(AGENTS, f))
                 role = f[:-3]
+                role = role[len("s9-agnt-"):] if role.startswith("s9-agnt-") else role  # 이름 공간은 벗긴 역할명으로 보고한다
                 self.assertIn(f"now --as {role}", body, f)
                 # 상수 KST 로 라벨을 못박는 지시가 남아 있으면 안 된다.
                 self.assertNotIn("%H:%M:%S KST", body, f)

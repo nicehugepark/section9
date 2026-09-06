@@ -109,6 +109,7 @@ def parse_agent_result(resp):
 def actor_for(agent_type, agent_id):
     """위임 에이전트의 actor 규격 문자열 — sub:<타입>:<agentId8>."""
     t = (agent_type or "subagent").strip() or "subagent"
+    t = t[len("s9-agnt-"):] if t.startswith("s9-agnt-") else t   # 이름 공간은 벗기고 역할만 (REQ-20260906-017)
     return "sub:%s:%s" % (t, (agent_id or "")[:8]) if agent_id else "sub:%s" % t
 
 
