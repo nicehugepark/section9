@@ -43,7 +43,7 @@ class TestProtocolDelegation(unittest.TestCase):
                 for kw in ["말과 태도",
                            "칭찬과 아부는 하지 않는다",      # 말투
                            "남의 도구가 지은 이름은 번역하지 않는다",  # 용어
-                           "도는 일은 끝까지 지켜본다"]:      # 작업 방식
+                           "실행 중인 일은 끝까지 지켜본다"]:  # 작업 방식
                     self.assertIn(kw, proto, f"PROTOCOL.md에 '{kw}' 누락")
                     self.assertIn(kw, claude, f"CLAUDE.md에 '{kw}' 누락 — 재동기화 필요")
 

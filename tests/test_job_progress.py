@@ -135,7 +135,7 @@ class TheProgressIsAFraction(Base):
     def test_b5_many_jobs_count_jobs_not_cases(self):
         c = self.chipOf(self.job(mins=5, done=120, total=301),
                         self.job(name="테스트 2", mins=2, done=9, total=88))
-        self.assertEqual(c["label"], "도는 일 2건 · 5분째")
+        self.assertEqual(c["label"], "실행 중 2건 · 5분째")
         self.assertNotIn("/", c["label"], "복수 얼굴에 분수가 섞였다")
 
     # F1 — 도는 잡이 없으면 아무것도 그리지 않는다 (빈 칩은 자리도 안 먹는다)
@@ -152,7 +152,7 @@ class TheProgressIsAFraction(Base):
     def test_k1_every_kind_gets_a_name(self):
         want = {"full": "전체 테스트 4분째 · 120/301건",
                 "smoke": "스모크 테스트 4분째 · 120/301건",
-                "targeted": "표적 테스트 4분째 · 120/301건"}
+                "targeted": "지정 테스트 4분째 · 120/301건"}
         for k, label in want.items():
             c = self.chipOf(self.job(kind=k, done=120, total=301))
             self.assertEqual(c["label"], label)

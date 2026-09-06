@@ -204,7 +204,7 @@ class TheDistanceIsRead(GitPanelBase):
         self.assertEqual(st["jobs"], 1)
         for side in ("pull", "push"):
             self.assertFalse(st["can"][side]["ok"])
-            self.assertIn("도는 일 1건", st["can"][side]["why"])
+            self.assertIn("실행 중인 작업 1건", st["can"][side]["why"])
         self.assertIn("끝나면 push", st["can"]["push"]["why"])
         self.assertIn("끝나면 pull", st["can"]["pull"]["why"])
 

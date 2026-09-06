@@ -62,7 +62,7 @@ const DRIFT_LABEL = "끝났는지 확인";
 const STOP_KIND = {
   worker: {
     who: "백그라운드 작업이 이 요청을 맡아 진행 중입니다",
-    tip: "백그라운드 작업이 돌고 있습니다 — 중단하면 하던 일이 거기서 끝나고"
+    tip: "백그라운드 작업이 실행 중입니다 — 중단하면 하던 일이 거기서 끝나고"
       + " 사유가 문서에 남습니다",
     /* 확인 창의 갈래를 가르는 것은 **주체가 아니라 결과**다 — 여기서 곧장
        끊기느냐(worker), 전해 놓고 기다리느냐(session·agent)다. 그래서 제목이
@@ -980,7 +980,7 @@ function handProbe(rows){
     r.stall_state = "attached";
     r.hand_mins = Math.max(0, +m[1] + n);
     r.quiet_mins = q + 7 * n;
-    r.stall_why = "다른 곳에서 이 요청을 만지는 중입니다 — 진단으로 세운 값";
+    r.stall_why = "다른 곳에서 이 요청을 작업하는 중입니다 — 진단이 지정한 값";
     r.stalled_mins = null;
     n++;
   }
@@ -1065,7 +1065,7 @@ function stallProbe(rows){
   for (const r of rows){
     if (r.type !== "request" || r.status !== "in-progress") continue;
     if (r.stalled_mins == null) r.stalled_mins = mins + 7 * n;
-    if (kind && !r.live_kind){ r.live_kind = kind; r.live_reason = "진단으로 세운 값"; }
+    if (kind && !r.live_kind){ r.live_kind = kind; r.live_reason = "진단이 지정한 값"; }
     // 선행 대기 줄과 **함께** 서는 카드 — 2차 반려가 뒤집은 그 자리다. 이 조합은
     // 실데이터에 거의 없어서(in-progress 인데 선행이 안 끝난 경우), 뒤집힌 규칙이
     // 맞게 그려지는지 눈으로 볼 길이 없었다.
@@ -1286,7 +1286,7 @@ const WS_WHY = {
   "dirty-unknown": ["아직 commit 되지 않은 코드가 있고, 이 요청이 어느 파일을 "
                     + "고칠지는 문서에 적혀 있지 않습니다", WS_FIX_COMMIT],
   // 문장 안에 줄표를 넣지 않는다 — 손 위의 문장이 이미 줄표로 사유를 잇는다.
-  "live-verify": ["살아 있는 서버로 확인해야 하는 작업이라서입니다", ""],
+  "live-verify": ["실행 중인 서버로 확인해야 하는 작업이라서입니다", ""],
   "self-edit": ["작업 도구 자신을 고치는 일이라서입니다", ""],
 };
 /* 반환 null(그릴 것이 없다) 또는 {kind, wt, place, why, fix}.
@@ -1868,7 +1868,7 @@ function cardHTML(r){
          /* 「누군가」를 걷었다 (DOC-20260831-005 사전) — 이 화면에서 중단하는
             것은 사람뿐이라 모호할 이유가 없다. 모르는 주어는 "내가 안 한 일이
             일어났다"로 읽힌다. */
-         ? `<span class="livedot dot-held" title="이 요청을 사람이 ${r.stopped && r.stopped.age >= 60 ? Math.floor(r.stopped.age / 60) + "분 전에 " : "방금 "}중단해 두었습니다 — 지금은 아무것도 돌고 있지 않습니다"></span>`
+         ? `<span class="livedot dot-held" title="이 요청을 사람이 ${r.stopped && r.stopped.age >= 60 ? Math.floor(r.stopped.age / 60) + "분 전에 " : "방금 "}중단해 두었습니다 — 지금은 아무 작업도 실행 중이 아닙니다"></span>`
        /* **일하는 중, 기록은 아직** — ◎ (REQ-20260831-005). 초록 점멸보다
           먼저 걸린다: 이 갈래에 해당하는 카드는 대부분 `r.live` 도 참이라,
           아래에 두면 영영 안 그려지고 ● 가 "기록도 나가는 중"이라는 거짓을

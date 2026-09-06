@@ -17,7 +17,7 @@ const CC_BUILTINS = [     // CC CLI 빌트인 — 대시보드에선 실행 불�
   ["permissions","도구 권한 허용/거부 (CLI 전용)"],
   ["hooks","훅 확인·편집 (CLI 전용)"],
   ["artifacts","발행한 아티팩트 목록 (CLI 전용)"],
-  ["tasks","도는 일 목록 (CLI 전용)"],
+  ["tasks","실행 중인 작업 목록 (CLI 전용)"],
   ["workflows","워크플로 진행 보기 (CLI 전용)"],
 ].map(([n,d]) => ({name:n, desc:d, source:"cli"}));
 

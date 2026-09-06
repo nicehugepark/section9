@@ -1121,7 +1121,7 @@ async function renderGraph(rows){
       if (!a) return;
       gReport([
         `무리 모양   ${/[?&]praw/.test(location.search) ? "고치기 전(?praw)" : "지금"}`,
-        `판 ${LW}x${LH} · 잰 노드 ${a.n}개 (몸통)`,
+        `화면 ${LW}x${LH} · 잰 노드 ${a.n}개 (몸통)`,
         `긴 축 / 짧은 축   ${a.ratio.toFixed(2)}   (1.00 = 원)`,
         `긴 축이 기운 각도  ${a.deg.toFixed(0)}°   (0=가로 · 45=↖↘ 대각선 · 90=세로)`,
         `k${L.st.tf.k.toFixed(3)} ${Math.round(L.st.tf.x)},${Math.round(L.st.tf.y)}`,
@@ -1305,7 +1305,7 @@ async function renderGraph(rows){
              ("누르면 노드가 전부 사라진다")는 이 두 줄이 없어서 "안 됐다"까지만
              보이고 왜인지가 안 보였다. 판 크기와 월드 상자를 나란히 두면 배율이
              하한에 붙었는지가 한눈에 읽힌다. */
-          `판 ${LW}x${LH}   월드상자 ${Math.round(L.box().w)}x${Math.round(L.box().h)}`
+          `화면 ${LW}x${LH}   월드상자 ${Math.round(L.box().w)}x${Math.round(L.box().h)}`
             + `   몸통상자 ${Math.round(L.core().w)}x${Math.round(L.core().h)}`,
           `화면상자 ${Math.round(L.screen(L.st.tf.k, L.st.tf.x, L.st.tf.y).w)}x`
             + `${Math.round(L.screen(L.st.tf.k, L.st.tf.x, L.st.tf.y).h)}`,

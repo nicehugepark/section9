@@ -296,7 +296,7 @@ function tzOpen(){
   if (!tzData)
     tzLoad().then(() => { if (tzState === S && S.open){ tzRender(); tzPlace(); } tzNowRender(); })
             .catch(() => { if (tzState === S && S.open && S.pop)
-              S.pop.innerHTML = `<div class="tzempty">목록을 받아오지 못했습니다 — 서버가 살아 있는지 보고 다시 열어 주세요.</div>`; });
+              S.pop.innerHTML = `<div class="tzempty">목록을 받아오지 못했습니다 — 서버가 실행 중인지 확인하고 다시 열어 주세요.</div>`; });
 }
 function tzClose(restore){
   const S = tzState;

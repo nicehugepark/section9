@@ -213,8 +213,8 @@ function tidyRender(){
           data-id="${esc(r.id)}" title="영구히 지운다 — 되돌릴 수 없다">영구 삭제</button>` : ""}
       </div></div>`;
   const body = lost
-    ? `<div class="tempty">이 목록을 받지 못했습니다 — 돌고 있는 서버가 아직
-        이 자리를 내주지 못하는 판일 수 있습니다.
+    ? `<div class="tempty">이 목록을 받지 못했습니다 — 실행 중인 서버가 아직
+        이 기능을 지원하지 않는 버전일 수 있습니다.
         <code>bin/s9 serve --restart</code> 로 다시 띄워 주세요.</div>`
     : !rows.length
       ? `<div class="tempty">${tidyTab === "trash"

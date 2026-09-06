@@ -352,7 +352,7 @@ def pending_context(sid8, env=None):
                 f"  - [{l.get('ts', '?')} · 세션 {g['sid']}] {l.get('text', '')}"
                 for g in orphans for l in g["lines"])
             out += (f" ◈ 다른 세션 수신함에 갇혀 있던 미전달 메시지 {n}건 — 대상 "
-                    f"세션이 수신 대기를 돌리지 않아 소화되지 못했다. **시각을 보고 "
+                    f"세션이 수신 대기를 실행하지 않아 소화되지 못했다. **시각을 보고 "
                     f"아직 유효한 것만** 사용자 메시지로 처리하고, 이미 지난 것이면 "
                     f"그 사실을 한 줄로 알려라:\n" + body + "\n")
         return out
@@ -476,7 +476,7 @@ def workers_context(env):
     w = run(env, "workers", "--quiet")
     if w.returncode != 0 or not w.stdout.strip():
         return ""
-    return (f" ⚙ 지금 도는 무인 작업자:\n{w.stdout.strip()}\n"
+    return (f" ⚙ 지금 실행 중인 백그라운드 작업자:\n{w.stdout.strip()}\n"
             f"이 요청들의 파일을 리드가 함께 고치지 마라. 같은 파일을 만져야 "
             f"하면 커밋 전에 `git diff --cached` 로 **담기는 내용을 실제로 읽어라** "
             f"— `git add <경로>` 는 '내 변경'이 아니라 '그 파일의 지금 상태'를 "
@@ -767,7 +767,7 @@ def main():
             f"`s9 link <DOC> --derived-from {qst}` 로 출처를 남겨라 "
             f"(질문=사건, 지식=규칙 — 규칙 전문을 질문 문서에 복사하지 마라, "
             f"DOC-20260826-011). 남길 가치가 없는 질문이면 "
-            f"`s9 rm {qst} --reason question` 으로 걷어라. "
+            f"`s9 rm {qst} --reason question` 으로 제거하라. "
             if qst else
             f"이 프롬프트는 Question 으로 분류되어 문서를 만들지 않았다 "
             f"(세션 로그에만 기록). 답이 나중에 다시 찾아질 만한 것이면 "

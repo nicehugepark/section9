@@ -818,7 +818,7 @@ def disk_verdict(rows):
         f"{r['path']} {r['used_pct']:.0f}%" for r in rows)
     advice = None
     if level != "ok":
-        advice = (f"{worst['path']} 가 {p:.0f}% 찼다 — s9 는 쓰기부터 죽는다. "
+        advice = (f"{worst['path']} 가 {p:.0f}% 찼다 — s9 는 쓰기부터 실패한다. "
                   f"state/shots · state/snapshots 부터 비워라.")
     return _v("disk", "디스크", level, line, advice)
 
@@ -852,7 +852,7 @@ def hooks_verdict(h):
                       "기록이 조용히 끊긴다.")
     if not h.get("git_hook"):
         parts.append("git pre-commit 없음")
-        advice.append("커밋 게이트가 없다 — `s9-install` 이 훅 자리를 git 에게 "
+        advice.append("커밋 검사(pre-commit 훅)가 없다 — `s9-install` 이 훅 자리를 git 에게 "
                       "물어 설치한다.")
     if not parts:
         return _v("hooks", "훅", "ok", "훅: claude 훅 · git pre-commit 모두 설치됨")
@@ -875,7 +875,7 @@ def repo_verdict(r):
     if not r.get("worktree_ok"):
         return _v("repo", "저장소", "critical",
                   "저장소: 작업 트리를 찾지 못했다",
-                  "이 자리가 git 저장소가 맞는지 확인하라 — 커밋 게이트도 "
+                  "이 자리가 git 저장소가 맞는지 확인하라 — 커밋 검사(pre-commit 훅)도 "
                   "감사 기록도 여기에 기댄다.")
     # 미커밋 코드가 있으면 무인 작업자가 워크트리 대신 본 저장소로 간다
     # (REQ-20260829-028-62x6). 되찾는 값이 커밋이라는 것을 여기서도 말한다 —
@@ -883,9 +883,9 @@ def repo_verdict(r):
     dirty = list(r.get("code_dirty") or [])
     tail = ""
     if dirty:
-        tail = (f" · 미커밋 코드 {len(dirty)}건({', '.join(dirty[:3])}"
+        tail = (f" · 커밋하지 않은 코드 변경 {len(dirty)}건({', '.join(dirty[:3])}"
                 + (" 외" if len(dirty) > 3 else "")
-                + ") — 그동안 무인 작업자는 워크트리 대신 본 저장소에 앉는다")
+                + ") — 그동안 백그라운드 작업자는 워크트리 대신 본 저장소에 앉는다")
     return _v("repo", "저장소", "ok",
               f"저장소: {r.get('branch') or '?'} · "
               f"워크트리 {r.get('worktrees') or 0}개" + tail,
@@ -903,7 +903,7 @@ def deps_verdict(x):
     if opt:
         return _v("deps", "도구", "warn",
                   f"도구: 선택 없음 — {', '.join(opt)}",
-                  "그 기능만 죽는다(캡처·윈도우 포트 조회).")
+                  "그 기능만 동작하지 않는다(캡처·윈도우 포트 조회).")
     return _v("deps", "도구", "ok", "도구: 필요한 것이 모두 있다")
 
 
@@ -1393,7 +1393,7 @@ def advise(d):
         out.append(f"윈도우 동적 포트 {pv['bound']}/{pv['total']} 사용 "
                    f"({pct}) — WSL이 새 포트를 호스트에 공개할 자리가 "
                    f"{'없다' if pv['level'] == 'critical' else '얼마 남지 않았다'}. "
-                   f"이건 리눅스 쪽 문제가 아니라 호스트 쪽 소진이다.")
+                   f"이건 리눅스 쪽 문제가 아니라 호스트 쪽에 남은 포트가 없는 것이다.")
         if target:
             kind = ("WSL 포트 중계(COM 대리)" if target["is_known_relay"]
                     else "COM 대리 프로세스")
@@ -1407,11 +1407,11 @@ def advise(d):
                        f"즉시 반환시킨다. 중계는 다시 뜨지만 그것이 나르던 연결"
                        f"(브라우저 탭·원격 편집기 채널)은 전부 끊기고, WSL 세션"
                        f"까지 함께 내려간 사례가 있다 — 하던 일이 끊겨도 되는 "
-                       f"때에 사람이 직접 돌려라.")
+                       f"때에 사람이 직접 실행하라.")
         elif win.get("top_name"):
             out.append(f"최다 점유자는 pid {win.get('top_pid')} "
                        f"{win['top_name']} ({win.get('top_count')}개) — "
-                       f"우리 자원이 아니라 자동 회수 대상이 아니다. "
+                       f"우리 자원이 아니라 자동 정리 대상이 아니다. "
                        f"그 앱을 먼저 종료하라.")
 
     if d["degraded"]:
@@ -1419,20 +1419,20 @@ def advise(d):
                    "기존에 떠 있던 서버는 계속 동작하므로 증상이 헷갈린다.")
         steps = []
         recover_step = ("`s9-doctor --recover` — 동적 포트를 독차지한 중계 "
-                        "프로세스를 회수한다(세션은 유지된다).")
+                        "프로세스를 종료한다(세션은 유지된다).")
         if target and pv.get("level") == "critical":
             # 호스트 포트가 이미 말랐다면 리눅스 쪽 회수로는 풀리지 않는다.
             steps.append(recover_step)
-        steps.append("`s9-doctor --fix` — 고아 테스트 서버·좀비 헤드리스 "
-                     "브라우저를 회수한다(비파괴).")
+        steps.append("`s9-doctor --fix` — 부모가 사라진 테스트 서버·좀비 헤드리스 "
+                     "브라우저를 정리한다(비파괴).")
         steps.append("동시 실행 중인 캡처·서버 기동을 멈춘다 — 포트 생성이 "
                      "계속되면 공개 지연이 더 늘어난다.")
-        steps.append("1~2분 뒤 재실행. 지연은 윈도우 측이 자원을 회수하면 "
+        steps.append("1~2분 뒤 재실행. 지연은 윈도우 측이 자원을 해제하면 "
                      "스스로 줄어든다 — 이 상태는 영구 고장이 아니다.")
         if target and pv.get("level") != "critical":
             steps.append(recover_step)
         steps.append("마지막 수단이 `wsl --shutdown` 이다(실행 중인 "
-                     "세션·에이전트가 함께 죽는다).")
+                     "세션·에이전트가 함께 종료된다).")
         out += [f"{i}) {t}" for i, t in enumerate(steps, 1)]
         out += system_advice(d)
         return out
@@ -1455,8 +1455,8 @@ def advise(d):
     else:
         out.append(f"정상 — 새 포트 공개까지 {lat if lat is not None else 0}초.")
     if d["orphan_test_servers"]:
-        out.append(f"고아 테스트 서버 {len(d['orphan_test_servers'])}개가 남아 "
-                   f"있다 — `s9-doctor --fix` 로 회수하라.")
+        out.append(f"부모가 사라진 테스트 서버 {len(d['orphan_test_servers'])}개가 남아 "
+                   f"있다 — `s9-doctor --fix` 로 정리하라.")
     return out
 
 
@@ -1484,13 +1484,13 @@ def exit_code(d):
 def main():
     ap = argparse.ArgumentParser(prog="s9-doctor", description=__doc__)
     ap.add_argument("--sweep", action="store_true",
-                    help="고아 캡처 브라우저·프로필만 조용히 회수(진단 생략)")
+                    help="부모가 사라진 캡처 브라우저·프로필만 조용히 정리(진단 생략)")
     ap.add_argument("--fix", action="store_true",
-                    help="고아 테스트 서버·좀비 헤드리스 브라우저 회수")
+                    help="부모가 사라진 테스트 서버·좀비 헤드리스 브라우저 정리")
     ap.add_argument("--recover", action="store_true",
-                    help="동적 포트를 독차지한 WSL 포트 중계 프로세스 회수")
+                    help="동적 포트를 독차지한 WSL 포트 중계 프로세스 종료")
     ap.add_argument("--yes", action="store_true",
-                    help="--recover 확인 프롬프트 생략(무인 실행용)")
+                    help="--recover 확인 프롬프트 생략(백그라운드 실행용)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -1504,9 +1504,9 @@ def main():
             print(json.dumps(sw, ensure_ascii=False))
         elif (sw["procs"] or sw["profiles"] or sw["servers"]
               or sw["tmp"]["dirs"]):
-            print(f"회수: 고아 캡처 브라우저 {sw['procs']}개 · "
+            print(f"정리: 부모가 사라진 캡처 브라우저 {sw['procs']}개 · "
                   f"프로필 {sw['profiles']}개 · "
-                  f"고아 테스트 서버 {sw['servers']}개 · "
+                  f"부모가 사라진 테스트 서버 {sw['servers']}개 · "
                   f"임시 자리 {sw['tmp']['dirs']}개")
         return 0
 
@@ -1514,11 +1514,11 @@ def main():
     if args.recover:
         target = relay_hoarder(d.get("windows_ports") or {})
         if not target:
-            print("회수 대상이 없다 — 동적 포트를 독차지한 중계 프로세스가 "
+            print("종료 대상이 없다 — 동적 포트를 독차지한 중계 프로세스가 "
                   "확인되지 않는다. 진단만 출력한다.\n", file=sys.stderr)
         else:
             pv = port_verdict(d["windows_ports"])
-            print(f"회수 대상: pid {target['pid']} {target['name']} — 동적 포트 "
+            print(f"종료 대상: pid {target['pid']} {target['name']} — 동적 포트 "
                   f"{target['count']}개 점유 (전체 {pv['bound']}/{pv['total']})")
             print(f"  {target['cmd']}")
             # 대가를 줄여 적지 않는다 (REQ-20260902-066). 예전 문구는 "실행 중인
@@ -1572,7 +1572,7 @@ def main():
     if d["wsl_networking"]:
         print(f"WSL 네트워킹 모드: {d['wsl_networking']}")
     print(f"s9 serve 프로세스 {d['serve_procs']}개 "
-          f"(고아 테스트 서버 {len(d['orphan_test_servers'])}개) · "
+          f"(부모가 사라진 테스트 서버 {len(d['orphan_test_servers'])}개) · "
           f"헤드리스 브라우저 {len(d['headless_chrome'])}개 · "
           f"캡처 산출물 {human(d['shots_bytes'])}")
     # **겹칠 때의 합을 사람이 물을 수 있어야 한다** (REQ-20260903-004).
@@ -1590,27 +1590,27 @@ def main():
               f"({pv['ratio'] * 100:.0f}%)")
     if d.get("recovered"):
         r = d["recovered"]
-        print(f"  회수: WSL 포트 중계 pid={r['pid']} "
+        print(f"  종료: WSL 포트 중계 pid={r['pid']} "
               f"({'성공' if r['rc'] == 0 else 'rc=' + str(r['rc'])}) {r['out']}")
     if "probe_after_recover" in d:
-        print("회수 후 프로브: "
+        print("종료 후 프로브: "
               + ("✓ 정상" if d["probe_after_recover"]["ok"]
                  else "✗ 여전히 degraded"))
     for f in d.get("fixed", []):
-        print(f"  회수: {f['kind']} pid={f['pid']} ({f['age']}s)")
+        print(f"  정리: {f['kind']} pid={f['pid']} ({f['age']}s)")
     sw = d.get("swept")
     if sw and (sw["procs"] or sw["profiles"]):
-        print(f"  회수: 고아 캡처 브라우저 {sw['procs']}개 · "
+        print(f"  정리: 부모가 사라진 캡처 브라우저 {sw['procs']}개 · "
               f"프로필 {sw['profiles']}개")
     st = d.get("swept_tmp")
     if st and st["dirs"]:
-        print(f"  회수: 테스트가 흘린 임시 자리 {st['dirs']}개 "
+        print(f"  정리: 테스트가 흘린 임시 자리 {st['dirs']}개 "
               f"({human(st['bytes'])})")
     pr = d.get("pruned_shots")
     if pr and pr["files"]:
         print(f"  정리: 오래된 캡처 산출물 {pr['files']}개 ({human(pr['bytes'])})")
     if "probe_after_fix" in d:
-        print("회수 후 프로브: "
+        print("종료 후 프로브: "
               + ("✓ 정상" if d["probe_after_fix"]["ok"] else "✗ 여전히 degraded"))
     for r in d.get("system", []):
         print(f"{LEVEL_MARK.get(r['level'], '·')} {r['line']}")

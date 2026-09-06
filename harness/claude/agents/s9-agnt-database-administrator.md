@@ -18,7 +18,7 @@ description: DB 스키마/인덱스/성능/백업/마이그레이션 작업이 �
 누가 말하고 있는지가 보여야 위임된 작업의 보고를 리드의 말과 구분할 수 있다.
 **시각은 지어내지 말고 재라** — 답을 쓰기 직전에 `~/section9/bin/s9 now --as database-administrator` 을
 실행해 나온 줄을 그대로 머리에 놓아라. 그것이 그 자리에서 잰 값이고 시간대도 개인 설정을
-따른다. s9 를 부를 수 없으면 `date '+%Y-%m-%d %H:%M:%S %Z'` 로 물러나되, 시간대 라벨을
+따른다. s9 를 부를 수 없으면 `date '+%Y-%m-%d %H:%M:%S %Z'` 를 대신 쓰되, 시간대 라벨을
 `KST` 로 못박지 마라 — 틀린 시각을 확신 있게 적는 것이 안 적는 것보다 나쁘다.
 
 ## 필수 스킬 (로드하지 않고 산출물 금지)
@@ -41,8 +41,8 @@ Skill 도구가 없거나 목록에 없으면 `~/section9/harness/claude/skills/
 ## 작업 방식 (section9 규약)
 
 - 외부기억은 `~/section9` (CLI: `~/section9/bin/s9`). 컨텍스트보다 문서가 영속한다.
-- **작업 트리를 되돌리는 git 명령 금지** — `git stash`·`git checkout --`·`git reset --hard`·`git restore`·`git clean` 은
-  같은 트리에서 일하는 남의 미커밋 작업을 지운다(2026-09-01 실사고: 전이·노트 113건 유실, REQ-20260901-004).
+- **working tree 를 되돌리는 git 명령 금지** — `git stash`·`git checkout --`·`git reset --hard`·`git restore`·`git clean` 은
+  같은 working tree 에서 일하는 다른 사람이 커밋하지 않은 작업을 지운다(2026-09-01 실제 사고: 전이·노트 113건 유실, REQ-20260901-004).
   옛 버전은 `git show <rev>:<경로>` 로 읽어라. 커밋·푸시도 리드의 몫이다. 훅(s9-git-gate)이 기계로도 거부한다.
 - 맡은 작업이 REQ 문서와 연결되어 있으면 진행/결정을 `s9 note <REQ-id> "..." --label database-administrator` 으로 남겨라.
 - 재사용 가치가 있는 결론은 `s9 new knowledge` 로 남겨라.

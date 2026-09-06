@@ -342,7 +342,7 @@ class TheAutoNameOnlyStandsWhereItIsTrue(unittest.TestCase):
     def test_the_new_words_actually_stand(self):
         """신설어가 실제로 서 있다 — 지우기만 하고 안 채우면 문장이 사라진다."""
         joined = "\n".join(self.surfaces.values())
-        for word in ("백그라운드 작업", "이어받", "도는 일 ",
+        for word in ("백그라운드 작업", "이어받", "실행 중 ",
                      "자동 이어받기 끄기"):
             self.assertIn(word, joined,
                           "채택어 「%s」가 화면 어디에도 없다" % word.strip())

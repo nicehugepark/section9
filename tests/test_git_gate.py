@@ -134,7 +134,7 @@ class TheGateStands(unittest.TestCase):
             self.assertGreaterEqual(len(ags), 29)
             for p in ags:
                 with open(p, encoding="utf-8") as f:
-                    self.assertIn("작업 트리를 되돌리는 git 명령 금지", f.read(),
+                    self.assertIn("working tree 를 되돌리는 git 명령 금지", f.read(),
                                   "봉투에 금지 문구가 없다: %s" % p)
 
 if __name__ == "__main__":

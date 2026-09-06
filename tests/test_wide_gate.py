@@ -90,7 +90,7 @@ class TheGateAsks(unittest.TestCase):
         code, err, asked = self._run(["bin/s9", "web/app/card.js"], rc=1)
         self.assertTrue(asked, "묻지도 않고 지나갔다")
         self.assertIsNone(code, "기록이 없다고 커밋을 세웠다 — 전체는 뒤에 돈다")
-        self.assertIn("배경", err, "전체가 뒤에 돈다는 말이 없다")
+        self.assertIn("백그라운드", err, "전체가 뒤에 돈다는 말이 없다")
 
     # W3b. 붉음 라쳇 — 마지막 전체가 붉었고 그 뒤 초록이 없으면 막고, 붉은 파일을 말한다.
     def test_w3b_a_red_suite_blocks_until_green(self):
@@ -117,7 +117,7 @@ class TheGateAsks(unittest.TestCase):
         code, err, asked = self._run(["bin\\s9"], rc=1)
         self.assertTrue(asked, "윈도우 경로로 오면 넓은 파일을 못 알아본다")
         self.assertIsNone(code)
-        self.assertIn("배경", err, "넓은 파일로 안 세어 아무 말이 없다")
+        self.assertIn("백그라운드", err, "넓은 파일로 안 세어 아무 말이 없다")
 
 
 class TheAnswerIsARecord(unittest.TestCase):

@@ -173,7 +173,7 @@ async function loadStream(s){
   const endLine = d.ended
     ? `<div class="meta">■ 세션이 여기서 끝났습니다${
         d.ended_at ? " (" + esc(d.ended_at.slice(11, 16)) + ")" : ""}${
-        d.end_why ? " — " + esc(d.end_why) : ""} — 이 아래로는 아무것도 돌지 않습니다</div>`
+        d.end_why ? " — " + esc(d.end_why) : ""} — 이 아래로는 아무것도 실행되지 않습니다</div>`
     : "";
   term.innerHTML =
     `<div class="meta">session ${esc(s)} · <span id="evcount">${total}</span> events${q ? " · filtered" : ""}${liveTag}</div>` +

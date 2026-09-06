@@ -138,7 +138,7 @@ function renderOldCode(){
   // 보게 된 지금 그 문구는 훅만 바뀐 경우에 거짓말이 된다.
   const chg = Array.isArray(d.changed) && d.changed.length ? d.changed : ["bin/s9"];
   el.innerHTML = `<span class="oc-t"><span class="oc-mark" aria-hidden="true">▲</span>`
-    + ` 서버가 옛 코드로 돌고 있습니다</span>`
+    + ` 서버가 옛 코드로 실행 중입니다</span>`
     + `<span class="oc-d">${at ? esc(at) + " 기동 이후 " : ""}`
     + `${chg.map(f => `<code>${esc(f)}</code>`).join(" · ")} 가 바뀌었습니다`
     + ` — 서버 쪽 변경은 재기동해야 동작합니다.</span>`
@@ -278,9 +278,9 @@ function renderGuard(){
     // 조사를 붙이면(로/으로) 어느 한쪽이 반드시 어긋난다.
     const why = ev.reason ? ` (<code>${esc(ev.reason)}</code>)` : "";
     let detail = (d.guard === "gave-up")
-      ? `서버가 ${ev.fails || "여러"}번 잇따라 자리잡지 못해 감시자가 물러났습니다${why}.`
+      ? `서버가 ${ev.fails || "여러"}번 잇따라 자리잡지 못해 감시자가 다시 띄우기를 그만뒀습니다${why}.`
       : `${at} 에 멈춘 뒤로 서버를 지켜보는 것이 없습니다${why}.`;
-    detail += " 지금 서버가 죽으면 다시 뜨지 않습니다.";
+    detail += " 지금 서버가 종료되면 자동으로 다시 시작되지 않습니다.";
     el.innerHTML = `<span class="gw-t" style="color:var(--c-blocked)">`
       +   `<span class="gw-mark" aria-hidden="true">▲</span> 자동 복구가 멈췄습니다</span>`
       + `<span class="gw-d">${detail}</span>`
@@ -396,7 +396,7 @@ function svRestartSet(v, clearAfter){
    · 「전체」가 툴팁의 「전체 N건 중」과 두 뜻으로 겹치던 것은 tech-writer·
      translator 가 함께 짚었다 — 툴팁에서 「전체」를 뺐다. 「N건 중」의 「중」이
      이미 총량 대비를 말하므로 잃는 뜻이 없다. */
-const JOB_KIND = {full: "전체", smoke: "스모크", targeted: "표적"};
+const JOB_KIND = {full: "전체", smoke: "스모크", targeted: "지정"};
 function jobChip(jobs){
   jobs = jobs || [];
   if (!jobs.length) return null;
@@ -412,8 +412,8 @@ function jobChip(jobs){
      있어(하나는 파일, 하나는 시험 개수) 합치면 뜻 없는 수가 된다. 「몇 개가
      도나」와 「얼마나 남았나」는 한 낱말 밑에 뒤섞이지 않는다. */
   if (jobs.length > 1)
-    return {label: `도는 일 ${jobs.length}건 · ${mx}분째`,
-            title: `${esc(one.name)}가 ${mx}분째 돌고 있습니다 — 여기 숫자가 `
+    return {label: `실행 중 ${jobs.length}건 · ${mx}분째`,
+            title: `${esc(one.name)}가 ${mx}분째 실행 중입니다 — 여기 숫자가 `
               + `곧 진행입니다. 끝나면 이 표시가 사라집니다`};
   return {
     label: `${kind}${one.name} ${mx}분째`
@@ -428,7 +428,7 @@ function jobChip(jobs){
        전체 수가 있으면 값 자체가 진행을 말하므로, 칩이 기호로 말한 것을
        툴팁은 말로 되풀이한다(같은 값, 다른 문체). 전체 수가 없을 때만 옛
        문장으로 물러난다. */
-    title: `${kind}${esc(one.name)}가 ${mx}분째 돌고 있습니다 — `
+    title: `${kind}${esc(one.name)}가 ${mx}분째 실행 중입니다 — `
       + (total ? `${num(total)}건 중 ${num(done)}건까지 지나왔습니다`
                : `여기 숫자가 곧 진행입니다`)
       + `. 끝나면 이 표시가 사라집니다`};
@@ -492,12 +492,12 @@ function renderSvChip(){
   const oc = ocInfo;
   if (oc && oc.stale && ocAck() === oc.started)
     items.push({tone: "sv-warn", mark: "▲", label: "서버 재기동 필요",
-      title: "구동 중인 서버가 기동 시점 코드로 돌고 있습니다 — 눌러서 자세히",
+      title: "실행 중인 서버가 시작 당시 코드로 동작하고 있습니다 — 눌러서 자세히",
       act: () => { ocSetAck(null); renderOldCode(); }});
   const d = gwInfo, st = gwState(d);
   if (st === "attention" && gwAck() === d.last_death.ts)
     items.push({tone: "sv-bad", mark: "▲", label: "자동 복구 멈춤",
-      title: "지금 서버가 죽으면 다시 뜨지 않습니다 — 눌러서 자세히",
+      title: "지금 서버가 종료되면 자동으로 다시 시작되지 않습니다 — 눌러서 자세히",
       act: () => { gwSetAck(null); renderGuard(); }});
   else if (st === "recovered"){
     const ev = d.last_death, at = String(ev.ts || "").slice(11, 16);
@@ -554,9 +554,9 @@ function gwLogHTML(d){
   const rows = shown.map((e, i) => {
     const bits = [];
     if (e.reason) bits.push(`<code>${esc(e.reason)}</code>`);
-    if (e.ran_sec != null) bits.push(`${Math.round(e.ran_sec)}초 살아 있었음`);
+    if (e.ran_sec != null) bits.push(`${Math.round(e.ran_sec)}초 실행됨`);
     if (e.fails > 1) bits.push(`잇따라 ${e.fails}번째`);
-    if (e.retry_in) bits.push(`${e.retry_in}초 뒤 되살림`);
+    if (e.retry_in) bits.push(`${e.retry_in}초 뒤 다시 시작`);
     const out = (e.tail || []).filter(Boolean);
     const key = e.ts + "#" + i;
     const open = gwOut.has(key);

@@ -301,7 +301,7 @@ function termStatus(T, nt, why){
     : !T.live ? "stale" : (listen ? "live" : "idle");
   lv.className = (T.live && listen && !nt.ended) ? "ccok" : "ccwarn";
   lv.title = nt.ended
-    ? "이 세션은 끝났습니다 — 위 출력은 마지막 기록이고, 보낸 메시지는 닿지 않습니다. target 을 눌러 살아 있는 세션을 고르세요"
+    ? "이 세션은 끝났습니다 — 위 출력은 마지막 기록이고, 보낸 메시지는 닿지 않습니다. target 을 눌러 실행 중인 세션을 고르세요"
     : (T.live && !listen)
     ? "세션이 유휴 상태(수신 대기 미가동) — 보낸 메시지는 요청 문서로 즉시 기록되고, 세션 터미널에서 아무 입력이나 하면 밀린 메시지를 소화합니다"
     : "";
@@ -319,7 +319,7 @@ function termStatus(T, nt, why){
      ·옛 설정을 들고 있으면 재시작을 몇 번 눌러도 고침이 안 실린다(실사고:
      12:45 창이 얼려 둔 --model fable). 서버 배너(옛 코드)와 같은 계열의 말. */
   const staleW = nt.stale_wrapper
-    ? ` · <span class="ccwarn" title="이 세션을 띄운 터미널 창이 옛 코드·옛 설정으로 돌고 있습니다 — 여기서 다시 시작해도 새 코드가 실리지 않습니다. 그 창을 닫고 cd ~/section9 && bin/s9 code 로 새로 열어 주세요">창이 옛 코드</span>`
+    ? ` · <span class="ccwarn" title="이 세션을 띄운 터미널 창이 옛 코드·옛 설정으로 실행 중입니다 — 여기서 다시 시작해도 새 코드가 실리지 않습니다. 그 창을 닫고 cd ~/section9 && bin/s9 code 로 새로 열어 주세요">창이 옛 코드</span>`
     : "";
   if (tg) tg.innerHTML = ` · target <span class="ccsidbtn cccyan" title="이 화면이 붙어 있는 세션 — 누르면 다른 세션을 고를 수 있습니다" style="cursor:pointer;text-decoration:underline dotted">${esc(nt.sid)}</span> <span class="cccyan">@${esc(nt.user || "?")}</span>`
     + ` · <span class="ccmodelbtn" title="지금 쓰는 모델 — 누르면 모델과 생각의 깊이를 고를 수 있습니다. 고른 뒤 다시 시작을 눌러야 적용됩니다" style="cursor:pointer;text-decoration:underline dotted">${esc(mdl)}</span>`
