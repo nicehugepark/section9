@@ -15228,6 +15228,11 @@ def note_anchor(entry_text):
     return m.group(1) if m else ""
 
 
+def sync_commit_subject(subject):
+    """sync 가 만든 문서 commit 인가 — 제목이 「s9 sync:」로 시작한다 (REQ-20260906-082)."""
+    return str(subject or "").lstrip().startswith("s9 sync:")
+
+
 def cmd_commit_note(args):
     """방금 만든 커밋을 그 REQ 문서에 남긴다 (REQ-20260828-005, post-commit hook).
 
@@ -15289,6 +15294,12 @@ def cmd_commit_note(args):
     lines = r.stdout.splitlines()
     sha, subject, body = lines[0][:7], (lines[1] if len(lines) > 1 else ""), \
         "\n".join(lines[2:])
+    if sync_commit_subject(subject):
+        # sync 의 문서 commit 은 작업이 아니다 — 여기서 노트를 남기면 그 노트가 다시 문서
+        # 변경이 되어 sync 가 또 commit 하고 또 노트가 남는다(실제 발생 2026-09-06 14:00~14:27:
+        # 006 에 commit 노트 30건, 그 회전이 rebase 를 매번 「작업 트리가 더럽다」로 세웠고
+        # 보관함이 15건 쌓였다, REQ-20260906-082).
+        return
     ids = []
     for m in re.finditer(r"\bREQ-\d{8}-\d{3,}(?:-[0-9a-z]{4})?\b",
                          subject + "\n" + body):

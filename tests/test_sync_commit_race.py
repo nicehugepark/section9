@@ -185,3 +185,18 @@ class CommitMarkHooks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SyncCommitsAreNotWork(unittest.TestCase):
+    """sync 의 문서 commit 은 commit-note 의 대상이 아니다 (REQ-20260906-082) — 노트가 다시 문서
+    변경이 되어 sync 가 또 commit 하는 회전을 끊는다(실제 발생 2026-09-06: 006 에 commit 노트 30건)."""
+    def test_sync_subjects_are_skipped(self):
+        import importlib.machinery, importlib.util, os
+        S9 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bin", "s9")
+        spec = importlib.util.spec_from_loader("s9_sync_subj", importlib.machinery.SourceFileLoader("s9_sync_subj", S9))
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        self.assertTrue(m.sync_commit_subject("s9 sync: lease REQ-20260903-006-62x6"))
+        self.assertTrue(m.sync_commit_subject("  s9 sync: note REQ-20260906-004-2n7g"))
+        self.assertFalse(m.sync_commit_subject("serve --stop 은 판을 가리지 않는다 (REQ-20260906-077-62x6)"))
+        self.assertFalse(m.sync_commit_subject(""))
+
