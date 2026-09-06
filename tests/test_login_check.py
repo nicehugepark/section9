@@ -115,3 +115,23 @@ class LoginCheck(unittest.TestCase):
         self.assertIn("가려진다", out.getvalue())
         self.assertEqual(s.ensure_claude_login(state=lambda: {"claude": {"installed": False}}), "not-installed")
 
+    def test_l8_usage_credentials_come_from_the_keychain_on_mac(self):
+        """L8. 사용량 조회의 자격증명도 맥에서는 Keychain 에서 온다 — 파일이 없어도 (REQ-20260906-071)."""
+        s = _load("s9_login8", S9)
+        home = tempfile.mkdtemp(prefix="s9login8-")
+        calls = []
+
+        def run(argv, **kw):
+            calls.append(argv)
+            class R:
+                returncode = 0
+                stdout = '{"claudeAiOauth": {"accessToken": "t", "subscriptionType": "max"}}'
+            return R()
+        self.assertIsNone(s.read_claude_oauth(home, platform="linux", run=run))
+        got = s.read_claude_oauth(home, platform="darwin", run=run)
+        self.assertEqual(got.get("subscriptionType"), "max")
+        self.assertEqual(calls[-1][:3], ["security", "find-generic-password", "-s"])
+        with open(os.path.join(home, ".credentials.json"), "w", encoding="utf-8") as f:
+            f.write('{"claudeAiOauth": {"accessToken": "f", "subscriptionType": "pro"}}')
+        self.assertEqual(s.read_claude_oauth(home, platform="darwin", run=run).get("subscriptionType"), "pro")
+

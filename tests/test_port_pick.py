@@ -126,3 +126,23 @@ class PickPort(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    # P8. --stop 은 자동으로 옮겨 적은 포트를 잊는다 — 다음 기동이 기본 포트부터 (REQ-20260906-083)
+    def test_p8_stop_forgets_an_auto_moved_port(self):
+        st = os.path.join(self.root, "state"); os.makedirs(st, exist_ok=True)
+        open(os.path.join(st, "port"), "w").write("9910"); open(os.path.join(st, "port.auto"), "w").write("busy")
+        self.assertTrue(self.m._forget_auto_port(self.root))
+        self.assertFalse(os.path.exists(os.path.join(st, "port")))
+        # 사람이 적은 포트(port.auto 없음)는 잊지 않는다
+        open(os.path.join(st, "port"), "w").write("9931")
+        self.assertFalse(self.m._forget_auto_port(self.root))
+        self.assertEqual(open(os.path.join(st, "port")).read(), "9931")
+
+    # P9. 사람이 --port 로 정하면 state/port 에 남고 자동 이동 표식은 지워진다
+    def test_p9_an_explicit_port_is_pinned(self):
+        st = os.path.join(self.root, "state"); os.makedirs(st, exist_ok=True)
+        open(os.path.join(st, "port.auto"), "w").write("busy")
+        self.assertTrue(self.m._pin_port(9909, self.root))
+        self.assertEqual(open(os.path.join(st, "port")).read(), "9909")
+        self.assertFalse(os.path.exists(os.path.join(st, "port.auto")))
+

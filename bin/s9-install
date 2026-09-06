@@ -168,8 +168,13 @@ def install_git_hooks():
     # 진행 중 표식은 **commit-note 보다 먼저** 지운다 (REQ-20260906-030) —
     # commit-note 가 문서를 고치면 sync 가 곧바로 커밋을 걸고, 표식이 남아 있으면
     # 그 sync 가 제 자신의 post-commit 을 「진행 중인 다른 커밋」으로 오인해 미룬다.
+    # rebase 가 commit 을 다시 재생하는 동안에는 아무것도 하지 않는다 (REQ-20260906-082) —
+    # 재생마다 훅이 문서에 노트를 쓰면 다음 재생이 「작업 트리가 더럽다」로 선다(실제 발생
+    # 2026-09-06 14:27~14:31: sync 의 rebase 가 첫 commit 에서 매번 멈췄다).
     cnote = ('#!/bin/sh\n' + py + where +
              'rm -f "$MAIN/state/commit-in-progress"\n'
+             'for K in rebase-merge rebase-apply; do G="$(git rev-parse --git-path $K 2>/dev/null)"; '
+             '[ -n "$G" ] && [ -d "$G" ] && exit 0; done\n'
              'SHA="$(git rev-parse HEAD)"\n'
              'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9" commit-note '
              '>/dev/null 2>&1 || true\n'

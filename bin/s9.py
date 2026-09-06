@@ -8403,6 +8403,30 @@ def _usage_file_write(cfg_dir, ts, cred_mtime, data):
         pass
 
 
+def read_claude_oauth(cfg, platform=None, run=None):
+    """그 설정 디렉토리의 Claude OAuth 자격증명(dict) 또는 None (REQ-20260906-071).
+
+    리눅스·윈도우는 `<cfg>/.credentials.json`, 맥은 Keychain(「Claude Code-credentials」,
+    파일이 없다). 값은 사용량 조회에만 쓰고 어디에도 적지 않는다 — 맥미니 실측 2026-09-06
+    14:20: 헤더의 사용량 자리가 「자격증명 없음」으로 비어 있었다."""
+    try:
+        with open(os.path.join(cfg, ".credentials.json"), encoding="utf-8") as f:
+            return json.load(f).get("claudeAiOauth") or {}
+    except (OSError, ValueError):
+        pass
+    if (platform or sys.platform) != "darwin":
+        return None
+    try:
+        import subprocess as _sp
+        r = (run or _sp.run)(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                             capture_output=True, encoding="utf-8", errors="replace", timeout=10)
+        if r.returncode != 0 or not (r.stdout or "").strip():
+            return None
+        return json.loads(r.stdout.strip()).get("claudeAiOauth") or {}
+    except Exception:
+        return None
+
+
 def claude_usage(cfg_dir=None, ttl=60, offline=False):
     """그 **설정 디렉토리(=계정)** 의 로그인 계정·사용량 (60s 캐시).
     토큰은 응답에 절대 싣지 않는다.
@@ -8453,12 +8477,10 @@ def claude_usage(cfg_dir=None, ttl=60, offline=False):
             return {**stale, "stale": True}
     slot["cred_mtime"] = cred_mtime
     out = {"ok": False, "cfg_dir": cfg, "email": account_of(cfg)}
-    try:
-        with open(os.path.join(cfg, ".credentials.json"),
-                  encoding="utf-8") as f:
-            cred = json.load(f).get("claudeAiOauth") or {}
-    except (OSError, ValueError):
-        out["error"] = f"자격증명 없음 ({os.path.join(cfg, '.credentials.json')})"
+    cred = read_claude_oauth(cfg)
+    if cred is None:
+        out["error"] = (f"자격증명 없음 ({os.path.join(cfg, '.credentials.json')}"
+                        + (" · Keychain 항목 없음" if sys.platform == "darwin" else "") + ")")
         return out
     out["subscription"] = cred.get("subscriptionType", "")
     token = cred.get("accessToken", "")
@@ -15294,6 +15316,8 @@ def cmd_commit_note(args):
     lines = r.stdout.splitlines()
     sha, subject, body = lines[0][:7], (lines[1] if len(lines) > 1 else ""), \
         "\n".join(lines[2:])
+    if _rebase_in_progress():
+        return                              # 재생 중인 commit 은 새 일이 아니다 (REQ-20260906-082)
     if sync_commit_subject(subject):
         # sync 의 문서 commit 은 작업이 아니다 — 여기서 노트를 남기면 그 노트가 다시 문서
         # 변경이 되어 sync 가 또 commit 하고 또 노트가 남는다(실제 발생 2026-09-06 14:00~14:27:
@@ -22893,11 +22917,48 @@ def serve_port_for(args, _pick=None):
     return (_pick or pick_dashboard_port)()
 
 
+def _forget_auto_port(root=None):
+    """자동으로 옮겨 적은 포트(state/port.auto 가 있을 때의 state/port)를 잊는다 — `--stop` 뒤의
+    다음 기동이 기본 포트부터 다시 고르게 (REQ-20260906-083). 맥 실측 2026-09-06 14:20: 정지 직후
+    재기동이 9910 으로 올라갔고 state/port 가 9910 으로 남아 그 뒤의 링크가 전부 그쪽을 봤다."""
+    root = root or ROOT
+    auto = os.path.join(root, "state", "port.auto")
+    if not os.path.exists(auto):
+        return False
+    for f in (auto, os.path.join(root, "state", "port")):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    return True
+
+
+def _pin_port(port, root=None):
+    """사람이 `--port` 로 정한 포트를 state/port 에 적는다 — 그 뒤의 훅·링크·s9 code 가 같은
+    포트를 본다 (REQ-20260906-083). 자동 이동 표식은 지운다: 사람의 결정이 자동 판정 위다."""
+    root = root or ROOT
+    try:
+        os.makedirs(os.path.join(root, "state"), exist_ok=True)
+        with open(os.path.join(root, "state", "port"), "w", encoding="utf-8") as f:
+            f.write(str(int(port)))
+        try:
+            os.remove(os.path.join(root, "state", "port.auto"))
+        except OSError:
+            pass
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def cmd_serve(args):
+    _given = args.port is not None
+    _base = s9_port()
     args.port, _why = serve_port_for(args)
     if _why in ("other", "busy", "windows"):
-        print(f"포트 {s9_port()} 는 남이 쓰고 있다 — {args.port} 로 띄운다 (state/port)",
+        print(f"포트 {_base} 는 남이 쓰고 있다 — {args.port} 로 띄운다 (state/port)",
               file=sys.stderr)
+    if _given and getattr(args, "supervise", False) and not os.environ.get("S9_PORT"):
+        _pin_port(args.port)              # 사람의 결정은 다음 기동·훅·링크에도 이어진다
     # 감시자 (REQ-20260825-096) — 이 프로세스는 감시자를 떼어 놓고 곧 돌아간다.
     if getattr(args, "stop_guard", False):
         if _guard_alive(args.port) is None:
@@ -22981,9 +23042,11 @@ def cmd_serve(args):
                 os.kill(pid, _sig.SIGTERM)
             except OSError:
                 pass
+        forgot = _forget_auto_port()
         print(f"대시보드 정지: 포트 {args.port} (서버 {n}개"
-              + (f", 남은 serve 프로세스 {len(left)}개 정리" if left else "") + ") — "
-              f"다시 띄우려면 `s9 serve --supervise --port {args.port}`")
+              + (f", 남은 serve 프로세스 {len(left)}개 정리" if left else "")
+              + (", 자동으로 옮겨 적은 포트는 잊었다" if forgot else "") + ") — "
+              f"다시 띄우려면 `s9 serve --supervise`")
         return
     if getattr(args, "guard_run", False):
         # 떨어져 나온 감시자가 들어오는 문 — `_guard_detach` 가 이 인자로
