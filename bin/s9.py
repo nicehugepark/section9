@@ -4375,6 +4375,73 @@ def _when(sec):
     return f"{m}분째" if m else f"{sec}초째"
 
 
+PEERS = os.path.join(ROOT, "state", "peers.json")
+
+
+def read_peers():
+    """이 머신이 아는 **다른 자리의 세션들** (REQ-20260907-080).
+
+    vault 는 세션마다 `machine` 을 적어 두므로 「맥이 있다」는 사실은 이미 안다.
+    모르는 것은 **그 머신에서 도는 세션을 밖에서 무엇이라 부르는가**다 —
+    Remote Control 목록이 보여 주는 표시 이름은 하네스가 짓고 vault 는 모른다.
+    그래서 2026-09-07 에 리드가 「어느 세션이 맥이냐」를 사람에게 물어야 했다.
+    한 번 물은 답은 여기 적어 두고 다시 묻지 않는다.
+
+    장치 이름은 코드에 넣지 않는다(projects/section9/CONTEXT.md) — 이 파일은
+    `state/` 에 있고 커밋되지 않는다. 이름을 받는 자리는 인자와 이 상태뿐이다.
+    """
+    try:
+        with open(PEERS, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_peers(d):
+    os.makedirs(os.path.dirname(PEERS), exist_ok=True)
+    with open(PEERS, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1, sort_keys=True)
+
+
+def cmd_peer(args):
+    """다른 자리의 세션 이름을 적어 두고 꺼내 쓴다 (REQ-20260907-080)."""
+    act = args.action
+    peers = read_peers()
+    if act == "set":
+        if not args.name:
+            die("usage: s9 peer set '<부르는 이름>' [--machine ...] [--os ...] [--note ...]")
+        cur = peers.get(args.name) or {}
+        for k, v in (("machine", args.machine), ("os", args.os), ("note", args.note)):
+            if v:
+                cur[k] = v
+        cur.setdefault("added", now_iso())
+        cur["updated"] = now_iso()
+        peers[args.name] = cur
+        write_peers(peers)
+        print(f"{args.name}: " + " · ".join(
+            f"{k}={cur[k]}" for k in ("machine", "os", "note") if cur.get(k)))
+        return
+    if act == "rm":
+        if peers.pop(args.name, None) is None:
+            die(f"모르는 이름: {args.name}")
+        write_peers(peers)
+        print(f"{args.name}: 지웠다")
+        return
+    # ls — 찾는 쪽이 대개 「맥이 어느 것이냐」이므로 --os 로 좁힌다
+    want = (args.os or "").strip().lower()
+    rows = [(n, v) for n, v in sorted(peers.items())
+            if not want or want in str(v.get("os", "")).lower()]
+    if not rows:
+        print("아는 세션이 없다 — 한 번 물어 `s9 peer set '<부르는 이름>' "
+              "--machine <머신> --os <os> --note <무엇을 맡는가>` 로 적어 두면 "
+              "다시 묻지 않는다.")
+        return
+    for n, v in rows:
+        tail = " · ".join(f"{k}={v[k]}" for k in ("machine", "os", "note") if v.get(k))
+        print(f"{n}" + (f"  ({tail})" if tail else ""))
+
+
 def cmd_workers(args):
     if getattr(args, "stop_all", False):
         # 계정·모델을 바꾸기 전에 판을 비우는 자리 (REQ-20260829-024). 여기도
@@ -16117,7 +16184,14 @@ BANNED_TERMS = (
     # 화면 어휘 검사(test_screen_lexicon)가 소스에서 이 낱말을 찾으므로 글자를 나눠 둔다
     ("무인 " + "작업자", "백그라운드 작업자"), ("라쳇", "실패 시 커밋 차단"),
     ("전체 스위트", "전체 테스트"), ("표적 실행", "지정 테스트 실행"), ("비밀 이름", "시크릿 이름"),
-    ("낱말", "용어"), ("실사고", "실제 사고"),
+    # 「낱말」은 2026-09-08 판정으로 이 표에서 뺐다 (REQ-20260907-088 tech-writer):
+    # 말 자체를 가리키는 자리(번역 논의의 word · `낱말 경계` · 한글을 낱말째 접기)
+    # 에서는 「낱말」이 맞는 말이고, 제품의 용어를 가리키는 자리에서만 「용어」다.
+    # 그 둘은 쓰는 사람의 뜻으로 갈리지 글자로 갈리지 않는다 — 이 파일 자신이
+    # 「낱말」을 스무 곳 넘게 바른 뜻으로 쓰고 있고(바로 위 주석 포함), 시험도
+    # 그렇다. 갈라내지 못하는 경고는 잡음이 되어 나머지 경고까지 안 읽히게 한다.
+    # 판정 기준은 용어표 DOC-20260906-002 에 남겼다.
+    ("실사고", "실제 사고"),
     # 주인 지시 2026-09-07 (REQ-20260907-007): 「단추」는 의복에서만 쓴다
     ("단추", "버튼"),
     # 주인 지적 2026-09-07 18:26: 「캐시 \uc5f4\uc1e0라는 말은 없다. 캐시 키는 있어도.」
@@ -27678,6 +27752,14 @@ def main():
     sn.add_argument("--audit", action="store_true",
                     help="뜬 것에는 있는데 문서엔 없는 기록을 찾는다 (유실 탐지)")
     sn.set_defaults(fn=cmd_snapshot)
+
+    pr = sub.add_parser("peer", help="다른 자리의 세션 이름 (Remote Control 로 부를 때 쓴다)")
+    pr.add_argument("action", choices=("ls", "set", "rm"), nargs="?", default="ls")
+    pr.add_argument("name", nargs="?", help="그 세션을 밖에서 부르는 이름")
+    pr.add_argument("--machine", default="", help="그 세션이 도는 머신 이름")
+    pr.add_argument("--os", default="", help="macOS · Linux · Windows … (ls 에서는 좁히는 말)")
+    pr.add_argument("--note", default="", help="무엇을 맡는 자리인가")
+    pr.set_defaults(fn=cmd_peer)
 
     wk = sub.add_parser("workers", help="지금 실행 중인 백그라운드 작업 목록")
     wk.add_argument("--quiet", action="store_true")
