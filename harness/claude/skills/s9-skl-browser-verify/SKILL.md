@@ -77,6 +77,19 @@ Playwright WebKit 은 **맥에 가기 전에 싸게 걸러 내는 자리**이지
       캡처 경로가 아니라 **본 것의 서술**이 근거다.
    ④ 회신을 `s9 note <REQ> --label subagent` 로 문서에 남긴다 — 위임 산출물은 audit
       대상이다(PROTOCOL 7조). 회신이 없으면 기다리지 말고 blocked 로 올린다.
+
+   **맥에 section9 체크아웃이 있으면 ②를 건너뛴다** (2026-09-07 첫 왕복에서 확인,
+   REQ-20260907-079). 맥이 제 저장소를 pull 해 **제 대시보드**를 열면 되므로 이 머신을
+   망에 열 필요가 없다 — 그러니 **먼저 commit·push 하고**, 맥에는 「pull 한 뒤 그쪽
+   대시보드를 재기동해 보라」고 적어 보낸다. 맥이 보는 것은 **push 된 코드**다.
+   캡처는 `vault/requests/<연>/<월>/assets/<REQ>/` 에 두면 `s9 sync` 로 이쪽에도 와서
+   리드가 직접 Read 로 본다 — 맥의 파일 경로를 그대로 받지 마라, 이 머신에는 없다.
+
+   맥에서 **지금 못 하는 것**(사람이 Safari ▸ 설정 ▸ 고급 ▸ 개발자용에서 켜야 한다):
+   「Allow Remote Automation」이 꺼져 있어 safaridriver 가 안 되고, 「Allow JavaScript
+   from Apple Events」가 꺼져 있어 값(innerWidth·option 문구 등)을 못 읽는다. 그래서
+   **눌러야 보이는 것**(select 를 펼쳐 읽기)과 **계산값**은 맥에서 못 잰다 — 그 항목만
+   WebKit 이나 사람이 보고, 노트에 「맥에서 못 잰 항목」으로 남긴다.
 2. **Playwright WebKit** — Safari 가 없으면 WebKit 엔진으로 찍는다. 이 WSL 에서는
    **`s9 shot` 의 기본 엔진(auto)도 이 러너가 있으면 Playwright chromium 이다** (REQ-20260906-096):
    Playwright 는 뷰포트를 탐색 전에 잡아 페이지의 실측(--docsh 레일 높이 등)이 맞는다.
