@@ -5940,6 +5940,14 @@ def _chat_question(s9bin, env, text, first_line, sender):
         if out.returncode != 0 or not out.stdout.split():
             return None
         qst = out.stdout.split()[0]
+        # 첨부를 문서 옆으로 (REQ-20260907-069). 요청 갈래(8524)에는 있고 이 갈래에는
+        # 없었다 — 대시보드로 물은 질문에 붙인 그림이 `state/terminal/uploads/…`
+        # 절대경로로 남아 화면에 파일 칩으로 섰다(2026-09-07 19:52 「첨부한 이미지가
+        # 또 렌더링 되지 않는다」). 첨부를 적는 자리 셋 중 하나가 빠져 있었다.
+        try:
+            ingest_assets(qst)
+        except Exception:
+            pass
         # 한 칸짜리 포인터에 덮어쓰기만 하면 **답보다 빨리 온 다음 질문이 앞
         # 질문을 지운다** (REQ-20260827-049 실사고). 목록에 쌓는다 — Stop 훅이
         # 그 턴의 답을 전부에게 붙이고 비운다. last_qst 는 폴백으로 함께 둔다.

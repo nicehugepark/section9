@@ -142,12 +142,22 @@ async function refreshUsage(){
       return r.ok ? await r.json() : null;
     }, {prio: 1, tries: 1, quiet: true});
     if (!d || (!d.ok && !d.stale)){
-      // 폭 0 인 빈 칩에 키보드가 멈추면 아무 일도 안 일어나는 정거장이 된다
-      // (교차 리뷰 지적 6) — 보여 줄 것이 없으면 tab 순서에서도 빠진다.
-      el.textContent = ""; usageLast = null;
-      el.removeAttribute("tabindex");
+      /* **못 받았다고 지우지 않는다** (REQ-20260907-068). 예전엔 한 번(`tries: 1`)
+         실패하면 칩을 비우고 마지막 값(usageLast)까지 버렸다 — WSL 중계의 간헐
+         리셋 한 번에 계정 줄이 아무 말 없이 사라졌고, 사람은 「계정 정보가 어디로
+         사라졐지?」라고 물었다(2026-09-07 19:48). 빈 자리는 「아무 문제 없음」으로
+         읽힌다 — whoami 가 REQ-20260828-039 에서 고친 그 자리를 usage 는 남겨 두었다.
+         마지막 값이 있으면 ⏳ 를 붙여 그대로 두고(서버가 stale 을 줄 때 이미 쓰는
+         표시), 받은 적이 없으면 그 사실을 한 줄로 말한다. 「빈 칩에 키보드가 멈추면
+         정거장이 된다」는 지적은 tabindex 로 풀 일이었지 글자를 지울 이유가 아니었다. */
+      if (usageLast){
+        usageLast = {...usageLast, stale: true};
+        renderUsageChip(el, usageLast);
+      } else {
+        el.textContent = "사용량을 받지 못했습니다";
+        el.removeAttribute("tabindex");
+      }
       el.setAttribute("aria-label", usageTitle()); return;
-
     }
     usageLast = d;
     el.setAttribute("tabindex", "0");   // 되살아나면 다시 tab 으로 닿는다
@@ -156,15 +166,21 @@ async function refreshUsage(){
     // ?usagecard: 진단·헤드리스 캡처용 — 호버 카드를 열어 둔다 (?depall·?mpanel 과
     // 동형). 마우스가 없는 환경에서 "직접 보고 고치는" 길을 남긴다.
     if (/[?&]usagecard/.test(location.search)) setTimeout(() => showUsageHover(el), 0);
-    const L = {};
-    (d.limits || []).forEach(x => { L[x.kind] = x; });
-    const pct = x => x == null ? "—"
-      : `<span class="${x.percent >= 90 ? "crit" : x.percent >= 70 ? "warn" : ""}">${x.percent}%</span>`;
-    el.innerHTML = `${esc(d.email || "?")}${d.stale ? " ⏳" : ""}` +
-      ` · 5h ${pct(L.session)} · wk ${pct(L.weekly_all)}` +
-      (L.weekly_scoped
-        ? ` · ${esc((L.weekly_scoped.scope_name || "model").toLowerCase())} ${pct(L.weekly_scoped)}` : "");
+    renderUsageChip(el, d);
   }catch(e){ /* 다음 폴 */ }
+}
+
+/* 칩 한 줄 — 성공한 값도, 못 받아 남겨 둔 마지막 값도 같은 글자로 그린다.
+   두 벌로 그리면 한 벌만 고쳐진다. `stale` 이면 ⏳ 가 붙는다. */
+function renderUsageChip(el, d){
+  const L = {};
+  (d.limits || []).forEach(x => { L[x.kind] = x; });
+  const pct = x => x == null ? "—"
+    : `<span class="${x.percent >= 90 ? "crit" : x.percent >= 70 ? "warn" : ""}">${x.percent}%</span>`;
+  el.innerHTML = `${esc(d.email || "?")}${d.stale ? " ⏳" : ""}` +
+    ` · 5h ${pct(L.session)} · wk ${pct(L.weekly_all)}` +
+    (L.weekly_scoped
+      ? ` · ${esc((L.weekly_scoped.scope_name || "model").toLowerCase())} ${pct(L.weekly_scoped)}` : "");
 }
 
 /* 브라우저 탭 제목 = 워크스페이스명 · 선택 프로젝트 (REQ-20260824-064) —

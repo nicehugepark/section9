@@ -204,3 +204,15 @@ function evEl(t){
   if (t.nodeType === 1) return t;              // 요소
   return t.parentElement || null;              // 텍스트 노드 등 → 감싼 요소
 }
+
+
+/* ── 문서 열기의 세대 (REQ-20260907-067) ─────────────────────────────────────
+   loadDoc 은 서버 왕복을 두 번까지 기다린다(실패 시 800ms 뒤 재시도). 그 사이
+   사람이 다른 문서를 열면 **먼저 시작한 요청의 늦은 응답**이 나중에 도착해 방금
+   연 문서를 덮어쓴다 — 실측 2026-09-07 19:50: 목록은 QST-016 을 골라 표시했는데
+   오른쓯 판은 REQ-066(폴이 다시 받던 이전 문서) 그대로였다. 「선택을 해도 안
+   바뀔 때가 있다」가 그것이다. 시작할 때 표를 받고, 기다림이 끝날 때마다 아직
+   내 차례인지 묻는다. 뒤늦은 응답은 그냥 버린다 — 새 문서가 이미 서 있다. */
+let docLoadGen = 0;
+function docLoadStart(){ return ++docLoadGen; }
+function docLoadStale(gen){ return gen !== docLoadGen; }

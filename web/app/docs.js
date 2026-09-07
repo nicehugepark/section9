@@ -361,6 +361,7 @@ function prjViewOpt(){
    되읽기가 "안 바뀌었다"로 판정돼 **화면만 옛 표를 그대로 들고 있었다**.
    그래서 둘을 갈랐다: 되읽기는 bg=true, force=true 로 부른다. */
 async function loadDoc(id, bg, force){
+  const gen = docLoadStart();          // 이 열기의 표 — 늦은 응답을 가른다 (REQ-20260907-067)
   selectedDoc = id;
   document.querySelectorAll(".doclist .row").forEach(el => {
     const on = el.dataset.doc === id;
@@ -394,6 +395,7 @@ async function loadDoc(id, bg, force){
     res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
   }catch(e){
     await new Promise(r => setTimeout(r, 800));
+    if (docLoadStale(gen)) return;       // 기다리는 사이 다른 문서를 열었다
     try{
       res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
     }catch(e2){
@@ -409,7 +411,9 @@ async function loadDoc(id, bg, force){
     refreshCatalog(true);
     return;
   }
+  if (docLoadStale(gen)) return;         // 응답이 왔지만 이미 다른 문서를 열었다
   const d = await res.json(), m = d.meta;
+  if (docLoadStale(gen)) return;
   // 질문은 여기서 본문을 들고 있다 — 미답 판정을 카탈로그 파생 필드에 의존하지
   // 않고 원본(answer 노트)에서 직접 읽는다 (REQ-20260826-017).
   const isQ = m.type === "question";
