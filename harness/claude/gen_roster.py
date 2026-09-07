@@ -235,6 +235,10 @@ SKILLS = {
 1. **실제 Safari** — Mac 또는 iPad 가 닿으면 그 Safari 로 같은 URL 을 열어 캡처한다.
    사람이 열어야 하면 행동 요청 가이드(PROTOCOL 14조)로 절차를 준다.
 2. **Playwright WebKit** — Safari 가 없으면 WebKit 엔진으로 찍는다. 이 WSL 에서는
+   **`s9 shot` 의 기본 엔진(auto)도 이 러너가 있으면 Playwright chromium 이다** (REQ-20260906-096):
+   Playwright 는 뷰포트를 탐색 전에 잡아 페이지의 실측(--docsh 레일 높이 등)이 맞는다.
+   종전 Chrome `--screenshot` 경로(`--engine chrome`)는 가상 시간이 끝난 뒤 창 크기를 적용해
+   Docs·Projects 레일이 하한 240px 로 찍혔다 — 그 캡처로 레일 높이를 판정하지 마라.
    **Windows 쪽**에 둔다 — 리눅스 WebKit 은 root 권한의 시스템 라이브러리가 필요하고
    원격 테스트 머신도 같았다(2026-09-06 실측, REQ-20260906-093). Windows 는 관리자
    권한 없이 된다. 자리는 `C:\\Temp\\s9-webkit`. 찍기:

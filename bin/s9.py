@@ -20398,7 +20398,7 @@ def _shot_size_wh(size):
     return int(parts[0]), int(parts[1])
 
 
-def _shot_webkit_cmd(url, size, wait, win_out, runner=None):
+def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit"):
     """Playwright WebKit 캡처 명령줄 — 순수 함수(실행하지 않는다).
 
     REQ-093 에서 손으로 검증한 한 줄을 그대로 감싼다:
@@ -20415,13 +20415,18 @@ def _shot_webkit_cmd(url, size, wait, win_out, runner=None):
     if bad:
         raise ValueError(f"--engine webkit 은 cmd.exe 특수문자 {bad!r} 가 든 url 을 "
                          f"받지 못한다(경로 인용을 증명할 수 없다): {url!r}")
-    line = (f"{runner} screenshot --browser=webkit --viewport-size={w},{h} "
+    line = (f"{runner} screenshot --browser={browser} --viewport-size={w},{h} "
             f"--wait-for-timeout={int(wait)} {url} {win_out}")
     return ["cmd.exe", "/c", line]
 
 
-def _shot_webkit(url, size, wait, out):
-    """`--engine webkit` 경로 — 결과 PNG 경로를 찍거나 비-0 으로 끝난다."""
+def _shot_webkit(url, size, wait, out, browser="webkit"):
+    """`--engine webkit|chromium` 경로 — 결과 PNG 경로를 찍거나 비-0 으로 끝난다.
+
+    chromium 도 같은 Playwright 러너로 찍는다 (REQ-20260906-096): Playwright 는
+    뷰포트를 **탐색 전에** 잡으므로 페이지의 실측(--docsh 등)이 그 크기로 선다.
+    Chrome `--screenshot` 경로는 가상 시간이 끝난 뒤 창 크기를 적용해, 첫 실측의
+    하한(레일 240px)이 그대로 찍혔다."""
     plat = os_platform()
     if plat == "Windows":
         runner_check, win_out, mid = SHOT_WEBKIT_RUNNER_WIN, out, None
@@ -20445,29 +20450,29 @@ def _shot_webkit(url, size, wait, out):
         print(_shot_webkit_install_guide(), file=sys.stderr, end="")
         sys.exit(3)
     try:
-        cmd = _shot_webkit_cmd(url, size, wait, win_out)
+        cmd = _shot_webkit_cmd(url, size, wait, win_out, browser=browser)
     except ValueError as e:
         print(f"s9 shot: {e}", file=sys.stderr)
         sys.exit(2)
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=SHOT_WEBKIT_TIMEOUT)
     except subprocess.TimeoutExpired:
-        print(f"s9 shot: WebKit 캡처가 {SHOT_WEBKIT_TIMEOUT}초 안에 끝나지 않았다: "
+        print(f"s9 shot: {browser} 캡처가 {SHOT_WEBKIT_TIMEOUT}초 안에 끝나지 않았다: "
               f"{cmd[2]}", file=sys.stderr)
         sys.exit(3)
     if r.returncode != 0:
         tail = (r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()[-800:]
-        print(f"s9 shot: WebKit 캡처 실패 (exit {r.returncode}): {cmd[2]}\n{tail}\n"
+        print(f"s9 shot: {browser} 캡처 실패 (exit {r.returncode}): {cmd[2]}\n{tail}\n"
               + _shot_webkit_install_guide(), file=sys.stderr, end="")
         sys.exit(3)
     if mid is not None:
         if not os.path.exists(mid):
-            print(f"s9 shot: WebKit 이 파일을 만들지 않았다: {win_out}", file=sys.stderr)
+            print(f"s9 shot: {browser} 이 파일을 만들지 않았다: {win_out}", file=sys.stderr)
             sys.exit(3)
         os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
         shutil.move(mid, out)
     if not os.path.exists(out):
-        print(f"s9 shot: WebKit 스크린샷 생성 실패: {out}", file=sys.stderr)
+        print(f"s9 shot: {browser} 스크린샷 생성 실패: {out}", file=sys.stderr)
         sys.exit(3)
     blank = _png_blank_rows(out)
     if blank is not None and blank >= SHOT_BLANK_ROWS:
@@ -20493,8 +20498,16 @@ def cmd_shot(args):
         print(f"s9 shot: 조건을 맞췄다 {why}", file=sys.stderr)
     out = args.out or os.path.join(
         tmp_dir(), "s9-shot.png")
-    if getattr(args, "engine", "chrome") == "webkit":
-        return _shot_webkit(url, args.size, args.wait, out)
+    # 속성이 없는 호출(시험·다른 코드가 만든 Args)은 종전 Chrome 경로다 — auto 는
+    # 파서의 기본값이고, 프로그램 호출자의 기본값이 아니다(hygiene 시험이 지킨다).
+    engine = getattr(args, "engine", "chrome") or "auto"
+    if engine == "auto":
+        # Playwright 러너가 있으면 chromium — 뷰포트를 탐색 전에 잡아 페이지 실측이
+        # 맞는다(REQ-20260906-096). 없으면 종전 Chrome --screenshot 경로.
+        runner = {"Windows": SHOT_WEBKIT_RUNNER_WIN, "WSL": SHOT_WEBKIT_RUNNER_WSL}.get(os_platform())
+        engine = "chromium" if runner and os.path.exists(runner) else "chrome"
+    if engine in ("webkit", "chromium"):
+        return _shot_webkit(url, args.size, args.wait, out, browser=engine)
 
     candidates = []
     if os.name == "nt":
@@ -26916,9 +26929,12 @@ def main():
     sh.add_argument("--size", default=SHOT_SIZE_DEFAULT)
     sh.add_argument("--wait", default="3000",
                     help="캡처 전 대기 ms (async 렌더용, 기본 3000)")
-    sh.add_argument("--engine", choices=("chrome", "webkit"), default="chrome",
-                    help="webkit = Windows 쪽 Playwright WebKit 로 Safari 대체 "
-                         "(REQ-20260906-098; 없으면 설치 안내)")
+    sh.add_argument("--engine", choices=("auto", "chrome", "chromium", "webkit"),
+                    default="auto",
+                    help="auto(기본) = Playwright 러너가 있으면 chromium, 없으면 chrome. "
+                         "chromium/webkit = Windows 쪽 Playwright(뷰포트를 탐색 전에 잡는다, "
+                         "REQ-20260906-096/-098; 없으면 설치 안내). chrome = 종전 "
+                         "Chrome --screenshot 경로")
     sh.set_defaults(fn=cmd_shot)
 
     dc = sub.add_parser("doctor",

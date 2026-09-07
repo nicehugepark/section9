@@ -1,7 +1,7 @@
 """`s9 shot --engine webkit` 의 계약 (REQ-20260906-098) — 브라우저를 띄우지 않는다.
 
 검사하는 것은 셋이다: ① Playwright WebKit 명령줄이 어떻게 조립되는가
-② 엔진(run-npx.cmd)이 없을 때 비-0 종료와 설치 안내 ③ 기본 엔진은 chrome 이라
+② 엔진(run-npx.cmd)이 없을 때 비-0 종료와 설치 안내 ③ 기본 엔진은 auto(러너가 있으면 chromium, 없으면 chrome)라
 종전 동작이 그대로인가. 실제 캡처는 REQ 문서의 실측 노트가 맡는다.
 
 실행: python3 tests/ shot_engine
@@ -79,18 +79,18 @@ class ShotEngine(unittest.TestCase):
             code, err = self._run_webkit("Linux", "/mnt/c/Temp/s9-webkit/run-npx.cmd")
             self.assertNotEqual(code, 0)
             self.assertIn("WebKit 경로가 없다", err)
-        with self.subTest("s5_default_engine_is_chrome"):
+        with self.subTest("s5_default_engine_is_auto"):
             # 파서는 main() 안에서 만들어진다 — 실행 파일을 그대로 부른다(2회, 0.4초).
             h = subprocess.run([S9, "shot", "--help"], capture_output=True, text=True)
-            self.assertIn("--engine {chrome,webkit}", h.stdout)
+            self.assertIn("--engine {auto,chrome,chromium,webkit}", h.stdout)
             bad = subprocess.run([S9, "shot", "http://127.0.0.1:1/", "--engine", "firefox"],
                                  capture_output=True, text=True)
             self.assertEqual(bad.returncode, 2)
             self.assertIn("invalid choice", bad.stderr)
             with open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8") as f:
                 src = f.read()
-            self.assertIn('sh.add_argument("--engine", choices=("chrome", "webkit"), '
-                          'default="chrome"', src)
+            self.assertIn('sh.add_argument("--engine", choices=("auto", "chrome", "chromium", "webkit"),', src)
+            self.assertIn('default="auto"', src)
 
 if __name__ == "__main__":
     unittest.main()
