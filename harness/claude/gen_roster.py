@@ -227,6 +227,10 @@ SKILLS = {
 ## 엔진은 둘이다 — Chrome 만으로 검증을 끝내지 않는다 (Safari/WebKit, REQ-20260906-093)
 
 주인 지시(2026-09-06): **UX 는 반드시 Safari 에서도 확인한다. Mac 에서도 확인한다.**
+주인 지시(2026-09-07, REQ-20260907-076): **화면 시험은 실제 맥의 Safari 에서도 실행한다.**
+Playwright WebKit 은 **맥에 가기 전에 싸게 걸러 내는 자리**이지 맥 Safari 를 대신하는
+자리가 아니다 — 같은 엔진 계열이라도 맥의 Safari 는 글꼴·스크롤·입력·확대에서
+따로 논다. WebKit 캡처만 붙이고 「Safari 확인」이라고 적지 마라.
 대시보드는 iPad·Mac 의 Safari 에서 쓰이고, WebKit 은 Blink 와 다르게 그린다 —
 `:has()`·`clamp()` 지원 시점, `pointer:coarse` 판정, sticky 안의 의사요소, `min-height`
 가 있는 flex 항목의 높이, 100vh 와 주소창, 폭 0 인 오버레이 스크롤바. Chrome 캡처
@@ -250,8 +254,11 @@ SKILLS = {
    안내 원문은 `bin/s9.py` 의 `_shot_webkit_install_guide()` 한 곳에만 있다(REQ-20260906-098).
    WebKit 에서 갈리는 것을 계산값으로 확인해야 하면
    같은 폴더의 `probe.js`(playwright API, `page.evaluate`)를 본보기로 쓴다.
-3. 둘 다 불가능하면 산출물에 **「Safari(WebKit) 미검증」** 을 명시하고, review 가 아니라
-   blocked 로 올린다 — 여는 조건은 「사람이 Safari 에서 확인」이다.
+3. **맥 Safari 를 못 돌렸으면 review 가 아니라 blocked 다** (REQ-20260907-076).
+   WebKit 으로 찍었더라도 마찬가지다 — 노트에 「맥 Safari 미실행(WebKit 만 확인)」을
+   그대로 적고, 여는 조건을 둘 적는다: 「사람이 맥 Safari 에서 확인」 또는 「맥을
+   등록해 자동으로 실행」. 닿는 맥이 등록돼 있지 않으면 그 사실 자체가 blocked 사유다.
+   **없는 검증을 했다고 적는 것이 못 한 것보다 나쁘다.**
 
 태블릿 폭(768x1024·1024x768)은 WebKit 으로도 찍는다 — 그 태블릿이 곧 iPad 다.
 
