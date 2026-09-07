@@ -248,7 +248,7 @@ class WhereUI(unittest.TestCase):
 
             # N3. 버튼이 목적지를 말한다 (동사+목적)
         with self.subTest("n3_the_button_names_the_destination"):
-                self.assertIn("＋ ${WHERE_KO[secWhere]}에 넣기", self._paint(),
+                self.assertIn("+ ${WHERE_KO[secWhere]}에 넣기", self._paint(),
                               "버튼이 어디에 넣는지 말하지 않는다")
 
             # B1. 못 쓰면 잠기고, 이유가 그 자리에 있다

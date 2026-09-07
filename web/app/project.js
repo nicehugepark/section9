@@ -140,7 +140,7 @@ const PRJ_TEXT = {
   memNoUsersPost: "에서 사용자를 등록해 주세요.",
   memAllIn: "모두 이미 멤버입니다",     // 고장이 아니라 좋은 소식이다
   addBtn: "+ 추가", rmBtn: "− 제거", leaveBtn: "− 나가기",
-  rmAria: u => `${u} 멤버 제거`,
+  rmAria: u => `${u} 멤버 제거하기`,
   leaveAria: slug => `${slug} 에서 나가기`,
   // 권한 축을 밝힌다 — Settings 의 시스템 role 에도 viewer 가 있다(tech-writer)
   roleNote: r => `이 프로젝트에서는 ${r} 입니다 — 설정과 멤버를 바꾸려면 `
@@ -166,7 +166,7 @@ const PRJ_TEXT = {
   rmTitle: (u, slug) => `${u} 님을 ${slug} 에서 제거합니다`,
   rmDesc: "이 사람은 더 이상 이 프로젝트의 요청·문서를 볼 수 없습니다. "
     + "문서는 그대로 남고, 나중에 다시 추가할 수 있습니다.",
-  rmOk: "멤버 제거",
+  rmOk: "멤버 제거하기",
   leaveTitle: slug => `${slug} 에서 나갑니다`,
   leaveDesc: "나가면 이 프로젝트의 요청·문서를 더 볼 수 없습니다. "
     + "다시 들어오려면 남은 maintainer 이상이 넣어 주어야 합니다.",

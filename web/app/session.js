@@ -32,7 +32,7 @@ function sessItems(rows, cur){
    세운다: 고르는 일이 아니라 만드는 일이라 줄에 두면 안 된다. */
 const SESS_FOOT = `<div class="dlgsub">그 밖에</div>`
   + `<button type="button" class="dlgact" data-act="wake">`
-  + `＋ 여기서 세션 시작</button>`
+  + `+ 여기서 세션 시작</button>`
   + `<p class="dlgs" style="margin-top:6px">새 터미널 창이 열리고 세션이`
   + ` 시작됩니다 — 몇 초 뒤 이 화면이 그 세션에 붙습니다.</p>`;
 /* 목록을 기다리는 동안 빈 자리가 하는 말 (REQ-20260902-065). 「받는 중」과
@@ -64,7 +64,7 @@ function sessShape(d, cur, waiting){
     items: sessItems(rows, cur),
     empty: waiting ? SESS_WAIT
       : d && Array.isArray(d.sessions) ? SESS_EMPTY
-      : "대시보드 서버가 다시 뜨는 중일 수 있습니다 — 잠시 뒤 다시 열어 주세요.",
+      : "대시보드 서버가 다시 뜨는 중일 수 있습니다 — 잠시 뒤 다시 시도해 주세요.",
     // 갈 곳이 있을 때는 안 세운다 — 서버가 어차피 거부하고(살아있는 세션이 있다),
     // 지금 할 수 있는 일이 둘로 보이면 무엇을 눌러야 할지가 흐려진다.
     // 받는 중에도 안 세운다: 나가는 문은 갈 곳이 없다고 **확인된** 뒤의 것이다.
@@ -130,7 +130,7 @@ function modelSay(model, effort){
 }
 const MODEL_FOOT = `<div class="dlgsub">그 밖에</div>`
   + `<button type="button" class="dlgact mpuc" data-act="ultracode">`
-  + `＋ 메시지에 ultracode 넣기</button>`
+  + `+ 메시지에 ultracode 넣기</button>`
   + `<p class="dlgs" style="margin-top:6px">모델·깊이와는 다른 기능입니다 —`
   + ` 그 요청 하나만 다중 에이전트로 병렬 처리합니다. 재시작하지 않습니다.</p>`;
 async function termModelChange(T){      // 상태줄 모델 라벨 클릭 → 고르는 창
@@ -175,7 +175,7 @@ async function termModelChange(T){      // 상태줄 모델 라벨 클릭 → �
     /* 누르면 무슨 일이 일어나는지 **이름을 불러** 적는다 — "다시 시작"이라는
        버튼만으로는 무엇이 다시 시작되는지 알 수 없다. 잃는 것이 없다는 말도
        함께 적는다: 대화를 끊는다는 말에 사람이 가장 먼저 걱정하는 것이 그것이다. */
-    confirm: {ok: "다시 시작",
+    confirm: {ok: "다시 시작하기",
       // 지금 쓰는 모델을 고른 상태면 바뀌는 것은 깊이뿐이다 — 안 바뀌는 것을
       // 바뀐다고 적지 않는다.
       say: (it, c) => modelSay(it.cur ? "" : it.key, c),
@@ -226,7 +226,7 @@ async function termModelChange(T){      // 상태줄 모델 라벨 클릭 → �
 // 전환에 그대로 쓰는 값이지 사람에게 보일 이름이 아니다 — 서버의 ACCOUNT_HOME_KEY.
 const ACCOUNT_HOME = "@home";
 const ACCOUNT_ADD = `<div class="dlgsub">그 밖에</div>`
-  + `<button type="button" class="dlgact" data-act="add">＋ 계정 추가</button>`
+  + `<button type="button" class="dlgact" data-act="add">+ 계정 추가</button>`
   + `<p class="dlgs" style="margin-top:6px">새 터미널 창이 열립니다. 로그인은`
   + ` 그 창에서 끝내야 합니다 — 브라우저 안에서는 할 수 없는 한 걸음입니다.</p>`;
 /* 로그인을 끝내지 않은 자리를 **여기서 치운다** (REQ-20260827-079 재작업).
@@ -236,14 +236,14 @@ const ACCOUNT_ADD = `<div class="dlgsub">그 밖에</div>`
    만들다 만 것을 치우지 못하는 화면이다.
 
    지우는 것은 **고르는 것이 아니다.** 목록 줄로 두면 "고르면 그 계정이 된다"로
-   읽히므로, `＋ 계정 추가` 와 같은 어휘(목록 밖 텍스트 버튼)로 가른다.
+   읽히므로, `+ 계정 추가` 와 같은 어휘(목록 밖 텍스트 버튼)로 가른다.
    로그인이 끝난 자리에는 손잡이를 달지 않는다 — 서버가 어차피 거부한다
    (`logged-in`), 그리고 자격증명을 지우는 일은 이 창의 몫이 아니다. */
 const ACCOUNT_GONE_MAX = 3;      // 넘으면 그 사실만 적는다 — 목록 밖은 목록이 아니다
 /* 끝내 못 받은 창에도 **나가는 문**을 준다 (REQ-20260901-013).
    여태 이 처지의 창은 줄도 없고 할 수 있는 일도 없었다 — 닫는 것 말고는.
 
-   `＋ 계정 추가` 는 여기 세우지 않는다: 서버가 답하지 않는 판에서는 그것도
+   `+ 계정 추가` 는 여기 세우지 않는다: 서버가 답하지 않는 판에서는 그것도
    눌러야 안 되는 일이라, 권하는 순간 창이 두 번 거짓말을 한다. 「그 밖에」 도
    설명 문단도 달지 않는다 — 목록이 없으니 그 밖이랄 것이 없고, 왜 막혔는지는
    desc 가 이미 한 번 말했다(이 파일이 세워 둔 규칙: 한 창이 같은 사실을 세 번
@@ -285,7 +285,7 @@ function acctState(d, rows, live){
 }
 const ACCT_DESC = {
   ok: "고른 다음 다시 시작을 누르면 같은 대화가 그 계정으로 이어집니다. 세션이 일하는 중이면 멈출지 먼저 물어봅니다.",
-  nowhere: "이 기기에 로그인된 계정이 이것 하나뿐입니다 — 아래 ＋ 계정 추가로 다른 계정을 더한 뒤에 바꿀 수 있습니다.",
+  nowhere: "이 기기에 로그인된 계정이 이것 하나뿐입니다 — 아래 + 계정 추가로 다른 계정을 더한 뒤에 바꿀 수 있습니다.",
   /* 여기는 막다른 길이었다 (REQ-20260829-023). "세션을 깨운 뒤 다시 시도해
      주세요" 라고 해서 깨우면, 깨우기가 계정을 안 들고 가 **또 옛 계정**이었다 —
      사용자가 그 고리에 갇혔다: "세션 깨우기를해도 기존 계정으로 연결된다."
@@ -327,7 +327,7 @@ function acctShape(d){
        `/api/session/restart` 로 대화를 끊었다 다시 여는 일이고, 잘못 누르면
        모델보다 나쁘다 — 다른 사람의 자격으로 붙고 그쪽 사용량이 깎인다.
        한 판에 두 규칙(하나는 즉시, 하나는 확인)이 있으면 손이 배울 수 없다. */
-    confirm: {ok: wake ? "그 계정으로 시작" : "다시 시작",
+    confirm: {ok: wake ? "그 계정으로 시작하기" : "다시 시작하기",
       say: it => "계정 " + (it.label || it.key)
         + (wake
             ? " — 그 계정으로 새 터미널 창에서 세션을 시작합니다. 이어 갈 대화가 없어 새 대화로 시작합니다."
@@ -401,7 +401,7 @@ async function acctRemove(name, rows){
       title: reached ? "서버가 계정 지우기를 알지 못합니다"
                      : "서버에 닿지 못했습니다",
       desc: reached ? "세션 터미널에서 serve 를 다시 띄우면 이 버튼이 다시 생깁니다."
-                    : "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.",
+                    : "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
       ok: "닫기"});
     claudeAccountSwitch();
     return;

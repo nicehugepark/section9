@@ -93,7 +93,7 @@ function usageRows(){
 // 보조기술이 읽는 한 줄 — 화면의 카드와 같은 사실을 평문으로. 카드는 그림이라
 // 스크린리더에 닿지 않으므로, 같은 내용을 칩의 이름으로 붙여 준다.
 function usageTitle(){
-  if (!usageLast) return "클로드 계정과 사용량 — 아직 받지 못했다";
+  if (!usageLast) return "클로드 계정과 사용량 — 아직 받지 못했습니다";
   const d = usageLast;
   return `${d.email || "?"} 사용량. `
     + usageRows().map(([x, name]) => {

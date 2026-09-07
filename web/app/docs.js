@@ -143,7 +143,7 @@ async function renderDocs(rows){
          넣는 것은 이 목록이 이미 쓰는 어휘다(고르는 중의 .tick).
          행 클릭보다 먼저 잡히는 것은 events.js 가 순서로 보장한다. */
       const off = on ? ` <button type="button" class="seloff" data-seloff`
-        + ` title="이 문서를 놓는다 — 목록만 남고 오른쪽은 빈 화면이 된다"`
+        + ` title="이 문서를 놓습니다 — 목록만 남고 오른쪽은 빈 화면이 됩니다"`
         + ` aria-label="${esc(shortId(r.id))} 닫기">${PIN_OFF_LABEL}</button>` : "";
       // 행 전체가 하나의 컨트롤이다 (REQ-20260827-013) — 보드 카드와 같은 어휘
       // (role=button). 제목만 링크로 떼면 같은 줄에 목적지가 둘로 보인다.
@@ -413,7 +413,7 @@ async function loadDoc(id, bg, force){
      "이 상태로 옮김" 인데, `→ 이어 말하기` 에서는 "저기로 감" 이다. 한 줄에서
      한 기호가 두 뜻으로 갈리면 이어 말하기가 다섯 번째 목적지로 위장한다.
      갈래가 바뀐다는 말은 옆의 헤어라인(.adiv)이 이미 하고 있다. */
-  const pickBtn = `<button class="deed" data-pick="${esc(m.id)}" title="터미널에서 이 문서에 이어 말한다">이어 말하기</button>`;
+  const pickBtn = `<button class="deed" data-pick="${esc(m.id)}" title="터미널에서 이 문서에 이어 말합니다">이어 말하기</button>`;
   const pickAct = ((targets.length || transLost) ? `<span class="adiv"></span>` : "")
     + pickBtn;
   /* 이름과 행위를 글꼴로 가른다 (REQ-20260828-007 반려) — `→ done` 은 상태의

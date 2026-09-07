@@ -149,7 +149,7 @@ function renderSettingsSection(meAdmin){
         <input id="nu-email" type="text" placeholder="email (선택)">
         <select id="nu-role"><option value="member">role: member</option>
           <option value="viewer">role: viewer</option><option value="admin">role: admin</option></select>
-        <button id="nu-add">＋ 등록</button>
+        <button id="nu-add">+ 등록</button>
       </div>
       <div class="cfg-h">시점 미리보기 / 대리 (admin)</div>
       <div class="path">다른 사용자의 화면(열람 격리)을 그대로 보고, 그 사용자로 조작합니다. 저장되지 않으며 이 화면에서만 유효합니다.</div>

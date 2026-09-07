@@ -120,7 +120,7 @@ async function renderStream(){
     data = await ccFetch("/api/streams");
   }
   if (!data){
-    $("#view").innerHTML = `<div class="streamwrap"><div class="term"><span class="meta">stream 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요</span></div></div>`;
+    $("#view").innerHTML = `<div class="streamwrap"><div class="term"><span class="meta">stream 목록을 불러오지 못했습니다 — 잠시 뒤 다시 시도해 주세요</span></div></div>`;
     return;
   }
   const sesDocs = Object.fromEntries(

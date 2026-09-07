@@ -98,7 +98,7 @@ async function postPriority(id, value){
     refreshCatalog(true);
   }catch(e){
     s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
-      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.",
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
       ok: "닫기"});
   }
 }

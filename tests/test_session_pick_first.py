@@ -154,7 +154,7 @@ class TheEmptySeatSpeaks(unittest.TestCase):
     def test_b3_waiting_shows_no_way_out_yet(self):
         self.assertRegex(
             self.shape, r"foot:\s*waiting \|\| somewhere \? \"\"",
-            "받는 중에 「＋ 여기서 세션 시작」을 세운다 — 갈 곳이 있는지 "
+            "받는 중에 「+ 여기서 세션 시작」을 세운다 — 갈 곳이 있는지 "
             "확인되기 전의 나가는 문은 거짓 안내다")
 
     def test_f2_the_old_call_shape_still_works(self):

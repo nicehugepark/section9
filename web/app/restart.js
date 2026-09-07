@@ -388,7 +388,7 @@ async function sendChat(){
     if (TERM !== T) return;
     if (pend && pend.isConnected) pend.remove();
     termErr("✗ " + (ex && ex.message ? ex.message
-      : "서버에 연결할 수 없습니다 — 잠시 후 다시 시도"));
+      : "서버에 연결할 수 없습니다 — 잠시 뒤 다시 시도해 주세요"));
     // 실패 시 입력 복원 — 접힌 표시 그대로 되돌린다(원문으로 펼쳐 놓으면
     // 사용자가 접어 둔 화면이 제멋대로 터진다). 매핑은 그대로 살아 있다.
     if (!ta.value){ ta.value = disp; termPasteHint(); }

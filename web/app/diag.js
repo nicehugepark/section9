@@ -154,7 +154,7 @@
       sub:"모델", cancel:"그만두기",
       foot: MODEL_FOOT,
       // 진짜 창과 같은 확인 규칙을 건다 — 그림이 실제와 갈리면 안 된다
-      confirm:{ok:"다시 시작", say:(it, c) => modelSay(it.cur ? "" : it.key, c),
+      confirm:{ok:"다시 시작하기", say:(it, c) => modelSay(it.cur ? "" : it.key, c),
         idle:"바꿀 것을 고르면 여기서 다시 시작할 수 있습니다."},
       items:[{key:"opus", label:"opus", note:"지금 이것", cur:true},
              {key:"sonnet", label:"sonnet", note:"빠르고 균형 잡혔다 — 대부분의 일에"},
@@ -181,7 +181,7 @@
       ok:"지우기", cancel:"그만두기"},
     // 서버가 거부한 얼굴 — 고장이 아니라 설명이라 눈썹을 안 붉힌다
     acctkeep: {kind:"alert", cap:"지우지 않음", stop:false,
-      title:"로그인이 끝난 자리라 지우지 않았다 (claude02.pfe@dev.itcen.com)",
+      title:"로그인이 끝난 자리라 지우지 않았습니다 (claude02.pfe@dev.itcen.com)",
       ok:"닫기"},
     /* 다시 시작이 낼 수 있는 창들 (REQ-20260827-079 반려). 셋 다 **그 순간이
        와야만** 보이는 화면이라 캡처로 재현할 수 없다: 세션이 일하는 중이어야

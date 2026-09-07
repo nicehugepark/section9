@@ -32,7 +32,7 @@ function showUserForm(u, host, isAdminEdit){
       <tr><td>display</td><td><input class="uf" id="uf-display" value="${esc(u.display)}"></td></tr>
       <tr><td>회사 이메일</td><td id="uf-emails">
         ${seedEmails.map(em => emRowHTML(em)).join("")}
-        <button type="button" class="em-add" id="uf-em-add">＋ 이메일 추가</button>${seedEmails.length ? "" : reqhint}
+        <button type="button" class="em-add" id="uf-em-add">+ 이메일 추가</button>${seedEmails.length ? "" : reqhint}
         <div class="path">회사 이메일 N개 — 빈 행은 저장 시 제외됩니다</div></td></tr>
       <tr><td>github (개인)</td><td><input class="uf" id="uf-github" value="${esc(u.github||"")}" placeholder="개인 GitHub 계정명">${u.github ? "" : reqhint}</td></tr>
       <tr><td>github (조직)</td><td><input class="uf" id="uf-github-org" value="${esc(u.github_org||"")}" placeholder="조직 GitHub 계정/org (선택)"></td></tr>
@@ -99,7 +99,7 @@ function showUserForm(u, host, isAdminEdit){
     </div>
     <div class="secwhy" id="sec-why"></div>
     <div class="secform">
-      <button type="button" id="sec-add">＋ 저장소 안에 넣기</button>
+      <button type="button" id="sec-add">+ 저장소 안에 넣기</button>
     </div>
     <div class="secmsg" id="sec-msg"></div>
     <div class="secsub">바깥 폴더 — 저장소 밖에 둘 시크릿의 자리</div>
@@ -314,7 +314,7 @@ function showUserForm(u, host, isAdminEdit){
       `${esc(why[1])} 저장소 밖에 넣으려면 아래에서 경로부터 정해 주세요.
        <button type="button" class="gefix" id="sec-gopath">경로 정하기</button>`;
     const ab = host.querySelector("#sec-add");
-    if (ab) ab.textContent = `＋ ${WHERE_KO[secWhere]}에 넣기`;
+    if (ab) ab.textContent = `+ ${WHERE_KO[secWhere]}에 넣기`;
   }
   if (whereBox){
     whereBox.addEventListener("change", e => {

@@ -201,7 +201,7 @@ function tidyDecorate(){
           ? "목록으로 되돌린다" : "목록에서 내린다 — 문서는 그대로 있고 언제든 되돌린다"}">`
       + `${arch ? "보관 해제" : "보관"}</button>`)
       + `<button type="button" class="deed tidy" data-tidy="rm1" data-id="${esc(id)}"`
-      + ` title="휴지통으로 보낸다 — 목록에서 사라지되 되돌릴 수 있다">삭제</button>`;
+      + ` title="휴지통으로 보냅니다 — 목록에서 사라지되 되돌릴 수 있습니다">삭제</button>`;
     let box = grp;
     if (!box){
       box = document.createElement("span");
@@ -238,7 +238,7 @@ function tidyRender(){
         <button type="button" data-tidy="back" data-id="${esc(r.id)}"
           title="${tidyTab === "trash" ? "원래 자리로 되돌린다" : "목록으로 되돌린다"}">되돌리기</button>
         ${tidyTab === "trash" ? `<button type="button" class="gone" data-tidy="purge"
-          data-id="${esc(r.id)}" title="영구히 지운다 — 되돌릴 수 없다">영구 삭제</button>` : ""}
+          data-id="${esc(r.id)}" title="영구히 지웁니다 — 되돌릴 수 없습니다">영구 삭제</button>` : ""}
       </div></div>`;
   const body = lost
     ? `<div class="tempty">이 목록을 받지 못했습니다 — 실행 중인 서버가 아직
@@ -338,7 +338,7 @@ async function tidyAct(what, el){
       descHtml: tidyNames(ids, i => (tidyTrash || []).find(x => x.id === i))
         + `<p>번호는 계속 태워 둡니다 — 지운 번호가 다른 문서로 다시 나가는 `
         + `일은 없습니다.</p>`,
-      ok: "영구 삭제", cancel: "그만두기"});
+      ok: "영구 삭제하기", cancel: "그만두기"});
     if (yes) await tidySend("purge", ids, {confirm: true});
     return;
   }
@@ -365,7 +365,7 @@ function tidyConfirmRm(ids){
                           : "이 문서를 휴지통으로 보냅니다",
     descHtml: tidyNames(ids, catFind)
       + `<p>목록에서 사라지지만 <b>치운 것 → 휴지통</b> 에서 되돌릴 수 있습니다.</p>`,
-    ok: "휴지통으로", cancel: "그만두기"});
+    ok: "휴지통으로 보내기", cancel: "그만두기"});
 }
 
 /* 손잡이는 **가로채기 단계에서** 잡는다 (REQ-20260829-025). 눈금은 문서 줄

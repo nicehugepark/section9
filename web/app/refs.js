@@ -93,14 +93,14 @@ function depSummaryHTML(rows){
   // 필터가 걸려 있으면 표도 그 범위다 — 위 캔버스와 같은 것을 보고 있다고 말해준다
   const scope = rows.length !== catalog.length ? ` <span class="dsscope">현재 필터 기준</span>` : "";
   const note = d.dead
-    ? `<div class="dsnote">양끝 중 하나가 이미 끝난 의존 ${d.dead}건은 세지 않았다 — 끝난 의존은 그래프에도 이 목록에도 남지 않고, 근거는 각 문서 History 에 남는다.</div>`
+    ? `<div class="dsnote">양끝 중 하나가 이미 끝난 의존 ${d.dead}건은 세지 않았습니다 — 끝난 의존은 그래프에도 이 목록에도 남지 않고, 근거는 각 문서 History 에 남습니다.</div>`
     : "";
   if (!d.groups.length){
     // .empty = 판을 버리고 여백 주석이 되는 신호. 폭은 .gsplit.empty 가 함께 줄인다
     return `<aside class="depsum empty" id="depsum">
       <div class="dshead"><span>선행 대기 현황</span><span class="dscount">없음</span>${scope}</div>
-      <p class="dsempty">지금 다른 요청 때문에 멈춘 요청이 없다. 진행이 막힌 요청에 선행을 걸면
-        여기에 줄이 쌓이고 왼쪽 그래프에 화살표가 그려진다.
+      <p class="dsempty">지금 다른 요청 때문에 멈춘 요청이 없습니다. 진행이 막힌 요청에 선행을 걸면
+        여기에 줄이 쌓이고 왼쪽 그래프에 화살표가 그려집니다.
         <code>s9 link &lt;막힌 요청&gt;
   --blocked-by &lt;선행&gt;</code></p>
       ${note}</aside>`;
@@ -112,7 +112,7 @@ function depSummaryHTML(rows){
   const lead = d.top && d.top[1] > 1
     ? (() => { const b = catFind(d.top[0]); return b
         ? `<span class="dslead"><b>${esc(shortId(b.id))} ${esc(b.title)}</b> 이(가) `
-          + `<b class="n">${d.top[1]}건</b>을 붙잡고 있다</span>` : ""; })()
+          + `<b class="n">${d.top[1]}건</b>을 붙잡고 있습니다</span>` : ""; })()
     : "";
   const dot = st => `<span class="cdot" style="background:${SCOLOR[st] || "var(--muted)"}"></span>`;
   const seen = new Set();   // '3건 붙잡음' 표시는 그 선행이 처음 나온 줄에만 — 반복하면 신호가 죽는다
@@ -134,7 +134,7 @@ function depSummaryHTML(rows){
     </div>`).join("");
   return `<aside class="depsum" id="depsum">
     <div class="dshead"><span>선행 대기 현황</span>
-      <span class="dscount">${d.groups.length}건이 막혀 있다</span>${scope}</div>
+      <span class="dscount">${d.groups.length}건이 막혀 있습니다</span>${scope}</div>
     ${lead}
     <div class="dslegend">막힌 요청 <i>↳ 기다리는 선행 작업</i></div>
     <div class="dsbody" tabindex="0" role="group" aria-label="선행 대기 목록">${body}</div>

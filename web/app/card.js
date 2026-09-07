@@ -1555,7 +1555,7 @@ async function wakeDoc(id){
       title: reached ? "서버가 이어가기를 알지 못합니다"
                      : "서버에 닿지 못했습니다",
       desc: reached ? "s9 serve 를 다시 띄우면 이 버튼이 다시 생깁니다."
-                    : "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.",
+                    : "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
       ok: "닫기"});
     return;
   }
@@ -1665,7 +1665,7 @@ async function stopDoc(id){
       title: reached ? "서버가 중단하기를 알지 못합니다"
                      : "서버에 닿지 못했습니다",
       desc: reached ? "s9 serve 를 다시 띄우면 이 버튼이 다시 생깁니다."
-                    : "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.",
+                    : "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
       ok: "닫기"});
     return;
   }
@@ -2113,7 +2113,7 @@ async function postStatus(id, to, note, atts){
     refreshCatalog(true);
   }catch(e){
     s9dlg({kind:"alert", cap:"연결", title:"서버에 닿지 못했습니다",
-      desc:"잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.", ok:"닫기"});
+      desc:"잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.", ok:"닫기"});
   }
 }
 
@@ -2228,7 +2228,7 @@ async function assignDoc(id){
     reloadShowing(id);
   }catch(e){
     s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
-      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.", ok: "닫기"});
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.", ok: "닫기"});
   }
 }
 /* ---- 속할 프로젝트를 바꾼다 (REQ-20260906-053) ---------------------------
@@ -2305,7 +2305,7 @@ async function projectDoc(id){
     reloadShowing(id);
   }catch(e){
     s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
-      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.",
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
       ok: "닫기"});
   }
 }
@@ -2332,7 +2332,7 @@ async function takeoverDoc(id){
     reloadShowing(id);
   }catch(e){
     s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
-      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재기동 중일 수 있습니다.", ok: "닫기"});
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.", ok: "닫기"});
   }
 }
 
