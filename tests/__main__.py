@@ -1038,8 +1038,14 @@ def main():
             record_last_red(remote_run.LAST_RED or ["(원격 머신)"], fp)
         if full:
             # 결과가 스스로 도착한다 (REQ-20260906-029) — 백그라운드 실행일 때만 움직인다
+            # 파일 수는 **원격이 센 것**을 말한다 — 이 머신의 목록 길이를 말하면
+            # 원격이 덜 돌았을 때 그 사실이 숫자에 나타나지 않는다 (REQ-20260907-047).
+            ran_n = remote_run.LAST_RAN
+            if ran_n is not None:
+                ran_n += len(local_part)
             async_notify.notify_full_result(rc == 0, remote_run.LAST_RED,
-                                            remote_run.LAST_TOOK, len(selected),
+                                            remote_run.LAST_TOOK,
+                                            len(selected) if ran_n is None else ran_n,
                                             where="원격 머신", env=notify_env)
         return rc
     # 스위트 안에서 러너를 또 띄우는 시험이 있다(test_runner_patterns·
@@ -1150,9 +1156,23 @@ def main():
                     return 0
         if jobs > 1 and not nested:
             files = matched_files(pats)
+            # 고르지 못한 패턴은 **실패**다 (REQ-20260907-047). 순차 갈래에는 이
+            # 검사가 있었는데(`empty`) 병렬 갈래에는 없었다 — 원격 머신은 파일
+            # 이름 352개를 패턴으로 받아 `--jobs 16` 으로 도니 언제나 이 갈래다.
+            # 원격 나무가 이 머신과 어긋나 있으면 없는 파일은 조용히 빠지고,
+            # 남은 것이 다 통과하면 「전체 통과」가 된다. 안 돈 것이 통과로 보이는
+            # 순간 그 뒤의 모든 판단이 거짓 위에 선다.
+            unmatched = [q for q in pats if not matched_files([q])]
+            if unmatched:
+                print(f"실패: 고르지 못한 패턴 {len(unmatched)}개 — "
+                      f"{', '.join(unmatched[:10])}"
+                      f"{' …' if len(unmatched) > 10 else ''}", file=sys.stderr)
+                drop_run_lock(lock_fh)
+                return 1
             files, _dropped = apply_quarantine(files, full_requested)
             if not files:
                 print(f"no tests matched: {', '.join(pats)}", file=sys.stderr)
+                drop_run_lock(lock_fh)
                 return 1
             bump, clear = jobfile.start(len(files), kind=job_kind,
                                         args=" ".join(sys.argv[1:4]))
@@ -1184,6 +1204,10 @@ def main():
                 # 가른다(실측 2026-09-06 ee223fa: 표식이 안 찍혀 「실패 파일을 못
                 # 읽었다」로 알림이 왔다, REQ-20260906-060).
                 print(async_notify.RED_MARK + " ".join(LAST_RUN_RED), flush=True)
+            if os.environ.get("S9_TEST_WORKER"):
+                # 이 머신이 원격의 「몇 파일을 셌나」를 이 한 줄로 받는다. 통과/실패와
+                # 무관하게 언제나 찍는다 — 표식이 없으면 이 머신은 통과라고 하지 않는다.
+                print(remote_run.RAN_MARK + str(len(files) + len(_dropped)), flush=True)
             if full_requested:
                 # 결과가 스스로 도착한다 (REQ-20260906-029) — 백그라운드 실행일 때만 움직인다
                 async_notify.notify_full_result(ok, LAST_RUN_RED, time.time() - t_start,
@@ -1274,6 +1298,8 @@ def main():
         mark_green(pats, fp)    # 이 선택은 이 지문으로 통과했다
         if full_requested:
             write_green_stamp()  # 전체 green 만 --changed 의 기준점이 된다
+    if os.environ.get("S9_TEST_WORKER") and not nested:
+        print(remote_run.RAN_MARK + str(len(matched_files(pats))), flush=True)
     drop_run_lock(lock_fh)
     return 0 if ok else 1
 

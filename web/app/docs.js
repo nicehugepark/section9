@@ -47,6 +47,23 @@ function docDeselect(){
   render();
 }
 
+/* 같은 그림이면 목록을 다시 칠하지 않는다 (REQ-20260907-029).
+
+   실측(Playwright, 50초·폴 3회): 지어낸 목록 HTML 은 22,173자로 세 번 모두
+   **같았는데** 66줄이 매번 새 노드가 됐다. 새 노드는 hover·focus·고르기 눈금과
+   **사람의 누름**을 함께 떨어뜨린다 — REQ-20260907-028 에서 Playwright 가
+   「element was detached, retrying ×11」로 본 그 자리다.
+
+   판정은 지어낸 글자 자체로 한다(해시가 아니라 원문 비교라 어긋날 여지가 없다).
+   붙여 둔 표시(`__s9list`)는 그 판이 무엇을 그리고 있는지를 말하므로, 판을 새로
+   세우면 표시가 없어 첫 폴에서 반드시 칠한다.
+
+   **살아 움직이는 표시는 이 문을 지나지 않는다** — 목록 줄에는 맥박도 경과 초도
+   없다(rowHTML 은 상태·번호·제목뿐). 움직이는 것은 오른쪽 판(answerClock)과 보드
+   카드가 각자 그리고, 목록 글자가 한 자라도 바뀌면 서명이 달라져 그대로 다시
+   그린다 — 갱신을 줄이려다 화면을 멈춰 세우지 않는다. */
+function docListStale(wrap, list){ return wrap.__s9list !== list; }
+
 async function renderDocs(rows){
   /* 사람이 방금 고른 문서인지를 **맨 위에서** 읽고 즉시 끈다 — 아래에 await 가
      있어 두 렌더가 겹칠 수 있고, 그때 표시가 서로에게 새면 폴링이 읽던 자리를
@@ -223,21 +240,26 @@ async function renderDocs(rows){
      이미 서 있다"에 걸려 남의 판에 이쪽 목록만 갈아 끼운다 — 오른쪽에는 아까 보던
      문서가 그대로 남는다. Settings 는 오른쪽 판 id 가 달라 우연히 비껴갔을 뿐이다. */
   const wrap = $('#view .docs[data-pane="docs"] .doclist');
+  let painted = true;
   if (wrap && $("#viewer")){
     // 15초 폴링이 목록을 통째로 갈아끼운다 — 키보드로 짚어 둔 자리를 여기서
     // 놓치면 방향키로 훑던 일이 15초마다 처음으로 돌아간다 (REQ-20260827-013).
-    const af = document.activeElement;
-    const keepRow = af && af.closest && af.closest(ROVE_ITEM) ? af.dataset.doc : null;
-    wrap.innerHTML = list;
-    if (keepRow){
-      const t = wrap.querySelector(`[data-doc="${cssq(keepRow)}"]`);
-      if (t){ t.tabIndex = 0; t.focus({preventScroll: true}); }
+    painted = docListStale(wrap, list);
+    if (painted){
+      const af = document.activeElement;
+      const keepRow = af && af.closest && af.closest(ROVE_ITEM) ? af.dataset.doc : null;
+      wrap.innerHTML = list;
+      wrap.__s9list = list;
+      if (keepRow){
+        const t = wrap.querySelector(`[data-doc="${cssq(keepRow)}"]`);
+        if (t){ t.tabIndex = 0; t.focus({preventScroll: true}); }
+      }
     }
   }
   else $("#view").innerHTML = `<div class="docs" data-pane="docs"><div class="doclist" data-rove
       role="group" aria-label="문서 목록 — 방향키로 이동, Enter 로 열기">${list}</div>
     <div class="viewer" id="viewer">${docPickHTML()}</div></div>`;
-  roveSync();
+  if (painted) roveSync();
   /* 고른 줄을 **보이게** 한다 (REQ-20260831-007). 자리를 위로 옮기는 대신 눈을
      그 자리로 옮긴다 — 다른 탭의 카드·본문 링크·주소로 들어와 그 줄이 목록
      아래쪽에 있을 때가 그렇다. 목록에서 직접 누른 경우엔 이미 보이므로
@@ -839,6 +861,23 @@ const answerAt = new Map();                // id → 누른 시각(ms) · 낙관
 const answerMiss = new Map();              // id → true · 이번 화면에서 빈손으로 끝났다
 let answerTick = null;                     // 경과 초를 세는 시계 (한 벌)
 
+/* 자리지기 — 손잡이의 폭을 **가장 긴 얼굴의 제 글자**로 잡는다
+   (REQ-20260907-042 사용자 반려 「답 찾기 버튼의 사이즈가 이상하다」).
+
+   전에는 css 에 못박은 한 숫자(min-width:108px)가 자리를 잡았는데, 그 값이
+   가장 긴 얼굴이 실제로 쓰는 폭(88px)보다 20px 넓었다. 그래서 세 글자짜리
+   「답 찾기」가 다섯 글자짜리 「이어 말하기」보다 40% 넓은 상자에 앉아, 이
+   화면의 주인공도 아닌 도구가 제일 큰 손잡이로 읽혔다. 숫자는 스킨이 여백을
+   바꾸는 순간 또 어긋난다 — 그래서 숫자를 지우고, 같은 상자 안에 가장 긴
+   얼굴을 **보이지 않게 한 벌 더 깔아** 폭을 재게 한다. 스킨·밀도·글꼴이
+   무엇이든 폭은 늘 그 얼굴만큼이고, 다섯 얼굴은 저절로 같은 폭이 된다.
+
+   글자는 읽어 주는 도구에서 숨긴다(aria-hidden) — 자리를 재는 잣대이지
+   사람에게 할 말이 아니다. 「00분」은 자릿수를 재는 눈금이라 tabular-nums 로
+   어느 숫자가 와도 같은 폭이다(「59초」와 같은 세 칸). */
+const ANS_SIZER = `<span class="ansin anssz" aria-hidden="true">찾는 중`
+  + `<span class="ansela">00분</span></span>`;
+
 /* 이 문서가 지금 「찾는 중」인가 — **문서가 먼저, 기억은 보조**.
    문서에 사실이 적혀 있으면 그것이 참이고(다른 탭·다른 사람도 같은 것을 본다),
    없으면 방금 누른 손의 기억으로 몇 초를 메운다. */
@@ -879,8 +918,10 @@ function answerBtnHTML(m){
        말줄임표는 쓰지 않는다 — 옆의 경과가 이미 진행을 말한다(translator). */
     return `<button type="button" class="deed ansbtn" data-answer="${esc(m.id)}"`
       + ` data-anssince="${since}" aria-disabled="true" aria-live="polite"`
-      + ` title="그때의 작업 기록에서 답을 찾고 있습니다">찾는 중`
-      + `<span class="ansela">${esc(answerEla(Date.now() - since))}</span></button>`;
+      + ` title="그때의 작업 기록에서 답을 찾고 있습니다">`
+      + `<span class="ansin">찾는 중`
+      + `<span class="ansela">${esc(answerEla(Date.now() - since))}</span></span>`
+      + ANS_SIZER + `</button>`;
   }
   // 빈손 뒤에도 손잡이는 남는다(기록이 늘면 다시 눌러볼 수 있다). 그때의 글자는
   // 「다시 찾기」 — 부사만 남기지 않는다(전 스킨 검수 R3).
@@ -888,7 +929,8 @@ function answerBtnHTML(m){
   const tip = `질문한 시각 앞뒤의 작업 기록을 모아 답을 맞춰 이 문서에 붙입니다`
     + ` · 터미널에서는 s9 note ${shortId(m.id)} '…' --label answer`;
   return `<button type="button" class="deed ansbtn" data-answer="${esc(m.id)}"`
-    + ` title="${esc(tip)}">${again ? "다시 찾기" : "답 찾기"}</button>`;
+    + ` title="${esc(tip)}"><span class="ansin">${again ? "다시 찾기" : "답 찾기"}</span>`
+    + ANS_SIZER + `</button>`;
 }
 
 /* 못 찾음 한 줄. 이 대시보드의 실패 문장 틀 그대로다 — 무엇을 못 했나 —
@@ -919,7 +961,10 @@ function dstHTML(m){
    판을 다시 세우지 않는다 — 1초마다 문서를 다시 그리면 읽던 자리가 튄다. */
 function answerClock(){
   const tick = () => {
-    const els = document.querySelectorAll(".ansbtn .ansela");
+    /* 자리지기(.anssz)는 세지 않는다 — 그 안의 「00분」은 폭을 재는 눈금이지
+       흐르는 시각이 아니다. 이 셀렉터가 자리지기까지 집으면 쉼 얼굴에서도
+       시계가 돌아 멈추지 않는다. */
+    const els = document.querySelectorAll(".ansbtn .ansin:not(.anssz) .ansela");
     if (!els.length){ clearInterval(answerTick); answerTick = null; return; }
     /* 시각은 **버튼이 들고 있다** — 문서가 적어 준 것이든 방금 누른 손의
        기억이든, 그린 자리가 이미 판정을 마쳤다. 시계가 그 판정을 다시 하면
@@ -929,7 +974,7 @@ function answerClock(){
       if (since) el.textContent = answerEla(Date.now() - since);
     });
   };
-  if (!answerTick && document.querySelector(".ansbtn .ansela"))
+  if (!answerTick && document.querySelector(".ansbtn .ansin:not(.anssz) .ansela"))
     answerTick = setInterval(tick, 1000);
 }
 

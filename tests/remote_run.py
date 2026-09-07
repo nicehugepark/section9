@@ -121,9 +121,23 @@ def remote_script(url, sha, dest, jobs, pats_argv, user=""):
     attach = (f"S9_ROOT=$D python3 bin/s9 user attach {_sh_quote(user)} >/dev/null 2>&1 || true; "
               if user else "")
     pats = " ".join(_sh_quote(a) for a in pats_argv)
-    return (f"set -e; D={dest}; [ -d $D/.git ] || git clone -q {_sh_quote(url)} $D; "
-            f"cd $D && git fetch -q origin +refs/ci/{short}:refs/ci/{short} "
-            f"&& git checkout -q -f {sha} && git clean -qfd; "
+    # 준비 단계는 **하나씩** `|| exit` 로 막는다 — `set -e` 를 믿으면 안 된다.
+    # 실측 2026-09-07 (cd166cc, REQ-20260907-047): `cd $D && git fetch && ... ;` 에서
+    # fetch 가 「Repository not found」로 실패했는데, set -e 는 AND-OR 리스트의
+    # **마지막이 아닌** 명령의 실패를 건너뛴다. 셸은 그대로 다음 줄로 가서 원격
+    # clone 에 이미 펴져 있던 **옛 커밋**으로 시험을 돌았고, rc 0 → 「전체 통과」로
+    # 보고됐다. 그 커밋의 시험 하나(test_wake_handle.py)는 실제로는 실패였다.
+    # 편 뒤에는 HEAD 가 정말 그 커밋인지 **다시 물어** 확인한다 — 「폈다고 말한 것」과
+    # 「펴져 있는 것」은 다른 사실이다.
+    return (f"set -e; D={dest}; "
+            f"if [ ! -d $D/.git ]; then git clone -q {_sh_quote(url)} $D || exit 91; fi; "
+            f"cd $D || exit 92; "
+            f"git fetch -q origin +refs/ci/{short}:refs/ci/{short} || exit 93; "
+            f"git checkout -q -f {sha} || exit 94; "
+            f"git clean -qfd || exit 95; "
+            f'have=$(git rev-parse HEAD 2>/dev/null); '
+            f'if [ "$have" != {_sh_quote(sha)} ]; then '
+            f'echo "[원격] 편 커밋이 다르다: 요청 {short} · 실제 $have" 1>&2; exit 96; fi; '
             f"S9_ROOT=$D python3 bin/s9 index rebuild >/dev/null 2>&1 || true; "
             f"{attach}S9_MAX_JOBS={jobs} S9_TEST_REMOTE= S9_TEST_WORKER=1 python3 tests/ --jobs {jobs} "
             f"--no-reuse {pats}")
@@ -131,7 +145,11 @@ def remote_script(url, sha, dest, jobs, pats_argv, user=""):
 
 RC_MARK = "__S9_REMOTE_RC="
 RED_MARK = "__S9_FULL_RED="       # 원격 러너가 끝에 찍는 실패 파일 목록 (async_notify 와 같은 글자)
+RAN_MARK = "__S9_RAN="            # 원격 러너가 끝에 찍는 **셈에 든 파일 수** (돈 것 + 격리한 것)
+PREP_RC = {91: "clone 실패", 92: "작업자리로 못 들어감", 93: "fetch 실패",
+           94: "펴기(checkout) 실패", 95: "clean 실패", 96: "편 커밋이 요청과 다름"}
 LAST_RED = []                     # 마지막 run_remote 가 걷은 실패 파일
+LAST_RAN = None                   # 원격이 실제로 센 파일 수 (표식을 못 받았으면 None)
 LAST_TOOK = 0.0                   # 마지막 run_remote 의 소요(초)
 
 
@@ -158,6 +176,13 @@ def _ssh(key, remote_cmd, stdin=None, stream=True, timeout=None):
             continue
         if line.startswith(RED_MARK):
             LAST_RED[:] = line[len(RED_MARK):].split()
+            continue
+        if line.startswith(RAN_MARK):
+            global LAST_RAN
+            try:
+                LAST_RAN = int(line[len(RAN_MARK):].strip())
+            except ValueError:
+                LAST_RAN = None
             continue
         if stream:
             sys.stdout.write(line); sys.stdout.flush()
@@ -190,6 +215,9 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     미커밋 변경이 있으면 돌리되 **통과 기록은 남기지 않는다** — 그 지문은 원격이
     돈 나무의 것이 아니다.
     """
+    global LAST_RAN
+    LAST_RED[:] = []
+    LAST_RAN = None
     name = name or os.path.basename(REPO)
     dest = f"{REMOTE_DIR}/{name}"
     url = _git("remote", "get-url", "origin").stdout.strip()
@@ -213,12 +241,30 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     took = time.time() - t0
     global LAST_TOOK
     LAST_TOOK = took
-    if r.returncode == 0:
-        print(f"[원격] 통과 ({took:.0f}초)", file=sys.stderr)
+    rc = r.returncode
+    # 「돌지 않은 파일이 있으면 통과라고 하지 않는다」 (REQ-20260907-047).
+    # 원격이 제 나무에서 고른 파일 수를 표식으로 찍는다. 요청한 수보다 적으면
+    # 원격 나무가 이 머신과 다르다는 뜻이니 — 통과가 아니라 **집계 실패**다.
+    # 표식이 아예 없어도 통과로 치지 않는다: 셈을 못 했으면 통과를 증명하지 못한다.
+    want = len(pats_argv)
+    if rc == 0 and want:
+        if LAST_RAN is None:
+            print(f"[원격] 통과라고 말하지 않는다 — 원격이 몇 파일을 셌는지 표식"
+                  f"({RAN_MARK})이 오지 않았다 (요청 {want}개)", file=sys.stderr)
+            rc = 97
+        elif LAST_RAN < want:
+            print(f"[원격] 통과라고 말하지 않는다 — 요청 {want}개인데 원격이 센 것은 "
+                  f"{LAST_RAN}개다 ({want - LAST_RAN}개가 원격 나무에 없었다)",
+                  file=sys.stderr)
+            rc = 98
+    if rc == 0:
+        print(f"[원격] 통과 ({took:.0f}초 · {LAST_RAN}파일)", file=sys.stderr)
         if on_green and not dirty:
             on_green(fingerprint)
     else:
-        print(f"[원격] 실패 rc={r.returncode} ({took:.0f}초)", file=sys.stderr)
+        why = PREP_RC.get(rc)
+        print(f"[원격] 실패 rc={rc}{' — ' + why if why else ''} ({took:.0f}초)",
+              file=sys.stderr)
         if on_red:
             on_red()
-    return r.returncode
+    return rc

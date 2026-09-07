@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -111,7 +112,8 @@ class IngestCopiesAndRewrites(unittest.TestCase):
         # 남의 파일(CC 캐시)은 지우지 않는다 — 복사다
         self.assertTrue(os.path.exists(src), "원본이 사라졌다 — 복사여야 한다")
 
-    def test_missing_original_is_left_alone(self):
+    def test_a_fresh_missing_original_is_left_alone(self):
+        """갓 만든 문서는 경로를 지키다 — 파일이 아직 안 내려앉았을 수 있다."""
         gone = os.path.join(self.src_dir, "없다.png")
         out = self._s9("new", "request", "--title", "사라진 첨부",
                        "--summary", "s", "--goal", "g", "--size", "S",
@@ -120,7 +122,34 @@ class IngestCopiesAndRewrites(unittest.TestCase):
         did = out.stdout.split()[0]
         r = self._s9("assets", "ingest", did)
         self.assertEqual(r.returncode, 0, r.stderr)   # 죽지 않는다
-        self.assertIn("[Attach:", self._s9("show", did).stdout)   # 그대로 둔다
+        self.assertIn("[Attach:", self._s9("show", did).stdout)
+
+    def test_a_long_dead_original_becomes_a_sentence(self):
+        """오래된 것은 되살아날 일이 없다 — 경로 대신 사실 한 줄을 세운다.
+
+        사용자가 머신 로컬 경로 글자를 보고 「아직도 렌더링이 안 된다」고 읽었다
+        (2026-09-07 15:53). 사람에게 그 경로는 아무 뜻이 없다.
+        """
+        gone = os.path.join(self.src_dir, "없다.png")
+        out = self._s9("new", "request", "--title", "오래 전에 사라진 첨부",
+                       "--summary", "s", "--goal", "g", "--size", "S",
+                       inp=f"본문\n\n[Attach: {gone}]")
+        did = out.stdout.split()[0]
+        # 문서를 한 시간 넘게 묵힌 것으로 만든다
+        path = subprocess.run(
+            [sys.executable, S9, "show", did, "--meta"], capture_output=True,
+            encoding="utf-8", env=self.env).stdout
+        import glob as _g
+        f = _g.glob(os.path.join(self.root, "vault", "**", did + ".md"),
+                    recursive=True)[0]
+        old = time.time() - 7200
+        os.utime(f, (old, old))
+        r = self._s9("assets", "ingest", did)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        shown = self._s9("show", did).stdout
+        self.assertNotIn("[Attach:", shown)
+        self.assertIn("남아 있지 않습니다", shown)
+        self.assertNotIn(gone, shown, "머신 로컬 경로가 사람에게 남았다")
 
 
 if __name__ == "__main__":

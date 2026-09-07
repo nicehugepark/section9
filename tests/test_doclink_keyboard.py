@@ -28,13 +28,33 @@
 
 실행: python3 tests/ doclink_keyboard
 """
+import glob
+import json
 import os
 import re
+import shutil
+import subprocess
 import unittest
 from webasset import index_path   # 화면은 조각이다 — 계약은 이어 붙인 한 장을 본다 (REQ-20260829-027)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
+
+
+def find_node():
+    n = shutil.which("node") or shutil.which("nodejs")
+    if n:
+        return n
+    for pat in ("/home/*/.vscode-server/bin/*/node",
+                "/root/.vscode-server/bin/*/node",
+                "/mnt/c/Temp/s9-webkit/node-*/node.exe"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
+
+
+NODE = find_node()
 
 
 class DoclinkKeyboard(unittest.TestCase):
@@ -111,15 +131,50 @@ class DoclinkKeyboard(unittest.TestCase):
                           f"Tab 길에 올라간다: {r[:90]}")
 
     def test_exactly_one_row_is_lifted_into_the_tab_order(self):
+        """계약은 **결과**다 — 딱 하나만 0, 나머지는 -1.
+
+        전에는 이 자리가 `tabIndex = … ? 0 : -1` 이라는 **구현의 글자**를 정규식으로
+        못 박았다. REQ-20260907-029 가 같은 뜻을 쓰기 가드가 붙은 두 줄로 고치자
+        (`const want = …; if (r.tabIndex !== want) r.tabIndex = want;`) 뜻은 그대로인데
+        시험이 깨졌다 — 같은 계열을 그날 이미 두 번 고쳤다(REQ-20260907-046).
+        글자를 못 박으면 뜻이 같은 개정마다 깨지고, 고치는 사람은 계약을 읽지 않고
+        글자만 맞추게 된다. 그래서 조각을 떼어 node 로 **실행해** 결과를 잰다."""
         m = re.search(r"function roveSync\(\)\{(.*?)\n\}", self.src, re.S)
         self.assertIsNotNone(m, "roving tabindex 를 세우는 roveSync 가 없다")
-        b = m.group(1)
-        self.assertRegex(b, r"tabIndex\s*=\s*.*\?\s*0\s*:\s*-1",
-                         "딱 하나만 0, 나머지는 -1 이어야 한다")
-        self.assertIn("sel", b,
-                      "열려 있는 행이 있으면 그 자리가 Tab 의 입구여야 한다")
-        self.assertRegex(b, r"if \(!rows\.length\) return|rows\.length\s*===?\s*0",
-                         "빈 목록에서 터지면 안 된다")
+        rove = "function roveSync(){" + m.group(1) + "\n}"
+        if not NODE:
+            self.skipTest("node 없음 — 실행 검증 생략")
+
+        def run(n, sel):
+            """줄 n 개 중 sel 번째가 열려 있는 목록 하나. 결과 tabIndex 를 돌려준다."""
+            script = "\n".join([
+                'const ROVE_ITEM = "[data-rove-item]";',
+                "const mk = i => ({tabIndex: -1,",
+                "  classList: {contains: c => c === 'sel' && i === %d}});" % sel,
+                "const rows = Array.from({length: %d}, (_, i) => mk(i));" % n,
+                "const cont = {querySelectorAll: () => rows};",
+                "global.document = {querySelectorAll: () => [cont]};",
+                rove,
+                "roveSync();",
+                "console.log(JSON.stringify(rows.map(r => r.tabIndex)));",
+            ])
+            p = subprocess.run([NODE, "-e", script], capture_output=True,
+                               text=True, timeout=30)
+            self.assertEqual(p.returncode, 0, f"node 실행 실패:\n{p.stderr[-2000:]}")
+            return json.loads(p.stdout.strip().splitlines()[-1])
+
+        got = run(5, -1)
+        self.assertEqual(got.count(0), 1,
+                         f"Tab 의 입구가 하나가 아니다: {got}")
+        self.assertEqual(got, [0, -1, -1, -1, -1],
+                         "짚어 둔 자리도 열린 줄도 없으면 첫 줄이 입구다")
+
+        got = run(5, 3)
+        self.assertEqual(got, [-1, -1, -1, 0, -1],
+                         "열려 있는 행이 있으면 그 자리가 Tab 의 입구여야 한다")
+
+        # 빈 목록에서 터지면 안 된다 — 줄이 0개여도 실행이 끝나야 한다.
+        self.assertEqual(run(0, -1), [])
 
     def test_rove_containers_are_marked(self):
         self.assertIn("data-rove\"", self.src.replace("data-rove-item", "") + '"',

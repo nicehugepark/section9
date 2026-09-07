@@ -268,7 +268,11 @@ function roveSync(){
     // 이미 짚어 둔 자리가 있으면 그 자리를 지킨다 — 폴링이 입구를 되돌리지 않게
     const act = rows.find(r => r.tabIndex === 0)
              || rows.find(r => r.classList.contains("sel")) || rows[0];
-    rows.forEach(r => { r.tabIndex = r === act ? 0 : -1; });
+    /* 이미 맞으면 쓰지 않는다 (REQ-20260907-029). `tabIndex=` 는 값이 같아도
+       setAttribute 를 거치므로 줄 수만큼 attribute 갱신이 나간다 — 문서 목록 66줄에서
+       폴마다 66건이 실측됐다. 읽는 것은 공짜고 쓰는 것만 값이 든다. */
+    rows.forEach(r => { const want = r === act ? 0 : -1;
+                        if (r.tabIndex !== want) r.tabIndex = want; });
   });
 }
 function roveMove(cur, dir){

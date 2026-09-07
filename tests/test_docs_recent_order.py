@@ -76,8 +76,29 @@ class DocsRecentOrder(unittest.TestCase):
         with self.subTest("r1_no_scattered_sort_in_docs"):
                 m = re.search(r"async function renderDocs\(rows\)\{(.*?)\n\}\n",
                               self.src, re.S)
-                self.assertNotIn(".sort(", m.group(1),
-                                 "Docs 렌더 안에서 정렬을 새로 걸고 있다")
+                # 이 계약이 막으려는 것은 **목록이 흔들리는 것**이다: 시각·상태에
+                # 따라 순서가 바뀌면 15초 폴마다 줄이 자리를 옮겨 읽던 사람이
+                # 자리를 잃는다. 그 순서는 stableOrder 한 곳이 정한다.
+                #
+                # 그런데 「.sort( 가 한 글자도 없어야 한다」로 적었더니, 흔들리지
+                # 않는 정렬까지 함께 막혔다 (REQ-20260907-029 이 걸렸다): 답 없는
+                # 질문을 무리 맨 앞에 세우는 안정 분할은 시각에 기대지 않아 폴마다
+                # 같은 결과를 낸다. 그래서 **허용 목록**으로 바꾼다 — 새 정렬을
+                # 더하는 사람은 여기 한 줄을 적으며 「이것이 흔들리지 않는가」를
+                # 스스로 묻게 된다. 적지 않으면 여전히 막힌다.
+                ALLOWED_SORTS = (
+                    # 답 없는 질문을 무리 맨 앞에 (REQ-20260906-087). 안정 정렬이고
+                    # 값이 시각에 기대지 않아 폴마다 같은 결과다.
+                    "groups.question.sort(",
+                )
+                body = m.group(1)
+                for line in body.splitlines():
+                    if ".sort(" not in line:
+                        continue
+                    self.assertTrue(
+                        any(a in line for a in ALLOWED_SORTS),
+                        f"Docs 렌더 안에서 새 정렬을 걸고 있다: {line.strip()[:80]} "
+                        f"— 흔들리지 않는 정렬이면 ALLOWED_SORTS 에 사유와 함께 적어라")
 
             # N3. 대시보드에서 못 도는 명령을 팔레트가 미리 말한다
         with self.subTest("n3_cli_only_commands_listed"):

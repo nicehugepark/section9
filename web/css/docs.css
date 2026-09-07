@@ -375,13 +375,30 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .doclist .grp .grpf.on{color:var(--text);border-bottom-color:var(--text)}
 .doclist .grp .grpf:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 
-/* 손잡이의 폭은 **가장 긴 얼굴로 미리 잡는다** — 「답 찾기」→「찾는 중 12초」로
-   얼굴이 바뀔 때 옆의 「이어 말하기」가 밀리면 그 자체가 결함이다
+/* 손잡이의 폭은 **가장 긴 얼굴의 제 글자**가 잡는다 — 「답 찾기」→「찾는 중
+   12초」로 얼굴이 바뀔 때 옆의 「이어 말하기」가 밀리면 그 자체가 결함이다
    (s9-design 5절: 레이아웃이 흔들리는 모션은 결함).
-   값은 짝수 px 이다 — 홀수는 비정수 배율(125/150%)에서 좌우가 다르게
-   반올림된다(「배율 불변」). */
-.dacts .deed.ansbtn{min-width:108px;justify-content:center;
-  display:inline-flex;align-items:center;gap:6px}
+
+   전에는 그 자리를 못박은 숫자(min-width:108px)가 잡았는데, 가장 긴 얼굴이
+   실제로 쓰는 폭은 88px 이었다 — 20px 을 더 예약한 탓에 세 글자짜리
+   「답 찾기」가 다섯 글자짜리 「이어 말하기」(77px)보다 40% 넓은 상자에 앉아,
+   이 화면의 주인공도 아닌 도구가 제일 큰 손잡이로 읽혔다(사용자 반려
+   2026-09-07 「답 찾기 버튼의 사이즈가 이상하다」). 게다가 스킨마다 여백과
+   글꼴이 다르니 숫자 하나로는 어차피 어느 스킨에서든 맞을 수가 없다.
+
+   그래서 숫자를 지우고 **자리지기**(`.anssz`)를 같은 칸에 겹쳐 둔다: 보이지
+   않는 「찾는 중 00분」이 폭을 재고, 보이는 얼굴은 그 위에 가운데로 앉는다.
+   격자 한 칸에 둘을 겹치므로 상자의 폭 = 둘 중 넓은 쪽 = 늘 가장 긴 얼굴이다.
+   스킨·밀도·글꼴이 바뀌어도 따라오고, 다섯 얼굴은 저절로 같은 폭이 된다.
+   짝·홀수 px 을 사람이 고를 일이 없어져 「배율 불변」도 함께 지켜진다. */
+.dacts .deed.ansbtn{display:inline-grid;grid-template-columns:1fr;
+  align-items:center;justify-items:center}
+.dacts .deed.ansbtn>.ansin{grid-area:1/1;display:inline-flex;align-items:center;
+  gap:6px;white-space:nowrap}
+/* 잣대는 자리만 차지하고 잉크는 남기지 않는다. `display:none` 은 폭을 잃고,
+   `opacity:0` 은 손이 닿는다 — 보이지 않게 두되 재기는 하는 것은
+   `visibility:hidden` 뿐이다. */
+.dacts .deed.ansbtn>.anssz{visibility:hidden;pointer-events:none}
 /* 경과는 mono 로, 잉크는 한 급 낮게 — 세는 것과 부르는 것이 한 버튼에 서므로
    글꼴로 가른다(문서 화면이 이미 쓰는 그 규칙). 자릿수가 늘어도 폭이 흔들리지
    않게 tabular-nums 를 준다. */
