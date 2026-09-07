@@ -24,7 +24,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from cdpreal import WS, chrome_path, reclaim
+from cdpreal import WS, chrome_path, reclaim, wait_ready
 from portpool import free_port, wait_server
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -196,32 +196,36 @@ class TheDocumentHeadCarriesTheSameTwoLines(unittest.TestCase):
                 "http://127.0.0.1:%d/json/list" % cdp, timeout=10).read())
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
-            for _ in range(200):
-                # 이 시험은 손잡이의 얼굴을 신원의 role 로 가른다(admin/viewer).
-                # 그 신원은 판이 섰다는 신호보다 늦게 오는 서버 왕복이라, 재료를
-                # 이름으로 적어 기다린다 (REQ-20260907-057 · DOC-20260907-003).
-                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
-                               "document.querySelector('#viewer'))"):
-                    break
-                time.sleep(0.25)
-            else:
-                raise ConnectionError("대시보드가 판을 세우지 못했다")
+            # 이 시험은 손잡이의 얼굴을 신원의 role 로 가른다(admin/viewer) —
+            # 그 신원까지 이름으로 적어 기다린다. 준비 신호를 여기서 손으로
+            # 짓지 않는 까닭은 cdpreal.wait_ready 에 있다 (REQ-20260907-057).
+            wait_ready(cls.ws, needs=("whoami",), sels="#viewer")
             cls.rows = cls.await_(ROWS)
             cls.click = cls.await_(CLICK)
-            for k in ("rows", "click"):
-                if getattr(cls, k) is None:
-                    raise ConnectionError("%s 를 재지 못했다" % k)
+            unmeasured = [k for k in ("rows", "click")
+                          if getattr(cls, k) is None]
+        except AssertionError:
+            # 화면이 터진 것은 브라우저가 없는 것이 아니다 — 건너뛰지 않는다.
+            cls.tearDownClass()
+            raise
         except (ConnectionError, StopIteration, OSError, RuntimeError,
                 urllib.error.URLError) as e:
             cls.tearDownClass()
             raise unittest.SkipTest("실브라우저 미검증 — %r" % e)
+        if unmeasured:
+            cls.tearDownClass()
+            raise AssertionError("판은 섰는데 재지 못했다: %s"
+                                 % ", ".join(unmeasured))
 
     @classmethod
     def await_(cls, expr):
         r = cls.ws.call("Runtime.evaluate", expression=expr,
                         returnByValue=True, awaitPromise=True)
         if r.get("exceptionDetails"):
-            raise ConnectionError("화면에서 터졌다 — %s" % json.dumps(
+            # 브라우저가 없어 못 재는 것(건너뛰기)과 판이 섰는데 계약이 안 지켜진
+            # 것(실패)은 다른 사실이다 — 뒤엣것을 건너뛰기로 접지 않는다
+            # (REQ-20260907-057).
+            raise AssertionError("화면에서 터졌다 — %s" % json.dumps(
                 r["exceptionDetails"], ensure_ascii=False)[:600])
         return r.get("result", {}).get("value")
 

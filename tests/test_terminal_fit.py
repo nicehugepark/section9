@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 ROOT = os.path.dirname(HERE)
 S9 = os.path.join(ROOT, "bin", "s9")
-from cdpreal import WS, chrome_path, reclaim  # noqa: E402
+from cdpreal import WS, chrome_path, reclaim, wait_ready  # noqa: E402
 from portpool import free_port, wait_server  # noqa: E402
 
 
@@ -65,17 +65,10 @@ class TerminalFit(unittest.TestCase):
             pages = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/json/list" % cdp, timeout=10).read())
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
-            for _ in range(200):
-                # 판의 높이는 내 화면 설정(skin·tone·density)이 정하고, 그 설정은
-                # 신원과 사용자 목록이 **둘 다** 온 뒤에야 applyMyUI 가 입힌다 —
-                # 신호만 보고 재면 설정이 입혀지는 도중을 잰다
-                # (REQ-20260907-057 · DOC-20260907-003).
-                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
-                               "window.__users && document.getElementById('cc-root'))"):
-                    break
-                time.sleep(0.25)
-            else:
-                raise ConnectionError("터미널 판이 서지 않았다")
+            # 판의 높이는 내 화면 설정(skin·tone·density)이 정하고, 그 설정은
+            # 신원과 사용자 목록이 **둘 다** 온 뒤에야 applyMyUI 가 입힌다
+            # (web/app/boot.js) — 둘을 이름으로 적어 기다린다 (REQ-20260907-057).
+            wait_ready(cls.ws, needs=("whoami", "users"), sels="#cc-root")
         except (ConnectionError, StopIteration, OSError, RuntimeError, urllib.error.URLError) as e:
             cls.tearDownClass()
             raise unittest.SkipTest("실브라우저 미검증 — %r" % e)

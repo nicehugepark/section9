@@ -31,7 +31,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from cdpreal import WS, chrome_path, reclaim
+from cdpreal import WS, chrome_path, reclaim, wait_ready
 from portpool import free_port, wait_server
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -298,20 +298,12 @@ class TheTabLineHoldsAndOpens(unittest.TestCase):
                 "http://127.0.0.1:%d/json/list" % cdp, timeout=10).read())
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
-            for _ in range(200):
-                # 판이 섰다는 신호는 스크립트가 실린 시점에 서고, 이 시험이 재는
-                # 것(프로젝트 줄 · 렌즈의 표식)은 그 뒤 서버 왕복으로 오는 재료다 —
-                # 신원 · 사용자 목록 · 프로젝트 목록 · 그 목록에서 지은 렌즈 칸까지
-                # 이름으로 적어 기다린다 (REQ-20260907-057 · DOC-20260907-003).
-                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
-                               "window.__users && (window.__projects || []).length && "
-                               "(document.querySelector('#f-project') || {options: []})"
-                               ".options.length > 1 && "
-                               "document.querySelector('#view .col,#view .docs'))"):
-                    break
-                time.sleep(0.25)
-            else:
-                raise ConnectionError("대시보드가 판을 세우지 못했다")
+            # 재는 것(프로젝트 줄 · 렌즈의 표식)이 서버에서 오는 재료다 —
+            # 신원 · 사용자 목록 · 프로젝트 목록과, 그 목록으로 짓는 렌즈 칸
+            # (옵션이 둘 이상)까지 이름으로 적어 기다린다 (REQ-20260907-057).
+            wait_ready(cls.ws, needs=("whoami", "users", "projects"),
+                       sels=("#view .col,#view .docs",
+                             "#f-project option + option"))
             cls.out = {}
             for w in (1440, 1280, 900):
                 cls.ws.call("Emulation.setDeviceMetricsOverride", width=w,

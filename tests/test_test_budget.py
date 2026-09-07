@@ -84,6 +84,52 @@ def read_budget(path=None):
         return None
 
 
+class TheReadySignalIsMadeInOnePlace(unittest.TestCase):
+    """실브라우저 시험은 준비 신호를 제 손으로 짓지 않는다 (REQ-20260907-057).
+
+    판이 섰다는 신호는 스크립트가 실린 시점에 서고, 화면이 서버에서 받아 오는
+    재료는 그 뒤 왕복으로 온다 — 그 틈이 병렬 실행에서 벌어져 **전체 실행에서만
+    나는 간헐 실패**가 됐다(DOC-20260907-003). 파일마다 신호를 손으로 지으면 그
+    틈을 파일마다 다시 발견하게 되므로, 신호는 `cdpreal.wait_ready` 한 자리에서
+    짓는다. 여기서 막는 것은 **말없이 한 벌 더 생기는 것**이다 — 정말 달라야 할
+    파일은 `cdpreal.HANDMADE_READY_OK` 에 사유를 적고 서면 된다.
+
+    이 가드가 이 파일에 사는 까닭: 「없음을 증명하는」 계약은 부를 수가 없어
+    소스를 봐야 하고, 그런 계약은 새 파일을 세우지 말고 이미 있는 파일 안에서
+    늘리라는 것이 이 파일 머리의 규율이다.
+    """
+
+    def test_the_ready_signal_is_made_in_one_place(self):
+        """준비 신호를 손으로 짓는 실브라우저 시험은 허용 목록에만 있다."""
+        import cdpreal
+        # 찾는 글자를 그대로 적으면 찾는 쪽이 먼저 걸린다 — 이름을 쪼개 둔다.
+        needle = "__S9_APP" + "_READY"
+        hand = []
+        for name in sorted(os.listdir(HERE)):
+            if not (name.startswith("test_") and name.endswith(".py")):
+                continue
+            with open(os.path.join(HERE, name), encoding="utf-8") as f:
+                body = f.read()
+            # 실브라우저 시험 = 공용 CDP 헬퍼를 쓰는 파일. web/ 이 그 신호를
+            # 내보내는지 보는 시험은 신호를 기다리는 것이 아니라 계약을 보는
+            # 것이라 여기 해당하지 않는다.
+            if "cdpreal" in body and needle in body:
+                hand.append(name)
+        allowed = cdpreal.HANDMADE_READY_OK
+        self.assertEqual(
+            [n for n in hand if n not in allowed], [],
+            "준비 신호를 제 손으로 짓는 실브라우저 시험이 있다 — "
+            "cdpreal.wait_ready(needs=…, sels=…) 로 옮기거나, 정말 달라야 하면 "
+            "cdpreal.HANDMADE_READY_OK 에 사유를 적어라")
+        for name, why in allowed.items():
+            self.assertTrue(str(why).strip(),
+                            "허용 목록의 %s 에 사유가 없다 — 사유 없는 예외는 "
+                            "다음 사람이 판정할 수 없다" % name)
+            self.assertIn(name, hand,
+                          "허용 목록의 %s 는 이제 손으로 안 짓는다 — 줄에서 빼라"
+                          % name)
+
+
 class TestBudget(unittest.TestCase):
     def test_the_source_string_contracts_do_not_grow(self):
         """라쳇 — 소스 글자 계약 파일은 줄어들 수는 있어도 늘 수 없다."""

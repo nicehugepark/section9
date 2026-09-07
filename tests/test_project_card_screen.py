@@ -28,7 +28,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from cdpreal import WS, chrome_path, reclaim
+from cdpreal import WS, chrome_path, reclaim, wait_ready
 from portpool import free_port, wait_server
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -124,7 +124,7 @@ FACES = r"""
 
      신원은 여기서 **고정한다.** 종전엔 화면이 받아 둔 whoami 에 기대
      (`viewMe() || '__nobody__'`) 멤버 목록을 지었는데, /api/whoami 는 스크립트가
-     다 실린 뒤에 오는 비동기 응답이라 판이 섰다는 신호(__S9_APP_READY)보다 늦을
+     다 실린 뒤에 오는 비동기 응답이라 판이 섰다는 신호보다 늦을
      수 있다. 병렬 전체 실행에서 실제로 늦었고, 그때 이 블록의 me 는
      '__nobody__' 인데 projectPick 안의 viewMe() 는 '' 이라 멤버가 한 건도 안 맞아
      목록이 「지금 이것」 하나로 줄었다 — 단독 실행만 통과하던
@@ -239,15 +239,9 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
                 "http://127.0.0.1:%d/json/list" % cdp, timeout=10).read())
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
-            for _ in range(200):
-                # whoami 까지 기다린다 — 판이 섰다는 신호만으로는 신원이
-                # 아직 안 왔을 수 있고, 그 위에서 재면 조용히 다른 것을 잰다.
-                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
-                               "document.querySelector('#f-project'))"):
-                    break
-                time.sleep(0.25)
-            else:
-                raise ConnectionError("대시보드가 판을 세우지 못했다")
+            # 창의 목록 판정이 신원 위에 서므로 신원까지 기다린다 — 판이
+            # 섰다는 신호만으로 재면 조용히 다른 것을 잰다 (REQ-20260907-055).
+            wait_ready(cls.ws, needs=("whoami",), sels="#f-project")
             cls.filter = cls.await_(FILTER)
             cls.faces = cls.await_(FACES)
             cls.refuse = cls.await_(REFUSE)
