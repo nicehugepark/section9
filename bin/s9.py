@@ -1317,11 +1317,45 @@ def locate(doc_id):
             return p
     if cands:
         return None  # 모호(2건+) — 잘못 집지 않는다. find_path가 후보를 보여준다
-    for p in walk_docs():  # catalog가 낡았을 때 fallback
+    # catalog 가 낡았을 때의 fallback — 두 걸음이다.
+    # ① 이름으로: 값싸다(읽지 않는다). 대부분의 문서가 <id>.md 나 <id>-… 이다.
+    # ② 이름에 id 가 없는 파일만 열어 프론트매터 `id:` 를 본다 (REQ-20260907-060).
+    #    프로젝트 문서는 이름이 slug(`section9.md`)라 ①에 안 걸리고, 그래서 이 문서를
+    #    id 로 여는 길이 catalog 한 벌뿐이었다 — catalog 가 없는 자리(worktree·새
+    #    시험 루트)에서는 문서가 있어도 없다고 답했다. fallback 이 「이름 관행」에
+    #    기대면 fallback 이 아니다: 진실은 파일 안의 `id:` 다.
+    #    같은 id 가 둘이면 None — 모호함은 위 catalog 갈래와 같은 답이다.
+    unnamed = []
+    for p in walk_docs():
         bn = os.path.basename(p)
         if bn == doc_id + ".md" or bn.startswith(doc_id + "-"):
             return p
-    return None
+        if not _ID_SHAPED_NAME.match(bn):
+            unnamed.append(p)
+    hits = [p for p in unnamed if _frontmatter_id(p) == doc_id]
+    return hits[0] if len(hits) == 1 else None
+
+
+# 파일 이름이 문서 id 꼴인가 — 이런 파일은 이름이 곧 id 라 열어 읽을 필요가 없다.
+_ID_SHAPED_NAME = re.compile(r"^[A-Z]{3}-\d{8}-")
+
+
+def _frontmatter_id(path, limit=40):
+    """파일 앞머리 프론트매터의 `id:` — 없거나 못 읽으면 ""."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            first = f.readline()
+            if first.strip() != "---":
+                return ""
+            for _ in range(limit):
+                ln = f.readline()
+                if not ln or ln.strip() == "---":
+                    break
+                if ln.startswith("id:"):
+                    return ln[3:].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
 
 
 def find_path(doc_id):
