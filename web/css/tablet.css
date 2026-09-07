@@ -161,4 +161,16 @@
   .lineage{word-break:keep-all;gap:5px 12px}
   .lineage .lincell{min-width:auto}
   .lineage .doclink{white-space:nowrap}
+
+  /* ── 헤더 첫 줄이 화면 밖으로 밀리지 않게 (REQ-20260906-101) ──
+     브랜드와 탭은 줄지 않는 항목이라(header.css) 768 폭에서 탭 여덟이 화면 폭을
+     넘으면 그 뒤의 서버 상태 칩이 잘린다 — 실제 Safari(글꼴 폭이 넓다)에서
+     드러났고 Chrome 도 여유가 20px 뿐이었다. 접힌다: 줄이 모자라면 탭이 다음
+     줄로 내려오고, 칩도 제 줄을 얻는다(비어 있으면 :empty 라 자리도 없다).
+     탭의 좌우 안여백은 줄여 접히는 일 자체를 드물게 한다 — `[data-skin]` 을
+     붙이는 것은 calm 의 `[data-skin="calm"] .tabs button` 과 같은 급을 만들려는
+     것이고, 이 파일이 뒤에 서므로 같은 급이면 이긴다. */
+  .hrow1{flex-wrap:wrap;gap:0 14px}
+  .tabs{flex:0 1 auto;flex-wrap:wrap}
+  .tabs button,[data-skin] .tabs button{padding-left:9px;padding-right:9px}
 }
