@@ -137,17 +137,48 @@ async function renderStream(){
     $("#view").innerHTML = `<div class="streamwrap"><div class="term"><span class="meta">세션 목록을 받지 못했습니다 — 잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.</span></div></div>`;
     return;
   }
+  /* 목록의 이름과 문서의 이름을 맞춘다 (REQ-20260907-031).
+
+     `/api/streams` 는 파일 이름 그대로 36자 전체 세션 id 를 주는데, SES 문서의
+     `session` 은 8자 앞머리다(vault 194건 전부). 그래서 `sesDocs[s.session]` 은
+     76행 중 75행에서 빗나갔고, 화면에는 「(SES 문서 없음)」이 열 줄 넘게 섰다 —
+     문서가 없어서가 아니라 **다른 이름으로 찾아서** 못 찾은 것이다. 8자 앞머리는
+     이 저장소가 세션을 부르는 이름이기도 하다(`S9_SESSION=7e6f58fb`, 바인딩
+     파일 이름, SES 제목). 찾을 때도 보여줄 때도 그 이름을 쓴다. */
   const sesDocs = Object.fromEntries(
-    catalog.filter(r => r.type === "session").map(r => [r.session, r]));
-  $("#count").textContent = `세션 기록 ${data.streams.length}건 · 시간은 서버 시간대`;
-  const list = data.streams.map(s => {
-    const d = sesDocs[s.session];
+    catalog.filter(r => r.type === "session")
+      .map(r => [String(r.session || "").slice(0, 8), r]));
+  const rows = data.streams.map(s => {
+    const d = sesDocs[s.session.slice(0, 8)];
+    return {s, d, when: fmtWhen(s.mtime),
+            where: d ? String(d.machine || "") : ""};
+  });
+  /* 76행이 모두 같은 컴퓨터면 그 이름을 76번 적지 않는다 — 장부의 관행이고
+     s9-design 표 절 8 의 꼬리다: 값이 하나로 묶이면 칸째 접고 그 값을 목록 밖
+     한 곳에 한 번 적는다. 컴퓨터가 둘 이상 섞인 vault 에서는 칸이 돌아온다. */
+  const wheres = [...new Set(rows.map(r => r.where))];
+  const only = wheres.length === 1 ? wheres[0] : null;
+  $("#count").textContent = `세션 기록 ${rows.length}건`
+    + (only === null ? "" : ` · ${only || "어느 컴퓨터인지 모릅니다"}`);
+  const list = rows.map(({s, d, when, where}) => {
+    /* 행의 제목은 **세션의 사실**이다. 문서 제목(「세션 7e6f58fb@DESKTOP-…」)을
+       그대로 쓰면 바로 윗줄의 세션 이름을 한 번 더 적는 것이라, 76행이 모두
+       같은 모양으로 읽힌다. 사람이 세션을 고를 때 쓰는 사실은 **언제**이고,
+       그 다음이 **어느 컴퓨터**다. 시각 서식은 이 저장소에 이미 한 벌 있으니
+       (`fmtWhen`) 두 번째를 만들지 않는다.
+
+       문서가 없는 행도 있는 행과 **같은 자리·같은 위계**로 선다 — 이름과 시각은
+       스트림 자신이 가진 사실이라 늘 차고, 모르는 것 하나(컴퓨터)만 「모름」으로
+       적는다. 문서가 없다는 사실은 목록의 글자가 아니라 툴팁 한 문장이 말한다(R6). */
+    const tip = d
+      ? `${when} 까지 ${where || "이 컴퓨터"} 에서 움직인 세션입니다`
+      : `${when} 까지 움직였고, 세션 문서가 없어 어느 컴퓨터인지 모릅니다`;
     return `<div class="row${s.session===selectedStream?" sel":""}" data-stream="${esc(s.session)}"
-      role="button" tabindex="-1" data-rove-item${s.session===selectedStream?' aria-current="true"':""}>
+      role="button" tabindex="-1" title="${esc(tip)}"${s.session===selectedStream?' aria-current="true"':""} data-rove-item>
       <span class="st">${fmtSize(s.size)}</span>
-      <div class="id">${esc(s.session)}</div>
-      <div>${esc(d ? d.title : "(SES 문서 없음)")}</div>
-      <div class="snip">${esc(s.mtime.slice(0,16).replace("T"," "))}</div></div>`;
+      <div class="id">${esc(s.session.slice(0, 8))}</div>
+      <div>${esc(when)}</div>${only === null
+        ? `\n      <div class="snip">${esc(where || "컴퓨터 모름")}</div>` : ""}</div>`;
   }).join("");
   $("#view").innerHTML = `<div class="streamwrap">
     <div class="doclist" data-rove role="group"
