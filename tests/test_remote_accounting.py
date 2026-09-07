@@ -7,9 +7,11 @@
 
 ① 준비 단계의 실패가 실행을 멈추지 않았다. 원격에서 도는 한 줄이
    `cd $D && git fetch … && … ;` 였는데, `set -e` 는 AND-OR 리스트의 **마지막이
-   아닌** 명령의 실패를 건너뛴다. fetch 가 「Repository not found」로 실패해도
-   셸은 다음 줄로 가서, 원격 clone 에 이미 펴져 있던 **옛 커밋**으로 시험을 돌고
-   종료 코드 0 을 냈다.
+   아닌** 명령의 실패를 건너뛴다. 커밋 받기가 실패해도 셸은 다음 줄로 가서,
+   원격에 이미 펴져 있던 **옛 커밋**으로 시험을 돌고 종료 코드 0 을 냈다.
+   (REQ-20260907-049: 그 받기가 왜 늘 실패했는지는 원격의 열쇠가 다른 저장소의
+   deploy key 였기 때문이고, 이제 커밋은 GitHub 을 거치지 않고 ssh 통로로 오는
+   bundle 로 곧장 온다 — 아래 시험은 그 통로에서 같은 계약을 잰다.)
 ② 무엇이 실제로 돌았는지 아무도 세지 않았다. 원격에는 파일 이름을 패턴으로
    넘기는데, 원격 나무에 없는 이름은 조용히 빠진다. 그런데 병렬 갈래에는
    「고르지 못한 패턴」검사가 없었고, 이 머신이 보고한 「356파일」은 원격이 돈
@@ -32,8 +34,7 @@ FAKE_GIT = """#!/bin/sh
 case "$1" in
   fetch)
     if [ -n "$FAKE_FETCH_FAIL" ]; then
-      echo "ERROR: Repository not found." >&2
-      echo "fatal: Could not read from remote repository." >&2
+      echo "fatal: '$2' does not look like a v2 bundle file" >&2
       exit 128
     fi
     exit 0 ;;
@@ -78,20 +79,18 @@ class RemoteScriptStopsOnPrepFailure(unittest.TestCase):
         env["FAKE_HEAD"] = SHA
         env.update(env_extra)
         script = remote_run.remote_script(
-            "https://example.invalid/r.git", SHA,
-            os.path.join(self.tmp, "clone"), 16, ["test_a.py"])
+            SHA, os.path.join(self.tmp, "clone"), 16, ["test_a.py"])
         p = subprocess.run(["sh", "-c", script], env=env, capture_output=True,
-                           text=True, timeout=60)
+                           text=True, timeout=60, input="fake bundle bytes")
         return p, os.path.exists(mark)
 
-    def test_fetch_failure_never_reaches_the_tests(self):
-        """R1. fetch 가 실패하면 시험이 아예 시작되지 않고 종료 코드가 남는다."""
+    def test_receiving_the_commit_fails_and_never_reaches_the_tests(self):
+        """R1. 커밋을 못 받으면 시험이 아예 시작되지 않고 종료 코드가 남는다."""
         p, ran = self._run(FAKE_FETCH_FAIL="1")
-        self.assertFalse(ran, "fetch 가 실패했는데 옛 나무로 시험을 돌았다 "
+        self.assertFalse(ran, "커밋을 못 받았는데 옛 나무로 시험을 돌았다 "
                               "— cd166cc 가 「전체 통과」라고 말한 그 경로다")
         self.assertNotEqual(p.returncode, 0, "준비 실패가 종료 코드 0 으로 나왔다")
-        self.assertEqual(p.returncode, 93, "fetch 실패는 93 으로 구분된다")
-        self.assertIn("Repository not found", p.stderr)
+        self.assertEqual(p.returncode, 93, "받기 실패는 93 으로 구분된다")
 
     def test_checked_out_commit_is_verified(self):
         """R2. 편 커밋이 요청한 커밋이 아니면 시험까지 가지 않는다."""
@@ -99,6 +98,13 @@ class RemoteScriptStopsOnPrepFailure(unittest.TestCase):
         self.assertFalse(ran, "요청과 다른 커밋으로 시험을 돌았다")
         self.assertEqual(p.returncode, 96)
         self.assertIn("편 커밋이 다르다", p.stderr)
+
+    def test_the_commit_never_travels_through_github(self):
+        """R3b. 커밋 전달에 GitHub 이 끼지 않는다 — 원격은 표준 입력으로 받는다."""
+        script = remote_run.remote_script(SHA, "/tmp/x", 16, ["test_a.py"])
+        self.assertNotIn("github", script.lower())
+        self.assertNotIn("origin", script)
+        self.assertIn("cat > ", script)
 
     def test_healthy_preparation_reaches_the_tests(self):
         """R3. 대조군 — 준비가 정상이면 시험 명령까지 간다."""
@@ -122,10 +128,11 @@ class RunRemoteCountsWhatActuallyRan(unittest.TestCase):
         def fake_git(*args):
             # `-C <repo>` 가 앞에 붙는 호출이 있어 동사를 찾아 가른다.
             out = ""
-            if "rev-parse" in args:
+            if "bundle" in args:
+                with open(args[2], "wb") as f:   # bundle create <경로> …
+                    f.write(b"fake")
+            elif "rev-parse" in args:
                 out = SHA
-            elif "remote" in args:
-                out = "https://example.invalid/r.git"
             return subprocess.CompletedProcess([], 0, out, "")
 
         real_ssh, real_git = remote_run._ssh, remote_run._git

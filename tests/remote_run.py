@@ -1,20 +1,29 @@
-"""전체 스위트를 원격 머신에서 (REQ-20260905-012).
+"""전체 스위트를 원격 머신에서 (REQ-20260905-012 · REQ-20260907-049).
 
 이 머신(WSL)에서 전체를 돌리면 4~13분이 걸리고 중계 계열 간헐 실패(REQ-20260905-007)
-가 절반을 붉게 한다. 원격 리눅스(48코어)라면 둘 다 없다. 접속 정보는 외부 비밀
-`relay1` 같은 **ssh 연결 명령어**이고, 값은 여기서 읽지 않는다 — `s9 secret run` 의
+가 절반을 실패로 만든다. 원격 리눅스(48코어)라면 둘 다 없다. 접속 정보는 외부 비밀
+(**ssh 연결 명령어**)이고 값은 여기서 읽지 않는다 — `s9 secret run` 의
 `{{secret:KEY}}` 치환으로만 쓴다(값은 프로세스 인자로만 지나가고 기록에 남지 않는다).
 
-흐름(동기화의 축은 GitHub 이다 — 사용자 지적 2026-09-05): ① 이 머신의 HEAD 를
-`refs/ci/<sha7>` 로 origin 에 push 한다 ② 원격은 같은 origin 의 clone(없으면 만든다)
-에서 그 ref 를 받아 그 커밋을 펴고 `python3 tests/ --jobs N` 을 돌린다 — 출력은
-그대로 흘려보낸다 ③ 종료 코드가 0 이고 이 머신에 미커밋 변경이 없었으면 HEAD 의
-나무 지문으로 통과 기록을 남긴다 — 커밋 문·재사용이 그대로 인정한다. 미커밋
-변경은 원격에 실리지 않는다(돌긴 돌되 통과 기록은 안 남긴다).
+흐름: ① 원격이 이미 가진 커밋을 묻는다 ② 그 뒤부터 HEAD 까지의 증분을 `git bundle`
+로 만들어 **ssh 통로로 곧장** 건넨다 ③ 원격은 그것을 받아 그 커밋을 펴고, 편 커밋이
+요청한 커밋인지 되물어 확인한 뒤 `python3 tests/ --jobs N` 을 돈다 — 출력은 그대로
+흘려보낸다 ④ 종료 코드가 0 이고, 원격이 센 파일 수가 요청한 수와 같고, 이 머신에
+미커밋 변경이 없었으면 HEAD 의 나무 지문으로 통과 기록을 남긴다. 미커밋 변경은
+원격에 실리지 않는다(돌긴 돌되 통과 기록은 안 남긴다).
+
+**GitHub 을 거치지 않는다** (REQ-20260907-049 에서 바뀐 자리). 원래는 이 머신이
+`refs/ci/<sha7>` 로 origin 에 push 하고 원격이 같은 origin 에서 그것을 받았다
+(「동기화의 축은 GitHub」, 2026-09-05). 그런데 원격의 열쇠는 **다른 저장소의 deploy
+key** 라 GitHub 이 `ERROR: Repository not found.` 로 답했고 — 권한 없는 열쇠에는
+없는 저장소처럼 답한다 — 원격 작업자리는 2026-09-06 14:46 커밋에 하루 내내 멈춰
+있었다. 이 머신은 이미 그 커밋을 갖고 있으니 남을 거쳐 다시 받을 이유가 없다.
+저장소 자체의 GitHub 동기화는 그대로다; 바뀐 것은 **시험용 커밋 전달 통로** 하나다.
 """
 import os
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -106,33 +115,43 @@ def head_state(repo=None, skip=FP_SKIP):
     return sha, len(dirty)
 
 
-def remote_script(url, sha, dest, jobs, pats_argv, user=""):
-    """원격에서 돌 한 줄 — clone(없으면) → ci ref fetch → 그 커밋으로 → index → 시험.
+def probe_script(dest):
+    """원격이 이미 가진 커밋을 한 줄로 묻는다 — 증분 bundle 을 만들 재료."""
+    return (f"D={dest}; "
+            f'if [ -d "$D/.git" ]; then '
+            f'echo "{HAVE_MARK}$(git -C "$D" rev-parse HEAD 2>/dev/null || echo none)"; '
+            f'else echo "{HAVE_MARK}none"; fi')
 
-    GitHub 이 동기화의 축이다(사용자 지적 2026-09-05): 이 머신은 HEAD 를
-    `refs/ci/<sha7>` 로 push 하고, 원격은 같은 origin 에서 그것을 받아 그 커밋을
-    편다 — 보내고 말고가 없고, 원격은 언제나 진짜 git 저장소다.
+
+def remote_script(sha, dest, jobs, pats_argv, user=""):
+    """원격에서 돌 한 줄 — bundle 받기 → 그 커밋으로 펴기 → 확인 → 시험.
+
+    **GitHub 을 거치지 않는다** (REQ-20260907-049). 예전에는 이 머신이 HEAD 를
+    `refs/ci/<sha7>` 로 origin 에 push 하고 원격이 같은 origin 에서 그것을 받았는데,
+    원격의 열쇠는 **다른 저장소의 deploy key** 라 GitHub 이 `ERROR: Repository not
+    found.` 로 답했다(권한 없는 열쇠에는 없는 저장소처럼 답한다). 실측 2026-09-07:
+    원격 작업자리는 2026-09-06 14:46 의 커밋(시험 338개)에 **하루 내내 멈춰** 있었고,
+    준비 실패가 실행을 멈추지 못하던 때에는 그 옛 나무의 결과가 「전체 통과」로 나왔다.
+    이 머신은 이미 그 커밋을 갖고 있다 — 남을 거쳐 다시 받을 이유가 없다. 커밋은
+    ssh 통로로 bundle 을 흘려 **직접** 건넨다(하루치 증분 20MB, 전체는 첫 회만).
+
+    준비 단계는 `|| exit` 로 하나씩 막는다 — `set -e` 는 AND-OR 리스트의 마지막이
+    아닌 명령의 실패를 건너뛴다(REQ-20260907-047). 편 뒤에는 HEAD 를 되물어 확인한다.
     """
     short = sha[:7]
     # 정체는 환경변수로 강제하지 않는다 — S9_USER 를 실행 전체에 걸면 제 사용자를
     # 만드는 시험 30여 건이 그 값을 물려받아 실패한다(실측 2026-09-05, 34건). 대신
-    # 원격 OS 계정을 이 머신의 사용자에게 **attach** 해 둔다 — 그러면 whoami 가
-    # os-account 로 그 사람을 찾고, 관리자만 보는 손잡이를 재는 시험도 선다.
+    # 원격 OS 계정을 이 머신의 사용자에게 **attach** 해 둔다.
     attach = (f"S9_ROOT=$D python3 bin/s9 user attach {_sh_quote(user)} >/dev/null 2>&1 || true; "
               if user else "")
     pats = " ".join(_sh_quote(a) for a in pats_argv)
-    # 준비 단계는 **하나씩** `|| exit` 로 막는다 — `set -e` 를 믿으면 안 된다.
-    # 실측 2026-09-07 (cd166cc, REQ-20260907-047): `cd $D && git fetch && ... ;` 에서
-    # fetch 가 「Repository not found」로 실패했는데, set -e 는 AND-OR 리스트의
-    # **마지막이 아닌** 명령의 실패를 건너뛴다. 셸은 그대로 다음 줄로 가서 원격
-    # clone 에 이미 펴져 있던 **옛 커밋**으로 시험을 돌았고, rc 0 → 「전체 통과」로
-    # 보고됐다. 그 커밋의 시험 하나(test_wake_handle.py)는 실제로는 실패였다.
-    # 편 뒤에는 HEAD 가 정말 그 커밋인지 **다시 물어** 확인한다 — 「폈다고 말한 것」과
-    # 「펴져 있는 것」은 다른 사실이다.
-    return (f"set -e; D={dest}; "
-            f"if [ ! -d $D/.git ]; then git clone -q {_sh_quote(url)} $D || exit 91; fi; "
-            f"cd $D || exit 92; "
-            f"git fetch -q origin +refs/ci/{short}:refs/ci/{short} || exit 93; "
+    return (f"set -e; D={dest}; B=$D.s9ci-{short}.bundle; "
+            f'mkdir -p "$(dirname "$D")" || exit 90; '
+            f'cat > "$B" || exit 90; '
+            f'if [ ! -d "$D/.git" ]; then git init -q "$D" || exit 91; fi; '
+            f'cd "$D" || exit 92; '
+            f'git fetch -q "$B" HEAD:refs/ci/{short} || exit 93; '
+            f'rm -f "$B"; '
             f"git checkout -q -f {sha} || exit 94; "
             f"git clean -qfd || exit 95; "
             f'have=$(git rev-parse HEAD 2>/dev/null); '
@@ -146,10 +165,13 @@ def remote_script(url, sha, dest, jobs, pats_argv, user=""):
 RC_MARK = "__S9_REMOTE_RC="
 RED_MARK = "__S9_FULL_RED="       # 원격 러너가 끝에 찍는 실패 파일 목록 (async_notify 와 같은 글자)
 RAN_MARK = "__S9_RAN="            # 원격 러너가 끝에 찍는 **셈에 든 파일 수** (돈 것 + 격리한 것)
-PREP_RC = {91: "clone 실패", 92: "작업자리로 못 들어감", 93: "fetch 실패",
-           94: "펴기(checkout) 실패", 95: "clean 실패", 96: "편 커밋이 요청과 다름"}
+HAVE_MARK = "__S9_HAVE="          # 원격이 이미 가진 커밋 (증분 bundle 의 기준점)
+PREP_RC = {90: "커밋 꾸러미(bundle)를 못 받음", 91: "작업자리를 못 만듦",
+           92: "작업자리로 못 들어감", 93: "커밋 꾸러미에서 못 받음",
+           94: "펴기 실패", 95: "clean 실패", 96: "편 커밋이 요청과 다름"}
 LAST_RED = []                     # 마지막 run_remote 가 걷은 실패 파일
 LAST_RAN = None                   # 원격이 실제로 센 파일 수 (표식을 못 받았으면 None)
+LAST_HAVE = None                  # 원격이 이미 가진 커밋 (probe 가 채운다)
 LAST_TOOK = 0.0                   # 마지막 run_remote 의 소요(초)
 
 
@@ -176,6 +198,10 @@ def _ssh(key, remote_cmd, stdin=None, stream=True, timeout=None):
             continue
         if line.startswith(RED_MARK):
             LAST_RED[:] = line[len(RED_MARK):].split()
+            continue
+        if line.startswith(HAVE_MARK):
+            global LAST_HAVE
+            LAST_HAVE = line[len(HAVE_MARK):].strip() or None
             continue
         if line.startswith(RAN_MARK):
             global LAST_RAN
@@ -210,34 +236,53 @@ def _sh_quote(s):
 
 def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=None,
                on_red=None):
-    """push(ci ref) → 원격이 받아 실행 → 기록. 반환: 원격 종료 코드.
+    """원격이 가진 커밋을 묻고 → 증분 bundle 을 ssh 로 건네고 → 원격이 돈다.
+
+    반환: 원격 종료 코드 (준비 실패는 PREP_RC 의 코드로 구분된다).
 
     미커밋 변경이 있으면 돌리되 **통과 기록은 남기지 않는다** — 그 지문은 원격이
     돈 나무의 것이 아니다.
     """
-    global LAST_RAN
+    global LAST_RAN, LAST_HAVE
     LAST_RED[:] = []
     LAST_RAN = None
+    LAST_HAVE = None
     name = name or os.path.basename(REPO)
     dest = f"{REMOTE_DIR}/{name}"
-    url = _git("remote", "get-url", "origin").stdout.strip()
     sha, dirty = head_state()
-    if not url or not sha:
-        print("[원격] origin 이나 HEAD 가 없다 — git 저장소에서만 원격으로 간다", file=sys.stderr)
+    if not sha:
+        print("[원격] HEAD 가 없다 — git 저장소에서만 원격으로 간다", file=sys.stderr)
         return 1
     if dirty:
         print(f"[원격] 미커밋 변경 {dirty}개는 원격에 실리지 않는다 — HEAD {sha[:7]} 를 돈다. "
               f"통과 기록은 남기지 않는다(commit 뒤 다시 돌면 남는다)", file=sys.stderr)
     t0 = time.time()
-    r = _git("push", "-q", "-f", "origin", f"HEAD:refs/ci/{sha[:7]}")
-    if r.returncode != 0:
-        print(f"[원격] push 실패: {r.stderr.strip()[:200]}", file=sys.stderr)
+    # ① 원격이 이미 가진 커밋을 묻는다 → ② 그 뒤부터의 증분만 bundle 로 만든다.
+    _ssh(key, probe_script(dest), stream=False, timeout=180)
+    base = LAST_HAVE if (LAST_HAVE and LAST_HAVE != "none") else None
+    if base and _git("cat-file", "-e", base + "^{commit}").returncode != 0:
+        base = None                       # 이 머신이 모르는 커밋이면 기준점으로 못 쓴다
+    bundle = os.path.join(tempfile.gettempdir(), f"s9ci-{sha[:7]}-{os.getpid()}.bundle")
+    args = ["bundle", "create", bundle, "HEAD"] + ([f"^{base}"] if base else [])
+    b = _git(*args)
+    if b.returncode != 0 or not os.path.exists(bundle):
+        print(f"[원격] 커밋 꾸러미(bundle)를 못 만들었다: {b.stderr.strip()[:200]}",
+              file=sys.stderr)
         return 1
-    print(f"[원격] {key}: {sha[:7]} 을 refs/ci 로 push 했다 ({time.time() - t0:.0f}초). "
+    size_mb = os.path.getsize(bundle) / 1e6
+    print(f"[원격] {key}: {sha[:7]} 을 ssh 로 곧장 건넨다 "
+          f"({'증분 ' + base[:7] + '→' if base else '전체 '}{size_mb:.0f}MB). "
           f"원격이 받아 돈다: python3 tests/ --jobs {jobs} {' '.join(pats_argv)[:80]}",
           file=sys.stderr)
-    r = _ssh(key, remote_script(url, sha, dest, jobs, pats_argv, user=_local_user()),
-             stream=True, timeout=3600)
+    try:
+        with open(bundle, "rb") as fh:
+            r = _ssh(key, remote_script(sha, dest, jobs, pats_argv, user=_local_user()),
+                     stdin=fh, stream=True, timeout=3600)
+    finally:
+        try:
+            os.remove(bundle)
+        except OSError:
+            pass
     took = time.time() - t0
     global LAST_TOOK
     LAST_TOOK = took
