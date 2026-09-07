@@ -173,3 +173,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-06T14:09:06+09:00 처음 본 머신 seongjinpark@Seongjinui-Macmini.local (macOS)
 - 2026-09-07T13:52:58+09:00 config ui_skin=slate (by nicehugepark via dashboard)
 - 2026-09-07T13:54:23+09:00 config ui_skin=soft (by nicehugepark via dashboard)
+- 2026-09-07T14:00:30+09:00 config ui_skin=ledger (by nicehugepark via dashboard)

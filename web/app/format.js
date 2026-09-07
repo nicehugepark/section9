@@ -114,27 +114,32 @@ function isDarkTheme(){
 // 저장 우선순위: me(등록 사용자)의 user config > localStorage > 기본값.
 // → 로그인한 사용자는 어느 머신에서든 자기 설정이 따라온다.
 const UI_DIMS = [
-  {key:"s9skin", attr:"skin", cfg:"ui_skin", def:"ledger", label:"skin — 디자인 언어",
-   opts:[["ledger","ledger · 장부 — 선으로 나눈 계기판 (기본)"],
-         ["calm","calm · 여백과 카드 — 떠 있는 카드, 넓은 여백"],
-         ["soft","soft · 사이드바 — 좌측 세로 탭 앱 셸"],
-         ["glass","glass · 유리 — 반투명 레이어와 블러"],
-         ["terminal","terminal · 모노 — 전면 고정폭, 인버스 강조"],
-         ["grid","grid · 그리드 — 고밀도 표형 배치"],
-         ["slate","slate · 슬레이트 — 밝은 SaaS 블루"],
-         ["cobalt","cobalt · 코발트 — 짙은 헤더 밴드"],
-         ["field","field · 필드 — 컬러 배경에 플랫 패널"],
-         ["cork","cork · 코르크 — 컬러 보드 위 카드"]]},
+  // 설명은 「이걸 고르면 화면이 어떻게 보이나」를 사람 말로만 적는다 (REQ-20260907-032).
+  // 업계 은어·영어 약자·값 이름의 음차(SaaS·뉴트럴·인버스·슬레이트·카본…)는 고르는 데
+  // 아무 도움이 안 된다 — 열 개가 서로 어떻게 다른지가 한 줄에서 갈려야 한다.
+  // 값(ledger·paper…)은 사람이 `s9 user config ui_skin ledger` 로 직접 치는 이름이라 불변.
+  // 길이는 48칸(한글 2칸)까지 — 넘으면 닫힌 선택 상자에서 설명이 잘려 나간다.
+  {key:"s9skin", attr:"skin", cfg:"ui_skin", def:"ledger", label:"skin — 모양과 배치",
+   opts:[["ledger","ledger · 선 — 선으로만 나눈 각진 화면 (기본)"],
+         ["calm","calm · 카드 — 넓은 여백에 둥근 카드가 떠 있다"],
+         ["soft","soft · 왼쪽 메뉴 — 탭이 왼쪽 세로줄에 선다"],
+         ["glass","glass · 반투명 — 판이 비치고 뒤가 흐려진다"],
+         ["terminal","terminal · 고정폭 글꼴 — 고르면 흑백이 뒤집힌다"],
+         ["grid","grid · 표 — 여백 없이 끝까지 채운 촘촘한 표"],
+         ["slate","slate · 회청 바탕 — 흰 판이 얹히고 강조는 파랑"],
+         ["cobalt","cobalt · 남색 띠 — 맨 위 띠만 짙고 아래는 밝다"],
+         ["field","field · 색 바탕 — 색이 크게 번지고 판은 납작하다"],
+         ["cork","cork · 보드 — 옅은 색 바탕에 회색 칸과 흰 카드"]]},
   {key:"s9theme", attr:"theme", cfg:"ui_tone", def:"system", label:"tone — 색",
-   opts:[["system","system · 자동 — OS 설정 따라감 (기본)"],
-         ["paper","paper · 종이 — 밝은 웜 그레이"],
-         ["mist","mist · 안개 — 밝은 회청, 파랑 강조"],
-         ["carbon","carbon · 카본 — 어두운 뉴트럴"],
-         ["graphite","graphite · 그래파이트 — 어두운 청회색"],
-         ["phosphor","phosphor · 인광 — CRT 그린"]]},
-  {key:"s9density", attr:"density", cfg:"ui_density", def:"normal", label:"density — 밀도",
-   opts:[["normal","normal · 보통 — 표준 여백 (기본)"],
-         ["compact","compact · 촘촘 — 여백을 줄여 더 많이"]]},
+   opts:[["system","system · 자동 — 컴퓨터 설정을 따라감 (기본)"],
+         ["paper","paper · 종이 — 밝음. 노란기 도는 바탕, 강조 검정"],
+         ["mist","mist · 회청 — 밝음. 푸른기 도는 바탕, 강조 파랑"],
+         ["carbon","carbon · 검정 — 어두움. 색기 없는 바탕에 흰 강조"],
+         ["graphite","graphite · 짙은 회청 — 어두움. 푸른기 도는 바탕"],
+         ["phosphor","phosphor · 초록 — 어두움. 검은 바탕에 초록 글자"]]},
+  {key:"s9density", attr:"density", cfg:"ui_density", def:"normal", label:"density — 여백",
+   opts:[["normal","normal · 보통 — 글자와 여백이 기본 크기 (기본)"],
+         ["compact","compact · 촘촘 — 여백을 줄여 더 많이 담는다"]]},
 ];
 
 // 개명된 skin의 저장값 구제 (localStorage·user config 공통). 제거된 skin은 아래 opts 검증에서 기본으로 폴백.

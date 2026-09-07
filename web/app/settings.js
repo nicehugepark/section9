@@ -96,7 +96,7 @@ function renderSettingsSection(meAdmin){
     v.innerHTML = `<h1 style="margin:0 0 4px">디스플레이</h1>
       <div class="path">${me ? `@${me} 계정에 저장 — 다른 기기에서도 적용됩니다.` : "미등록 계정 — s9 user add 로 등록하면 계정에 저장되어 기기 간 동기화됩니다. 지금은 이 브라우저에만 저장."}</div>
       <table class="metatbl">${rows}</table>
-      <div class="path">skin은 화면의 구조와 형태, tone은 색, density는 여백을 바꿉니다. 세 축은 자유롭게 조합되고 변경 즉시 적용됩니다.</div>`;
+      <div class="path">skin은 모양과 배치, tone은 색, density는 여백을 바꿉니다. 셋은 마음대로 섞어 쓸 수 있고, 고르면 바로 화면에 적용됩니다.</div>`;
     // 각 select에 change 바인딩 — render() 없이 값만 적용(재렌더로 select 파괴되던 버그 수정).
     // skin/density는 다른 탭 레이아웃에 영향 → Settings에 머무는 동안엔 즉시 CSS 반영으로 충분.
     v.querySelectorAll("select[data-dim]").forEach(sel => {
