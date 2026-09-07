@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -221,3 +222,61 @@ class AsyncResultNotify(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheReportNamesWhatActuallyRan(unittest.TestCase):
+    """알림이 가리키는 커밋은 거짓이 없어야 한다 (REQ-20260907-064).
+
+    post-commit 훅은 제가 잡은 커밋으로 로그 이름을 짓고 sha 를 넘기는데, 러너는
+    HEAD 를 새로 읽어 돈다. commit 훅이 노트를 자동 커밋하므로 코드 커밋 직후
+    HEAD 는 거의 언제나 한 칸 앞이다 — 「3fc7a5e 실패」라 알린 회차가 실제로는
+    1초 뒤의 f7230df 를 돌았다. 함수를 **불러서** 잰다(소스 글자 대조 없음).
+    """
+
+    def test_same_commit_is_said_once(self):
+        self.assertEqual(an.ran_label("3fc7a5e0", "3fc7a5e0abcdef"), "3fc7a5e")
+
+    def test_different_commits_are_both_said(self):
+        got = an.ran_label("3fc7a5e0", "f7230df0")
+        self.assertIn("3fc7a5e", got)
+        self.assertIn("f7230df", got)
+        self.assertIn("시작", got)
+        self.assertIn("돌았다", got)
+
+    def test_no_started_sha_hand_run_says_head_only(self):
+        # 사람이 손으로 돌린 실행 — 훅이 넘긴 시작 sha 가 없다
+        self.assertEqual(an.ran_label("", "f7230df0"), "f7230df")
+        self.assertEqual(an.ran_label(None, "f7230df0"), "f7230df")
+
+    def test_unknown_ran_sha_falls_back_to_started(self):
+        self.assertEqual(an.ran_label("3fc7a5e0", ""), "3fc7a5e")
+        self.assertEqual(an.ran_label("", ""), "head")
+
+    def test_long_and_short_forms_compare_as_one_commit(self):
+        # 7자로 왔든 40자로 왔든 같은 커밋이면 하나만 적는다
+        self.assertEqual(an.ran_label("3fc7a5e", "3fc7a5e0" + "0" * 32), "3fc7a5e")
+
+    def test_notify_message_carries_both_when_they_differ(self):
+        """문장 조립까지 — 사람이 읽는 [알림] 한 줄에 둘이 다 실리고,
+        로그·후속 요청을 잇는 sha 는 시작 커밋 그대로다."""
+        import contextlib
+        import io
+
+        class StubS9:
+            def chat_send(self, *a, **k):
+                return "sid1"
+
+        err = io.StringIO()
+        with mock.patch.object(an, "commit_req", lambda *a, **k: ""), \
+                mock.patch.object(an, "_load_s9", lambda root: StubS9()), \
+                mock.patch.object(an, "target_sessions", lambda s9, req: []), \
+                contextlib.redirect_stderr(err):
+            r = an.notify_full_result(True, [], 12.0, 361, where="원격 머신",
+                                      root=REPO, env={"S9_TESTS_ASYNC": "1",
+                                                      "S9_TESTS_ASYNC_SHA": "3fc7a5e0"},
+                                      ran_sha="f7230df0")
+        self.assertIsNotNone(r)
+        self.assertEqual(r.get("sha"), "3fc7a5e", "로그·후속 요청은 시작 sha 로 잇는다")
+        line = err.getvalue()
+        self.assertIn("3fc7a5e", line)
+        self.assertIn("f7230df", line, "실제로 돈 커밋이 알림에 없다 — 사람이 잘못된 커밋을 뒤진다")

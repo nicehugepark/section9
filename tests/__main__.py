@@ -1046,7 +1046,8 @@ def main():
             async_notify.notify_full_result(rc == 0, remote_run.LAST_RED,
                                             remote_run.LAST_TOOK,
                                             len(selected) if ran_n is None else ran_n,
-                                            where="원격 머신", env=notify_env)
+                                            where="원격 머신", env=notify_env,
+                                            ran_sha=remote_run.LAST_SHA)
         return rc
     # 스위트 안에서 러너를 또 띄우는 시험이 있다(test_runner_patterns·
     # test_tmp_hygiene). 그 안쪽 실행이 바깥 실행의 세계를 청소하면 안 된다 —
@@ -1211,7 +1212,8 @@ def main():
             if full_requested:
                 # 결과가 스스로 도착한다 (REQ-20260906-029) — 백그라운드 실행일 때만 움직인다
                 async_notify.notify_full_result(ok, LAST_RUN_RED, time.time() - t_start,
-                                                len(files), where="로컬", env=notify_env)
+                                                len(files), where="로컬", env=notify_env,
+                                                ran_sha=_git(REPO, "rev-parse", "HEAD") or "")
             return 0 if ok else 1
         # 로컬 서버에 두드리는 시험 전부에 되걸기를 입힌다 (REQ-20260904-003) —
         # 되걸기 없이 두드리는 파일이 15개였고, 실행마다 희생자가 바뀌었다.

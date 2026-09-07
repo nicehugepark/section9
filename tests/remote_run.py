@@ -177,6 +177,7 @@ LAST_RED = []                     # 마지막 run_remote 가 걷은 실패 파�
 LAST_RAN = None                   # 원격이 실제로 센 파일 수 (표식을 못 받았으면 None)
 LAST_HAVE = None                  # 원격이 이미 가진 커밋 (probe 가 채운다)
 LAST_TOOK = 0.0                   # 마지막 run_remote 의 소요(초)
+LAST_SHA = ""                     # 마지막 run_remote 가 **실제로 보낸** 커밋 (REQ-20260907-064)
 
 
 def _ssh(key, remote_cmd, stdin=None, stream=True, timeout=None):
@@ -254,6 +255,10 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     name = name or os.path.basename(REPO)
     dest = f"{REMOTE_DIR}/{name}"
     sha, dirty = head_state()
+    # 알림이 「어느 커밋의 결과인가」를 거짓 없이 말하려면 보낸 커밋을 알아야 한다.
+    # 훅이 넘긴 시작 sha 와 이것이 다르면 알림이 둘 다 적는다 (REQ-20260907-064).
+    global LAST_SHA
+    LAST_SHA = sha
     if not sha:
         print("[원격] HEAD 가 없다 — git 저장소에서만 원격으로 간다", file=sys.stderr)
         return 1

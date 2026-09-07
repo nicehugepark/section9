@@ -183,26 +183,52 @@ def _register_failure(root, sha, req, red, env):
     return new_id
 
 
+def ran_label(started, ran):
+    """알림이 가리킬 커밋 — 시작 커밋과 실제로 돈 커밋이 다르면 **둘 다** 말한다
+    (REQ-20260907-064).
+
+    post-commit 훅은 제가 잡은 그 커밋으로 로그 이름을 짓고 sha 를 넘기는데, 러너는
+    HEAD 를 새로 읽어 돈다. 그리고 commit 훅이 노트를 자동 커밋하므로 코드 커밋 직후
+    HEAD 는 거의 언제나 한 칸 앞이다 — 실측 2026-09-07 18:48, 「3fc7a5e 실패」라
+    알린 회차가 실제로는 1초 뒤의 f7230df 를 돌았다. 「3fc7a5e 실패」를 읽은 사람은
+    그 커밋을 뒤지지만 결과는 그 뒤 나무의 것이다.
+
+    사람이 알고 싶은 것은 「지금 나무가 성한가」이니 돈 것은 HEAD 가 맞다. 다만
+    보고가 어느 커밋의 결과인지는 거짓 없이 말해야 한다. 같으면 하나만 적는다."""
+    started = (started or "")[:7]
+    ran = (ran or "")[:7]
+    if not ran or ran == started:
+        return started or ran or "head"
+    if not started:
+        return ran
+    return f"{started} 로 시작 → {ran} 을 돌았다"
+
+
 def notify_full_result(ok, red=(), took=0.0, n_files=0, where="로컬", root=None,
-                       env=None, sha=None, req=None):
+                       env=None, sha=None, req=None, ran_sha=None):
     """전체 실행의 판정 직후 한 번. 반환: {"sha","req","sessions","new_req"} 또는
     비활성(S9_TESTS_ASYNC 없음)이면 None. 어느 한 갈래가 실패해도 나머지는 간다 —
-    알림이 러너의 종료 코드를 바꾸지 않는다."""
+    알림이 러너의 종료 코드를 바꾸지 않는다.
+
+    `sha` 는 시작 커밋(훅이 넘긴 것), `ran_sha` 는 실제로 돈 커밋(러너의 HEAD).
+    로그 파일 이름·후속 요청·REQ 노트는 시작 sha 로 잇는다 — 그것이 훅이 만든 자리다.
+    사람이 읽는 문장은 둘이 다르면 둘 다 말한다(ran_label)."""
     env = env if env is not None else os.environ
     if not active(env):
         return None
     root = root or REPO
     red = [f for f in red if f]
     sha = (sha or commit_sha7(root, env) or "head")[:7]
+    label = ran_label(sha, ran_sha)
     req = req if req is not None else commit_req(root, sha)
     secs = int(round(took))
     if ok:
-        inbox = f"[전체 테스트] {sha} 통과 · {n_files}파일 {secs}초"
-        note = f"전체 테스트 통과({where} {secs}초) — {sha} · {n_files}파일"
+        inbox = f"[전체 테스트] {label} 통과 · {n_files}파일 {secs}초"
+        note = f"전체 테스트 통과({where} {secs}초) — {label} · {n_files}파일"
     else:
         names = ", ".join(red) if red else "(실패 파일을 못 읽었다 — 로그를 보라)"
-        inbox = f"[전체 테스트] {sha} 실패 · {names} — 커밋 차단이 걸렸다"
-        note = (f"전체 테스트 실패({where} {secs}초) — {sha} · 실패: {names} — "
+        inbox = f"[전체 테스트] {label} 실패 · {names} — 커밋 차단이 걸렸다"
+        note = (f"전체 테스트 실패({where} {secs}초) — {label} · 실패: {names} — "
                 f"커밋 차단이 걸렸다(state/tests-last-red.json), "
                 f"로그 state/tests-async/{sha}.log")
     new_req = ""
