@@ -6461,7 +6461,9 @@ def cmd_secret(args):
     # `--` 를 argparse 가 먹으면서 첫 토큰이 위치 인자 key 로 새므로 되붙인다
     # (`s9 secret run -- sh -c …` 에서 sh 가 key 로 갔다).
     argv = ([args.key] if (args.key or "").strip() else []) + list(args.cmd or [])
-    if not argv:
+    # `--help`/`-h` 는 REMAINDER 가 명령으로 쓸어 담아 subprocess 가 '--help' 라는
+    # 파일을 찾다 traceback 을 냈다 (REQ-20260906-094). 도움말 요청은 실행이 아니다.
+    if not argv or argv[0] in ("--help", "-h"):
         die("usage: s9 secret run -- <명령> …   ({{secret:KEY}} 를 쓴다)")
     keys = secret_keys(user)
     used = []
@@ -20358,8 +20360,6 @@ def _shot_tune(url, wait):
                              if why else "")
 
 
-def cmd_shot(args):
-    """UI 검증용 스크린샷 — WSL이면 Windows Chrome을 headless로 구동해 PNG 생성.
 # `--engine webkit` (REQ-20260906-098): Safari 대체 경로. 리눅스 WebKit 은 root 권한의
 # 시스템 라이브러리가 필요해(REQ-20260906-093 실측) Windows 쪽 Playwright WebKit 을
 # 쓴다. 설치 자리는 장치 이름이 아니라 고정 폴더다.
@@ -20478,6 +20478,8 @@ def _shot_webkit(url, size, wait, out):
     print(out)
 
 
+def cmd_shot(args):
+    """UI 검증용 스크린샷 — WSL이면 Windows Chrome을 headless로 구동해 PNG 생성.
 
     browser-verify 스킬이 호출하는 진입점. 어떤 브라우저 경로도 없으면 안내와
     함께 비-0 종료해 '미검증'을 명시하게 한다.
@@ -20491,10 +20493,10 @@ def _shot_webkit(url, size, wait, out):
         print(f"s9 shot: 조건을 맞췄다 {why}", file=sys.stderr)
     out = args.out or os.path.join(
         tmp_dir(), "s9-shot.png")
-
-    candidates = []
     if getattr(args, "engine", "chrome") == "webkit":
         return _shot_webkit(url, args.size, args.wait, out)
+
+    candidates = []
     if os.name == "nt":
         # 네이티브 윈도우 (REQ-20260903-005). 종전 후보는 `/mnt/c/...`(WSL 에서
         # 본 윈도우 디스크)와 리눅스 이름뿐이라, **윈도우에서 돌면 후보가 0개**가
@@ -26914,11 +26916,11 @@ def main():
     sh.add_argument("--size", default=SHOT_SIZE_DEFAULT)
     sh.add_argument("--wait", default="3000",
                     help="캡처 전 대기 ms (async 렌더용, 기본 3000)")
-    sh.set_defaults(fn=cmd_shot)
-
     sh.add_argument("--engine", choices=("chrome", "webkit"), default="chrome",
                     help="webkit = Windows 쪽 Playwright WebKit 로 Safari 대체 "
                          "(REQ-20260906-098; 없으면 설치 안내)")
+    sh.set_defaults(fn=cmd_shot)
+
     dc = sub.add_parser("doctor",
                         help="네트워크·자원 진단과 정리 (REQ-20260825-099)")
     dc.add_argument("--fix", action="store_true",
