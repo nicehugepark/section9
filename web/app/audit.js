@@ -17,22 +17,36 @@ async function renderAudit(){
       (e.text + " " + e.session + " " + e.by + " " + e.ts).toLowerCase().includes(t))));
   $("#count").textContent = `${evs.length} / ${auditCache.length} audit events`;
   const page = evs.slice(0, auditLimit);
+  /* 연속한 같은 값은 첫 행에만 보인다 — 장부의 관행이고 s9-design 표 절 8 이다.
+     걸러 놓고 보면 종류·남긴 사람·세션 열이 스무 행 내리 같은 값이었다
+     (REQ-20260907-012 검수 중-1). 값은 지우지 않고 `.dup` 으로 가린다:
+     1px + clip 이라 화면낭독기와 복사는 값을 그대로 갖는다. */
+  const seen = {};
+  const once = (col, key, html) => {
+    const same = seen[col] === key;
+    seen[col] = key;
+    return same ? `<span class="dup">${html}</span>` : html;
+  };
+  /* 열 순서: 폭이 고정된 열(시각·종류·남긴 사람·세션)이 앞, 폭이 변하는 본문 열
+     (사건 내용)이 마지막 — 본문이 가운데 있으면 그 열이 남는 폭을 다 가져가
+     짧은 행에 빈 자리가 수백 px 생긴다 (표 절 3). */
   const body = page.map(e => {
     const k = kindOf(e.text);
+    const ses = esc(e.session) + "@" + esc(e.machine);
     return `<tr>
       <td class="ts">${esc(e.ts.slice(0, 16).replace("T", " "))}</td>
-      <td><span class="kind" style="--kc:${KC[k]}">${k}</span></td>
+      <td>${once("kind", k, `<span class="kind" style="--kc:${KC[k]}">${k}</span>`)}</td>
+      <td>${once("by", e.by, esc(e.by))}</td>
+      <td class="ses">${once("ses", String(e.doc) + ses, dlink(e.doc, ses))}</td>
       <td>${linkifyIds(esc(e.text))}</td>
-      <td>${esc(e.by)}</td>
-      <td>${dlink(e.doc, esc(e.session) + "@" + esc(e.machine))}</td>
     </tr>`;
   }).join("");
   $("#view").innerHTML = `<div class="audit">
-    <div class="cap">audit 이벤트는 세션 문서(SES-*)의 History에서 실시간 생성됩니다 —
+    <details class="cap"><summary>이 화면은?</summary><p>audit 이벤트는 세션 문서(SES-*)의 History에서 실시간 생성됩니다 —
       session 클릭 = 원본 SES 문서, 이벤트 속 ID 클릭 = 해당 문서.
-      작업 상세(구현·응답 전문)는 각 REQ 문서의 Notes에 있습니다.</div>
+      작업 상세(구현·응답 전문)는 각 REQ 문서의 Notes에 있습니다.</p></details>
     <div class="tblwrap"><table>
-    <thead><tr><th>time</th><th>type</th><th>event</th><th>by</th><th>session</th></tr></thead>
+    <thead><tr><th>time</th><th>type</th><th>by</th><th>session</th><th>event</th></tr></thead>
     <tbody>${body || '<tr><td colspan="5" style="color:var(--faint);padding:18px">no events</td></tr>'}</tbody>
     </table></div>
     ${evs.length > page.length ? `<button class="more" data-audit-more>이전 이벤트 ${evs.length - page.length}건 더 보기</button>` : ""}
