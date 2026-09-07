@@ -536,9 +536,35 @@ class HomeMeansOneThing(unittest.TestCase):
 
     # R6-3. 감시자·서버는 계정 중립으로 띄운다 (계약)
     def test_r6_3_the_dashboard_is_launched_account_neutral(self):
-        head = SRC.split('"serve", "--supervise"', 1)[1][:400]
-        self.assertIn('k != "CLAUDE_CONFIG_DIR"', head,
-                      "프로필 세션이 띄운 서버가 그 계정을 @home 으로 삼는다")
+        """서버를 띄우는 자리가 CLAUDE_CONFIG_DIR 를 **물려주지 않는다.**
+
+        소스를 잘라 글자를 찾지 않는다 (DOC-20260907-002) — 그 자리에 코드가
+        한 줄 끼기만 해도 창이 어긋나 깨졌다(REQ-20260907-033 의 리팩터가 실제로
+        그랬다). 여기서 지킬 것은 **자식에게 건네는 환경**이지 소스의 모양이 아니다.
+        """
+        got = {}
+
+        class FakePopen:
+            def __init__(self, argv, **kw):
+                # 이 자리는 서버 말고도 띄운다(브라우저 열기 등) — **서버 것만** 잡는다
+                if "serve" in argv:
+                    got["argv"], got["env"] = argv, kw.get("env")
+                self.pid = 1
+
+        with mock.patch.dict(os.environ,
+                             {"CLAUDE_CONFIG_DIR": "/tmp/프로필-계정"}), \
+                mock.patch.object(mod.subprocess, "Popen", FakePopen), \
+                mock.patch.object(mod, "dashboard_ready",
+                                  lambda *a, **k: {"ready": False}), \
+                mock.patch.object(mod, "pick_dashboard_port",
+                                  lambda *a, **k: (19999, "free")), \
+                mock.patch.object(mod, "tunnel_autostart", lambda: []):
+            mod.cmd_code(mod.code_argv(["--no-claude", "--no-open"]))
+
+        self.assertIn("serve", got.get("argv") or [], "서버를 안 띄웠다")
+        self.assertIsNotNone(got.get("env"), "환경을 지정하지 않고 띄웠다 — 통째로 물려준다")
+        self.assertNotIn("CLAUDE_CONFIG_DIR", got["env"],
+                         "프로필 세션이 띄운 서버가 그 계정을 @home 으로 삼는다")
 
 
 # ---------------------------------------------------------------- 곁가지

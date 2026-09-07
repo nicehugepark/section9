@@ -130,8 +130,13 @@ class Spawn(unittest.TestCase):
         self.assertIn("spawn_detached(", body)
         self.assertNotIn("os.fork()", body)
         # 떨어져 나온 자식은 **다시 떼지 않는다** — 떼면 자기를 무한히 띄운다.
-        self.assertIn("--guard-run", body)
-        self.assertIn('"--supervise"', body,
+        # 인자는 **불러서 본다** (DOC-20260907-002). 조립을 `guard_argv` 로 뺀
+        # 순간(REQ-20260907-033) 이 자리에서 글자를 찾던 검사가 깨졌는데,
+        # 계약은 하나도 안 바뀌었다 — 재는 것은 「자식이 무엇으로 뜨는가」다.
+        argv = s9.guard_argv(9909, "127.0.0.1")
+        self.assertIn("--guard-run", argv,
+                      "떨어져 나온 자식이 다시 떼면 자기를 무한히 띄운다")
+        self.assertIn("--supervise", argv,
                       "ps 에서 감시자로 읽히는 이름이 사라졌다 — "
                       "진단·시험이 그 낱말로 센다")
         self.assertIn('if getattr(args, "guard_run", False):', src)
