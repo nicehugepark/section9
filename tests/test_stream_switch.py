@@ -291,7 +291,10 @@ class Screen(unittest.TestCase):
         r = self.fn("renderStream")
         off = r.index("꺼져 있습니다")
         self.assertLess(off, r.index('"/api/streams"'))
-        self.assertLess(off, r.index("훅이 턴 종료마다"))
+        # 빈 목록 안내의 글자는 REQ-20260907-018 에서 「훅이 턴 종료마다 …」에서
+        # 「아직 남은 기록이 없습니다 …」로 바뀌었다. 계약(꺼짐 갈래가 그 안내보다
+        # 먼저 돌아선다)은 그대로고 가리키는 글자만 옮긴다.
+        self.assertLess(off, r.index("아직 남은 기록이 없습니다"))
         # 되돌리는 법을 함께 준다. **적는 것에서 누르는 것으로 바뀌었다** —
         # 전에는 "터미널에서 s9 user config … stream_mirror on" 이라고 적어 두었는데,
         # 대시보드로 일하는 사람에게 터미널로 가라고 말하는 화면이라는 것이
