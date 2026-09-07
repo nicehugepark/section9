@@ -122,6 +122,132 @@ dlg.setAttribute("role", "dialog");
 dlg.hidden = true;
 document.body.appendChild(dlg);
 let dlgClose = null;   // 열려 있는 창을 닫는 손 (한 번에 하나만 띄운다)
+
+/* ---- 판을 끌어 옮기기 (REQ-20260907-001) ----
+
+   사용자: "팝업이 뜰 때 화면을 가리는데, 이동 시킬 수 있었으면 좋겠다."
+
+   이 창은 뒤를 잠그지 않는 판정 패널이라(aria-modal 을 켜지 않은 이유가 그것이다)
+   사람은 창을 띄운 채 뒤의 카드·문서를 읽는다 — 그런데 자리가 고정이라 하필 그
+   근거를 덮으면 창을 닫았다 다시 여는 수밖에 없었다.
+
+   고친 방향은 자리를 옮길 수 있게 하되 **기본은 건드리지 않는 것**이다: 끌기 전에는
+   여태처럼 가운데에 뜬다(CSS 의 left:50% + translateX). 끌면 그때 비로소 왼쪽 값과
+   `--dlgtop` 이 px 로 굳고 가운데 잡기를 푼다.
+
+   세로 자리를 top 이 아니라 `--dlgtop` 으로 적는 이유: `.dlgbox` 는 시작점과 최대
+   키가 그 한 값을 나눠 쓴다(REQ-20260901-015/-019 가 고정한 성질). 여기에 top 을
+   따로 박으면 자가 둘이 되어 바닥 단추가 다시 잘린다.
+
+   옮긴 자리는 **같은 종류의 다음 창**이 물려받는다 — 판정 창을 왼쪽으로 치워 뒀으면
+   다음 판정도 거기서 열려야 손이 자리를 다시 찾지 않는다. */
+const DLG_POS_KEY = "s9dlgpos";
+const DLG_EDGE = 8;               // 화면 가장자리에 남기는 여백
+let dlgPosKind = "";              // 지금 열린 창의 종류 (자리를 적어 두는 이름)
+// 종류는 여는 쪽이 이름을 주면 그것, 없으면 눈썹 글자 — 판정·상태 옮기기·모델·
+// 계정이 저마다 제 자리를 갖는다.
+const dlgKind = (o, dflt) => o.pos || o.cap || dflt;
+function dlgPosAll(){
+  // 저장이 막힌 브라우저·깨진 값에서도 창은 떠야 한다 — 못 읽으면 기본 자리다.
+  try{ return JSON.parse(localStorage.getItem(DLG_POS_KEY) || "{}") || {}; }
+  catch(ex){ return {}; }
+}
+function dlgPosSave(kind, p){
+  if (!kind) return;
+  const all = dlgPosAll();
+  if (p) all[kind] = p; else delete all[kind];
+  try{ localStorage.setItem(DLG_POS_KEY, JSON.stringify(all)); }catch(ex){}
+}
+// 굳힌 자리를 푼다 — CSS 의 기본(가운데)이 다시 선다
+function dlgPosClear(){
+  dlg.style.removeProperty("left");
+  dlg.style.removeProperty("transform");
+  dlg.style.removeProperty("--dlgtop");
+}
+function dlgPosApply(x, y){
+  dlg.style.left = x + "px";
+  dlg.style.transform = "none";
+  dlg.style.setProperty("--dlgtop", y + "px");
+}
+/* 화면 안에 가둔다. 값은 정수로 — 반 화소에 걸린 판은 배율 125/150% 에서 가장자리
+   획이 갈린다(배율 불변). 판이 화면보다 크면 가장자리에 붙인다. */
+function dlgClamp(x, y){
+  const w = dlg.offsetWidth, h = dlg.offsetHeight;
+  const maxX = Math.max(DLG_EDGE, innerWidth - w - DLG_EDGE);
+  const maxY = Math.max(DLG_EDGE, innerHeight - h - DLG_EDGE);
+  return [Math.round(Math.min(Math.max(x, DLG_EDGE), maxX)),
+          Math.round(Math.min(Math.max(y, DLG_EDGE), maxY))];
+}
+/* 열 때(그리고 창 크기가 바뀔 때) 자리를 세운다. 적어 둔 자리가 지금 화면에
+   들어가지 않으면 **억지로 물리지 않고 기본 자리로** 연다 — 큰 화면에서 오른쪽
+   끝에 치워 둔 판을 작은 화면에서 왼쪽 위에 붙여 놓으면 그것대로 낯설다. 적어
+   둔 값은 지우지 않는다: 화면이 돌아오면 그 자리도 돌아온다. */
+function dlgPosPlace(kind){
+  if (kind !== undefined) dlgPosKind = kind || "";
+  dlgPosClear();
+  const p = dlgPosKind ? dlgPosAll()[dlgPosKind] : null;
+  if (!p || typeof p.x !== "number" || typeof p.y !== "number") return;
+  const [cx, cy] = dlgClamp(p.x, p.y);
+  if (cx !== p.x || cy !== p.y) return;
+  dlgPosApply(p.x, p.y);
+}
+/* 마크는 aria 에서 숨긴다 — 화면 낭독기에는 자리를 옮겼다는 것이 읽을 거리가
+   아니다. 2px 사각 여섯 개, 좌표는 전부 정수(viewBox 한 칸 = 한 화소). */
+const DLG_GRIP = `<span class="dlggrip" aria-hidden="true"`
+  + ` title="끌어서 옮기기 · 두 번 누르면 제자리">`
+  + `<svg width="6" height="10" viewBox="0 0 6 10" fill="currentColor">`
+  + [0, 4, 8].map(y => `<rect x="0" y="${y}" width="2" height="2"/>`
+      + `<rect x="4" y="${y}" width="2" height="2"/>`).join("")
+  + `</svg></span>`;
+/* 손잡이는 판에 한 번만 건다 — 창을 열 때마다 innerHTML 이 새로 서므로 머리에
+   직접 걸면 걸린 손이 쌓인다. Pointer Events 하나로 마우스·손가락·펜을 같은
+   길로 받는다(가리키는 것마다 다른 코드를 쓰지 않는다). */
+dlg.addEventListener("pointerdown", e => {
+  if (e.button) return;                         // 주 단추(또는 손가락)만
+  const el = evEl(e.target);
+  const head = el && el.closest ? el.closest(".dlghead") : null;
+  if (!head) return;
+  // 머리 안에 누를 것이 서면 그것이 먼저다 — 끌기는 빈 자리에서만 시작한다
+  if (el.closest("button, a, input, textarea, select")) return;
+  const r = dlg.getBoundingClientRect();
+  const dx = e.clientX - r.left, dy = e.clientY - r.top;
+  let moved = false;
+  try{ head.setPointerCapture(e.pointerId); }catch(ex){}
+  head.classList.add("drag");
+  const onMove = ev => {
+    if (Math.abs(ev.clientX - e.clientX) > 2 || Math.abs(ev.clientY - e.clientY) > 2)
+      moved = true;
+    const [x, y] = dlgClamp(ev.clientX - dx, ev.clientY - dy);
+    dlgPosApply(x, y);
+  };
+  const onUp = ev => {
+    head.classList.remove("drag");
+    try{ head.releasePointerCapture(ev.pointerId); }catch(ex){}
+    head.removeEventListener("pointermove", onMove);
+    head.removeEventListener("pointerup", onUp);
+    head.removeEventListener("pointercancel", onUp);
+    // 누르기만 하고 안 옮겼으면 아무것도 적지 않는다 — 한 번 눌렀다고 가운데에
+    // 서 있던 판이 그 자리에 못 박히면, 화면이 넓어져도 가운데로 안 돌아온다.
+    if (!moved) return;
+    const rr = dlg.getBoundingClientRect();
+    dlgPosSave(dlgPosKind, {x: Math.round(rr.left), y: Math.round(rr.top)});
+  };
+  head.addEventListener("pointermove", onMove);
+  head.addEventListener("pointerup", onUp);
+  head.addEventListener("pointercancel", onUp);
+  e.preventDefault();
+});
+// 되돌리는 길 (s9-design 4: 되돌릴 수 있나). 두 번 누르면 기본 자리로 오고
+// 적어 둔 자리도 지운다 — 치워 둔 것을 무르는 데 새 단추를 세우지 않는다.
+dlg.addEventListener("dblclick", e => {
+  const el = evEl(e.target);
+  if (!el || !el.closest(".dlghead")) return;
+  if (el.closest("button, a, input, textarea, select")) return;
+  dlgPosClear();
+  dlgPosSave(dlgPosKind, null);
+});
+// 화면 크기가 바뀌면 옮겨 둔 판이 밖에 남을 수 있다 — 열려 있을 때만 다시 잰다
+addEventListener("resize", () => { if (dlgClose) dlgPosPlace(); });
 // 자판에 새겨진 글자를 그대로 적는다 — 맥에서 "Ctrl+Enter" 라고 써 두면 실제로
 // 그 키를 눌러 보고 안 된다고 여긴다(⌘ 도 함께 받지만 힌트가 거짓말이 된다).
 const DLG_CMD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
@@ -180,7 +306,7 @@ function s9dlg(o){
   const ask = kind === "prompt";
   if (kind === "choose") return s9choose(o);
   const back = document.activeElement;   // 닫으면 여기로 돌려보낸다
-  dlg.innerHTML = `<div class="dlghead">`
+  dlg.innerHTML = `<div class="dlghead">` + DLG_GRIP
     /* 눈썹 잉크는 **알림이라서** 붉은 것이 아니라 **막힌 일이라서** 붉다
        (REQ-20260828-041). 종전엔 kind 로만 정해서, 한 창짜리 알림이면 무엇이든
        빨강이 됐다 — 깨우기의 `busy`·`capped`·`moving` 은 오류가 아니라 설명인데
@@ -209,6 +335,7 @@ function s9dlg(o){
     + (kind === "alert" ? "" : `<button type="button" class="dlgno">${esc(o.cancel || "그만두기")}</button>`)
     + `<button type="button" class="dlgyes">${esc(o.ok || "계속")}</button></div></div>`;
   dlg.hidden = false;
+  dlgPosPlace(dlgKind(o, "확인"));   // 옮겨 둔 자리에서 연다 (REQ-20260907-001)
   const ta = dlg.querySelector(".dlgin");
   const yes = dlg.querySelector(".dlgyes"), no = dlg.querySelector(".dlgno");
   const hint = dlg.querySelector(".dlghint");
@@ -437,7 +564,7 @@ function s9choose(o){
      그래서 묻는 것을 바꾼다 — 여기서 **떠날 수 있는 자리**가 있나. */
   const movable = o.items.some(it => !it.off && !it.cur);
   let sel = curKey;                      // 라디오 선택 — 열릴 때는 지금 값
-  dlg.innerHTML = `<div class="dlghead">`
+  dlg.innerHTML = `<div class="dlghead">` + DLG_GRIP
     + `<span class="dlgcap">${esc(o.cap || "고르기")}</span>`
     /* 문서에 매인 고르기도 있다 (REQ-20260829-029 의 우선순위). 주소는 머리에,
        제목은 본문에 — 판정 창(s9dlg)이 이미 세운 그 자리를 그대로 쓴다. 모델·
@@ -517,6 +644,7 @@ function s9choose(o){
     + (cf ? `<button type="button" class="dlgyes">${esc(cf.ok || "계속")}</button>` : "")
     + `</div></div>`;
   dlg.hidden = false;
+  dlgPosPlace(dlgKind(o, "고르기"));   // 옮겨 둔 자리에서 연다 (REQ-20260907-001)
   // ↑↓ 와 첫 포커스는 **고를 수 있는 줄**만 돈다
   const opts = [...dlg.querySelectorAll(".dlgopt:not([disabled])")];
   const no = dlg.querySelector(".dlgno");

@@ -172,7 +172,23 @@
    캡션 잉크는 신호다: 판정·전이는 review 잉크, 막힌 일(거부·연결 실패)은
    blocked 잉크. 같은 자주색으로 다 칠하면 "무슨 일이 났다"가 안 읽힌다. */
 .dlghead{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:9px 16px;border-bottom:1px solid var(--border)}
+  padding:9px 16px;border-bottom:1px solid var(--border);
+  /* 머리가 곧 손잡이다 (REQ-20260907-001). 사용자: "팝업이 뜰 때 화면을 가리는데,
+     이동 시킬 수 있었으면 좋겠다." 판은 가릴 수밖에 없으니(뒤를 잠그지 않는 판정
+     패널이라 근거를 읽으며 쓴다) 치울 길을 준다 — 옮기는 것은 머리뿐이고 본문은
+     읽고 쓰는 자리로 남는다.
+     touch-action:none 은 **머리에만** 건다: 태블릿에서 본문은 여전히 굴러야 한다.
+     글자 고르기를 끄는 것은 끌 때 문장이 파랗게 잡히지 않게 하려는 것이다. */
+  cursor:move;touch-action:none;-webkit-user-select:none;user-select:none;
+  position:relative}
+.dlghead.drag{cursor:grabbing}
+/* 끌 수 있다는 표시는 커서와 마크 하나로 끝낸다 — 색면도 띠도 새 색도 두지 않는다
+   (s9-design). 마크는 머리의 왼쪽 여백에 절대 자리로 들어 앉는다: 눈썹 글자도
+   문서 주소도 한 화소도 밀리지 않으므로, 끌기 전 화면은 여태 보던 그대로다.
+   좌표는 정수·2px 사각이라 125/150% 배율에서도 같은 모양이다 (배율 불변). */
+.dlggrip{position:absolute;left:6px;top:0;bottom:0;display:flex;align-items:center;
+  color:var(--faint);pointer-events:none}
+.dlghead.drag .dlggrip{color:var(--muted)}
 /* 자간은 걸지 않는다 — 이 자리의 캡션은 전부 한글이다 (`판정`·`상태 옮기기`·
    `실패`·`모델`·`계정`). 트래킹은 로마자·숫자의 어휘라 한글에 걸면 글자가
    흩어진다 (s9-design). 두 글자짜리 `판정` 에서는 티가 안 났는데 다섯 글자
