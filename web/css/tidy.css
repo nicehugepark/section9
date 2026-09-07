@@ -16,9 +16,24 @@
    걷고** 한 급 올린다(overlay.css 의 .dlgcap 이 같은 이유로 자간이 0 이다).
    앞의 세로선은 "여기부터는 세는 라벨이 아니라 누르는 손잡이"라는 표시다. */
 .typebar .tb[data-tidy]{font-size:10.5px;text-transform:none;letter-spacing:0}
-.typebar .tb[data-tidy="pick"]{margin-left:auto;
-  border-left:1px solid var(--hairline);padding-left:10px}
 .typebar .tb[data-tidy] b{font-variant-numeric:tabular-nums}
+/* 두 손잡이는 한 묶음으로 접힌다 (REQ-20260907-013). 세 가지가 이 한 줄에 걸려
+   있었다 — ① `margin-left:auto` 가 손잡이를 제 줄의 오른끝까지 밀어, 띠가 접히면
+   줄 한가운데에 구멍이 뚫렸다. ② 밀린 것은 「고르기」 하나뿐이라 「치운 것」은
+   다음 줄 왼끝으로 떨어졌다 — 한 축의 두 손잡이가 화면에서 가장 먼 두 자리에
+   앉는다. ③ 세로선을 「고르기」가 들고 있어, 둘이 갈리면 선이 묶음이 아니라
+   낱개 앞에 남았다. 셋 다 묶음 하나로 풀린다: 선과 여백은 묶음이 갖고, 안여백은
+   앞의 세는 라벨과 같은 눈금(6px)으로 이어 붙는다. 오른끝으로 미는 일은 하지
+   않는다 — 세는 라벨 바로 뒤에 이어 세우는 편이, 폭이 남을 때나 모자랄 때나 같은
+   모양이다(REQ-20260906-092 가 태블릿 폭에서 먼저 내린 결론을 전 폭으로).
+
+   세로선은 **걷는다**. 선은 한 줄 위에서 이웃한 둘을 가르는 표시인데, 접힘이
+   그 선을 줄 맨 앞으로 옮기면 가를 이웃이 없어져 뜻 없는 획 하나만 남는다
+   (330px 레일에서 calm 은 손잡이가 셋째 줄로 접힌다). 가르는 일은 이미 두 가지가
+   하고 있다 — 앞의 라벨은 영문 대문자 모노 9.5px + 자간이고 손잡이는 한글 10.5px
+   자간 0 이며, 사이 여백이 라벨 사이(12px)의 두 배가 넘는다. */
+.typebar .tbtail{display:flex;align-items:center;flex:none;width:100%;
+  border-top:1px solid var(--hairline)}
 
 /* ---- 고르기 (다중 선택) ---- */
 /* 눈금은 **고르는 중일 때만** 선다. 늘 세워 두면 읽으러 온 사람에게 목록이

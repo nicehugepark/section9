@@ -93,9 +93,15 @@ function tidyDecorate(){
     // ① 타입바 끝의 두 손잡이 — 고르기 · 치운 것
     const tb = list.querySelector(".typebar");
     if (tb && !tb.querySelector("[data-tidy]")){
+      /* 둘은 **한 덩이**다 (REQ-20260907-013). 낱개로 붙이면 띠가 접힐 때
+         「고르기」가 한 줄 오른끝, 「치운 것」이 다음 줄 왼끝으로 갈라져 가장 먼
+         두 자리에 앉는다 — 같은 축의 두 손잡이가 남남으로 읽힌다. 묶어 두면
+         접힘이 묶음 단위로 일어나 둘이 늘 붙어 다닌다. */
       tb.insertAdjacentHTML("beforeend",
-        `<button class="tb" data-tidy="pick" type="button"></button>`
-        + `<button class="tb" data-tidy="open" type="button"></button>`);
+        `<span class="tbtail">`
+        + `<button class="tb" data-tidy="pick" type="button"></button>`
+        + `<button class="tb" data-tidy="open" type="button"></button>`
+        + `</span>`);
     }
     if (tb){
       const bp = tb.querySelector('[data-tidy="pick"]');

@@ -79,11 +79,12 @@
 
   /* ── 타입 띠를 빽빽하게 ──
      줄 높이를 낮춘 만큼(위 블록) 남는 자리도 되돌린다. 띠의 위아래 여백은 0 으로,
-     접힌 줄은 위로 몰고(align-content), 끝의 두 손잡이를 오른쪽 끝으로 밀던
-     `margin-left:auto` 는 걷는다 — 마지막 줄 한가운데에 뚫려 있던 구멍이
-     띠를 실제보다 성겨 보이게 했다. */
+     접힌 줄은 위로 몰고(align-content).
+     끝의 두 손잡이를 오른쪽 끝으로 밀던 `margin-left:auto` 를 걷는 일은 이제
+     이 폭만의 예외가 아니다 — tidy.css 의 `.tbtail` 이 전 폭에서 그렇게 선다
+     (REQ-20260907-013). 여기 있던 `[data-tidy="pick"]{margin-left:0}` 은 그래서
+     지운다: 없앤 값을 다시 없애는 규칙은 다음 사람에게 아직 auto 가 있다고 말한다. */
   .typebar.typebar{padding:0 6px;align-content:start}
-  .typebar .tb.tb[data-tidy="pick"]{margin-left:0;padding-left:9px}
 
   /* ── 에이전트·스킬 추가 줄 ──
      입력칸이 `flex:1` 로 남는 폭을 다 가져가는데 단추 둘은 기본값 `flex:0 1 auto`
