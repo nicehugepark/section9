@@ -19046,6 +19046,48 @@ def _launched_here(root, port):
     return int(d.get("port") or 0) == int(port) and pid_alive(d.get("pid"))
 
 
+def guard_argv(port, host):
+    """감시자가 자기를 다시 실행할 때의 인자.
+
+    `--supervise` 를 함께 남긴다: 이 프로세스가 `ps` 에서 무엇으로 읽히는지가
+    곧 사람과 코드가 감시자를 찾는 이름이다(진단·시험이 그 낱말로 센다).
+    `--guard-run` 은 「여기서는 다시 떼지 말고 제자리에서 돌라」는 뜻일 뿐이다.
+    `--port-auto` 는 **이 포트를 사람이 정한 것이 아니라는 표식**이다
+    (REQ-20260907-033) — 없으면 기계가 고른 포트가 매 기동마다 못박힌다.
+
+    함수로 둔 것은 시험이 소스 글자를 대조하지 않게 하기 위해서다
+    (DOC-20260907-002) — 불러서 인자를 확인하면 된다.
+    """
+    return [sys.executable, os.path.abspath(__file__), "serve", "--supervise",
+            "--guard-run", "--port-auto",
+            "--port", str(int(port)), "--host", str(host)]
+
+
+def _port_ghost_is_ours(port, root=None):
+    """방금까지 **우리가** 그 포트를 듣고 있었나 — 그 서버가 이미 죽었을 때만 참.
+
+    DOC-20260906-003: WSL 의 윈도우 중계는 리눅스 리스너가 닫힌 뒤에도 약 62초
+    그 포트를 LISTEN 으로 공개하고, 그 사이 connect 는 **성공한 뒤 곧바로
+    reset** 된다. 아무도 안 듣는데 붙는 것이다.
+
+    그래서 재시작 직후의 리셋은 **우리 자신이 남긴 유령**이지 남의 점거가
+    아니다. dashboard_ready 가 리셋을 점거의 지문으로 보는 규율은 옳지만, 그
+    규율은 「재시작」이라는 갈래를 셈에 넣지 않았다 — 실측 2026-09-07 14:14·
+    15:53·15:57, 재기동마다 「자기왕복이 안 됐다(리셋)」 경고가 났고 한 번은
+    포트가 9910 으로 옮겨 앉았다.
+
+    pid 가 **살아 있으면 참이 아니다** — 그건 유령이 아니라 아직 듣고 있는
+    서버이고, 그 자리에서의 리셋은 진짜로 남의 것일 수 있다.
+    """
+    root = root or ROOT
+    try:
+        with open(os.path.join(root, "state", "serve-code.json"), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return int(d.get("port") or 0) == int(port) and not pid_alive(d.get("pid"))
+
+
 WIN_NETSTAT_EXE = "/mnt/c/Windows/System32/netstat.exe"
 WIN_TASKLIST_EXE = "/mnt/c/Windows/System32/tasklist.exe"
 
@@ -19553,7 +19595,7 @@ def cmd_code(args):
         # 서버가 아는 `@home` 이 그 프로필로 조용히 옮겨 간다 — 그러면 서버는
         # 대화를 프로필 X 로 복사하고 래퍼는 ~/.claude 로 띄운다.
         subprocess.Popen([os.path.abspath(__file__), "serve", "--supervise",
-                          "--port", str(port)],
+                          "--port-auto", "--port", str(port)],
                          env={k: v for k, v in os.environ.items()
                               if k != "CLAUDE_CONFIG_DIR"},
                          stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
@@ -21306,7 +21348,8 @@ DASH_READY_TRIES = 3
 DASH_READY_BUDGET = 1.0
 
 
-def dashboard_ready(host, port, expect_started=None, _connect=None, _sleep=None):
+def dashboard_ready(host, port, expect_started=None, _connect=None, _sleep=None,
+                    reset_is_ghost=False):
     """이 주소에서 **우리 대시보드가 답하는가** — 연결됨이 아니라 준비됨을 잰다.
 
     WSL 에서 `127.0.0.1:포트` 는 바인딩이 둘이다(리눅스 커널 + 윈도우 중계).
@@ -21377,9 +21420,23 @@ def dashboard_ready(host, port, expect_started=None, _connect=None, _sleep=None)
             wait = min(DASH_READY_MAX, wait * 2)
             continue
         except ConnectionResetError:
+            # **방금까지 우리가 듣던 자리면 그 리셋은 우리 유령이다**
+            # (REQ-20260907-033). 중계는 리눅스 리스너가 닫힌 뒤에도 약 62초
+            # 그 포트를 공개하고 붙는 즉시 끊는다(DOC-20260906-003) — 재기동은
+            # 반드시 그 창을 지난다. 그때만 거부와 같은 되걸기를 준다.
+            # 부르는 쪽이 밝히지 않으면 종전 그대로다: 진짜 가로채기가
+            # 계기판에서 사라지면 안 된다.
+            if reset_is_ghost and attempts < DASH_READY_TRIES \
+                    and spent + wait <= DASH_READY_BUDGET:
+                sleep(wait)
+                spent += wait
+                wait = min(DASH_READY_MAX, wait * 2)
+                continue
             return {"ready": False, "mine": None, "attempts": attempts,
-                    "why": "리셋 — 우리 자리에서의 리셋은 점거의 증거다 "
-                           "(재시도하지 않는다)"}
+                    "why": ("리셋 — 방금 우리가 닫은 자리라 다시 걸어 봤지만 "
+                            "계속 끊긴다" if reset_is_ghost else
+                            "리셋 — 우리 자리에서의 리셋은 점거의 증거다 "
+                            "(재시도하지 않는다)")}
         except OSError as e:
             return {"ready": False, "mine": None, "attempts": attempts,
                     "why": f"{type(e).__name__}: {e}"}
@@ -23133,8 +23190,7 @@ def _guard_detach(port, host="127.0.0.1", root=None):
     # `--supervise` 를 함께 남긴다: 이 프로세스가 `ps` 에서 무엇으로 읽히는지가
     # 곧 사람과 코드가 감시자를 찾는 이름이다(진단·시험이 그 낱말로 센다).
     # `--guard-run` 은 "여기서는 다시 떼지 말고 제자리에서 돌라"는 뜻일 뿐이다.
-    argv = [sys.executable, os.path.abspath(__file__), "serve", "--supervise",
-            "--guard-run", "--port", str(int(port)), "--host", str(host)]
+    argv = guard_argv(port, host)
     ok = spawn_detached(argv, out_path=p["log"], cwd=root or ROOT)
     if not ok:
         _guard_record(port, "guard-error", f"{port} 감시자 기동 실패", root=root)
@@ -23993,7 +24049,14 @@ def _restart_under_guard(host, port, held):
 
 
 def cmd_serve(args):
-    _given = args.port is not None
+    # **사람이 정한 포트만 못박는다** (REQ-20260907-033). `--port` 가 붙어 있다는
+    # 것만으로는 못 가른다 — `s9 code` 도 감시자의 자기 재실행도 기계가 고른 값을
+    # 그 플래그로 넘긴다. 그래서 기계가 고른 포트가 매 기동마다 `port.pinned` 로
+    # 굳었고, 자동 이동 표식(port.auto)은 지워져 되돌리는 장치도 손을 못 댔다:
+    # 실측 2026-09-07 14:29, 중계 리셋으로 한 번 옮겨 앉은 9910 이 그대로 굳어
+    # 그 뒤 모든 링크·훅이 9910 을 봤다. 기계가 넘기는 자리는 `--port-auto` 로
+    # 스스로를 밝힌다.
+    _given = args.port is not None and not getattr(args, "port_auto", False)
     _base = s9_port()
     args.port, _why = serve_port_for(args)
     if _why in ("other", "busy", "windows"):
@@ -26296,9 +26359,13 @@ def cmd_serve(args):
     # (REQ-20260906-046) — 밖의 요청이 먼저 붙어도 내 왕복이 backlog 에서
     # 2초를 기다리지 않는다. serve_handshake 가 그 규율을 쥔다.
     _probe_host = "127.0.0.1" if args.host in ("0.0.0.0", "") else args.host
+    # 재기동은 반드시 중계의 유령 창을 지난다 (REQ-20260907-033) — 방금까지
+    # 우리가 듣던 자리면 리셋을 점거로 읽지 않고 되걸어 본다.
+    _ghost = _port_ghost_is_ours(args.port)
     _self = serve_handshake(
         srv, lambda: dashboard_ready(_probe_host, args.port,
-                                     expect_started=SERVE_STARTED))
+                                     expect_started=SERVE_STARTED,
+                                     reset_is_ghost=_ghost))
     if _self["ready"] and _self["mine"] is False:
         die(f"포트 {args.port} 에 남이 답한다 — 점거다 (답한 쪽의 기동 시각 "
             f"{_self.get('started')!r}). bind 는 됐지만 붙는 쪽은 그쪽으로 간다.\n"
@@ -27855,6 +27922,9 @@ def main():
     sv = sub.add_parser("serve", help="local web dashboard")
     sv.add_argument("--restart", action="store_true",
                     help="이미 떠 있으면 정리하고 다시 띄운다 (포트 해제 대기)")
+    sv.add_argument("--port-auto", action="store_true",
+                    help="이 포트는 **기계가 골랐다** — 사람의 결정으로 못박지 "
+                         "않는다 (REQ-20260907-033, 내부 호출용)")
     sv.add_argument("--guard-run", action="store_true",
                     help="감시 루프를 이 프로세스에서 실행한다 (떼어 낸 자식이 "
                          "들어오는 문 — 사람이 직접 쓸 일은 없다)")
