@@ -159,20 +159,23 @@ function dlgPosSave(kind, p){
   try{ localStorage.setItem(DLG_POS_KEY, JSON.stringify(all)); }catch(ex){}
 }
 // 굳힌 자리를 푼다 — CSS 의 기본(가운데)이 다시 선다
-function dlgPosClear(){
-  dlg.style.removeProperty("left");
-  dlg.style.removeProperty("transform");
-  dlg.style.removeProperty("--dlgtop");
+function dlgPosClear(box){
+  box = box || dlg;
+  box.style.removeProperty("left");
+  box.style.removeProperty("transform");
+  box.style.removeProperty("--dlgtop");
 }
-function dlgPosApply(x, y){
-  dlg.style.left = x + "px";
-  dlg.style.transform = "none";
-  dlg.style.setProperty("--dlgtop", y + "px");
+function dlgPosApply(x, y, box){
+  box = box || dlg;
+  box.style.left = x + "px";
+  box.style.transform = "none";
+  box.style.setProperty("--dlgtop", y + "px");
 }
 /* 화면 안에 가둔다. 값은 정수로 — 반 화소에 걸린 판은 배율 125/150% 에서 가장자리
    획이 갈린다(배율 불변). 판이 화면보다 크면 가장자리에 붙인다. */
-function dlgClamp(x, y){
-  const w = dlg.offsetWidth, h = dlg.offsetHeight;
+function dlgClamp(x, y, box){
+  box = box || dlg;
+  const w = box.offsetWidth, h = box.offsetHeight;
   const maxX = Math.max(DLG_EDGE, innerWidth - w - DLG_EDGE);
   const maxY = Math.max(DLG_EDGE, innerHeight - h - DLG_EDGE);
   return [Math.round(Math.min(Math.max(x, DLG_EDGE), maxX)),
@@ -184,12 +187,17 @@ function dlgClamp(x, y){
    둔 값은 지우지 않는다: 화면이 돌아오면 그 자리도 돌아온다. */
 function dlgPosPlace(kind){
   if (kind !== undefined) dlgPosKind = kind || "";
-  dlgPosClear();
-  const p = dlgPosKind ? dlgPosAll()[dlgPosKind] : null;
+  dlgPosPlaceFor(dlg, dlgPosKind);
+}
+/* 어느 판이든 적어 둔 자리에 세운다 — s9dlg 의 판(dlg)과 「치운 것」 판이 같은 길을
+   쓴다 (REQ-20260907-028: 따로 지은 .dlgbox 에는 끌기가 붙지 않았다). */
+function dlgPosPlaceFor(box, kind){
+  dlgPosClear(box);
+  const p = kind ? dlgPosAll()[kind] : null;
   if (!p || typeof p.x !== "number" || typeof p.y !== "number") return;
-  const [cx, cy] = dlgClamp(p.x, p.y);
+  const [cx, cy] = dlgClamp(p.x, p.y, box);
   if (cx !== p.x || cy !== p.y) return;
-  dlgPosApply(p.x, p.y);
+  dlgPosApply(p.x, p.y, box);
 }
 /* 마크는 aria 에서 숨긴다 — 화면 낭독기에는 자리를 옮겼다는 것이 읽을 거리가
    아니다. 2px 사각 여섯 개, 좌표는 전부 정수(viewBox 한 칸 = 한 화소). */
@@ -202,14 +210,15 @@ const DLG_GRIP = `<span class="dlggrip" aria-hidden="true"`
 /* 손잡이는 판에 한 번만 건다 — 창을 열 때마다 innerHTML 이 새로 서므로 머리에
    직접 걸면 걸린 손이 쌓인다. Pointer Events 하나로 마우스·손가락·펜을 같은
    길로 받는다(가리키는 것마다 다른 코드를 쓰지 않는다). */
-dlg.addEventListener("pointerdown", e => {
-  if (e.button) return;                         // 주 단추(또는 손가락)만
+function dlgDragBind(box, kindOf){
+  box.addEventListener("pointerdown", e => {
+  if (e.button) return;                         // 주 버튼(또는 손가락)만
   const el = evEl(e.target);
   const head = el && el.closest ? el.closest(".dlghead") : null;
   if (!head) return;
   // 머리 안에 누를 것이 서면 그것이 먼저다 — 끌기는 빈 자리에서만 시작한다
   if (el.closest("button, a, input, textarea, select")) return;
-  const r = dlg.getBoundingClientRect();
+  const r = box.getBoundingClientRect();
   const dx = e.clientX - r.left, dy = e.clientY - r.top;
   let moved = false;
   try{ head.setPointerCapture(e.pointerId); }catch(ex){}
@@ -217,8 +226,8 @@ dlg.addEventListener("pointerdown", e => {
   const onMove = ev => {
     if (Math.abs(ev.clientX - e.clientX) > 2 || Math.abs(ev.clientY - e.clientY) > 2)
       moved = true;
-    const [x, y] = dlgClamp(ev.clientX - dx, ev.clientY - dy);
-    dlgPosApply(x, y);
+    const [x, y] = dlgClamp(ev.clientX - dx, ev.clientY - dy, box);
+    dlgPosApply(x, y, box);
   };
   const onUp = ev => {
     head.classList.remove("drag");
@@ -229,23 +238,25 @@ dlg.addEventListener("pointerdown", e => {
     // 누르기만 하고 안 옮겼으면 아무것도 적지 않는다 — 한 번 눌렀다고 가운데에
     // 서 있던 판이 그 자리에 못 박히면, 화면이 넓어져도 가운데로 안 돌아온다.
     if (!moved) return;
-    const rr = dlg.getBoundingClientRect();
-    dlgPosSave(dlgPosKind, {x: Math.round(rr.left), y: Math.round(rr.top)});
+    const rr = box.getBoundingClientRect();
+    dlgPosSave(kindOf(), {x: Math.round(rr.left), y: Math.round(rr.top)});
   };
   head.addEventListener("pointermove", onMove);
   head.addEventListener("pointerup", onUp);
   head.addEventListener("pointercancel", onUp);
   e.preventDefault();
-});
-// 되돌리는 길 (s9-design 4: 되돌릴 수 있나). 두 번 누르면 기본 자리로 오고
-// 적어 둔 자리도 지운다 — 치워 둔 것을 무르는 데 새 단추를 세우지 않는다.
-dlg.addEventListener("dblclick", e => {
-  const el = evEl(e.target);
-  if (!el || !el.closest(".dlghead")) return;
-  if (el.closest("button, a, input, textarea, select")) return;
-  dlgPosClear();
-  dlgPosSave(dlgPosKind, null);
-});
+  });
+  // 되돌리는 길 (s9-design 4: 되돌릴 수 있나). 두 번 누르면 기본 자리로 오고
+  // 적어 둔 자리도 지운다 — 치워 둔 것을 무르는 데 새 버튼을 세우지 않는다.
+  box.addEventListener("dblclick", e => {
+    const el = evEl(e.target);
+    if (!el || !el.closest(".dlghead")) return;
+    if (el.closest("button, a, input, textarea, select")) return;
+    dlgPosClear(box);
+    dlgPosSave(kindOf(), null);
+  });
+}
+dlgDragBind(dlg, () => dlgPosKind);
 // 화면 크기가 바뀌면 옮겨 둔 판이 밖에 남을 수 있다 — 열려 있을 때만 다시 잰다
 addEventListener("resize", () => { if (dlgClose) dlgPosPlace(); });
 // 자판에 새겨진 글자를 그대로 적는다 — 맥에서 "Ctrl+Enter" 라고 써 두면 실제로

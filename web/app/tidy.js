@@ -152,7 +152,14 @@ function tidyDecorate(){
         + `<button type="button" class="off" data-tidy="none"${off}>해제</button>`
         + `<button type="button" data-tidy="archive"${off}>보관</button>`
         + `<button type="button" data-tidy="rm"${off}>삭제</button>`;
-      if (bar2.innerHTML !== html) bar2.innerHTML = html;
+      /* 바꿀 때만 다시 그린다 — 비교는 innerHTML 이 아니라 **서명**으로 한다
+         (REQ-20260907-028 실제 사고). 브라우저는 `disabled` 를 `disabled=""` 로
+         되돌려 주므로 아직 하나도 안 골랐을 때(n=0) innerHTML 비교가 매번 어긋났고,
+         목록이 갱신될 때마다(수백 ms) 버튼이 새 노드로 바뀌어 사람의 누름이
+         pointerdown 과 pointerup 사이에서 떨어졌다 — 「이 목록 전부」가 안 눌렸다.
+         Playwright 는 같은 자리를 「element was detached, retrying ×11」로 봤다. */
+      const sig = String(n);
+      if (bar2.dataset.sig !== sig){ bar2.innerHTML = html; bar2.dataset.sig = sig; }
     }
     // 손잡이 둘이 붙으면서 타입바가 한 줄 더 접힐 수 있다 — 그룹 머리와
     // 묶음 띠가 붙는 문턱(--tbh)을 그때 다시 잰다. 안 재면 머리가 타입바
@@ -248,7 +255,7 @@ function tidyRender(){
       ? `<div class="tempty">${tidyTab === "trash"
           ? "휴지통이 비었습니다." : "보관한 문서가 없습니다."}</div>`
       : rows.map(item).join("");
-  tidyBox.innerHTML = `<div class="dlghead">
+  tidyBox.innerHTML = `<div class="dlghead">` + DLG_GRIP + `
       <span class="dlgcap">치운 것</span>
       <span class="dlgdoc">되돌릴 수 있는 것과 없는 것</span>
       <span class="dlgesc"><kbd>ESC</kbd> 닫기</span></div>
@@ -276,7 +283,10 @@ async function tidyOpen(){
   tidyBox.setAttribute("role", "dialog");
   tidyBox.setAttribute("aria-label", "치운 것 — 보관함과 휴지통");
   document.body.appendChild(tidyBox);
+  // 다른 팝업과 같은 끌기·자리 기억 (REQ-20260907-028) — 종류 이름은 「치운 것」
+  dlgDragBind(tidyBox, () => "치운 것");
   tidyRender();
+  dlgPosPlaceFor(tidyBox, "치운 것");
   await tidyFetch();
   tidyRender();
   tidyDecorate();

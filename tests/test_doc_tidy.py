@@ -272,5 +272,21 @@ class DocTidyTest(unittest.TestCase):
                       "판 밖 판정을 near 로 하지 않는다")
 
 
+class TidyBarStable(unittest.TestCase):
+    """묶음 처리 띠는 서명이 바뀔 때만 다시 그린다 (REQ-20260907-028).
+
+    innerHTML 비교는 `disabled` → `disabled=""` 직렬화 차이로 n=0 에서 매번
+    어긋나, 목록 갱신마다 버튼이 새 노드로 바뀌어 사람의 누름이 떨어졌다."""
+
+    def test_bar_rerenders_by_signature_not_innerhtml(self):
+        import os
+        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "web", "app", "tidy.js"), encoding="utf-8").read()
+        i = src.index('data-tidy="all"')
+        tail = src[i:i + 1200]
+        self.assertIn("bar2.dataset.sig", tail)
+        self.assertNotIn("bar2.innerHTML !== html", tail)
+
+
 if __name__ == "__main__":
     unittest.main()
