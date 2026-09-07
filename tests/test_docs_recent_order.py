@@ -47,8 +47,21 @@ class DocsRecentOrder(unittest.TestCase):
                 m = re.search(r"const recentOrder = rows =>(.*?);\n", self.src, re.S)
                 self.assertIsNotNone(m)
                 body = m.group(1)
-                self.assertIn("updated", body)
-                self.assertNotIn("prioOf", body,
+                # 무엇으로 줄을 세우는지를 **뜻으로** 잰다 (REQ-20260907-029 ·
+                # REQ-20260907-058 · DOC-20260907-002). 종전엔 이 자리에 `updated`
+                # 라는 글자가 있는지만 봤는데, 시각 뽑기를 작은 함수(`upd`)로 빼내자
+                # 계약은 하나도 안 바뀐 채 시험만 깨졌다. 재려는 것은 「Docs 목록이
+                # 갱신 시각으로 줄을 세운다(우선순위가 아니라)」이지 그 표현식의
+                # 글자가 아니므로, 부르는 헬퍼가 무엇을 읽는지까지 따라간다.
+                keys = body
+                for helper in set(re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", body)):
+                    d = re.search(r"const %s = [^=]*=>([^\n;]*);" % re.escape(helper),
+                                  self.src)
+                    if d:
+                        keys += d.group(1)
+                self.assertIn("updated", keys,
+                              "Docs 정렬이 갱신 시각을 안 본다 — 최근순이어야 한다")
+                self.assertNotIn("prioOf", keys,
                                  "Docs 정렬에 우선순위가 섞였다 — 최근순이어야 한다")
 
             # N2. Docs 목록이 그것을 쓴다 — 다만 **얼려서** (REQ-20260828-009)

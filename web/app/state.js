@@ -85,10 +85,30 @@ function stableOrder(rows, key, refreeze){
   }
   const fresh = rows.filter(r => !docRank.has(r.id));
   if (fresh.length){
-    // 뒤집어 넣어야 가장 최근 것이 가장 작은 순위(=맨 위)를 받는다
-    let min = Math.min(0, ...docRank.values());
-    recentOrder(fresh).reverse().forEach(r => {
-      docRank.set(r.id, --min); docFroze.set(r.id, upd(r)); });
+    /* 얼음에 없는 문서는 **제 시각이 가리키는 자리**에 끼운다 (REQ-20260907-058).
+
+       한때는 맨 위로 밀어 올렸다 — "얼린 뒤에 온 것은 새로 생긴 것"이라는
+       전제였다. 그 전제가 깨지는 자리를 실측했다(2026-09-07): Board 로 옮기면
+       카탈로그를 좁혀 받고(`catalogWantsAll`), Docs 로 돌아올 때 그 **좁은
+       405장**으로 순서를 얼린다. 곧이어 온 폴이 1306장을 주자 나머지 901장이
+       전부 "새 문서"가 되어 순위 -901..-1 을 받고 오늘 것들 위에 앉았다 —
+       사용자가 본 그 화면이 이것이다("순서가 제멋대로 막 바뀐다").
+
+       그래서 규칙을 하나로 줄인다: 새로 온 문서는 얼린 시각들 사이에서 제
+       시각이 놓이는 자리에 끼운다. 진짜 새 문서는 시각이 가장 크므로 여전히
+       맨 위에 서고(그 계약은 결과로 지켜진다), 목록이 넓어져 돌아온 옛 문서는
+       제자리로 간다. 비교 상대는 **얼린 시각**(docFroze)이라, 이미 얼려 둔
+       문서들끼리의 순서는 이 끼워 넣기로 흔들리지 않는다. */
+    const kept = [...docRank.entries()].sort((a, b) => a[1] - b[1]).map(e => e[0]);
+    const merged = [];
+    let i = 0;
+    for (const r of recentOrder(fresh)){
+      const t = upd(r);
+      while (i < kept.length && (docFroze.get(kept[i]) || "") > t) merged.push(kept[i++]);
+      merged.push(r.id); docFroze.set(r.id, t);
+    }
+    while (i < kept.length) merged.push(kept[i++]);
+    docRank = new Map(merged.map((id, k) => [id, k]));
   }
   const ordered = [...rows].sort((a, b) => docRank.get(a.id) - docRank.get(b.id));
   /* 낡은 만큼을 센다 — **얼린 뒤 글이 붙었고, 그래서 제 자리를 떠나야 하는** 문서만.

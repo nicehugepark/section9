@@ -63,6 +63,15 @@ freeze(base);
 poll(rows([["A", "90"], ["B", "80"], ["C", "98"], ["D", "97"], ["E", "50"]]));
 out.push(["S2_count", docStale], ["S2_shown", docStaleCount()]);
 
+// S8: 목록이 **넓어져** 돌아온 옛 문서는 제 자리에 끼인다 (REQ-20260907-058 재작업).
+//     Board 로 갔다 오면 카탈로그를 좁혀 받은 405장으로 순서가 얼고, 곧이어 온
+//     폴이 전량을 준다. 그때 돌아온 옛 문서를 "새 문서"로 보고 맨 위에 세우면
+//     오늘 것 위에 옛것이 앉는다 — 사용자가 본 그 화면이다.
+freeze(rows([["A", "90"], ["B", "80"]]));            // 좁게 받은 목록으로 얼었다
+o = poll(rows([["A", "90"], ["B", "80"], ["P", "85"], ["Q", "70"], ["R", "99"]]));
+out.push(["S8_order", o.map(r => r.id).join("")]);   // R 만 맨 위, P·Q 는 제 자리
+out.push(["S8_count", docStale]);                    // 끼워 넣기는 낡음이 아니다
+
 // S3: 얼린 뒤 새로 온 문서는 이미 맨 위에 선다 — 낡음으로 세지 않는다
 freeze(base);
 o = poll(base.concat(rows([["X", "91"], ["Y", "92"], ["Z", "93"]])));
@@ -107,6 +116,14 @@ class DocsOrderThaw(unittest.TestCase):
         """S2 — 두 건은 얼림이 전제한 자리라 말하지 않는다"""
         self.assertEqual(self.got["S2_count"], 2)
         self.assertEqual(self.got["S2_shown"], 0)
+
+    # S8. 넓어져 돌아온 옛 문서는 제 자리에 끼인다 (REQ-20260907-058 재작업)
+    def test_s8_widened_list_keeps_places(self):
+        # R(99)만 맨 위 · P(85)는 A(90)와 B(80) 사이 · Q(70)는 맨 뒤
+        self.assertEqual(self.got["S8_order"], "RAPBQ",
+                         "목록이 넓어지자 옛 문서가 오늘 것 위로 올라갔다 — "
+                         "사용자가 본 '순서가 제멋대로 바뀐다'가 이것이다")
+        self.assertEqual(self.got["S8_count"], 0)
 
     def test_s3_new_docs_are_not_stale(self):
         """S3 — 새로 온 문서는 맨 위에 서므로 낡음이 아니다"""
