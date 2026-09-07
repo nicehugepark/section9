@@ -1,11 +1,12 @@
 {
  "_": "시험 예산 기준선 (REQ-20260903-009). source_contract_files 는 라쳇이다 — 줄일 때만 고친다. 올려야 한다면 그 까닭을 why 에 한 줄 적어라. known 은 이미 있던 것들이라, 새로 늘어난 파일이 실패 메시지에 이름으로 지목된다.",
- "source_contract_files": 61,
+ "source_contract_files": 62,
  "why": [
   "2026-09-03 기준선: 항목 1,986 · 소스를 두 번 이상 열어 글자를 대조하는 파일 51. 이 숫자는 지금까지 쌓인 빚이지 목표가 아니다 — 여기서부터 내려간다.",
   "문턱이 '두 번 이상'인 까닭: 동작 시험도 준비 삼아 소스를 한 번 열 수 있다. 한 번 읽는 것까지 세면 REQ-20260903-005 의 윈도우 시험처럼 대부분 동작인 파일이 오탐으로 걸린다.",
   "2026-09-05 (REQ-20260905-011): 헬퍼 경유 읽기(read⟨S9_SRC⟩ 류)와 tests 밖 경로 열기를 세기 시작해 51 → 60. 숫자가 오른 것은 빚이 는 게 아니라 자를 바로 댄 것이다 — 여기서부터 다시 내려간다.",
-  "61 (2026-09-06, REQ-20260906-029): test_async_result_notify 가 러너의 알림 줄 형식을 소스에서 확인한다"
+  "61 (2026-09-06, REQ-20260906-029): test_async_result_notify 가 러너의 알림 줄 형식을 소스에서 확인한다",
+  "62 (2026-09-07, REQ-20260907-001): test_dialog_move 가 dialog.js 의 자리 함수 계약(dlgPosApply·dlgPosPlaceFor·끌기 손잡이)을 소스에서 확인한다 — 끌기는 실브라우저 시험이 따로 있고, 이 파일은 그 기계의 모양을 지킨다"
  ],
  "known": [
   "test_account_flicker.py",
@@ -23,6 +24,7 @@
   "test_code_peek_ui.py",
   "test_compact_signal.py",
   "test_dialog_fit.py",
+  "test_dialog_move.py",
   "test_guide_repo.py",
   "test_hook_code_stamp.py",
   "test_install_hooks_path.py",
