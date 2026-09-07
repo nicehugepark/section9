@@ -41,10 +41,16 @@ BUDGET = os.path.join(HERE, "BUDGET.json")
 # 헬퍼 경유도 센다 (REQ-20260905-011): read⟨S9_SRC⟩·_src⟨APP⟩ 처럼 소문자 이름의
 # 헬퍼가 대문자 상수 경로를 받아 통째로 읽는 자리 — `open(` 만 보면 이 구멍으로 빠졌다.
 # 그리고 tests 밖으로 나가는 경로(`os.path.join(HERE, ".."`)를 열어 읽는 자리도.
+# 읽기 동사는 이름의 **끝**에 온다 (REQ-20260907-050). 종전엔 이름 어디에 있어도
+# 세었는데, 그러면 소스와 아무 상관 없는 함수가 대문자 인자를 받는 것만으로 걸린다 —
+# 실측: `browser_open_cmd(URL, …)` 가 「소스를 읽는다」로 세어져 완전히 동작만 재는
+# 시험 파일(test_code_open.py)이 라쳇에 걸렸다. 진짜 소스 읽기는 `open(`·`read(`·
+# `read_text(`·`slurp(` 처럼 동사로 끝난다. 좁힌 뒤 62개 목록은 그대로이고 그 오탐
+# 하나만 빠졌다(전수 대조).
 READS_SOURCE = re.compile(
-    r'\b[A-Za-z_]*(?:open|read|src|slurp|text)[A-Za-z_]*\(\s*(?:S9|DOCTOR|SRC|RUNNER|APP|WEB|[A-Z][A-Z0-9_]{1,})\s*[,)]'
+    r'\b[A-Za-z_]*(?:open|read|src|slurp|text)\(\s*(?:S9|DOCTOR|SRC|RUNNER|APP|WEB|[A-Z][A-Z0-9_]{1,})\s*[,)]'
     r'|\.read_text\(\)'
-    r'|\b[A-Za-z_]*(?:open|read|src|slurp|text)[A-Za-z_]*\(\s*os\.path\.join\(\s*HERE\s*,\s*"\.\."')
+    r'|\b[A-Za-z_]*(?:open|read|src|slurp|text)\(\s*os\.path\.join\(\s*HERE\s*,\s*"\.\."')
 
 
 def scan(here=None):

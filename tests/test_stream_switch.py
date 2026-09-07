@@ -18,6 +18,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -291,7 +292,13 @@ class Screen(unittest.TestCase):
         r = self.fn("renderStream")
         off = r.index("꺼져 있습니다")
         self.assertLess(off, r.index('"/api/streams"'))
-        self.assertLess(off, r.index("훅이 턴 종료마다"))
+        # 빈 목록 안내는 **자리**로 잰다 — 글자로 재면 문구가 바뀔 때마다 깨진다
+        # (REQ-20260907-050, DOC-20260907-002). REQ-20260907-015 가 음차를 걷어내며
+        # "no streams — 훅이 턴 종료마다 미러링합니다" 를 "아직 남은 기록이
+        # 없습니다 …" 로 바꿨고, 계약(꺼진 갈래가 그 안내보다 앞에 선다)은 그대로다.
+        empty = re.search(r"list\s*\|\|", r)
+        self.assertTrue(empty, "빈 목록 안내 자리가 없다")
+        self.assertLess(off, empty.start(), "빈 목록 안내가 꺼짐 갈래보다 앞에 선다")
         # 되돌리는 법을 함께 준다. **적는 것에서 누르는 것으로 바뀌었다** —
         # 전에는 "터미널에서 s9 user config … stream_mirror on" 이라고 적어 두었는데,
         # 대시보드로 일하는 사람에게 터미널로 가라고 말하는 화면이라는 것이

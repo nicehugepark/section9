@@ -68,8 +68,18 @@ class DocTitleAnchor(unittest.TestCase):
             self.assertIn('<div class="dhead">', self.code, "머리 덩어리가 없다")
             self.assertIn('class="acts dacts"', self.code, "행동 띠가 머리에 없다")
         with self.subTest("the_title_line_carries_name_number_and_state"):
-                self.assertRegex(self.code, r'class="did"', "문서 번호가 붙박이 줄에 없다")
-                self.assertRegex(self.code, r'class="dst"', "상태가 붙박이 줄에 없다")
+                # 재는 것은 「제목 줄이 번호와 상태를 함께 들고 있다」이지 마크업의
+                # 글자가 아니다 (REQ-20260907-050, DOC-20260907-002). 상태 칩은
+                # dstHTML() 이 짓게 갈라졌고(질문의 「답을 찾는 중」 얼굴이 붙으면서),
+                # 그 순간 `class="dst"` 라는 글자가 제목 줄에서 사라져 시험만 깨졌다.
+                title = re.search(r'<h1 class="dtitle">[\s\S]*?</h1>', self.code)
+                self.assertTrue(title, "제목 줄이 없다")
+                self.assertRegex(title.group(0), r'class="did"',
+                                 "문서 번호가 붙박이 줄에 없다")
+                self.assertRegex(title.group(0), r'\bdstHTML\(',
+                                 "상태가 붙박이 줄에 없다")
+                self.assertRegex(self.code, r'class="dst[\s"$]',
+                                 "상태 칩이 dst 옷을 입지 않는다")
                 did = self._rule(r"\.viewer \.dtitle \.did")
                 self.assertIn("var(--mono)", did, "번호가 이름처럼 보이지 않는다")
                 dst = self._rule(r"\.viewer \.dtitle \.dst")

@@ -19498,6 +19498,25 @@ def browser_open(url, out=print):
     return True
 
 
+# `s9 code` 는 argparse 를 우회한다 (REQ-20260824-036) — 잔여 인자를 순서 그대로
+# claude 에 넘겨야 하기 때문이다. 그래서 **우리 것과 남의 것을 가르는 일**이 손으로
+# 하는 일이 되는데, 그 판정을 인라인에 두면 시험이 소스 글자를 대조할 수밖에 없다
+# (DOC-20260907-002). 함수로 두면 불러서 값을 확인하면 된다.
+CODE_OWN_FLAGS = ("--no-claude", "--no-open")
+
+
+def code_argv(argv):
+    """`s9 code` 의 잔여 인자 → (우리 스위치, claude 에 넘길 것).
+
+    우리 것은 **떼어 낸다** — 그대로 넘기면 claude 가 모르는 옵션으로 죽는다.
+    """
+    argv = list(argv)
+    return argparse.Namespace(
+        no_claude="--no-claude" in argv,
+        no_open="--no-open" in argv,
+        claude_args=[a for a in argv if a not in CODE_OWN_FLAGS])
+
+
 def cmd_code(args):
     """통합 진입 명령 (REQ-20260824-032): 대시보드를 보장(이미 떠 있으면 스킵)하고
     이 터미널에서 claude를 실행한다 — 한 명령으로 관제(대시보드)+대화(터미널) 시작.
@@ -21062,14 +21081,9 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
         runner_check, win_out, mid = SHOT_WEBKIT_RUNNER_WIN, out, None
     elif plat == "WSL":
         runner_check = SHOT_WEBKIT_RUNNER_WSL
-        os.makedirs("/mnt/c/Temp", exist_ok=True)
         tmpname = f"s9-shot-wk-{os.getpid()}.png"
         win_out = "C:\\Temp\\" + tmpname
         mid = "/mnt/c/Temp/" + tmpname
-        try:
-            os.remove(mid)
-        except OSError:
-            pass
     else:
         print(f"s9 shot: 이 환경({plat})에는 WebKit 경로가 없다 — WebKit 캡처는 "
               "Windows 또는 WSL 에서만 된다(리눅스 WebKit 은 root 권한의 시스템 "
@@ -21079,6 +21093,16 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
     if not os.path.exists(runner_check):
         print(_shot_webkit_install_guide(), file=sys.stderr, end="")
         sys.exit(3)
+    # 자리를 만드는 것은 **러너가 있다고 확인한 뒤**다 (REQ-20260907-050): 전에는
+    # WSL 갈래에 들어서자마자 /mnt/c/Temp 를 만들어, 러너가 없어 어차피 안내만 내고
+    # 끝날 때도 윈도우 판을 건드렸다 — 그 판이 없는 리눅스(원격 시험 머신)에서는
+    # PermissionError 로 죽었다. 쓰지 않을 자리는 만들지 않는다.
+    if mid is not None:
+        os.makedirs("/mnt/c/Temp", exist_ok=True)
+        try:
+            os.remove(mid)
+        except OSError:
+            pass
     try:
         cmd = _shot_webkit_cmd(url, size, wait, win_out, runner=runner_check, browser=browser)
     except ValueError as e:
@@ -24548,7 +24572,10 @@ def cmd_serve(args):
             u = event_usage(ev)
             if u is not None:
                 mid = (ev.get("message") or {}).get("id") or ev.get("uuid") or ""
-                if mid != last_mid:
+                # id 가 없는 줄은 앞줄과 묶을 근거가 없다 — 빈 값을 「앞줄과 같다」로
+                # 읽으면 초기값 "" 과 같아져 **첫 줄부터** 통째로 빠진다
+                # (REQ-20260907-050: 에이전트 띠의 토큰이 0 으로 나왔다).
+                if not mid or mid != last_mid:
                     tokens += u["out"]
                     last_mid = mid
             lbl = _agent_label(ev)
@@ -27890,12 +27917,7 @@ def main():
     # (REQ-20260824-036). REMAINDER/parse_known_args는 옵션-위치 인자 순서를
     # 흐트러뜨리거나(인터리브 소실) 3.12+에서 미지 옵션을 에러 처리한다.
     if len(sys.argv) > 1 and sys.argv[1] == "code":
-        _own = ("--no-claude", "--no-open")     # s9 code 의 것 — claude 로 넘기지 않는다
-        rest = [a for a in sys.argv[2:] if a not in _own]
-        ns = argparse.Namespace(
-            no_claude="--no-claude" in sys.argv[2:],
-            no_open="--no-open" in sys.argv[2:], claude_args=rest)
-        cmd_code(ns)
+        cmd_code(code_argv(sys.argv[2:]))
         return
     args = p.parse_args()
     # 손길 도장 (REQ-20260830-019) — 문서를 고치는 명령만, 실패 무해(C9).

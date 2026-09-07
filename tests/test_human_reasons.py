@@ -15,11 +15,13 @@
 """
 import ast
 import importlib.machinery
+import json
 import importlib.util
 import os
 import re
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
@@ -80,11 +82,30 @@ class SingleSourceOfTruth(unittest.TestCase):
                     bad.append(node.lineno)
         self.assertEqual(bad, [], f"is_human_reason 을 쓰지 않은 줄: {bad}")
 
-    def test_budget_keys_follow_the_judgement(self):
-        """예산 칸 선택이 판정을 따른다 — wake 와 answer 가 같은 칸을 쓴다."""
-        src = open(SRC, encoding="utf-8").read()
-        # 예산 칸을 고르는 자리는 전부 is_human_reason 으로 갈린다
-        self.assertIn('if is_human_reason(reason):\n        keys = ("wake_day_count"', src)
+    def test_the_budget_keys_follow_the_judgement(self):
+        """예산 칸이 판정을 따른다 — wake 와 answer 가 같은 칸을 쓴다.
+
+        소스 글자를 대조하지 않는다(DOC-20260907-002) — `_auto_cap_refund` 를
+        실제로 불러 **어느 칸이 줄었는지**를 본다. 사람이 누른 손잡이면 사람
+        칸(wake_*)이, 기계면 기계 칸(day/hour)이 줄어야 한다. 새 손잡이를 더한
+        사람이 HUMAN_REASONS 한 줄을 빠뜨리면 여기서 걸린다.
+        """
+        for reason, human in (("wake", True), ("answer", True),
+                              ("watcher", False), ("", False)):
+            start = {"wake_day_count": 5, "wake_hour_count": 5,
+                     "day_count": 5, "hour_count": 5}
+            path = os.path.join(TMP, f"cap-{reason or 'blank'}.json")
+            with mock.patch.object(mod, "_auto_cap_counts", return_value=dict(start)), \
+                    mock.patch.object(mod, "_auto_global_path", return_value=path):
+                mod._auto_cap_refund(reason, 0)
+            with open(path, encoding="utf-8") as f:
+                out = json.load(f)
+            if human:
+                self.assertEqual(out["wake_day_count"], 4, f"{reason}: 사람 칸이 안 줄었다")
+                self.assertEqual(out["day_count"], 5, f"{reason}: 기계 칸을 건드렸다")
+            else:
+                self.assertEqual(out["day_count"], 4, f"{reason}: 기계 칸이 안 줄었다")
+                self.assertEqual(out["wake_day_count"], 5, f"{reason}: 사람 칸을 건드렸다")
 
 
 if __name__ == "__main__":

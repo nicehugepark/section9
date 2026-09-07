@@ -33,17 +33,26 @@ class ShotEngine(unittest.TestCase):
         spec.loader.exec_module(cls.m)
 
     def _run_webkit(self, platform, runner):
-        """webkit 경로를 부르고 (종료 코드, stderr) 를 돌려준다. cmd.exe 는 mock."""
+        """webkit 경로를 부르고 (종료 코드, stderr) 를 돌려준다. cmd.exe 는 mock.
+
+        판을 만드는 일(os.makedirs)도 함께 막아 **부르지 않았음**을 재는 이유는
+        REQ-20260907-050 이다: 러너가 없어 안내만 내고 끝나는 갈래가 그 전에
+        /mnt/c/Temp 를 만들고 있었고, 그 자리가 없는 리눅스(원격 시험 머신)에서
+        PermissionError 로 죽었다. 이 시험은 윈도우 판이 있는 기계를 요구하지
+        않는다 — 요구하면 리눅스에서 설 수 없다.
+        """
         m = self.m
         err = io.StringIO()
         with mock.patch.object(m, "os_platform", return_value=platform), \
                 mock.patch.object(m, "SHOT_WEBKIT_RUNNER_WSL", runner), \
                 mock.patch("subprocess.run") as run, \
+                mock.patch("os.makedirs") as mk, \
                 redirect_stderr(err):
             with self.assertRaises(SystemExit) as cm:
                 m._shot_webkit("http://127.0.0.1:1/#board", "768x1024", 4000,
                                os.path.join(TMP, "never.png"))
         run.assert_not_called()
+        mk.assert_not_called()
         return cm.exception.code, err.getvalue()
 
     def test_shot_engine(self):

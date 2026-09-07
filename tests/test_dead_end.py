@@ -190,8 +190,15 @@ class DeadEnd(unittest.TestCase):
                 # 정책 버튼은 제 무리로 갈라섰다 (REQ-20260901-005 designer 보조).
                 m2 = re.search(r"const beltDoc = ([\s\S]+?);\n", self.src)
                 self.assertTrue(m2, "문서 머리 띠가 벨트를 잇는 자리가 없다")
-                self.assertEqual(" ".join(m2.group(1).split()),
-                                 "deedBeltHTML(stallDoc, true)")
+                # **무엇을 넘기는지는 이 계약이 아니다** (REQ-20260907-050, DOC-20260907-002):
+                # 인자를 글자 그대로 못 박았더니 REQ-20260907-027 이 색인에 없는 문서까지
+                # 그리려고 `stallDoc || m` 로 넓힌 순간 시험만 깨졌다 — 뜻은 그대로였다.
+                # 같은 고침이 test_wake_handle.py 에 먼저 들어갔다(REQ-20260907-046).
+                # 여기서 지킬 것은 「머리 띠가 같은 함수를 낱말 얼굴로 부른다」이지
+                # 인자의 모양이 아니다.
+                self.assertRegex(" ".join(m2.group(1).split()),
+                                 r"^deedBeltHTML\([^)]*stallDoc[^)]*,\s*true\)$",
+                                 "문서 머리 띠가 벨트를 낱말 얼굴로 안 부른다")
                 m3 = re.search(r"const polBtn = ([\s\S]+?);\n", self.src)
                 self.assertTrue(m3, "정책 버튼 무리가 없다")
                 self.assertEqual(" ".join(m3.group(1).split()),

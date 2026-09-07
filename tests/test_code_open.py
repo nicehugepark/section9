@@ -83,11 +83,27 @@ class OffSwitch(unittest.TestCase):
             else:
                 os.environ["S9_NO_OPEN"] = old
 
-    def test_flag_is_not_passed_to_claude(self):
-        # `s9 code` 는 argparse 를 우회해 잔여 인자를 claude 로 넘긴다.
-        # 우리 것인 --no-open 이 거기 섞이면 claude 가 모르는 옵션으로 죽는다.
-        src = open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8").read()
-        self.assertIn('_own = ("--no-claude", "--no-open")', src)
+    def test_our_flags_never_reach_claude(self):
+        """우리 스위치가 claude 로 새면 claude 가 모르는 옵션으로 죽는다.
+
+        소스 글자를 대조하지 않는다(DOC-20260907-002) — 갈라 주는 함수를 실제로
+        불러 무엇이 넘어가는지 본다.
+        """
+        ns = mod.code_argv(["--no-open", "--no-claude", "-p", "안녕"])
+        self.assertTrue(ns.no_open)
+        self.assertTrue(ns.no_claude)
+        self.assertEqual(ns.claude_args, ["-p", "안녕"])
+
+    def test_order_of_the_rest_is_kept(self):
+        # 순서를 흐트러뜨리면 claude 의 위치 인자가 어긋난다 (REQ-20260824-036)
+        ns = mod.code_argv(["--model", "x", "--no-open", "질문", "-c"])
+        self.assertEqual(ns.claude_args, ["--model", "x", "질문", "-c"])
+
+    def test_nothing_of_ours_means_nothing_removed(self):
+        ns = mod.code_argv(["-p", "안녕"])
+        self.assertEqual(ns.claude_args, ["-p", "안녕"])
+        self.assertFalse(ns.no_open)
+        self.assertFalse(ns.no_claude)
 
 
 if __name__ == "__main__":

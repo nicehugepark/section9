@@ -55,20 +55,29 @@ class RemoteRun(unittest.TestCase):
         open(os.path.join(d, "bin/tool"), "a").write("b\n")
         self.assertEqual(remote_run.head_state(repo=d)[1], 1, "코드의 때는 센다")
 
-    def test_k2_the_remote_is_a_clone_that_runs_the_pushed_commit(self):
-        """K2. 원격 한 줄: clone(없으면) → refs/ci/<sha7> fetch → 그 커밋 → index → 시험."""
+    def test_k2_the_remote_runs_the_commit_it_was_handed(self):
+        """K2. 원격 한 줄: bundle 받기 → refs/ci/<sha7> fetch → 그 커밋 → index → 시험.
+
+        REQ-20260907-049 로 커밋이 GitHub 을 거치지 않고 ssh 통로의 bundle 로 직접
+        건너간다 — 그때 `repo` 인자가 사라졌는데 이 시험이 옛 서명을 부르고 있었다.
+        """
         sha = "0123456789abcdef0123456789abcdef01234567"
-        line = remote_run.remote_script("git@github.com:o/r.git", sha, "~/section9-ci/x",
+        line = remote_run.remote_script(sha, "~/section9-ci/x",
                                         16, ["test_a.py"], user="nicehugepark")
-        for part in ("git clone -q", "refs/ci/0123456", "-q -f " + sha,
+        for part in ("cat > ", "refs/ci/0123456", "-q -f " + sha,
                      "index rebuild", "user attach 'nicehugepark'", "--jobs 16", "'test_a.py'"):
             self.assertIn(part, line)
+        # 커밋은 남을 거쳐 오지 않는다 — 원격의 열쇠는 다른 저장소의 것이라
+        # GitHub 이 「없는 저장소」로 답했다 (REQ-20260907-049).
+        self.assertNotIn("github", line.lower(), "커밋이 GitHub 을 거친다")
+        self.assertNotIn("git clone", line, "남의 저장소에서 받아 온다")
         self.assertNotIn("S9_USER=", line, "정체를 환경변수로 강제하면 제 사용자를 만드는 시험이 실패한다")
         # 원격은 파일 목록을 명시로 받아 「전체」가 아니다 — 실패 파일 표식(RED_MARK)을
         # 찍게 하는 손잡이가 한 줄에 있어야 이 머신이 무엇이 실패했는지 안다
         # (실측 2026-09-06 ee223fa: 표식이 없어 「실패 파일을 못 읽었다」, REQ-20260906-060).
         self.assertIn("S9_TEST_WORKER=1 python3 tests/", line)
-        self.assertNotIn("tar", line, "GitHub 이 축이다 — 보내는 것이 있으면 안 된다")
+        self.assertNotIn("tar", line,
+                         "나무를 통째로 보낸다 — 건네는 것은 커밋 꾸러미(bundle) 하나다")
 
     def test_k4_full_means_no_pattern_and_jobs_is_not_a_pattern(self):
         """K4. 전체 = 패턴 없음. `--jobs 16` 의 16 과 `--remote relay1` 의 relay1 은 패턴이 아니다."""

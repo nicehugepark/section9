@@ -208,7 +208,11 @@ class TestAttachments(unittest.TestCase):
         new_calls = [(a, i) for a, i in calls if a[:2] == ("new", "request")]
         self.assertTrue(new_calls, calls)
         body = new_calls[0][1] or ""
-        self.assertIn("[첨부]", body)
+        # 표기는 `[Attach: <절대경로>]` 다 (REQ-20260907-039). 예전엔 `[첨부]`
+        # 아래 목록이었는데, ingest 가 찾는 꼴이 아니라 **한 번도 걸리지
+        # 않았다** — 붙인 그림이 vault 에 들어간 적이 없었다. 여기서 재는 것은
+        # 「첨부 경로가 원문에 보존된다」이지 머리글의 글자가 아니다.
+        self.assertIn("[Attach: ", body)
         self.assertIn("1.png", body)
 
 

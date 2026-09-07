@@ -123,7 +123,11 @@ def probe_script(dest):
             f'else echo "{HAVE_MARK}none"; fi')
 
 
-def remote_script(sha, dest, jobs, pats_argv, user=""):
+def remote_script(sha, dest, jobs, pats_argv, *, user=""):
+    # user 는 이름으로만 받는다 (REQ-20260907-050): 인자가 넷이라 자리를 하나
+    # 더 밀어 넣으면 `user` 에 엉뚱한 값이 얹혔고, 오류가 「user 에 값이 둘」로
+    # 나와 **무엇이 밀렸는지**를 가렸다. 이름만 받으면 「자리 인자가 하나 많다」로
+    # 곧장 드러난다.
     """원격에서 돌 한 줄 — bundle 받기 → 그 커밋으로 펴기 → 확인 → 시험.
 
     **GitHub 을 거치지 않는다** (REQ-20260907-049). 예전에는 이 머신이 HEAD 를
