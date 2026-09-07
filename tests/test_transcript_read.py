@@ -4,10 +4,10 @@
 「지금 이 세션이 일하는 중이라 바꾸지 않았습니다」로 네 번 거부됐다. 한도에
 막힌 턴은 트랜스크립트에 합성 assistant 이벤트로 끝나는데
 (`model="<synthetic>"` · `stop_reason="stop_sequence"` · `error="rate_limit"`),
-게이트(`_transcript_busy`)는 `stop_reason != end_turn` 한 줄로 그것을 「진행
+검사(`_transcript_busy`)는 `stop_reason != end_turn` 한 줄로 그것을 「진행
 중」이라 읽었다. 같은 파일을 읽는 이웃 둘은 이미 알고 있었다 —
 `session_model` 은 합성 표기를 건너뛰고, `stream_end_info` 는 꼬리 서명을
-「사용 한도 소진」이라 부른다. **게이트만 낡았다.**
+「사용 한도 소진」이라 부른다. **검사만 낡았다.**
 
 뿌리는 판정 로직이 아니라 **공유 판독기가 없다**는 것이었다. 그래서 이 파일이
 지키는 계약은 둘이다: ① 판독 결과가 맞다 ② 판독하는 자리가 하나뿐이다.
@@ -165,7 +165,7 @@ class WhatTheReaderSees(unittest.TestCase):
             self.assertFalse(mod.transcript_read(p)["busy"])
 
 class WhereTheReadingLives(unittest.TestCase):
-    """② 판독하는 자리가 하나뿐이다 — 이 감시가 다음 '게이트만 낡음'을 막는다."""
+    """② 판독하는 자리가 하나뿐이다 — 이 감시가 다음 '검사만 낡음'을 막는다."""
 
     @classmethod
     def setUpClass(cls):

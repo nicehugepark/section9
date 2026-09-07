@@ -10,8 +10,8 @@ tail 이 멀쩡히 돌아도 판정은 언제나 거짓이었다. `chat_live` �
 서 있었다.
 
 고침의 모양은 "맥용 분기를 여기저기 덧대기"가 아니다. **프로세스를 보는 눈을
-한 문으로 모으고(`proc_table`·`pid_alive`·`pid_comm`·`pid_cmdline`), 그 문
-안에서만 플랫폼을 가른다.** 문이 여럿이면 플랫폼 구멍도 여럿이 된다.
+한 경로로 모으고(`proc_table`·`pid_alive`·`pid_comm`·`pid_cmdline`), 그 경로
+안에서만 플랫폼을 가른다.** 경로가 여럿이면 플랫폼 구멍도 여럿이 된다.
 
 맥이 이 자리에 없으므로 **갈래를 가짜로 세워** 시험한다: `S9_PROC_BACKEND`
 로 `/proc` 을 못 쓰는 기계인 척하고, 리눅스에서 돌던 것과 **같은 답**이
@@ -112,10 +112,10 @@ class TailProc:
 
 
 class TestBackendGate(unittest.TestCase):
-    """S1·S6. 판정이 지나는 문은 하나고, 문이 없으면 조용히 거짓이다."""
+    """S1·S6. 판정이 지나는 경로는 하나고, 경로가 없으면 조용히 거짓이다."""
 
     def test_test_backend_gate(self):
-        """S1·S6. 판정이 지나는 문은 하나고, 문이 없으면 조용히 거짓이다."""
+        """S1·S6. 판정이 지나는 경로는 하나고, 경로가 없으면 조용히 거짓이다."""
         with self.subTest("s1_linux_uses_proc"):
             mod.proc_cache_clear()
             self.assertEqual(mod.proc_backend(), NATIVE)
@@ -469,8 +469,8 @@ class TestDoctorLive(unittest.TestCase):
             self.assertIn("tails", d, "기계 판독용에도 증거가 실려야 한다")
 
 # ── 윈도우 갈래 ────────────────────────────────────────────────────────────
-# 이 REQ 의 목표는 "맥·윈도우·리눅스 어디서든" 이다. 맥을 고치면서 문을 하나로
-# 모았지만 그 문 안에 윈도우 갈래가 없었다: 네이티브 윈도우에는 `/proc` 도
+# 이 REQ 의 목표는 "맥·윈도우·리눅스 어디서든" 이다. 맥을 고치면서 경로를 하나로
+# 모았지만 그 경로 안에 윈도우 갈래가 없었다: 네이티브 윈도우에는 `/proc` 도
 # `ps` 도 없어 `proc_backend()` 가 `none` 으로 떨어지고, 그러면 대화가 되는
 # 세션도 영원히 `idle` 이다 — **맥과 같은 결함이 자리만 옮긴 것**이다.
 # (`bin/s9.cmd`·`bin/s9-install.cmd` 가 있는 이상 그 자리는 가상이 아니다.)

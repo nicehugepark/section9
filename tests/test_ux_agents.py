@@ -226,26 +226,26 @@ class TestBoardScope(unittest.TestCase):
     def test_b3_type_counts_ignore_type_filter(self):
         # 조건식을 글자 그대로 박지 않는다(b5와 같은 이유). 고정할 성질은
         # "타입바의 타입별 건수는 타입 필터에 영향받지 않는다" 하나이지,
-        # 그 게이트가 어떤 이름으로 어떻게 조립되는지가 아니다 —
-        # 실제로 REQ-20260826-006이 게이트를 넓히자 이 줄이 깨졌다.
+        # 그 검사가 어떤 이름으로 어떻게 조립되는지가 아니다 —
+        # 실제로 REQ-20260826-006이 검사를 넓히자 이 줄이 깨졌다.
         import re
         # 인자 목록은 계약이 아니다 — REQ-20260827-054 가 "조건 하나를 빼고 다시
         # 세기" 위해 skip 집합을 세 번째 인자로 더했다. 여기서 고정할 성질은
-        # 타입 게이트의 동작이지 시그니처가 아니다.
+        # 타입 검사의 동작이지 시그니처가 아니다.
         m = re.search(r"function filtered\(skipQ, skipType(?:, \w+)?\)(.*?)\n}",
                       self.html, re.S)
         self.assertTrue(m, "filtered()가 타입 조건 제외 인자를 받지 않는다")
         body = m.group(1)
-        # (1) 타입 조건은 해제 가능한 게이트를 통과해야 한다
+        # (1) 타입 조건은 해제 가능한 검사를 통과해야 한다
         ty = re.search(r"if \(!(\w+) && ty && r\.type !== ty\) return false;", body)
-        self.assertTrue(ty, "타입 조건이 해제 가능한 게이트 없이 걸린다")
+        self.assertTrue(ty, "타입 조건이 해제 가능한 검사 없이 걸린다")
         gate = ty.group(1)
-        # (2) 그 게이트는 skipType으로 열린다 (게이트 자신이거나 그것에서 파생)
+        # (2) 그 검사는 skipType으로 열린다 (검사 자신이거나 그것에서 파생)
         self.assertTrue(
             gate == "skipType"
             or re.search(r"(?:const|let|var) " + gate + r"\s*=[^\n;]*skipType", body),
-            "타입 조건 게이트(%s)가 skipType과 무관하다" % gate)
-        # (3) 타입바 건수는 그 게이트를 연 채 센다
+            "타입 조건 검사(%s)가 skipType과 무관하다" % gate)
+        # (3) 타입바 건수는 그 검사를 연 채 센다
         self.assertIn("filtered(!!matchMap, true)", self.html)
 
     # B3b. Board에는 타입 축이 없다 (REQ-20260826-006 회귀 방지):
@@ -254,13 +254,13 @@ class TestBoardScope(unittest.TestCase):
         import re
         # 인자 목록은 계약이 아니다 — REQ-20260827-054 가 "조건 하나를 빼고 다시
         # 세기" 위해 skip 집합을 세 번째 인자로 더했다. 여기서 고정할 성질은
-        # 타입 게이트의 동작이지 시그니처가 아니다.
+        # 타입 검사의 동작이지 시그니처가 아니다.
         m = re.search(r"function filtered\(skipQ, skipType(?:, \w+)?\)(.*?)\n}",
                       self.html, re.S)
         body = m.group(1)
         ty = re.search(r"if \(!(\w+) && ty && r\.type !== ty\) return false;", body)
         gate = ty.group(1)
-        # 게이트가 board 탭에서도 열려야 한다 — 보드는 request 전용이라
+        # 검사가 board 탭에서도 열려야 한다 — 보드는 request 전용이라
         # 타입 조건이 걸리면 결과가 통째로 0건이 된다.
         self.assertTrue(
             re.search(r"(?:const|let|var) " + gate + r'\s*=[^\n;]*tab === "board"', body),

@@ -88,7 +88,7 @@ class PortWarnRepeat(unittest.TestCase):
         """
         with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
-        # 사다리(REQ-20260904-016) 뒤의 모양: 문(`_port_recover_gate`)이 열리면
+        # 사다리(REQ-20260904-016) 뒤의 모양: 경로(`_port_recover_gate`)이 열리면
         # `if ok:` 가지가 회수를 돌린다. **그 가지**는 침묵 장치를 지나지 않는다.
         # 세워 둔(held) 가지는 같은 말을 되풀이하지 않아도 된다 — 그건 "계속
         # 나쁘다"가 아니라 "여전히 안 죽인다"이고, 왜인지는 verdict.held 에 남는다.

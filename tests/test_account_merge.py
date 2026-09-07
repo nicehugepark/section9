@@ -6,7 +6,7 @@
 같은 메일의 프로필 줄을 통째로 `continue` 로 버렸다. 기본 계정(@home)이 먼저
 `seen` 에 들어가므로 살아남는 것은 `current` 한 줄 + `ready:false` 두 줄이고,
 화면의 `다시 시작` 은 영원히 비활성이다. 반대 방향(세션이 프로필로 떠 있을 때)은
-같은 코드가 @home 줄을 지워 **돌아올 문**을 다시 닫았다.
+같은 코드가 @home 줄을 지워 **돌아올 경로**을 다시 닫았다.
 
 **둘 — 조회가 자격증명을 지운다.** `account_settle` 의 `shutil.rmtree` 는 같은
 메일이 두 자리에 있으면 새 자리를 통째로 지운다. 그 판정이 대시보드의 5초 폴
@@ -106,7 +106,7 @@ class ARowStaysSelectable(Base):
                          "고를 수 있는 줄이 없다 — 창이 막다른 길이 된다")
 
     def test_a2_home_row_survives_when_session_is_on_a_profile(self):
-        """돌아올 문 — 세션이 프로필로 떠 있어도 @home 줄은 사라지지 않는다.
+        """돌아올 경로 — 세션이 프로필로 떠 있어도 @home 줄은 사라지지 않는다.
 
         @home 은 메일이 아니라 'CLAUDE_CONFIG_DIR 미설정'을 뜻하는 유일한 키라
         다른 디렉토리와 교환 가능하지 않다."""

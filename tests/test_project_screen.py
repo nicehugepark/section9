@@ -4,7 +4,7 @@
 프로젝트는 문서에 살고, 화면은 세 자리에 얹힌다 — Docs 좌측 목록 · PRJ 문서 뷰
 패널 · Board 위 한 줄 띠. 이 파일이 지키는 것은 그 셋의 계약이다.
 
-B2(실연동)에서 계약이 하나 늘었다 — **관문이 하나인가**. 골격은 기존 css 를 안
+B2(실연동)에서 계약이 하나 늘었다 — **경로가 하나인가**. 골격은 기존 css 를 안
 만지는 조건이라 멤버 표 규칙이 두 벌(`.proj-info`·`.pmem`)로 서 있었고, 저장도
 두 벌(app.js `wireMemberControls`·project.js `prjPost`)이었다. 그 둘을 없앤 것이
 이 물결의 첫 손이고, 되살아나는 것을 여기서 막는다.
@@ -12,9 +12,9 @@ B2(실연동)에서 계약이 하나 늘었다 — **관문이 하나인가**. �
 계약은 셋으로 나뉜다.
 
   ① **읽어서 아는 것** (`web/app/project.js` · `web/css/project.css`) — 문구가
-     한 곳에 모였는가, 저장 관문이 하나인가, 색을 리터럴로 적지 않았는가,
+     한 곳에 모였는가, 저장 경로가 하나인가, 색을 리터럴로 적지 않았는가,
      `.proj-info` 를 복제하지 않았는가, 배율이 갈릴 기하를 새로 만들지 않았는가.
-     스킨 열 벌이 저마다 색을 말해 둔 자리를 새로 그리면 그 순간 관문이 열
+     스킨 열 벌이 저마다 색을 말해 둔 자리를 새로 그리면 그 순간 경로가 열
      곳이 된다(벨트 글리프 때의 그 함정).
   ② **띄워 봐야 아는 것** (`web/verify-project.html` + 실브라우저) — 상태마다
      무엇이 그려지는가. 권한이 없을 때 컨트롤이 **회색으로 있는 게 아니라
@@ -90,10 +90,10 @@ class TheWordsLiveInOnePlace(unittest.TestCase):
                                  "창 껍데기를 베꼈다(%s) — 진짜 창을 띄워라" % copied)
 
 class TheSaveHasOneGate(unittest.TestCase):
-    """설정 인라인이든 멤버 표든 한 문을 지난다 — 두 벌이면 한 벌만 고쳐진다."""
+    """설정 인라인이든 멤버 표든 한 경로를 지난다 — 두 벌이면 한 벌만 고쳐진다."""
 
     def test_the_save_has_one_gate(self):
-        """설정 인라인이든 멤버 표든 한 문을 지난다 — 두 벌이면 한 벌만 고쳐진다."""
+        """설정 인라인이든 멤버 표든 한 경로를 지난다 — 두 벌이면 한 벌만 고쳐진다."""
         with self.subTest("only_one_fetch"):
             src = strip_comments(read(JS))
             self.assertEqual(
@@ -106,7 +106,7 @@ class TheSaveHasOneGate(unittest.TestCase):
                 for line in [ln for ln in src.splitlines() if path in ln]:
                     self.assertTrue(
                         re.search(r"\b(post|prjPost)\(", line),
-                        "%s 가 관문(prjPost) 밖에서 불린다: %s" % (path, line.strip()))
+                        "%s 가 경로(prjPost) 밖에서 불린다: %s" % (path, line.strip()))
         with self.subTest("nothing_asks_before_saving_a_value"):
             src = strip_comments(read(JS))
 
@@ -178,7 +178,7 @@ class TheRulesSayNoColour(unittest.TestCase):
         with self.subTest("the_member_table_has_one_gate"):
             body = re.sub(r"/\*[\s\S]*?\*/", "", read(CSS))
             self.assertNotIn(".proj-info", body,
-                             "기존 패널 셀렉터를 복제했다 — 관문이 둘이 된다")
+                             "기존 패널 셀렉터를 복제했다 — 경로가 둘이 된다")
             for name in os.listdir(os.path.join(WEB, "css")):
                 if name == "project.css":
                     continue
@@ -210,7 +210,7 @@ class TheTwoRulebooksBecameOne(unittest.TestCase):
     """B2 의 첫 손 — 규칙이 두 벌이던 자리를 없앤다.
 
     골격(B1)은 기존 css 를 만지지 않는 조건이라 멤버 표 규칙이 `.proj-info`(옛
-    패널)와 `.pmem`(새 패널) 두 벌로 서 있었다. 두 벌인 채로 끝나면 관문이 둘이
+    패널)와 `.pmem`(새 패널) 두 벌로 서 있었다. 두 벌인 채로 끝나면 경로가 둘이
     되고, 스킨 열 벌이 저마다 한 벌만 고친다 — 벨트 글리프 때 이 저장소가 이미
     치른 값이다. 되살아나는 것도 여기서 막는다."""
 
@@ -233,7 +233,7 @@ class TheTwoRulebooksBecameOne(unittest.TestCase):
             self.assertIn("prjPanelHTML(", docs, "PRJ 문서 뷰에 패널이 없다")
             for gone in ("prjRowHTML(", "prjListHTML("):
                 self.assertNotIn(gone, docs,
-                                 "Docs 가 아직 프로젝트 목록을 그린다 — 문이 둘이다: %s"
+                                 "Docs 가 아직 프로젝트 목록을 그린다 — 경로가 둘이다: %s"
                                  % gone)
             prj = strip_comments(read(JS))
             for fn in ("function prjRowHTML", "function prjListHTML",
@@ -266,7 +266,7 @@ class TheTwoRulebooksBecameOne(unittest.TestCase):
             self.assertRegex(docs, r"function loadDoc\(id, bg, force\)",
                              "되읽기와 배경 갱신을 가를 자가 없다")
             self.assertRegex(docs, r"if \(bg && !force &&",
-                             "건너뛰기 문이 force 를 안 본다")
+                             "건너뛰기 검사가 force 를 안 본다")
             self.assertRegex(docs, r"reload: async \(\) => \{[\s\S]{0,400}?"
                                    r"loadDoc\(id, true, true\)",
                              "되읽기가 다시 그리기를 강제하지 않는다")
@@ -610,11 +610,11 @@ class TheStatesAreAllDrawn(unittest.TestCase):
                           "만료 14일 이내인데 임박 잉크가 없다")
             # 「만료 14일 이내」는 기준선이지 사실이 아니다 — 시간은 사람 단위로
             self.assertRegex(self.d["soonTip"], r"^\d+일 뒤 만료$")
-        with self.subTest("the_door_is_visible_and_says_what_it_makes"):
+        with self.subTest("the_handle_is_visible_and_says_what_it_makes"):
             self.assertEqual(self.d["createText"], "프로젝트 만들기")
             self.assertIn("만듭니다", self.d["createAria"])
             self.assertNotEqual(self.d["createInk"], self.d["faintColour"],
-                                "문을 화면에서 가장 옅은 잉크로 그렸다")
+                                "만들기 손잡이를 화면에서 가장 옅은 잉크로 그렸다")
             self.assertEqual(self.d["createInk"], self.d["mutedColour"])
         with self.subTest("the_settings_grid_is_one_dictionary"):
             self.assertEqual(self.d["setKeys"],

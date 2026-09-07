@@ -159,7 +159,7 @@ class CommitMarkHooks(unittest.TestCase):
         def gates():
             seen["during"] = os.path.exists(self.mark)
         self.assertEqual(self._main(gates), 0)
-        self.assertTrue(seen["during"], "게이트가 도는 동안 표식이 없다")
+        self.assertTrue(seen["during"], "검사가 도는 동안 표식이 없다")
         self.assertTrue(os.path.exists(self.mark), "통과한 커밋의 표식은 post-commit 이 지운다 — 여기서 지우면 안 된다")
 
     def test_s5b_guard_removes_mark_when_gates_reject(self):

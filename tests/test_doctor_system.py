@@ -124,10 +124,10 @@ class ServeVerdict(unittest.TestCase):
                  "port": 9909})["level"], "ok")
 
 class HooksVerdict(unittest.TestCase):
-    """D5. 감사 훅과 커밋 게이트가 빠지면 기록이 조용히 끊긴다."""
+    """D5. 감사 훅과 커밋 검사가 빠지면 기록이 조용히 끊긴다."""
 
     def test_hooks_verdict(self):
-        """D5. 감사 훅과 커밋 게이트가 빠지면 기록이 조용히 끊긴다."""
+        """D5. 감사 훅과 커밋 검사가 빠지면 기록이 조용히 끊긴다."""
         with self.subTest("missing_hooks_are_named"):
             v = doctor.hooks_verdict({"claude_missing": ["Stop", "SessionStart"],
                                       "git_hook": True})
@@ -176,7 +176,7 @@ class DepsVerdict(unittest.TestCase):
     """D6. 없으면 죽는 것과 그 기능만 죽는 것을 가른다."""
 
     def test_hooks_verdict(self):
-        """D5. 감사 훅과 커밋 게이트가 빠지면 기록이 조용히 끊긴다."""
+        """D5. 감사 훅과 커밋 검사가 빠지면 기록이 조용히 끊긴다."""
         with self.subTest("all_present_is_ok"):
             self.assertEqual(doctor.deps_verdict(
                 {"missing_required": [], "missing_optional": []})["level"], "ok")

@@ -83,14 +83,14 @@ class TheResponse(unittest.TestCase):
             i = self.src.find("def _send(self, code, ctype, data):")
             self.assertGreater(i, 0)
             self.assertIn('"Cache-Control", "no-store"', self.src[i:i + 400])
-        with self.subTest("assets_are_sent_through_their_own_door"):
+        with self.subTest("assets_are_sent_through_their_own_path"):
             i = self.src.find('elif parsed.path == "/api/asset":')
             self.assertGreater(i, 0)
             blk = self.src[i:i + 1400]
             self.assertIn("_send_asset", blk,
                           "첨부가 여전히 no-store 로 나간다 — 다시 그릴 때마다 "
                           "열다섯 장을 새로 부른다")
-        with self.subTest("the_asset_door_revalidates"):
+        with self.subTest("the_asset_path_revalidates"):
             i = self.src.find("def _send_asset(")
             self.assertGreater(i, 0, "_send_asset() 이 없다")
             blk = self.src[i:i + 1600]

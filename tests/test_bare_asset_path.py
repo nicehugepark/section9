@@ -74,7 +74,7 @@ class BareAssetPath(unittest.TestCase):
         m = re.search(r"const BARE_ASSET_RE = new RegExp\(\s*"
                       r"([\s\S]+?),\s*\"([gimsuy]*)\"\);", cls.src)
         # 건너뛰지 않는다 — 규칙이 없으면 **없다고 말해야** 한다. 없는 것을
-        # 조용히 통과시키는 시험은 시험이 아니다 (REQ-20260829-001 이 게이트
+        # 조용히 통과시키는 시험은 시험이 아니다 (REQ-20260829-001 이 검사
         # 쪽에서 걷어낸 것과 같은 조용한 성공이다).
         assert m, "BARE_ASSET_RE 가 없다 — 맨 경로는 여전히 글자로만 뜬다"
         cls.flags = m.group(2)

@@ -155,7 +155,7 @@ class TheEmptySeatSpeaks(unittest.TestCase):
         self.assertRegex(
             self.shape, r"foot:\s*waiting \|\| somewhere \? \"\"",
             "받는 중에 「+ 여기서 세션 시작」을 세운다 — 갈 곳이 있는지 "
-            "확인되기 전의 나가는 문은 거짓 안내다")
+            "확인되기 전의 나가는 경로는 거짓 안내다")
 
     def test_f2_the_old_call_shape_still_works(self):
         """진단 창(?dlg=sessions)의 두 인자 호출이 그대로 산다."""

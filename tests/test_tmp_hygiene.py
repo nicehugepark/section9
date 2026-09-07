@@ -5,7 +5,7 @@
 돌아온다 — systemd-tmpfiles 가 부트마다 /tmp 를 통째로 지우느라 73초를 쓰고,
 그동안 sysinit 이 막혀 WSL 의 10초 사용자 세션 창을 놓친다.
 
-파일마다 tearDown 을 84번 심는 대신 러너에서 문을 닫는다: 실행마다 전용 루트를
+파일마다 tearDown 을 84번 심는 대신 러너가 한 곳에서 막는다: 실행마다 전용 루트를
 세우고 tempfile·TMPDIR 을 그리로 돌린 뒤, 끝나면 통째로 지운다. 여기서는 그
 계약을 못박는다 — 특히 **남의 것은 절대 건드리지 않는다**.
 
@@ -207,7 +207,7 @@ class DoctorSweep(unittest.TestCase):
 
 
 class Runner(unittest.TestCase):
-    """T2·T3·T6. 러너가 실제로 문을 닫는가 — 진짜로 돌려서 본다."""
+    """T2·T3·T6. 러너가 실제로 막는가 — 진짜로 돌려서 본다."""
 
     def _run(self, pattern, leak=True):
         env = {**os.environ}
@@ -220,7 +220,7 @@ class Runner(unittest.TestCase):
                               cwd=os.path.dirname(HERE))
 
     def test_runner(self):
-        """T2·T3·T6. 러너가 실제로 문을 닫는가 — 진짜로 돌려서 본다."""
+        """T2·T3·T6. 러너가 실제로 막는가 — 진짜로 돌려서 본다."""
         with self.subTest("a_real_run_leaves_nothing_behind_in_tmp"):
             before = set(os.listdir(tmproot.SYS_TMP))
             r = self._run("tmp_leak_probe")

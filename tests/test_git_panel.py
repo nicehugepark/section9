@@ -390,7 +390,7 @@ class TheScreenCannotEvenSpeakTheDangerousWords(GitPanelBase):
                 self.m.git_run([verb])
 
 
-class TheCaptureDoorTellsTheTruth(GitPanelBase):
+class TheCapturePathTellsTheTruth(GitPanelBase):
     """헤드리스 캡처 갈래(`?git=`)는 **상태만** 지어낸다.
 
     판정과 문장은 진짜 `git_can` 을 지나므로, 캡처에 뜬 사유는 실제로 사람이
@@ -400,7 +400,7 @@ class TheCaptureDoorTellsTheTruth(GitPanelBase):
         for name in self.m.GIT_DEMO:
             st = self.m.git_state(demo=name)
             self.assertEqual(st["can"], self.m.git_can(st),
-                             "%s 갈래의 판정이 진짜 문 밖에서 만들어졌다" % name)
+                             "%s 갈래의 판정이 진짜 경로 밖에서 만들어졌다" % name)
 
     def test_the_six_faces_are_all_reachable(self):
         want = {"same": (False, False), "push": (False, True),

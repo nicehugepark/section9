@@ -9,7 +9,7 @@
 시험이다 — 통과로 만드는 것은 후속 REQ 의 몫이고, 각 시험의 docstring 에
 어느 REQ 가 그것을 통과로 만드는지 적었다:
 
-    016  귀속 게이트 단일화 (exec_verdict 하나 — 잠정 키 machine)
+    016  귀속 검사 단일화 (exec_verdict 하나 — 잠정 키 machine)
     017  세션 바인딩 불가침 (남의 바인딩은 판정에 쓰지 않고 고쳐 쓰지 않는다)
     020  리스 프로토콜 (담당자 + 문서 리스, 다른 머신은 벽시계만)
 
@@ -97,7 +97,7 @@ class TestReworkWatcherAcrossMachines(unittest.TestCase):
     def test_s3_beta_watcher_does_not_spawn_for_alpha_doc(self):
         """(a) 회귀 고정 — beta 워처는 alpha 의 문서를 띄우지 않는다.
 
-        현행도 통과한다(machine 가드 'elsewhere'). 016 이 게이트를 한 함수로
+        현행도 통과한다(machine 가드 'elsewhere'). 016 이 검사를 한 함수로
         모은 뒤에도, 020 이 키를 리스로 바꾼 뒤에도(alpha 세션 A 의 리스가
         신선하다) 0 이어야 한다."""
         fx = self.fx
@@ -111,7 +111,7 @@ class TestReworkWatcherAcrossMachines(unittest.TestCase):
 
         현행: alpha 의 `rework_claimed` 는 beta 바인딩을 보지만 생존 신호
         (pid·transcript·inbox tail)가 전부 alpha 에 없어 '죽은 세션'으로 읽고
-        스폰한다(repro_reassign [1], Popen 2회). 통과로 만드는 것: 016(게이트
+        스폰한다(repro_reassign [1], Popen 2회). 통과로 만드는 것: 016(검사
         단일화 — 다른 머신의 클레임은 로컬 생존 신호로 판정하지 않는다) →
         020(리스: 다른 머신은 벽시계만)."""
         fx, X = self.fx, self.X

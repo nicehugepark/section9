@@ -6,7 +6,7 @@
 검토 시나리오 3). 세 겹으로 막는다:
   ① 쓰는 자리 — 그 키는 config/local.json(비추적)으로 간다
   ② 읽는 자리 — 추적 파일에 실려 온 그 키는 읽지 않는다 (원격이 다시 밀어 넣어도)
-  ③ 커밋 게이트 — 그래도 추적 파일에 들어오면 막는다
+  ③ 커밋 검사 — 그래도 추적 파일에 들어오면 막는다
 
 실행: python3 tests/ local_only_config
 """
@@ -108,7 +108,7 @@ class LocalOnlyConfig(unittest.TestCase):
             self.assertIn(k, self._tracked())
             self.assertNotIn(k, self._local())
 
-    # L5. 장치 — 추적 파일에 들어오면 커밋 게이트가 잡는다
+    # L5. 장치 — 추적 파일에 들어오면 커밋 검사가 잡는다
     def test_l5_commit_gate_catches_it(self):
         self._push_remote(auto_resume_gh="on")
         hits = self.m.secret_leak(["users/alice/config/settings.json"], "",

@@ -131,7 +131,7 @@ def already_done_refs(note, self_id=""):
     """마감 노트가 지목한 것들 — (문서 id 목록, commit 을 지목했는가).
 
     자기 자신은 지목이 아니다 — 「이 요청이 이 요청을 이뤘다」는 아무 말도 하지
-    않는다. 이 판정 하나가 open→done 의 문을 지킨다.
+    않는다. 이 판정 하나가 open→done 을 지킨다.
     """
     ids = [c for c in DOC_ID_RE.findall(note or "") if c != self_id]
     rest = DOC_ID_RE.sub(" ", note or "")
@@ -381,7 +381,7 @@ def user_config(name):
     cfg = _read_json(os.path.join(USERS, name, "config", "settings.json"))
     # 추적 파일에 실려 온 자율 실행 키는 **읽지 않는다** (REQ-20260902-031) —
     # 옮기는 것만으로는 원격이 다시 밀어 넣는 것을 못 막는다. 쓰는 자리를
-    # 가르는 것이 ①, 읽는 자리가 무시하는 것이 ②, 커밋 게이트가 ③이다.
+    # 가르는 것이 ①, 읽는 자리가 무시하는 것이 ②, 커밋 검사가 ③이다.
     cfg = {k: v for k, v in cfg.items() if not _local_only_key(k)}
     cfg.update(_read_json(user_config_local_path(name)))
     return cfg
@@ -628,11 +628,11 @@ VIEWER_DENIED_MSG = "관찰 계정은 쓰지 못합니다"
 def _write_gate(path, meta):
     """write_doc 의 인가 한 겹 (REQ-20260902-028 · DOC-20260902-001 §2 축4).
 
-    36개 호출부가 전부 이 문을 지나므로 판정은 여기 한 곳이다. 등급은 경로로
+    36개 호출부가 전부 이 경로를 지나므로 판정은 여기 한 곳이다. 등급은 경로로
     가른다:
       vault/**                 actor 가 viewer 면 거부. 내용을 새로 쓰는 길
                                (write_doc)뿐 아니라 자리를 옮기거나 지우는 길
-                               (rm·restore·purge)도 이 문을 지난다 — 지우기는
+                               (rm·restore·purge)도 이 경로를 지난다 — 지우기는
                                쓰기보다 되돌리기 어려운 쓰기다.
       users/<x>/profile.md     계정 문서다. 셋을 가른다:
                                ① `role:` 이 바뀌면 actor 가 admin (CLI
@@ -650,7 +650,7 @@ def _write_gate(path, meta):
       그 외(state/**, projects/**) 통과 — 런타임 상태이지 문서가 아니다.
 
     actor 는 `resolve_user()` 다 — 새 신원을 만들지 않는다. 옆문(환경변수로
-    게이트를 끄는 스위치)은 두지 않는다: 서버 내부 쓰기가 막히면 그 쓰기의
+    검사를 끄는 스위치)은 두지 않는다: 서버 내부 쓰기가 막히면 그 쓰기의
     actor 가 틀린 것이고, 고칠 곳은 그 actor 다. 로컬 인가는 자기신고라 인증이
     아니다 — 이 층이 뚫리면(파일 직접 편집·S9_USER 위장) 다음 층은 인스턴스
     저장소의 git 권한(observer 는 read 만)이다.
@@ -770,7 +770,7 @@ _ALIAS_CACHE = {"key": (), "map": {}, "gen": 0}
 _ALIAS_LOCK = threading.Lock()
 
 
-# 폴링 계산 공유 게이트 (REQ-20260831-001 ② → REQ-20260831-002 확장).
+# 폴링 계산 공유 검사 (REQ-20260831-001 ② → REQ-20260831-002 확장).
 # 대시보드 폴링이 겹치면 스레드마다 같은 패스를 통째로 다시 돌았고(요청당
 # ~1s CPU), 그 중복이 GIL 을 나눠 먹으며 응답이 분 단위로 밀리는 나선이 됐다
 # (실측 72~91s→120s 타임아웃; 001 마감 뒤에도 브라우저 재시도 폭풍 —
@@ -784,7 +784,7 @@ _ALIAS_LOCK = threading.Lock()
 #     바뀌면 재계산 — 전이·세우기·깨우기 **직후의 조회가 낡은 화면을 받으면
 #     사용자는 실패로 읽는다** (반려 의견 무시로 보인 REQ-20260823-078 계열).
 # 인자를 명시한 호출(stall_win — CLI·wake 판정 / limit — 내부 조회)은 다른
-# 창의 판정이므로 둘 다 타지 않는다. 행동 경로(chat_target)는 게이트 밖이다 —
+# 창의 판정이므로 둘 다 타지 않는다. 행동 경로(chat_target)는 검사 밖이다 —
 # tail 종료 0.2s 내 반영이 계약이다 (test_dashboard_chat C9/C18).
 # 데코레이터인 이유: 판정 본문이 `def catalog_with_live` 블록 안에 그대로
 # 남아야 한다 — 구조 시험(stop_branch·stop_reach)이 "화면과 누름이 같은
@@ -794,7 +794,7 @@ _POLL_EPOCH = [0]           # 서버 POST(행동)마다 +1 — 행동 직후 조
 
 
 def _envnum(name, default, cast=float):
-    """환경변수 하나에서 숫자 하나 — 못 읽으면 기본값 (시험이 이 문을 쓴다)."""
+    """환경변수 하나에서 숫자 하나 — 못 읽으면 기본값 (시험이 이 경로를 쓴다)."""
     try:
         v = cast(os.environ.get(name, "").strip())
     except (TypeError, ValueError):
@@ -861,8 +861,8 @@ def sse_close(tok):
     with _SSE_LOCK:
         _SSE_LIVE.pop(tok, None)
         _SSE_STOP.discard(tok)
-# /api/catalog 응답 바이트 캐시 — 키는 (게이트 세대 seq, 뷰어, archived).
-# 항상 게이트 **뒤에서만** 조회된다(신선도 판정은 게이트 한 곳) — 핸들러 참조.
+# /api/catalog 응답 바이트 캐시 — 키는 (검사 세대 seq, 뷰어, archived).
+# 항상 검사 **뒤에서만** 조회된다(신선도 판정은 검사 한 곳) — 핸들러 참조.
 # etag/zbody (REQ-20260831-004): 이 기계의 TCP 루프백은 virtioproxy 프록시를
 # 지나 ~6MB/s 다(유닉스 소켓 1.8GB/s — TCP 경로만). 548KB 응답을 95연결이
 # 폴링하면 ~70MB/s 수요로 회선이 12배 초과돼 p95 12s 가 됐다(실측). 계산·
@@ -1049,7 +1049,7 @@ def load_catalog():
     쓰기 등으로 섞여 들어오면 삭제한 문서가 보드에 되살아난다 — 이중 방어.
 
     프로세스 캐시(REQ-20260831-001): 파일 stat 이 같으면 재파싱하지 않는다 —
-    관문은 여기 한 곳뿐이다(엔드포인트별 캐시 분기 금지). 반환 행은 매 호출
+    경로는 여기 한 곳뿐이다(엔드포인트별 캐시 분기 금지). 반환 행은 매 호출
     얕은 복사라 호출자(catalog_with_live 등)가 r["live"]=… 로 최상위 키를
     덧써도 캐시가 오염되지 않는다. 중첩값(tags·contributions…)을 제자리에서
     변형하는 호출자는 없다(전수 확인) — 새로 만들지 마라: 필요하면 행을
@@ -1060,7 +1060,7 @@ def load_catalog():
 def _catalog_refresh():
     """캐시를 최신으로 만들고 **내부 리스트를 그대로** 돌려준다.
 
-    읽기만 하는 자리(색인 갱신)를 위한 문이다 — 문서 6,000건에서 얕은 복사
+    읽기만 하는 자리(색인 갱신)를 위한 진입점이다 — 문서 6,000건에서 얕은 복사
     한 번이 6,000개의 dict 를 짓는다. 증분 한 번이 이 함수를 두 번 부르므로
     그 비용이 곧 "쓰기가 문서 수를 따라가는" 그 꼬리였다. 돌려받은 행을
     고치면 캐시가 오염된다 — 고칠 일이 있으면 load_catalog 을 써라."""
@@ -1696,7 +1696,7 @@ def apply_priority(meta, body, value, user=None, via=""):
 
 
 def set_doc_priority(doc_id, value, user=None, via=""):
-    """문서 하나의 우선순위를 바꾼다 — 화면(`POST /api/priority`)이 지나는 문.
+    """문서 하나의 우선순위를 바꾼다 — 화면(`POST /api/priority`)이 지나는 경로.
 
     반환: {"ok", "id", "old", "new", "changed", "message"}
     `changed=False` 는 실패가 아니라 **이미 그 값**이라는 뜻이다(멱등) — 화면이
@@ -1727,7 +1727,7 @@ def set_doc_priority(doc_id, value, user=None, via=""):
 
 
 def do_assign(doc_id, new_user, actor="", why="", via=""):
-    """담당자를 바꾼다 — CLI(`s9 assign`)와 화면(`POST /api/assign`)이 지나는 한 문
+    """담당자를 바꾼다 — CLI(`s9 assign`)와 화면(`POST /api/assign`)이 지나는 한 경로
     (REQ-20260902-019, DOC-20260902-001 D1·D2).
 
     담당자는 `user` 다. 바꾸면 ① 생성자(creator)는 그대로 ② History 한 줄
@@ -1753,7 +1753,7 @@ def do_assign(doc_id, new_user, actor="", why="", via=""):
     # **맡는 사람은 그 프로젝트의 활성 멤버여야 한다** (REQ-20260902-064).
     # 화면은 이미 후보에서 뺐지만(web/app/card.js `assignPick`), 화면이 뺀 것을
     # 서버가 안 막으면 그건 목록 정리이지 규칙이 아니다 — CLI·API 로 그대로
-    # 들어온다. 여기가 그 한 문이다.
+    # 들어온다. 여기가 그 한 경로다.
     #
     # 축이 둘이라는 것에 주의하라: **바꾸는 사람**(actor)은 admin 이 우회하지만
     # **맡는 사람**(new_user)은 우회하지 않는다. 둘을 섞으면 "프로젝트에 없는
@@ -2521,7 +2521,7 @@ def cmd_new(args):
     if getattr(args, "assignee", None):
         user = args.assignee            # 담당자 지정 — 생성자는 그대로 남는다
 
-    # 프로젝트 매핑 + 인가 게이트(가드레일) — 판정은 resolve_project 한 곳:
+    # 프로젝트 매핑 + 인가 검사(가드레일) — 판정은 resolve_project 한 곳:
     # 명시적 --project 만 거부(die)하고, 자동 신호는 권한이 없으면 빈 값으로
     # 내려간다(감사 무결성 — 훅 경로를 하드차단하지 않는다).
     proj, proj_source, proj_candidates = resolve_project(args, user, session)
@@ -2776,7 +2776,7 @@ def judge_memo(note):
 # 판정 요청이 아니라 점검 목록이다.
 #
 # 넘치는 것은 지우라는 뜻이 아니라 `s9 note --label response` 로 옮기라는 뜻이다.
-# 판정에 필요 없는 문장이 판정을 가리지 않게 하는 것이 이 게이트의 전부다.
+# 판정에 필요 없는 문장이 판정을 가리지 않게 하는 것이 이 검사의 전부다.
 REVIEW_POINT_MAX = 300          # 글자 (공백 포함, 단일라인 정규화 후)
 REVIEW_POINT_BRANCHES = 3       # ①②③ / 1) 2) 3) 갈래
 _BRANCH_RE = re.compile(r"[①②③④⑤⑥⑦⑧⑨]|(?<![\d.])\d\)\s|(?<=[.\s])\d\.\s")
@@ -2815,7 +2815,7 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
     공유한다. 검증/History 기록/인덱스 갱신을 우회하는 쓰기 경로는 없다.
     auto=True면 History note에 [auto] 마커 (자동 스폰 무한루프 차단 근거).
     judge=True는 대시보드의 사람 판정 경로 (REQ-20260825-030): review→done
-    승인에 한해 goal/TDD 게이트를 면제하고, review 에서 나가는 전이의 History
+    승인에 한해 goal/TDD 검사를 면제하고, review 에서 나가는 전이의 History
     문구(`승인: …`·`반려: …`)를 여기서 짓는다 (REQ-20260828-007).
     via='dashboard' 면 History 에 `[via dashboard]` 표식을 붙인다 — 화면이
     문자열을 조립해 보내던 것을 쓰기 경로 한 곳으로 모은 것이다."""
@@ -2854,10 +2854,10 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
     if old == "review" and new_status == "in-progress":
         body = re.sub(r"(?m)^- \[[xX]\]", "- [ ]", body)
     # 사람 판정 면제 (REQ-20260825-030): 대시보드 승인(review→done)은 판정
-    # 그 자체가 완료 근거 — goal/TDD 게이트를 적용하지 않는다 (019 실사고:
+    # 그 자체가 완료 근거 — goal/TDD 검사를 적용하지 않는다 (019 실사고:
     # 승인이 거부되고 CLI용 오류 문구가 사용자에게 노출됨)
     approved = judge and old == "review" and new_status == "done"
-    # 원문 제목 게이트 (REQ-20260825-042): auto-audit 임시 제목(원문 앞부분)을
+    # 원문 제목 검사 (REQ-20260825-042): auto-audit 임시 제목(원문 앞부분)을
     # 정리하지 않으면 에이전트 전이를 거부 — 제목 교체 규율이 접수 단계에서
     # 반복 누락되던 재발(035 정리 후에도 041 등)의 구조적 차단. 사람 전이(judge)
     # 는 막지 않는다.
@@ -4039,7 +4039,7 @@ def live_agents(fresh=AGENT_FRESH_SEC):
 
     무인 워커는 별도 프로세스라 pid 마커로 잡히는데(`live_workers`),
     서브에이전트는 리드 세션 안에서 도는 자식이라 프로세스가 따로 없다. 그래서
-    커밋 게이트가 워커만 보고 **서브에이전트는 못 봤다** — 문 하나를 잠그고
+    커밋 검사가 워커만 보고 **서브에이전트는 못 봤다** — 경로 하나를 잠그고
     옆문을 열어 둔 셈이었다. 실제로 오늘 파일을 동시에 만진 조합은 워커만이
     아니었고(리드 ↔ designer), 그때는 사람이 diff 를 눈으로 읽어 막았다.
     그건 규율이지 장치가 아니다.
@@ -4267,14 +4267,14 @@ def worker_stop(doc_id, session="", why="", claims=None, kill=None,
                 alive=None, wait=None, note=None, grace=5.0, owner=False):
     """리드가 무인 작업자를 세운다 (REQ-20260829-021-62x6).
 
-    여는 것은 "아무 프로세스나 죽이는 권한"이 아니라 **문 하나**다. 그래서
+    여는 것은 "아무 프로세스나 죽이는 권한"이 아니라 **경로 하나**다. 그래서
     pid 를 호출자에게 받지 않는다 — 스폰 마커에 적힌 것만 쓴다. 그 문서를
     지금 집은 세션만 세울 수 있고, 이유가 없으면 거부한다(이유 없는 중단은
     나중에 아무도 판정할 수 없다). 없는 작업자를 세우는 것은 오류가 아니다.
     반환: {"ok","stopped","reason","pid","message"}.
 
     `owner=True` 는 **사람이 화면에서 누른 것**이다 (REQ-20260829-024). 클레임
-    게이트는 세션끼리 남의 작업자를 지나가다 끄지 못하게 하는 규칙이지, 그
+    검사는 세션끼리 남의 작업자를 지나가다 끄지 못하게 하는 규칙이지, 그
     작업자를 띄운 주인에게 물을 것이 아니다 — 대시보드에는 세션이 없어서
     클레임을 요구하면 아무도 못 세운다. 소유가 클레임을 대신하되 **이유는
     면제하지 않는다**: 화면이 누른 사람의 이름을 실은 사유를 함께 보낸다.
@@ -4294,11 +4294,11 @@ def worker_stop(doc_id, session="", why="", claims=None, kill=None,
     if not (why or "").strip():
         return no("이유가 없다", "왜 중단하는지 적어라 — `--why '<이유>'`. "
                                 "이유 없는 중단은 나중에 판정할 수 없다.")
-    # 끝난 문서에는 **클레임 게이트가 서지 않는다** (REQ-20260830-002).
+    # 끝난 문서에는 **클레임 검사가 서지 않는다** (REQ-20260830-002).
     #
-    # 그 게이트의 뜻은 "지나가는 세션이 남의 작업자를 끄지 못하게" 다. 그런데
+    # 그 검사의 뜻은 "지나가는 세션이 남의 작업자를 끄지 못하게" 다. 그런데
     # 끝난 문서는 **아무도 집을 수 없다**: `_claim_req` 가 done·cancelled 를
-    # 등록에서 막기 때문이다(REQ-20260828-036, 그것대로 옳다). 그래서 게이트가
+    # 등록에서 막기 때문이다(REQ-20260828-036, 그것대로 옳다). 그래서 검사가
     # 시키는 `s9 last <id> --add` 는 **성공할 수 없는 명령**이고, 시키는 대로
     # 해도 같은 거부가 돌아온다 — 사람을 막다른 길에 세우는 그 형태다
     # (실측 2026-08-30 00:33, REQ-20260827-079 가 계정 창에서 겪은 것과 같다).
@@ -4363,7 +4363,7 @@ def cmd_workers(args):
     if getattr(args, "stop_all", False):
         # 계정·모델을 바꾸기 전에 판을 비우는 자리 (REQ-20260829-024). 여기도
         # 죽이는 것은 worker_stop 한 곳뿐이다 — 명령이 자기 손으로 죽이면
-        # 게이트가 두 벌이 된다.
+        # 검사가 두 벌이 된다.
         res = stop_all_workers(actor=(os.environ.get("S9_SESSION") or ""),
                                why=(getattr(args, "why", "") or ""))
         print(res.get("message") or "")
@@ -4371,7 +4371,7 @@ def cmd_workers(args):
             sys.exit(1)
         return
     if (getattr(args, "stop", "") or "").strip():
-        # 죽이는 자리는 하나다 — 명령이 자기 손으로 죽이면 게이트가 두 벌이
+        # 죽이는 자리는 하나다 — 명령이 자기 손으로 죽이면 검사가 두 벌이
         # 되고, 한 벌만 고쳐지는 사고가 시간 문제다 (REQ-20260829-021 W8).
         res = worker_stop(args.stop.strip(),
                           session=(os.environ.get("S9_SESSION") or ""),
@@ -4421,7 +4421,7 @@ def maybe_auto_resume(doc_id, old, new, note):
     보통 이하는 종전 그대로 PENDING 로그만 남기고 워처에 맡긴다 — 그 30초는
     낭비가 아니라 살아 있는 세션이 먼저 집을 기회다.
 
-    관문은 **워처가 쓰는 그 함수들**을 그대로 지난다 (`rework_kick`).
+    경로는 **워처가 쓰는 그 함수들**을 그대로 지난다 (`rework_kick`).
     반환: 여기서 띄웠으면 True."""
     try:
         if new != "in-progress" or old not in ("review", "open"):
@@ -4496,7 +4496,7 @@ def delegation_targets(description="", prompt="", session=""):
       ③ 둘 다 비면 세션 클레임에서 고른다 — 그러나 그것은 **추측이다.**
          `src` 로 그 사실을 함께 낸다: 추측으로 붙인 손은 바인딩에 '미상'으로
          남아야 (`s9 claim --guess`) 그 손이 어디 있는지 모른다는 사실이
-         멈춤 판정과 스폰 게이트에 전달된다.
+         멈춤 판정과 스폰 검사에 전달된다.
 
     반환: {"reqs": [정식 id…], "src": "지명"|"클레임"|""}
     """
@@ -4673,7 +4673,7 @@ def worker_running(req_id, win=WORKER_WIN, now=None, alias=None):
 # 종전에는 가드가 세 곳·세 기준이었다: 워처는 문서를 **만든 머신**(7247), `s9 next`
 # 는 user, 훅이 매 프롬프트 주입하는 reopened/stalled/blocked/approvals 는 필터
 # 없음. 공유 저장소에서 남의 반려 REQ 가 pull 되면 내 리드가 워처보다 먼저 "지금
-# 이어서 작업하라"를 받았다(deep-diver 격리 재현). 게이트가 여럿이면 성긴 쪽으로
+# 이어서 작업하라"를 받았다(deep-diver 격리 재현). 검사가 여럿이면 성긴 쪽으로
 # 샌다 — 그래서 아홉 자리가 이 함수 하나를 부른다.
 #
 # 담당자는 `user` 다(D2: 코드 전반이 이미 그 뜻으로 읽는다). 잠정 키로 `machine`
@@ -4794,7 +4794,7 @@ def doc_lease_touch(meta, local=None):
 
 def _pull_if_stale():
     """remote 모드에서 마지막 pull 이 오래됐으면 먼저 당긴다 — 조용한 머신의
-    판정이 낡은 문서 위에서 나지 않게 (REQ-20260902-020, 워처가 아니라 게이트가
+    판정이 낡은 문서 위에서 나지 않게 (REQ-20260902-020, 워처가 아니라 검사가
     당긴다)."""
     import time as _time
     if sync_mode() != "remote":
@@ -4916,7 +4916,7 @@ def _mine_rows(rows, local=None, want="list", lease_gate=True):
     `lease_gate=False` 는 **소유는 보되 리스는 보지 않는다** (REQ-20260902-052).
     두 소비자의 물음이 다르기 때문이다: `s9 next` 는 "지금 집어도 되나"를 묻고
     남이 쥔 것을 건너뛰어야 하지만, `s9 stalled` 는 "무엇이 멈춰 있나"를 묻는다.
-    후자에 리스 게이트를 걸면 **잡아 놓고 손 뗀 것이 바로 그 이유로 사라진다** —
+    후자에 리스 검사를 걸면 **잡아 놓고 손 뗀 것이 바로 그 이유로 사라진다** —
     그 명령이 존재하는 단 하나의 경우가 목록에서 지워진다.
     """
     local = local or local_facts()
@@ -5049,7 +5049,7 @@ def inbox_orphans(self_sid, window=INBOX_ADOPT_WINDOW_SEC,
     실사고 2026-08-26 21:06:45 "011 진행이 왜 멈췄지?" — inbox-b38ebe69 에
     남은 채 유실. 그 세션의 claude 는 그때도 지금도 살아 있다.
 
-    그래서 게이트는 생존이 아니라 **수신 대기**다:
+    그래서 검사는 생존이 아니라 **수신 대기**다:
     - tail 가동 중인 세션은 건드리지 않는다. 그 줄은 곧 그 세션이 받는다.
       여기를 잘못 잡으면 워커가 리드 메시지를 가로채던 REQ-010·012 사고를
       반대 방향으로 재현한다.
@@ -5108,13 +5108,13 @@ def iso_epoch(ts):
         return 0.0
 
 
-# ---- 프로세스를 보는 눈: 플랫폼 갈래는 여기 한 문 안에서만 (REQ-20260829-037)
+# ---- 프로세스를 보는 눈: 플랫폼 갈래는 여기 한 경로 안에서만 (REQ-20260829-037)
 # 살아 있음의 판정은 전부 한 물음으로 환원된다 — "그 프로세스가 있는가".
 # 수신 대기 tail·attach pid·무인 워커·세션 id 로 도는 claude 가 모두 그것이다.
 # 그 물음이 코드에 여섯 군데 흩어져 있었고, 여섯 군데가 모두 `/proc` 을 직독했다.
 # `/proc` 은 **리눅스에서만** 있다. 그래서 친구의 맥북에서는 대화가 멀쩡히 오가는
 # 세션이 화면에서 영원히 `idle` 이었다 (2026-08-29) — 수신함도 전송도 살아 있는데
-# 판정만 틀렸다. 문이 여럿이면 플랫폼 구멍도 여럿이 된다: 문을 하나로 모은다.
+# 판정만 틀렸다. 경로가 여럿이면 플랫폼 구멍도 여럿이 된다: 경로를 하나로 모은다.
 
 # TTL 캐시는 **윈도우 갈래만** 지난다 (REQ-20260906-013·015). 예전엔 `ps` 도
 # 1초를 캐시했다 — 폴 한 바퀴가 세션 수만큼 fork 하지 않게 하려던 값인데,
@@ -5149,9 +5149,9 @@ _PROC_STAT = {"reads": 0, "inflight": 0, "max_inflight": 0, "shared": 0}
 class proc_scope:
     """이 블록 안에서 `proc_table()` 은 표를 한 번만 뜬다 (REQ-20260901-024).
 
-    서버는 요청 하나마다 이 문을 지난다(`Handler.handle_one_request`) — 그래서
+    서버는 요청 하나마다 이 경로를 지난다(`Handler.handle_one_request`) — 그래서
     `/api/chat/target` 한 요청이 바인딩 수만큼 `/proc` 을 훑던 것이 1회가 된다
-    (실측 76 → 1). CLI·백그라운드 스레드는 이 문 밖이라 종전대로 매 호출
+    (실측 76 → 1). CLI·백그라운드 스레드는 이 경로 밖이라 종전대로 매 호출
     신선하다.
 
     **오래 사는 요청(SSE)은 반드시 `proc_scope_reset()` 으로 바퀴마다 버려라** —
@@ -5215,7 +5215,7 @@ def proc_backend():
     `none` = 볼 수 없다(판정은 전부 거짓으로 떨어지되 죽지 않는다).
 
     `S9_PROC_BACKEND` 로 강제할 수 있다. 맥이 이 자리에 없으므로 그 갈래를
-    **여기서 돌려 보기 위한 문**이고, 진단(`s9 doctor --live`)도 같은 이름을 쓴다.
+    **여기서 돌려 보기 위한 진입점**이고, 진단(`s9 doctor --live`)도 같은 이름을 쓴다.
     """
     forced = (os.environ.get("S9_PROC_BACKEND") or "").strip()
     if forced in ("proc", "ps", "win", "none"):
@@ -6012,8 +6012,8 @@ def _pid_is_claude(pid):
 # ---- 트랜스크립트 한 판독기 (REQ-20260901-011) -----------------------------
 #
 # 한 파일에 대해 "이 세션이 지금 무엇을 하고 있나"를 세 함수가 각자 손으로
-# 파싱하고 있었다: `_transcript_busy`(전환 게이트) · `session_model`(상태줄) ·
-# `stream_end_info`(끝난 사유). 이웃 둘은 합성 이벤트를 알았는데 **게이트만
+# 파싱하고 있었다: `_transcript_busy`(전환 검사) · `session_model`(상태줄) ·
+# `stream_end_info`(끝난 사유). 이웃 둘은 합성 이벤트를 알았는데 **검사만
 # 몰랐다** — 한도로 굳은 턴이 「진행 중」으로 읽혀 모델·계정 전환이 통째로
 # 막혔다(2026-09-01 12:37~12:41 실사고). 게다가 유일한 탈출구인 「중단하고
 # 바꾸기」는 소진된 그 모델이 한 턴을 돌아야 소화되는 지시라, 시도할 때마다
@@ -6070,7 +6070,7 @@ def _epoch_of(raw):
 def transcript_read(path):
     """트랜스크립트(또는 그 미러) 한 번 읽고 셋을 답한다 — 판독의 유일한 자리.
 
-        busy        턴이 **실제로** 도는 중인가 (전환 게이트가 보는 값)
+        busy        턴이 **실제로** 도는 중인가 (전환 검사가 보는 값)
         limit       마지막 응답이 한도 소진으로 끝났는가 (제 이름의 갈래)
         limit_seen  꼬리 어딘가에 한도 서명이 있었는가 (끝난 사유 표기용)
         limit_model·resets_at   말할 수 있으면 (없으면 빈 문자열, 짐작 금지)
@@ -6138,7 +6138,7 @@ def transcript_read(path):
         if last.get("type") == "assistant":
             if _limit_event(last, t):
                 # 한도로 굳은 턴은 **도는 턴이 아니다.** 멈출 것이 없는데
-                # 멈추라고 하면 사람이 빠져나갈 문이 없어진다.
+                # 멈추라고 하면 사람이 빠져나갈 경로가 없어진다.
                 out["limit"] = True
             elif str(m.get("model") or "").startswith("<"):
                 # 합성 응답은 모델이 낸 말이 아니라 턴을 끝내려고 끼워진 줄이다
@@ -6726,13 +6726,13 @@ def streams_read_dirs(user=None):
 # 바인딩을 전수로 돌며 후보마다 `chat_live` → `_binding_activity_paths` →
 # `streams_glob` 을 부르고, 그것이 **바인딩마다** streams 디렉토리를 훑었다
 # (실측: 한 요청에 73회 · 자리 두 곳이니 실제 훑기는 146회). 직렬로는 17ms
-# 지만 `/api/chat/target` 은 신선도 계약(C9/C18) 때문에 폴 스냅샷 게이트 밖에
+# 지만 `/api/chat/target` 은 신선도 계약(C9/C18) 때문에 폴 스냅샷 검사 밖에
 # 있어 동시 요청 수만큼 그대로 곱해진다 — 24동시에서 9.1초, 연결 거부 11건.
 #
 # 고침은 024 가 `/proc` 에 쓴 것과 **같은 두 겹**이다(새 발명이 아니다):
 # ① 요청 스코프 — 한 요청이 도는 동안만 파일 이름 목록을 나눠 쓰고 끝나면
 #    버린다. 목록은 언제나 그 요청이 시작된 뒤에 뜬 것이라 신선도 계약이
-#    구조적으로 산다. 문은 `Handler.handle_one_request` 한 곳이다.
+#    구조적으로 산다. 경로는 `Handler.handle_one_request` 한 곳이다.
 # ② 단일비행 — 동시에 겹친 훑기를 하나로 접는다. 대기자가 받는 목록은 자기가
 #    도착하기 직전에 뜬 것이라, 낡음의 상한이 훑기 한 번의 소요다.
 # 캐시하는 것은 **이름 목록뿐**이고 mtime 은 늘 새로 읽는다 — 「활동이 신선한가」
@@ -6746,7 +6746,7 @@ _STREAMS_STAT = {"reads": 0, "inflight": 0, "max_inflight": 0, "shared": 0}
 class streams_scope:
     """이 블록 안에서 streams 자리는 한 번만 훑는다 (REQ-20260902-004).
 
-    CLI·백그라운드 스레드는 이 문 밖이라 종전대로 매 호출 신선하다.
+    CLI·백그라운드 스레드는 이 경로 밖이라 종전대로 매 호출 신선하다.
     **오래 사는 요청(SSE)은 `streams_scope_reset()` 으로 바퀴마다 버려라.**
     """
 
@@ -6803,7 +6803,7 @@ def _streams_names_shared(d):
         # 가 자리(d)로 갈려 있듯 «그 자리»의 겹침을 접는 장치다. 그런데 계기는
         # 전역 하나였어서, 서로 **다른 두 자리**를 동시에 훑는 정상 동작이
         # max_inflight 2 로 잡혔다 — 부하가 있을 때만 나타나 「병렬에서만 실패한다」로
-        # 보였다(실측 2026-09-04, 커밋 게이트).
+        # 보였다(실측 2026-09-04, 커밋 검사).
         #
         # 자리마다 세면 이 값은 계약을 그대로 말한다: **한 자리를 동시에 몇 번
         # 훑었나.** 평시엔 1이고, 2가 뜨면 그건 진짜 결함이다 — 훑던 스레드가
@@ -6965,8 +6965,8 @@ def cmd_stream(args):
 # 지도다. 그래서 막아야 할 곳은 적용이 아니라 **적재**다.
 #
 # 그리고 한 겹 더: 저장소에 실을 수 있게 해 두면 **내가 vault 에 쓰고 → 동기화되고
-# → 다른 머신이 그것으로 settings 를 덮는** 길이 생긴다. 이 세션에서 게이트가
-# 두 번 막은 그 동작을, 내가 만든 문으로 하게 되는 셈이다.
+# → 다른 머신이 그것으로 settings 를 덮는** 길이 생긴다. 이 세션에서 검사가
+# 두 번 막은 그 동작을, 내가 만든 경로로 하게 되는 셈이다.
 #
 #     자동 복원   model · theme · UI 취향       저장소로 흐른다
 #     수동 반출   permissions                   저장소 밖으로만, 사람이 손으로
@@ -7117,7 +7117,7 @@ def cmd_config(args):
 ACCOUNT_NEW_LABEL = "새-계정"      # 로그인 전 임시 이름 — 로그인하면 계정으로 바뀐다
 # 기본 설정 디렉토리(~/.claude)를 가리키는 이름 (REQ-20260827-079). 프로필
 # 목록에는 이 자리가 없어서, 한 번 프로필로 옮기면 대시보드에서 **돌아올 길이
-# 없었다** — 나가는 문만 있고 들어오는 문이 없는 방이었다. 빈 문자열은 이미
+# 없었다** — 나가는 경로만 있고 들어오는 진입점이 없는 방이었다. 빈 문자열은 이미
 # "계정은 그대로"라는 뜻이라 쓸 수 없어 따로 이름을 준다.
 ACCOUNT_HOME_KEY = "@home"
 
@@ -7334,7 +7334,7 @@ def account_rows(cfg_dir=None, settle=True):
     """고를 수 있는 계정들 (REQ-20260827-079) — 자리가 아니라 **계정**으로.
 
     셋을 여기서 갚는다.
-    · 기본 계정(~/.claude)도 한 줄이다 — 없으면 돌아올 문이 없다.
+    · 기본 계정(~/.claude)도 한 줄이다 — 없으면 돌아올 경로가 없다.
     · 로그인이 끝난 임시 자리(`새-계정-2`)는 부를 때마다 계정 이름으로 정한다.
       settle 이 한 번 어긋나면 그 자리 이름이 영원히 남기 때문이다.
     · 지금 붙어 있는 줄에 표식을 준다(세션의 CLAUDE_CONFIG_DIR 기준).
@@ -7383,7 +7383,7 @@ def account_rows(cfg_dir=None, settle=True):
             # @home 이 먼저 들어가므로 버려지는 쪽이 늘 '고를 수 있는 줄'
             # 이었다 — 남는 것은 current 한 줄뿐이라 창의 `다시 시작` 이
             # 영원히 비활성이었다. 반대 방향(세션이 프로필로 떠 있을 때)은
-            # 같은 코드가 @home 줄을 지워 돌아올 문을 닫았다.
+            # 같은 코드가 @home 줄을 지워 돌아올 경로를 닫았다.
             prev.setdefault("also", []).append(r["path"])
             prev["current"] = prev["current"] or r["current"]
             continue
@@ -8162,7 +8162,7 @@ def restart_session(sid8, model="", effort="", account="", stop_workers=False,
         # 한도로 굳은 턴은 **busy 가 아니다** (REQ-20260901-011). 종전에는
         # 한도 소진 합성 응답이 `stop_reason != end_turn` 이라는 이유로 「턴
         # 진행 중」으로 읽혀, 그 세션에서 모델·계정 전환이 전부 막혔다 —
-        # 멈출 것이 없는데 멈추라고 하니 사람이 빠져나갈 문이 없었다.
+        # 멈출 것이 없는데 멈추라고 하니 사람이 빠져나갈 경로가 없었다.
         if st.get("busy") and not force:
             return refuse("busy", "턴 진행 중 — 유휴 상태에서만 재기동(작업 보호)")
         discarded_turn = bool(st.get("busy") and force)
@@ -8951,10 +8951,10 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     #
     # 실사고 2026-08-30 00:30: 18:56 에 done 으로 닫힌 REQ 에 무인 작업자가
     # 떠서 `bin/s9`·`web/index.html`·시험 둘을 리스로 잡고, 대기 중이던 다른
-    # 작업들을 그만큼 더 막았다. 손잡이 쪽 문(`wake_request` 계약 W6)은
-    # in-progress 를 요구했지만 워처 쪽에는 그 문이 없었다 — **게이트가 두
+    # 작업들을 그만큼 더 막았다. 손잡이 쪽 경로(`wake_request` 계약 W6)은
+    # in-progress 를 요구했지만 워처 쪽에는 그 경로가 없었다 — **검사가 두
     # 벌이면 성긴 쪽으로 샌다**(REQ-20260829-016 이 겹침에서 배운 것과 같은
-    # 뿌리). 그래서 문을 여기, 모든 스폰이 반드시 지나는 자리에 세운다.
+    # 뿌리). 그래서 경로를 여기, 모든 스폰이 반드시 지나는 자리에 세운다.
     #
     # 상태는 **디스크의 문서**에서 읽는다. 부르는 쪽이 건네준 `meta` 도
     # 카탈로그도 낡을 수 있고, 낡은 색인이 이 사고의 다른 가설이었다.
@@ -8968,9 +8968,9 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
                      f"{doc_id} 는 이미 {st} 상태입니다 — 끝난 요청은 다시 "
                      f"진행하지 않습니다. 할 일이 남았으면 새 요청으로 "
                      f"올려 주세요.")
-    # 완료 드리프트 게이트 (REQ-20260830-018) — **모든 스폰 reason 이 지난다.**
+    # 완료 드리프트 검사 (REQ-20260830-018) — **모든 스폰 reason 이 지난다.**
     # 깨우기에만 세우면 워처 경로(rework·follow-up)가 옛 프롬프트로 샌다 —
-    # "게이트가 두 벌이면 성긴 쪽으로 샌다"(REQ-20260830-002)를 반복하지 않는다.
+    # "검사가 두 벌이면 성긴 쪽으로 샌다"(REQ-20260830-002)를 반복하지 않는다.
     # 커밋이 곧 완료는 아니므로(goal 대비 근거는 사람/작업자가 대야 한다) 스폰을
     # 막지 않는다. 대신 일보다 검증을 먼저 시킨다 — 자동 done 은 없다.
     # 실사고 2026-08-30: 038 이 커밋 3c63e9c 로 끝나 있었는데 in-progress 로 남아
@@ -9241,7 +9241,7 @@ def _safe_fence(text, limit, multiline=False):
     """<<참고>> 방벽 안에 넣는 **문서 유래 텍스트**의 유일한 세정 자리 (REQ-20260902-033).
 
     제목은 REQ-20260830-018 에서 델리미터를 무력화했는데, 같은 방벽을 쓰는 반려
-    노트에는 그 치환이 옮겨지지 않았다 — "게이트가 두 벌이면 성긴 쪽으로 샌다"의
+    노트에는 그 치환이 옮겨지지 않았다 — "검사가 두 벌이면 성긴 쪽으로 샌다"의
     재현(white-hacker 검토 시나리오 1). 노트에 `<</참고>>` 를 넣으면 방벽이 그
     자리에서 닫히고 뒤 문장이 명령 위치에 선다. 공유 저장소에서는 남이 쓴 노트가
     내 머신의 워커에 그대로 들어오므로 치환은 한 함수에서만 한다."""
@@ -9552,7 +9552,7 @@ def _wake_audit(res, actor):
 
 
 # 「답 찾기」 (REQ-20260907-041). 깨우기의 얇은 형제다 — 판정만 다르고 스폰은
-# 같은 문(`_spawn_worker`)을 지난다. 경로를 새로 파면 킬스위치·예산·리스 같은
+# 같은 경로(`_spawn_worker`)을 지난다. 경로를 새로 파면 킬스위치·예산·리스 같은
 # 방어장치가 두 벌이 되고, 두 벌이면 성긴 쪽으로 샌다(REQ-20260830-002 가 배운 것).
 ANSWER_BUSY_SEC = 900        # 이 안에 또 누르면 「이미 찾는 중」 — 작업자 둘을 막는다
 ANSWER_SPAWNED_KO = "그때의 작업 기록에서 답을 찾고 있습니다."
@@ -9562,7 +9562,7 @@ def _answer_busy_since(meta, now=None):
     """지금 답을 찾는 중인가 — 맞으면 시작 시각(iso), 아니면 "".
 
     문서에 적힌 사실 하나로 판정한다(카탈로그도 마커도 아니다): 화면이 읽는
-    것과 이 문이 읽는 것이 같아야 「찾는 중이라고 그려 놓고 또 띄우는」 일이
+    것과 이 경로가 읽는 것이 같아야 「찾는 중이라고 그려 놓고 또 띄우는」 일이
     없다. 오래된 표식은 스스로 삭는다 — 워커가 죽어도 손잡이가 영영 잠기면
     사람이 할 수 있는 일이 없어진다.
     """
@@ -9854,9 +9854,9 @@ def stop_request(doc_id, actor="", why=""):
     건데, 반대로 진행 중인 작업들을 강제로 중단하는 기능도 만들어라. 그래야
     계정을 변경하거나 모델을 바꿀 때 그 기능을 같이 섞어서 사용할 수 있다."
 
-    021 의 `worker_stop()` 이 이미 문이다. 이 함수는 그 문을 **화면 쪽에서**
+    021 의 `worker_stop()` 이 이미 그 경로다. 이 함수는 그 경로를 **화면 쪽에서**
     여는 손잡이일 뿐이라 자기 손으로는 아무것도 죽이지 않는다 — 죽이는 자리가
-    둘이 되면 한 벌만 게이트를 지키는 사고가 시간 문제다. 여기가 더하는 것은
+    둘이 되면 한 벌만 검사를 지키는 사고가 시간 문제다. 여기가 더하는 것은
     셋이다: ① 사람의 근거는 클레임이 아니라 소유라는 것(owner), ② 버튼에는
     이유를 칠 자리가 없으니 누가 눌렀는지를 실은 기본 사유, ③ 깨우기와 **같은
     모양의 답**(화면은 ok·action·message 셋만 읽는다).
@@ -10072,7 +10072,7 @@ def rework_kick(doc_id, meta=None, body=None):
     그 30초는 '긴급'이라고 눌러 놓고 아무 일도 안 일어나는 시간이다. 그래서
     급한 것은 전이가 끝나는 자리에서 곧바로 띄운다.
 
-    **판정을 새로 짓지 않는다**: 후보 여부·유예·스폰 관문(옵트인·머신·쿨다운·
+    **판정을 새로 짓지 않는다**: 후보 여부·유예·스폰 검사(옵트인·머신·쿨다운·
     캡·리스)은 전부 워처가 쓰는 그 함수들이다. 여기서 더하는 것은 "지금 부른다"
     하나뿐이라, 워처가 막을 것은 여기서도 막힌다.
 
@@ -10256,7 +10256,7 @@ def rework_watch_tick(grace=None, now=None):
             ts = datetime.datetime.fromisoformat(lt[0]).timestamp()
         except ValueError:
             continue
-        # 진행 보장의 조건은 **어느 문으로 들어왔나**가 아니라 **지금 아무도
+        # 진행 보장의 조건은 **어느 경로로 들어왔나**가 아니라 **지금 아무도
         # 안 붙어 있나**다 (REQ-20260903-015).
         #
         # 여태 후보는 `rework_candidate` 하나였다 — 반려와 대시보드 드래그
@@ -10267,7 +10267,7 @@ def rework_watch_tick(grace=None, now=None):
         #
         # 좁혀 둔 것이 안전장치였던 것도 아니다. 겹침을 막는 것은 바로 아래
         # `rework_claimed()` 이고(프로세스 생존·위임·세션 바인딩을 본다),
-        # 그 문은 그대로 서 있다. 좁힌 자리는 안전이 아니라 구멍이었다.
+        # 그 검사는 그대로 서 있다. 좁힌 자리는 안전이 아니라 구멍이었다.
         if rework_candidate(lt):
             g = grace if grace is not None else rework_grace(meta)
             quiet_from = ts
@@ -10395,7 +10395,7 @@ def review_family(rows):
     성분을 묶어 행에 싣는다 — dep_edges 와 같은 파생물 패턴: 저장 구조
     무변경, 매 세대 카탈로그에서 재계산. 재료는 전부 행이라(catalog_row 가
     간선을 나른다) 행당 디스크 읽기가 없고, 폴링 호출 자리는
-    catalog_with_live(스냅샷 게이트 안) 한 곳 — 세대당 한 번이다.
+    catalog_with_live(스냅샷 검사 안) 한 곳 — 세대당 한 번이다.
 
       review_order  (review 행 전부) 사전식 정렬 키 — "선두created|선두id|
                     순번". 오름차순 정렬만으로 묶음이 인접하고 선행
@@ -12290,12 +12290,12 @@ def cmd_link(args):
 
 
 def do_set(doc_id, fields, actor="", via="", priority=None):
-    """제목·요약·goal·size·project 를 바꾸는 **한 문** — CLI(`s9 set`)와 대시보드
+    """제목·요약·goal·size·project 를 바꾸는 **한 경로** — CLI(`s9 set`)와 대시보드
     (POST /api/doc/set)가 여기를 부른다 (REQ-20260906-053). 반환 {"ok","changed",…};
     거절은 ValueError.
 
     project 를 바꾸는 규칙: 새 프로젝트가 등록돼 있으면 **바꾸는 사람이 그 프로젝트에
-    contribute 할 수 있어야** 한다(cmd_new 의 명시 --project 와 같은 문). 미등록 slug 는
+    contribute 할 수 있어야** 한다(cmd_new 의 명시 --project 와 같은 경로). 미등록 slug 는
     거절한다 — 화면에서 고르는 값이라 오타를 문서에 남길 이유가 없다. History 한 줄이
     남고 project_source 는 `manual` 이 된다(자동 판정 셋과 갈린다)."""
     cands = resolve_id(doc_id)
@@ -12330,7 +12330,7 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
                 else (body.rstrip("\n") + "\n\n## History\n" + line)
             changed.append("project")
     if priority is not None:
-        # 값 해석도 근거 기록도 화면과 **같은 문**을 지난다 (REQ-20260829-029).
+        # 값 해석도 근거 기록도 화면과 **같은 경로**을 지난다 (REQ-20260829-029).
         _old, _new, body = apply_priority(meta, body, priority)
         changed.append("priority")
     if not changed:
@@ -13971,7 +13971,7 @@ def cmd_index(args):
     elif args.action == "cat":
         # 병합된 카탈로그를 한 줄씩 (REQ-20260902-035). 증분 뒤로 base 파일
         # 하나만 열면 **갓 쓴 행이 빠진다** — 그것이 사람에게는 "방금 만든
-        # 문서가 없다"로 보인다. 파일 이름 대신 이 문을 안내한다: 안이
+        # 문서가 없다"로 보인다. 파일 이름 대신 이 경로를 안내한다: 안이
         # 두 파일이 되든 셋이 되든 밖에서 읽는 쪽은 그대로다.
         for r in load_catalog():
             print(json.dumps(r, ensure_ascii=False))
@@ -14364,7 +14364,7 @@ def stall_verdict(r, now, win, hands=None, assigned=None):
                         f"실행 중입니다 — 이 요청의 것일 수도 있습니다")
     # 손길 (REQ-20260830-019): 문서는 조용한데 이 문서를 고치는 s9 명령이 방금
     # 지나갔다 — 누군가 붙어 있다. **attached 까지만이다** (계약 C2): moving 으로
-    # 올리면 s9 호출 한 번이 진전으로 둔갑하고(REQ-034 의 병), 스폰 게이트·
+    # 올리면 s9 호출 한 번이 진전으로 둔갑하고(REQ-034 의 병), 스폰 검사·
     # 리스는 이 신호를 모른다. 조용한 시간은 그대로 낸다(감추지 않는다).
     # **귀속 없는 손길은 손길이 아니다** (근원 B 와 같은 원칙). 그리고 손길은
     # 그 세션이 지금도 살아 있을 때만 선다 — 여기가 REQ-034 의 재발 방지선이다:
@@ -14459,7 +14459,7 @@ COMMIT_NOTE_RE = re.compile(r"(?m)^### \S+ commit \(")
 
 
 def committed_evidence(body):
-    """이 문서 본문에 정형 커밋 노트가 있는가 — loose·스폰 게이트·카탈로그 공용."""
+    """이 문서 본문에 정형 커밋 노트가 있는가 — loose·스폰 검사·카탈로그 공용."""
     return bool(COMMIT_NOTE_RE.search(body or ""))
 
 
@@ -14571,7 +14571,7 @@ def undelivered_requests():
             what.append("commit 안 함")
         # 얼마나 방치됐는지 · 자동 보존이 포기했는지 (REQ-20260829-028-62x6).
         # "안 합친 커밋 1" 만으로는 방금 끝난 것과 하루 묵은 것이 같아 보이고,
-        # 자동 커밋이 게이트에 막혀 포기한 자리는 **사람이 손으로 커밋해야만**
+        # 자동 커밋이 검사에 막혀 포기한 자리는 **사람이 손으로 커밋해야만**
         # 풀리는데 그 사실이 어디에도 안 보였다.
         import time as _t
         age = _t.time() - float(own.get("created") or 0)
@@ -14632,7 +14632,7 @@ def cmd_stalled(args):
     if not getattr(args, "all", False):
         # 내 것만 보되 **리스는 보지 않는다** (REQ-20260902-052): 이 명령이
         # 겨냥한 「잡아 놓고 손 뗀 것」은 정의상 리스가 남아 있는 것이라,
-        # 리스 게이트를 걸면 과녁이 통째로 사라진다. 집어도 되는지는
+        # 리스 검사를 걸면 과녁이 통째로 사라진다. 집어도 되는지는
         # `s9 next`·claim 이 그때 다시 묻는다.
         all_rows = _mine_rows(all_rows, lease_gate=False)
     rows = [r for r in all_rows if r["state"] == "stalled"]
@@ -16115,6 +16115,13 @@ BANNED_TERMS = (
     # 빠져나갔다(REQ-20260907-065). 낱개로 잡되, 우리말 동사 나무라다(「사람을
     # 나무라는 말」)는 banned_terms_in 이 건너뛴다 — 그것은 직역이 아니다.
     ("\ub098\ubb34", "tree"),
+    # 주인 지적 2026-09-07 20:24: 「문 확인에서 문이 뭐야? 또 용어를 그냥 번역해버린건가?」
+    # gate 를 「문」·「관문」·「게이트」로 부르던 비유다 (REQ-20260907-071). 뜻은 넷 —
+    # 막는 장치 = 검사 · 모두가 지나는 한 자리 = 경로 · 들어오는 자리 = 진입점 ·
+    # 나가는 자리 = 나가는 경로. 코드 식별자(concurrent_gate·s9-git-gate)는 그대로 둔다.
+    # 「문」 한 글자는 문서·문장·질문에 들어 있어 여기서 세지 않는다 — 소스는
+    # test_no_metaphors 의 NoGateMetaphor 가 낱말 경계로 잡는다.
+    ("게이트", "검사"), ("관문", "경로"), ("커밋 문", "커밋 검사"),
 )
 
 
@@ -16290,7 +16297,7 @@ def cmd_note(args):
     # 기억해야만 보드에서 살아났다. 기억에 기대는 계기는 잊히는 순간
     # 거짓말을 한다(실측: REQ-20260902-035 가 한 시간 넘게 돌면서 멈춤이었다).
     # 락 밖에서, 진행 중인 요청에만. 담당자 판정은 update_active_reqs 안의
-    # exec_verdict 게이트가 그대로 한다 — 검토자의 노트가 클레임이 되지
+    # exec_verdict 검사가 그대로 한다 — 검토자의 노트가 클레임이 되지
     # 않는다(REQ-20260902-016). 실패해도 노트 쓰기를 막지 않는다.
     if meta.get("type", "request") == "request" and \
             meta.get("status") == "in-progress":
@@ -16362,7 +16369,7 @@ def doc_status_live(doc_id):
     파생물이라 낡을 수 있고, 낡은 색인 하나가 끝난 문서에 작업자를 띄운다.
     스폰은 30초에 한 번 있을까 말까 한 일이라 파일 한 번 읽는 값이 싸다.
 
-    못 읽으면 카탈로그로 물러난다 — 여기서 "" 를 주면 게이트가 열려 버린다.
+    못 읽으면 카탈로그로 물러난다 — 여기서 "" 를 주면 검사가 열려 버린다.
     """
     try:
         p = locate(canon_id(doc_id))
@@ -17269,7 +17276,7 @@ _ROLE_LOCK = threading.Lock()
 
 
 def _any_admin():
-    """등록 사용자 중 admin 이 하나라도 있는가 — 역할 변경 게이트의 부트스트랩 예외
+    """등록 사용자 중 admin 이 하나라도 있는가 — 역할 변경 검사의 부트스트랩 예외
     판정 (REQ-20260902-029). 없으면 아직 아무도 admin 을 못 세운 새 설치다."""
     try:
         names = [d for d in os.listdir(USERS)
@@ -17366,7 +17373,7 @@ def do_user_add(name, role="member", display="", email="", machine=None,
     meta["os_accounts"] = [os_identity()]
     # 등록도 **문서 쓰기**다 (REQ-20260902-028). 예전엔 여기가 raw open("w") 라
     # `_write_gate` 를 지나지 않았고, 그래서 누구든(관찰 계정도)
-    # `s9 user add x --role admin` 으로 admin 을 하나 세워 게이트 전체를
+    # `s9 user add x --role admin` 으로 admin 을 하나 세워 검사 전체를
     # 우회할 수 있었다 — 실측으로 재현됐다. 단일 경계로 되돌린다.
     ppath = os.path.join(udir, "profile.md")
     _write_gate(ppath, meta)            # 폴더를 만들기 전에 판정한다
@@ -17560,8 +17567,8 @@ def do_user_config_set(name, key, value, actor=""):
     # 관찰 범위는 admin 이 준다 (REQ-20260902-030) — 읽기 범위를 넓히는 키를
     # 본인이 만지면 viewer 가 스스로 전부 열람으로 올라간다. 부여도 회수도 admin.
     # 관찰 계정은 **자기 설정만** 만진다 (REQ-20260902-028). 설정 값은
-    # settings.json 에 곧바로 쓰이고 문서를 지나지 않으므로 write_doc 게이트가
-    # 못 본다 — 대시보드 POST 진입부가 이미 같은 판정을 하지만 CLI 는 그 문을
+    # settings.json 에 곧바로 쓰이고 문서를 지나지 않으므로 write_doc 검사가
+    # 못 본다 — 대시보드 POST 진입부가 이미 같은 판정을 하지만 CLI 는 그 경로를
     # 지나지 않아, 판정이 있어야 할 자리는 "설정을 쓰는 단 하나의 함수"인 여기다.
     _who = (actor or "").split()[0] if actor else ""
     if user_role(_who) == "viewer" and name != _who:
@@ -18662,7 +18669,7 @@ def do_project_add(slug, name=None, summary=None, customer=None,
             "title": meta["title"]}
 
 
-# set 이 받는 8필드 (요청 키 → frontmatter 키). status 만 own 게이트가 따로 선다.
+# set 이 받는 8필드 (요청 키 → frontmatter 키). status 만 own 검사가 따로 선다.
 PROJECT_SET_FIELDS = {
     "name": "title", "summary": "summary", "customer": "customer",
     "status": "status", "contact_name": "contact_name",
@@ -18696,7 +18703,7 @@ def do_project_set(slug, name=None, summary=None, customer=None, status=None,
         if status not in ("active", "archived"):
             raise ValueError("status 는 active|archived")
         if status == meta.get("status"):
-            req["status"] = None  # 같은 값 = 무변경 (own 게이트도 안 선다)
+            req["status"] = None  # 같은 값 = 무변경 (own 검사도 안 선다)
         elif not project_can(meta["slug"], actor, "own"):
             raise ValueError(
                 f"권한 없음: 프로젝트 보관/복원(status)은 owner만 가능 "
@@ -19118,7 +19125,7 @@ def _has_user_prompt(argv):
 
 
 # 하네스별 로그인 흔적 (REQ-20260905-014) — bin/s9-doctor · bin/s9-install 과 같은 표.
-# 세 벌이 갈리는지는 tests/test_login_check.py 가 본다. `s9 code` 가 들어가는 문이
+# 세 벌이 갈리는지는 tests/test_login_check.py 가 본다. `s9 code` 가 들어가는 진입점이
 # 여기다: 설치 안내만으로는 부족하다 — 실제로 막히는 자리는 첫 `s9 code` 다.
 LOGIN_MARKS = {
     "claude": {"exe": "claude", "mark": ".credentials.json", "home_env": "CLAUDE_CONFIG_DIR",
@@ -19153,7 +19160,7 @@ def login_second_signal(name, home, platform=None, run=None):
             pass
     # Keychain 항목은 계정(사용자)의 것이지 설정 디렉토리의 것이 아니다 — 다른
     # 설정 디렉토리(프로필·시험의 임시 자리)에 「로그인됨」을 물려주면 그 자리는
-    # 자격증명이 없는데도 문이 열린다 (REQ-20260906-015, test_login_check l4).
+    # 자격증명이 없는데도 검사가 통과시킨다 (REQ-20260906-015, test_login_check l4).
     if default_home and (platform or sys.platform) == "darwin":
         try:
             r = (run or subprocess.run)(["security", "find-generic-password", "-s",
@@ -19179,7 +19186,7 @@ def login_state(marks=None, which=None, second=None):
 
 
 def ensure_claude_login(run=None, state=None):
-    """`s9 code` 의 문 — 로그인이 없으면 여기서 로그인시키고, 안 되면 들어가지 않는다.
+    """`s9 code` 의 진입점 — 로그인이 없으면 여기서 로그인시키고, 안 되면 들어가지 않는다.
 
     설치(s9-install)는 안내만 한다. 반환: "ok" · "not-installed" · "deferred"(로그인은
     이어서 뜨는 claude 의 화면이 한다).
@@ -19351,7 +19358,7 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
     """
     root = root or ROOT
     # 자동으로 옮겨 적은 포트(state/port.auto)는 **되돌아온다** — 기본 포트에 내
-    # 서버가 답하면 그 사실이 곧 판정이다. 실사고 2026-09-05 19:32: 시험이 새는
+    # 서버가 답하면 그 사실이 곧 판정이다. 실제 사고 2026-09-05 19:32: 시험이 새는
     # 환경으로 실저장소에 9910 을 적었고, 그 뒤 두 시간 동안 재시작·화면이 전부
     # 9910 을 보며 사용자의 9909 는 옛 코드로 남았다.
     auto = os.path.join(root, "state", "port.auto")
@@ -20387,7 +20394,7 @@ def _tunnel_reap_group(pgid, grace=2.0):
 
 
 def _tunnel_lock(lport, root=None):
-    """감시자 단일성 (serve 감시자의 `_guard_lock` 과 같은 문)."""
+    """감시자 단일성 (serve 감시자의 `_guard_lock` 과 같은 경로)."""
     p = _tunnel_paths(lport, root)
     return _hold_lock_file(p["state"], p["lock"])
 
@@ -20424,7 +20431,7 @@ def tunnel_start(secret, lport, rport, root=None, keep=False, user=None):
 
 
 def tunnel_run_loop(secret, lport, rport, root=None):
-    """감시 루프 — 떼어 낸 자식이 들어오는 문(`tunnel --run`). 사람이 직접 쓸 일은
+    """감시 루프 — 떼어 낸 자식이 들어오는 진입점(`tunnel --run`). 사람이 직접 쓸 일은
     없다. ssh 가 **어떤 이유로든** 끝나면 다시 띄운다(exit 0 도 — 원격 sshd 재시작은
     정상 종료로 보인다). 멈추는 길은 --stop(stop 파일 + SIGTERM)뿐이다."""
     import signal as _sig
@@ -20635,7 +20642,7 @@ def shared_clone_reason(root=None, platform=None, serve_root=None):
     `state/` 는 이 머신의 살림(pid·잠금·절대경로·바인딩)이고, 윈도우와 WSL 은 서로의
     pid 를 못 보는 **두 머신**이다. 같은 clone 을 /mnt/c 로 나눠 쓰면 상대의 잠금·
     감시자·커밋 표식이 전부 「죽었다」로 읽혀 회수·중복 스폰이 난다. 자리마다 고치지
-    않고 문 하나로 거부한다 — s9-install 과 s9 doctor 가 이 함수를 본다.
+    않고 검사 하나로 거부한다 — s9-install 과 s9 doctor 가 이 함수를 본다.
     판정 둘: ① WSL 인데 root 가 윈도우 드라이브(/mnt/<x>/) 위다 ② 마지막 대시보드를
     띄운 root(state/serve-code.json)가 다른 OS 의 경로 모양이다.
     """
@@ -20667,7 +20674,7 @@ def cmd_doctor(args):
     import subprocess as _sp
     shared = shared_clone_reason()
     if getattr(args, "shared_clone", False):
-        # s9-install 이 설치 전에 묻는 문 (REQ-20260906-056) — 사유가 있으면 1
+        # s9-install 이 설치 전에 묻는 검사 (REQ-20260906-056) — 사유가 있으면 1
         if shared:
             print("s9: 이 clone 은 두 OS 가 함께 쓰는 자리다 — " + shared, file=sys.stderr)
         sys.exit(1 if shared else 0)
@@ -20840,7 +20847,7 @@ def _port_quiet():
 
 
 def _port_recover_gate(ratio, trend, win, now):
-    """무인 처형의 문 — 여섯이 **전부** 참일 때만 연다. (열림, 막은 이유들)."""
+    """무인 처형의 검사 — 여섯이 **전부** 참일 때만 연다. (열림, 막은 이유들)."""
     why = []
     if ratio < PORT_GUARD_AUTO:
         why.append(f"비율 {ratio:.0%} < {PORT_GUARD_AUTO:.0%}")
@@ -20982,7 +20989,7 @@ def port_guard_tick():
     if ratio >= PORT_GUARD_AUTO or (
             PORT_GUARD_RELAY_AUTO and ratio >= PORT_GUARD_RELAY_AUTO
             and _is_wsl_relay(win.get("top_name", ""))):
-        # 마지막 안전망도 중간 안전망도 **같은 문**을 지난다 — 게이트가 두
+        # 마지막 안전망도 중간 안전망도 **같은 경로**을 지난다 — 검사가 두
         # 벌이면 성긴 쪽으로 샌다. 비율 하나로는 절대 열리지 않는다.
         ok, why = _port_recover_gate(ratio, trend, win, nowt)
         if ok:
@@ -21710,7 +21717,7 @@ def _port_listener_pids(port):
     판을 가리지 않는다 (REQ-20260906-077): 예전엔 리눅스 전용 `ss -ltnp` 만 물어
     맥에서는 빈 목록이었고 `--stop` 이 아무도 못 내린 채 「아직 사용 중」으로 죽었다
     (맥미니 실제 발생 2026-09-06). 리눅스는 ss(여러 pid), 그 밖은 `_port_owner_pid`
-    (맥·BSD 는 lsof, 윈도우는 netstat) — 같은 문(proc_backend)을 지난다.
+    (맥·BSD 는 lsof, 윈도우는 netstat) — 같은 경로(proc_backend)을 지난다.
     """
     import subprocess as _sp
     pids = set()
@@ -22190,10 +22197,10 @@ def metrics_sample(root=None):
 
 
 def link_backend():
-    """이 기계가 회선에 붙어 있나를 **묻는 문** (REQ-20260903-002).
+    """이 기계가 회선에 붙어 있나를 **묻는 검사** (REQ-20260903-002).
 
     판마다 묻는 자리가 다르다 — 리눅스는 기본 경로표와 링크 상태, 맥은
-    `route -n get default`·`ifconfig`, 윈도우는 다른 자리다. 지금 문이 서 있는
+    `route -n get default`·`ifconfig`, 윈도우는 다른 자리다. 지금 검사가 서 있는
     것은 리눅스뿐이고, 나머지 판에서는 **모른다**고 답한다.
 
     모르는 것을 「붙어 있다」로 세면 이 갈래는 대조군이 아니라 거짓말이 된다 —
@@ -22418,7 +22425,7 @@ def _metrics_is_collector(pid):
     프로세스를 못 보는 환경에서는 판정을 미루지 않고 참으로 둔다 — 여기서
     막아 세우면 정상 정지가 안 되는 쪽이 더 나쁘다.
 
-    **명령줄은 `pid_cmdline` 한 문으로만 묻는다** (REQ-20260903-005). 예전에는
+    **명령줄은 `pid_cmdline` 한 경로로만 묻는다** (REQ-20260903-005). 예전에는
     여기서 `/proc` 을 직접 읽었고, 그래서 `/proc` 이 없는 판(윈도우·맥)에서는
     이 물음이 **언제나 참**이었다 — 리눅스에서 막아 둔 「남의 pid 를 죽인다」가
     그 판에서 고스란히 되살아난다.
@@ -22665,7 +22672,7 @@ def metrics_detach(root=None, interval=METRICS_INTERVAL_SEC):
     """수집기를 세션에서 떼어 기동한다. 이미 돌고 있으면 아무것도 하지 않는다 —
     세션마다 불려도 안전해야 세션 시작에 걸 수 있다.
 
-    **떼는 방법은 `spawn_detached` 한 문을 지난다** (REQ-20260903-005).
+    **떼는 방법은 `spawn_detached` 한 경로를 지난다** (REQ-20260903-005).
     예전에는 여기 double fork 가 인라인으로 있었고, 그래서 `fork` 가 없는
     윈도우에서는 계기가 통째로 안 떴다 — 사고가 나도 뒤에 아무것도 안 남는다.
     """
@@ -22785,7 +22792,7 @@ def metrics_verdict(recs):
 
 
 def metrics_stop(root=None):
-    """수집기를 내린다 — (내렸나, 한 줄). `s9 metrics stop` 과 `s9 serve --stop` 이 같은 문
+    """수집기를 내린다 — (내렸나, 한 줄). `s9 metrics stop` 과 `s9 serve --stop` 이 같은 경로
     (REQ-20260906-078: --stop 이면 전부 꺼져야 한다)."""
     p = _metrics_paths(root)
     pid = _metrics_alive(root)
@@ -22889,7 +22896,7 @@ def cmd_metrics(args):
               "`S9_NO_METRICS=1`")
         return 0
     if action == "run":
-        # 떨어져 나온 자식이 들어오는 문 — `spawn_detached` 가 이 인자로 부른다.
+        # 떨어져 나온 자식이 들어오는 진입점 — `spawn_detached` 가 이 인자로 부른다.
         # 사람이 직접 쓸 일은 없지만 숨기지 않는다: 숨은 진입점은 다음 사람이
         # 프로세스 표에서 보고 무엇인지 몰라 헤맨다.
         return _metrics_main(root, args.interval)
@@ -22913,7 +22920,7 @@ def cmd_metrics(args):
                     # 답했는지를 적는다 (REQ-20260903-002).
                     where = d.get("iface") or d.get("backend")
                     mark = ("붙어 있다" if d.get("ok")
-                            else ("모른다(문 없음)" if d.get("stage") == "unknown"
+                            else ("모른다(검사 없음)" if d.get("stage") == "unknown"
                                   else "안 붙어 있다"))
                     print(f"  {k:4} {mark} ({where})")
                     continue
@@ -23251,7 +23258,7 @@ def serve_guard_loop(port, host="127.0.0.1", root=None, spawn=None,
 
 def _hold_lock_file(state_dir, path):
     """감시자 단일성 잠금 — 잡으면 파일 객체(프로세스 수명 동안 보유), 남이 잡고 있으면 None.
-    serve 감시자와 ssh 터널 감시자가 같은 문을 지난다 — fcntl 은 여기 한 곳에서만 부른다."""
+    serve 감시자와 ssh 터널 감시자가 같은 경로를 지난다 — fcntl 은 여기 한 곳에서만 부른다."""
     try:
         import fcntl
     except ImportError:      # 윈도우 — 잠금 없이 진행(감시자 중복은 포트 검사로 수렴)
@@ -23357,10 +23364,10 @@ def _guard_detach(port, host="127.0.0.1", root=None):
     """감시자를 사용자 세션에서 떼어 기동한다. 이미 감시 중이면 아무것도 하지
     않는다(멱등). 반환: 띄웠으면 True.
 
-    **떼는 방법은 `spawn_detached` 한 문을 지난다** (REQ-20260903-005).
+    **떼는 방법은 `spawn_detached` 한 경로를 지난다** (REQ-20260903-005).
     예전에는 여기 double fork 가 인라인으로 있었고, 그래서 `fork` 가 없는
     윈도우에서는 감시자가 아예 안 떴다 — 서버가 죽어도 아무도 안 살린다.
-    자식이 들어오는 문은 `serve --guard-run` 이다(그 갈래는 다시 떼지 않고
+    자식이 들어오는 진입점은 `serve --guard-run` 이다(그 갈래는 다시 떼지 않고
     제자리에서 감시 루프를 돈다 — 안 그러면 무한히 자기를 띄운다).
 
     `root` 는 자식에게 인자로 못 넘긴다 — 자식은 `S9_ROOT` 를 물려받아 제
@@ -23613,7 +23620,7 @@ def catalog_with_live(stall_win=None):
             r["wait_why"] = v["wait"]["why"]
             r["wait_mins"] = v["wait"]["mins"]
     # 판정 큐 파생 (REQ-20260831-015) — 재료는 위의 행뿐이라 디스크를 다시
-    # 열지 않고, 이 함수가 스냅샷 게이트 안이라 폭풍에도 세대당 한 번이다.
+    # 열지 않고, 이 함수가 스냅샷 검사 안이라 폭풍에도 세대당 한 번이다.
     review_family(rows)
     return rows
 
@@ -23699,7 +23706,7 @@ def _part_bytes(home, name):
 
     낱개 갈래와 **같은 realpath 규율**이다 — 접두 검사만으로는 심링크가 새
     나간다(REQ-20260828-028). 묶음은 목록을 껍데기에서 받으므로 바깥 입력이
-    아니지만, 문이 둘이면 규율도 둘이 된다.
+    아니지만, 경로가 둘이면 규율도 둘이 된다.
     """
     fp = os.path.realpath(os.path.join(home, os.path.basename(name)))
     if os.path.dirname(fp) != home or not os.path.isfile(fp):
@@ -23778,7 +23785,7 @@ def web_bundle(sub, shell_path, root=None):
 #      그 명령이고, bin/s9-git-gate 가 막는 이유다).
 #   ④ 갈라진 갈래는 화면이 합치지 않는다 — 앞으로만 붙이는 방식 고정.
 #
-# 그래서 git 을 부르는 문은 `git_run` 하나이고, 거기에 **허용 목록**이 서
+# 그래서 git 을 부르는 경로는 `git_run` 하나이고, 거기에 **허용 목록**이 서
 # 있다. 금지어를 문장으로 적어 두는 대신 부르기 전에 터지게 한다 — 다음
 # 사람이 `--force` 를 한 번 붙여 보는 순간 시험이 먼저 막는다.
 GIT_DIRTY_SHOW = 3        # 이름으로 말하는 파일 수 (나머지는 「+ N개 더 보기」)
@@ -23928,9 +23935,9 @@ def git_can(st, proxy_for=""):
     """누를 수 있는가 — **판정이 사는 유일한 자리** (REQ-20260901-023).
 
     화면이 같은 조건을 다시 세면 규칙이 두 벌이 되어 언젠가 갈린다(전이가
-    `do_transition` 한 문을 지나는 그 규율). 그리고 누른 순간 `git_do` 가
+    `do_transition` 한 경로를 지나는 그 규율). 그리고 누른 순간 `git_do` 가
     이 함수를 **다시** 부른다 — 그 사이에 작업이 뜰 수 있고, 그것이 경합의
-    마지막 문이다."""
+    마지막 검사다."""
     both = [
         (not st["repo"], GIT_SAY["norepo"], GIT_SAY["norepo"]),
         (st["repo"] and not st["upstream"], GIT_SAY["noup"], GIT_SAY["noup"]),
@@ -24095,7 +24102,7 @@ def git_do(what, actor="", proxy_for=""):
     """pull·push 를 실제로 돌린다 — **누른 순간 다시 판정한다.**
 
     화면이 「없다」고 그려 준 사이에 백그라운드 작업이 뜰 수 있다. 그 재판정은
-    「눌러 봐야 아는 화면」이 아니라 경합의 마지막 문이다 — 누르기 전 사유는
+    「눌러 봐야 아는 화면」이 아니라 경합의 마지막 검사이다 — 누르기 전 사유는
     이미 버튼 옆에 서 있었다."""
     import subprocess as _sp
     import time as _t
@@ -24345,7 +24352,7 @@ def cmd_serve(args):
               f"다시 띄우려면 `s9 serve --supervise`")
         return
     if getattr(args, "guard_run", False):
-        # 떨어져 나온 감시자가 들어오는 문 — `_guard_detach` 가 이 인자로
+        # 떨어져 나온 감시자가 들어오는 진입점 — `_guard_detach` 가 이 인자로
         # 부른다. 여기서는 **다시 떼지 않는다**: 떼면 자기를 무한히 띄운다.
         return _guard_main(args.port, args.host)
     if getattr(args, "supervise", False):
@@ -24610,7 +24617,7 @@ def cmd_serve(args):
             except OSError:
                 pass
             # 서명 판독은 `transcript_read` 한 곳이 한다 (REQ-20260901-011) —
-            # 게이트가 같은 눈을 못 쓰고 낡은 채로 남았던 자리다.
+            # 검사가 같은 눈을 못 쓰고 낡은 채로 남았던 자리다.
             if transcript_read(path).get("limit_seen"):
                 out["end_why"] = "사용 한도 다 씀"
             return out
@@ -24990,10 +24997,10 @@ def cmd_serve(args):
             세운다(로그는 log_message 가 이미 조용하다).
 
             **프로세스 표의 범위도 여기다** (REQ-20260901-024). 요청 하나가
-            `/proc` 을 한 번만 훑게 하는 문은 메서드(do_GET·do_POST…)가 아니라
+            `/proc` 을 한 번만 훑게 하는 경로는 메서드(do_GET·do_POST…)가 아니라
             이 한 곳이어야 한다 — 나중에 붙는 메서드도 자동으로 지나야
             병목이 옆문으로 되돌아오지 않는다. 상한 판정과 같은 이유다.
-            **streams 자리 목록의 범위도 같은 문이다** (REQ-20260902-004) —
+            **streams 자리 목록의 범위도 같은 경로이다** (REQ-20260902-004) —
             바인딩마다 streams 디렉토리를 훑던 것이 요청당 1회가 된다.
             """
             if self.idle_timeout and self.idle_timeout > 0:
@@ -25010,7 +25017,7 @@ def cmd_serve(args):
             동시 연결 상한도 여기서 한 곳으로 판정한다. stdlib 의 계약이
             "parse_request 가 False 면 응답은 이미 보냈으니 그냥 나간다"라,
             메서드(do_GET·do_POST…)마다 같은 검사를 흩지 않아도 된다 —
-            나중에 붙는 메서드도 자동으로 이 문을 지난다.
+            나중에 붙는 메서드도 자동으로 이 경로를 지난다.
             """
             ok = super().parse_request()
             if not ok:
@@ -25150,7 +25157,7 @@ def cmd_serve(args):
             # 글자 파일은 새 탭에서도 읽혀야 한다 (REQ-20260901-016). charset
             # 없는 text/* 를 받은 브라우저는 인코딩을 추측하고, 한글 UTF-8 은
             # 그 추측(레거시 인코딩)에서 전부 깨진다 — 소스 파일 첨부를 새
-            # 탭으로 연 실캡처가 그것이다. 판정은 관문 한 곳(여기): 글자로
+            # 탭으로 연 실캡처가 그것이다. 판정은 경로 한 곳(여기): 글자로
             # 읽히는 종류에만 charset 을 붙이고 그림·이진은 그대로 둔다.
             if (ctype.startswith("text/") or ctype in (
                     "application/json", "application/javascript",
@@ -25288,7 +25295,7 @@ def cmd_serve(args):
                             # 되풀이 실패 알림 (REQ-20260907-005) — 칩이 그린다.
                             "sync_alert": sync_alert_fact(),
                             # 폴링 스냅샷 관측 (REQ-20260831-002) — 폭풍 진단이
-                            # 추측이 아니라 이 세 값을 읽게 한다: 게이트가
+                            # 추측이 아니라 이 세 값을 읽게 한다: 검사가
                             # 켜졌는가(ttl), 몇 세대인가(seq), 한 계산이
                             # 얼마나 걸리는가(dur).
                             "poll_snapshot": {
@@ -25341,12 +25348,12 @@ def cmd_serve(args):
                 window = qs.get("window", [""])[0] or "board"
                 if want:
                     window = "all"
-                # 게이트가 신선도를 판정한 **뒤에** 같은 세대·같은 뷰어의
+                # 검사가 신선도를 판정한 **뒤에** 같은 세대·같은 뷰어의
                 # 응답 바이트를 재사용한다 (REQ-20260831-002). 폭풍에서 남는
                 # 비용은 계산이 아니라 95연결이 제각각 굽는 700행 필터+직렬화
-                # (~50ms×연결수 = GIL 직렬 수 초)다. 게이트를 앞세우는 이유:
-                # 캐시가 게이트보다 먼저 답하면 TTL·지문 무효화를 우회하는
-                # 두 번째 신선도 판정이 생긴다 — 판정은 게이트 한 곳이다.
+                # (~50ms×연결수 = GIL 직렬 수 초)다. 검사를 앞세우는 이유:
+                # 캐시가 검사보다 먼저 답하면 TTL·지문 무효화를 우회하는
+                # 두 번째 신선도 판정이 생긴다 — 판정은 검사 한 곳이다.
                 rows = catalog_with_live()
                 key = (catalog_with_live._state["seq"], me, want, window)
                 # 빌드는 single-flight 다 — 잠금을 빌드 **내내** 쥔다. 확인과
@@ -25360,7 +25367,7 @@ def cmd_serve(args):
                     # 본문이 바뀌어 ETag 가 매번 죽고 304 는 없다(실측:
                     # 3초 간격 diff 에서 live_age 만 변함). 10초 눈금으로
                     # 내림해 싣는다 — 서버 내부 판정(멈춤·워처)은 직렬화
-                    # 전 정밀값으로 이미 끝났다. 중첩 dict 는 게이트
+                    # 전 정밀값으로 이미 끝났다. 중첩 dict 는 검사
                     # 스냅샷과 공유되므로 복사 후 고친다.
                     if isinstance(r.get("live_age"), int):
                         r["live_age"] -= r["live_age"] % 10
@@ -25380,7 +25387,7 @@ def cmd_serve(args):
                         body = json.dumps(
                             [_coarse(r) for r in sent],
                             ensure_ascii=False).encode()
-                        # ETag 는 본문 해시다 — 게이트 세대(seq)가 아니라.
+                        # ETag 는 본문 해시다 — 검사 세대(seq)가 아니라.
                         # 세대가 바뀌어도 내용이 같으면 304 가 유효해야 하고,
                         # 뷰어마다 본문이 다르므로 교차 뷰어 304 오염도 원천
                         # 차단된다.
@@ -25806,9 +25813,9 @@ def cmd_serve(args):
                 # 첨부에서 뽑은 본문 (REQ-20260827-005). 검색은 이미 이 글자를
                 # 찾는데(REQ-20260826-020) 화면에서는 읽을 수가 없었다.
                 #
-                # **게이트는 `/api/asset` 과 글자 그대로 같아야 한다.** 다르면
+                # **검사는 `/api/asset` 과 글자 그대로 같아야 한다.** 다르면
                 # PDF 원본은 못 보는 사람이 그 안의 글자는 다 읽는다 — 접근
-                # 제어에 구멍을 내는 종류라, 라우트를 먼저 만들고 게이트를
+                # 제어에 구멍을 내는 종류라, 라우트를 먼저 만들고 검사를
                 # 나중에 붙이는 순서를 쓰지 않았다. backend 가 020 을 끝내며
                 # 남긴 경고 그대로다.
                 doc_id = qs.get("doc", [""])[0]
@@ -25840,9 +25847,9 @@ def cmd_serve(args):
                 # 노출도 파일 크기만큼 는다. 전체 보기를 열면 상한·창 논의가
                 # 무의미해지고 다음 요청은 반드시 "그럼 편집도" 가 된다.
                 #
-                # 게이트는 `code_visible` **하나**다 — 여기서 다시 판정하지
+                # 검사는 `code_visible` **하나**다 — 여기서 다시 판정하지
                 # 마라. `/api/asset-text` 가 `/api/asset` 과 "글자 그대로 같은
-                # 게이트" 를 쓴 그 규율 그대로다.
+                # 검사" 를 쓴 그 규율 그대로다.
                 #
                 # ⚠ 이 라우트는 **루프백 전제 위에서만** 성립한다. whoami_info
                 #   가 "브라우저 사용자 = 서버 기동 계정" 을 파생으로 쓰기
@@ -26004,7 +26011,7 @@ def cmd_serve(args):
                                         label=str(req.get("label")
                                                   or "response"))
                     # judge=True: 대시보드 전이는 사람의 행위 — review→done
-                    # 승인에 한해 goal/TDD 게이트 면제 (REQ-20260825-030)
+                    # 승인에 한해 goal/TDD 검사 면제 (REQ-20260825-030)
                     # note 는 사람이 쓴 메모 **원문**이다 — 판정 접두어와
                     # [via dashboard] 표식은 do_transition 이 붙인다
                     # (REQ-20260828-007: 화면이 의미를 문자열에 싣지 않는다)
@@ -26027,7 +26034,7 @@ def cmd_serve(args):
                                 "old": old, "new": tto, "freed": freed,
                                 "auto_resume": spawned, "notified": notified})
                 elif parsed.path == "/api/doc/set":
-                    # 카드에서 프로젝트 바꾸기 — CLI(`s9 set`)와 같은 문(do_set) (REQ-20260906-053)
+                    # 카드에서 프로젝트 바꾸기 — CLI(`s9 set`)와 같은 경로(do_set) (REQ-20260906-053)
                     try:
                         res = do_set(str(req.get("id") or ""),
                                      {"project": req.get("project")},
@@ -26036,7 +26043,7 @@ def cmd_serve(args):
                         res = {"ok": False, "error": str(e)}
                     self._json(res)
                 elif parsed.path == "/api/assign":
-                    # 담당자 변경 — CLI 와 같은 문(do_assign) (REQ-20260902-019)
+                    # 담당자 변경 — CLI 와 같은 경로(do_assign) (REQ-20260902-019)
                     res = do_assign(str(req.get("id") or ""),
                                     str(req.get("user") or ""),
                                     actor=actor, why=str(req.get("why") or ""),
@@ -26044,7 +26051,7 @@ def cmd_serve(args):
                     self._json(res)
                 elif parsed.path == "/api/claim_takeover":
                     # 리스를 이 컴퓨터로 (REQ-20260902-021, D1 이관 경로 (b)).
-                    # 판정·기록·History 는 CLI(`s9 claim --takeover`)와 같은 문
+                    # 판정·기록·History 는 CLI(`s9 claim --takeover`)와 같은 경로
                     # (doc_lease_acquire)이 한다 — 화면은 부르기만 한다. 여기에
                     # 판정을 한 줄이라도 더 쓰면 두 입구가 다른 답을 내는 날이 온다.
                     _ok, _code, _why = doc_lease_acquire(
@@ -26055,7 +26062,7 @@ def cmd_serve(args):
                                200 if _ok else 409)
                 elif parsed.path == "/api/priority":
                     # 화면에서 순서를 바꾸는 자리 (REQ-20260829-029). 해석·검증·
-                    # 근거 기록은 CLI 와 같은 문(set_doc_priority)을 지난다 —
+                    # 근거 기록은 CLI 와 같은 경로(set_doc_priority)을 지난다 —
                     # 두 벌이면 화면으로 바꾼 것만 History 에 안 남는다.
                     #
                     # 여기서 끝이 아니다: 바뀐 값은 `work_order()` 를 통해
@@ -26067,7 +26074,7 @@ def cmd_serve(args):
                     self._json(res)
                 elif parsed.path == "/api/docs/tidy":
                     # 치우기 (REQ-20260829-025) — 보관·해제·삭제·복원·소거가
-                    # 한 문 하나를 지난다. 단건도 여러 건도 같은 문이다:
+                    # 한 경로 하나를 지난다. 단건도 여러 건도 같은 경로이다:
                     # 창구를 둘로 나누면 권한 검사도 두 벌이 된다.
                     op = str(req.get("op") or "")
                     ids = req.get("ids") or ([req.get("id")] if req.get("id") else [])
@@ -26119,7 +26126,7 @@ def cmd_serve(args):
                     self._json({"ok": True, **res})
                 elif parsed.path == "/api/project/add":
                     # 생성 — CLI(project add)와 동일 코드 경로(do_project_add):
-                    # 등록 사용자 게이트·slug 검증·생성자=owner 판정이 전부
+                    # 등록 사용자 검사·slug 검증·생성자=owner 판정이 전부
                     # do_* 안이다. 핸들러는 중계만 (인라인 인가 = 옆문 금지).
                     res = do_project_add(
                         str(req.get("slug") or ""),
@@ -26313,7 +26320,7 @@ def cmd_serve(args):
                     self._json(res, 200 if res.get("ok") else 409)
                 elif parsed.path == "/api/session/wake":
                     # account: 고른 계정으로 깨운다 (REQ-20260829-023) — 계정을
-                    # 바꾸려는데 붙어 있는 세션이 없을 때 빠져나갈 문이다.
+                    # 바꾸려는데 붙어 있는 세션이 없을 때 빠져나갈 경로이다.
                     self._json(wake_session(
                         account=str(req.get("account") or "").strip()))
                 elif parsed.path == "/api/account/remove":
@@ -26337,7 +26344,7 @@ def cmd_serve(args):
                         # 보내면 옛 계정으로 도는 작업자를 남기지 않는다.
                         stop_workers=bool(req.get("stop_workers")),
                         # 「그래도 바꾸기」 (REQ-20260901-011) — 거부 하나가
-                        # 교착이 되지 않게 사람이 명시로 지나갈 문.
+                        # 교착이 되지 않게 사람이 명시로 지나갈 경로.
                         force=bool(req.get("force")))
                     self._json(res, 200 if res.get("ok") else 409)
                 elif parsed.path == "/api/chat/upload":
@@ -27245,7 +27252,7 @@ def _worktree_autocommit(name, own=None):
     `s9 worktree ls` 에서 보고 합친다.
 
     **실패를 삼키지 않는다** (REQ-20260829-028-62x6). 종전에는 `git commit` 의
-    반환코드를 안 보고 stderr 를 버렸다. 그래서 pre-commit 게이트가 거부해도
+    반환코드를 안 보고 stderr 를 버렸다. 그래서 pre-commit 검사가 거부해도
     성공처럼 보였고, sweep 이 30초 뒤에 또 불렀다 — 2026-08-29 16:51 부터
     `WT-AUTOCOMMIT` 두 줄이 30초 간격으로 끝없이 찍히며 진짜 신호를 덮었고,
     그 worktree들은 여전히 미커밋인 채였다. **실패가 안 보이는 자동 커밋은
@@ -28037,7 +28044,7 @@ def main():
                     help="state/tunnels.json 에 적어 s9 code 기동 때마다 올린다 (옵트인)")
     tn.add_argument("--status", action="store_true", help="터널 상태")
     tn.add_argument("--stop", action="store_true", help="감시자와 ssh 를 내리고 정리 (s9 tunnel <로컬포트> --stop)")
-    tn.add_argument("--run", action="store_true", help=argparse.SUPPRESS)        # 떼어 낸 감시자의 문
+    tn.add_argument("--run", action="store_true", help=argparse.SUPPRESS)        # 떼어 낸 감시자의 진입점
     tn.add_argument("--autostart", action="store_true", help=argparse.SUPPRESS)  # s9 code 가 지나는 갈래
     tn.set_defaults(fn=cmd_tunnel)
 
@@ -28121,7 +28128,7 @@ def main():
                          "않는다 (REQ-20260907-033, 내부 호출용)")
     sv.add_argument("--guard-run", action="store_true",
                     help="감시 루프를 이 프로세스에서 실행한다 (떼어 낸 자식이 "
-                         "들어오는 문 — 사람이 직접 쓸 일은 없다)")
+                         "들어오는 진입점 — 사람이 직접 쓸 일은 없다)")
     sv.add_argument("--supervise", action="store_true",
                     help="감시자를 분리 기동한다 — 서버가 죽으면 사유를 남기고 "
                          "재시도를 미루며(backoff) 되살린다 (멱등)")

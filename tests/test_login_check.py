@@ -29,7 +29,7 @@ class LoginCheck(unittest.TestCase):
         i = _load("s9inst_login", INSTALL)
         s = _load("s9_login", S9)
         self.assertEqual(d.LOGIN_MARKS, i.LOGIN_MARKS)
-        self.assertEqual(d.LOGIN_MARKS, s.LOGIN_MARKS, "s9 code 의 문이 doctor 와 다른 표를 든다")
+        self.assertEqual(d.LOGIN_MARKS, s.LOGIN_MARKS, "s9 code 의 경로가 doctor 와 다른 표를 든다")
 
     def test_l2_installed_but_not_logged_in_is_a_warning_with_the_way_in(self):
         """L2. 실행 파일은 있는데 흔적이 없으면 warn 이고 로그인하는 길을 말한다; 있으면 ok."""

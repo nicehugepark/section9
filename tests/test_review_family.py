@@ -188,7 +188,7 @@ class ReworkEnvelope(unittest.TestCase):
 
 
 class SnapshotIntegration(unittest.TestCase):
-    """S6: 스냅샷 게이트 안 — 세대당 한 번, 필드는 스냅샷 결과에도 실린다."""
+    """S6: 스냅샷 검사 안 — 세대당 한 번, 필드는 스냅샷 결과에도 실린다."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="s9rvsnap-")

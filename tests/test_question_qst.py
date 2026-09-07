@@ -77,7 +77,7 @@ class Cli(unittest.TestCase):
                           "--user", "tester", "--body", body).stdout.split()[0]
 
     def catalog(self):
-        # 파일이 아니라 문으로 읽는다 — 증분 카탈로그 뒤로 갓 쓴 행은
+        # 파일이 아니라 경로로 묻는다 — 증분 카탈로그 뒤로 갓 쓴 행은
         # base 가 아니라 델타에 있다 (REQ-20260902-035).
         out = self.s9run("index", "cat").stdout
         return [json.loads(l) for l in out.splitlines() if l.strip()]
@@ -157,9 +157,9 @@ class Cli(unittest.TestCase):
         self.assertIn(did, self.s9run("ls", "--type", "knowledge").stdout)
         self.assertNotIn(did, self.s9run("ls", "--type", "question").stdout)
 
-    # S10. 회귀 — request 상태머신·게이트 불변
+    # S10. 회귀 — request 상태머신·검사 불변
     def test_s10_request_gates_unchanged(self):
-        rid = self.s9run("new", "request", "--title", "게이트 회귀",
+        rid = self.s9run("new", "request", "--title", "검사 회귀",
                          "--user", "tester", "--body", "b").stdout.split()[0]
         self.s9run("status", rid, "in-progress", "--user", "tester")
         # goal 없는 done 은 여전히 거부된다

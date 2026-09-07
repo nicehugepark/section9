@@ -182,7 +182,7 @@ class DeadEnd(unittest.TestCase):
                 self.assertTrue(m, "문서 화면이 조각을 잇는 자리가 없다")
                 made = " ".join(m.group(1).split())
                 # 벨트·잠금은 머리 띠(.dacts)로 갔다 (REQ-20260830-046). 사실 줄 층의
-                # 맨 앞에는 정책 예고 줄이 선다 (REQ-20260901-005) — 관문은 그 함수
+                # 맨 앞에는 정책 예고 줄이 선다 (REQ-20260901-005) — 경로는 그 함수
                 # 안의 holdLockHTML 하나라 조건이 두 벌이 되지 않는다.
                 self.assertEqual(made, "holdForecastHTML(stallDoc) + stallHTML(stallDoc)"
                                        " + holdTellHTML(stallDoc)")

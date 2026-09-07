@@ -56,7 +56,7 @@ class FullGreenRecord(unittest.TestCase):
         self.m.record_full_green("abc1234")
         self.assertLess(self.m.full_green_age(), 5.0)
 
-    # F3. 실패 뒤의 시각 기록이면 라쳇이 열린다 — 게이트가 실제로 읽는 값
+    # F3. 실패 뒤의 시각 기록이면 라쳇이 열린다 — 검사가 실제로 읽는 값
     def test_f3_a_red_older_than_the_time_record_does_not_block(self):
         self.m.LAST_RED = os.path.join(self.d, "state", "tests-last-red.json")
         self.m.record_last_red(["test_x.py"], "fp")

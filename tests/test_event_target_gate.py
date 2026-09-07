@@ -15,7 +15,7 @@ target 이 텍스트 노드이고, 텍스트 노드에는 `closest` 가 없다. 
 그때는 그 조각 안에 방어를 하나 세워 막았다. 조각마다 자기 방어를 두면 조각
 수만큼 구멍이 남고, 실제로 남은 구멍에서 다시 터졌다.
 
-그래서 여기서 잠그는 계약은 "지켰나"가 아니라 **문이 하나인가**다:
+그래서 여기서 잠그는 계약은 "지켰나"가 아니라 **경로가 하나인가**다:
 이벤트 대상을 요소로 바꾸는 자리는 `evEl` 한 곳이고, 조각들은 거기만 지난다.
 
 실행: python3 tests/ event_target_gate
@@ -30,7 +30,7 @@ import webasset
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(os.path.dirname(HERE), "web", "app")
 
-# 문을 거치지 않고 대상을 직접 캐묻는 자리. `closest` 는 이번에 터진 것이고,
+# 공용 경로를 거치지 않고 대상을 직접 캐묻는 자리. `closest` 는 이번에 터진 것이고,
 # 나머지 셋도 텍스트 노드에는 없거나 다른 것을 뜻한다 — 같은 사고의 다른 얼굴.
 RAW = re.compile(r"\b\w+\.target\.(closest|matches|classList|dataset)\b")
 
@@ -47,7 +47,7 @@ class EventTargetGate(unittest.TestCase):
         """EventTargetGate 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("g1_the_gate_exists_and_climbs_to_an_element"):
                 src = self.files["state.js"]
-                self.assertIn("function evEl(", src, "공용 문(evEl)이 없다")
+                self.assertIn("function evEl(", src, "공용 경로(evEl)이 없다")
                 body = src[src.index("function evEl("):]
                 self.assertIn("nodeType === 1", body,
                               "요소인지를 nodeType 으로 묻지 않는다")
@@ -73,11 +73,11 @@ class EventTargetGate(unittest.TestCase):
         with self.subTest("g3_the_places_that_broke_go_through_the_gate"):
                 ev = self.files["events.js"]
                 self.assertIn('evEl(e.target)?.closest(\'.card[draggable="true"]\')', ev,
-                              "글자를 끌면 죽던 그 줄이 문을 안 지난다")
+                              "글자를 끌면 죽던 그 줄이 경로를 안 지난다")
                 self.assertIn('evEl(e.target)?.closest(".col[data-colstatus]")', ev,
                               "끌어 놓는 자리도 같은 위험을 진다")
                 self.assertIn("evEl(e.target)", self.files["tidy.js"],
-                              "지난번에 고친 자리가 자기 문을 따로 쓰고 있다")
+                              "지난번에 고친 자리가 자기 경로를 따로 쓰고 있다")
 
             # ----------------------------------------------------------------- G4
         with self.subTest("g4_the_gate_stands_before_the_pieces_that_use_it"):
@@ -85,7 +85,7 @@ class EventTargetGate(unittest.TestCase):
                 gate = page.index("function evEl(")
                 first = min(page.index(m) for m in
                             ('evEl(e.target)?.closest(\'.card[draggable="true"]\')',))
-                self.assertLess(gate, first, "문이 쓰는 자리보다 뒤에 선다")
+                self.assertLess(gate, first, "경로가 쓰는 자리보다 뒤에 선다")
 
             # ----------------------------------------------------------------- G5
         with self.subTest("g5_the_guardian_still_stands_alone"):

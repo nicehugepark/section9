@@ -5,7 +5,7 @@
 
   ① 한도로 굳은 턴이 「진행 중」으로 읽혀 모든 전환이 거부됐다.
   ② 유일한 탈출구(「중단하고 바꾸기」)가 **소진된 그 모델**을 써야 소화되는
-     지시라 원리상 수렴할 수 없었다 — 사람이 빠져나갈 문이 없었다.
+     지시라 원리상 수렴할 수 없었다 — 사람이 빠져나갈 경로가 없었다.
   ③ 계정 전환 재시작은 대상 프로필에 그 대화가 없어 이어받지 못했는데,
      그것을 **SIGTERM 을 쏜 뒤에야** 알았다. 화면은 90초를 기다리다
      「세션이 돌아온 것을 확인하지 못했습니다」를 냈다.
@@ -13,7 +13,7 @@
 여기서 지키는 계약 넷:
   · 갈래에 이름이 있다 — why_kind("busy"|"limit"|"no_resume") · limit · attempt
   · 한도 갈래는 거부가 아니라 진행이다 (멈출 것이 없으니 멈추라고 하지 않는다)
-  · 거부 갈래에도 문이 있다 — force(「그래도 바꾸기」), 잃는 것을 응답이 말한다
+  · 거부 갈래에도 빠져나갈 경로가 있다 — force(「그래도 바꾸기」), 잃는 것을 응답이 말한다
   · 못 이어받으면 **죽이기 전에** 거부하고, 이어받을 수 있으면 옮겨 준다
 
 실행: python3 tests/ restart_contract
@@ -189,8 +189,8 @@ class TheRefusalHasAName(RestartCase):
         self.assertEqual(self.kills, [])
 
 
-class TheDoorThatIsAlwaysOpen(RestartCase):
-    """거부 갈래에도 문이 있다 — 오판정 하나가 교착이 되지 않는다."""
+class TheWayOutIsAlwaysThere(RestartCase):
+    """거부 갈래에도 빠져나갈 경로가 있다 — 오판정 하나가 교착이 되지 않는다."""
 
     # S11. force 는 진행하고, 잃는 것을 말한다
     def test_s11_force_proceeds_and_says_the_cost(self):
@@ -259,7 +259,7 @@ class BeforeYouKillTheSession(RestartCase):
         with open(os.path.join(d, full + ".jsonl"), encoding="utf-8") as f:
             self.assertEqual(f.read(), "KEEP\n")
 
-    # S16. 되돌아가는 길도 같은 규칙이다 — 한 방향만 되는 문을 만들지 않는다
+    # S16. 되돌아가는 길도 같은 규칙이다 — 한 방향만 되는 경로를 만들지 않는다
     def test_s16_the_way_back_home_works_too(self):
         acct_home = os.path.join(PROFILES, "acct4")
         full, tp = self.session("s16sess", [asst("end_turn")],
@@ -269,7 +269,7 @@ class BeforeYouKillTheSession(RestartCase):
         self.assertTrue(os.path.isfile(os.path.join(
             HOME_PROFILE, "projects", CWD_KEY, full + ".jsonl")))
 
-    # force 는 이 문도 지난다 — 다만 대화가 안 이어진다는 사실을 말한다
+    # force 는 이 검사도 지난다 — 다만 대화가 안 이어진다는 사실을 말한다
     def test_forcing_past_no_resume_says_the_conversation_is_lost(self):
         full, tp = self.session("s13bsess", [asst("end_turn")])
         os.remove(tp)

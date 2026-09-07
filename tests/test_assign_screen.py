@@ -186,7 +186,7 @@ class Screen(unittest.TestCase):
             self.assertIn("m.active", f, "만료 멤버를 거르지 않는다")
             self.assertIn("mem.has(u.name)", f, "프로젝트 멤버로 좁히지 않는다")
             self.assertRegex(self.s9, r"project_role\(_proj, new_user\)",
-                             "서버(do_assign)에 멤버 게이트가 없다")
+                             "서버(do_assign)에 멤버 검사가 없다")
             # S5 — 지금 맡은 사람이 멤버에서 빠져도 「지금 이것」으로 남는다.
             # 창이 누가 쥐고 있는지를 두고 거짓말하면 알 길이 없다.
             self.assertIn('note: "지금 이것"', f)
@@ -199,13 +199,13 @@ class Screen(unittest.TestCase):
             f = _decomment(self.parts["canTakeover"])
             self.assertIn("isAdmin()", f)
             self.assertIn("viewMe()", f)
-        with self.subTest("e5_one_door_on_the_server"):
+        with self.subTest("e5_one_path_on_the_server"):
                 self.assertIn('parsed.path == "/api/assign"', self.s9)
                 self.assertIn('parsed.path == "/api/claim_takeover"', self.s9)
                 i = self.s9.index('parsed.path == "/api/claim_takeover"')
                 seg = self.s9[i:i + 900]
                 self.assertEqual(seg.count("doc_lease_acquire("), 1,
-                                 "이관 API 는 리스 획득 한 문만 부른다")
+                                 "이관 API 는 리스 획득 한 경로만 부른다")
                 self.assertIn("takeover=True", seg)
                 self.assertIn("actor=actor", seg)
 

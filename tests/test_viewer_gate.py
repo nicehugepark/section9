@@ -1,4 +1,4 @@
-"""viewer 쓰기 게이트 (REQ-20260902-028 · DOC-20260902-001 §2 축4).
+"""viewer 쓰기 검사 (REQ-20260902-028 · DOC-20260902-001 §2 축4).
 
 시스템 role `viewer` 는 ROLES 에 있었지만 판정에 쓰는 코드가 없었다. 강제 자리는
 둘뿐이다 — 문서 쓰기의 단일 경계 `write_doc`(`_write_gate`) 와 대시보드 POST
@@ -134,7 +134,7 @@ class ViewerGate(unittest.TestCase):
     def test_viewer_gate(self):
         """ViewerGate 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("g2_viewer_write_subcommands_all_denied"):
-                # 되돌리기·소거에 실제 대상이 있어야 게이트까지 간다 (대상이 없으면
+                # 되돌리기·소거에 실제 대상이 있어야 검사까지 간다 (대상이 없으면
                 # "휴지통에 없다"로 먼저 끝나 무엇이 막았는지 알 수 없다)
                 self.cli("rm", self.doc2, "--reason", "fixture", user="root")
                 before = _tree_digest(self.root)
@@ -152,7 +152,7 @@ class ViewerGate(unittest.TestCase):
                     ("note", self.doc1, "spoof", "--user", "root"),
                     ("status", self.doc1, "in-progress", "--user", "root"),
                     # 지우기·되돌리기도 쓰기다 — write_doc 를 지나지 않는 shutil.move
-                    # 라 처음엔 이 문 밖에 있었다(실측: viewer 가 rm·purge 를 통과했다)
+                    # 라 처음엔 이 경로 밖에 있었다(실측: viewer 가 rm·purge 를 통과했다)
                     ("rm", self.doc1, "--reason", "x"),
                     ("archive", self.doc1),
                     ("restore", self.doc2),
@@ -167,7 +167,7 @@ class ViewerGate(unittest.TestCase):
                     r = self.cli(*argv, user="watcher", expect=None)
                     self.assertNotEqual(r.returncode, 0, f"{argv} 가 통과했다:\n{r.stdout}")
                     # assign 은 자기 권한 검사가 먼저 선다 — 거부이기만 하면 된다.
-                    # 나머지는 게이트의 문장이 그대로 나와야 한다(트레이스백 금지).
+                    # 나머지는 검사의 문장이 그대로 나와야 한다(트레이스백 금지).
                     # 묶음 처리(rm·archive…)는 건별 사유라 stdout 으로 나간다.
                     if argv[0] != "assign":
                         self.assertIn("관찰 계정", r.stdout + r.stderr, argv)
@@ -217,7 +217,7 @@ class ViewerGate(unittest.TestCase):
                 # 허용 예외: 본인 pref 는 저장된다 (profile Notes 의 audit 한 줄이 곧 흔적)
                 st, body = self.post("/api/user/config", payload)
                 self.assertEqual(st, 200, body)
-                # 남의 설정·관찰 범위는 403/400 — 예외가 문이 되지 않는다
+                # 남의 설정·관찰 범위는 403/400 — 예외가 우회가 되지 않는다
                 st, _ = self.post("/api/user/config", {**payload, "name": "alice"})
                 self.assertEqual(st, 403)
                 st, _ = self.post("/api/user/config", {**payload, "key": "observe",
@@ -232,14 +232,14 @@ class ViewerGate(unittest.TestCase):
                 st, raw = self.get("/api/whoami")
                 self.assertEqual(json.loads(raw).get("role"), "viewer")
 
-            # G8. 옆문 없음 — 게이트를 끄는 환경변수 스위치가 소스에 없다
-        with self.subTest("g8_no_side_door"):
+            # G8. 옆문 없음 — 검사를 끄는 환경변수 스위치가 소스에 없다
+        with self.subTest("g8_no_bypass"):
             with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()
             self.assertNotRegex(src, r"S9_(SYSTEM|INTERNAL|BYPASS)_?WRITE")
             i = src.index("def _write_gate(")
             j = src.index("def write_doc(", i)
-            self.assertNotIn("os.environ", src[i:j], "게이트 안에 환경변수 분기가 있다")
+            self.assertNotIn("os.environ", src[i:j], "검사 안에 환경변수 분기가 있다")
 
 class WriteGateModule(unittest.TestCase):
     """모듈 직접 호출 — G1 (vault 거부) · G6 (profile role 2겹)."""
@@ -331,7 +331,7 @@ class WriteGateModule(unittest.TestCase):
                 shutil.rmtree(root, ignore_errors=True)
 
 class RegistrationEscalation(unittest.TestCase):
-    """G10. 계정 등록으로 게이트를 통째로 우회하지 못한다.
+    """G10. 계정 등록으로 검사를 통째로 우회하지 못한다.
 
     실측으로 재현된 구멍이었다: `do_user_add` 가 raw `open(...,"w")` 로
     profile.md 를 써서 `_write_gate` 를 지나지 않았고, 그래서 **관찰 계정이든

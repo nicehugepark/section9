@@ -115,7 +115,7 @@ class Verdict(unittest.TestCase):
                 self.assertEqual(self.m.doc_owner({"user": "me", "assignee": "other"}),
                                  "other")
 
-            # W1. 스폰 게이트가 판정 함수를 쓰고 spawn.log 에 사유가 남는다
+            # W1. 스폰 검사가 판정 함수를 쓰고 spawn.log 에 사유가 남는다
         with self.subTest("w1_spawn_gate_uses_verdict_and_logs"):
                 m = self.m
                 env = {**os.environ, "S9_ROOT": self.root, "S9_MACHINE": "there",

@@ -12,6 +12,7 @@ import glob
 import importlib.machinery
 import importlib.util
 import os
+import re
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +60,54 @@ class NoMetaphors(unittest.TestCase):
                     offenders.append(f"{os.path.relpath(path, ROOT)}:{no} {hits}")
         self.assertEqual(offenders, [], "시험 결과의 비유가 소스에 남아 있다 — 실패·통과로 쓰라 "
                          "(규약 2조 ④, DOC-20260906-002):\n" + "\n".join(offenders[:40]))
+
+
+# gate 를 「문」·「관문」·「게이트」로 부르던 비유 (REQ-20260907-071).
+# 주인 지적 2026-09-07 20:24: 「문 확인에서 문이 뭐야?」 — 용어표
+# DOC-20260906-002 이 이미 「문·커밋 문·게이트 → 검사」로 판정해 두고도 소스에는
+# 683곳이 남아 있었다. 뜻은 넷으로 갈린다: 막는 장치 = 검사 / 모두가 지나는 한
+# 자리 = 경로 / 들어오는 자리 = 진입점 / 나가는 자리 = 나가는 경로.
+# 코드 식별자(concurrent_gate·s9-git-gate·wide_gate)는 이 저장소가 지은 **이름**이라
+# 그대로 둔다 — 사람이 파일 이름과 함수 이름으로 다시 만나는 글자다.
+GATE_RX = re.compile(
+    r"(?<![가-힣])(관문|게이트|문)(?![서자제구장법맥의단화헌항명체양형물고건안답기턱예방])")
+# 우리말 동사 「물다」의 활용 — 「한글을 문 것」·「상수를 문다」는 비유가 아니다
+GATE_OK = re.compile(r"(을|를|글자를|상수를) 문[ 다것]")
+
+
+class NoGateMetaphor(unittest.TestCase):
+    """gate 를 「문」으로 부르지 않는다 — 검사·경로·진입점으로 적는다."""
+
+    # web/ 은 이번 회차 밖이다 (REQ-20260907-071 — 같은 시각 frontend-developer 가
+    # web/app/ 을 고치고 있었다). 화면 쪽을 손질한 회차에서 이 줄을 지워라.
+    NOT_YET = "/web/"
+
+    def test_the_gate_is_called_a_check_not_a_door(self):
+        offenders = []
+        for path in [p for p in _sources() if self.NOT_YET not in p.replace(os.sep, "/")]:
+            in_table = False
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for no, line in enumerate(f, 1):
+                    # 용어를 다루는 표 자신은 그 용어를 적을 수밖에 없다 (BANNED_TERMS 블록)
+                    if line.startswith("BANNED_TERMS = ("):
+                        in_table = True
+                    elif in_table and line.startswith(")"):
+                        in_table = False
+                    if in_table or not GATE_RX.search(line) or GATE_OK.search(line):
+                        continue
+                    offenders.append(f"{os.path.relpath(path, ROOT)}:{no} {line.strip()[:80]}")
+        self.assertEqual(offenders, [], "gate 의 비유가 소스에 남아 있다 — 막는 것은 「검사」, "
+                         "모두가 지나는 한 자리는 「경로」, 들어오는 자리는 「진입점」이다 "
+                         "(규약 2조 ④, DOC-20260906-002):\n" + "\n".join(offenders[:40]))
+
+    def test_the_english_name_door_is_not_a_test_name(self):
+        """시험 이름·식별자에도 door 를 쓰지 않는다 — gate·path·entry 로 적는다."""
+        rx = re.compile(r"(?<![A-Za-z])[Dd]oors?(?![A-Za-z])")
+        offenders = [f"{os.path.relpath(p, ROOT)}:{no}"
+                     for p in _sources() if self.NOT_YET not in p.replace(os.sep, "/")
+                     for no, line in enumerate(open(p, encoding="utf-8", errors="replace"), 1)
+                     if rx.search(line)]
+        self.assertEqual(offenders, [], "식별자에 door 가 남아 있다:\n" + "\n".join(offenders[:40]))
 
 
 if __name__ == "__main__":

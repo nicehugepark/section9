@@ -1,4 +1,4 @@
-"""담당자 변경은 한 문을 지난다 (REQ-20260902-019).
+"""담당자 변경은 한 경로를 지난다 (REQ-20260902-019).
 
 `s9 assign <id> <user>` 와 `POST /api/assign` 이 do_assign 하나를 부른다 —
 담당자(user) 갱신 + 생성자 불변 + History 한 줄 + 옛 자리의 클레임·리스 회수.
@@ -125,8 +125,8 @@ class Assign(unittest.TestCase):
                 with open(bp, encoding="utf-8") as f:
                     self.assertNotIn(rid, json.load(f).get("active_reqs") or [])
 
-            # A5. 화면도 같은 문
-        with self.subTest("a5_api_uses_the_same_door"):
+            # A5. 화면도 같은 경로
+        with self.subTest("a5_api_uses_the_same_path"):
                 with open(S9_SRC, encoding="utf-8") as f:
                     src = f.read()
                 self.assertIn('parsed.path == "/api/assign"', src)

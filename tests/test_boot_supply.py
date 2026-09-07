@@ -1,4 +1,4 @@
-"""뜨는 순간 끊기는 요청들 — 부트가 받는 값은 한 문을 지난다 (REQ-20260828-039-62x6).
+"""뜨는 순간 끊기는 요청들 — 부트가 받는 값은 한 경로를 지난다 (REQ-20260828-039-62x6).
 
 화면이 뜨는 순간 부트는 여덟 개 남짓한 API 를 부른다. 이 환경(WSL 로컬 중계)에서
 그 여덟을 **동시에** 던지면 120 요청 중 25~30건이 `Connection reset by peer` 다
@@ -16,7 +16,7 @@
      것과 나중 것을 가른다 — usage·serveinfo·serveguard 는 판이 그려진 뒤다.
   ② **첫 그림을 붙잡지 않는다.** 늦는 값은 FIRST_PAINT_GRACE 까지만 봐 주고,
      늦게 온 값은 도착한 자리에서 스스로 화면을 고친다.
-  ③ **물러섰다 다시 받는다.** 재시도는 자리마다가 아니라 공통 문(loadSupply)에 있다.
+  ③ **물러섰다 다시 받는다.** 재시도는 자리마다가 아니라 공통 경로(loadSupply)에 있다.
   ④ **조용히 기본값으로 안 떨어진다.** 화면 설정은 신원과 목록이 둘 다 손에 있을
      때만 적용한다 — 못 받은 채로 기본값을 덮으면 "설정이 초기화됐다" 가 된다.
   ⑤ **물러난 사실이 화면에 남고, 다시 받는 길이 있다.** 새 띠는 세우지 않는다 —
@@ -54,7 +54,7 @@ class BootSupply(unittest.TestCase):
         with open(INDEX, encoding="utf-8") as f:
             cls.src = f.read()
         cls.boot = grab(cls.src, "boot")
-        cls.door = grab(cls.src, "loadSupply")
+        cls.path = grab(cls.src, "loadSupply")
         cls.pump = grab(cls.src, "supplyPump")
         cls.render = grab(cls.src, "render")
         cls.apply = grab(cls.src, "applyMyUI")
@@ -62,14 +62,14 @@ class BootSupply(unittest.TestCase):
     # ── ① 한꺼번에 안 던진다 ────────────────────────────────────────────────
     def test_boot_supply(self):
         """BootSupply 의 계약을 한 항목으로 — 검사는 그대로다."""
-        with self.subTest("b1_one_door"):
+        with self.subTest("b1_one_path"):
             self.assertNotIn("fetch(", self.boot, "부트가 API 를 직접 받는다")
             for url in BOOT_ENDPOINTS + LATER_ENDPOINTS:
                 self.assertEqual(self.src.count('fetch("%s' % url), 1,
                                  "%s 를 받는 자리가 하나가 아니다" % url)
                 m = re.search(r'loadSupply\([\s\S]{0,400}?fetch\("%s' % re.escape(url),
                               self.src)
-                self.assertTrue(m, "%s 가 공통 문을 안 지난다" % url)
+                self.assertTrue(m, "%s 가 공통 경로를 안 지난다" % url)
         with self.subTest("b2_concurrency_is_capped"):
             m = re.search(r"const SUPPLY_LANES = (\d+)", self.src)
             self.assertTrue(m, "동시 요청 상한이 없다")
@@ -103,13 +103,13 @@ class BootSupply(unittest.TestCase):
 
             # ── ③ 물러섰다 다시 받는다 ────────────────────────────────────────────
         with self.subTest("b6_backs_off_and_retries"):
-            self.assertTrue(re.search(r"for\s*\(", self.door), "한 번만 받고 만다")
-            self.assertIn("setTimeout", self.door, "물러섰다 다시 받지 않는다")
-            self.assertIn("SUPPLY_BACKOFF", self.door)
-            self.assertIn('s.state = "lost"', self.door,
+            self.assertTrue(re.search(r"for\s*\(", self.path), "한 번만 받고 만다")
+            self.assertIn("setTimeout", self.path, "물러섰다 다시 받지 않는다")
+            self.assertIn("SUPPLY_BACKOFF", self.path)
+            self.assertIn('s.state = "lost"', self.path,
                           "끝내 못 받은 사실을 안 남긴다")
         with self.subTest("b7_unusable_answer_is_not_success"):
-                self.assertIn("d != null", self.door)
+                self.assertIn("d != null", self.path)
                 for name, guard in (("loadWhoami", "j.user"),
                                     ("loadUsers", "Array.isArray(j.users)"),
                                     ("refreshProjects", "Array.isArray(j.projects)"),
@@ -159,8 +159,8 @@ class BootSupply(unittest.TestCase):
             # ── 손 없이 이 상황을 만든다 (진단·헤드리스 캡처용) ────────────────────
         with self.subTest("b13_diagnostic_switch"):
             self.assertIn("apifail", self.src, "재현 스위치가 없다")
-            self.assertIn("API_FAIL", self.door, "스위치가 실제 경로를 안 탄다")
-            self.assertIn("s.hits", self.door,
+            self.assertIn("API_FAIL", self.path, "스위치가 실제 경로를 안 탄다")
+            self.assertIn("s.hits", self.path,
                           "진단 셈이 재시도 셈과 섞여 있다 — 손으로 눌러도 안 낫는다")
             self.assertIn("transfail", self.src,
                           "027 의 재현 절차(문서에 적힌 주소)가 깨졌다")

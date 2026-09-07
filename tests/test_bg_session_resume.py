@@ -86,7 +86,7 @@ class BgSessionResume(unittest.TestCase):
         def fake_popen(argv, **kw):
             calls.append(argv)
             return mock.Mock()
-        # 표를 두 문 모두에서 모의한다 — ps 갈래(맥)는 `proc_table` 이 Popen(ps)
+        # 표를 두 경로 모두에서 모의한다 — ps 갈래(맥)는 `proc_table` 이 Popen(ps)
         # 을 부르므로 그것을 열어 두면 첫 Popen 이 워커가 아니라 ps 다
         # (REQ-20260906-013).
         table = {i + 1: c for i, c in enumerate(cmdlines)}

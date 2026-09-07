@@ -4,9 +4,9 @@
 강제로 중단하는 기능도 만들어라. 그래야 계정을 변경하거나 모델을 바꿀 때 그
 기능을 같이 섞어서 사용할 수 있다."
 
-021 이 낸 `worker_stop()` 은 **세션이 자기가 집은 문서의 작업자를 세우는 문**
+021 이 낸 `worker_stop()` 은 **세션이 자기가 집은 문서의 작업자를 중단하는 경로**
 이다. 화면에는 그 키가 없다 — 대시보드에서 누르는 사람에게는 세션이 없고,
-클레임을 요구하면 아무도 못 세운다. 그렇다고 화면이 자기 손으로 죽이면 게이트가
+클레임을 요구하면 아무도 못 세운다. 그렇다고 화면이 자기 손으로 죽이면 검사가
 두 벌이 되고, 한 벌만 고쳐지는 사고가 시간 문제다.
 
 그래서 이 라운드가 못 박는 것은 셋이다.
@@ -62,7 +62,7 @@ def _load(name="s9stop", root=None):
             os.environ["S9_ROOT"] = old
 
 
-class TheOwnersDoor(unittest.TestCase):
+class TheOwnersPath(unittest.TestCase):
     """S4~S5 — 사람의 권한은 클레임이 아니라 소유다."""
 
     def setUp(self):
@@ -80,7 +80,7 @@ class TheOwnersDoor(unittest.TestCase):
         """화면에는 세션이 없다 — 클레임을 요구하면 아무도 못 세운다."""
         self.assertIn("owner", set(inspect.signature(self.m.worker_stop)
                                    .parameters),
-                      "소유 갈래가 없다 — 화면은 이 문을 열 수 없다")
+                      "소유 갈래가 없다 — 화면은 이 경로를 부를 수 없다")
         sent = []
         alive = [True]
 
@@ -150,8 +150,8 @@ class TheScreenContract(unittest.TestCase):
         self.assertFalse(r.get("ok"))
         self.assertEqual(r.get("action"), "not-request")
 
-    def test_s3_the_screen_goes_through_the_one_door(self):
-        """화면이 자기 손으로 죽이면 게이트가 두 벌이 된다."""
+    def test_s3_the_screen_goes_through_the_one_path(self):
+        """화면이 자기 손으로 죽이면 검사가 두 벌이 된다."""
         i = SRC.find("def stop_request(")
         self.assertGreater(i, 0, "stop_request() 가 없다")
         j = SRC.find("\ndef ", i + 10)
@@ -260,7 +260,7 @@ class MixedWithTheAccountSwitch(unittest.TestCase):
 class TheHandleOnTheScreen(unittest.TestCase):
     """S10~S14 — 손이 닿는 자리는 화면이다 (라운드3).
 
-    라운드2 가 연 것은 서버의 문이었다. 그 문에 손잡이가 안 붙으면 사용자에게
+    라운드2 가 연 것은 서버의 경로였다. 그 경로에 손잡이가 안 붙으면 사용자에게
     이 요청은 **없는 기능**이다 — 이 저장소가 깨우기에서 두 번 겪은 그 일이다
     (기능은 있었고, 화면에 버튼이 없었다).
 
@@ -438,7 +438,7 @@ class WhatWasStoppedCanStartAgain(unittest.TestCase):
                          "세워 둔 것을 사람이 다시 시작할 수 없다")
 
     def test_r2b_the_human_budget_still_holds(self):
-        """쿨다운만 지나간다 — 하루치 예산까지 뚫으면 그건 문이 아니라 구멍이다."""
+        """쿨다운만 지나간다 — 하루치 예산까지 뚫으면 그건 검사가 아니라 구멍이다."""
         import time as _t
         self.marker(last=_t.time())
         self.stop_it()

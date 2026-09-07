@@ -32,7 +32,7 @@ class TestLiveCatalog(unittest.TestCase):
         base = {**os.environ, "S9_ROOT": cls.tmp, "S9_MACHINE": "testbox",
                 "S9_CLAUDE_PROJECTS": cls.claude_dir,
                 # 이 판의 문서는 alice 의 것이고, 전이도 alice 가 한다.
-                # 소유 게이트(REQ-20260902-016)가 들어온 뒤로 **남의 문서를
+                # 소유 검사(REQ-20260902-016)가 들어온 뒤로 **남의 문서를
                 # 전이한 세션은 그 문서를 클레임하지 않는다** — 짓는 이와 집는
                 # 이가 갈리면 D6·D7 이 "등록이 안 됐다"로 넘어진다. 그것은 이
                 # 시험이 재려던 것이 아니다.

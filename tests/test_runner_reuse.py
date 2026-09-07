@@ -100,7 +100,7 @@ class Reuse(unittest.TestCase):
         예전 지문은 mtime 이었다. 그런데 스위트를 돌리는 것만으로 mtime 이
         움직이는 파일이 있어서(내용 동일·mtime 이동), 전체가 통과여도 끝난
         순간 지문이 달라졌다 — 그 통과 기록은 아무도 못 쓰고, 넓은 변경의
-        커밋 문은 방금 통과를 본 사람에게도 「돌려라」만 되풀이한다.
+        커밋 검사는 방금 통과를 본 사람에게도 「돌려라」만 되풀이한다.
 
         실행 중인 저장소를 건드리지 않으려고, 이 시험은 **자기 저장소**를
         하나 세워 그 안에서 잰다.
@@ -276,7 +276,7 @@ class FullCovers(unittest.TestCase):
     """전체가 통과면 그 안의 어떤 선택도 통과다 (REQ-20260904-005).
 
     왜 필요한가(실측 2026-09-04): 전체 297파일을 통과로 돌린 **직후** 커밋
-    문이 그 안의 234파일을 고르면 `_selection_key` 가 달라 「처음 보는 조합」이
+    검사가 그 안의 234파일을 고르면 `_selection_key` 가 달라 「처음 보는 조합」이
     되고, 방금 통과한 시험을 5분에 걸쳐 다시 돌렸다. 재사용 계층이 있는데도
     커밋마다 분 단위를 무는 자리가 여기였다.
 
@@ -322,7 +322,7 @@ class FullCovers(unittest.TestCase):
     def test_is_green_asks_only_the_whole(self):
         """C6. 「전체가 통과였나」는 전체 기록으로만 답한다.
 
-        부분집합 기록으로 그렇다고 답하면 넓은 변경의 커밋 문(WIDE gate)이
+        부분집합 기록으로 그렇다고 답하면 넓은 변경의 커밋 검사(WIDE gate)이
         거짓 통과를 보고 실패한 tree를 통과시킨다.
         """
         self.m.mark_green(["test_alpha.py"], "fp1")
@@ -333,7 +333,7 @@ class FullCovers(unittest.TestCase):
     def test_the_message_says_what_covered_it(self):
         """C1b. 화면이 무엇 덕에 안 돌았는지 말한다.
 
-        「안 돌았다」만 보이면 사람이 문을 의심한다 — 오늘 그 의심에 값을 치렀다.
+        「안 돌았다」만 보이면 사람이 검사를 의심한다 — 오늘 그 의심에 값을 치렀다.
         """
         src = open(_runner, encoding="utf-8").read()
         self.assertIn("전체 테스트가 이미 통과했다", src)

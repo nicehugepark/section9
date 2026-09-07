@@ -8,7 +8,7 @@ REQ-20260901-020(연결 누수)이 앞을 치우자 다음 병목이 드러났�
 
     session_rows()        /proc 전수 훑기 228회 · 1.538s
     catalog_with_live()                    43회 · 0.074s
-    /api/chat/target                       76회 · 0.046s   ← 폴 게이트 밖
+    /api/chat/target                       76회 · 0.046s   ← 폴 검사 밖
     /api/sessions  동시 8건 0.22s → 동시 32건 1.27s (동시성이 곱한다)
 
 고침은 TTL 캐시가 아니다. TTL 은 판정을 낡게 만들고, 그 낡음이
@@ -148,15 +148,15 @@ class ProcScope(unittest.TestCase):
                       "SSE 루프가 요청 스코프를 바퀴마다 버리지 않는다")
 
     def test_s6c_scope_gate_is_one_place(self):
-        """문은 메서드마다가 아니라 handle_one_request 한 곳이다."""
+        """경로는 메서드마다가 아니라 handle_one_request 한 곳이다."""
         src = open(S9_SRC, encoding="utf-8").read()
         i = src.index("def handle_one_request(self):")
         j = src.index("        def ", i + 10)
-        # 문의 자리를 묻지 글자를 묻지 않는다 — 같은 문에 다른 범위가 함께
+        # 문의 자리를 묻지 글자를 묻지 않는다 — 같은 경로에 다른 범위가 함께
         # 서면(`with proc_scope(), streams_scope():`, REQ-20260902-004) 글자만
         # 달라진다. 계약은 "이 메서드가 스코프를 연다"다.
         self.assertIn("proc_scope()", src[i:j],
-                      "요청 스코프의 문이 handle_one_request 에 없다 — "
+                      "요청 스코프의 경로가 handle_one_request 에 없다 — "
                       "나중에 붙는 메서드가 그냥 지나간다")
 
     # ---- S4. 겹친 훑기는 하나로 접힌다 -----------------------------------
@@ -176,7 +176,7 @@ class ProcScope(unittest.TestCase):
         ts = [threading.Thread(target=one, args=(i,)) for i in range(16)]
         for t in ts:
             t.start()
-        time.sleep(0.3)               # 16개가 모두 문 앞에 서게 둔다
+        time.sleep(0.3)               # 16개가 모두 같은 경로에 몰리게 둔다
         slow.set()
         for t in ts:
             t.join(20)

@@ -8,7 +8,7 @@
 
 이 테스트가 지키는 계약은 아홉이다.
 
-  A. 허용 뿌리 목록은 **한 벌처럼 산다.** 화면에도 사본이 있지만 그것은 게이트가
+  A. 허용 뿌리 목록은 **한 벌처럼 산다.** 화면에도 사본이 있지만 그것은 검사가
      아니라 "죽은 링크를 안 그리기 위한 그리기 규칙"이다. 두 벌이 갈라지면
      화면은 열리지도 않는 밑줄을 세우거나 열리는 파일을 감춘다 — 여기서 맞대 본다.
   B. 서버가 준 글자(`lines`·`path`)는 **textContent 로만** 들어간다. innerHTML 이
@@ -24,7 +24,7 @@
   G. 파일 전체를 여는 길은 만들지 않는다 (판정 §6).
   H. 키보드로 닿는다. href 없는 손잡이라 `role="button"` + tabindex 로 이 화면에
      이미 있는 Enter/Space 핸들러에 얹힌다.
-  I. 문구는 사용자 언어다 — 404·API·게이트 같은 말이 화면에 나오지 않는다.
+  I. 문구는 사용자 언어다 — 404·API·검사 같은 말이 화면에 나오지 않는다.
 
 실행: python3 tests/ code_peek_ui
 """
@@ -370,7 +370,7 @@ class CodePeekUI(unittest.TestCase):
         m = re.search(r'const CODE_FAIL\s*=\s*"([^"]*)"', self.src)
         say.append(m.group(1))
         for s in say:
-            for bad in ("404", "API", "게이트", "라우트", "허용목록", "fetch",
+            for bad in ("404", "API", "검사", "라우트", "허용목록", "fetch",
                         "endpoint", "innerHTML"):
                 self.assertNotIn(bad, s, f"화면 문구에 내부 용어: {s}")
 

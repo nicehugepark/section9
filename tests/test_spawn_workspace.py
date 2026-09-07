@@ -14,7 +14,7 @@ worktree는 **마지막 커밋의 체크아웃**이지 작업 트리의 복사�
 
 같은 날 둘째 실측: `worker_worktree_name()` 이 매 스폰에 `int(time.time())` 을
 붙여 재스폰이 곧 새 worktree였다 — 한 문서가 worktree를 넷까지 만들었다.
-셋째: `_worktree_autocommit` 이 `git commit` 의 반환코드를 안 봐서, 게이트가
+셋째: `_worktree_autocommit` 이 `git commit` 의 반환코드를 안 봐서, 검사가
 거부해도 성공으로 보이고 sweep 이 30초마다 무한히 다시 불렀다.
 
 격리: S9_ROOT=mktemp 에 진짜 git 저장소 + `s9 init`.
@@ -136,7 +136,7 @@ class Repo(unittest.TestCase):
         cls.doc_none = req("scope-none", "무엇을 고칠지 말하지 않은 요청이다.")
         cls.doc_tests = req("scope-tests", "tests/test_x.py 를 고쳐라.")
         cls.doc_web = req("scope-web", "web/index.html 의 카드를 고쳐라.")
-        cls.doc_bin = req("scope-bin", "bin/s9 의 스폰 관문을 고쳐라.")
+        cls.doc_bin = req("scope-bin", "bin/s9 의 스폰 검사를 고쳐라.")
         cls.doc_side = req("scope-side", "harness/side.md 를 고쳐라.")
         cls.m = _load()
 
@@ -308,7 +308,7 @@ class Decision(Repo):
 class Leases(Repo):
     """B. 본 저장소 방벽 — worktree를 안 쓰면 격리가 사라진다.
 
-    이미 있는 것은 복구(`snapshot_dirty`)와 커밋 게이트(`concurrent_gate`)뿐이고
+    이미 있는 것은 복구(`snapshot_dirty`)와 커밋 검사(`concurrent_gate`)뿐이고
     **예방이 없다.** 그것을 스폰 시점 파일 리스로 세운다.
     """
 
@@ -440,7 +440,7 @@ class CommitDiscipline(Repo):
         hook = os.path.join(self.root, ".git", "hooks", "pre-commit")
         os.makedirs(os.path.dirname(hook), exist_ok=True)
         with open(hook, "w") as f:
-            f.write("#!/bin/sh\necho '게이트가 거부한다' >&2\nexit 1\n")
+            f.write("#!/bin/sh\necho '검사가 거부한다' >&2\nexit 1\n")
         os.chmod(hook, 0o755)
         self.addCleanup(lambda: os.path.exists(hook) and os.remove(hook))
         with open(os.path.join(cwd, "worker.txt"), "w") as f:
@@ -484,7 +484,7 @@ class Reaping(Repo):
             name, {"doc": self.doc_tests, "pid": 999999,
                    "created": time.time() - self.m.WORKTREE_STALE_SEC - 3600,
                    "autocommit_tries": self.m.AUTOCOMMIT_MAX_TRIES,
-                   "autocommit_error": "게이트가 거부한다"})
+                   "autocommit_error": "검사가 거부한다"})
         self.assertEqual(self.m.worktree_sweep(), [])
         self.assertTrue(os.path.isdir(cwd), "남길 것이 있는데 지웠다")
         rows = [r for r in self.m.undelivered_requests()

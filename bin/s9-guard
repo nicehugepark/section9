@@ -6,7 +6,7 @@ admin이 아니면 커밋을 거부한다.
 
 인가(authorization)만 있고 인증(authentication)은 없다 — S9_USER 위조로
 우회 가능하며, 이는 의도된 설계다(실수 방지 + 규율 + 감사가 목표).
-우회 불가능한 최종 게이트는 GitHub branch protection + CODEOWNERS (docs/09).
+우회 불가능한 최종 검사는 GitHub branch protection + CODEOWNERS (docs/09).
 """
 import json
 import os
@@ -81,18 +81,18 @@ def role_change_hits(staged, diff_text):
 # 서버도 뜨는 **반쪽 상태**였고, 같은 커밋에 들어 있던 테스트조차 통과 못 했다.
 # 돌리기만 했으면 잡혔다.
 #
-# 그래서 게이트 둘: ① 무인 워커가 도는데 방금 만져진 파일을 담으려 하면 막는다
+# 그래서 검사 둘: ① 무인 워커가 도는데 방금 만져진 파일을 담으려 하면 막는다
 # ② 커밋에 테스트 파일이 있으면 그것만이라도 돌린다(전체 스위트는 2분이라 매
 # 커밋에 물릴 수 없다 — 그 무게가 규율을 죽인다).
 # 창의 폭은 **에이전트가 일하는 모습**에 맞춘다 (REQ-20260827-012).
 # 처음엔 90초였다 — "방금 저장한 파일"을 잡으려는 값이다. 그런데 에이전트는
 # 덩어리로 일한다: 몇 분 생각하고 한 번 쓰고, 또 몇 분 생각한다. **쓰는 순간은
 # 드물고 잡고 있는 시간은 길다.** 실측(08:29): designer 가 4초 전까지 활동
-# 중이었는데 그가 잡은 파일의 마지막 저장은 209초 전이라 게이트가 조용히
+# 중이었는데 그가 잡은 파일의 마지막 저장은 209초 전이라 검사가 조용히
 # 통과시켰다.
 #
 # 21:42 사고를 다시 보면 더 분명하다 — 워커의 마지막 저장과 리드의 `git add`
-# 사이가 90초 안이었던 것은 **운**이었고, 몇 분만 어긋났어도 이 게이트는 그
+# 사이가 90초 안이었던 것은 **운**이었고, 몇 분만 어긋났어도 이 검사는 그
 # 사고를 못 막는다.
 FRESH_SEC = 900                     # 15분: 에이전트가 파일을 잡고 있는 폭
 OVERRIDE = "S9_ALLOW_CONCURRENT"    # 사람이 확인했으면 이걸로 지나간다
@@ -107,10 +107,10 @@ def current_user():
     # 운영체제 계정을 그대로 쓰기 전에 os_accounts 별칭을 본다
     # (REQ-20260829-010). 계정 이름과 하네스의 사용자 이름이 다르면 그 사람은
     # 여기서 늘 '미등록'이고, admin 이어도 막힌다 — 그러면 권한 있는 사람이
-    # `S9_USER=<admin> git commit` 을 손에 익히게 되고, 그 습관은 게이트가
+    # `S9_USER=<admin> git commit` 을 손에 익히게 되고, 그 습관은 검사가
     # 정말 막아야 할 때도 그대로 나온다. bin/s9 의 resolve_user() 는 이미 이
     # 매칭을 한다(REQ-20260827-060 이 CLI 와 화면 사이에서 겪은 것과 같은
-    # 갈림이다 — 이번엔 CLI 와 게이트가 갈렸다).
+    # 갈림이다 — 이번엔 CLI 와 검사가 갈렸다).
     return _user_by_os_account(acct) or acct
 
 
@@ -188,29 +188,38 @@ def concurrent_token(fresh):
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:6]
 
 
+def fresh_staged(staged):
+    """담긴 것 중 최근 FRESH_SEC 안에 바뀐 파일을 (경로, 나이초) 로 돌려준다.
+
+    커밋 검사(`concurrent_gate`)와 조회(`concurrent_report`)가 같은 값을 봐야
+    한다 — 둘이 따로 세면 조회가 준 표로 커밋이 막힌다 (REQ-20260907-070).
+    """
+    import time
+    now = time.time()
+    out = []
+    for f in staged:
+        try:
+            age = now - os.path.getmtime(os.path.join(ROOT, f))
+        except OSError:
+            continue
+        if age < FRESH_SEC:
+            out.append((f, int(age)))
+    return out
+
+
 def concurrent_gate(staged):
     """워커가 도는 중에 '방금 만져진' 파일을 담으려 하면 막는다.
 
     **빠져나가려면 목록을 봐야 한다** (REQ-20260907-062). 예전엔 여기서
     `if os.environ.get(OVERRIDE): return` 으로 **목록을 세기도 전에** 돌아갔다 —
     `=1` 은 「읽었다」는 주장일 뿐이고 읽었는지는 아무도 안 봤다. 2026-09-07
-    18:26 에 리드가 그 문으로 남의 진행 중 변경 셋을 제 커밋에 쓸어 담았다.
+    18:26 에 리드가 검사가 없던 그 자리로 남의 진행 중 변경 셋을 제 커밋에 쓸어 담았다.
     사람이 규율을 안 지킨 것이 아니라 **지키지 않아도 지나갈 수 있었다.**
     """
     workers = live_workers()
     if not workers:
         return
-    import time
-    now = time.time()
-    fresh = []
-    for f in staged:
-        p = os.path.join(ROOT, f)
-        try:
-            age = now - os.path.getmtime(p)
-        except OSError:
-            continue
-        if age < FRESH_SEC:
-            fresh.append((f, int(age)))
+    fresh = fresh_staged(staged)
     if not fresh:
         return
     tok = concurrent_token(fresh)
@@ -247,7 +256,52 @@ def concurrent_gate(staged):
               file=sys.stderr)
     print(f"`{OVERRIDE}={tok} git commit ...` 으로 진행하세요 — 위 목록을 "
           f"읽었다는 표입니다. 목록이 바뀌면 표도 바뀝니다.", file=sys.stderr)
+    # 커밋을 걸어야만 답이 나오면 사람은 probe 커밋으로 두드린다 (REQ-20260907-070).
+    print("(커밋을 걸지 않고 미리 보려면: `bin/s9-guard --concurrent`)",
+          file=sys.stderr)
     sys.exit(1)
+
+
+def concurrent_report(staged, out=None):
+    """커밋을 걸지 않고 동시 작업 검사가 무엇을 볼지 그대로 보여 준다.
+
+    `concurrent_gate` 는 커밋할 때만 답한다. 그래서 2026-09-07 에 리드가 그
+    검사가 막는지 보려고 `git commit -m probe` 를 두 번 걸었고, 막지 않은
+    회차의 probe 는 그대로 커밋으로 남았다 (REQ-20260907-070). 커밋을 걸어야만
+    답이 나오는 검사는 사람을 진짜 커밋으로 밀어낸다.
+
+    여기서도 표(token)는 **목록과 함께만** 나온다 — 목록 없이 표만 주면
+    이 검사가 받는 증거가 다시 주장으로 돌아간다 (DOC-20260907-004).
+    무엇도 막지 않고 항상 0 을 돌려준다 — 이것은 검사가 아니라 조회다.
+    """
+    w = out if out is not None else sys.stdout
+    workers = live_workers()
+    if not workers:
+        print("동시 작업 검사: 지금 붙어 있는 작업자가 없습니다 — 막지 않습니다.", file=w)
+        return 0
+    print("지금 실행 중인 작업자:", file=w)
+    for x in workers[:5]:
+        print(f"  {x}", file=w)
+    fresh = fresh_staged(staged)
+    if not fresh:
+        print("담긴 파일 중 그 사이 바뀐 것은 없습니다 — 막지 않습니다.", file=w)
+        return 0
+    print("담긴 파일 중 최근에 바뀐 것:", file=w)
+    for f, age in fresh[:10]:
+        m = age // 60
+        print(f"  - {f}  ({m}분 전 바뀜)" if m else f"  - {f}  ({age}초 전 바뀜)", file=w)
+    print("이대로 커밋하면 막힙니다. `git diff --cached` 로 담기는 내용을 읽고,", file=w)
+    print("네 것만 맞으면 아래 표로 지나가세요 — 위 목록이 바뀌면 표도 바뀝니다:", file=w)
+    print(f"  {OVERRIDE}={concurrent_token(fresh)} git commit ...", file=w)
+    return 0
+
+
+def staged_now():
+    """지금 담겨 있는 파일 목록 (`git diff --cached --name-only`)."""
+    out = subprocess.run(["git", "diff", "--cached", "--name-only"],
+                         capture_output=True, encoding="utf-8",
+                         errors="replace", cwd=ROOT)
+    return [l for l in out.stdout.splitlines() if l.strip()]
 
 
 # git 이 훅에게 물려주는 환경변수. 훅이 부르는 자식은 이걸 물려받으면 안 된다.
@@ -328,7 +382,7 @@ def staged_compile_gate(staged):
 
 
 def staged_tests_gate(staged):
-    """커밋 게이트 = 담긴 시험 ∪ 스모크 (REQ-20260830-029, 필수 계층 배선).
+    """커밋 검사 = 담긴 시험 ∪ 스모크 (REQ-20260830-029, 필수 계층 배선).
 
     21:42 커밋은 같은 커밋에 들어 있던 테스트조차 통과 못 했다. 전체 스위트는
     분 단위라 매 커밋에 물리면 규율이 먼저 죽는다 — 그래서 담긴 시험에
@@ -336,14 +390,14 @@ def staged_tests_gate(staged):
     --changed 를 여기 쓰지 않는 이유: bin/s9 는 미커밋 변경이 잦아 매번 전체
     폴백(4분대)으로 밀린다 — 전체 확인은 review/done 전 수동 실행의 몫이다.
     담긴 시험은 정확한 파일명으로 넘긴다(러너가 정확명은 넓히지 않는다) —
-    조각으로 넘기면 이웃 파일까지 끌려와 게이트가 뚱뚱해진다.
+    조각으로 넘기면 이웃 파일까지 끌려와 검사가 뚱뚱해진다.
     """
     names = [os.path.basename(f)
              for f in staged
              if f.startswith("tests/test_") and f.endswith(".py")]
     if not names and not any(f.startswith(("bin/", "web/", "tests/"))
                              for f in staged):
-        return   # 코드가 안 담겼으면(문서·상태 커밋) 게이트 생략 — 종전과 같다
+        return   # 코드가 안 담겼으면(문서·상태 커밋) 검사 생략 — 종전과 같다
     r = subprocess.run(["python3", "tests/", "--smoke", "--jobs", "4", *names],
                        capture_output=True,
                        encoding="utf-8", errors="replace", cwd=ROOT, timeout=600,
@@ -362,11 +416,11 @@ def _show_gate_failure(r):
     """실패한 자리를 보여 준다 — 마지막 몇 줄이 아니라 (REQ-20260904-003).
 
     예전엔 출력의 **마지막 25줄**만 찍었다. 순차라면 그 자리가 실패 요약이지만,
-    게이트는 `--jobs 4` 로 돈다 — 실패한 샤드의 출력이 먼저 나오고 통과한
+    검사는 `--jobs 4` 로 돈다 — 실패한 샤드의 출력이 먼저 나오고 통과한
     샤드가 뒤에 온다. 그래서 「실패합니다」라고 말한 뒤 **통과 결과를 보여
     줬다.** 2026-09-04 에 그 화면을 세 번 보고도 원인을 못 읽었다.
 
-    막기만 하고 이유를 안 보여 주는 문은 사람이 `--no-verify` 를 배우게 한다.
+    막기만 하고 이유를 안 보여 주는 검사는 사람이 `--no-verify` 를 배우게 한다.
     그러니 ① 실패한 줄과 그 앞뒤를 골라 보이고, ② 전문은 파일로 남겨 그
     경로를 말한다. 고르기가 빗나가도 전문이 있으면 사람은 길을 잃지 않는다.
     """
@@ -414,9 +468,9 @@ WIDE = ("bin/s9", "bin/s9.py", "tests/__main__.py", "tests/portpool.py",
 def wide_change_verdict(staged):
     """(넓은 파일 목록, 지금 이 tree가 전체 통과인가) — **묻기만** 한다.
 
-    시험을 한 건도 돌리지 않는다. 게이트가 시험을 돌리기 **전에** 떠 둬야
+    시험을 한 건도 돌리지 않는다. 검사가 시험을 돌리기 **전에** 떠 둬야
     그 실행의 부산물이 판정을 뒤집지 못한다 (REQ-20260904-003).
-    고장 나면 통과로 답한다 — 문이 고장 나 모든 커밋을 막으면 그날로 뽑힌다.
+    고장 나면 통과로 답한다 — 검사가 고장 나 모든 커밋을 막으면 그날로 뽑힌다.
     """
     wide = [f for f in staged if f.replace("\\", "/") in WIDE]
     if not wide:
@@ -435,7 +489,7 @@ def wide_change_verdict(staged):
 # 전체 스위트는 **commit 뒤 배경에서** 돈다 (REQ-20260905-010, quality-assurance 판정).
 # 넓게 닿는 파일의 커밋마다 전체(4~5분, 간헐 날엔 8~13분)를 commit 전에 물리면
 # 하루 174분을 기다리고(2026-09-05 실측: 라벨 한 줄이 한 시간), 뒤에 돌리면
-# 5분이다 — 12~35배. 그래서 문은 셋으로 갈린다:
+# 5분이다 — 12~35배. 그래서 검사는 셋으로 갈린다:
 #   ① 이 tree 의 전체 통과 기록이 있으면 비용 0 으로 지나간다(종전).
 #   ② **실패 시 커밋 차단** — 마지막 전체 실행이 실패했고 그것이 마지막 통과보다 새로우면
 #      code 커밋을 세운다. 실패한 파일의 시험을 담은 커밋(고치러 온 것)과
@@ -598,15 +652,15 @@ def wide_change_gate(staged, verdict=None):
     실사고: `bin/s9` 한 줄(REQ-20260902-017 `_local_binding_glob`)이 커밋에
     담기지 않은 시험 18건을 깨뜨렸다. 위의 `staged_tests_gate` 는 담긴 시험과
     스모크 12파일만 보는데 그 열둘과 깨진 여덟 파일은 하나도 겹치지 않았다 —
-    게이트는 통과를 보고 통과시켰고 커밋은 실패한 채로 들어갔다.
+    검사는 통과를 보고 통과시켰고 커밋은 실패한 채로 들어갔다.
 
     그렇다고 매 커밋에 전체를 물리지 않는다(분 단위라 규율이 먼저 죽는다).
     **돌리지 않고 묻는다**: 지금 이 tree 지문으로 전체가 통과였던 기록이
     있나(`python3 tests/ --is-green`, REQ-20260903-010 의 선택별 green 기록).
     있으면 비용 0으로 지나가고, 없을 때만 막으며 돌릴 명령을 그대로 보인다.
 
-    게이트가 고장 나면(파이썬 없음·시간 초과 등) 통과시킨다 — 문이 고장 나
-    모든 커밋을 막으면 그날로 문이 뽑힌다.
+    검사가 고장 나면(파이썬 없음·시간 초과 등) 통과시킨다 — 검사가 고장 나
+    모든 커밋을 막으면 그날로 사람이 검사를 꺼 버린다.
     """
     wide, green = verdict if verdict is not None else wide_change_verdict(staged)
     if not wide or green:
@@ -652,7 +706,7 @@ def secret_gate(staged):
         # 경계를 막아도 손으로 붙여 넣으면 그대로 들어온다.
         hits += m.config_leak(staged, blob)
     except Exception:
-        return          # 가드 고장이 커밋을 막으면 안 된다 — 본 게이트는 아래다
+        return          # 가드 고장이 커밋을 막으면 안 된다 — 본 검사는 아래다
     if not hits:
         return
     print("s9-guard: 리포에 담지 않기로 한 것이 커밋에 섞여 있습니다 — 막았습니다.",
@@ -745,6 +799,10 @@ def commit_msg_swept(path):
 
 
 def main():
+    if "--concurrent" in sys.argv[1:]:
+        # 조회다 — 커밋 표식도 남기지 않고 어느 검사도 돌리지 않는다.
+        paths = [a for a in sys.argv[1:] if a != "--concurrent"]
+        return concurrent_report(paths or staged_now())
     if sys.argv[1:2] == ["commit-msg"] and len(sys.argv) > 2:
         commit_msg_swept(sys.argv[2])
         return commit_msg_terms(sys.argv[2])
@@ -766,19 +824,16 @@ def main():
 
 
 def _pre_commit_gates():
-    out = subprocess.run(["git", "diff", "--cached", "--name-only"],
-                         capture_output=True,
-                             encoding="utf-8", errors="replace", cwd=ROOT)
-    staged = [l for l in out.stdout.splitlines() if l.strip()]
-    staged_compile_gate(staged)   # 가장 싸고, 깨진 본은 아래 어느 문도 볼 필요가 없다
+    staged = staged_now()
+    staged_compile_gate(staged)   # 가장 싸고, 깨진 본은 아래 어느 검사도 볼 필요가 없다
     concurrent_gate(staged)
-    # **넓은 변경 판정을 먼저 묻는다** (REQ-20260904-003). 아래 게이트가 시험을
+    # **넓은 변경 판정을 먼저 묻는다** (REQ-20260904-003). 아래 검사가 시험을
     # 돌리면 그 실행이 tree 를 건드려(임시 파일·복원되는 파일) 지문이 움직이고,
-    # 그러면 방금 만든 전체 통과 기록을 이 문이 못 알아본다 — 사람이 시키는 대로
+    # 그러면 방금 만든 전체 통과 기록을 이 검사가 못 알아본다 — 사람이 시키는 대로
     # `python3 tests/` 를 돌려 통과를 만들어도 커밋이 또 막힌다(실측 2026-09-04:
-    # 13:12 에 `--is-green` 이 0 이었는데 13:19 커밋에서 같은 문이 막았다).
+    # 13:12 에 `--is-green` 이 0 이었는데 13:19 커밋에서 같은 검사가 막았다).
     # 묻는 값은 **커밋 시점의 tree**여야 한다. 그래서 판정을 먼저 뜨고,
-    # 막을지는 시험 게이트 뒤에 정한다 — 순서가 바뀌어도 사람이 보는 차례
+    # 막을지는 시험 검사 뒤에 정한다 — 순서가 바뀌어도 사람이 보는 차례
     # (시험 실패가 먼저)는 그대로다.
     wide_verdict = wide_change_verdict(staged)
     staged_tests_gate(staged)

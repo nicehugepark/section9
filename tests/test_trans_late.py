@@ -54,7 +54,7 @@ class TransLate(unittest.TestCase):
         cls.doc = grab(cls.src, "loadDoc")
 
     # T1. 다시 받는 자리가 있다 — 한 번의 실패가 세션을 못 쓰게 만들지 않는다.
-    #     REQ-20260828-039 에서 **그 자리가 공통 문(loadSupply)으로 옮겨졌다**:
+    #     REQ-20260828-039 에서 **그 자리가 공통 경로(loadSupply)으로 옮겨졌다**:
     #     전이표만이 아니라 부트가 받는 값 전부가 같은 재시도를 탄다. 계약의
     #     세기는 그대로다 — 전이표는 여전히 물러섰다 다시 받아야 하고, 여기서는
     #     그 규칙이 실제로 걸린 자리를 짚는다.
@@ -62,14 +62,14 @@ class TransLate(unittest.TestCase):
         """TransLate 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("t1_retries"):
                 self.assertIn("fetch", self.load)
-                self.assertIn("loadSupply", self.load, "전이표가 공통 문을 안 지난다")
-                door = grab(self.src, "loadSupply")
-                self.assertTrue(re.search(r"for\s*\(", door) or "retry" in door,
-                                "공통 문이 한 번만 받고 만다")
-                self.assertIn("setTimeout", door, "물러섰다 다시 받지 않는다")
+                self.assertIn("loadSupply", self.load, "전이표가 공통 경로를 안 지난다")
+                path = grab(self.src, "loadSupply")
+                self.assertTrue(re.search(r"for\s*\(", path) or "retry" in path,
+                                "공통 경로가 한 번만 받고 만다")
+                self.assertIn("setTimeout", path, "물러섰다 다시 받지 않는다")
 
             # T2. 부트가 표를 직접 받지 않는다 — 받는 자리는 하나다
-        with self.subTest("t2_boot_uses_one_door"):
+        with self.subTest("t2_boot_uses_one_path"):
                 self.assertIn("loadTrans", self.boot)
                 self.assertNotIn('fetch("/api/transitions")', self.boot,
                                  "부트가 전이표를 직접 받는다 — 재시도를 못 탄다")

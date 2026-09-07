@@ -11,8 +11,8 @@
 이라고 적고 있었다. 죽음을 알아채는 자리는 있는데(stalled·s9 next) 자리를 다시
 채우는 자리가 없었다.
 
-**좁혀 둔 것이 안전장치도 아니었다.** 겹쳐 뜨는 것을 막는 문은 `rework_claimed()`
-이고(프로세스 생존·위임·세션 바인딩), 그 문은 후보를 넓혀도 그대로 선다.
+**좁혀 둔 것이 안전장치도 아니었다.** 겹쳐 뜨는 것을 막는 검사는 `rework_claimed()`
+이고(프로세스 생존·위임·세션 바인딩), 그 검사는 후보를 넓혀도 그대로 선다.
 
 격리: 임시 S9_ROOT + Popen 모킹(실스폰 방지).
 실행: python3 tests/ abandoned_resume
@@ -116,7 +116,7 @@ class AbandonedResume(unittest.TestCase):
             self.assertIn(f"last {doc}", prompt, "클레임 지시가 빠졌다")
 
     def test_a_live_claim_still_blocks_the_spawn(self):
-        """겹침을 막는 문은 그대로 선다 — 넓힌 것은 후보뿐이다."""
+        """겹침을 막는 검사는 그대로 선다 — 넓힌 것은 후보뿐이다."""
         doc = self.started("살아 있는 손")
         self.kill_the_hand()
         os.utime(self.transcript, None)      # 세션이 되살아났다

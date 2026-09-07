@@ -5,7 +5,7 @@
 첨부는 파일 이름 칩 하나뿐이라, **찾아 놓고도 읽을 수가 없었다.** 원본을 열면
 브라우저의 PDF 뷰어로 넘어가 대시보드를 떠난다.
 
-서버는 `GET /api/asset-text?doc=&f=` 로 그 본문을 준다 — 게이트는 원본
+서버는 `GET /api/asset-text?doc=&f=` 로 그 본문을 준다 — 검사는 원본
 파일 라우트와 글자 그대로 같고, 없는 것과 못 보는 것을 같은 404 로 낸다.
 화면이 할 일은 셋이다: 발췌를 보여주고, 펼치면 전문을 주고, 검색해서 왔으면
 찾던 문구가 있는 자리를 펴 보이는 것.
@@ -64,7 +64,7 @@ class AssetTextUI(unittest.TestCase):
         self.fn = js_func(self.src, "attachTexts")
         self.assertTrue(self.fn, "첨부 본문을 붙이는 함수(attachTexts)가 없다")
 
-    # ---------- ① 게이트가 걸린 한 곳에서만 ----------
+    # ---------- ① 검사가 걸린 한 곳에서만 ----------
 
     def test_text_comes_from_the_gated_route(self):
         self.assertIn("/api/asset-text?doc=", self.fn,
@@ -72,7 +72,7 @@ class AssetTextUI(unittest.TestCase):
         self.assertRegex(self.fn, r"encodeURIComponent\(",
                          "문서 id·파일명은 인코딩해서 넘겨야 한다")
         self.assertNotRegex(self.fn, r"assets/\$|\.text/|vault/",
-                            "화면이 파일 경로를 직접 조립하면 게이트를 비껴간다")
+                            "화면이 파일 경로를 직접 조립하면 검사를 비껴간다")
 
     def test_it_runs_after_the_document_body_is_drawn(self):
         loaddoc = js_func(self.src, "loadDoc")

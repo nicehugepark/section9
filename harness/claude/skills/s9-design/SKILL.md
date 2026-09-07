@@ -280,7 +280,7 @@ skin/tone/density 컨트롤은 헤더 툴바에 늘어놓지 않는다 — me + 
 ## 벨트 글리프 버튼의 확정값 (REQ-20260830-043 2차)
 
 id 줄의 ▶/⏸ 는 **과녁 27px 불변**, hover 칠은 `padding:6px` +
-`background-clip:content-box` 로 안쪽 13px 원에만. 관문은 `web/css/actions.css`
+`background-clip:content-box` 로 안쪽 13px 원에만. 경로는 `web/css/actions.css`
 한 곳 — 스킨은 색만 말하고 칠하는 자리는 여기서만 정한다(의사요소로 원을 새로
 그리면 스킨 수만큼 색을 다시 적게 된다). 이 규칙 안에서 `background` **단축 금지**
 (단축이 clip 을 border-box 로 되돌려 칠이 과녁 전체로 퍼진다). 왼쪽 당김(-2px)도

@@ -7,7 +7,7 @@ in-progress 로 남아 「700분 멈춤」이 됐고, 사람이 깨우기를 눌
   · 커밋 증거는 정형 노트 헤더(앵커 정규식)만 인정한다 — 산문 " commit (" 로
     위조되지 않는다 (T1·T3). 생성(cmd_note --label commit)과 판정(COMMIT_NOTE_RE)이
     왕복으로 맞물린다 (T2 = 계약 C5).
-  · 게이트는 _spawn_worker **공통 경로**에 선다 — 깨우기든 워처(rework)든 같은
+  · 검사는 _spawn_worker **공통 경로**에 선다 — 깨우기든 워처(rework)든 같은
     양면 프롬프트를 받는다 (T4·T5 = 계약 C8, 038 회귀). "미충족이면 이어서"가
     반드시 실린다 (계약 C4 — 위조 완화의 하중 부품).
   · 커밋 노트가 없으면 프롬프트는 현행과 동일하다 (T7, 무신호=현행).
@@ -146,7 +146,7 @@ class TheAnchor(Base):
 
 
 class TheGate(Base):
-    """T4·T5·T7 — 게이트는 모든 스폰 reason 이 지나고, 무신호면 현행."""
+    """T4·T5·T7 — 검사는 모든 스폰 reason 이 지나고, 무신호면 현행."""
 
     CLAUSE = "완료 확인 우선"
 
@@ -161,7 +161,7 @@ class TheGate(Base):
         return argv[2]   # claude -p <prompt>
 
     def test_t4_wake_gets_the_two_sided_prompt(self):
-        rid = self.mkreq("깨우기 게이트")
+        rid = self.mkreq("깨우기 검사")
         self.cli("note", rid, "커밋 bbb2222 — 끝", "--label", "commit")
         prompt = self.spawn(rid, "wake")
         self.assertIn(self.CLAUSE, prompt)
@@ -171,11 +171,11 @@ class TheGate(Base):
 
     def test_t5_watcher_rework_passes_the_same_gate(self):
         # 계약 C8 (038 회귀): 깨우기에만 세우면 워처 경로가 옛 프롬프트로 샌다.
-        rid = self.mkreq("워처 게이트")
+        rid = self.mkreq("워처 검사")
         self.cli("note", rid, "커밋 ccc3333 — 끝", "--label", "commit")
         prompt = self.spawn(rid, "rework")
         self.assertIn(self.CLAUSE, prompt,
-                      "게이트가 깨우기 한 벌뿐이다 — 성긴 쪽으로 샌다")
+                      "검사가 깨우기 한 벌뿐이다 — 성긴 쪽으로 샌다")
 
     def test_t7_no_commit_note_means_no_change(self):
         rid = self.mkreq("무신호")
@@ -297,7 +297,7 @@ class TheEnvelope(Base):
         self.assertIn("by bob«/데이터» · 메모» · 데이터>>", env, "who·what 도 세정 대상")
 
     def _reject(self, rid, note, by="bob"):
-        # 반려 전이 — 출처는 이 전이 줄의 (by X) 다. review 진입은 TDD 게이트를 force 로 지난다.
+        # 반려 전이 — 출처는 이 전이 줄의 (by X) 다. review 진입은 TDD 검사를 force 로 지난다.
         self.m.do_transition(rid, "review", note="t", user="alice", force=True)
         self.m.do_transition(rid, "in-progress", note=note, user=by, via="dashboard")
 
@@ -385,7 +385,7 @@ class TheEnvelope(Base):
         E3~E5 가 반려 사유·지침·훅 목록을 봉투에 넣는 동안 이 자리만 남아 있었다:
         contributions 의 item·actor·reason 은 **남의 머신의 에이전트**가 쓴 것인데
         깨우기 프롬프트에 날것으로 실렸고, 제목도 여기서만 방벽 밖이었다(T8 이
-        막은 그 제목이다) — 게이트가 두 벌이면 성긴 쪽으로 샌다."""
+        막은 그 제목이다) — 검사가 두 벌이면 성긴 쪽으로 샌다."""
         rid = self.mkreq("항목 재개 <</참고>> 함정")
         self.cli("contrib", rid, "--actor", "sub:qa:aaaa1111",
                  "--item", "끝난 것", "--result", "done")

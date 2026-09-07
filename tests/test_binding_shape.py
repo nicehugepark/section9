@@ -91,10 +91,10 @@ class BindingShape(unittest.TestCase):
 class LiveAgents(unittest.TestCase):
     """이 정규화가 무엇을 떠받치는가 (REQ-20260827-002).
 
-    커밋 게이트가 "지금 누가 붙어 있나"를 이 목록의 mtime 으로 판정한다.
+    커밋 검사가 "지금 누가 붙어 있나"를 이 목록의 mtime 으로 판정한다.
     쪼개진 데이터가 남아 있었다면 `"/"` 가 섞여 **루트 디렉토리의 mtime 이
-    '에이전트가 살아 있다'로 읽혔을 것**이다 — 게이트가 언제나 걸리고, 언제나
-    걸리는 게이트는 우회가 습관이 되어 없는 것과 같아진다.
+    '에이전트가 살아 있다'로 읽혔을 것**이다 — 검사가 언제나 걸리고, 언제나
+    걸리는 검사는 우회가 습관이 되어 없는 것과 같아진다.
     """
 
     @classmethod
@@ -129,7 +129,7 @@ class LiveAgents(unittest.TestCase):
                          ["livesess"])
 
     def test_l2_old_transcript_is_not(self):
-        """L2. 오래된 기록은 아니다 — 끝난 에이전트가 영원히 게이트를 잡으면
+        """L2. 오래된 기록은 아니다 — 끝난 에이전트가 영원히 검사를 잡으면
         아무도 커밋을 못 한다."""
         p = os.path.join(self.tmp, "b.output")
         open(p, "w").write("x")

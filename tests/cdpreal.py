@@ -1,7 +1,7 @@
 """CDP 실브라우저 공용 헬퍼 — Windows Chrome 탐색·회수·stdlib WebSocket.
 
 test_hover_realscale(REQ-20260831-019)에서 추출했다: 시험 파일끼리
-`import test_*` 로 얽히면 stdlib-only 게이트(커밋 스모크)가 막고, 실제로도
+`import test_*` 로 얽히면 stdlib-only 검사(커밋 스모크)가 막고, 실제로도
 한 시험의 픽스처 변경이 남의 시험을 깨는 길이 된다 — 공용 기반은
 webasset·portpool 처럼 제 이름의 헬퍼로 산다.
 """

@@ -80,7 +80,7 @@ class TestProjectAssets(unittest.TestCase):
     def test_search_body_hits_context_md(self):
         self.cli("project", "add", "demo", "--name", "Demo", "--user", "alice")
         with open(self.ctx_path("demo"), "a", encoding="utf-8") as f:
-            f.write("\n결제 게이트웨이는 xyzzykey 를 쓴다\n")
+            f.write("\n결제 검사웨이는 xyzzykey 를 쓴다\n")
         r = self.cli("search", "xyzzykey", "--body")
         self.assertIn("projects/demo/CONTEXT.md", r.stdout)
         self.assertIn("xyzzykey", r.stdout)

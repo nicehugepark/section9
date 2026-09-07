@@ -5,8 +5,8 @@
 게 어불성설이다". PO·designer 가 재수렴해 확정한 것이 **전용 탭**이고, 이 파일이
 지키는 것은 그 판정의 세 가지다:
 
-  ① **문은 하나다** — 탭 하나가 문이고, 문서 종류 목록(TYPE_ORDER·「종류」 셀렉트·
-     Docs 좌측 진입점)에서 project 가 사라진다. 문이 둘이면 사용자는 어느 쪽이
+  ① **경로는 하나다** — 탭 하나가 경로이고, 문서 종류 목록(TYPE_ORDER·「종류」 셀렉트·
+     Docs 좌측 진입점)에서 project 가 사라진다. 경로가 둘이면 사용자는 어느 쪽이
      맞는지 묻게 되고, 그 물음이 두 번째 반려의 내용이었다.
   ② **얼굴은 늘지 않는다** — 탭 우측은 새 관리 판이 아니라 **지금의 PRJ 문서
      판**이다(prjPanelHTML). 관리 판을 따로 지으면 같은 프로젝트가 두 얼굴을
@@ -89,7 +89,7 @@ class TheTabStandsInItsPlace(unittest.TestCase):
             self.assertRegex(self.app, r'tab === "projects"\)\{\s*renderProjects\(\)',
                              "render() 가 이 탭을 그리지 않는다")
 
-class TheDoorIsOnlyOne(unittest.TestCase):
+class ThePathIsOnlyOne(unittest.TestCase):
     """문서 종류 목록에서 project 가 사라진다 — 근원 제거."""
 
     @classmethod
@@ -98,7 +98,7 @@ class TheDoorIsOnlyOne(unittest.TestCase):
         cls.const = read(WEB, "app", "const.js")
         cls.docs = strip_comments(read(WEB, "app", "docs.js"))
 
-    def test_the_door_is_only_one(self):
+    def test_the_path_is_only_one(self):
         """문서 종류 목록에서 project 가 사라진다 — 근원 제거."""
         with self.subTest("the_type_list_has_no_project"):
             m = re.search(r"const TYPE_ORDER = \[([^\]]+)\]", self.const)
@@ -111,7 +111,7 @@ class TheDoorIsOnlyOne(unittest.TestCase):
             opts = re.findall(r"<option[^>]*>([^<]*)</option>", sel.group(0))
             self.assertNotIn("project", opts,
                              "「종류」 셀렉트에 project 옵션이 남아 있다: %r" % opts)
-        with self.subTest("docs_no_longer_keeps_a_project_door"):
+        with self.subTest("docs_no_longer_keeps_a_project_path"):
             self.assertNotIn('curType === "project"', self.docs,
                              "Docs 에 project 분기가 남아 있다")
             for fn in ("prjListHTML(", "prjRowHTML("):
@@ -147,7 +147,7 @@ class TheFaceIsNotDoubled(unittest.TestCase):
             self.assertIn("loadDoc(", self.body,
                           "우측이 문서 판을 부르지 않는다 — 별도 관리 판을 지었다")
             self.assertNotIn("prjPanelHTML(", self.body,
-                             "탭이 문서 판을 제 손으로 다시 그린다 — 관문이 둘이 된다")
+                             "탭이 문서 판을 제 손으로 다시 그린다 — 경로가 둘이 된다")
             self.assertIn('id="viewer"', self.body,
                           "문서 판이 설 자리(#viewer)가 없다")
         with self.subTest("the_pane_says_whose_it_is"):

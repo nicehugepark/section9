@@ -283,7 +283,7 @@ class ThePaintIsNotTheTarget(unittest.TestCase):
             shaper = [d for s, d in self.belt
                       if "mask-image" in d and "none" not in d]
             self.assertEqual(len(shaper), 1,
-                             "원의 모양을 정하는 관문이 하나가 아니다 — "
+                             "원의 모양을 정하는 경로가 하나가 아니다 — "
                              "스킨마다 사본이 생기면 한쪽만 고쳐진다")
             self.assertRegex(shaper[0], r"mask-image:radial-gradient\(circle",
                              "원을 radial-gradient mask 로 정하지 않는다")
@@ -401,9 +401,9 @@ class ThePressedHandKeepsItsPlace(unittest.TestCase):
     자체를 지운다. 창이 있던 동안에는 창이 landmark 노릇을 했지만 이제 없다.
 
     잠금을 지는 것은 원래 `wokePending`/`stopPending` 이지 `disabled` 가
-    아니다 — 누르는 자리 둘이 그 관문을 먼저 지난다. 그러니 계약은 셋이다.
+    아니다 — 누르는 자리 둘이 그 경로를 먼저 지난다. 그러니 계약은 셋이다.
       ① 잠금은 **보이되 닿는** `aria-disabled` 로 말한다 (포커스가 남는다).
-      ② 연타 관문은 그대로다 — 잠금 표시를 바꾼다고 두 번 나가면 안 된다.
+      ② 연타 경로는 그대로다 — 잠금 표시를 바꾼다고 두 번 나가면 안 된다.
       ③ 재그리기를 건너 손이 같은 카드의 손잡이로 돌아온다. 다만 **내 자리였을
          때만**, 그리고 **창이 서 있지 않을 때만** — 창이 서면 손은 창의 것이다.
     """
@@ -439,7 +439,7 @@ class ThePressedHandKeepsItsPlace(unittest.TestCase):
                     self.assertNotIn("button.%s[disabled]" % who, css,
                                      "%s 규칙이 아직 옛 표시를 본다" % who)
 
-            # ---------- ② 연타 관문은 그대로 ----------
+            # ---------- ② 연타 경로는 그대로 ----------
         with self.subTest("the_double_press_gate_is_untouched"):
                 self.assertIn("if (wokePending(id)) return;", self.doc)
                 self.assertIn("if (stopPending(id)) return;", _grab(self.src, "stopDoc"))

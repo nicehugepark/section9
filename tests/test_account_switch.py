@@ -13,7 +13,7 @@
 
 **둘 — 돌아올 길이 없다.** 목록은 `~/.claude-profiles/*` 만 훑었다. 기본
 계정(`~/.claude`)은 그 아래에 없으므로 **한 번 프로필로 옮기면 대시보드에서는
-돌아올 수 없다.** 나가는 문만 있고 들어오는 문이 없는 방이었다.
+돌아올 수 없다.** 나가는 경로만 있고 들어오는 진입점이 없는 방이었다.
 
 **셋 — 고른 계정이 다음 재시작에서 조용히 풀린다.** 재시작 루프는 마커에
 `account` 가 있을 때만 프로필 env 를 걸고, 없으면 `env=None` 으로 돈다. 그래서
@@ -77,7 +77,7 @@ class Rows(unittest.TestCase):
         return self.m.account_rows(**kw)
 
     def test_the_home_account_is_in_the_list(self):
-        """돌아올 문 — 기본 계정이 목록에 없으면 한 번 나가면 못 돌아온다."""
+        """돌아올 경로 — 기본 계정이 목록에 없으면 한 번 나가면 못 돌아온다."""
         keys = [r["key"] for r in self.rows()]
         self.assertIn(self.m.ACCOUNT_HOME_KEY, keys)
         home = [r for r in self.rows() if r["key"] == self.m.ACCOUNT_HOME_KEY][0]

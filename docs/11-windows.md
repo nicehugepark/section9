@@ -11,7 +11,7 @@
 OSError: [WinError 193] %1은(는) 올바른 Win32 응용 프로그램이 아닙니다
 ```
 
-그래서 이 판의 진입점은 **`.cmd` 래퍼**다. 훅·설치·git 게이트가 부르는 도구
+그래서 이 판의 진입점은 **`.cmd` 래퍼**다. 훅·설치·git 검사가 부르는 도구
 전부에 하나씩 있다 — `s9`·`s9-guard`·`s9-install`·`s9-doctor`·`s9-guide-md`·
 `s9-git-gate`·`s9-audit-{prompt,session,response,subagent,agent}`.
 PATH 에 `%USERPROFILE%\section9\bin` 을 넣으면 `s9 ...` 그대로 쓸 수 있다.
@@ -32,7 +32,7 @@ PATH 에 `%USERPROFILE%\section9\bin` 을 넣으면 `s9 ...` 그대로 쓸 수 �
 3. **출력을 UTF-8 로 고정한다** (`PYTHONUTF8=1`). 이 도구들의 출력은 거의 다
    한국어인데, 그냥 두면 콘솔 코드페이지(한국어 윈도우는 cp949)로 나가 받는
    쪽이 통째로 깨진다 — 실측: `UnicodeDecodeError: 0xc0 in position 3`.
-4. **종료코드를 그대로 넘긴다** (`exit /b %ERRORLEVEL%`). 훅과 git 게이트의
+4. **종료코드를 그대로 넘긴다** (`exit /b %ERRORLEVEL%`). 훅과 git 검사의
    판정이 이 값에 걸려 있다.
 
 ### `.cmd` 는 ASCII 로만 쓴다
@@ -44,10 +44,10 @@ cmd.exe 는 배치 파일을 **콘솔 코드페이지로** 읽는다. UTF-8 한�
 
 ## 판을 가르는 자리
 
-`os.name` 을 곳곳에서 묻지 않는다. 이름 붙은 문 하나씩만 있다
+`os.name` 을 곳곳에서 묻지 않는다. 이름 붙은 경로 하나씩만 있다
 (DOC-20260903-003 「판을 가르는 자리의 규율」).
 
-| 문 | 무엇을 가르나 | 없으면 무엇이 깨지나 |
+| 경로 | 무엇을 가르나 | 없으면 무엇이 깨지나 |
 |---|---|---|
 | `proc_backend()` | `/proc` · `ps` · PowerShell CIM · 없음 | 생사 판정·고아 회수 전부 |
 | `spawn_backend()` / `spawn_detached()` | `fork` 냐 `Popen` 이냐 | 상시 계기·서버 감시자가 안 뜬다 |

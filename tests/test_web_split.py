@@ -303,7 +303,7 @@ class Served(unittest.TestCase):
             for name, ln in table:
                 self.assertEqual(lines[ln - 1].strip(), f"/* --- {name} --- */",
                                  f"{name} 의 시작 줄({ln})이 표와 어긋난다")
-        with self.subTest("s6d_no_side_door_out_of_web"):
+        with self.subTest("s6d_no_bypass_out_of_web"):
             for path in ("/app/../../bin/s9", "/css/../../CLAUDE.md",
                          "/app/../index.html"):
                 self.assertNotEqual(self.get(path)[0], 200, f"{path} 가 열린다")
@@ -382,7 +382,7 @@ class Auto(unittest.TestCase):
             self.assertIn("app/gone.js", out, "없는 자리를 말하지 않는다")
         with self.subTest("s8d_an_unreadable_shell_yields_nothing"):
             self.assertIsNone(self.m.web_bundle("app", "/no/such/index.html", "/no"))
-        with self.subTest("s8e_no_side_door_through_the_manifest"):
+        with self.subTest("s8e_no_bypass_through_the_manifest"):
             root, sh = self.fake(["a.css"], ["a.js"])
             with open(sh, encoding="utf-8") as f:
                 src = f.read()

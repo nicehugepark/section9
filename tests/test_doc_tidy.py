@@ -187,7 +187,7 @@ class DocTidyTest(unittest.TestCase):
         self.assertTrue(os.path.exists(tomb), "번호를 태워 둔 묘비가 있어야 한다")
 
     # ---------------------------------------------------------------- S9
-    def test_s9_dashboard_and_cli_share_one_door(self):
+    def test_s9_dashboard_and_cli_share_one_path(self):
         """화면의 묶음 처리는 CLI 와 **같은 함수**를 지난다 (두 벌이면 한 벌만 고쳐진다)."""
         m = self.mod()
         r = m.docs_bulk("archive", [self.a, self.b], "")
@@ -264,7 +264,7 @@ class DocTidyTest(unittest.TestCase):
                          "조상을 거슬러 찾는 자리가 둘 이상이다 — "
                          "둘이면 언젠가 한쪽만 지켜진다")
         self.assertIn("evEl(e.target)", js,
-                      "눌린 자리를 공용 문(evEl)으로 거르지 않는다 — "
+                      "눌린 자리를 공용 경로(evEl)으로 거르지 않는다 — "
                       "조각마다 자기 방어를 두면 조각 수만큼 구멍이 남는다 "
                       "(REQ-20260830-010 에서 events.js 가 같은 오류로 죽었다)")
         self.assertIn('near("[data-tidy]")', js, "손잡이를 near 로 찾지 않는다")

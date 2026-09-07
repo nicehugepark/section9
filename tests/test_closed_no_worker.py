@@ -63,7 +63,7 @@ class Base(unittest.TestCase):
             "s9_closed", importlib.machinery.SourceFileLoader("s9_closed", S9))
         self.m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.m)
-        # 옵트인·머신·캡을 통과시킨다 — 여기서 재는 것은 **상태 문** 하나다.
+        # 옵트인·머신·캡을 통과시킨다 — 여기서 재는 것은 **상태 검사** 하나다.
         self.m.user_config = lambda o=None: {"auto_resume": True}
         self.m.current_machine = lambda: "testbox"
         self.spawned = []
@@ -79,7 +79,7 @@ class Base(unittest.TestCase):
                    "--body", "x").stdout.split()[0]
 
     def spawn(self, doc_id, reason="wake"):
-        """스폰 문을 지나 보되 Popen 자리는 지나기 전에 막힌다."""
+        """스폰 검사를 지나 보되 Popen 자리는 지나기 전에 막힌다."""
         meta = self.m.read_doc(self.m.locate(doc_id))[0]
         real = subprocess.Popen
 
@@ -121,8 +121,8 @@ class ClosedNeverSpawns(Base):
         self.assertFalse(ok)
         self.assertEqual(out.get("blocked"), "closed", out)
 
-    def test_t3_in_progress_still_passes_the_status_door(self):
-        """회귀: 오늘 되던 것이 그대로 된다 — 문을 세우다 길을 막지 않는다."""
+    def test_t3_in_progress_still_passes_the_status_check(self):
+        """회귀: 오늘 되던 것이 그대로 된다 — 검사를 세우다 길을 막지 않는다."""
         rid = self.mkreq()
         cli(self.env, "status", rid, "in-progress", "--note", "t")
         ok, out = self.spawn(rid, "wake")
@@ -130,11 +130,11 @@ class ClosedNeverSpawns(Base):
                             "진행 중인 문서를 끝난 것으로 본다 — 이러면 "
                             "무인 이어받기가 통째로 죽는다")
 
-    def test_t4_a_stale_index_does_not_open_the_door(self):
-        """카탈로그가 낡아도 문은 안 열린다 — 판정은 디스크의 문서에서.
+    def test_t4_a_stale_index_does_not_pass_the_check(self):
+        """카탈로그가 낡아도 검사는 통과시키지 않는다 — 판정은 디스크의 문서에서.
 
         사고의 다른 가설이 '낡은 색인' 이었다. 색인이 진실이면 색인이 낡는
-        순간 문이 열린다. 그러니 색인을 일부러 낡게 만들어 두고 묻는다.
+        순간 검사가 통과시킨다. 그러니 색인을 일부러 낡게 만들어 두고 묻는다.
         """
         rid = self._closed("done")
         cat = self.m.CATALOG
@@ -223,7 +223,7 @@ class StoppableWhenClosed(Base):
                          "이유 없는 중단은 나중에 아무도 판정할 수 없다")
 
     def test_t6c_an_open_doc_still_needs_a_claim(self):
-        """회귀: 문을 여는 것이 아니라 **끝난 문서에서만** 면제다."""
+        """회귀: 검사를 통과시키는 것이 아니라 **끝난 문서에서만** 면제다."""
         rid = self.mkreq()
         cli(self.env, "status", rid, "in-progress", "--note", "t")
         self.mark(rid)

@@ -17,7 +17,7 @@ LLM이든 사람이든 넓은 것부터 좁혀 들어간다. 각 단계의 출�
 CLI 없이도 동작하는 저수준 경로 (grep/jq 친화 설계의 이유):
 
 ```bash
-# catalog 는 base + 델타다 (REQ-20260902-035) — 합쳐 주는 문이 `index cat` 이다
+# catalog 는 base + 델타다 (REQ-20260902-035) — 합쳐 주는 경로가 `index cat` 이다
 s9 index cat | jq -c 'select(.status=="in-progress")'
 grep -rl "키워드" vault/requests/2026/08/
 cat index/by-user/user1.md

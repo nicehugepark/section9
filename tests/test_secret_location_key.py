@@ -15,7 +15,7 @@ DOC-20260827-006 의 기준을 그대로 적용하면 이 키는 `permissions` �
 
 그래서 두 겹으로 막는다:
   ① 비밀 위치 키는 추적되지 않는 자리(`config/local.json`)에 쓴다
-  ② 그래도 추적 파일에 들어오면 커밋 게이트가 막는다 — 규율이 아니라 장치다
+  ② 그래도 추적 파일에 들어오면 커밋 검사가 막는다 — 규율이 아니라 장치다
 
 실행: python3 tests/ secret_location_key
 """
@@ -91,14 +91,14 @@ class SecretLocationKey(unittest.TestCase):
         self.assertEqual(self.m.user_config("alice")
                          .get("external_secrets_path", ""), "")
 
-    # B2. **장치**: 그래도 추적 파일에 들어오면 커밋 게이트가 막는다.
+    # B2. **장치**: 그래도 추적 파일에 들어오면 커밋 검사가 막는다.
     def test_b2_commit_gate_blocks_it(self):
         p = os.path.join(self.cfgdir, "settings.json")
         with open(p, "w", encoding="utf-8") as f:
             json.dump({"external_secrets_path": "/home/me/s9-secrets"}, f)
         hits = self.m.secret_leak(["users/alice/config/settings.json"], "",
                                   root=self.root, user="alice")
-        self.assertTrue(hits, "비밀 위치가 커밋에 들어가는데 게이트가 침묵한다")
+        self.assertTrue(hits, "비밀 위치가 커밋에 들어가는데 검사가 침묵한다")
         self.assertTrue(any("external_secrets_path" in h for h in hits), hits)
 
     # B3. 위치 키가 없으면 조용하다 — 상시 경고는 곧 안 읽힌다.

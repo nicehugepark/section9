@@ -4,12 +4,12 @@ REQ-20260826-020 으로 첨부에서 뽑은 본문이 사이드카에 남고 `s9
 가 그 글자를 찾게 됐다. 그런데 **화면에서는 읽을 수가 없었다** — 라우트가 없다.
 
 라우트 하나를 더하는 일인데, backend 가 020 을 끝내며 경고를 남겼다: 그 라우트에
-`doc_visible` 게이트를 `/api/asset` 과 **동일하게** 걸지 않으면, **PDF 원본은 못
+`doc_visible` 검사를 `/api/asset` 과 **동일하게** 걸지 않으면, **PDF 원본은 못
 보는 사람이 그 안의 글자는 다 읽는다.** 접근 제어에 구멍을 내는 종류라 "라우트를
-먼저 만들고 게이트는 나중에" 순서를 쓰지 않았다.
+먼저 만들고 검사는 나중에" 순서를 쓰지 않았다.
 
-이 파일이 지키는 것은 기능이 아니라 **그 게이트**다. 기능은 눈에 보여서 깨지면
-알지만, 게이트는 깨져도 화면이 더 잘 도는 것처럼 보인다.
+이 파일이 지키는 것은 기능이 아니라 **그 검사**다. 기능은 눈에 보여서 깨지면
+알지만, 검사는 깨져도 화면이 더 잘 도는 것처럼 보인다.
 
 실행: python3 tests/ asset_text_api
 """
@@ -46,7 +46,7 @@ class AssetTextApi(unittest.TestCase):
         with self.subTest("a2_the_gate_is_the_same_one"):
             for frag in ("me = viewer_of(qs)", "doc_visible(meta_a, me)"):
                 self.assertIn(frag, self.asset, f"기준 라우트가 바뀌었다: {frag}")
-                self.assertIn(frag, self.text, f"본문 라우트에 게이트가 없다: {frag}")
+                self.assertIn(frag, self.text, f"본문 라우트에 검사가 없다: {frag}")
         with self.subTest("a3_filename_cannot_escape_the_directory"):
             norm = "safe_name(os.path.basename(qs.get(\"f\", [\"\"])[0]))"
             self.assertIn(norm, self.asset)

@@ -130,7 +130,7 @@ class SyncStatusRepo(unittest.TestCase):
         예전엔 `sync_status()` 가 진짜 시계를 읽게 뒀다. 그러면 이 시험은
         「방금 만든 커밋은 밀린 것이 아니다」가 아니라 **「이 기계가 60초 안에
         여기까지 온다」**를 재게 된다. 부하가 걸린 병렬 실행에서 커밋과 판정
-        사이가 77초로 벌어져 실패했다(실측 2026-09-04, 커밋 게이트).
+        사이가 77초로 벌어져 실패했다(실측 2026-09-04, 커밋 검사).
 
         `sync_status(now=…)` 는 처음부터 시계를 받게 돼 있었다 — 그걸 쓰면
         판정 논리만 남고 기계 속도는 빠진다.
@@ -272,7 +272,7 @@ class SyncStatusRepo(unittest.TestCase):
         self.put(self.a, "s3.txt", "s\n")
         self.commit(self.a, "s3", author_epoch=time.time() - 900)
         self.assertNotEqual(self.m.sync_stall_once(), "")
-        # CLI 도 같은 문 — remote 가 아니면 조용히 0
+        # CLI 도 같은 경로 — remote 가 아니면 조용히 0
         r = sh(S9, "sync", "--status", "--quiet", cwd=self.a,
                env=dict(os.environ, S9_ROOT=self.a))
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -374,10 +374,10 @@ class SyncStatusRepo(unittest.TestCase):
 
 
 class SyncStatusSurface(unittest.TestCase):
-    """S15~S17 — 표면 고정점과 게이트 회귀 (소스 검사)."""
+    """S15~S17 — 표면 고정점과 검사 회귀 (소스 검사)."""
 
     def test_sync_status_surface(self):
-        """S15~S17 — 표면 고정점과 게이트 회귀 (소스 검사)."""
+        """S15~S17 — 표면 고정점과 검사 회귀 (소스 검사)."""
         with self.subTest("s15_no_tree_reverting_git"):
             with open(S9_SRC, encoding="utf-8") as f:
                 src = f.read()

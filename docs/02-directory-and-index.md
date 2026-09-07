@@ -40,7 +40,7 @@ project, parent, tags, created, updated, path.
 **catalog.jsonl 하나만 읽지 마라** (REQ-20260902-035). 쓰기마다 전량을 다시
 쓰지 않으려고, 갓 바뀐 행은 곁의 `catalog.jsonl.delta` 에 한 줄씩 덧붙는다.
 목록은 **base + 델타** 이고 그 둘을 합치는 자리는 `load_catalog()` 하나다.
-밖에서 그 목록을 얻는 문은 `s9 index cat` 하나다 — 파일 이름을 쓰지 마라:
+밖에서 그 목록을 얻는 경로는 `s9 index cat` 하나다 — 파일 이름을 쓰지 마라:
 
 ```bash
 s9 index cat | jq -c 'select(.user=="user1")'

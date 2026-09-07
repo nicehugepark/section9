@@ -114,7 +114,7 @@ def _probe_listener():
 
     예전엔 `bind(("127.0.0.1", 0))` 이었다. 커널 임시 범위라 윈도우 동적
     범위와 겹치고, `tests/portpool.py` 가 시험에서 적발하는 바로 그 행위다 —
-    문이 tests/ 만 보고 있어 도구는 안 걸렸다(devops 판정, REQ-20260904-013).
+    경로가 tests/ 만 보고 있어 도구는 안 걸렸다(devops 판정, REQ-20260904-013).
     """
     last = None
     for port in PROBE_PORTS:
@@ -338,7 +338,7 @@ def scan(rows, live_runs=None):
     **스위트가 도는 동안은 풀의 재양육 서버를 거두지 않는다** (REQ-20260905-005).
     시험은 감시자(`serve --supervise`)를 double fork 로 **일부러** 재양육시켜
     띄운다 — 그것은 고아가 아니라 시험 중인 물건인데, 「풀 안 + 재양육」만 보면
-    똑같이 보인다. 실사고 2026-09-05: 회수 대역을 풀 끝까지 넓히자 대시보드의
+    똑같이 보인다. 실제 사고 2026-09-05: 회수 대역을 풀 끝까지 넓히자 대시보드의
     1분 틱이 돌고 있는 시험의 감시자를 죽여 전체 스위트가 292→521초가 됐고
     시험 3건이 실패했다. 그래서 살아 있는 실행 루트(s9run-<pid>-)가 하나라도
     있으면 풀의 재양육 서버는 미룬다 — 실행이 끝나면(루트가 사라지면) 다음
@@ -1025,7 +1025,7 @@ def git_hooks_dir(cwd):
 
     worktree의 .git 은 디렉토리가 아니라 파일이라 <repo>/.git/hooks 를 지어내면
     없는 자리를 가리킨다 — 그러면 '설치 안 됨'을 '저장소 아님'으로 오판한다
-    (REQ-20260829-001 이 게이트 시험 쪽에서 만난 그 함정)."""
+    (REQ-20260829-001 이 검사 시험 쪽에서 만난 그 함정)."""
     try:
         r = subprocess.run(["git", "rev-parse", "--git-path", "hooks"],
                            cwd=cwd, capture_output=True,
@@ -1189,7 +1189,7 @@ def login_second_signal(name, home, platform=None, run=None):
             pass
     # Keychain 항목은 계정(사용자)의 것이지 설정 디렉토리의 것이 아니다 — 다른
     # 설정 디렉토리(프로필·시험의 임시 자리)에 「로그인됨」을 물려주면 그 자리는
-    # 자격증명이 없는데도 문이 열린다 (REQ-20260906-015, test_login_check l4).
+    # 자격증명이 없는데도 검사가 통과시킨다 (REQ-20260906-015, test_login_check l4).
     if default_home and (platform or sys.platform) == "darwin":
         try:
             r = (run or subprocess.run)(["security", "find-generic-password", "-s",
@@ -1256,7 +1256,7 @@ TMP_KEEP = ("s9-portpool",)
 def sweep_stale_tmp(base="/tmp", now=None, age=TMP_STALE_AGE):
     """테스트가 /tmp 에 흘린 임시 자리를 거둔다 (REQ-20260829-003).
 
-    러너(tests/__main__.py)가 실행 전용 루트로 문을 닫았지만, 옛 체크아웃과
+    러너(tests/__main__.py)가 실행 전용 루트로 막았지만, 옛 체크아웃과
     worktree의 러너 사본은 그대로 흘린다. 이 회수는 캡처 회수와 같은 틱에서
     돌아 시간축에서도 닫는다.
 
@@ -1350,7 +1350,7 @@ def deps_info():
 
 
 # 역할 진실은 GitHub 권한이고 profile 의 role 은 캐시다 (REQ-20260902-034).
-# 로컬 인가(S9_USER)는 자기신고라 인증이 아니다 — 최종 게이트는 리포 권한이다.
+# 로컬 인가(S9_USER)는 자기신고라 인증이 아니다 — 최종 검사는 리포 권한이다.
 # 둘이 어긋나면(profile 은 admin 인데 리포는 write) 사람이 알아야 한다.
 GH_ROLE_MAP = {"admin": "admin", "maintain": "member", "write": "member",
                "triage": "viewer", "read": "viewer", "none": ""}

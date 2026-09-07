@@ -7,7 +7,7 @@
 고치려던 결함이 그대로 남았다. **같은 커밋에 들어 있던 테스트조차 통과하지
 못했다 — 돌리기만 했으면 잡혔다.**
 
-그래서 커밋 훅(s9-guard)에 게이트 둘을 둔다.
+그래서 커밋 훅(s9-guard)에 검사 둘을 둔다.
   ① 무인 워커가 도는데 '방금 만져진' 파일을 담으려 하면 막는다. `git add <경로>`
      는 "내 변경"이 아니라 "그 파일의 지금 상태"를 담기 때문이다.
   ② 커밋에 테스트 파일이 있으면 그것만이라도 돌린다. 전체 스위트는 2분이라 매
@@ -16,7 +16,7 @@
 둘 다 사람의 기억이 아니라 훅이 강제한다. 규율만으로 될 일이었으면 오늘 넷이
 나지 않았다.
 
-그리고 그 게이트가 **실제로 걸려 있는지**를 이 시험이 판정한다(G7·G11). 여기에
+그리고 그 검사가 **실제로 걸려 있는지**를 이 시험이 판정한다(G7·G11). 여기에
 같은 종류의 조용한 성공이 하나 더 있었다 — 자리를 `<ROOT>/.git/hooks` 로
 지어냈던 탓에, `.git` 이 파일인 worktree에서는 늘 '저장소 아님'으로 읽혀 훅이
 사라져도 통과가 났다. 무인 워커가 커밋하는 자리가 바로 worktree다
@@ -71,7 +71,7 @@ def _is_repo(path):
     """저장소인가 — `.git` 이 디렉토리인지로 묻지 않는다.
 
     worktree의 `.git` 은 파일이라 그 질문은 늘 '아니오'를 낸다. 무인 워커가
-    커밋하는 자리가 바로 worktree이므로, 그 오판은 게이트 시험 전체를
+    커밋하는 자리가 바로 worktree이므로, 그 오판은 검사 시험 전체를
     조용히 건너뛰게 만든다 (REQ-20260829-001)."""
     r = _git("rev-parse", "--is-inside-work-tree", cwd=path)
     return r.returncode == 0 and r.stdout.strip() == "true"
@@ -127,7 +127,7 @@ class CommitGate(unittest.TestCase):
             os.utime(os.path.join(self.m.ROOT, rel), None)
             # 우회 환경변수를 **명시적으로 끈다**. 이 테스트가 그것에 오염된 적이
             # 있다 — 리드가 `S9_ALLOW_CONCURRENT=1` 로 커밋하자 훅이 그 환경을
-            # 물려받은 채 테스트를 돌렸고, 게이트가 통과하는 바람에 "막힌다"는
+            # 물려받은 채 테스트를 돌렸고, 검사가 통과하는 바람에 "막힌다"는
             # 이 계약이 무너졌다. 주변 환경에 기대는 테스트는 조용히 거짓이 된다.
             with mock.patch.dict(os.environ, {}, clear=False), \
                  mock.patch.object(self.m, "live_workers",
@@ -167,7 +167,7 @@ class CommitGate(unittest.TestCase):
                 os.utime(p, None)
         with self.subTest("g4_override_needs_the_token"):
             # **`1` 로는 못 지나간다** (REQ-20260907-062). 그 값은 「목록을
-            # 읽었다」는 주장일 뿐 증거가 아니었고, 2026-09-07 18:26 에 그 문으로
+            # 읽었다」는 주장일 뿐 증거가 아니었고, 2026-09-07 18:26 에 검사가 없던 그 자리로
             # 남의 진행 중 변경 셋이 리드의 커밋에 쓸려 담겼다. 이제 담긴 파일
             # 집합에서 나온 표를 받는다 — 표를 얻는 유일한 길이 목록을 보는 것이다.
             rel = "tests/test_commit_gate.py"
@@ -205,8 +205,8 @@ class CommitGate(unittest.TestCase):
             with mock.patch.object(subprocess, "run", side_effect=fake):
                 self.m.staged_tests_gate(["bin/s9", "docs/x.md"])
             self.assertIn("--smoke", seen.get("argv", ()),
-                          "코드 커밋인데 스모크가 게이트로 안 돈다")
-            self.assertIn("--jobs", seen["argv"], "게이트가 직렬로 돌면 무게 반론이 되살아난다")
+                          "코드 커밋인데 스모크가 검사로 안 돈다")
+            self.assertIn("--jobs", seen["argv"], "검사가 직렬로 돌면 무게 반론이 되살아난다")
         with self.subTest("g8_subagents_count_too"):
             with open(os.path.join(self.m.ROOT, "bin", "s9.py"), encoding="utf-8") as f:
                 src = f.read()

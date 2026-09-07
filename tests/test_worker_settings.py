@@ -105,7 +105,7 @@ class WorkerSettings(unittest.TestCase):
                           "worker 갈래가 renderSettingsSection 에 없다")
             self.assertIn("showWorkerCfg(", self.src, "판을 그리는 손이 없다")
         with self.subTest("nav_subtitle_doubles_as_state"):
-                # 목록만 봐도 열려 있는 문이 보인다.
+                # 목록만 봐도 통과시키고 있는 검사가 보인다.
                 self.assertIn("GitHub 권한 켬", self.words,
                               "gh 가 켜져 있으면 좌측 목록 부제가 그렇게 말해야 한다")
                 self.assertIn("workerNavSub(", self.src)

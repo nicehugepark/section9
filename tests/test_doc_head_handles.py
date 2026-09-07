@@ -93,7 +93,7 @@ ROWS = r"""
 })()
 """
 
-# 실제로 눌러 본다 — 창이 뜨고, 고른 값이 카드와 같은 문으로 나간다.
+# 실제로 눌러 본다 — 창이 뜨고, 고른 값이 카드와 같은 경로로 나간다.
 CLICK = r"""
 (async () => {
   const fetch0 = window.fetch, choose0 = window.s9choose;

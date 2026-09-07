@@ -25,7 +25,7 @@
   ⑤ **코드 블록 안에는 링크가 번지지 않는다.** 블록은 읽을 것이 아니라 붙일
      것이라, 앵커가 섞이면 드래그 선택이 링크 드래그가 되고 복사본에 마크업이
      들어간다 (REQ-20260828-023 designer 경고).
-  ⑥ 파일은 **이미 있는 게이트로만** 내준다 — 문서 첨부는 `/api/asset`(문서
+  ⑥ 파일은 **이미 있는 검사로만** 내준다 — 문서 첨부는 `/api/asset`(문서
      가시성 상속). 저장소의 아무 파일이나 내주는 새 길은 만들지 않는다
      (DOC-20260827-007: 새로 만들면 옆문이다). 그 경계는 REQ-20260828-028.
   ⑦ 미리보기는 **한 번에 하나**이고, 본문은 접지 않고 **자른다** — 접힌 글은
@@ -113,9 +113,9 @@ class TermMention(unittest.TestCase):
         self.assertIn("docPick(", self.code[i:i + 200],
                       "집기가 제 길을 새로 판다")
 
-    def test_opening_a_document_has_one_door(self):
+    def test_opening_a_document_has_one_path(self):
         """링크·카드·미리보기가 같은 함수로 문서를 연다."""
-        self.assertIn("function docOpen(id)", self.code, "문 하나가 없다")
+        self.assertIn("function docOpen(id)", self.code, "경로 하나가 없다")
         self.assertIn("docOpen(doc.dataset.doc)", self.code,
                       "문서 링크가 제 손으로 탭을 바꾼다")
         self.assertIn("docOpen(t)", self.code,
@@ -143,7 +143,7 @@ class TermMention(unittest.TestCase):
         self.assertRegex(self.code, r"ccDocs\([\w]*\(?c[,)]",
                          "인라인 코드 안의 문서 id 가 링크가 되지 않는다")
 
-    # ---------- ⑥ 파일은 이미 있는 게이트로만 ----------
+    # ---------- ⑥ 파일은 이미 있는 검사로만 ----------
 
     def test_files_go_out_only_through_the_gate_that_exists(self):
         """첨부는 `/api/asset`(문서 가시성 상속)으로만. 저장소 파일을 내주는
@@ -151,7 +151,7 @@ class TermMention(unittest.TestCase):
         i = self.code.find('class="ccasset"')
         self.assertGreater(i, 0, "첨부 경로에 손잡이가 없다")
         self.assertIn("/api/asset?doc=", self.code[i:i + 400],
-                      "첨부를 이미 있는 게이트로 내주지 않는다")
+                      "첨부를 이미 있는 검사로 내주지 않는다")
         with open(S9_SRC, encoding="utf-8") as f:
             srv = f.read()
         routes = set(re.findall(r'parsed\.path == "(/api/[\w/-]+)"', srv))

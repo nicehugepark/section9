@@ -5,8 +5,8 @@
 라운드1이 서버에서 두 시계를 합쳤다(`stall_mins` 가 live_kind 를 읽는다). 화면에는
 그때 **두 개의 갈래**가 남아 있었다.
 
-  ① `!bl.length` — 카드만 가진 관문. 선행 대기 줄이 선 요청은 카드에서 멈춤 줄과
-     손잡이를 통째로 잃었는데, 문서 화면은 그 관문을 몰라 같은 요청에 손잡이를
+  ① `!bl.length` — 카드만 가진 경로. 선행 대기 줄이 선 요청은 카드에서 멈춤 줄과
+     손잡이를 통째로 잃었는데, 문서 화면은 그 경로를 몰라 같은 요청에 손잡이를
      줬다. **같은 요청이 두 자리에서 다른 말을 한다** — 판정 버튼이 세 번
      반려됐던 그 결함(REQ-20260828-007)과 같은 모양이다.
   ② 점은 `live_kind` 를, 손잡이는 `stalled_mins` 를 각자 읽었다. 서버가 둘을
@@ -112,9 +112,9 @@ class StallOnePredicate(unittest.TestCase):
     def test_f2_no_blocker_gate_on_card(self):
         """선행 대기 줄이 있어도 손잡이를 뺏지 않는다.
 
-        원래 규칙은 '같은 사실을 두 줄로 말하지 않는다'였고 옳다. 그러나 그 관문이
+        원래 규칙은 '같은 사실을 두 줄로 말하지 않는다'였고 옳다. 그러나 그 경로가
         지운 것은 문장 하나가 아니라 **행동 하나**였다 — 그리고 문서 화면은 그
-        관문을 몰라서, 같은 요청이 카드에선 못 깨우고 문서에선 깨워졌다.
+        경로를 몰라서, 같은 요청이 카드에선 못 깨우고 문서에선 깨워졌다.
         선행 대기(관계)와 멈춤(시계)은 다른 사실이기도 하다: 선행이 안 끝난 채로
         아무도 안 붙어 있는 요청이야말로 사람이 깨워야 하는 것이다.
         """
@@ -131,11 +131,11 @@ class StallOnePredicate(unittest.TestCase):
     def test_f3_stopped_dot_always_has_a_handle(self):
         """정지 마크가 서는 조건 = 손잡이가 서는 조건.
 
-        문(멈췄나?)은 서버가 지금 다시 잰 `stalled_mins` 하나가 연다. 색인에 굳은
-        작업자 기록(`live_kind`)은 문 안에서 **얼굴만** 고른다 — 어제의 정지가
+        검사(멈췄나?)은 서버가 지금 다시 잰 `stalled_mins` 하나가 연다. 색인에 굳은
+        작업자 기록(`live_kind`)은 경로 안에서 **얼굴만** 고른다 — 어제의 정지가
         오늘 카드를 칠하고 손잡이는 없던 자리가 그것이다.
         """
-        self.assertIn("stalled_mins", self.state, "문을 여는 것이 서버의 분이 아니다")
+        self.assertIn("stalled_mins", self.state, "검사를 통과시키는 것이 서버의 분이 아니다")
         self.assertIn("spawn_failed", self.state, "얼굴을 고르는 자리가 없다")
         self.assertIn("face", self.state, "얼굴을 돌려주지 않는다")
         # 손잡이를 짓는 자리는 **둘, 그리고 각각 하나**다 (REQ-20260830-040):
@@ -583,7 +583,7 @@ class StallRendersTheSame(unittest.TestCase):
         상태에 따라 버튼을 노출시키는게 어때?"
 
         붙어 있으면 끊는 쪽(⏸), 아니면 잇는 쪽(▶), 어느 쪽도 아니면 아무것도.
-        관문은 벨트 한 곳이라 두 버튼 함수는 서로를 모른다."""
+        경로는 벨트 한 곳이라 두 버튼 함수는 서로를 모른다."""
         out = self.render(self.ROWS)
         for rid, want in self.BELT.items():
             belt = out[rid]["belt"]
@@ -819,5 +819,5 @@ class StallRendersTheSame(unittest.TestCase):
         table = _code(_const(self.src, "STOP_KIND"))
         self.assertIn("담당하는 것이 없습니다", table)
         # 「~어 두다」 꼴은 유지하되 동사가 「끄다」로 갔다 (REQ-20260901-005) —
-        # 반려어 「세워 두다」 계열이 돌아오지 않는지는 어휘 게이트가 함께 잰다.
+        # 반려어 「세워 두다」 계열이 돌아오지 않는지는 어휘 검사가 함께 잰다.
         self.assertIn("꺼 두면", table, "정책 툴팁이 끄기 문법을 잃었다")

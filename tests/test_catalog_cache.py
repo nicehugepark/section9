@@ -7,7 +7,7 @@ claim_dead(바인딩×REQ마다 재파싱)·canon_id→id_alias·_stop_claim_map
 절벽을 넘었고, 폴링이 겹치자 스레드가 쌓여 GIL 정체로 응답이 72~91초→120초
 타임아웃까지 갔다.
 
-고침은 **관문 한 곳**: load_catalog 자신이 인덱스 파일 stat(mtime_ns·size·ino)
+고침은 **경로 한 곳**: load_catalog 자신이 인덱스 파일 stat(mtime_ns·size·ino)
 을 키로 파싱 결과를 프로세스에 캐시한다. rebuild_index 는 os.replace(원자 교체
 — ino 가 반드시 바뀐다)라 무효화가 보장되고, 엔드포인트별 특수 캐시 분기는
 만들지 않는다. 반환 행은 매 호출 얕은 복사 — catalog_with_live 가 r["live"]

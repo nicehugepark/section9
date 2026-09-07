@@ -2,8 +2,8 @@
 
 실사고 2026-09-03. `bin/s9` 한 줄(REQ-20260902-017 `_local_binding_glob` —
 바인딩을 이 머신 것만 보게 한 것)이 **커밋에 담기지 않은 시험 18건**을
-깨뜨렸다. 커밋 게이트(`staged_tests_gate`)는 담긴 시험과 스모크 12파일만
-보는데, 깨진 여덟 파일은 그 열둘과 하나도 겹치지 않았다 — 게이트는 통과를
+깨뜨렸다. 커밋 검사(`staged_tests_gate`)는 담긴 시험과 스모크 12파일만
+보는데, 깨진 여덟 파일은 그 열둘과 하나도 겹치지 않았다 — 검사는 통과를
 보고 통과시켰고 커밋은 실패한 채로 들어갔다.
 
 고치는 방향은 「매 커밋에 전체를 돌린다」가 아니다(분 단위라 규율이 먼저
@@ -38,14 +38,14 @@ def _load(name, path):
 
 
 class WideListIsOneList(unittest.TestCase):
-    """W1 — 두 목록이 갈리면 문이 엉뚱한 파일을 지킨다."""
+    """W1 — 두 목록이 갈리면 검사가 엉뚱한 파일을 지킨다."""
 
     def test_w1_guard_mirrors_the_runner(self):
         guard = _load("s9guard_w", GUARD)
         runner = _load("s9runner_w", RUNNER)
         self.assertEqual(tuple(guard.WIDE), tuple(runner.COMMON),
                          "가드의 WIDE 와 러너의 COMMON 이 갈렸다 — 한쪽만 "
-                         "고치면 문이 지키는 파일과 러너가 전체로 물러나는 "
+                         "고치면 검사가 지키는 파일과 러너가 전체로 물러나는 "
                          "파일이 달라진다")
 
 
@@ -56,7 +56,7 @@ class TheGateAsks(unittest.TestCase):
         self.guard = _load("s9guard_g", GUARD)
 
     def _run(self, staged, rc=0, boom=False):
-        """게이트를 한 번 돌리고 (SystemExit 코드 또는 None, stderr, 물었나)."""
+        """검사를 한 번 돌리고 (SystemExit 코드 또는 None, stderr, 물었나)."""
         calls = []
 
         def fake(argv, **kw):
@@ -78,7 +78,7 @@ class TheGateAsks(unittest.TestCase):
                 code = e.code
         return code, err.getvalue(), bool(calls)
 
-    # W2. 좁은 커밋에는 아무것도 묻지 않는다 — 문이 길을 막지 않는다.
+    # W2. 좁은 커밋에는 아무것도 묻지 않는다 — 검사가 길을 막지 않는다.
     def test_w2_narrow_commit_is_not_asked(self):
         code, _err, asked = self._run(["web/app/card.js", "docs/guide.md"])
         self.assertIsNone(code)
@@ -107,10 +107,10 @@ class TheGateAsks(unittest.TestCase):
         self.assertTrue(asked)
         self.assertIsNone(code, "통과 기록이 있는데도 막았다")
 
-    # W5. 문이 고장 나도 커밋을 막지 않는다 — 막으면 그날로 문이 뽑힌다.
+    # W5. 검사가 고장 나도 커밋을 막지 않는다 — 막으면 그날로 사람이 검사를 꺼 버린다.
     def test_w5_a_broken_gate_never_blocks(self):
         code, _err, _asked = self._run(["bin/s9"], boom=True)
-        self.assertIsNone(code, "게이트 고장이 커밋을 막았다")
+        self.assertIsNone(code, "검사 고장이 커밋을 막았다")
 
     # W5b. 경로 구분자가 역슬래시여도 같은 파일이다 (윈도우).
     def test_w5b_backslash_paths_count(self):

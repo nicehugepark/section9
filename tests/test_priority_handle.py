@@ -16,7 +16,7 @@
 여기서 고정하는 결정:
 
   · 표기가 곧 손잡이다. 두 번째 자리를 만들면 보이는 것과 누르는 것이 갈린다.
-  · 문(門)은 하나다 — CLI 든 화면이든 `apply_priority()` 를 지난다. 두 벌이면
+  · 경로는 하나다 — CLI 든 화면이든 `apply_priority()` 를 지난다. 두 벌이면
     화면으로 바꾼 것만 History 에 안 남는 날이 온다.
   · **`updated` 는 안 건드린다.** 그 시각이 멈춤 판정의 시계(`quiet_mins`)라,
     카드를 끌어 올리는 것만으로 멈춤 경보가 꺼지면 안 된다 (REQ-20260829-034
@@ -221,9 +221,9 @@ class HandleLooksLikeTheLabel(unittest.TestCase):
                          "키보드 초점이 보이지 않는다")
 
 
-# -------------------------------------------------------------------- ② 문
-class OneDoor(unittest.TestCase):
-    """CLI 든 화면이든 같은 문을 지난다."""
+# -------------------------------------------------------------------- ② 경로
+class OnePath(unittest.TestCase):
+    """CLI 든 화면이든 같은 경로를 지난다."""
 
     @classmethod
     def setUpClass(cls):
@@ -234,27 +234,27 @@ class OneDoor(unittest.TestCase):
         self.assertIn('parsed.path == "/api/priority"', self.src,
                       "화면이 두드릴 자리가 서버에 없다")
 
-    def test_route_goes_through_the_door(self):
+    def test_route_goes_through_the_path(self):
         m = re.search(r'parsed\.path == "/api/priority":(.*?)\n                elif',
                       self.src, re.S)
         self.assertIsNotNone(m)
         self.assertIn("set_doc_priority(", m.group(1),
-                      "라우트가 제 손으로 문서를 쓴다 — 문을 지나야 한다")
+                      "라우트가 제 손으로 문서를 쓴다 — 경로를 지나야 한다")
         self.assertIn("user=actor", m.group(1),
                       "누가 바꿨는지를 클라이언트 말로 적는다")
 
-    def test_cli_shares_the_door(self):
-        # cmd_set 은 do_set 한 문을 부르고(REQ-20260906-053), 그 문이 apply_priority 를 지난다
+    def test_cli_shares_the_path(self):
+        # cmd_set 은 do_set 한 경로를 부르고(REQ-20260906-053), 그 경로가 apply_priority 를 지난다
         body = re.search(r"\ndef cmd_set\(args\):(.*?)\n\ndef ", self.src, re.S)
         self.assertIsNotNone(body)
-        self.assertIn("do_set(", body.group(1), "CLI 가 제 손으로 문서를 쓴다 — 문을 지나야 한다")
-        door = re.search(r"\ndef do_set\(.*?\n\ndef ", self.src, re.S)
-        self.assertIsNotNone(door)
-        self.assertIn("apply_priority(", door.group(0),
+        self.assertIn("do_set(", body.group(1), "CLI 가 제 손으로 문서를 쓴다 — 경로를 지나야 한다")
+        path = re.search(r"\ndef do_set\(.*?\n\ndef ", self.src, re.S)
+        self.assertIsNotNone(path)
+        self.assertIn("apply_priority(", path.group(0),
                       "CLI 가 제 규칙을 따로 들고 있다 — 두 벌이면 갈라진다")
 
 
-class DoorBehaviour(unittest.TestCase):
+class PathBehaviour(unittest.TestCase):
     """문의 계약 — 근거는 남기고, 시계는 되감지 않는다."""
 
     def setUp(self):
@@ -300,7 +300,7 @@ class DoorBehaviour(unittest.TestCase):
             return f.read()
 
     def catalog(self):
-        # 파일이 아니라 문 (REQ-20260902-035) — 갓 쓴 행은 델타에 있다.
+        # 파일이 아니라 경로 (REQ-20260902-035) — 갓 쓴 행은 델타에 있다.
         return [json.loads(l) for l in self.ok("index", "cat").splitlines()
                 if l.strip()]
 
@@ -338,7 +338,7 @@ class DoorBehaviour(unittest.TestCase):
                          "우선순위를 바꾸는 것이 갱신 시각을 되감는다")
 
     def test_cli_records_too(self):
-        """같은 문을 지나므로 CLI 로 바꾼 것도 근거가 남는다."""
+        """같은 경로를 지나므로 CLI 로 바꾼 것도 근거가 남는다."""
         self.ok("set", self.a, "--priority", "urgent")
         m = self.mod()
         self.assertRegex(self.doc_text(m, self.a),
@@ -517,7 +517,7 @@ class RushStart(unittest.TestCase):
                    (None, "open", "in-progress", "CLI 착수"),
                    None):
             self.assertFalse(m.rework_candidate(lt), lt)
-        # 워처가 안 집는 전이는 즉시 경로도 안 집는다 — 문이 하나다.
+        # 워처가 안 집는 전이는 즉시 경로도 안 집는다 — 경로가 하나다.
         self.assertTrue(m.rework_candidate(
             (None, "review", "in-progress", "반려")))
         self.assertTrue(m.rework_candidate(
@@ -609,7 +609,7 @@ class ChangedValueMovesTheQueue(unittest.TestCase):
         self.assertEqual(m.work_order(rows)[0]["id"], first,
                          "전제 확인 실패: 같은 값이면 오래 기다린 것이 먼저다")
         m.set_doc_priority(last, "urgent", user="tester", via="dashboard")
-        # 색인을 **다시 읽는다** — 문이 rebuild_index 를 부르지 않으면 문서만
+        # 색인을 **다시 읽는다** — 경로가 rebuild_index 를 부르지 않으면 문서만
         # 바뀌고 순서를 정하는 쪽은 옛 값을 계속 본다.
         rows = [r for r in m.load_catalog() if r["type"] == "request"]
         self.assertEqual(m.work_order(rows)[0]["id"], last,
@@ -688,7 +688,7 @@ class RouteEndToEnd(unittest.TestCase):
         self.assertEqual(code, 200, res)
         self.assertEqual((res["ok"], res["old"], res["new"]), (True, 50, 90))
         # 색인까지 갔나 — 순서를 정하는 쪽이 읽는 곳은 문서가 아니라 이 줄이다.
-        # 파일이 아니라 문으로 묻는다 (REQ-20260902-035).
+        # 파일이 아니라 경로로 묻는다 (REQ-20260902-035).
         row = [r for r in
                (json.loads(x) for x in self.cli("index", "cat").splitlines()
                 if x.strip())

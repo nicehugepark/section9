@@ -44,7 +44,7 @@ class WorkerWorktree(unittest.TestCase):
     def setUp(self):
         # git 훅 안에서 돌면 GIT_DIR·GIT_INDEX_FILE 이 환경에 실려 온다 —
         # 그러면 임시 저장소를 만지려던 git 명령이 **본 저장소**를 만진다.
-        # 실제로 커밋 게이트에서 이 테스트가 그렇게 엇나갔다. 봉하고 시작한다.
+        # 실제로 커밋 검사에서 이 테스트가 그렇게 엇나갔다. 봉하고 시작한다.
         self._git_env = {k: v for k, v in os.environ.items()
                          if k.startswith("GIT_")}
         for k in self._git_env:

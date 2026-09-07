@@ -276,7 +276,7 @@ class HookServeGuard(unittest.TestCase):
                 self.hook.ensure_serve()
         self.assertFalse([a for a in spawned if "serve" in a],
                          "규범 아닌 포트에 서버를 세웠다 — 005 거짓 지문 "
-                         "계열의 남은 문")
+                         "계열에 남은 검사")
 
     # G2(S2). 정상 — env 없으면 규범 포트(state/port > 9909)다 (행동 보존)
     def test_g2_no_env_uses_canonical(self):

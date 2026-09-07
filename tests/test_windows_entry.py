@@ -40,7 +40,7 @@ def _load(path, name):
     return m
 
 
-# 훅·설치·git 게이트가 이름으로 부르는 도구들. 여기 있는 것은 그 판에서도
+# 훅·설치·git 검사가 이름으로 부르는 도구들. 여기 있는 것은 그 판에서도
 # 진입점이 있어야 한다 — 없으면 그 도구는 윈도우에서 아예 없는 것이다.
 WRAPPED = ("s9", "s9-guard", "s9-install", "s9-doctor", "s9-guide-md",
            "s9-git-gate", "s9-audit-prompt", "s9-audit-session",
@@ -82,7 +82,7 @@ class TestCmdWrappers(unittest.TestCase):
                                  f"{name}: `||` 는 실패를 재실행으로 바꾼다")
 
     def test_w1b_wrapper_propagates_the_exit_code(self):
-        """종료코드를 삼키지 않는다 — 훅과 git 게이트의 판정이 여기 걸린다."""
+        """종료코드를 삼키지 않는다 — 훅과 git 검사의 판정이 여기 걸린다."""
         for name in WRAPPED:
             with self.subTest(tool=name):
                 body = open(os.path.join(BIN, name + ".cmd"),
@@ -147,7 +147,7 @@ class TestCmdWrappers(unittest.TestCase):
                              if norm[n] != norm["s9"])))
 
 
-class TestKillSignalDoor(unittest.TestCase):
+class TestKillSignalEntry(unittest.TestCase):
     """W6 — `signal.SIGKILL` 은 윈도우에 없다."""
 
     @classmethod
@@ -156,7 +156,7 @@ class TestKillSignalDoor(unittest.TestCase):
         os.environ["S9_ROOT"] = cls.tmp
         cls.m = _load(S9, "s9winentry")
 
-    def test_w6_door_falls_back_where_sigkill_is_absent(self):
+    def test_w6_entry_falls_back_where_sigkill_is_absent(self):
         """있는 판에서는 SIGKILL, 없는 판에서는 SIGTERM.
 
         **이 시험 자신이 두 판에서 다 돌아야 한다** — 윈도우에서 돌려 보니
@@ -182,10 +182,10 @@ class TestKillSignalDoor(unittest.TestCase):
                 if re.search(r"_sig\.SIGKILL|signal\.SIGKILL", ln)
                 and "getattr" not in ln and not ln.lstrip().startswith("#")
                 and "`" not in ln]          # 까닭을 적은 문장은 제외
-        self.assertEqual(bare, [], f"문을 지나지 않는 SIGKILL: {bare}")
+        self.assertEqual(bare, [], f"경로를 지나지 않는 SIGKILL: {bare}")
 
 
-class TestTempDoor(unittest.TestCase):
+class TestTempEntry(unittest.TestCase):
     """W7 — 윈도우에는 `TMPDIR` 도 `/tmp` 도 없다."""
 
     @classmethod
@@ -208,7 +208,7 @@ class TestTempDoor(unittest.TestCase):
                 if 'os.environ.get("TMPDIR", "/tmp")' in ln
                 and not ln.lstrip().startswith("#")
                 and "`" not in ln]          # 문서 문장은 제외
-        self.assertEqual(hits, [], f"문을 지나지 않는 /tmp: {hits}")
+        self.assertEqual(hits, [], f"경로를 지나지 않는 /tmp: {hits}")
 
 
 class TestMetricsCollectorSeam(unittest.TestCase):
@@ -292,7 +292,7 @@ class TestShotCandidates(unittest.TestCase):
         self.assertNotIn("C:\\\\Program", nt)
 
 
-class TestUtf8OutputDoor(unittest.TestCase):
+class TestUtf8OutputEntry(unittest.TestCase):
     """W4 — 도구가 직접 불려도 출력이 UTF-8 이어야 한다."""
 
     MARK = 'if os.name == "nt":'
@@ -315,7 +315,7 @@ class TestUtf8OutputDoor(unittest.TestCase):
                                 f"{name}: 가드가 너무 뒤에 선다")
 
 
-class TestShebangDoor(unittest.TestCase):
+class TestShebangEntry(unittest.TestCase):
     """W3 — 윈도우는 shebang 을 모른다."""
 
     @unittest.skipIf(os.name == "nt", "이 조항은 shebang 이 있는 판의 계약이다")
@@ -340,7 +340,7 @@ class TestShebangDoor(unittest.TestCase):
                              [wrapper, "ls"])
             self.assertEqual(s9cli.shebang_argv([]), [])
 
-    def test_w3d_runner_installs_the_door(self):
+    def test_w3d_runner_installs_the_entry(self):
         src = open(os.path.join(HERE, "__main__.py"), encoding="utf-8").read()
         self.assertIn("s9cli.install()", src)
 
@@ -400,12 +400,12 @@ class TestToolsCallS9Portably(unittest.TestCase):
             with self.subTest(tool=name):
                 src = open(os.path.join(BIN, name), encoding="utf-8").read()
                 self.assertIn("S9_ARGV = [sys.executable, S9]", src,
-                              f"{name}: argv 문이 없다")
+                              f"{name}: argv 경로가 없다")
                 bare = [ln for ln in src.splitlines()
                         if re.search(r"\[S9[,\]]", ln)
                         and not ln.lstrip().startswith("#")]
                 self.assertEqual(bare, [],
-                                 f"{name}: 문을 지나지 않는 호출: {bare}")
+                                 f"{name}: 경로를 지나지 않는 호출: {bare}")
 
     def test_w11b_inline_paths_prefix_the_interpreter_too(self):
         for name in ("s9", "s9-guard", "s9-install"):

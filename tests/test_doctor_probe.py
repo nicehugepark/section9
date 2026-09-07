@@ -4,7 +4,7 @@ devops-engineer 가 코드를 읽다 찾았다(REQ-20260904-013): `probe_new_por
 0.25초 고정 간격으로 최대 12초를 두드려, 공개가 늦어지는 **바로 그때** 시간당
 최대 2,880개를 태웠다 — 실측 소모 속도(2,670/h)와 같은 자릿수다. 그리고 그
 프로브는 커널 임시 포트(0)에 bind 했다 — 시험에서는 적발하는 행위인데 도구는
-문 밖이었다.
+경로 밖이었다.
 
 실행: python3 tests/ doctor_probe
 """
@@ -93,7 +93,7 @@ class TheProbe(unittest.TestCase):
     def test_p4_the_pool_never_reaches_the_probes(self):
         """P4. 칸을 아무리 넓혀도 풀 꼭대기는 회수 대역 안이고 프로브 아래다.
 
-        실사고 2026-09-05 (REQ-20260905-005): 칸 8 로 풀이 19056 까지 자랐는데
+        실제 사고 2026-09-05 (REQ-20260905-005): 칸 8 로 풀이 19056 까지 자랐는데
         회수 대역은 18999 에서 끝나, 19089 의 감시자 둘이 스위트 뒤에 남았다.
         두 파일의 상수가 갈리면 바로 그 사고다 — 여기서 못박는다.
         """
@@ -122,7 +122,7 @@ class TheProbe(unittest.TestCase):
         """P6. 스위트가 도는 동안은 풀의 재양육 서버를 거두지 않는다.
 
         감시자는 double fork 로 일부러 재양육된다 — 살아 있는 실행 루트가 있으면
-        그것은 시험 중인 물건이다. 실사고 2026-09-05: 대시보드 틱이 돌고 있는
+        그것은 시험 중인 물건이다. 실제 사고 2026-09-05: 대시보드 틱이 돌고 있는
         시험의 감시자를 죽여 전체가 292→521초, 3건 실패.
         """
         rows = [(15248, 1, 30,
@@ -155,7 +155,7 @@ class TheProbe(unittest.TestCase):
         self.assertGreaterEqual(r["attempts"], 1)
 
     def test_p5_no_ephemeral_bind_in_the_doctor(self):
-        """P5. 도구에도 문이 선다 — `bind(("127.0.0.1", 0))` 이 s9-doctor 에 없다."""
+        """P5. 도구에도 검사가 선다 — `bind(("127.0.0.1", 0))` 이 s9-doctor 에 없다."""
         src = open(DOCTOR, encoding="utf-8").read()
         import re
         # 주석과 독스트링은 설명이지 실행이 아니다 — 걷어내고 본다.

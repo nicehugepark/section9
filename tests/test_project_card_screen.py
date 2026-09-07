@@ -162,7 +162,7 @@ REFUSE = r"""
   const sent = {};
   window.s9choose = async () => ({key: 'demo'});
   window.fetch = async (url, opt) => {
-    // 우리 문만 가로챈다 — 화면은 이 사이에도 제 일(폴링)을 계속한다.
+    // 우리 경로만 가로챈다 — 화면은 이 사이에도 제 일(폴링)을 계속한다.
     if (!String(url).includes('/api/doc/set')) return fetch0(url, opt);
     sent.url = String(url);
     sent.body = JSON.parse(opt.body);
@@ -366,7 +366,7 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
         """거절 창에는 서버가 낸 문장이 글자 그대로 뜬다."""
         r = self.refuse
         self.assertEqual(r["sent"]["url"], "/api/doc/set",
-                         "저장 문이 하나가 아니다")
+                         "저장 경로가 하나가 아니다")
         self.assertEqual(r["sent"]["body"]["project"], "demo")
         self.assertEqual(r["sent"]["body"]["id"], "REQ-20260906-053-62x6")
         self.assertTrue(r["open"], "거절을 말하는 창이 안 떴다")

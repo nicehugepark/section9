@@ -150,7 +150,7 @@ def write_green_stamp(repo=None, stamp=None):
 #      결과를 받는다.** 새로 돌리지 않는다. 기다림이 끝나면 ①을 다시 보는데,
 #      그때 지문이 맞으면 그 실행이 방금 통과시킨 것이라 그대로 쓴다.
 #
-# 안쪽 실행(S9_TESTS_NESTED)은 둘 다 지나친다 — 바깥이 이미 문을 지났고,
+# 안쪽 실행(S9_TESTS_NESTED)은 둘 다 지나친다 — 바깥이 이미 그 검사를 지났고,
 # 여기서 또 잠그면 자기 자신을 기다린다.
 _MOD_RE = re.compile(r"\((test_[A-Za-z0-9_]+)\.")
 REUSE_DIR = os.path.join(REPO, "state", "tests-green")
@@ -214,8 +214,8 @@ def _file_mark(path, name):
     파일이 있었다(내용은 그대로인데 시험이 열었다 닫는 자리 — 실측
     2026-09-04: `tests/test_commit_gate.py`, 해시 동일·mtime 이동). 그러면
     전체가 통과여도 **끝난 순간 지문이 달라져** 그 통과 기록을 아무도 못
-    쓴다. `--is-green` 이 늘 1을 내고, 넓은 변경의 커밋 문은 방금 통과를 본
-    사람에게도 「돌려라」만 되풀이한다 — 그런 문은 사람이 뽑는 법부터 배운다.
+    쓴다. `--is-green` 이 늘 1을 내고, 넓은 변경의 커밋 검사는 방금 통과를 본
+    사람에게도 「돌려라」만 되풀이한다 — 그런 검사는 사람이 꺼 버리는 법부터 배운다.
 
     내용으로 재면 그 되먹임이 끊긴다. 296개 파일 6.6MB 를 읽어도 수십 ms 라,
     한 번 더 도는 값에 비하면 공짜다. 디렉터리(추적 안 되는 새 폴더)는 읽을
@@ -253,7 +253,7 @@ def green_seen(pats, fp, cover=True):
     구조로 보장된다.
 
     없으면 어떻게 되나(실측 2026-09-04): 전체 297파일을 통과로 돌린 **직후**
-    커밋 문이 그 안의 234파일을 고르면 `_selection_key` 가 달라 「처음 보는
+    커밋 검사가 그 안의 234파일을 고르면 `_selection_key` 가 달라 「처음 보는
     조합」이 되고, 방금 통과한 시험을 5분에 걸쳐 다시 돌린다. 재사용 계층이
     있는데도 커밋마다 분 단위를 무는 자리가 여기였다.
 
@@ -536,7 +536,7 @@ def jobs_cap():
 FLAKY_FILE = os.path.join(REPO, "state", "test-flaky.jsonl")
 # 샤드·직렬 꼬리의 시간 상한 (REQ-20260905-021). 러너는 **절대 멈추지 않는다** —
 # 실측 2026-09-05: 배경 전체 실행이 304/305 에서 20분 정지(서버 무응답 계열)했고
-# 그 뒤에 선 러너·커밋 문이 30분을 기다렸다. 넘기면 죽이고 그 파일들을 실패로 적는다.
+# 그 뒤에 선 러너·커밋 검사가 30분을 기다렸다. 넘기면 죽이고 그 파일들을 실패로 적는다.
 SHARD_TIMEOUT_SEC = float(os.environ.get("S9_SHARD_TIMEOUT", "900"))
 
 
@@ -598,7 +598,7 @@ def red_files_from(text):
 def should_retry(red):
     """실패한 파일이 적을 때만(≤3) 그것만 한 번 더 돈다 — 넷 이상은 코드 결함이다.
 
-    실사고 2026-09-05 (REQ-20260905-009): 전체 스위트 20회 중 10회가 간헐 실패
+    실제 사고 2026-09-05 (REQ-20260905-009): 전체 스위트 20회 중 10회가 간헐 실패
     (매번 다른 서버 시험 1~3건, 단독 재실행은 통과)이었고, 그때마다 전체를
     다시 돌려 하루 1시간 45분을 기다렸다. 규약 17조가 말한 대로 **실패한 것만
     좁혀서** 다시 돈다 — 실패한 파일 하나는 수초, 전체는 5~13분이다.
@@ -670,7 +670,7 @@ def run_sharded(pats, jobs, bump=None, skip=()):
         # stdin 을 물려받는데, 커밋 훅 아래에서 그것은 EOF 가 오지 않는 소켓이다.
         # 그러면 시험이 부른 `s9` 가 입력을 기다리며 **영원히 선다** — 실측
         # 2026-09-04: `s9 new request` 하나가 1시간 41분을 그렇게 서 있었고,
-        # 게이트가 통째로 멈춰 커밋이 끝나지 않았다. 실패보다 나쁘다: 실패는
+        # 검사가 통째로 멈춰 커밋이 끝나지 않았다. 실패보다 나쁘다: 실패는
         # 보이는데 멈춤은 「오래 걸리나 보다」로 보인다.
         #
         # 자식마다 고치는 대신 여기서 한 번 끊는다 — 시험이 stdin 을 물려주는
@@ -778,8 +778,8 @@ def run_sharded(pats, jobs, bump=None, skip=()):
 def patterns(argv):
     """인자들을 discovery 패턴으로 바꾼다 (REQ-20260829-006).
 
-    커밋 게이트는 담긴 테스트 이름을 **여럿** 넘긴다. 예전에는 sys.argv[1] 만
-    써서 두 번째부터는 아무 말 없이 안 돌았고, 게이트는 그걸 통과로 읽었다.
+    커밋 검사는 담긴 테스트 이름을 **여럿** 넘긴다. 예전에는 sys.argv[1] 만
+    써서 두 번째부터는 아무 말 없이 안 돌았고, 검사는 그걸 통과로 읽었다.
 
     'x' · 'test_x' · 'tests/test_x.py' 세 형태를 모두 받는다.
     """
@@ -883,14 +883,14 @@ def discover(pats):
 def full_suite_green(repo=None):
     """지금 이 tree에서 **전체 스위트**가 통과였던 적이 있나 (REQ-20260903-012).
 
-    스위트를 돌리지 않는다 — 기록 하나를 볼 뿐이다. 커밋 게이트가 이것을 묻는다:
+    스위트를 돌리지 않는다 — 기록 하나를 볼 뿐이다. 커밋 검사가 이것을 묻는다:
     전체를 매번 돌리면 규율이 먼저 죽고, 아무것도 안 보면 실패한 채로 들어간다.
     지문을 못 재면(git 밖 등) **모른다고 답한다** — 모르는 것을 통과로 세면
-    이 문이 있으나 마나다.
+    이 검사가 있으나 마나다.
     """
     fp = tree_fingerprint(repo)
     # cover=False: 「전체가 통과였나」는 전체 기록으로만 답한다 — 부분집합
-    # 기록으로 그렇다고 답하면 넓은 변경의 커밋 문이 거짓 통과를 본다.
+    # 기록으로 그렇다고 답하면 넓은 변경의 커밋 검사가 거짓 통과를 본다.
     return bool(fp) and green_seen(patterns([]), fp, cover=False)
 
 
@@ -898,7 +898,7 @@ LAST_RED = os.path.join(REPO, "state", "tests-last-red.json")
 
 
 def record_last_red(files, fp=None):
-    """전체 실행이 실패했다는 기록 — 커밋 문의 **실패 시 커밋 차단** 재료 (REQ-20260905-010).
+    """전체 실행이 실패했다는 기록 — 커밋 검사의 **실패 시 커밋 차단** 재료 (REQ-20260905-010).
 
     전체 스위트는 commit 뒤 배경에서 돈다. 그래서 실패는 막는 대신 **남겨야**
     한다: 마지막 실패가 마지막 통과보다 새로우면 다음 code 커밋을 세운다.
@@ -945,7 +945,7 @@ def record_full_green(sha=""):
 def full_green_age(repo=None):
     """마지막 **전체 스위트** 통과 기록의 나이(초) — tree 가 달라도 센다. 없으면 None.
 
-    넓게 닿는 파일의 작은 변경을 커밋할 때 게이트가 묻는다 (REQ-20260905-009):
+    넓게 닿는 파일의 작은 변경을 커밋할 때 검사가 묻는다 (REQ-20260905-009):
     지금 tree의 전체 통과는 없어도, 몇 시간 안에 전체가 통과가었고 스모크∪변경이
     지금 통과면 커밋을 세우지 않는다 — 전체는 뒤에 한 번 돌려 두면 된다.
     두 기록 중 새것을 센다: 지문 기록(이 트리의 통과)과 시각 기록(commit 의 통과).
@@ -980,7 +980,7 @@ def main():
     if any(a in ("--help", "-h") for a in sys.argv[1:]):
         print(USAGE)
         return 0
-    # 돌리지 않고 묻기만 하는 갈래 (REQ-20260903-012) — 커밋 게이트가 쓴다.
+    # 돌리지 않고 묻기만 하는 갈래 (REQ-20260903-012) — 커밋 검사가 쓴다.
     # 임시 루트도 만들지 않는다: 이 갈래는 시험을 한 건도 돌지 않는다.
     if "--is-green" in sys.argv[1:]:
         return 0 if full_suite_green() else 1
@@ -998,9 +998,9 @@ def main():
     notify_env = async_notify.take_env()
     argv0 = sys.argv[1:]
     explicit = "--remote" in argv0
-    # 기억된 원격은 **전체 실행**에만 쓴다 — 스모크·게이트·표적·--changed 는 이
+    # 기억된 원격은 **전체 실행**에만 쓴다 — 스모크·검사·표적·--changed 는 이
     # 머신의 작업 tree(미커밋 포함)를 재야 하는 자리라 여기서 돈다. 실측 2026-09-05:
-    # 기억시키자 커밋 문의 스모크까지 원격으로 가서 게이트가 넘어졌다.
+    # 기억시키자 커밋 검사의 스모크까지 원격으로 가서 검사가 넘어졌다.
     wants_full = remote_run.is_full_invocation(argv0)
     rkey = None if "--local" in argv0 else (remote_run.remote_key() if (explicit or wants_full) else None)
     if rkey and os.environ.get("S9_TESTS_NESTED") != "1":
@@ -1061,12 +1061,12 @@ def main():
             print(f"[임시자리 정리/시작 전] 지난 실행이 남긴 파일 {len(stale)}개",
                   file=sys.stderr)
     # 이 실행이 만드는 임시 자리는 전부 여기 안에 생기고 끝나면 함께 사라진다
-    # (REQ-20260829-003). 84개 파일에 tearDown 을 심는 대신 문을 여기서 닫는다.
+    # (REQ-20260829-003). 84개 파일에 tearDown 을 심는 대신 검사를 여기서 막는다.
     #
     # **discovery 보다 먼저** 세운다. discovery 는 테스트 모듈을 import 하는데,
     # 여럿이 모듈 수준에서 `TMP = tempfile.mkdtemp(...)` 를 부른다(test_tags,
     # test_session_wake, test_link_integrity, …). 루트를 나중에 세우면 그것들이
-    # 문 밖에 생겨 그대로 남는다 — 전체 스위트 1회에 22개가 그렇게 샜다.
+    # 경로 밖에 생겨 그대로 남는다 — 전체 스위트 1회에 22개가 그렇게 샜다.
     tmp_root, prev_tmpdir = tmproot.make_run_root()
     ok, empty, leaked, ran = False, [], [], False
     t_start = time.time()
@@ -1090,8 +1090,8 @@ def main():
                 print(f"--jobs {jobs} → {cap} 로 묶는다 (동시 상한, "
                       f"S9_MAX_JOBS 로 올릴 수 있다)", file=sys.stderr)
                 jobs = cap
-        # --smoke: 핵심 계약 12파일 · --gate: 스모크 ∪ --changed (커밋 게이트용,
-        # QA 판정: --changed 단독은 bin/s9 변경이 전체 폴백이라 게이트로 부족)
+        # --smoke: 핵심 계약 12파일 · --gate: 스모크 ∪ --changed (커밋 검사용,
+        # QA 판정: --changed 단독은 bin/s9 변경이 전체 폴백이라 검사로 부족)
         smoke = "--smoke" in raw or "--gate" in raw
         if "--gate" in raw and "--changed" not in raw:
             raw.append("--changed")
@@ -1126,7 +1126,7 @@ def main():
         # (`--no-reuse --jobs 8 foo` 는 전체로 읽힌다), `--changed` 는 명령줄에
         # 고른 파일이 아예 안 적혀 있어 되짚을 길이 없다. 여기서는 **고르기가
         # 끝난 뒤의 argv** 를 보므로 그 갈래가 전부 제자리에 온다:
-        # 빈 argv = 전체(게이트가 전체로 물러난 경우 포함) · smoke = 스모크 ·
+        # 빈 argv = 전체(검사가 전체로 물러난 경우 포함) · smoke = 스모크 ·
         # 그 밖(패턴·`--changed` 가 고른 파일) = 표적.
         job_kind = "full" if not argv else ("smoke" if smoke else "targeted")
         # **같은 것을 두 번 돌지 않는다** (REQ-20260903-010).
@@ -1139,7 +1139,7 @@ def main():
         reuse = ("--no-reuse" not in sys.argv[1:]) and not nested
         fp = tree_fingerprint() if not nested else None
         if reuse and green_seen(pats, fp):
-            # 무엇이 덮었는지 말한다 — 「안 돌았다」만 보이면 사람이 문을
+            # 무엇이 덮었는지 말한다 — 「안 돌았다」만 보이면 사람이 검사를
             # 의심한다 (REQ-20260904-005).
             why = ("이 선택이 방금 통과했다" if _green_fp(pats) == fp
                    else "이 working tree 에서 전체 테스트가 이미 통과했다")
@@ -1281,7 +1281,7 @@ def main():
             # 이 실행이 남긴 풀 서버·감시자는 이 실행이 거둔다 (REQ-20260905-005).
             # 실행 루트를 지운 **뒤**여야 한다 — doctor 는 살아 있는 실행 루트가
             # 있으면 풀의 재양육 서버를 시험 중인 것으로 보고 미룬다. 아무것도
-            # 안 돈 호출(재사용·변경 없음)에는 걸지 않는다 — 그 호출은 게이트가
+            # 안 돈 호출(재사용·변경 없음)에는 걸지 않는다 — 그 호출은 검사가
             # 자주 부르고, 2초를 얹으면 「즉시」라는 계약이 깨진다.
             portpool._reclaim_orphans()
     if leaked:
@@ -1291,7 +1291,7 @@ def main():
               file=sys.stderr)
         return 1
     if empty:
-        # 고른 것이 다 통과해도 실패다 — 커밋 게이트는 "담긴 테스트가
+        # 고른 것이 다 통과해도 실패다 — 커밋 검사는 "담긴 테스트가
         # 통과했다"고 판정하는데, 안 돈 것이 통과로 보이면 그 판정이 거짓이 된다.
         print(f"실패: 고르지 못한 패턴 {len(empty)}개 — {', '.join(empty)}",
               file=sys.stderr)

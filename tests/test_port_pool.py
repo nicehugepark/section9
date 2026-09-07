@@ -693,9 +693,9 @@ if __name__ == "__main__":
 
 
 class ConnectionLoopGate(unittest.TestCase):
-    """게이트 자신을 못박는다 (REQ-20260904-001).
+    """검사 자신을 못박는다 (REQ-20260904-001).
 
-    소스를 훑는 게이트는 조용히 좁아진다 — 2026-09-04 사고가 그랬다. 무엇을
+    소스를 훑는 검사는 조용히 좁아진다 — 2026-09-04 사고가 그랬다. 무엇을
     잡고 무엇을 놓아주는지를 여기서 값으로 고정한다.
     """
 
@@ -746,8 +746,8 @@ class ConnectionLoopGate(unittest.TestCase):
         self.assertIn("while", got[0])
 
     def test_r1_the_old_tight_range_shape_still_falls(self):
-        """앞 시험이 잡던 모양을 새 문도 잡는다 — 좁아지지 않았다."""
-        # 옛 글자 게이트가 이 파일의 **예시**까지 범인으로 세지 않도록
+        """앞 시험이 잡던 모양을 새 경로도 잡는다 — 좁아지지 않았다."""
+        # 옛 글자 검사가 이 파일의 **예시**까지 범인으로 세지 않도록
         # 리터럴 `range(400)` 을 소스에 남기지 않는다.
         self.assertTrue(self.off("""
             def probe(port):

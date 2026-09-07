@@ -4,7 +4,7 @@ viewer 의 읽기 범위는 프로젝트 멤버십(project role viewer)이 기�
 admin 이 `observe = all | slug,…` 와 `observe_until = YYYY-MM-DD` 로 예외를
 얹는다(만료 지나면 무효). 여럿이 쓰는 인스턴스(remote)에서는 미등록 뷰어 전부
 열람(부트스트랩 편의)을 거부로 뒤집는다. 판정은 `doc_visible`·`stream_visible`
-한 쌍, 부여는 `do_user_config_set` 한 문이다.
+한 쌍, 부여는 `do_user_config_set` 한 경로다.
 
 격리: S9_ROOT=mktemp. 실행: python3 tests/ observe_scope
 """

@@ -189,7 +189,7 @@ class TestReworkWatcher(unittest.TestCase):
         # 구멍이었다: 그렇게 시작한 요청의 작업자가 죽으면 후보 자체가 되지
         # 않아 아무도 이어받지 않았고, 2026-09-03 에 넷이 그렇게 멈춰 있었다.
         # 지금은 후보로 서되 `rework_claimed()` 가 막는다 — 아래 두 줄이
-        # 그 문을 직접 두드린다.
+        # 그 경로를 직접 부른다.
         plain = self.cli("eeee5555", "new", "request", "--title", "plain",
                          "--summary", "t", "--goal", "t", "--size", "S",
                          "--user", "alice", "--body", "x").split()[0]

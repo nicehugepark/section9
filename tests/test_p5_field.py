@@ -256,7 +256,7 @@ class TestS4Viewer(unittest.TestCase):
         return out
 
     def test_viewer_cannot_write_documents(self):
-        """만들기·전이·노트가 전부 같은 문장으로 막힌다 — 문은 write_doc 한 곳이다."""
+        """만들기·전이·노트가 전부 같은 문장으로 막힌다 — 경로는 write_doc 한 곳이다."""
         self._denied("new", "request", "--title", "뷰어의 일", "--summary", "s",
                      "--size", "S", "--goal", "g", "--body", "b")
         self._denied("status", self.X, "in-progress", "--note", "n")
@@ -332,7 +332,7 @@ class TestS5SyncFailure(unittest.TestCase):
         네트워크 실패 뒤 60초 동안은 `s9 sync` 조차 전송을 건너뛰고 「sync: local」
         을 낸다(_sync_net_backoff). 사람의 절차서에서는 "1분쯤 뒤 다시" 한 줄이고,
         시험에서는 그 1분을 자는 대신 시계 파일(state/.sync-fail.ts)을 지운다 —
-        기다림을 흉내 내는 것이지 게이트를 끄는 것이 아니다.
+        기다림을 흉내 내는 것이지 검사를 끄는 것이 아니다.
         """
         self.fx.git("beta", "remote", "set-url", "origin", self.fx.origin)
         try:

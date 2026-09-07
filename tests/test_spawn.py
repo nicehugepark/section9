@@ -1,4 +1,4 @@
-"""세션에서 떼어 띄우는 길은 한 문이다 (REQ-20260903-005).
+"""세션에서 떼어 띄우는 길은 한 경로다 (REQ-20260903-005).
 
 이 저장소가 무언가를 사람 세션과 무관하게 살려 두는 자리는 둘이다 — 상시
 계기와 서버 감시자. 둘 다 `double fork + setsid` 로만 서 있었고, **윈도우
@@ -106,8 +106,8 @@ class Spawn(unittest.TestCase):
         self.assertTrue(self.wait_for(self.out, "표준출력"))
         self.assertTrue(self.wait_for(self.out, "표준오류"))
 
-    # ---- ③ 떼는 자리들이 그 문을 지난다 (인라인 fork 금지) ------------------
-    def test_c1_metrics_detach_uses_the_door(self):
+    # ---- ③ 떼는 자리들이 그 경로를 지난다 (인라인 fork 금지) ------------------
+    def test_c1_metrics_detach_uses_the_path(self):
         with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         body = src[src.index("def metrics_detach("):
@@ -116,13 +116,13 @@ class Spawn(unittest.TestCase):
         self.assertNotIn("os.fork()", body,
                          "떼는 방법이 여기 인라인으로 다시 생겼다 — "
                          "fork 가 없는 판에서 통째로 안 뜬다")
-        # 떨어져 나온 자식이 들어오는 문이 CLI 에 실제로 있어야 한다
+        # 떨어져 나온 자식이 들어오는 진입점이 CLI 에 실제로 있어야 한다
         self.assertTrue(re.search(r'"prune",\s*"run"', src)
                         or re.search(r'"run",\s*"prune"', src),
                         "metrics run 진입점이 CLI 에 없다")
 
-    def test_c1b_guard_detach_uses_the_door_too(self):
-        """감시자도 같은 문을 지난다 — 둘 중 하나만 옮기면 반쪽이다."""
+    def test_c1b_guard_detach_uses_the_path_too(self):
+        """감시자도 같은 경로를 지난다 — 둘 중 하나만 옮기면 반쪽이다."""
         with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
         body = src[src.index("def _guard_detach("):

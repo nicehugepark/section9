@@ -223,7 +223,7 @@ class TestProjectApi(unittest.TestCase):
 
             # ── 실패(거부 4종 — 핸들러는 do_* 중계만, 옆문 없음) ────────────────
 
-            # F1. 미등록 사용자 생성 거부: CLI(단일 경로 게이트) + API(as 대리)
+            # F1. 미등록 사용자 생성 거부: CLI(단일 경로 검사) + API(as 대리)
         with self.subTest("09_unregistered_create_denied"):
                 r = self.cli("project", "add", "ghostp", "--user", "ghost",
                              expect=None)
@@ -249,7 +249,7 @@ class TestProjectApi(unittest.TestCase):
                 self.assertEqual(code, 400, res)
                 self.assertEqual(self.proj("demo")["status"], "active")
 
-            # F4. 비 owner(maintainer) status 거부 — own 게이트
+            # F4. 비 owner(maintainer) status 거부 — own 검사
         with self.subTest("12_maintainer_status_denied"):
                 code, res = self.post("/api/project/set",
                                       {"as": "bob", "slug": "demo",

@@ -1,4 +1,4 @@
-"""두 OS 가 함께 쓰는 clone 은 문 하나로 거부한다 (REQ-20260906-056).
+"""두 OS 가 함께 쓰는 clone 은 검사 하나로 거부한다 (REQ-20260906-056).
 
 state/ 는 이 머신의 살림이고 윈도우와 WSL 은 서로의 pid 를 못 보는 두 머신이다.
 자리마다 고치지 않고 shared_clone_reason 한 곳이 판정하며 s9-install 과 s9 doctor 가

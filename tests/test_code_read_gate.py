@@ -1,7 +1,7 @@
-"""저장소 소스를 화면에 내주는 문 (REQ-20260828-028-62x6, 서버측).
+"""저장소 소스를 화면에 내주는 경로 (REQ-20260828-028-62x6, 서버측).
 
 `/api/asset` 은 **문서 첨부** 전용이고 판정은 `doc_visible` 이다. 코드 파일에는
-대응하는 판정이 없었고, 그 자리에 새 문을 내는 것이 이 요청이다. security-engineer
+대응하는 판정이 없었고, 그 자리에 새 우회를 내는 것이 이 요청이다. security-engineer
 판정(문서의 decision 노트)의 결론은 하나다 — **허용목록이되 허용하는 것은 "주인이
 없는 디렉터리" 다섯뿐**이다: `bin/ docs/ harness/ tests/ web/` + 최상위
 `README.md·CLAUDE.md·pyproject.toml`.
@@ -386,7 +386,7 @@ class CodeVisibleFunction(unittest.TestCase):
     def test_f1_it_lives_next_to_doc_visible(self):
         """판정 자리는 `doc_visible` 바로 위, 형제로.
 
-        떨어져 있으면 다음에 읽는 사람이 세 번째 게이트를 발명한다.
+        떨어져 있으면 다음에 읽는 사람이 세 번째 검사를 발명한다.
         """
         with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
@@ -438,7 +438,7 @@ class CodeVisibleFunction(unittest.TestCase):
             with self.subTest(rel=rel):
                 self.assertTrue(self.m.code_visible(rel), rel)
 
-    def test_h1_instance_switch_closes_the_door(self):
+    def test_h1_instance_switch_closes_the_gate(self):
         """S9. `S9_CODE_READ=off` 면 열리던 것도 닫힌다 (인스턴스 스위치).
 
         사용자별 등급은 두지 않는다 — 등급을 두면 "코드에 주인이 없다" 는 이

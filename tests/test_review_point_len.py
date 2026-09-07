@@ -143,7 +143,7 @@ class ReviewPointLen(unittest.TestCase):
     # --- E. 예외 ---
 
     def test_e1_force_passes(self):
-        """사람 판정만 남은 예외는 --force — 기존 게이트들과 같은 문 하나."""
+        """사람 판정만 남은 예외는 --force — 기존 검사들과 같은 경로 하나."""
         doc = self.mk()
         self.cli("status", doc, "review", "--note", "가" * 500, "--force")
         self.assertIn("-> review", self.body(doc))

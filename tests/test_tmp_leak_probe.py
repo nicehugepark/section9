@@ -13,7 +13,7 @@ import unittest
 LEAK = os.environ.get("S9_TMP_LEAK_PROBE") == "1"
 
 # 모듈 수준에서 만드는 자리 — discovery 가 import 하는 그 순간에 생긴다.
-# 러너가 임시 루트를 discovery **뒤에** 세우면 이것이 문 밖에 남는다.
+# 러너가 임시 루트를 discovery **뒤에** 세우면 이것이 경로 밖에 남는다.
 # 여러 실제 테스트(test_tags·test_session_wake·test_link_integrity 등)가
 # 정확히 이 모양이라, 미끼도 같은 모양이어야 한다.
 MODULE_TMP = tempfile.mkdtemp(prefix="s9probe-")

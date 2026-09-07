@@ -107,7 +107,7 @@ class Lease(unittest.TestCase):
                 self.assertEqual(self.lease(rid)["machine"], "here")
                 body = self.m.read_doc(self.m.locate(rid))[1]
                 self.assertIn("lease: takeover me@there -> me@here", body)
-                # CLI 도 같은 문
+                # CLI 도 같은 경로
                 rid2 = self.new()
                 self.set_lease(rid2)
                 r = subprocess.run([S9, "claim", rid2, "--takeover"], capture_output=True,

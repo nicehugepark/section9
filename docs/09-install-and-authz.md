@@ -63,7 +63,7 @@ profile 의 github 계정으로 collaborator permission 을 물어 admin↔admin
 read/triage↔viewer 로 대조하고 어긋나면 경고한다. public 리포에 vault/ 가 track 돼 있으면
 같은 항목이 데이터 노출을 경고한다(데이터는 사설 인스턴스 리포로, docs/08).
 
-**B. GitHub 서버측 (우회 불가능한 최종 게이트)** — `.github/CODEOWNERS` 의
+**B. GitHub 서버측 (우회 불가능한 최종 검사)** — `.github/CODEOWNERS` 의
 `@OWNER` 를 실제 admin 계정으로 교체하고, main 브랜치에
 branch protection(PR 필수 + Code Owners 리뷰 필수)을 설정한다.
 이러면 A를 우회해도(로컬은 인가만 있고 인증이 없으므로 S9_USER 위조 가능)

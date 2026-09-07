@@ -217,7 +217,7 @@ class TheDeadWorkerReleasesTheWork(IsolatedVault):
                 else:
                     os.environ["S9_AUTO_RESUME_DISABLE"] = old
             self.assertNotEqual(res["action"], "busy", res["message"])
-            # 멈춤 판정까지 통과해 스폰 문 앞에 섰다는 것이 이 시나리오의 결론이다
+            # 멈춤 판정까지 통과해 스폰 검사 앞에 섰다는 것이 이 시나리오의 결론이다
             self.assertEqual(res["action"], "disabled", res["message"])
             self.assertEqual(res["mins"], 20)
 

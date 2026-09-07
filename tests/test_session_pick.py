@@ -155,8 +155,8 @@ class TestWakeCarriesAccount(unittest.TestCase):
         self.assertIn("CLAUDE_CONFIG_DIR=", r["cmd"])
         self.assertIn("새-계정", r["cmd"])
 
-    # P9. 기본 계정(@home)은 아무것도 덧붙이지 않는다 — 집으로 돌아오는 문에
-    #     환경변수를 달면 그 문이 다른 문이 된다.
+    # P9. 기본 계정(@home)은 아무것도 덧붙이지 않는다 — 집으로 돌아오는 경로에
+    #     환경변수를 달면 그 경로가 다른 경로가 된다.
     def test_p9_home_account_adds_nothing(self):
         with mock.patch.object(mod, "chat_target", lambda *_a, **_k: None), \
              mock.patch.dict(os.environ, {"S9_WAKE_DRYRUN": "1"}):
@@ -277,7 +277,7 @@ class TestPickerScreen(unittest.TestCase):
     def test_p21_picker_offers_a_way_out_when_nowhere_to_go(self):
         sh = self._fn("sessShape")
         self.assertIn("somewhere", sh, "갈 곳이 있는지 안 따진다")
-        self.assertIn("SESS_FOOT", sh, "갈 곳이 없을 때 나가는 문이 없다")
+        self.assertIn("SESS_FOOT", sh, "갈 곳이 없을 때 나가는 경로가 없다")
         # 앞에 `waiting ||` 이 붙어도(REQ-20260902-065: 받는 중에는 없다고
         # 말하지 않는다) 계약은 그대로다 — 갈 곳이 있으면 발치가 빈다.
         self.assertIn('somewhere ? ""', sh,

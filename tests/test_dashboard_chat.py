@@ -455,18 +455,18 @@ class TestDashboardChat(unittest.TestCase):
             self.cli("bind", "ended", "1", env_extra=env_w)
 
     # C19. 사람 판정 면제 (REQ-20260825-030): 대시보드 승인(review→done)은
-    #      goal 미기재여도 성공 — 게이트는 에이전트용, CLI done은 여전히 거부
+    #      goal 미기재여도 성공 — 검사는 에이전트용, CLI done은 여전히 거부
     def test_c19_dashboard_approve_bypasses_goal_gate(self):
         self.touch_stream()
-        code, res = self.api("/api/chat", {"text": "게이트 면제 검증용 더미 요청 만들어줘"})
+        code, res = self.api("/api/chat", {"text": "검사 면제 검증용 더미 요청 만들어줘"})
         self.assertEqual(code, 200, res)
         rid = res["req"]
         env_s = {"S9_SESSION": self.sid}
-        # 제목 정리(042 게이트 통과) — goal은 일부러 비워 둔다(면제 검증 대상)
-        self.cli("set", rid, "--title", "게이트 면제 검증", env_extra=env_s)
+        # 제목 정리(042 검사 통과) — goal은 일부러 비워 둔다(면제 검증 대상)
+        self.cli("set", rid, "--title", "검사 면제 검증", env_extra=env_s)
         self.cli("status", rid, "in-progress", env_extra=env_s)
         self.cli("status", rid, "review", "--note", "판정 요청", env_extra=env_s)
-        # CLI done은 goal 게이트에 막힌다 (기존 규율 유지)
+        # CLI done은 goal 검사에 막힌다 (기존 규율 유지)
         r = self.cli("status", rid, "done", env_extra=env_s, expect=None)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("goal", r.stdout + r.stderr)
@@ -536,24 +536,24 @@ class TestDashboardChat(unittest.TestCase):
         last = self.inbox(self.sid)[-1]
         self.assertNotIn(rid, last.get("review_refs") or [], last)
 
-    # C22. 원문 제목 게이트 (REQ-20260825-042): auto-audit 임시 제목 그대로면
+    # C22. 원문 제목 검사 (REQ-20260825-042): auto-audit 임시 제목 그대로면
     #      에이전트 전이 거부, 제목 정리 후 통과. 대시보드(judge) 전이는 허용.
     def test_c22_raw_title_gate(self):
         self.touch_stream()
         code, res = self.api("/api/chat", {
-            "text": "게이트 검증용으로 아주 길게 쓴 요청 원문인데 제목이 이걸 그대로 잘라 쓰게 만들어줘"})
+            "text": "검사 검증용으로 아주 길게 쓴 요청 원문인데 제목이 이걸 그대로 잘라 쓰게 만들어줘"})
         self.assertEqual(code, 200, res)
         rid = res["req"]
         env_s = {"S9_SESSION": self.sid}
         r = self.cli("status", rid, "in-progress", env_extra=env_s, expect=None)
         self.assertNotEqual(r.returncode, 0)             # 원문 제목 → 거부
         self.assertIn("제목", r.stdout + r.stderr)
-        # 대시보드 드래그(judge)는 사람 행위 — 게이트 미적용
+        # 대시보드 드래그(judge)는 사람 행위 — 검사 미적용
         code, res = self.api("/api/status", {"id": rid, "to": "in-progress",
                                              "note": "drag"})
         self.assertEqual(code, 200, res)
         # 제목 정리 후 에이전트 전이 통과
-        self.cli("set", rid, "--title", "게이트 검증", "--goal", "g",
+        self.cli("set", rid, "--title", "검사 검증", "--goal", "g",
                  env_extra=env_s)
         self.cli("status", rid, "review", "--note", "ok", env_extra=env_s)
 

@@ -253,14 +253,14 @@ class GraphFit(unittest.TestCase):
         with self.subTest("physics_can_be_settled_by_hand"):
                 self.assertRegex(self.src, r"settle: n => \{ for \(let i = 0; i < \(n \|\| 0\); i\+\+\)",
                                  "물리를 손으로 돌리는 이음새가 없다")
-                # **루프와 같은 관문을 지나야 같은 것을 잰다.** 관문 없이 계속 돌리면 다 식은
+                # **루프와 같은 경로를 지나야 같은 것을 잰다.** 경로 없이 계속 돌리면 다 식은
                 # 뒤에도 밀어내는 힘만 남아 노드가 끝없이 흩어진다(실측: 월드 상자 28,330px).
                 # 그건 사용자가 보는 그래프가 아니라 진단이 만들어 낸 그래프다.
                 seam = self.src[self.src.index("settle: n =>"):]
                 self.assertIn("if (st.alpha > 0.006) step();", seam[:160],
                               "진단이 물리를 루프보다 오래 돌려 없는 그래프를 만든다")
                 self.assertIn("if (st.alpha > 0.006) step();", self._fn("loop"),
-                              "루프의 관문이 달라졌다 — 진단과 어긋난다")
+                              "루프의 경로가 달라졌다 — 진단과 어긋난다")
                 self.assertIn("[?&]gsettle=", self.src, "진단 파라미터 ?gsettle 이 없다")
                 # 다른 진단(타이머)보다 먼저 돌아야 자리 잡힌 판을 잰다
                 self.assertLess(self.src.index("[?&]gsettle="), self.src.index("[?&]goff"),

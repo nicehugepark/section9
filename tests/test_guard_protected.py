@@ -3,7 +3,7 @@
 `projects/<slug>/agents/*.md` 는 워커 프롬프트 서두에 주입되고 `.claude/agents` 로
 미러된다. `users/<u>/skills|agents` 는 `~/.claude` 에 symlink 된다. 데이터 경로에
 산다는 이유로 s9-guard·CODEOWNERS 보호 밖이었다. 역할(role:) 변경과 토큰 모양의
-값도 같은 게이트에서 막는다.
+값도 같은 검사에서 막는다.
 
 실행: python3 tests/ guard_protected
 """

@@ -1,14 +1,14 @@
 """러너가 넘겨받은 패턴을 전부 도는가 (REQ-20260829-006).
 
-커밋 게이트(bin/s9-guard)는 스테이지된 테스트 파일 이름을 전부 모아
+커밋 검사(bin/s9-guard)는 스테이지된 테스트 파일 이름을 전부 모아
 `python3 tests/ a b c` 로 넘긴다. 그런데 러너는 sys.argv[1] 하나만 패턴으로
-썼다 — 두 번째부터는 아무 말 없이 선택되지 않고, 게이트는 "담긴 테스트가
+썼다 — 두 번째부터는 아무 말 없이 선택되지 않고, 검사는 "담긴 테스트가
 통과했다"고 판정했다. 실제로 `python3 tests/ commit_gate streams_untracked` 가
 commit_gate 만 돌고 있었다.
 
 이 파일이 못박는 것은 둘이다: 전부 돈다는 것, 그리고 **못 고른 패턴이 있으면
 실패로 끝난다**는 것. 후자가 핵심이다 — '안 돌았다'가 '통과했다'로 보이면
-게이트는 장식이다.
+검사는 장식이다.
 
 실행: python3 tests/ runner_patterns
 """
@@ -45,7 +45,7 @@ class Patterns(unittest.TestCase):
             # 조각 형태는 넓힌다 — 사람이 치는 것.
             for arg in ("uid", "test_uid"):
                 self.assertEqual(runner.patterns([arg]), ["test_*uid*.py"], arg)
-            # 정확한 파일명은 넓히지 않는다 (REQ-20260830-029): 커밋 게이트·--smoke·
+            # 정확한 파일명은 넓히지 않는다 (REQ-20260830-029): 커밋 검사·--smoke·
             # --changed 가 고른 파일이 이웃(test_uid_extra 등)까지 끌고 오면 계층과
             # 선택의 뜻이 사라진다. 정확 일치도 그 파일 하나는 그대로 돈다.
             self.assertEqual(runner.patterns(["tests/test_uid.py"]),
@@ -106,7 +106,7 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-1500:])
 
 class GateHandsOffEveryName(unittest.TestCase):
-    """R6. 게이트가 만드는 이름 목록이 러너에서 전부 선택된다."""
+    """R6. 검사가 만드는 이름 목록이 러너에서 전부 선택된다."""
 
     def setUp(self):
         sp = importlib.util.spec_from_loader(
@@ -123,7 +123,7 @@ class GateHandsOffEveryName(unittest.TestCase):
                  if f.startswith("tests/test_") and f.endswith(".py")]
         self.assertEqual(names, ["uid", "tags", "commit_gate"])
         suite, empty = runner.discover(runner.patterns(names))
-        self.assertEqual(empty, [], "게이트가 넘긴 이름 중 안 도는 것이 있다")
+        self.assertEqual(empty, [], "검사가 넘긴 이름 중 안 도는 것이 있다")
         got = files_of(suite)
         for f in ("test_uid", "test_tags", "test_commit_gate"):
             self.assertIn(f, got)

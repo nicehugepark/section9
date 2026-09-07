@@ -95,8 +95,8 @@ class Metrics(unittest.TestCase):
         """
         lock = self.m._metrics_lock(self.tmp)
         self.assertIsNotNone(lock)
-        # 시험 자리는 임시 자리라 REQ-20260902-062 의 관문에 먼저 걸린다.
-        # 여기서 재려는 것은 **그 뒤의 멱등**이라 관문만 잠시 연다.
+        # 시험 자리는 임시 자리라 REQ-20260902-062 의 경로에 먼저 걸린다.
+        # 여기서 재려는 것은 **그 뒤의 멱등**이라 검사만 잠시 통과시킨다.
         was = self.m._metrics_transient_root
         self.m._metrics_transient_root = lambda root=None: False
         try:
@@ -195,16 +195,16 @@ class Metrics(unittest.TestCase):
                 self.m._metrics_paths(throwaway)["lock"]))
         finally:
             shutil.rmtree(throwaway, ignore_errors=True)
-        # 실저장소는 임시 자리가 아니다 — 관문이 정상 기동까지 막으면 안 된다.
+        # 실저장소는 임시 자리가 아니다 — 경로가 정상 기동까지 막으면 안 된다.
         repo = os.path.join(HERE, "..")
         self.assertFalse(self.m._metrics_transient_root(repo))
 
     def test_s4d2_a_symlink_does_not_get_the_gate_around(self):
         """S4d-2. 임시 자리 판정은 **realpath** 로 잰다.
 
-        경로 글자만 보면 집 안에 걸어 둔 링크 하나로 관문이 열린다 — 링크는
+        경로 글자만 보면 집 안에 걸어 둔 링크 하나로 검사가 통과시킨다 — 링크는
         임시 자리처럼 생기지 않았지만 가리키는 곳은 임시 자리다. 겹쳐 뜨는
-        수집기를 막는 관문이 그렇게 우회되면 막은 적이 없는 것과 같다.
+        수집기를 막는 경로가 그렇게 우회되면 막은 적이 없는 것과 같다.
         """
         real = tempfile.mkdtemp(prefix="s9metlink-")
         link = os.path.join(HERE, ".s9metlink-probe")
@@ -225,7 +225,7 @@ class Metrics(unittest.TestCase):
     def test_s4e_the_collector_leaves_when_its_place_is_gone(self):
         """S4e. 제 잠금이 사라진 수집기는 다음 바퀴에 스스로 물러난다.
 
-        관문은 앞으로 뜰 것만 막는다 — 이미 떠 있던 것이 자리를 잃고도 계속
+        경로는 앞으로 뜰 것만 막는다 — 이미 떠 있던 것이 자리를 잃고도 계속
         도는 자리가 이 결함의 나머지 반이다.
         """
         p = self.m._metrics_paths(self.tmp)
@@ -355,17 +355,17 @@ class Metrics(unittest.TestCase):
         self.assertIn("밖으로 못 나갔다", v["verdict"])
         self.assertEqual(v["link_fail"], 0)
 
-        # L5·L6. 링크를 모르거나(옛 표본·문 없는 판) 아예 없으면 종전 문구 —
+        # L5·L6. 링크를 모르거나(옛 표본·검사 없는 판) 아예 없으면 종전 문구 —
         # 없는 근거로 판정하지 않는다.
         v = self.m.metrics_verdict([sample(None)])
         self.assertIn("회선 —", v["verdict"])
         self.assertNotIn("회선이 없다", v["verdict"])
 
-    def test_s12_the_local_lane_answers_from_a_door(self):
-        """S12. 국소 갈래는 **문** 안에서 판을 가른다 (DOC-20260903-004).
+    def test_s12_the_local_lane_answers_from_a_path(self):
+        """S12. 국소 갈래는 **경로** 안에서 판을 가른다 (DOC-20260903-004).
 
         원시 `/proc` 읽기를 늘리면 맥·윈도우가 같이 걸린다 — 그래서 읽는 자리를
-        `link_backend()` 한 문에 두고, 문이 없는 판에서는 「모른다」고 답한다.
+        `link_backend()` 한 경로에 두고, 그 경로가 없는 판에서는 「모른다」고 답한다.
         모르는 것을 「붙어 있다」로 세면 이 갈래는 대조군이 아니라 거짓말이 된다.
         """
         be = self.m.link_backend()

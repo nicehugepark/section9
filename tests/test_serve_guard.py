@@ -289,7 +289,7 @@ class GuardProcessTest(unittest.TestCase):
 
     @staticmethod
     def _pids(port):
-        """그 포트를 듣고 있는 pid 들 — 본체와 **같은 문**(`_port_owner_pid`)을
+        """그 포트를 듣고 있는 pid 들 — 본체와 **같은 경로**(`_port_owner_pid`)을
         지난다. 예전엔 `ss -ltnp` 를 직접 불렀는데 맥에는 ss 가 없어 4건이
         FileNotFoundError 로 오류났다 (REQ-20260906-010)."""
         pid = s9._port_owner_pid(port)

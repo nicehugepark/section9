@@ -1,15 +1,15 @@
-"""폴링 폭풍에도 서버가 산다 — TTL 스냅샷 게이트 (REQ-20260831-002-62x6).
+"""폴링 폭풍에도 서버가 산다 — TTL 스냅샷 검사 (REQ-20260831-002-62x6).
 
-001(재파싱 관문 캐시) 마감 뒤에도 라이브가 죽었다: 브라우저 재시도 폭풍
+001(재파싱 경로 캐시) 마감 뒤에도 라이브가 죽었다: 브라우저 재시도 폭풍
 (ss 실측 ESTABLISHED 95연결)이 요청마다 0.4~1.7s 의 신선도 스캔
 (catalog_with_live 0.81s·session_rows 1.68s — streams_glob 181회·/proc 43회/패스)
 을 연결 수만큼 곱했다. 느려짐→클라 타임아웃→재연결의 자기 유지 나선.
 
-고침: 001 의 공유 게이트(_share_default_pass)에 TTL 스냅샷을 얹는다 —
+고침: 001 의 공유 검사(_share_default_pass)에 TTL 스냅샷을 얹는다 —
 serve 기동 시에만 POLL_SNAPSHOT_SEC=2.0 (CLI·시험 기본 0 = 매번 신선).
 TTL 안이라도 지문(카탈로그 stat + 서버 POST 카운터)이 바뀌면 재계산 —
 전이·세우기 직후의 조회가 낡은 화면을 받지 않는다. 행동 경로(chat_target)는
-게이트 밖 — tail 종료 0.2s 내 반영 계약(test_dashboard_chat C9/C18)이 산다.
+검사 밖 — tail 종료 0.2s 내 반영 계약(test_dashboard_chat C9/C18)이 산다.
 
 실행: python3 tests/ poll_snapshot
 """
@@ -61,7 +61,7 @@ class PollSnapshot(unittest.TestCase):
         return path
 
     def counted(self, gate):
-        """게이트의 계산부를 세는 래퍼로 바꾼다 — {'n'} 카운터를 돌려준다."""
+        """검사의 계산부를 세는 래퍼로 바꾼다 — {'n'} 카운터를 돌려준다."""
         calls = {"n": 0}
         real = gate._compute
 
@@ -160,15 +160,15 @@ class PollSnapshot(unittest.TestCase):
                 if "POLL_SNAPSHOT_SEC = " in l and not l.lstrip().startswith("#")]
         self.assertEqual(len(hits), 2, hits)   # 모듈 기본 0.0 + cmd_serve 2.0
 
-    # ---- T6. 계약: 행동 경로는 게이트 밖 --------------------------------
+    # ---- T6. 계약: 행동 경로는 검사 밖 --------------------------------
     def test_t6_chat_target_is_not_gated(self):
         self.assertFalse(hasattr(self.m.chat_target, "_compute"),
-                         "chat_target 이 게이트를 지난다 — tail 종료 0.2s 내 "
+                         "chat_target 이 검사를 지난다 — tail 종료 0.2s 내 "
                          "반영 계약(C9/C18)이 깨진다")
         src = open(S9_SRC, encoding="utf-8").read()
         self.assertNotIn("@_share_default_pass\ndef chat_target", src)
 
-    # ---- T7. sessions 도 같은 게이트 — limit 명시는 우회 ----------------
+    # ---- T7. sessions 도 같은 검사 — limit 명시는 우회 ----------------
     def test_t7_session_rows_shares_and_bypasses(self):
         self.m.POLL_SNAPSHOT_SEC = 2.0
         calls = self.counted(self.m.session_rows)
@@ -178,7 +178,7 @@ class PollSnapshot(unittest.TestCase):
         self.m.session_rows(limit=5)
         self.assertEqual(calls["n"], 2, "limit 명시 호출이 스냅샷을 얻어 탔다")
 
-    # ---- T9. 응답 캐시는 게이트 **뒤**에 선다 — 두 번째 판정 금지 -------
+    # ---- T9. 응답 캐시는 검사 **뒤**에 선다 — 두 번째 판정 금지 -------
     def test_t9_response_cache_sits_behind_the_gate(self):
         src = open(S9_SRC, encoding="utf-8").read()
         i = src.index('elif parsed.path == "/api/catalog"')
@@ -186,7 +186,7 @@ class PollSnapshot(unittest.TestCase):
         g = blk.index("catalog_with_live()")
         c = blk.index("_CATALOG_RESP")
         self.assertLess(g, c,
-                        "응답 캐시가 게이트보다 먼저 답한다 — TTL·지문 "
+                        "응답 캐시가 검사보다 먼저 답한다 — TTL·지문 "
                         "무효화를 우회하는 두 번째 신선도 판정이 생겼다")
         self.assertIn('_state["seq"]', blk,
                       "응답 캐시 키에 스냅샷 세대가 없다 — 새 계산 뒤에도 "

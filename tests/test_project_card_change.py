@@ -1,4 +1,4 @@
-"""카드에서 프로젝트 바꾸기는 한 문을 지난다 (REQ-20260906-053).
+"""카드에서 프로젝트 바꾸기는 한 경로를 지난다 (REQ-20260906-053).
 
 `s9 set <id> --project <slug>` 와 `POST /api/doc/set` 이 do_set 하나를 부른다 —
 등록 프로젝트에 contribute 할 수 있는 사람만, History 한 줄, project_source=manual.
@@ -97,8 +97,8 @@ class ProjectCardChange(unittest.TestCase):
         self.assertEqual(res["changed"], ["project"])
         self.assertEqual(self.meta(rid)[0].get("project", ""), "")
 
-    # P5. CLI 도 같은 문 — s9 set --project 가 거절하고 종료 코드로 말한다
-    def test_p5_cli_uses_the_same_door(self):
+    # P5. CLI 도 같은 경로 — s9 set --project 가 거절하고 종료 코드로 말한다
+    def test_p5_cli_uses_the_same_path(self):
         rid = self.new()
         r = self.cli("set", rid, "--project", "pc", user="alice")
         self.assertNotEqual(r.returncode, 0)
