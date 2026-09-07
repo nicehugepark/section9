@@ -188,6 +188,124 @@ class Orphan(unittest.TestCase):
         self.assertEqual(out["alive"], 1)
 
 
+class Nameless(unittest.TestCase):
+    """표식 없는 이름으로 띄운 캡처 브라우저도 세고 회수한다 (REQ-20260907-036).
+
+    실측 2026-09-07 14:31: 주인 없는 headless chrome.exe 5건이 살아 있었고
+    (가장 오래된 것 18시간 37분), 프로필 이름이 s9roster-2054874 · s9cdp95b ·
+    s9belt-3523657 · s9projclick 였다. 전부 `s9 shot` 을 거치지 않고 검증 중에
+    임시로 지은 이름이라 SHOT_MARKERS("s9shot-"·"cdp-prof-")에 걸리지 않았고,
+    회수 기록은 그동안 「브라우저 0개」였다.
+
+    이름 목록을 늘리는 것은 해결이 아니다 — 다음 새 이름에서 또 넘어진다.
+    그래서 판정은 **띄운 방식**으로 한다: `--headless` + 캡처용 임시 프로필
+    뿌리. 여기 고정하는 계약은 그 판정이 남의 브라우저에는 절대 닿지 않는다는
+    것까지다.
+    """
+
+    REAL = [  # 그날의 명령줄 형태 (프로필 이름만 실측 그대로)
+        "chrome.exe --headless=new --disable-gpu "
+        "--user-data-dir=C:\\Temp\\s9roster-2054874 --no-first-run",
+        "chrome.exe --headless=new --user-data-dir=C:\\Temp\\s9roster-2058774",
+        "chrome.exe --headless=new --user-data-dir=C:\\Temp\\s9cdp95b",
+        "chrome.exe --headless=new --user-data-dir=C:\\Temp\\s9belt-3523657",
+        "chrome.exe --headless=new --user-data-dir=C:\\Temp\\s9projclick",
+    ]
+
+    def setUp(self):
+        self.killed = []
+        self._kill = doctor.kill_win
+        doctor.kill_win = lambda pids: (self.killed.extend(pids), len(pids))[1]
+        self._wintemp = doctor.WIN_TEMP
+        doctor.WIN_TEMP = "/mnt/c/Temp"          # 판정만 — 지우기는 아래에서 막는다
+        self._rmtree = doctor.shutil.rmtree
+        self.removed = []
+        doctor.shutil.rmtree = lambda path, **kw: self.removed.append(path)
+        self._isdir = doctor.os.path.isdir
+        doctor.os.path.isdir = lambda path: (
+            True if str(path).startswith("/mnt/c/Temp/") else self._isdir(path))
+        self._which = doctor.shutil.which
+        doctor.shutil.which = lambda name: None   # 이름 훑기 경로 무력화
+
+    def tearDown(self):
+        doctor.kill_win = self._kill
+        doctor.WIN_TEMP = self._wintemp
+        doctor.shutil.rmtree = self._rmtree
+        doctor.os.path.isdir = self._isdir
+        doctor.shutil.which = self._which
+
+    def rows(self, cmds, age=66000):
+        return doctor.classify_browsers(
+            [{"pid": 9500 + i, "cmd": c, "age": age}
+             for i, c in enumerate(cmds)])
+
+    def test_unmarked_capture_is_seen(self):
+        """S2 회귀: 그날의 5건이 「브라우저 0개」로 보이던 자리."""
+        seen = self.rows(self.REAL)
+        self.assertEqual(len(seen), 5, "표식 없는 캡처 5건이 전부 보여야 한다")
+        out = doctor.sweep_stale_shots(max_age=600, browsers=seen)
+        self.assertEqual(len(self.killed), 5)
+        self.assertEqual(out["stale"], 5)
+        self.assertEqual(out["alive"], 0)
+
+    def test_other_peoples_browsers_are_untouched(self):
+        """S3 안전선 — 셋 다 우리 것이 아니다. 하나라도 잡히면 남의 브라우저를
+        죽이는 것이라 이 시험이 곧 절대 조건이다."""
+        others = [
+            # ① 사람이 쓰는 브라우저 (headless 아님, 프로필이 임시 뿌리 밖)
+            "chrome.exe --user-data-dir=C:\\Users\\me\\AppData\\Local\\Google\\"
+            "Chrome\\UserData",
+            # ② headless 지만 프로필이 임시 뿌리 밖 — 남의 자동화
+            "chrome.exe --headless=new --user-data-dir=C:\\Users\\me\\bot-profile",
+            # ③ 프로필 인자가 아예 없다
+            "chrome.exe --headless=new https://example.com",
+        ]
+        self.assertEqual(self.rows(others), [])
+        # 우리 것과 섞여 있어도 우리 것만 고른다
+        mixed = self.rows(others + self.REAL[:1])
+        self.assertEqual(len(mixed), 1)
+        self.assertIn("s9roster-2054874", mixed[0]["cmd"])
+
+    def test_windows_and_wsl_spelling_are_one_place(self):
+        r"""S4 경계: `C:\Temp\x` 와 `/mnt/c/Temp/x` 는 같은 자리."""
+        seen = self.rows([
+            "chrome.exe --headless=new --user-data-dir=C:\\Temp\\s9belt-1",
+            "chrome.exe --headless=new --user-data-dir=/mnt/c/Temp/s9belt-1",
+        ])
+        self.assertEqual(len(seen), 2)
+        self.assertEqual({r["marker"] for r in seen}, {"/mnt/c/temp/s9belt-1"},
+                         "같은 프로필이면 캡처 한 건으로 센다")
+
+    def test_children_join_by_profile_and_count_as_one(self):
+        """S5: 캡처 하나가 띄운 프로세스 11개를 1개로 센다 — 자식(렌더러·GPU)은
+        명령줄에 --headless 를 달지 않지만 프로필이 같다."""
+        cmds = ["chrome.exe --headless=new --user-data-dir=C:\\Temp\\s9projclick"]
+        cmds += ["chrome.exe --type=renderer "
+                 "--user-data-dir=C:\\Temp\\s9projclick"] * 10
+        seen = self.rows(cmds, age=30)
+        self.assertEqual(len(seen), 11)
+        out = doctor.sweep_stale_shots(max_age=600, browsers=seen)
+        self.assertEqual(out["alive"], 1, "캡처 1건으로 세야 상한이 뜻을 가진다")
+        self.assertEqual(out["alive_procs"], 11)
+        self.assertEqual(self.killed, [], "아직 나이가 어리면 건드리지 않는다")
+
+    def test_reclaimed_profile_dir_is_removed(self):
+        """S6: 회수한 브라우저의 프로필 디렉터리도 이름과 무관하게 지운다."""
+        out = doctor.sweep_stale_shots(max_age=600, browsers=self.rows(self.REAL))
+        self.assertEqual(out["profiles"], 5)
+        self.assertIn("/mnt/c/Temp/s9projclick", self.removed)
+
+    def test_marker_contract_survives(self):
+        """S1 회귀: 표식이 있는 예전 계약은 그대로다 — 소유자 생존이면 불가침."""
+        mine = os.getpid()
+        seen = self.rows([f"chrome.exe --headless=new "
+                          f"--user-data-dir=C:\\Temp\\s9shot-{mine}"], age=99999)
+        self.assertEqual(seen[0]["marker"], f"s9shot-{mine}")
+        out = doctor.sweep_stale_shots(max_age=600, browsers=seen)
+        self.assertEqual(self.killed, [], "소유자가 살아 있으면 나이와 무관하다")
+        self.assertEqual(out["alive"], 1)
+
+
 class Sweep(unittest.TestCase):
     """프로필 디렉토리도 같은 기준으로 회수한다."""
 

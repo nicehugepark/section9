@@ -306,6 +306,36 @@ def attachment_paths(prompt, session_full, home=None):
     return out
 
 
+def asset_marks(paths):
+    """첨부 경로들을 ingest 가 알아보는 표기로 (REQ-20260907-039).
+
+    예전엔 `[첨부]` 아래 `- 경로` 목록으로 적었는데, `ingest_assets` 가 찾는
+    것은 `[종류: 경로]` 꼴이라 **한 번도 걸리지 않았다** — 터미널로 붙인 그림은
+    vault 에 들어간 적이 없고, 문서에는 `~/.claude/image-cache/…` 라는 이 머신·이
+    계정에만 있는 경로가 글자로 남았다. Claude Code 가 그 캐시를 치우면 그림은
+    사라진다(QST-20260902-012 의 그림이 그렇게 없어졌다).
+
+    종류(Image/File)는 여기서 안 가른다 — 이 스크립트는 s9.py 의 TYPE_GROUPS 를
+    읽지 않으므로 가르게 하면 확장자 목록이 두 벌이 된다. `Attach` 로 적고
+    ingest 의 asset_mark 가 가른다.
+    """
+    return "\n".join(f"[Attach: {os.path.abspath(a)}]" for a in paths)
+
+
+def ingest_assets(env, doc_id):
+    """만든 문서의 첨부를 문서 옆 assets/ 로 옮긴다 — 최선 노력.
+
+    실패해도 조용하다: audit 이 프롬프트를 막지 않는다는 이 훅의 규율이 여기도
+    그대로다(첨부가 못 옮겨진 것보다 프롬프트가 멈추는 것이 나쁘다).
+    """
+    if not doc_id:
+        return
+    try:
+        run(env, "assets", "ingest", doc_id)
+    except Exception:
+        pass
+
+
 def _cmdlines():
     """도는 프로세스들의 명령줄 — s9.proc_table 의 로컬 복제."""
     how = _proc_backend()
@@ -803,13 +833,15 @@ def main():
             qbody = prompt
             qatts = attachment_paths(prompt, data.get("session_id") or "")
             if qatts:
-                qbody += "\n\n[첨부]\n" + "\n".join(f"- {a}" for a in qatts)
+                qbody += "\n\n" + asset_marks(qatts)
             qtitle = first_line[:QUESTION_TITLE_MAX] + (
                 "…" if len(first_line) > QUESTION_TITLE_MAX else "")
             qout = run(env, "new", "question", "--title", qtitle,
                        "--tag", "auto-audit", inp=qbody)
             if qout.returncode == 0 and qout.stdout.split():
                 qst = qout.stdout.split()[0]
+                if qatts:
+                    ingest_assets(env, qst)
                 run(env, "bind", "last_qst", qst)   # Stop 훅의 답 캡처 대상
                 # 목록에도 쌓는다 (REQ-20260827-049) — 한 칸짜리 포인터는 답보다
                 # 빨리 온 다음 질문에 덮여 앞 질문을 잃는다.
@@ -859,7 +891,7 @@ def main():
     body = prompt
     atts = attachment_paths(prompt, data.get("session_id") or "")
     if atts:
-        body += "\n\n[첨부]\n" + "\n".join(f"- {p}" for p in atts)
+        body += "\n\n" + asset_marks(atts)
     # 원문은 stdin으로 전달 (s9 new가 비-tty stdin을 body로 읽음 — /dev/stdin 불요, Windows 호환)
     out = run(env, "new", "request", "--title", title,
               "--tag", "auto-audit", "--origin", "human",   # 사람 입구 (REQ-20260902-018)
@@ -867,6 +899,8 @@ def main():
     if out.returncode != 0:
         return  # audit 실패가 프롬프트를 막으면 안 됨
     doc_id = out.stdout.split()[0]
+    if atts:
+        ingest_assets(env, doc_id)   # 첨부를 문서 옆으로 (REQ-20260907-039)
     # 프로젝트가 안 붙었고 후보가 둘 이상이면 cmd_new 가 「프로젝트 미정 — 후보」 한 줄을
     # 낸다 — 그대로 싣는다. 고르는 것은 리드·사람의 몫이다(LLM 자동 기입 없음).
     projhint = " ".join(l.strip() for l in out.stdout.splitlines()[1:]

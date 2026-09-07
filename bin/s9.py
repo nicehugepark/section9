@@ -1789,7 +1789,7 @@ def catalog_row(meta, path, body=""):
         # 문서를 열지 않고 읽는다. 기록된 적 없으면 빈 값(0 이 아니다).
         "tokens": meta.get("tokens") or "",
         # 질문 문서의 미답 여부 (REQ-20260826-017) — 본문 파생. 다른 타입은 빈 값.
-        "answered": (_answered(body) if meta.get("type") == "question" else ""),
+        "answered": (_answered(body, meta) if meta.get("type") == "question" else ""),
         # 처리 주체 상태 요약 (REQ-20260825-089): 카드 점등이 문서를 다시 열지
         # 않고 "이 요청을 붙잡은 주체가 멈췄는가"를 읽을 수 있게 인덱스에 올린다.
         "agent_state": _contrib_state(meta),
@@ -1840,16 +1840,32 @@ def _tdd_progress(body):
     return {"passed": sum(1 for v in seen.values() if v), "total": len(seen)}
 
 
-def _answered(body):
-    """질문 문서에 답이 붙었는가 — `answer`(또는 `response`) 라벨 노트 유무.
+def _answered(body, meta=None):
+    """질문 문서에 답이 붙었는가 — 답 노트가 붙었거나, 답이 일로 갈라져 나갔거나.
 
     미답을 별도 status로 두지 않은 이유 (DOC-20260826-011): status와 노트가
     어긋나면 '답했는데 미답'이라는 두 번째 진실이 생기고, 전이라는 새 규율을
     사람에게 요구하게 된다 — 그 규율 의존이 애초에 답을 잃어버린 경로다.
     진실은 노트 하나뿐이고 이 값은 언제든 본문에서 재생성된다(TDD 진행률과 같은 패턴).
     `response`도 답으로 세는 것은 Stop 훅 폴백·수동 기록 등 다른 라벨로 들어온
-    답까지 '미답'으로 오표시하지 않기 위해서다."""
-    return bool(re.search(r"(?m)^### \S+ (?:answer|response)\b", body or ""))
+    답까지 '미답'으로 오표시하지 않기 위해서다.
+
+    **갈라져 나간 일도 답이다** (REQ-20260907-043). 답 없는 질문을 세어 보면
+    여럿이 「답은 REQ 로 갔는데 질문 문서가 모른다」였다 — 물음이 곧바로 일이
+    되면 사람은 그 일을 하고, 질문 문서로 돌아와 같은 말을 옮겨 적지 않는다.
+    그 질문을 parent 로 한 문서가 있으면 답은 거기 있고, 질문은 답 없이 남은
+    것이 아니다. children 은 파생을 만들 때 부모 문서에 함께 적히므로
+    (cmd_new 의 parent 처리) 이 값도 지금처럼 **파생**이다 — 새 상태축을
+    만들지 않는다(DOC-20260826-011).
+
+    **`agent-answer` 는 답으로 세지 않는다** (REQ-20260907-040): 에이전트가
+    뒤늦게 찾아 온 답은 사람이 확정하기 전까지 답이 아니다. 정규식이 `answer`
+    앞에 공백을 요구하므로 `agent-answer` 는 걸리지 않는다 — 다만 라벨을
+    `answer-…` 꼴로 지으면 그대로 걸린다(실측). 시험이 그 함정을 지킨다.
+    """
+    if re.search(r"(?m)^### \S+ (?:answer|response)\b", body or ""):
+        return True
+    return bool((meta or {}).get("children"))
 
 
 def _review_point(body):
@@ -3374,6 +3390,23 @@ def _rush_limits(cfg, prio, per_day, per_hour):
     return max(1, per_day - keep), max(1, per_hour - keep)
 
 
+# 사람이 누른 손잡이의 이름들 (REQ-20260907-038). 이 집합에 든 reason 은
+# **사람 예산**(wake_day_count·wake_hour_count)을 쓰고, 사람이 세워 둔 요청도
+# 곧바로 이어갈 수 있다 — 재는 것이 「겹쳐 붙는 손」인데 사람이 직접 누른
+# 자리에는 겹칠 손이 없기 때문이다.
+#
+# 한 곳에 모으는 이유: 예전엔 `reason == "wake"` 라는 문자열 비교가 다섯 자리에
+# 흩어져 있었다. 새 손잡이를 더하면서 그중 하나를 빠뜨리면 그 손잡이는 워처의
+# 자동 예산을 갉아먹고, 사람이 누른 것이 워처를 굶긴다 — tests/test_wake.py W4 가
+# 붙잡았던 사고가 정확히 그것이다. 손잡이를 더하는 사람이 고칠 자리는 이 한 줄이다.
+HUMAN_REASONS = {"wake", "answer"}
+
+
+def is_human_reason(reason):
+    """이 스폰이 사람이 누른 것인가 — 예산·쿨다운 갈래의 유일한 판정."""
+    return reason in HUMAN_REASONS
+
+
 def _auto_cap_block(req_id, cfg, now=None, reason="", prio=None):
     """캡 판정만 — 막혔으면 **사람이 읽을 사유**, 통과면 "" (기록은 하지 않는다).
 
@@ -3414,7 +3447,7 @@ def _auto_cap_block(req_id, cfg, now=None, reason="", prio=None):
     #   · 사람은 곧바로 되돌릴 수 있다 — 쿨다운이 재는 것은 **겹쳐 붙는 손**인데
     #     세워 둔 자리에는 붙어 있는 손이 없다. 예산(하루·시간)은 그대로 든다.
     if stop_mark(req_id, now=nowt):
-        if reason != "wake":
+        if not is_human_reason(reason):
             return ("사람이 세운 요청입니다 — Board 탭 카드에서 "
                     "「이어가기」를 눌러야 다시 이어집니다")
         left = 0
@@ -3422,7 +3455,7 @@ def _auto_cap_block(req_id, cfg, now=None, reason="", prio=None):
         return (f"방금 이 요청을 이어가기 시작했습니다 — "
                 f"{max(1, int(left // 60) + 1)}분 뒤에 다시 눌러 주세요")
     g = _auto_cap_counts(nowt)
-    if reason == "wake":
+    if is_human_reason(reason):
         w_day = int(cfg.get("auto_resume_wake_per_day", 12))
         w_hour = int(cfg.get("auto_resume_wake_per_hour", 6))
         if g.get("wake_day_count", 0) >= w_day:
@@ -3506,7 +3539,7 @@ def _auto_caps_ok(req_id, cfg, reason="", prio=None):
         p = {}
     g = _auto_cap_counts(nowt)
     p["last"], p["count"] = nowt, p.get("count", 0) + 1
-    if reason == "wake":
+    if is_human_reason(reason):
         g["wake_day_count"] = g.get("wake_day_count", 0) + 1
         g["wake_hour_count"] = g.get("wake_hour_count", 0) + 1
     else:
@@ -10538,7 +10571,7 @@ def _auto_cap_refund(reason, nowt):
     수'이지 '띄우려고 시도한 수'가 아니다.
     """
     g = _auto_cap_counts(nowt)
-    if reason == "wake":
+    if is_human_reason(reason):
         keys = ("wake_day_count", "wake_hour_count")
     else:
         keys = ("day_count", "hour_count")
@@ -12230,7 +12263,11 @@ def cmd_tag(args):
 # 동기화·이동·삭제가 문서와 한 몸으로 움직이게 한다(승인된 B안). 본문에는
 # 상대경로로 기록하고, 열람은 문서 가시성을 상속하는 /api/asset 라우트로만.
 
-ASSET_RE = re.compile(r"\[(Image|File): ([^\]\n]+)\]")
+# `Attach` 는 **종류를 아직 모른다**는 표기다 (REQ-20260907-039). 프롬프트 훅은
+# TYPE_GROUPS 를 못 읽는 별도 스크립트라 Image/File 을 스스로 가를 수 없고, 가르게
+# 하면 확장자 목록이 두 벌이 된다(한 벌만 고쳐진다). 그래서 훅은 경로만 적고
+# ingest 가 asset_mark 로 갈라 준다 — 판정은 여기 한 곳이다.
+ASSET_RE = re.compile(r"\[(Image|File|Attach): ([^\]\n]+)\]")
 # 첨부 본문 추출 (REQ-20260825-054) — 전부 stdlib로 처리한다(의존성 0 원칙):
 # 텍스트류는 그대로, PDF는 zlib 스트림에서 텍스트 연산자, OOXML(docx/xlsx/pptx)은
 # zip 내부 XML에서 태그를 걷어내 뽑는다. 실패는 조용히 빈 문자열(첨부는 저장됨).
@@ -13144,7 +13181,11 @@ def ingest_assets(doc_id):
         except (OSError, ValueError):
             return m.group(0)
         moved.append(dst)
-        return f"[{kind}: assets/{doc_id}/{os.path.basename(dst)}]"
+        # 종류는 **여기서** 정한다 (REQ-20260907-039): 훅이 적어 온 `Attach` 를
+        # 가르고, 옛 문서가 잘못 적은 종류도 이 참에 바로잡는다. 판정은
+        # asset_mark 하나이므로 확장자 목록이 두 벌이 되지 않는다.
+        del kind
+        return asset_mark(f"assets/{doc_id}/{os.path.basename(dst)}")
 
     new_body = ASSET_RE.sub(repl, body)
     if moved:

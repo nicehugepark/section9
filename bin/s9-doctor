@@ -488,6 +488,98 @@ OWNER_RE = re.compile(r"s9shot-(\d+)(?![0-9A-Za-z_-])")
 # 그래서 개체수는 프로세스가 아니라 **표식(= 캡처 한 건)** 단위로 센다.
 MARKER_RE = re.compile(r"(s9shot-\d+|cdp-prof-[A-Za-z0-9_.\-]+)")
 
+# 표식만으로는 우리 브라우저를 다 보지 못한다 (REQ-20260907-036).
+# 실측 2026-09-07 14:31: 주인 없는 headless chrome.exe 5건의 프로필이
+# `C:\Temp\s9roster-2054874` · `s9cdp95b` · `s9belt-3523657` · `s9projclick`
+# 였다 — 전부 `s9 shot` 을 거치지 않고 검증 중에 임시로 지은 이름이라
+# SHOT_MARKERS 에 걸리지 않았고, 세지도 지우지도 않아 가장 오래된 것이
+# 18시간 37분을 살았다. 회수 기록은 그동안 「브라우저 0개」였다.
+#
+# 이름 목록을 늘리는 것은 해결이 아니다 — 다음에 새 이름이 나오면 같은 자리에서
+# 또 넘어진다. 그래서 이름 대신 **띄운 방식**으로 본다: 우리가 띄우는 캡처
+# 브라우저는 예외 없이 ① `--headless` 이고 ② `--user-data-dir` 이 캡처용 임시
+# 뿌리(C:\Temp · TMPDIR) 안이다. 사람이 쓰는 브라우저는 둘 다 아니다 —
+# headless 로 띄우지 않고, 프로필을 임시 폴더에 두지 않는다. 그 둘이 함께일 때만
+# 우리 것으로 보는 것이 「남의 브라우저는 절대 죽이지 않는다」의 근거다.
+PROFILE_RE = re.compile(r'--user-data-dir=(?:"([^"]*)"|(\S+))')
+
+
+def _norm_path(p):
+    r"""윈도우 표기와 WSL 표기를 한 모양으로 — `C:\Temp\x` 와 `/mnt/c/Temp/x` 는
+    같은 자리다. 비교 전용이라 소문자로 눕힌다."""
+    q = (p or "").replace("\\", "/").lower().rstrip("/")
+    m = re.match(r"^([a-z]):/(.*)$", q)
+    if m:
+        q = "/mnt/%s/%s" % (m.group(1), m.group(2))
+    return q
+
+
+def wsl_path(p):
+    """윈도우 경로를 이 쪽에서 열 수 있는 경로로 (대소문자는 보존)."""
+    q = (p or "").replace("\\", "/")
+    m = re.match(r"^([A-Za-z]):/(.*)$", q)
+    if m:
+        return "/mnt/%s/%s" % (m.group(1).lower(), m.group(2))
+    return q
+
+
+def capture_temp_roots():
+    """캡처 프로필이 놓이는 자리. 여기 **밖**의 프로필은 우리 것이 아니다."""
+    out = []
+    for r in (WIN_TEMP, os.environ.get("TMPDIR") or "/tmp", "/tmp"):
+        n = _norm_path(r)
+        if n and n not in out:
+            out.append(n)
+    return out
+
+
+def profile_of(cmd):
+    m = PROFILE_RE.search(cmd or "")
+    return (m.group(1) or m.group(2) or "") if m else ""
+
+
+def under_capture_temp(prof):
+    n = _norm_path(prof)
+    if not n:
+        return False
+    return any(n == r or n.startswith(r + "/") for r in capture_temp_roots())
+
+
+def classify_browsers(rows):
+    """브라우저 행 목록에서 **우리가 띄운 것**만 골라 표식을 붙인다.
+
+    두 번 훑는다. 첫 번째로 `--headless` + 캡처용 임시 프로필을 가진 행을 찾아
+    그 프로필을 「우리 프로필」로 등록하고, 두 번째로 같은 프로필을 쓰는 행을
+    모두 우리 것으로 본다 — 렌더러·GPU 같은 자식 프로세스는 명령줄에
+    `--headless` 를 달지 않지만 프로필은 같기 때문이다.
+
+    표식(`s9shot-<pid>`·`cdp-prof-`)이 있는 행은 예전대로 그대로 잡는다.
+    개체수를 세는 단위(marker)는 표식이 있으면 표식, 없으면 프로필 경로다 —
+    어느 쪽이든 「캡처 한 건」에 하나씩 대응한다."""
+    owned = set()
+    for row in rows:
+        cmd = row.get("cmd") or ""
+        prof = profile_of(cmd)
+        if "--headless" in cmd and under_capture_temp(prof):
+            owned.add(_norm_path(prof))
+    out = []
+    for row in rows:
+        cmd = row.get("cmd") or ""
+        prof = profile_of(cmd)
+        mk = MARKER_RE.search(cmd)
+        if mk:
+            marker = mk.group(1)
+        elif _norm_path(prof) in owned:
+            marker = _norm_path(prof)
+        else:
+            continue
+        m = OWNER_RE.search(cmd)
+        out.append({"pid": row.get("pid"), "cmd": cmd,
+                    "age": row.get("age") or 0, "marker": marker,
+                    "profile": prof,
+                    "owner": int(m.group(1)) if m else None})
+    return out
+
 
 def scan_shot_browsers():
     """표식을 가진 브라우저 목록 — [{pid, cmd, age, owner}].
@@ -501,26 +593,19 @@ def scan_shot_browsers():
         # 윈도우가 아닌 곳(macOS·네이티브 리눅스)에서도 같은 규칙이 필요하다.
         # 그쪽엔 포트를 대신 붙드는 중계가 없어 망이 끊기지는 않지만, 고아
         # 브라우저가 FD·메모리·CPU를 먹는 누수 자체는 똑같이 일어난다.
-        out = []
-        for pid, _ppid, age, cmd in ps_rows():
-            if "--headless" not in cmd:
-                continue
-            if not any(m in cmd for m in SHOT_MARKERS):
-                continue
-            m = OWNER_RE.search(cmd)
-            mk = MARKER_RE.search(cmd)
-            out.append({"pid": pid, "cmd": cmd, "age": age,
-                        "marker": mk.group(1) if mk else "",
-                        "owner": int(m.group(1)) if m else None})
-        return out
-    cond = " -or ".join(f"$_.CommandLine -like '*{m}*'" for m in SHOT_MARKERS)
+        rows = [{"pid": pid, "cmd": cmd, "age": age}
+                for pid, _ppid, age, cmd in ps_rows()
+                if "chrome" in cmd.lower() or "msedge" in cmd.lower()]
+        return classify_browsers(rows)
+    # 표식으로 미리 거르지 않는다 (REQ-20260907-036) — 걸러 버리면 표식 없는
+    # 우리 브라우저가 애초에 보이지 않는다. 판정은 classify_browsers 한 곳에서만.
     script = (
         "$ErrorActionPreference='SilentlyContinue';"
         "@(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or "
-        "Name='msedge.exe'\" | Where-Object { %s } | ForEach-Object "
+        "Name='msedge.exe'\" | ForEach-Object "
         "{ [pscustomobject]@{pid=$_.ProcessId;cmd=$_.CommandLine;"
         "age=[int]((Get-Date)-$_.CreationDate).TotalSeconds} }) "
-        "| ConvertTo-Json -Compress" % cond)
+        "| ConvertTo-Json -Compress")
     try:
         r = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command",
                             script], capture_output=True,
@@ -530,16 +615,7 @@ def scan_shot_browsers():
         return []
     if isinstance(rows, dict):        # 한 건이면 ConvertTo-Json 이 배열을 벗긴다
         rows = [rows]
-    out = []
-    for row in rows:
-        cmd = row.get("cmd") or ""
-        m = OWNER_RE.search(cmd)
-        mk = MARKER_RE.search(cmd)
-        out.append({"pid": row.get("pid"), "cmd": cmd,
-                    "age": row.get("age") or 0,
-                    "marker": mk.group(1) if mk else "",
-                    "owner": int(m.group(1)) if m else None})
-    return out
+    return classify_browsers(rows)
 
 
 def owner_alive(pid):
@@ -619,20 +695,39 @@ def sweep_stale_shots(max_age=SWEEP_AGE, browsers=None):
     out = {"procs": 0, "orphans": 0, "stale": 0, "profiles": 0, "alive": 0}
     rows = scan_shot_browsers() if browsers is None else browsers
     orphan_pids, stale_pids, live_markers = [], [], set()
+    dead_profiles = set()
     for b in rows:
         marker = b.get("marker") or f"pid:{b.get('pid')}"
+        prof = b.get("profile") or profile_of(b.get("cmd"))
         if b["owner"] is not None:
             if owner_alive(b["owner"]):
                 live_markers.add(marker)
             else:
                 orphan_pids.append(b["pid"])
+                dead_profiles.add(prof)
         elif b["age"] > max_age:
             stale_pids.append(b["pid"])
+            dead_profiles.add(prof)
         else:
             live_markers.add(marker)
     out["orphans"] = kill_win(orphan_pids)
     out["stale"] = kill_win(stale_pids)
     out["procs"] = out["orphans"] + out["stale"]
+    # 회수한 브라우저가 쓰던 프로필 디렉터리도 함께 지운다 (REQ-20260907-036).
+    # 아래 이름 훑기는 표식으로 시작하는 이름만 보므로, 표식 없는 이름
+    # (s9roster-… · s9projclick)의 프로필은 여기서만 지워진다 — 이름이 아니라
+    # **방금 회수한 그 프로세스가 쓰던 경로**라서 오인이 없다. 캡처용 임시
+    # 뿌리 밖은 손대지 않는다.
+    for prof in dead_profiles:
+        if not prof or not under_capture_temp(prof):
+            continue
+        path = wsl_path(prof)
+        try:
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+                out["profiles"] += 1
+        except OSError:
+            pass
     # 개체수는 프로세스가 아니라 캡처 건수다 — 캡처 하나가 렌더러·GPU 등
     # 프로세스 11개를 띄우므로(실측), 프로세스로 세면 상한 8은 첫 캡처에서
     # 이미 초과한다. 상한이 곧바로 무의미해지는 그 함정을 여기서 막는다.
