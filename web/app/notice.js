@@ -109,6 +109,9 @@ async function checkOldCode(){
   if (!d || typeof d.stale !== "boolean") return;
   ocInfo = d;
   renderOldCode();
+  // 되풀이 실패 사실(sync_alert)은 같은 응답에 실려 온다 — 낡음 판정이 그대로여도
+  // 칩은 다시 그린다(같은 내용이면 renderSvChip 의 sig 가 되쓰기를 막는다).
+  renderSvChip();
 }
 
 function renderOldCode(){
@@ -497,6 +500,14 @@ function renderSvChip(){
     items.push({tone: "sv-warn", mark: "▲", label: "서버 재기동 필요",
       title: "실행 중인 서버가 시작 당시 코드로 동작하고 있습니다 — 눌러서 자세히",
       act: () => { ocSetAck(null); renderOldCode(); }});
+  /* sync 되풀이 실패 (REQ-20260907-005) — 같은 사유로 N회 연속 실패해 로컬 commit 이
+     push 되지 않은 사실. 서버가 임계를 넘긴 뒤 성공할 때까지만 싣고, 칩은 그 사실을
+     그대로 옮긴다(횟수는 라벨, 사유·다음 행동은 툴팁). 누르면 Terminal 로 간다. */
+  const sa = oc && oc.sync_alert;
+  if (sa && sa.text)
+    items.push({tone: "sv-bad", mark: "▲", label: sa.label || "sync 실패",
+      title: sa.text, seq: sa.since || "",
+      act: () => document.querySelector('header [data-tab="terminal"]')?.click()});
   const d = gwInfo, st = gwState(d);
   if (st === "attention" && gwAck() === d.last_death.ts)
     items.push({tone: "sv-bad", mark: "▲", label: "자동 복구 멈춤",

@@ -10410,6 +10410,13 @@ def _sync_fail_kind(stderr):
     if re.search(r"CONFLICT|could not apply|Resolve all conflicts|"
                  r"unmerged|needs merge", t):
         return "conflict"
+    # 훅 오류 (REQ-20260907-005, 실제 발생 2026-09-07 10:36~11:54): rebase 가 재생한
+    # 깨진 commit 을 post-checkout 훅이 컴파일하다 낸 Traceback·SyntaxWarning 이
+    # 78분 동안 「conflict」 로 적혔다. 문서 충돌이 아니므로 resolve 로는 못 푼다 —
+    # 갈라 적어야 사람이 훅을 본다. 충돌 표식이 함께 있으면 충돌이 먼저다.
+    if re.search(r"Traceback \(most recent call last\)|SyntaxError|SyntaxWarning|"
+                 r"s9-guard:", t):
+        return "hook"
     return "net"
 
 
@@ -10851,8 +10858,10 @@ def sync_run(reason="", transport=True):
                 _sync_event(reason, "pull", t0, pl, attempt=attempt, kind=kind)
                 if pl.returncode == 0:
                     _sync_pull_stamp()
+                    _sync_streak_clear()
                 if pl.returncode != 0:
                     _sync_abort_rebase()
+                    _sync_streak_record(kind, pl.stderr)
                     if kind == "untracked" and attempt == 0:
                         # 자리를 막은 것이 추적 안 되는 파일이면(십중팔구 s9 가
                         # 스스로 쓴 것) 비켜 세우고 곧바로 한 번 더 당긴다.
@@ -10865,7 +10874,7 @@ def sync_run(reason="", transport=True):
                     # 드라이버(REQ-20260902-024)와 표면화(-025)의 몫이다.
                     if kind == "net":
                         _sync_net_backoff(True)
-                    _sync_log(f"⚠ pull {kind}({reason}): "
+                    _sync_log(f"⚠ {_sync_pull_fail_label(kind)}({reason}): "
                               f"{pl.stderr.strip()[:160]} — 로컬 commit 은 보존, "
                               f"수동 확인 필요 시 s9 sync")
                     return "pull-conflict" if kind == "conflict" else "pull-fail"
@@ -11031,7 +11040,179 @@ SYNC_KIND_WORD = {                # 화면·digest 에 서는 실패 종류의 �
     "conflict": "충돌 — s9 sync resolve 필요",
     "net": "연결 안 됨",
     "protected": "보호 규칙에 막힘 — PR 필요",
+    "hook": "훅 오류 — s9 sync --status 로 사유 확인",
 }
+
+
+# ------------------------------------------- 되풀이 실패 알림 (REQ-20260907-005)
+# 실제 발생 2026-09-07 10:36~11:54: pull 이 같은 사유로 30여 회 실패하는 78분 동안
+# sync.log 한 줄씩만 쌓였고 세션 수신함·헤더 칩은 조용했다 — commit 다섯이 push
+# 되지 않은 것을 리드가 몰랐다. 같은 사유의 연속 실패를 세어 임계(기본 3, 오너
+# config `sync_alert_after`)에 닿는 그 한 번만 수신함(event)에 알리고, 칩용 사실은
+# 성공할 때까지 유지한다. 카운터는 파일에 남긴다 — serve 의 루프와 CLI 의 sync 가
+# 번갈아 실패를 세므로 프로세스 안의 수로는 이어지지 않는다.
+SYNC_ALERT_AFTER = 3
+_SYNC_ALERT_STATE = os.path.join(ROOT, "state", ".sync-alert.json")
+SYNC_ALERT_WORD = {                # 알림 문구에 서는 사유의 짧은 이름
+    "hook": "훅 오류",
+    "conflict": "문서 충돌",
+    "net": "연결 실패",
+    "rejected": "push 거부",
+    "protected": "보호 규칙",
+    "untracked": "추적 안 되는 파일",
+}
+
+
+def _sync_pull_fail_label(kind):
+    """sync.log 의 pull 실패 머리 — 충돌만 종전 문구를 지키고 나머지는 사유를 적는다."""
+    return "pull conflict" if kind == "conflict" else f"pull 실패({kind})"
+
+
+class SyncFailStreak:
+    """같은 사유의 연속 실패 카운터. record() 는 임계에 닿는 그 한 번만 알림을 돌려주고,
+    success() 가 0 으로 되돌린다. 사유(kind)가 바뀌면 1 부터 다시 센다."""
+
+    def __init__(self, kind="", count=0, told=False, line="", since=""):
+        self.kind, self.count, self.told = kind, int(count or 0), bool(told)
+        self.line, self.since = line, since
+
+    def record(self, kind, stderr="", threshold=SYNC_ALERT_AFTER):
+        if kind != self.kind:
+            first = next((ln.strip() for ln in str(stderr or "").splitlines()
+                          if ln.strip()), "")
+            self.kind, self.count, self.told = kind, 0, False
+            self.line, self.since = first[:200], now_iso()
+        self.count += 1
+        if self.count >= max(1, int(threshold or SYNC_ALERT_AFTER)) and not self.told:
+            self.told = True
+            return self.as_dict()
+        return None
+
+    def success(self):
+        self.kind, self.count, self.told, self.line, self.since = "", 0, False, "", ""
+
+    def as_dict(self):
+        return {"kind": self.kind, "count": self.count, "told": self.told,
+                "line": self.line, "since": self.since}
+
+    @classmethod
+    def load(cls, path=None):
+        try:
+            with open(path or _SYNC_ALERT_STATE, encoding="utf-8") as f:
+                d = json.load(f)
+            if not isinstance(d, dict):
+                raise ValueError
+            return cls(d.get("kind", ""), d.get("count", 0), d.get("told", False),
+                       d.get("line", ""), d.get("since", ""))
+        except (OSError, ValueError, TypeError):
+            return cls()
+
+    def save(self, path=None):
+        path = path or _SYNC_ALERT_STATE
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.as_dict(), f, ensure_ascii=False)
+        except OSError:
+            pass
+
+
+def sync_alert_after(cfg=None):
+    """연속 실패 몇 회에 알릴 것인가 — 오너 config `sync_alert_after`, 기본 3."""
+    if cfg is None:
+        try:
+            cfg = user_config(resolve_user(None)) or {}
+        except Exception:
+            cfg = {}
+    try:
+        n = int(str(cfg.get("sync_alert_after", "") or "").strip() or 0)
+    except (ValueError, TypeError):
+        n = 0
+    return n if n > 0 else SYNC_ALERT_AFTER
+
+
+def _sync_pending_count():
+    """origin 에 없는 로컬 commit 수 — 알림 문구용. git 이 없으면 0."""
+    try:
+        out = _sync_git("rev-list", "--count", "@{u}..HEAD").stdout.strip()
+        return int(out) if out.isdigit() else 0
+    except Exception:
+        return 0
+
+
+def sync_alert_text(alert, pending=0):
+    """수신함·칩 툴팁이 함께 쓰는 한 문장 — 사유, 첫 줄, push 되지 않은 수, 다음 행동."""
+    word = SYNC_ALERT_WORD.get(alert.get("kind", ""), alert.get("kind", "") or "?")
+    line = (alert.get("line") or "").strip()
+    return (f"sync pull 이 {int(alert.get('count') or 0)}회 연속 실패 — "
+            f"{word}({alert.get('kind', '')})"
+            + (f": {line}" if line else "")
+            + f". 로컬 commit {int(pending or 0)}개가 push 되지 않았습니다. "
+            f"`s9 sync` 로 확인하세요.")
+
+
+def sync_alert_fact(streak=None, pending=None):
+    """헤더 칩이 읽는 서버 사실 (/api/serveinfo 의 `sync_alert`) — 임계에 닿은 뒤 성공할
+    때까지 있고, 그 밖에는 None. 칩은 이것 하나만 본다."""
+    s = streak if streak is not None else SyncFailStreak.load()
+    if not s.told or s.count <= 0:
+        return None
+    if pending is None:
+        pending = _sync_pending_count()
+    d = s.as_dict()
+    d["pending"] = int(pending or 0)
+    d["label"] = f"sync 실패 {s.count}회"
+    d["text"] = sync_alert_text(d, pending)
+    return d
+
+
+def _sync_live_sessions():
+    """수신함이 살아 있는 이 머신의 세션 id 들 (chat_live 판정)."""
+    out = []
+    for bp in sorted(_glob.glob(_local_binding_glob())):
+        try:
+            with open(bp, encoding="utf-8") as f:
+                b = json.load(f)
+        except (OSError, ValueError):
+            continue
+        sid = b.get("session", "")
+        if sid and sid not in out and chat_live(b):
+            out.append(sid)
+    return out
+
+
+def _sync_alert_notify(alert, pending=0):
+    """살아 있는 세션 수신함마다 event 한 줄. 반환: 받은 세션 수. 아무도 없으면 로그만."""
+    text = sync_alert_text(alert, pending)
+    n = 0
+    for sid in _sync_live_sessions():
+        try:
+            if chat_send(text, sid8=sid, sender="sync", kind="event"):
+                n += 1
+        except Exception:
+            continue
+    _sync_log(f"⚠ 알림: {text} (세션 {n}개)")
+    return n
+
+
+def _sync_streak_record(kind, stderr):
+    """pull 실패 한 번을 센다 — 임계에 닿으면 그 자리에서 알린다."""
+    try:
+        s = SyncFailStreak.load()
+        a = s.record(kind, stderr, threshold=sync_alert_after())
+        s.save()
+        if a:
+            _sync_alert_notify(a, _sync_pending_count())
+    except Exception:
+        pass
+
+
+def _sync_streak_clear():
+    try:
+        if os.path.exists(_SYNC_ALERT_STATE):
+            SyncFailStreak().save()
+    except Exception:
+        pass
 
 
 def _read_epoch_file(path):
@@ -24313,6 +24494,8 @@ def cmd_serve(args):
                             # 긴 잡 (REQ-20260830-022) — 헤더 칩이 그린다.
                             # 새 API 를 열지 않는다: 이 응답은 이미 20초마다 온다.
                             "jobs": jobs_running(),
+                            # 되풀이 실패 알림 (REQ-20260907-005) — 칩이 그린다.
+                            "sync_alert": sync_alert_fact(),
                             # 폴링 스냅샷 관측 (REQ-20260831-002) — 폭풍 진단이
                             # 추측이 아니라 이 세 값을 읽게 한다: 게이트가
                             # 켜졌는가(ttl), 몇 세대인가(seq), 한 계산이
