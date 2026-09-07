@@ -493,7 +493,10 @@ async function loadDoc(id, bg, force){
      서고, 띠는 제목과 함께 붙박이(.dhead)라 아무리 내려도 손끝에 남는다.
      사실 줄(stallHTML)은 띠에 넣지 않는다 — 붙박이에 얹으면 같은 문장이
      스크롤 내내 따라다닌다. */
-  const beltDoc = deedBeltHTML(stallDoc, true);
+  // 카탈로그에 아직 없는 문서(방금 만든 것, 색인 갱신 전)는 stallDoc 이 null 이다 —
+  // 문서 자신으로 띠를 세운다(assignBtnHTML 이 이미 그렇게 한다). 그러면 진행 무리는
+  // 카탈로그 파생 필드 없이 문서의 status 만으로 선다 (REQ-20260907-027).
+  const beltDoc = deedBeltHTML(stallDoc || m, true);
   /* 정책 버튼은 **제 무리**다 (REQ-20260901-005 designer 보조) — 행위(지금
      이어간다·중단한다)와 정책(앞으로 어떻게 한다)의 축이 헤어라인으로 갈리고,
      ▶ 의 유무와 무관하게 자리가 안 변한다. 무리는 통째로 줄을 바꾼다
