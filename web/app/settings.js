@@ -536,7 +536,7 @@ async function rosterEditor(slot, r, v){
     // 친 것이 남아 있으면 묻고 버린다 — 되돌릴 수 없는 것은 이 한 번뿐이다.
     // 제품의 대화상자로 묻는다 — 네이티브 confirm 은 스킨 밖의 얼굴이고
     // test_judge_dialog 가 막는다 (REQ-20260907-003).
-    if (ta.value !== content && !(await s9dlg({kind: "confirm", cap: "에이전트·스킬", stop: false,
+    if (ta.value !== content && !(await s9dlg({kind: "confirm", cap: "에이전트·스킬", stop: false, safe: true,
       title: "고친 것을 저장하지 않고 보기로 돌아갈까요?",
       descHtml: "<p>친 것은 사라집니다. 남기려면 그만두고 <b>변경 사항 저장</b>을 누르세요.</p>",
       ok: "보기로 돌아가기", cancel: "계속 고치기"}))) return;
