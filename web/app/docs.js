@@ -30,6 +30,21 @@ function unansHandleHTML(total, left){
    손잡이(「N개 더 보기」·「답 없음 N장만 보기」)와 같은 계보이고, 문장 끝에 손잡이가
    이어 서는 모양은 문서 판의 「찾은 답」 줄(`.ansfound`)이 이미 쓰는 것이다.
    새 부품을 만들지 않는다. */
+/* 전량을 아직 못 받았으면 그 사실을 말한다 (REQ-20260907-066).
+
+   보드에서 시작한 화면은 카탈로그를 좁혀 받는다 — 그 상태로 Docs 에 들어온
+   첫 그림은 목록이 짧다. 짧은 목록을 아무 말 없이 세우면 "문서가 줄었다"로
+   읽히고, 곧 도착하는 전량이 그 자리를 채우면 "제멋대로 늘었다"가 된다.
+   그래서 채워지는 중임을 한 줄로 밝힌다 — 말은 새로 짓지 않는다: 값의 이름은
+   부팅 화면이 쓰는 그 「문서 목록」(boot.js SUPPLY_JOBS)이고, 문장 꼴은 같은
+   화면의 「상태 옮기기 버튼을 불러오는 중…」과 같다.
+
+   전량을 한 번이라도 받았으면 그 뒤의 좁은 응답은 합쳐지므로(app.js
+   mergeNarrow) 목록이 짧아질 일이 없고, 이 줄도 다시 서지 않는다. */
+function loadingAllHTML(){
+  return catalogAll ? ""
+    : `<p class="freeze" role="status">문서 목록을 불러오는 중…</p>`;
+}
 function staleHandleHTML(){
   const n = docStaleCount();
   if (!n) return "";
@@ -226,7 +241,8 @@ async function renderDocs(rows){
         <span class="st${r.type === "question" ? " ko" : ""}">${esc(statusLabel(r))}</span>
         <div class="id">${esc(shortId(r.id))}${prioHTML(r)}${off}</div><div>${esc(r.title)}</div>${snips}</div>`;
   };
-  let list = `<div class="typebar">${bar}</div>` + staleHandleHTML();
+  let list = `<div class="typebar">${bar}</div>`
+           + loadingAllHTML() + staleHandleHTML();
   for (const [g, grp] of Object.entries(groups)){
     if (!grp.length) continue;
     const open = expanded.has("grp:"+g) || !!matchMap;

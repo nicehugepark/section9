@@ -1,6 +1,16 @@
 /* state.js — 화면 상태와 정렬 — catalog/tab/펼침, workOrder·recentOrder·stableOrder, esc·shortId·evEl */
 "use strict";
 let catalog = [], graph = null, auditCache = null, TRANS = {}, projects = [];
+/* 지금 손에 든 카탈로그가 **전량**인가 (REQ-20260907-066).
+
+   보드에 머무는 동안 카탈로그는 좁혀 받는다(`catalogWantsAll`) — 405장. 그
+   좁은 판이 넓은 판을 덮으면, Docs 로 돌아온 첫 그림에서 목록이 405장으로 서고
+   다음 폴이 와야 1306장이 된다. 사람 눈에는 문서가 줄었다가 되돌아오는 것이다.
+   그래서 두 가지를 이 한 값으로 판정한다: 좁은 응답을 넓은 판에 **합칠지**
+   (app.js 의 mergeNarrow), 그리고 아직 전량을 못 받았음을 화면이 **말할지**
+   (docs.js 의 loadingAllHTML). 한 번 전량을 받으면 그 뒤로는 참으로 남는다 —
+   좁은 응답은 전량의 부분집합이라(bin/s9.py `window`) 합쳐도 전량 그대로다. */
+let catalogAll = false;
 let tab = "board", selectedDoc = null, selectedStream = null;
 let streamTimer = null, reqStreamTimer = null;  // live follow 폴링 (화면 이탈 시 정리)
 // 그래프 타입 표시 집합 — 기본은 request/knowledge (세션 로그 노드 숨김, REQ-20260824-026)

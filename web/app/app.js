@@ -116,13 +116,36 @@ function catalogWantsAll(){
   return !!(v && v.dataset.showing);
 }
 
+/* 좁은 응답은 **넓은 판을 덮지 않고 합쳐진다** (REQ-20260907-066).
+
+   보드용 창(`window` 기본값)은 전량의 부분집합이다 — 열린 일 전부 + 최근
+   닫힌 것(bin/s9.py `_catalog_window`). 그러니 창 밖의 행은 "없어진 문서"가
+   아니라 **이번 응답이 싣지 않은 문서**다. 덮어쓰면 Docs 로 돌아온 첫 그림이
+   405장으로 서고, 사람은 문서가 줄었다고 읽는다.
+
+   자리는 옛 판의 것을 그대로 쓴다 — 같은 내용이면 `changed` 가 거짓이어야
+   보드에 머무는 15초 벨트가 판을 흔들지 않는다. 이번 응답에만 있는 행(정말
+   새로 생긴 문서)만 앞에 세운다: 서버가 주는 순서가 최신 먼저다. */
+function mergeNarrow(rows){
+  if (!catalogAll) return rows;            // 전량을 받아 본 적이 없다 — 합칠 넓은 판이 없다
+  const now = new Map(rows.map(r => [r.id, r]));
+  const kept = catalog.map(r => now.get(r.id) || r);   // 옛 자리, 새 내용
+  const had = new Set(catalog.map(r => r.id));
+  return rows.filter(r => !had.has(r.id)).concat(kept);
+}
+
 async function refreshCatalog(rerender){
-  const fresh = await loadSupply("catalog", async () => {
-    const q = [meQ(), catalogWantsAll() ? "window=all" : ""].filter(Boolean);
+  /* 창을 **가져온 쪽에서** 돌려준다. loadSupply 는 같은 값을 두 곳에서 부르면
+     한 번만 내보내므로(boot.js), 부르는 쪽에서 `catalogWantsAll()` 을 다시 재면
+     실제로 나간 요청과 다른 답을 얻는다 — 판정은 요청을 만든 자리에 둔다. */
+  const got = await loadSupply("catalog", async () => {
+    const all = catalogWantsAll();
+    const q = [meQ(), all ? "window=all" : ""].filter(Boolean);
     const r = await fetch("/api/catalog?" + q.join("&"));
     const j = r.ok ? await r.json() : null;
-    return Array.isArray(j) ? j : null;
+    return Array.isArray(j) ? {all, rows: j} : null;
   }, {tries: rerender ? 2 : 3});
+  const fresh = got && (got.all ? got.rows : mergeNarrow(got.rows));
   stallProbe(fresh);   // ?stall= 진단 — 평소에는 아무 일도 하지 않는다
   wsProbe(fresh);      // ?ws= 진단 (REQ-20260829-030)
   cancelProbe(fresh);  // ?cancelfresh 진단 (REQ-20260829-031)
@@ -134,6 +157,7 @@ async function refreshCatalog(rerender){
      화면이 된다. 실제로 그렇게 찍혔다. */
   if (!transReady() && Date.now() - transAt > 10000) transRefill(selectedDoc);
   if (!fresh) return fresh;   // 못 받았다 — 빈 판으로 덮지 않는다. 화면이 그렇게 말한다.
+  if (got.all) catalogAll = true;
   const before = JSON.stringify(projects);
   /* **프로젝트 목록은 폴링 벨트 밖이다** (REQ-20260831-026 G0 폴링 계약).
      한때 여기서 catalog 와 함께 15초마다 끌고 다녔다 — 프로젝트는 수명에 몇 번
