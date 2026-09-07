@@ -20360,6 +20360,124 @@ def _shot_tune(url, wait):
 
 def cmd_shot(args):
     """UI 검증용 스크린샷 — WSL이면 Windows Chrome을 headless로 구동해 PNG 생성.
+# `--engine webkit` (REQ-20260906-098): Safari 대체 경로. 리눅스 WebKit 은 root 권한의
+# 시스템 라이브러리가 필요해(REQ-20260906-093 실측) Windows 쪽 Playwright WebKit 을
+# 쓴다. 설치 자리는 장치 이름이 아니라 고정 폴더다.
+SHOT_WEBKIT_DIR_WIN = r"C:\Temp\s9-webkit"
+SHOT_WEBKIT_RUNNER_WIN = SHOT_WEBKIT_DIR_WIN + r"\run-npx.cmd"
+SHOT_WEBKIT_RUNNER_WSL = "/mnt/c/Temp/s9-webkit/run-npx.cmd"
+SHOT_WEBKIT_TIMEOUT = 180   # 첫 실행은 npx 가 playwright 패키지를 확인하느라 느리다
+
+
+def _shot_webkit_install_guide():
+    """WebKit 엔진이 없을 때 내는 설치 절차 — 원문은 여기 한 곳뿐이다.
+
+    browser-verify 스킬 원천(harness/claude/gen_roster.py)은 이 함수를 가리키기만
+    한다. 두 곳에 적으면 언젠가 갈린다.
+    """
+    return (
+        "s9 shot --engine webkit: WebKit 엔진이 없습니다 — " + SHOT_WEBKIT_DIR_WIN
+        + " 에 설치하세요 (관리자 권한 불필요):\n"
+        "  mkdir -p /mnt/c/Temp/s9-webkit && cd /mnt/c/Temp/s9-webkit\n"
+        "  Z=$(curl -sL https://nodejs.org/dist/latest-v22.x/ | grep -o "
+        "'node-v22[0-9.]*-win-x64.zip' | head -1)\n"
+        "  curl -sL -o node.zip https://nodejs.org/dist/latest-v22.x/$Z && "
+        "python3 -m zipfile -e node.zip . && rm node.zip\n"
+        "  그 폴더에 run-npx.cmd 를 만듭니다 (PATH 앞에 그 node 폴더를 두고 "
+        "`npx --yes playwright %*`):\n"
+        "    printf '@echo off\\r\\nset \"PATH=%%~dp0node-v22.23.2-win-x64;%%PATH%%\"\\r\\n"
+        "call npx --yes playwright %%*\\r\\n' > run-npx.cmd   # node 폴더 이름은 푼 것에 맞춘다\n"
+        "  cmd.exe /c " + SHOT_WEBKIT_RUNNER_WIN + " install webkit\n")
+
+
+def _shot_size_wh(size):
+    """`--size` 를 (폭, 높이) 로. chrome 꼴 `1440,900` 과 `1440x1024` 둘 다 받는다."""
+    parts = re.split(r"[x,×]", str(size).strip().lower(), maxsplit=1)
+    if len(parts) != 2 or not all(t.strip().isdigit() for t in parts):
+        raise ValueError(f"--size 는 WxH 또는 W,H 꼴이어야 합니다: {size!r}")
+    return int(parts[0]), int(parts[1])
+
+
+def _shot_webkit_cmd(url, size, wait, win_out, runner=None):
+    """Playwright WebKit 캡처 명령줄 — 순수 함수(실행하지 않는다).
+
+    REQ-093 에서 손으로 검증한 한 줄을 그대로 감싼다:
+      cmd.exe /c "<runner> screenshot --browser=webkit --viewport-size=W,H
+                  --wait-for-timeout=N <url> <win_out>"
+    cmd 특수문자(`&|<>^"`·공백)가 든 url 은 거부한다 — 2026-09-07 실측: WSL 이
+    cmd.exe 에 넘길 때 안쪽 따옴표를 `\"` 로 바꿔 그대로 전달하고, `^` 이스케이프는
+    run-npx.cmd → npx.cmd → node 세 겹의 배치를 지나며 겹마다 다시 풀린다. 둘 다
+    증명할 수 없어 경계에서 막는다. 대시보드 검증 url(`?nosse`·`#board`)에는 없다.
+    """
+    w, h = _shot_size_wh(size)
+    runner = runner or SHOT_WEBKIT_RUNNER_WIN
+    bad = [c for c in '&|<>^"' + " \t" if c in url]
+    if bad:
+        raise ValueError(f"--engine webkit 은 cmd.exe 특수문자 {bad!r} 가 든 url 을 "
+                         f"받지 못한다(경로 인용을 증명할 수 없다): {url!r}")
+    line = (f"{runner} screenshot --browser=webkit --viewport-size={w},{h} "
+            f"--wait-for-timeout={int(wait)} {url} {win_out}")
+    return ["cmd.exe", "/c", line]
+
+
+def _shot_webkit(url, size, wait, out):
+    """`--engine webkit` 경로 — 결과 PNG 경로를 찍거나 비-0 으로 끝난다."""
+    plat = os_platform()
+    if plat == "Windows":
+        runner_check, win_out, mid = SHOT_WEBKIT_RUNNER_WIN, out, None
+    elif plat == "WSL":
+        runner_check = SHOT_WEBKIT_RUNNER_WSL
+        os.makedirs("/mnt/c/Temp", exist_ok=True)
+        tmpname = f"s9-shot-wk-{os.getpid()}.png"
+        win_out = "C:\\Temp\\" + tmpname
+        mid = "/mnt/c/Temp/" + tmpname
+        try:
+            os.remove(mid)
+        except OSError:
+            pass
+    else:
+        print(f"s9 shot: 이 환경({plat})에는 WebKit 경로가 없다 — WebKit 캡처는 "
+              "Windows 또는 WSL 에서만 된다(리눅스 WebKit 은 root 권한의 시스템 "
+              "라이브러리가 필요하다, REQ-20260906-093). Safari(WebKit) 미검증으로 "
+              "적어라.", file=sys.stderr)
+        sys.exit(3)
+    if not os.path.exists(runner_check):
+        print(_shot_webkit_install_guide(), file=sys.stderr, end="")
+        sys.exit(3)
+    try:
+        cmd = _shot_webkit_cmd(url, size, wait, win_out)
+    except ValueError as e:
+        print(f"s9 shot: {e}", file=sys.stderr)
+        sys.exit(2)
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=SHOT_WEBKIT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print(f"s9 shot: WebKit 캡처가 {SHOT_WEBKIT_TIMEOUT}초 안에 끝나지 않았다: "
+              f"{cmd[2]}", file=sys.stderr)
+        sys.exit(3)
+    if r.returncode != 0:
+        tail = (r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()[-800:]
+        print(f"s9 shot: WebKit 캡처 실패 (exit {r.returncode}): {cmd[2]}\n{tail}\n"
+              + _shot_webkit_install_guide(), file=sys.stderr, end="")
+        sys.exit(3)
+    if mid is not None:
+        if not os.path.exists(mid):
+            print(f"s9 shot: WebKit 이 파일을 만들지 않았다: {win_out}", file=sys.stderr)
+            sys.exit(3)
+        os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+        shutil.move(mid, out)
+    if not os.path.exists(out):
+        print(f"s9 shot: WebKit 스크린샷 생성 실패: {out}", file=sys.stderr)
+        sys.exit(3)
+    blank = _png_blank_rows(out)
+    if blank is not None and blank >= SHOT_BLANK_ROWS:
+        print(f"s9 shot: 화면이 거의 비어 있다(균일한 가로줄 {blank:.0%}) — "
+              f"--wait 를 늘려 다시 찍어라. 이 캡처를 '확인했다'의 근거로 쓰지 "
+              f"마라: {out}", file=sys.stderr)
+        sys.exit(5)
+    print(out)
+
+
 
     browser-verify 스킬이 호출하는 진입점. 어떤 브라우저 경로도 없으면 안내와
     함께 비-0 종료해 '미검증'을 명시하게 한다.
@@ -20375,6 +20493,8 @@ def cmd_shot(args):
         tmp_dir(), "s9-shot.png")
 
     candidates = []
+    if getattr(args, "engine", "chrome") == "webkit":
+        return _shot_webkit(url, args.size, args.wait, out)
     if os.name == "nt":
         # 네이티브 윈도우 (REQ-20260903-005). 종전 후보는 `/mnt/c/...`(WSL 에서
         # 본 윈도우 디스크)와 리눅스 이름뿐이라, **윈도우에서 돌면 후보가 0개**가
@@ -26796,6 +26916,9 @@ def main():
                     help="캡처 전 대기 ms (async 렌더용, 기본 3000)")
     sh.set_defaults(fn=cmd_shot)
 
+    sh.add_argument("--engine", choices=("chrome", "webkit"), default="chrome",
+                    help="webkit = Windows 쪽 Playwright WebKit 로 Safari 대체 "
+                         "(REQ-20260906-098; 없으면 설치 안내)")
     dc = sub.add_parser("doctor",
                         help="네트워크·자원 진단과 정리 (REQ-20260825-099)")
     dc.add_argument("--fix", action="store_true",

@@ -64,19 +64,14 @@ description: UI/화면 요구사항을 실제 브라우저로 검증하는 필�
 2. **Playwright WebKit** — Safari 가 없으면 WebKit 엔진으로 찍는다. 이 WSL 에서는
    **Windows 쪽**에 둔다 — 리눅스 WebKit 은 root 권한의 시스템 라이브러리가 필요하고
    원격 테스트 머신도 같았다(2026-09-06 실측, REQ-20260906-093). Windows 는 관리자
-   권한 없이 된다. 자리는 `C:\Temp\s9-webkit` (지워졌으면 아래 세 줄이 곧 복구 절차):
+   권한 없이 된다. 자리는 `C:\Temp\s9-webkit`. 찍기:
    ```
-   mkdir -p /mnt/c/Temp/s9-webkit && cd /mnt/c/Temp/s9-webkit
-   Z=$(curl -sL https://nodejs.org/dist/latest-v22.x/ | grep -o 'node-v22[0-9.]*-win-x64.zip' | head -1)
-   curl -sL -o node.zip https://nodejs.org/dist/latest-v22.x/$Z && python3 -m zipfile -e node.zip . && rm node.zip
+   s9 shot "http://127.0.0.1:9909/#board" --engine webkit --size 768x1024 --out /tmp/wk-board-768.png
    ```
-   그 폴더에 `run-npx.cmd`(PATH 앞에 그 node 폴더를 두고 `npx --yes playwright %*`)를
-   만들고 `cmd.exe /c C:\Temp\s9-webkit\run-npx.cmd install webkit`. 찍기:
-   ```
-   cmd.exe /c "C:\Temp\s9-webkit\run-npx.cmd screenshot --browser=webkit --viewport-size=768,1024 --wait-for-timeout=4000 http://127.0.0.1:9909/#board C:\Temp\s9-webkit\wk-board-768.png"
-   ```
-   → `/mnt/c/Temp/s9-webkit/wk-board-768.png` 를 Read 로 본다. 이것을 `s9 shot --engine webkit`
-   으로 감싸는 일은 REQ-20260906-098. WebKit 에서 갈리는 것을 계산값으로 확인해야 하면
+   → 찍힌 PNG 경로를 Read 로 본다. **엔진이 없으면 `s9 shot --engine webkit` 이 설치
+   안내(node zip 풀기 → run-npx.cmd → `install webkit`)를 stderr 로 내고 비-0 으로 끝난다** —
+   안내 원문은 `bin/s9.py` 의 `_shot_webkit_install_guide()` 한 곳에만 있다(REQ-20260906-098).
+   WebKit 에서 갈리는 것을 계산값으로 확인해야 하면
    같은 폴더의 `probe.js`(playwright API, `page.evaluate`)를 본보기로 쓴다.
 3. 둘 다 불가능하면 산출물에 **「Safari(WebKit) 미검증」** 을 명시하고, review 가 아니라
    blocked 로 올린다 — 여는 조건은 「사람이 Safari 에서 확인」이다.
