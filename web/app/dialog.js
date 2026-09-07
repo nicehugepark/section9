@@ -189,7 +189,7 @@ function dlgPosPlace(kind){
   if (kind !== undefined) dlgPosKind = kind || "";
   dlgPosPlaceFor(dlg, dlgPosKind);
 }
-/* 어느 판이든 적어 둔 자리에 세운다 — s9dlg 의 판(dlg)과 「치운 것」 판이 같은 길을
+/* 어느 판이든 적어 둔 자리에 세운다 — s9dlg 의 판(dlg)과 「보관함 · 휴지통」 판이 같은 길을
    쓴다 (REQ-20260907-028: 따로 지은 .dlgbox 에는 끌기가 붙지 않았다). */
 function dlgPosPlaceFor(box, kind){
   dlgPosClear(box);

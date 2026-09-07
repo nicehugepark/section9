@@ -55,7 +55,7 @@ class DialogFits(unittest.TestCase):
                          "창 자체가 구르면 머리·바닥이 흐름에 실린다")
         # 붙박이 기본값: 이름을 안 적은 새 띠는 안 구르는 쪽으로 굳는다
         self.assertIn(".dlgbox>*{flex:0 0 auto}", src, "직계 자식의 붙박이 기본이 없다")
-        # 구르는 띠는 이름으로 지목한다 — 본문과 치운 것 판의 목록
+        # 구르는 띠는 이름으로 지목한다 — 본문과 보관함·휴지통 판의 목록
         m = re.search(r"\.dlgbox>\.dlgbody,\.dlgbox>\.tlist\{([^}]*)\}", src)
         self.assertTrue(m, "구르는 띠(.dlgbody · .tlist)를 지목한 규칙이 없다")
         band = m.group(1)

@@ -18,7 +18,9 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
+import sys
 import subprocess
 import tempfile
 import unittest
@@ -237,7 +239,7 @@ class DocTidyTest(unittest.TestCase):
 
         src = webasset.source()
         self.assertIn(".doclist.picking .row{padding-left:", src)
-        # 목록(고르기·묶음 처리) · 문서 한 장 · 치운 것 판 — 세 자리의 손잡이
+        # 목록(고르기·묶음 처리) · 문서 한 장 · 보관함·휴지통 판 — 세 자리의 손잡이
         for handle in ("pick", "open", "tick", "all", "none",
                        "archive", "rm", "arch1", "unarch1", "rm1",
                        "back", "purge", "purgeall", "tab", "close"):
@@ -290,3 +292,89 @@ class TidyBarStable(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TidyHandleNamesBothPlaces(unittest.TestCase):
+    """손잡이·판이 「치운 것」 대신 **보관함·휴지통** 두 이름을 그대로 세운다
+    (REQ-20260907-085-62x6).
+
+    넷이 다시 판정한 자리다. 「치우다」는 우리말에서 버림 쪽으로 기울어 보관의
+    뜻을 잃고(translator), 판 안의 탭·행 버튼이 이미 「보관함」·「휴지통」인데
+    손잡이만 셋째 사전을 열었다(tech-writer, 규약 2조 ⑤). 합계 한 수
+    (1+76=77)로는 어느 쪽이 77건인지 알 수 없어 두 수를 따로 센다(designer).
+
+    실행: python3 tests/ doc_tidy
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.join(HERE, "..", "web"))
+        import webasset
+        cls.src = webasset.source()
+        cls.js = open(os.path.join(HERE, "..", "web", "app", "tidy.js"),
+                      encoding="utf-8").read()
+
+    def _strings(self, src):
+        """주석은 빼고 **사람이 보는 문자열만** 남긴다 — 옛 이름이 근거로 남는
+        주석과 화면에 서는 글자를 같은 자로 재면 판정이 흐려진다."""
+        out = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        return re.sub(r"^\s*//.*$", "", out, flags=re.M)
+
+    def test_s1_the_handle_counts_two_piles_apart(self):
+        vis = self._strings(self.js)
+        self.assertIn('`보관함${cnt(na)} · 휴지통${cnt(nt)}`', vis,
+                      "손잡이가 두 이름·두 수로 서지 않는다")
+        self.assertNotIn("tidyArch.length + tidyTrash.length", vis,
+                         "합계 한 수는 무엇을 세는지 말하지 못한다")
+        # 자리 기억 열쇠(dlgDragBind·dlgPosPlaceFor 의 인자)만 옛 이름을 지킨다 —
+        # 화면에 안 나오는 저장 열쇠라, 바꾸면 판을 옮겨 둔 사람의 자리가 한 번
+        # 초기화된다. 그 두 줄을 뺀 나머지에는 한 자리도 없어야 한다.
+        screen = "\n".join(l for l in vis.splitlines()
+                           if "dlgDragBind" not in l and "dlgPosPlaceFor" not in l)
+        self.assertNotIn("치운 것", screen,
+                         "화면 문자열에 「치운 것」이 남아 있다")
+        self.assertIn('dlgPosPlaceFor(tidyBox, "치운 것")', self.js,
+                      "자리 기억 열쇠는 그대로 둔다")
+        # 화면 전체(HTML 안내문 포함)에서도 걷혔다
+        guide = open(os.path.join(HERE, "..", "web", "guide.html"),
+                     encoding="utf-8").read()
+        self.assertNotIn("치운 것", guide)
+
+    def test_s2_no_number_before_the_lists_arrive(self):
+        """아직 못 받아 왔으면 수 없이 이름만 — 0 을 미리 적으면 비었다고
+        거짓말을 한다."""
+        self.assertIn("const cnt = n => n === null ? \"\" : `<b>${n}</b>`",
+                      self.js)
+        self.assertIn("const na = tidyArch === null ? null : tidyArch.length",
+                      self.js)
+
+    def test_s3_the_pick_tip_says_both_destinations_politely(self):
+        vis = self._strings(self.js)
+        self.assertIn("여러 문서를 골라 한 번에 보관하거나 지웁니다", vis)
+        self.assertNotIn("한 번에 치운다", vis)
+        self.assertNotIn("고르기를 끝낸다", vis, "화면은 존댓말이다")
+
+    def test_s4_the_confirm_names_only_the_trash(self):
+        vis = self._strings(self.js)
+        self.assertIn("<b>휴지통</b>에서 되돌릴 수 있습니다", vis)
+        self.assertNotIn("치운 것 → 휴지통", vis)
+
+    def test_s5_the_panel_opens_the_pile_that_is_not_empty(self):
+        """한쪽이 0 이면 반대쪽부터 연다 — 둘 다 있으면 보관함 그대로."""
+        self.assertIn('if (!na && nt) tidyTab = "trash";', self.js)
+        self.assertIn('else if (na && !nt) tidyTab = "archived";', self.js)
+        open_body = self.js.split("async function tidyOpen()")[1]
+        self.assertLess(open_body.index("await tidyFetch()"),
+                        open_body.index('tidyTab = "trash"'),
+                        "탭은 **받아 온 뒤에** 고른다")
+
+    def test_s6_the_empty_tab_points_at_the_other_pile(self):
+        self.assertIn("${n}건이 있습니다.", self.js)
+        self.assertIn('tidyTab === "trash" ? "보관함에" : "휴지통에"', self.js)
+        self.assertIn("if (!n) return \"\";", self.js,
+                      "반대쪽도 비었으면 둘째 줄은 서지 않는다")
+        css = open(os.path.join(HERE, "..", "web", "css", "tidy.css"),
+                   encoding="utf-8").read()
+        self.assertIn(".tidypanel .tempty .tsub{", css)
+        self.assertNotIn(".tidypanel .tempty{padding:22px 16px;color:var(--faint)",
+                         css, "빈 상태는 읽어야 하는 글자다 — --faint 금지")

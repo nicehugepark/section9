@@ -24,7 +24,7 @@
 
 let tidyPicking = false;              // 고르기 모드 (눈금은 이때만 선다)
 const tidySel = new Set();            // 고른 문서 id
-let tidyBox = null;                   // 떠 있는 '치운 것' 판
+let tidyBox = null;                   // 떠 있는 '보관함 · 휴지통' 판
 let tidyTab = "archived";             // archived | trash
 // null = **아직 못 받았다**. 빈 배열(정말 없다)과 갈라 둔다 — 이 저장소가
 // 이미 비싸게 배운 것이다(없는 것과 안 온 것은 다른 화면이다).
@@ -43,8 +43,8 @@ async function tidyFetch(){
   };
   const q = meQ() ? "&" + meQ() : "";
   [tidyArch, tidyTrash] = await Promise.all([
-    // 보관함은 언제나 전량이다 — 치운 것을 보러 온 자리에 창을 씌우면
-    // 오래 전에 치운 문서가 목록에서 사라진다 (REQ-20260902-035 §4).
+    // 보관함은 언제나 전량이다 — 보관한 문서를 보러 온 자리에 창을 씌우면
+    // 오래 전에 보관한 문서가 목록에서 사라진다 (REQ-20260902-035 §4).
     get("/api/catalog?archived=1&window=all" + q, j => Array.isArray(j) ? j : null),
     get("/api/trash?" + meQ(), j => Array.isArray(j?.rows) ? j.rows : null),
   ]);
@@ -90,11 +90,11 @@ function tidyDecorate(){
   const list = $("#view .doclist");
   if (list){
     list.classList.toggle("picking", tidyPicking);
-    // ① 타입바 끝의 두 손잡이 — 고르기 · 치운 것
+    // ① 타입바 끝의 두 손잡이 — 고르기 · 보관함 · 휴지통
     const tb = list.querySelector(".typebar");
     if (tb && !tb.querySelector("[data-tidy]")){
       /* 둘은 **한 덩이**다 (REQ-20260907-013). 낱개로 붙이면 띠가 접힐 때
-         「고르기」가 한 줄 오른끝, 「치운 것」이 다음 줄 왼끝으로 갈라져 가장 먼
+         「고르기」가 한 줄 오른끝, 「보관함 · 휴지통」이 다음 줄 왼끝으로 갈라져 가장 먼
          두 자리에 앉는다 — 같은 축의 두 손잡이가 남남으로 읽힌다. 묶어 두면
          접힘이 묶음 단위로 일어나 둘이 늘 붙어 다닌다. */
       tb.insertAdjacentHTML("beforeend",
@@ -109,17 +109,24 @@ function tidyDecorate(){
       if (bp){
         bp.classList.toggle("on", tidyPicking);
         bp.setAttribute("aria-pressed", tidyPicking ? "true" : "false");
-        const t = tidyPicking ? "고르기를 끝낸다" : "여러 문서를 골라 한 번에 치운다";
+        const t = tidyPicking ? "고르기를 끝냅니다"
+          : "여러 문서를 골라 한 번에 보관하거나 지웁니다";
         bp.title = t; bp.setAttribute("aria-label", t);
         const html = "고르기" + (tidySel.size ? `<b>${tidySel.size}</b>` : "");
         if (bp.innerHTML !== html) bp.innerHTML = html;
       }
       if (bo){
-        const n = (tidyArch === null || tidyTrash === null)
-          ? null : tidyArch.length + tidyTrash.length;
-        const t = "치운 것 — 보관함과 휴지통, 되돌리기";
+        /* 손잡이는 두 자리의 이름을 그대로 데리고 선다 (REQ-20260907-085).
+           합계 한 수는 무엇을 세는지 말하지 못한다 — 「1+76=77」 로는 보관이
+           77건인지 휴지통이 77건인지 알 수 없고, 두 수를 따로 세우면 판을 열기
+           전에 어느 쪽을 볼지가 정해진다. 아직 못 받아 왔으면(둘 다 null) 수
+           없이 이름만 선다 — 0 을 미리 적으면 비었다고 거짓말을 한다. */
+        const na = tidyArch === null ? null : tidyArch.length;
+        const nt = tidyTrash === null ? null : tidyTrash.length;
+        const t = "보관함과 휴지통을 열어 되돌립니다";
         bo.title = t; bo.setAttribute("aria-label", t);
-        const html = "치운 것" + (n ? `<b>${n}</b>` : "");
+        const cnt = n => n === null ? "" : `<b>${n}</b>`;
+        const html = `보관함${cnt(na)} · 휴지통${cnt(nt)}`;
         if (bo.innerHTML !== html) bo.innerHTML = html;
       }
     }
@@ -226,7 +233,7 @@ function tidyDecorate(){
   }else if (grp) grp.remove();
 }
 
-/* ------------------------------------------------------------- 치운 것 (판) */
+/* ------------------------------------------------- 보관함 · 휴지통 (판) */
 
 function tidyClose(){
   if (!tidyBox) return;
@@ -239,6 +246,17 @@ function tidyRender(){
   const rows = tidyTab === "trash" ? tidyTrash : tidyArch;
   const lost = rows === null;
   const cnt = r => r === null ? "" : `<b>${r.length}</b>`;
+  /* 빈 탭은 두 줄이다 (REQ-20260907-085 · s9-design R6): 무엇이 없는가 아래에
+     **반대쪽에 몇 건이 있는가**를 적는다. 보관함 1 · 휴지통 76 인 화면에서 빈
+     쪽을 먼저 본 사람은 「없다」로 읽고 판을 닫았다 — 건너갈 자리가 있다는 말을
+     그 자리에서 한 줄로 한다. 반대쪽도 비었으면 둘째 줄은 서지 않는다. */
+  const crossLine = () => {
+    const other = tidyTab === "trash" ? tidyArch : tidyTrash;
+    const n = other === null ? 0 : other.length;
+    if (!n) return "";
+    return `<div class="tsub">${tidyTab === "trash" ? "보관함에" : "휴지통에"}`
+         + ` ${n}건이 있습니다.</div>`;
+  };
   const item = r => `<div class="titem">
       <div class="tmain">
         <div class="tid">${esc(shortId(r.id))}</div>
@@ -258,10 +276,10 @@ function tidyRender(){
         <code>bin/s9 serve --restart</code> 로 다시 띄워 주세요.</div>`
     : !rows.length
       ? `<div class="tempty">${tidyTab === "trash"
-          ? "휴지통이 비었습니다." : "보관한 문서가 없습니다."}</div>`
+          ? "휴지통이 비었습니다." : "보관한 문서가 없습니다."}${crossLine()}</div>`
       : rows.map(item).join("");
   tidyBox.innerHTML = `<div class="dlghead">` + DLG_GRIP + `
-      <span class="dlgcap">치운 것</span>
+      <span class="dlgcap">보관함 · 휴지통</span>
       <span class="dlgdoc">되돌릴 수 있는 것과 없는 것</span>
       <span class="dlgesc"><kbd>ESC</kbd> 닫기</span></div>
     <div class="tidytabs">
@@ -286,13 +304,20 @@ async function tidyOpen(){
   tidyBox = document.createElement("div");
   tidyBox.className = "hovercard dlgbox tidypanel";
   tidyBox.setAttribute("role", "dialog");
-  tidyBox.setAttribute("aria-label", "치운 것 — 보관함과 휴지통");
+  tidyBox.setAttribute("aria-label", "보관함과 휴지통");
   document.body.appendChild(tidyBox);
-  // 다른 팝업과 같은 끌기·자리 기억 (REQ-20260907-028) — 종류 이름은 「치운 것」
+  /* 다른 팝업과 같은 끌기·자리 기억 (REQ-20260907-028). 이 이름은 화면에 안
+     나오는 **자리 기억 열쇠**라 판 제목이 바뀌어도 그대로 둔다 — 바꾸면 판을
+     옮겨 둔 사람의 자리가 한 번 초기화된다 (REQ-20260907-085). */
   dlgDragBind(tidyBox, () => "치운 것");
   tidyRender();
   dlgPosPlaceFor(tidyBox, "치운 것");
   await tidyFetch();
+  /* 비어 있지 않은 쪽을 먼저 연다 — 한쪽이 0 인데 그쪽부터 열면 찾으러 온
+     사람이 「없다」로 읽고 닫는다. 둘 다 있으면 보관함을 그대로 둔다. */
+  const na = (tidyArch || []).length, nt = (tidyTrash || []).length;
+  if (!na && nt) tidyTab = "trash";
+  else if (na && !nt) tidyTab = "archived";
   tidyRender();
   tidyDecorate();
 }
@@ -379,7 +404,7 @@ function tidyConfirmRm(ids){
     title: ids.length > 1 ? `${ids.length}건을 휴지통으로 보냅니다`
                           : "이 문서를 휴지통으로 보냅니다",
     descHtml: tidyNames(ids, catFind)
-      + `<p>목록에서 사라지지만 <b>치운 것 → 휴지통</b> 에서 되돌릴 수 있습니다.</p>`,
+      + `<p>목록에서 사라지지만 <b>휴지통</b>에서 되돌릴 수 있습니다.</p>`,
     ok: "휴지통으로 보내기", cancel: "그만두기"});
 }
 
@@ -419,10 +444,10 @@ document.addEventListener("keydown", e => {
 /* 진단 손잡이 — 이 화면이 이미 쓰는 어휘다(`?vscroll` · `?dlg` · `?stall`).
    화면 검증은 **눌러 본 화면**이어야 하는데 캡처에는 누를 손이 없다. 그래서
    여는 손을 주소에 둔다: `?tidy=pick` 은 고르기를 켜고 앞의 셋을 고른 판,
-   `?tidy=panel`·`?tidy=trash` 는 치운 것을 편 판. 평소에는 아무 일도 하지 않는다.
+   `?tidy=panel`·`?tidy=trash` 는 보관함·휴지통을 편 판. 평소에는 아무 일도 하지 않는다.
 
    손잡이가 없어도 수(數)는 처음부터 맞는다 — 판을 열어야 세는 화면이면
-   "치운 것" 옆이 한참 비어 있다가 갑자기 채워진다. 한 번은 그냥 받아 둔다. */
+   손잡이의 두 수가 한참 비어 있다가 갑자기 채워진다. 한 번은 그냥 받아 둔다. */
 window.addEventListener("load", () => {
   const m = /[?&]tidy=(pick|panel|trash)/.exec(location.search);
   if (!m){ setTimeout(() => tidyFetch().then(tidyDecorate), 1200); return; }
