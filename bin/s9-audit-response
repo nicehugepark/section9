@@ -280,6 +280,32 @@ def last_assistant_text(transcript_path):
     return text, model
 
 
+def turn_started(transcript_path):
+    """이 턴이 시작된 시각 — 마지막 **사람의 프롬프트**(tool_result 가 아닌 user
+    이벤트)의 timestamp. 토큰 창의 앞이다 (REQ-20260907-009). 없으면 ""."""
+    ts = ""
+    try:
+        with open(transcript_path, encoding="utf-8") as f:
+            for line in f:
+                if '"type":"user"' not in line and '"type": "user"' not in line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue
+                if obj.get("type") != "user":
+                    continue
+                content = (obj.get("message") or {}).get("content")
+                if isinstance(content, list) and any(
+                        isinstance(c, dict) and c.get("type") == "tool_result"
+                        for c in content):
+                    continue
+                ts = obj.get("timestamp") or ts
+    except OSError:
+        return ""
+    return ts
+
+
 def main():
     if os.environ.get("S9_AUDIT", "").lower() == "off":
         return
@@ -334,13 +360,17 @@ def main():
         text = text[:MAX_CHARS] + "\n\n…(truncated)"
     # 리드 에이전트 귀속: 오케스트레이터(메인 세션)를 lead:<model> 로 기록
     agent = f"lead:{model}" if model else "lead"
+    # 토큰 창 (REQ-20260907-009): 이 턴의 프롬프트 시각부터 지금까지의 usage 를
+    # note 가 합친다. 시작 시각을 모르면 넘기지 않는다 — 0 으로 적히지 않게.
+    started = turn_started(tp)
+    tok = ["--transcript", tp, "--started", started] if started else []
     if label == "answer":
         # 기다리던 질문 **전부**에 붙인다. 하나가 사라졌다고 나머지 답까지
         # 버리지 않는다 — 하나라도 붙으면 그 턴은 성공이다.
         ok = 0
         for q in pend:
             r = run(env, "note", q, "--label", label, "--agent", agent,
-                    inp=text)
+                    *tok, inp=text)
             if r.returncode == 0:
                 ok += 1
                 run(env, "log", f"answer → {q} by {agent} ({len(text)} chars)")
@@ -353,7 +383,8 @@ def main():
         if not active:
             return
         req, label = active, "response"
-    out = run(env, "note", req, "--label", label, "--agent", agent, inp=text)
+    out = run(env, "note", req, "--label", label, "--agent", agent, *tok,
+              inp=text)
     if out.returncode == 0:
         run(env, "log", f"{label} → {req} by {agent} ({len(text)} chars)")
 

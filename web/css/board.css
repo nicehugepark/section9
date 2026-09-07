@@ -221,6 +221,9 @@ span.proj{cursor:default}
 .card .t{margin:3px 0 6px;font-weight:600;line-height:1.45;font-size:13.5px;letter-spacing:-.01em}
 .card .m{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);
   font-family:var(--mono);align-items:baseline}
+/* 요청에 쓰인 토큰 한 줄 (REQ-20260907-009) — 작은 글자, 색은 주변(muted)을 따른다 */
+.card .m .tok{font-size:10px;white-space:nowrap}
+
 .elapsed{position:absolute;right:var(--card-px);top:var(--card-pt);
   font-family:var(--mono);font-size:10px;line-height:var(--card-edge);
   color:var(--sc,var(--muted));white-space:nowrap}

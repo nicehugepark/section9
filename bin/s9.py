@@ -109,7 +109,7 @@ LIST_KEYS = {"tags", "children", "relates", "blocked_by", "refs_docs",
 FM_ORDER = [
     "id", "type", "title", "summary", "goal", "status", "size",
     "user", "machine", "session", "sessions", "agents",
-    "contributions", "project",
+    "contributions", "tokens", "project",
     "slug", "customer", "contact_name", "contact_email",
     "contact_phone", "contact_org", "members",
     "parent", "children", "derived_from", "relates", "relates_why",
@@ -1785,6 +1785,9 @@ def catalog_row(meta, path, body=""):
         "review_point": _review_point(body) if meta.get("status") == "review" else "",
         "block_reason": _block_reason(body) if meta.get("status") == "blocked" else "",
         "tdd": _tdd_progress(body),
+        # 요청별 토큰 합계 (REQ-20260907-009) — 카드와 `metrics report --by` 가
+        # 문서를 열지 않고 읽는다. 기록된 적 없으면 빈 값(0 이 아니다).
+        "tokens": meta.get("tokens") or "",
         # 질문 문서의 미답 여부 (REQ-20260826-017) — 본문 파생. 다른 타입은 빈 값.
         "answered": (_answered(body) if meta.get("type") == "question" else ""),
         # 처리 주체 상태 요약 (REQ-20260825-089): 카드 점등이 문서를 다시 열지
@@ -14779,8 +14782,82 @@ def item_from_text(text, limit=70):
     return ""
 
 
+# ------------------------------------- 요청별 토큰 (REQ-20260907-009)
+# transcript 이벤트의 `message.usage` 가 유일한 원천이다. 규칙은 함수 하나에만
+# 둔다 — 스트림 화면(agent_file_stats)과 기여 기록이 같은 함수를 쓴다.
+TOKEN_KEYS = ("in", "out", "cache_read", "cache_create")
+_USAGE_FIELDS = {"in": "input_tokens", "out": "output_tokens",
+                 "cache_read": "cache_read_input_tokens",
+                 "cache_create": "cache_creation_input_tokens"}
+
+
+def event_usage(ev):
+    """transcript 이벤트 하나의 usage → {in, out, cache_read, cache_create}.
+    usage 가 없는 이벤트(user·tool_result·요약)는 None."""
+    if not isinstance(ev, dict):
+        return None
+    u = (ev.get("message") or {}).get("usage") if isinstance(ev.get("message"), dict) else None
+    if not isinstance(u, dict) or not u:
+        return None
+    out = {}
+    for k, f in _USAGE_FIELDS.items():
+        try:
+            out[k] = int(u.get(f) or 0)
+        except (TypeError, ValueError):
+            out[k] = 0
+    return out
+
+
+def _tokens_add(a, b, sign=1):
+    """네 값을 더한다(sign=-1 이면 뺀다). 캐시는 따로 — 합치지 않는다."""
+    return {k: int((a or {}).get(k) or 0) + sign * int((b or {}).get(k) or 0)
+            for k in TOKEN_KEYS}
+
+
+def transcript_usage(path, started, ended):
+    """창 [started, ended] 안의 usage 합. 파일이 없거나 창이 없거나 창 안에 usage
+    이벤트가 없으면 None — 모르는 것을 0 으로 적지 않는다.
+
+    Claude 의 jsonl 은 응답 하나를 content block 마다 한 줄로 쓰고 줄마다 같은
+    usage 를 되풀이한다(같은 message.id 가 최대 10줄 실측). 그래서 message.id
+    로 한 번만 센다 — 나중 줄이 이긴다(output_tokens 는 마지막 줄이 최종값)."""
+    if not path or not started or not ended:
+        return None
+    lo, hi = iso_epoch(started), iso_epoch(ended)
+    if not lo or not hi or hi < lo:
+        return None
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    seen = {}
+    for raw in data.splitlines():
+        if b'"usage"' not in raw:
+            continue
+        try:
+            ev = json.loads(raw.decode("utf-8", "ignore"))
+        except ValueError:
+            continue
+        t = iso_epoch(ev.get("timestamp"))
+        if not t or t < lo or t > hi:
+            continue
+        u = event_usage(ev)
+        if u is None:
+            continue
+        mid = ((ev.get("message") or {}).get("id") or ev.get("uuid")
+               or ev.get("timestamp"))
+        seen[mid] = u
+    if not seen:
+        return None
+    total = dict.fromkeys(TOKEN_KEYS, 0)
+    for u in seen.values():
+        total = _tokens_add(total, u)
+    return total
+
+
 def record_contribution(meta, actor, item="", result="done", transcript="",
-                        ts=None):
+                        ts=None, started=None):
     """문서 meta 의 contributions 에 항목별 처리 이력을 누적 (단일 쓰기 경로).
 
     규칙 세 가지 — 전부 '기록 과잉'과 '거짓 진행'을 막기 위한 것이다:
@@ -14815,9 +14892,20 @@ def record_contribution(meta, actor, item="", result="done", transcript="",
             if r.get("actor") == actor and r.get("result") == "running":
                 r["result"] = "done" if result != "failed" else "failed"
                 r["ended"] = ts
-        entry = {"actor": actor, "item": item, "started": ts, "ended": ts,
-                 "result": result, "transcript": transcript}
+        entry = {"actor": actor, "item": item, "started": started or ts,
+                 "ended": ts, "result": result, "transcript": transcript}
         rows.append(entry)
+    # 토큰 (REQ-20260907-009): 이 항목의 창 안 usage 를 항목에 적고, 문서 머리
+    # 에는 **늘어난 만큼만** 더한다 — 같은 항목을 다시 닫으면 창이 넓어져
+    # 다시 합산되므로 차이만 더해야 이중 계산이 없고, CONTRIB_MAX 로 오래된
+    # 항목이 잘려도 머리의 합계는 남는다. 창·파일·이벤트가 없으면 아무것도
+    # 적지 않는다(0 은 「썼는데 0」이고, 없음은 「모른다」다).
+    used = transcript_usage(entry.get("transcript"), entry.get("started"),
+                            entry.get("ended"))
+    if used is not None:
+        delta = _tokens_add(used, entry.get("tokens"), sign=-1)
+        entry["tokens"] = used
+        meta["tokens"] = _tokens_add(meta.get("tokens"), delta)
     meta["contributions"] = rows[-CONTRIB_MAX:]
     return entry
 
@@ -15730,7 +15818,8 @@ def cmd_note(args):
             meta, actor,
             item=(getattr(args, "item", "") or "").strip() or item_from_text(text),
             result=(getattr(args, "result", "") or "done"),
-            transcript=(getattr(args, "transcript", "") or ""), ts=ts)
+            transcript=(getattr(args, "transcript", "") or ""), ts=ts,
+            started=(getattr(args, "started", "") or None))
     # 문서의 어느 구간에 붙은 말인지 (REQ-20260827-072). 줄 번호로 매지 않는다 —
     # 문서가 한 줄만 바뀌어도 전부 어긋난다. **선택한 글 자체**를 인용으로 남기면
     # 문서가 바뀌어도 사람은 어디였는지 읽을 수 있고, 화면은 그 글을 찾아 짚는다.
@@ -16117,7 +16206,9 @@ def cmd_contrib(args):
         meta, body = read_doc(path)
         entry = record_contribution(meta, actor, item=args.item or "",
                                     result=args.result,
-                                    transcript=args.transcript or "")
+                                    transcript=args.transcript or "",
+                                    ts=(args.ended or None),
+                                    started=(args.started or None))
         ags = meta.get("agents") or []
         if not isinstance(ags, list):
             ags = [ags]
@@ -22083,6 +22174,48 @@ def metrics_stop(root=None):
     return True, f"중지 요청 (pid {pid})"
 
 
+def tokens_report(by, as_json=False, out=None):
+    """요청별 토큰 표 (REQ-20260907-009). --by req 는 카탈로그 행의 tokens 만 읽고,
+    agent·day 는 tokens 가 있는 문서만 열어 contributions 로 나눈다.
+    캐시 두 값은 따로 — 합치면 수백 배 큰 캐시가 입력·출력을 가린다."""
+    out = out or sys.stdout
+    rows = [r for r in load_catalog() if isinstance(r.get("tokens"), dict)]
+    if by == "req":
+        table = [{"id": r["id"], "title": r.get("title", ""),
+                  "tokens": _tokens_add(None, r["tokens"])} for r in rows]
+    else:
+        acc = {}
+        for r in rows:
+            try:
+                meta, _ = read_doc(find_path(r["id"]))
+            except Exception:
+                continue
+            for c in (meta.get("contributions") or []):
+                if not isinstance(c, dict) or not isinstance(c.get("tokens"), dict):
+                    continue
+                key = (c.get("actor", "") if by == "agent"
+                       else str(c.get("ended") or c.get("started") or "")[:10])
+                acc[key] = _tokens_add(acc.get(key), c["tokens"])
+        table = [{"id": k, "title": "", "tokens": v} for k, v in acc.items()]
+    table.sort(key=lambda t: (-t["tokens"]["out"], t["id"]))
+    if as_json:
+        print(json.dumps(table, ensure_ascii=False), file=out)
+        return 0
+    head = ("req" if by == "req" else by, "제목", "out", "in", "cache_read",
+            "cache_create")
+    w0 = max([len(head[0])] + [len(t["id"]) for t in table])
+    print(f"{head[0]:<{w0}}  {head[1]:<24}  {head[2]:>10}  {head[3]:>10}  "
+          f"{head[4]:>12}  {head[5]:>12}", file=out)
+    for t in table:
+        k = t["tokens"]
+        title = (t["title"] or "")[:24]
+        print(f"{t['id']:<{w0}}  {title:<24}  {k['out']:>10}  {k['in']:>10}  "
+              f"{k['cache_read']:>12}  {k['cache_create']:>12}", file=out)
+    if not table:
+        print("(tokens 가 기록된 문서 없음)", file=out)
+    return 0
+
+
 def cmd_metrics(args):
     root = ROOT
     action = args.action or "status"
@@ -22153,6 +22286,8 @@ def cmd_metrics(args):
             print(f"  sys  {json.dumps(s['sys'], ensure_ascii=False)}")
             print(f"  → {path}")
         return 0
+    if action == "report" and getattr(args, "by", ""):
+        return tokens_report(args.by, as_json=args.json)
     if action == "report":
         window = args.window
         try:
@@ -24031,6 +24166,7 @@ def cmd_serve(args):
         tokens = c["tokens"] if c and start else 0
         first_ts = (c.get("first_ts") if c and start else "") or ""
         label = c.get("label", "") if c and start else ""
+        last_mid = c.get("last_mid", "") if c and start else ""
         with open(path, "rb") as f:
             f.seek(start)
             data = f.read()
@@ -24042,16 +24178,20 @@ def cmd_serve(args):
                 continue
             if not first_ts and ev.get("timestamp"):
                 first_ts = ev["timestamp"]
-            u = ((ev.get("message") or {}).get("usage") or {})
-            try:
-                tokens += int(u.get("output_tokens") or 0)
-            except (TypeError, ValueError):
-                pass
+            # 응답 하나가 content block 마다 한 줄로 반복된다 — 같은 message.id
+            # 는 한 번만 센다 (transcript_usage 와 같은 규칙, REQ-20260907-009).
+            u = event_usage(ev)
+            if u is not None:
+                mid = (ev.get("message") or {}).get("id") or ev.get("uuid") or ""
+                if mid != last_mid:
+                    tokens += u["out"]
+                    last_mid = mid
             lbl = _agent_label(ev)
             if lbl:
                 label = lbl
         _ag_file_cache[path] = {"size": start + end, "tokens": tokens,
-                                "first_ts": first_ts, "label": label}
+                                "first_ts": first_ts, "label": label,
+                                "last_mid": last_mid}
         return {**_ag_file_cache[path], "mtime": st.st_mtime}
 
     def active_session_for(doc_id):
@@ -26943,6 +27083,9 @@ def main():
                     help="이 항목의 결과 (기본 done). 시작 등록은 running.")
     nt.add_argument("--transcript", metavar="PATH",
                     help="이 항목을 처리한 에이전트의 transcript/output 경로")
+    nt.add_argument("--started", metavar="ISO",
+                    help="이 항목이 시작된 시각 — transcript 의 usage 를 이 시각부터 "
+                         "노트 시각까지 합쳐 tokens 로 적는다 (없으면 적지 않는다)")
     nt.set_defaults(fn=cmd_note)
 
     la = sub.add_parser("last", help="get/set this session's active REQ pointer")
@@ -26992,6 +27135,8 @@ def main():
     ct.add_argument("--item", help="작업 항목 (예: 'N1', 'TDD 구현')")
     ct.add_argument("--result", choices=list(CONTRIB_RESULTS), default="running")
     ct.add_argument("--transcript", metavar="PATH")
+    ct.add_argument("--started", metavar="ISO", help="항목 시작 시각 (tokens 창의 앞)")
+    ct.add_argument("--ended", metavar="ISO", help="항목 종료 시각 (기본 지금)")
     ct.set_defaults(fn=cmd_contrib)
 
     ag = sub.add_parser("agents", help="처리 주체 헬스체크 (생존·정지·실패 판정)")
@@ -27204,6 +27349,8 @@ def main():
                     "now·지금 / 20:19 / 20:19:30 / ISO (기본 지금)")
     mt.add_argument("--window", type=int, default=10,
                     help="report: 그 시각 앞뒤 분 (기본 10)")
+    mt.add_argument("--by", choices=["req", "agent", "day"],
+                    help="report: 요청별 토큰 표 — 요청·에이전트·날짜 단위")
     mt.add_argument("--json", action="store_true")
     mt.set_defaults(fn=cmd_metrics)
 

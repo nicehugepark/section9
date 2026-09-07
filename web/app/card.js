@@ -1736,6 +1736,21 @@ function spawnTell(r){
   }
 }
 
+/* 요청에 쓰인 토큰 한 줄 (REQ-20260907-009). 출력·입력·캐시를 따로 적는다 —
+   캐시는 수백 배 커서 합치면 출력·입력이 안 보인다. 기록이 없으면 그리지
+   않는다(0 으로 그리면 「안 썼다」로 읽힌다 — 모르는 것은 비워 둔다). */
+const fmtTokens = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M"
+  : n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n | 0);
+function tokensLineHTML(r){
+  const t = r.tokens;
+  if (!t || typeof t !== "object") return "";
+  const cache = (t.cache_read | 0) + (t.cache_create | 0);
+  const tip = `이 요청에 쓰인 토큰 — 출력 ${t.out | 0} · 입력 ${t.in | 0}`
+    + ` · 캐시 읽기 ${t.cache_read | 0} · 캐시 생성 ${t.cache_create | 0}`;
+  return `<span class="tok" title="${esc(tip)}">출력 ${fmtTokens(t.out | 0)}`
+    + ` · 입력 ${fmtTokens(t.in | 0)} · 캐시 ${fmtTokens(cache)}</span>`;
+}
+
 function cardHTML(r){
   const isReq = r.type === "request";
   // "무엇을 기다리는가" 한 줄 (REQ-20260826-009). blocked 전용이 아니다 —
@@ -1928,6 +1943,7 @@ function cardHTML(r){
       ${r.size ? `<span class="size">${esc(r.size)}</span>` : ""}
       ${r.tdd ? `<span class="tdd${r.tdd.passed===r.tdd.total?" full":""}" title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">TDD ${r.tdd.passed}/${r.tdd.total}</span>` : ""}
       ${(r.tags||[]).filter(t=>!SYS_TAGS.has(t)).slice(0,2).map(t=>`<span class="tag" style="--th:${tagHue(t)}">#${esc(t)}</span>`).join("")}
+      ${tokensLineHTML(r)}
     </div>${acts}${dep}${stall}
     ${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}</div>`;
 }

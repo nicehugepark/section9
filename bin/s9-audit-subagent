@@ -112,6 +112,23 @@ def last_assistant_text(transcript_path):
     return text
 
 
+def first_event_ts(transcript_path):
+    """위임 transcript 의 첫 이벤트 시각 — 토큰 창의 앞 (REQ-20260907-009).
+    파일이 없거나 시각이 없으면 ""(그러면 tokens 를 적지 않는다)."""
+    try:
+        with open(transcript_path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue
+                if obj.get("timestamp"):
+                    return obj["timestamp"]
+    except OSError:
+        pass
+    return ""
+
+
 OPEN_STATES = ("open", "in-progress", "review", "blocked")
 
 
@@ -214,10 +231,12 @@ def main():
     if len(text) > MAX_CHARS:
         text = text[:MAX_CHARS] + "\n\n…(truncated)"
     # 위임 에이전트 귀속: 노트 헤더(agent: <type>)와 REQ 프론트매터 agents에 누적
+    atp = data.get("agent_transcript_path") or ""
+    started = first_event_ts(atp) if atp else ""
     out = run(env, "note", req, "--label", "subagent", "--agent", actor,
-              "--result", "done", *(["--transcript",
-                                     data["agent_transcript_path"]]
-                                    if data.get("agent_transcript_path") else []),
+              "--result", "done",
+              *(["--transcript", atp] if atp else []),
+              *(["--started", started] if started else []),
               inp=text)
     if out.returncode == 0:
         run(env, "log", f"subagent({actor}) → {req} ({len(text)} chars)")
