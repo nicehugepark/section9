@@ -19196,6 +19196,58 @@ def first_run_identity(u, known, ask):
     return ("attach" if name in known else "add"), name
 
 
+def browser_open_cmd(url, _which=None, _plat=None):
+    """대시보드를 사람의 기본 브라우저로 열 명령 (REQ-20260907-035).
+
+    화면을 띄우는 도구 이름은 판마다 다르고, 없는 판도 있다. 그래서 **고르는
+    일과 부르는 일을 가른다** — 여기서는 argv 만 돌려주고, 실행은 부르는
+    쪽이 한다. 시험이 프로세스를 띄우지 않고 선택만 볼 수 있는 이유다.
+
+    WSL 은 리눅스 도구(xdg-open)가 있어도 그것으로 열면 리눅스 안에서 열려
+    사람 눈에 안 보인다 — 윈도우 쪽 도구를 먼저 본다. 아무 후보도 없으면
+    None: 브라우저는 곁가지라, 못 열었다고 `s9 code` 가 멈추지 않는다.
+    """
+    import shutil
+    which = _which or shutil.which
+    plat = _plat or os_platform()
+    if plat == "macOS":
+        cands = [["open", url]]
+    elif plat == "Windows":
+        cands = [["cmd", "/c", "start", "", url]]
+    elif plat == "WSL":
+        cands = [["wslview", url], ["explorer.exe", url],
+                 ["cmd.exe", "/c", "start", "", url]]
+    else:
+        cands = [["xdg-open", url], ["gio", "open", url]]
+    for c in cands:
+        if which(c[0]):
+            return c
+    return None
+
+
+def browser_open(url, out=print):
+    """대시보드를 연다 — 최선 노력. 껐거나 열 도구가 없으면 조용히 False.
+
+    끄는 길 둘: 환경 `S9_NO_OPEN=1` · `s9 code --no-open`. 자동으로 뜨는 창을
+    싫어하는 사람이 매번 같은 손짓을 하지 않게 환경 쪽도 함께 둔다.
+    """
+    import subprocess
+    if os.environ.get("S9_NO_OPEN"):
+        return False
+    cmd = browser_open_cmd(url)
+    if not cmd:
+        return False
+    try:
+        # explorer.exe 는 성공해도 1 로 끝난다 — 종료 코드로 판정하지 않는다.
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except (OSError, ValueError):
+        return False
+    out(f"◌ 브라우저에서 열었다: {url}  (끄려면 `s9 code --no-open` 또는 S9_NO_OPEN=1)")
+    return True
+
+
 def cmd_code(args):
     """통합 진입 명령 (REQ-20260824-032): 대시보드를 보장(이미 떠 있으면 스킵)하고
     이 터미널에서 claude를 실행한다 — 한 명령으로 관제(대시보드)+대화(터미널) 시작.
@@ -19216,8 +19268,9 @@ def cmd_code(args):
     # 중」을 찍었는데, WSL 중계는 아무도 안 듣는 포트에도 connect 를 받아 준다.
     # 우리 서버가 실제로 답하는지를 왕복으로 본다.
     ready = dashboard_ready("127.0.0.1", port)
+    _url = f"http://127.0.0.1:{port}/"
     if ready["ready"]:
-        print(f"대시보드 실행 중: http://127.0.0.1:{port}/")
+        print(f"대시보드 실행 중: {_url}")
     else:
         # 서버를 직접 띄우지 않고 **감시자**를 띄운다 (REQ-20260825-096) —
         # 감시자가 서버를 올리고, 죽으면 사유를 남기고 되살린다. 여기서
@@ -19236,9 +19289,18 @@ def cmd_code(args):
                               if k != "CLAUDE_CONFIG_DIR"},
                          stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
                          start_new_session=True)
-        print(f"대시보드 기동: http://127.0.0.1:{port}/")
+        print(f"대시보드 기동: {_url}")
+        # 갓 띄운 서버는 아직 답하지 않는다 — 열어 놓고 「연결할 수 없음」을
+        # 보여 주면 사람은 그것을 고장으로 읽는다. 왕복이 될 때까지 기다린 뒤
+        # 연다(짧게; 안 되면 주소만 남기고 넘어간다).
+        for _ in range(20):
+            if dashboard_ready("127.0.0.1", port)["ready"]:
+                break
+            time.sleep(0.5)
     # 기억해 둔 ssh 터널을 올린다 (REQ-20260906-010, 옵트인: `s9 tunnel … --keep`).
     # 어느 머신도 여기 적혀 있지 않다 — 목록은 state/tunnels.json 이 준다.
+    if not getattr(args, "no_open", False):
+        browser_open(_url)
     for _m in tunnel_autostart():
         print(f"◌ {_m}")
     if getattr(args, "no_claude", False):
@@ -27494,6 +27556,8 @@ def main():
 
     cd2 = sub.add_parser("code", help="대시보드 보장 + 이 터미널에서 claude 실행 (통합 진입)")
     cd2.add_argument("--no-claude", action="store_true", help="대시보드만 보장(테스트용)")
+    cd2.add_argument("--no-open", action="store_true",
+                     help="대시보드를 브라우저로 열지 않는다 (항상 끄려면 S9_NO_OPEN=1)")
     cd2.add_argument("--project",
                      help="이 세션의 프로젝트 — 프롬프트가 요청 문서가 될 때 여기에 "
                           "붙는다. 없으면 projects/ 밑 slug 가 하나일 때 그것으로 "
@@ -27568,9 +27632,11 @@ def main():
     # (REQ-20260824-036). REMAINDER/parse_known_args는 옵션-위치 인자 순서를
     # 흐트러뜨리거나(인터리브 소실) 3.12+에서 미지 옵션을 에러 처리한다.
     if len(sys.argv) > 1 and sys.argv[1] == "code":
-        rest = [a for a in sys.argv[2:] if a != "--no-claude"]
+        _own = ("--no-claude", "--no-open")     # s9 code 의 것 — claude 로 넘기지 않는다
+        rest = [a for a in sys.argv[2:] if a not in _own]
         ns = argparse.Namespace(
-            no_claude="--no-claude" in sys.argv[2:], claude_args=rest)
+            no_claude="--no-claude" in sys.argv[2:],
+            no_open="--no-open" in sys.argv[2:], claude_args=rest)
         cmd_code(ns)
         return
     args = p.parse_args()
