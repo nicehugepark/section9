@@ -216,7 +216,13 @@ function fillProjects(){
     if (none){
       const o = document.createElement("option");
       o.value = NO_PROJECT;
-      o.textContent = `프로젝트 없음 (${none})`;
+      /* 건수는 **전량을 손에 들었을 때만** 붙인다 (REQ-20260907-074).
+         이 수는 저장소의 건수가 아니라 지금 화면이 든 카탈로그의 건수다 —
+         Board 에서 온 화면은 좁게 받으므로(REQ-20260907-066) 같은 자리가
+         36 이었다가 전량이 오면 223 이 된다. 사용자가 실제로 그렇게 읽고
+         물었다(2026-09-07 21:08). 아직 다 못 받았으면 이름만 세운다:
+         숫자가 없는 것보다 틀린 숫자가 나쁘다. */
+      o.textContent = catalogAll ? `프로젝트 없음 (${none})` : "프로젝트 없음";
       el.appendChild(o);
     }
   }
