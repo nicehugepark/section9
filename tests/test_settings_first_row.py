@@ -93,7 +93,7 @@ class SettingsFirstRow(unittest.TestCase):
                 seg = self.src[m.start():m.start() + 400]
                 self.assertNotIn("typebar", seg, "Settings 목록에 타입바가 생겼다")
                 # Stream 빈 상태 줄
-                self.assertIn('<div class="grp">no streams', self.src)
+                self.assertIn('<div class="grp">아직 남은 기록이 없습니다', self.src)   # REQ-20260907-015 로 우리말
 
             # ④ 머리는 불투명해야 한다 — 배경을 지워 때우지 않는다
         with self.subTest("grp_stays_opaque"):

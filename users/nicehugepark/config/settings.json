@@ -1,7 +1,7 @@
 {
- "ui_skin": "glass",
- "ui_tone": "graphite",
- "ui_density": "normal",
+ "ui_skin": "terminal",
+ "ui_tone": "system",
+ "ui_density": "compact",
  "stream_mirror": "on",
  "timezone": "Asia/Seoul",
  "last_model_choice": "fable",
