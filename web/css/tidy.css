@@ -60,21 +60,26 @@
 .doclist .tidybar button[disabled]{color:var(--faint);cursor:default;
   text-decoration:none}
 
-/* ---- 문서 한 장의 치우기 줄 ---- */
-/* 문서 맨 아래다. 다 읽고 나서 하는 일이라 그 자리에 둔다 — 위에 두면
-   전이 버튼(승인·반려)과 한 묶음으로 읽힌다. */
-.viewer .tidyacts{margin-top:22px;padding-top:10px;
-  border-top:1px solid var(--hairline)}
-.viewer .tidyacts .tcap{font-family:var(--mono);font-size:10px;letter-spacing:0;
-  color:var(--faint);display:block;margin-bottom:6px}
-.viewer .tidyacts .acts{margin-top:0}
-/* 얼굴은 .more(보조 텍스트 단추)다 (REQ-20260830-046) — 행동이 머리 띠로 모인
-   뒤, 맨 아래 이 줄만 .deed 알약이면 "이게 전부"로 읽힌다. .more 기본은 목록
-   꼬리용 블록(width:100%)이라 이 줄에서는 나란히 서게만 되돌린다. */
-.viewer .tidyacts .more{display:inline-block;width:auto;padding:2px 0;
-  margin-right:14px}
-/* "+ " 는 목록 꼬리(더 보기)의 어휘다 — 치우기에는 뜻이 없다. */
-.viewer .tidyacts .more::before{content:""}
+/* ---- 문서 한 장의 치우기 무리 ---- */
+/* 자리는 문서 머리의 행동 띠(.dacts) 오른쪽 끝이다 (REQ-20260907-006) — 본문
+   맨 아래에 두던 종전 줄은 한 화면만 내려도 보이지 않았다. 까닭은 tidy.js ④.
+
+   축이 다르다는 것을 자리와 선이 말한다: `margin-left:auto` 가 줄 오른쪽 끝으로
+   밀고, 왼쪽 헤어라인이 앞 무리와 가른다. 무리 사이의 .adiv 를 쓰지 않고 제
+   테두리로 긋는 이유는, .adiv 는 별도 요소라 auto 여백이 그 요소만 밀어 놓고
+   선을 줄 가운데에 버려 두기 때문이다. */
+.dacts .dgrp.tidygrp{margin-left:auto;padding-left:12px;
+  border-left:1px solid var(--border)}
+/* 얼굴은 전이 버튼과 같은 .deed 체계 — 크기·안여백·글자 크기·hover 반전을 여기서
+   다시 정하지 않는다. 잉크만 한 급 낮다(정책 버튼 .deed.pol 과 같은 층):
+   앞으로 가는 일과 치우는 일의 위계다. 실패색은 쓰지 않는다 — 삭제는 되돌릴 수
+   있고, 되돌릴 수 없는 소거만 그 색을 갖는다. */
+.dacts .deed.tidy{color:var(--muted);border-color:var(--hairline)}
+/* 좁은 폭에서 띠가 접히면 이 무리는 통째로 다음 줄 오른쪽 끝으로 간다. 그때는
+   왼쪽에 가를 무리가 없으므로 선을 걷고 여백만 남긴다. */
+@media (max-width:1180px){
+  .dacts .dgrp.tidygrp{padding-left:0;border-left:0}
+}
 /* 버튼이 여럿 서는 줄은 좁아지면 접힌다 — 안 접으면 판 밖으로 밀려 나간다. */
 .viewer .acts{flex-wrap:wrap}
 

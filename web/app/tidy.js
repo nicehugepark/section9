@@ -153,37 +153,59 @@ function tidyDecorate(){
     // 뒤에 숨는다(docs.css 가 이미 겪은 그 자리).
     if (tb) list.style.setProperty("--tbh", tb.offsetHeight + "px");
   }
-  // ④ 문서 한 장의 치우기 줄 — 다 읽고 나서 하는 일이라 맨 아래다
+  /* ④ 문서 한 장의 치우기 무리 — 문서 머리의 행동 띠 오른쪽 끝 (REQ-20260907-006).
+
+     종전 자리는 본문 맨 아래였다. 그 자리를 고른 이유(다 읽고 나서 하는 일)는
+     맞았지만, 요청 문서 하나가 4000px 이라 한 화면만 내려도 「보관」·「삭제」가
+     화면 밖으로 나갔다 — 행동 버튼이 머리 띠로 모인 그 이유(REQ-20260830-046)가
+     그대로 이 줄에도 참이었는데 이 줄만 남겨 둔 것이다.
+
+     그래서 같은 띠(.dacts)에 선다. 다만 **같은 무리가 아니다**: 전이는 앞으로
+     가는 일이고 치우기는 치우는 일이라, `margin-left:auto` 로 줄 오른쪽 끝에
+     밀어 붙이고 왼쪽에 헤어라인을 둔다. 그러면 한 줄에서 가장 넓은 틈이 전이와
+     삭제 사이에 오고, 손가락이 전이 버튼에서 빗나가도 삭제에 닿지 않는다.
+     좁은 폭에서 띠가 접히면 이 무리는 통째로 다음 줄 오른쪽 끝으로 간다
+     (.dgrp 는 nowrap 이라 무리 가운데가 갈라지지 않는다).
+
+     얼굴은 전이 버튼과 **같은 체계**(.deed)다 — 크기·안여백·글자 크기·hover
+     반전을 여기서 다시 정하지 않는다. 잉크만 한 급 낮춰(정책 버튼과 같은 층)
+     "지금 앞으로 가는 일이 아니다"를 말한다. 삭제는 되돌릴 수 있는 일이라
+     실패색을 쓰지 않는다 — 이 조각 머리말이 정한 대로 소거만 그 색이다.
+
+     **한 화면에 「보관」이 둘일 수 없다** (REQ-20260831-029 리드 중재 2).
+     둘을 막는 자리가 이제 둘이다.
+       ① 프로젝트 문서: 위 격자의 `status: archived` 가 이미 「보관」을 지고
+          있으므로 여기서는 「삭제」만 선다. 삭제는 축이 달라 그대로 둔다.
+       ② 고르기 모드: 목록의 묶음 처리 띠가 「보관」·「삭제」를 들고 서는데,
+          머리 띠로 올라온 이 무리가 같은 화면 오른쪽에 나란히 서면 같은 이름의
+          버튼이 둘이 되어 어느 쪽이 이 문서의 것인지 묻게 된다. 고르는 동안은
+          목록 띠가 그 이름을 갖고, 이 무리는 서지 않는다. */
   const v = $("#viewer"), id = v && v.dataset.showing;
-  if (v && id){
+  const belt = v && v.querySelector(".dhead .acts.dacts");
+  // 옛 자리가 남아 있으면 걷는다 — 같은 낱말이 한 화면에 두 번 서지 않게.
+  const stale = v && v.querySelector(".tidyacts");
+  if (stale) stale.remove();
+  const grp = belt && belt.querySelector(".tidygrp");
+  if (v && id && belt && !tidyPicking){
     const arch = tidyIsArchived(id);
-    /* 얼굴은 .deed 가 아니라 .more 다 (REQ-20260830-046 designer) — 행동 단추가
-       머리 띠로 모이면서, 맨 아래 이 줄만 같은 알약이면 "이게 전부"라는 거짓
-       실마리가 된다(사용자 스크린샷이 정확히 그 끝 화면이다). 다 읽고 하는
-       일이라는 자리는 지키고, 급만 보조(텍스트 단추)로 내린다. */
-    /* **한 화면에 「보관」이 둘일 수 없다** (REQ-20260831-029 리드 중재 2).
-       프로젝트 문서에는 위 격자의 `status: archived` 가 이미 「보관」을 지고
-       있다 — 여기 문서 치우기의 「보관」까지 서면 같은 낱말 단추가 둘이 되어
-       어느 쪽이 진짜인지 묻게 된다(designer 가 삭제 단추 중복을 금한 그 논리).
-       프로젝트의 보관은 status 가 진다. 삭제는 축이 달라 그대로 둔다. */
     const isPrj = (catFind(id) || {}).type === "project";
-    const html = `<span class="tcap">이 문서 치우기</span><div class="acts">`
-      + (isPrj ? "" : `<button type="button" class="more" data-tidy="${arch ? "unarch1" : "arch1"}"`
+    const html = (isPrj ? "" : `<button type="button" class="deed tidy"`
+      + ` data-tidy="${arch ? "unarch1" : "arch1"}"`
       + ` data-id="${esc(id)}" title="${arch
           ? "목록으로 되돌린다" : "목록에서 내린다 — 문서는 그대로 있고 언제든 되돌린다"}">`
       + `${arch ? "보관 해제" : "보관"}</button>`)
-      + `<button type="button" class="more" data-tidy="rm1" data-id="${esc(id)}"`
-      + ` title="휴지통으로 보낸다 — 목록에서 사라지되 되돌릴 수 있다">삭제</button></div>`;
-    let box = v.querySelector(".tidyacts");
+      + `<button type="button" class="deed tidy" data-tidy="rm1" data-id="${esc(id)}"`
+      + ` title="휴지통으로 보낸다 — 목록에서 사라지되 되돌릴 수 있다">삭제</button>`;
+    let box = grp;
     if (!box){
-      box = document.createElement("div");
-      box.className = "tidyacts";
-      v.appendChild(box);
+      box = document.createElement("span");
+      box.className = "dgrp tidygrp";
+      belt.appendChild(box);
     }
     if (box.dataset.for !== id || box.innerHTML !== html){
       box.dataset.for = id; box.innerHTML = html;
     }
-  }
+  }else if (grp) grp.remove();
 }
 
 /* ------------------------------------------------------------- 치운 것 (판) */

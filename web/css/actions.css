@@ -458,6 +458,12 @@
 .dacts button.deed.wgly .gly{display:block;width:13px;height:13px}
 /* 정책 단추(잠금)는 잉크 한 급 낮음 — 행위와 정책의 위계다. 색면 없음. */
 .dacts .deed.pol{color:var(--muted);border-color:var(--hairline)}
+/* 보조 급(정책·치우기) 버튼의 hover 얼굴 (REQ-20260907-006). 잉크를 한 급 낮춘
+   규칙이 `.acts button:hover` 보다 무게가 커서, 반전된 바탕 위에 낮춘 잉크가
+   그대로 남아 글자가 읽히지 않았다. 반전에서는 바탕색 잉크로 되돌린다 —
+   낮춘 급은 쉼 얼굴의 위계이지 hover 의 대비를 깎는 값이 아니다. */
+.dacts .deed.pol:hover,.dacts .deed.tidy:hover{color:var(--bg);
+  border-color:var(--text)}
 /* 도는 중에는 눌리지 않는다. 색면·붉은 실패로 그리지 않고, 잉크를 한 급 낮춰
    "지금은 내 차례가 아니다"만 말한다.
 
