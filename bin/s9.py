@@ -15105,6 +15105,24 @@ def _tokens_add(a, b, sign=1):
             for k in TOKEN_KEYS}
 
 
+def event_msg_id(ev):
+    """이 줄이 **어느 응답**의 것인가 — 모르면 "" (REQ-20260907-051).
+
+    Claude 의 jsonl 은 응답 하나를 content block 마다 한 줄로 쓰고 줄마다 같은
+    usage 를 되풀이한다(같은 `message.id` 가 최대 10줄 실측). 그래서 토큰을 셀
+    때는 같은 id 를 한 번만 센다.
+
+    **id 가 없는 줄은 아무와도 묶지 않는다.** 빈 값을 「같다」의 근거로 쓰면
+    초기값과 맞아떨어져 통째로 빠진다 — 실제 사고 2026-09-07(REQ-20260907-050):
+    `agent_file_stats` 가 `mid = … or ""` 를 쓰다 id 없는 이벤트를 **첫 줄부터**
+    안 세었고, 에이전트 띠의 토큰이 0 으로 나왔다.
+
+    한 곳에 모으는 이유: 같은 규칙이 두 자리에 따로 적혀 있었고 **한 벌만
+    틀렸다**. 두 벌이면 한 벌만 고쳐진다.
+    """
+    return (ev.get("message") or {}).get("id") or ev.get("uuid") or ""
+
+
 def transcript_usage(path, started, ended):
     """창 [started, ended] 안의 usage 합. 파일이 없거나 창이 없거나 창 안에 usage
     이벤트가 없으면 None — 모르는 것을 0 으로 적지 않는다.
@@ -15136,8 +15154,10 @@ def transcript_usage(path, started, ended):
         u = event_usage(ev)
         if u is None:
             continue
-        mid = ((ev.get("message") or {}).get("id") or ev.get("uuid")
-               or ev.get("timestamp"))
+        # id 가 없으면 **그 줄만의 열쇠**를 준다 (REQ-20260907-051). 예전엔
+        # timestamp 로 물러났는데, 같은 시각의 id 없는 두 줄이 한 칸에 겹쳐
+        # 하나가 조용히 사라졌다. 묶을 근거가 없으면 묶지 않는다.
+        mid = event_msg_id(ev) or f"#{len(seen)}"
         seen[mid] = u
     if not seen:
         return None
@@ -24681,7 +24701,7 @@ def cmd_serve(args):
             # 는 한 번만 센다 (transcript_usage 와 같은 규칙, REQ-20260907-009).
             u = event_usage(ev)
             if u is not None:
-                mid = (ev.get("message") or {}).get("id") or ev.get("uuid") or ""
+                mid = event_msg_id(ev)
                 # id 가 없는 줄은 앞줄과 묶을 근거가 없다 — 빈 값을 「앞줄과 같다」로
                 # 읽으면 초기값 "" 과 같아져 **첫 줄부터** 통째로 빠진다
                 # (REQ-20260907-050: 에이전트 띠의 토큰이 0 으로 나왔다).

@@ -111,8 +111,19 @@ FACES = r"""
   out.viewerBare = read(projBtnHTML(
     {id: 'REQ-6', type: 'request', status: 'open', project: ''}));
   window.__whoami = w0;
-  // 창의 목록 — 내가 contributor 이상인 프로젝트만
-  const me = viewMe() || '__nobody__';
+  /* 창의 목록 — 내가 contributor 이상인 프로젝트만.
+
+     신원은 여기서 **고정한다.** 종전엔 화면이 받아 둔 whoami 에 기대
+     (`viewMe() || '__nobody__'`) 멤버 목록을 지었는데, /api/whoami 는 스크립트가
+     다 실린 뒤에 오는 비동기 응답이라 판이 섰다는 신호(__S9_APP_READY)보다 늦을
+     수 있다. 병렬 전체 실행에서 실제로 늦었고, 그때 이 블록의 me 는
+     '__nobody__' 인데 projectPick 안의 viewMe() 는 '' 이라 멤버가 한 건도 안 맞아
+     목록이 「지금 이것」 하나로 줄었다 — 단독 실행만 통과하던
+     'own' not found 간헐 실패의 정체다 (REQ-20260907-055). 이 블록이 재는 것은
+     멤버 역할 판정이지 신원을 어디서 받아 오는지가 아니다. */
+  window.__whoami = {user: '__s9pick__', registered: true, role: 'admin'};
+  const me = viewMe();
+  out.me = me;
   window.__projects = [
     {slug: 'mine', title: '내 것', members: [{user: me, active: true,
                                               role: 'contributor'}]},
@@ -130,6 +141,7 @@ FACES = r"""
   window.__projects = undefined;
   out.pickLost = projectPick({id: 'REQ-4', project: ''});
   window.__projects = p0;
+  window.__whoami = w0;
   return out;
 })()
 """
@@ -219,7 +231,9 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
             for _ in range(200):
-                if cls.ws.eval("!!(window.__S9_APP_READY && "
+                # whoami 까지 기다린다 — 판이 섰다는 신호만으로는 신원이
+                # 아직 안 왔을 수 있고, 그 위에서 재면 조용히 다른 것을 잰다.
+                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
                                "document.querySelector('#f-project'))"):
                     break
                 time.sleep(0.25)
@@ -318,6 +332,8 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
     def test_the_window_offers_only_what_i_can_write(self):
         """창에는 내가 contributor 이상인 프로젝트와 「없음」만 선다."""
         pick = self.faces["pick"]
+        self.assertTrue(self.faces["me"],
+                        "화면의 신원이 비었다 — 목록 판정의 전제가 안 섰다")
         keys = [it["key"] for it in pick["items"]]
         self.assertEqual(keys[0:1], [k for k in keys[0:1] if k],
                          "맨 위 항목의 key 가 비었다 — 취소와 구별되지 않는다")
