@@ -356,7 +356,15 @@ async function loadDoc(id, bg, force){
     ["blocked_by", depRow],
     ["summary", esc(m.summary) || null], ["goal", esc(m.goal) || null],
     ["user / machine / session", esc([m.user, m.machine, m.session].filter(Boolean).join(" / "))],
-    ["project", esc(m.project) || null],
+    /* 프로젝트 표기는 **그 자체가 손잡이**다 (REQ-20260907-010) — 카드가 세운
+       규칙(REQ-20260906-053)을 그대로 쓰고, 짓는 함수도 카드와 **같은 것 하나**다.
+       두 화면이 각자 글자를 가지면 한쪽만 고쳐진다(판정 버튼이 세 번 반려된 그
+       모양). 누를 수 없는 자리 — 요청이 아닌 문서 · 끝난 문서 · 관찰 계정 —
+       에서는 카드에서처럼 글자로만 서고, 그 자리에서 프로젝트가 비어 있으면 행
+       자체가 서지 않는다(고칠 수 없는 빈 사실을 세우지 않는다). 누르면 열리는
+       창도 바꾸는 경로도 카드가 쓰는 것 그대로다(/api/doc/set) — History 한 줄과
+       project_source 는 서버가 적는다. */
+    ["project", projBtnHTML(m) || null],
     // 작업 자리는 **표 안에서만** 말한다 (REQ-20260829-030 4차 반려: "카드에
     // 보여주는건 혼란만 가중"). 제목 줄에서도 내렸다 — 제목 줄은 카드와 같이
     // 훑는 자리라, 거기 세우면 같은 지적을 다시 받는다. 값이 없으면 행도 없다
@@ -369,6 +377,13 @@ async function loadDoc(id, bg, force){
     // 카드와 같은 순서로 size보다 앞에 둔다(우선순위 → 크기).
     ["priority", m.type === "request" ? prioHTML(m, true) : null],
     ["size", esc(m.size) || null],
+    /* 이 요청에 쓰인 토큰 한 줄 (REQ-20260907-014) — 카드와 **같은 함수**가
+       짓는다: 「출력 12.3k · 입력 1.1k · 캐시 4.2M」이고 넷(출력·입력·캐시 읽기·
+       캐시 생성)은 손을 얹으면 title 로 따로 읽힌다. 자리는 size 다음이다 —
+       size 가 접수 때 잡은 크기라면 이 줄은 실제로 든 값이라, 예상과 실적이
+       나란히 읽힌다. 기록이 없는 문서에는 빈 문자열이 돌아와 행이 서지 않는다:
+       0 으로 그리면 「안 썼다」로 읽히고, 모르는 것은 비워 둔다. */
+    ["tokens", tokensLineHTML(m) || null],
     ["parent", rel(m.parent)], ["children", li(m.children)],
     ["derived_from", rel(m.derived_from)], ["relates", li(m.relates)],
     ["refs_docs", li(m.refs_docs)],
