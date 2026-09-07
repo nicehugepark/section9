@@ -230,7 +230,7 @@ class Screen(unittest.TestCase):
             self.assertGreaterEqual(i, 0, "button.asgnb 규칙이 없다")
             rule = self.css[i:self.css.index("}", i)]
             self.assertNotRegex(rule, r"text-decoration:(?!\s*none)",
-                                "밑줄이 단추에 있으면 이니셜 링 밑까지 지나간다")
+                                "밑줄이 버튼에 있으면 이니셜 링 밑까지 지나간다")
             self.assertGreaterEqual(self.css.find("button.asgnb .bnm{"), 0,
                                     "밑줄은 이름(.bnm)에 선다")
         with self.subTest("f2_the_card_wears_what_it_already_has"):

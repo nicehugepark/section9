@@ -1,7 +1,7 @@
 /* app.js — 탭 라우팅 · 카탈로그/프로젝트 새로고침 · 필터 · 판 그리기 */
 "use strict";
 /* 탭은 여덟이다 (REQ-20260831-026 G0′) — 문서 뷰 다섯 · 창 하나 · **그릇 하나** ·
-   환경 하나. 껍데기(index.html)의 단추 순서와 이 목록은 같은 자리를 말해야 한다:
+   환경 하나. 껍데기(index.html)의 버튼 순서와 이 목록은 같은 자리를 말해야 한다:
    갈리면 주소로 들어온 사람만 다른 화면을 본다(`#projects` 가 Board 로 튕긴다). */
 const TABS = ["board","docs","graph","audit","stream","terminal","projects","settings"];
 

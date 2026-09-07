@@ -53,7 +53,7 @@ class EventTargetGate(unittest.TestCase):
                               "요소인지를 nodeType 으로 묻지 않는다")
                 self.assertIn("parentElement", body,
                               "텍스트 노드를 감싼 요소로 올리지 않는다 — "
-                              "글자를 눌렀을 때 단추를 못 찾는다")
+                              "글자를 눌렀을 때 버튼을 못 찾는다")
 
             # ----------------------------------------------------------------- G2
         with self.subTest("g2_no_piece_asks_the_target_directly"):

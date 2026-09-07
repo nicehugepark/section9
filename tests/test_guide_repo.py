@@ -5,7 +5,7 @@ REQ-20260901-023 이 Settings 에 「저장소」 판(pull·push)을 세웠는�
 코드와 함께 늙는다 — 그래서 이 시험의 계약은 "그 절이 있는가"가 아니라
 **"그 절이 서버의 판정과 같은 말을 하는가"** 다.
 
-  ① 단추가 잠기는 사유는 **서버 한 곳**(`git_can`)에만 산다. 그 함수가 둘 다
+  ① 버튼이 잠기는 사유는 **서버 한 곳**(`git_can`)에만 산다. 그 함수가 둘 다
      잠그는 조건을 **일곱** 넘게 갖게 되면 이 시험이 먼저 깨진다 — 가이드가
      여섯 개만 적은 채 조용히 낡는 것을 막는 자리다.
   ② 일곱 사유 각각의 핵심 조각이 **서버가 실제로 짓는 문장 안에 있고**, 동시에
@@ -150,7 +150,7 @@ class TestGuideRepoSection(unittest.TestCase):
                 self.assertIsInstance(both, ast.List)
                 self.assertEqual(len(both.elts), 7,
                                  "둘 다 잠그는 사유가 7개가 아니다 — 가이드의 "
-                                 "「단추가 잠기는 이유」도 함께 고쳐야 한다")
+                                 "「버튼이 잠기는 이유」도 함께 고쳐야 한다")
 
             # ── ② 일곱이 서버 문장과 가이드 두 벌에 함께 서 있는가 ────────────
         with self.subTest("seven_reasons_match_server_and_both_guides"):

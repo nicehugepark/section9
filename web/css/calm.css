@@ -458,7 +458,7 @@
 /* ---- density: compact — calm 이 삼켜 버린 밀도 축을 되돌려 준다 (REQ-20260830-032) ----
 
    사용자: "너무 카드 크기가 뚱뚱해져서 한 화면에 많은 카드를 보여주기 어려워지는
-   것 같다." 원인을 재 보니 단추가 아니었다 — **compact 를 켜도 calm 에서는 카드가
+   것 같다." 원인을 재 보니 버튼이 아니었다 — **compact 를 켜도 calm 에서는 카드가
    1px 도 줄지 않았다.** density.css 의 `[data-density="compact"] .card{padding:5px 10px}`
    와 이 파일의 `[data-skin="calm"] .card{padding:14px 16px 13px}` 은 특이도가 같은데
    calm 이 뒤에 실려(index.html 의 css 순서: density → calm) 덮는다. 글자 크기도

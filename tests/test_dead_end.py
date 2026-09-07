@@ -6,7 +6,7 @@
   계정 창   고를 수 있는 줄이 0개인데 화면은 "바꿀 계정을 고르면 다시 시작할 수
             있습니다" 라고 적고 ↑↓·Ctrl+Enter 를 가르쳤다. 두 키 모두 아무 일도
             하지 않는다. `다시 시작` 은 영영 잠겨 있었다.
-  깨우기     단추가 **애초에 한 번도 그려지지 않았다.** 카드는 정지 마크로
+  깨우기     버튼이 **애초에 한 번도 그려지지 않았다.** 카드는 정지 마크로
             "멈췄다"고 말하면서 깨울 손잡이는 주지 않았다 — 마크와 손잡이가
             서로 다른 시계를 봤기 때문이다.
 
@@ -187,13 +187,13 @@ class DeadEnd(unittest.TestCase):
                 self.assertEqual(made, "holdForecastHTML(stallDoc) + stallHTML(stallDoc)"
                                        " + holdTellHTML(stallDoc)")
                 # 띠도 **같은 함수**를 부른다 — wordy 는 얼굴 인자일 뿐 조건이 아니다.
-                # 정책 단추는 제 무리로 갈라섰다 (REQ-20260901-005 designer 보조).
+                # 정책 버튼은 제 무리로 갈라섰다 (REQ-20260901-005 designer 보조).
                 m2 = re.search(r"const beltDoc = ([\s\S]+?);\n", self.src)
                 self.assertTrue(m2, "문서 머리 띠가 벨트를 잇는 자리가 없다")
                 self.assertEqual(" ".join(m2.group(1).split()),
                                  "deedBeltHTML(stallDoc, true)")
                 m3 = re.search(r"const polBtn = ([\s\S]+?);\n", self.src)
-                self.assertTrue(m3, "정책 단추 무리가 없다")
+                self.assertTrue(m3, "정책 버튼 무리가 없다")
                 self.assertEqual(" ".join(m3.group(1).split()),
                                  "holdLockHTML(stallDoc)")
 

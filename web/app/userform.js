@@ -139,7 +139,7 @@ function showUserForm(u, host, isAdminEdit){
   if (isAdminEdit) wireWorkerCfg(host, u);
   // 이메일 행 추가/삭제 — DOM만 조작(재렌더 없음 → 다른 입력값 보존)
   host.querySelector("#uf-emails").addEventListener("click", e => {
-    // 지우기 단추의 **글자**를 누르면 target 이 텍스트 노드다 — 거기엔
+    // 지우기 버튼의 **글자**를 누르면 target 이 텍스트 노드다 — 거기엔
     // classList 도 closest 도 없다 (REQ-20260830-010). 문을 한 번만 지난다.
     const el = evEl(e.target);
     if (el?.classList.contains("em-rm")) el.closest(".emrow")?.remove();

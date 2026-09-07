@@ -19,7 +19,7 @@
      「푸시」도 없다: 023 이 같은 판에 세울 「올리기」와 한 개념 두 이름이 된다.
   ⑤ **무게는 색면이 아니다** — 사실 줄은 글자색뿐이고, 켤 때만 `s9dlg` 확인
      창이 선다(네이티브 confirm/alert 금지). 끌 때는 창이 없다.
-  ⑥ **즉시 저장** — 이 판에 일괄 저장 단추가 없다(낡은 값이 방금 고른 값을
+  ⑥ **즉시 저장** — 이 판에 일괄 저장 버튼이 없다(낡은 값이 방금 고른 값을
      덮는 사고를 이 폼이 이미 겪었다). 실패하면 손잡이를 되돌린다.
   ⑦ **윗스위치가 꺼져도 gh 사실 줄은 안 흐려진다** — "권한을 준 적 있다"가
      화면에서 사라지면 안 된다.
@@ -158,7 +158,7 @@ class WorkerSettings(unittest.TestCase):
             #  별명이지 git 이 지은 이름이 아니었다 — REQ-20260902-002.)
             self.assertNotRegex(self.words, r"저장소 사본|따로 떼어 둔 사본")
         with self.subTest("push_is_called_by_the_screen_name"):
-            # 023 이 같은 판에 `push` 단추를 세운다 — 한 개념에 두 이름 금지.
+            # 023 이 같은 판에 `push` 버튼을 세운다 — 한 개념에 두 이름 금지.
             # 음차(「푸시」)도 옮김(「올리는 것」)도 아니고 **원어**다
             # (REQ-20260902-002): 화면을 닫고 그 일을 하려면 사람이 치는 글자가
             # `git push` 라, 그 글자가 곧 화면의 낱말이다.
@@ -202,7 +202,7 @@ class WorkerSettings(unittest.TestCase):
             # ---- ⑥ 즉시 저장 ----------------------------------------------------
         with self.subTest("saves_at_once_with_no_batch_button"):
             self.assertNotRegex(self.words, r'id="w-save"|설정 저장|값 저장',
-                                "이 판에는 일괄 저장 단추를 두지 않는다")
+                                "이 판에는 일괄 저장 버튼을 두지 않는다")
             self.assertIn('addEventListener("change"', self.wc)
             self.assertIn('postJSONRaw("/api/user/config"', self.wc,
                           "쓰는 길은 이미 있는 그 하나다 — 새 API 금지")

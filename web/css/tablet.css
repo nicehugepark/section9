@@ -22,7 +22,7 @@
    탭과 계기줄은 스킨마다 안여백이 달라(pill·밑줄·inverse) 안여백을 키우면 스킨
    수만큼 모양이 흔들린다. 보이는 모양은 그대로 두고 누를 자리만 위아래로 늘린다 —
    좌우로는 늘리지 않는다(옆 탭의 과녁과 겹쳐 오조작이 된다). 의사요소는 이벤트의
-   대상이 되지 않으므로 클릭은 그대로 단추가 받는다. */
+   대상이 되지 않으므로 클릭은 그대로 버튼이 받는다. */
 .tabs button,.stats .stat{position:relative}
 .tabs button::after,.stats .stat::after{content:none;position:absolute;
   left:0;right:0;top:calc(-1 * var(--tap-y));bottom:calc(-1 * var(--tap-y))}
@@ -48,7 +48,7 @@
 .typebar .tb.tb{min-height:var(--tap-min)}
 @media (max-width:1180px){.typebar .tb.tb{min-height:36px;padding:6px 6px}}
 @media (pointer:coarse){.typebar .tb.tb{min-height:36px;padding:6px 6px}}
-/* 목록의 '더 보기'·연 것 닫기·문서 머리의 전이 단추. 벨트의 ▶/⏸ (.deed.ico) 는
+/* 목록의 '더 보기'·연 것 닫기·문서 머리의 전이 버튼. 벨트의 ▶/⏸ (.deed.ico) 는
    REQ-20260830-043 이 27px 로 확정한 값이라 건드리지 않는다. */
 .more.more{min-height:var(--tap-min)}
 .acts button:not(.ico){min-height:var(--tap-min)}
@@ -87,23 +87,23 @@
   .typebar.typebar{padding:0 6px;align-content:start}
 
   /* ── 에이전트·스킬 추가 줄 ──
-     입력칸이 `flex:1` 로 남는 폭을 다 가져가는데 단추 둘은 기본값 `flex:0 1 auto`
-     라 눌리는 쪽이었다 — 「추 / 가」 로 낱말 한가운데서 접혔다. 단추가 제 낱말
+     입력칸이 `flex:1` 로 남는 폭을 다 가져가는데 버튼 둘은 기본값 `flex:0 1 auto`
+     라 눌리는 쪽이었다 — 「추 / 가」 로 낱말 한가운데서 접혔다. 버튼이 제 낱말
      폭을 지키게 하면 입력칸이 그만큼 물러선다. 그래도 좁으면 낱말이 아니라 줄이
      접히게 한다(입력칸은 인라인 style 로 flex 를 쥐고 있어 손대지 않는다). */
   .uform.rosteradd > div{flex-wrap:wrap}
   .uform.rosteradd button{flex:0 0 auto;white-space:nowrap;min-height:var(--tap-min)}
   /* 입력칸은 인라인 style 의 `flex:1`(기준 폭 0)을 쥐고 있어 선택자로는 못 이긴다.
-     기준 폭만 한 줄로 돌려놓으면 「이름 한 줄 · 단추 한 줄」이 된다 — 단추 하나만
+     기준 폭만 한 줄로 돌려놓으면 「이름 한 줄 · 버튼 한 줄」이 된다 — 버튼 하나만
      아래로 떨어져 남는 들쭉날쭉한 두 줄보다 읽힌다. 폭 하나에만 쓰는 예외다. */
   .uform.rosteradd .ro-name{flex-basis:100% !important}
 
   /* ── 그래프 판 아래의 두 붙박이 ──
      조작 안내(.ghint)는 오른쪽 아래, 「전체 보기」(.gfit)는 아래 가운데였다.
      안내 줄이 470px 까지 자라 가운데를 지나므로 둘을 갈라 놓는 것은 8px 의
-     세로 틈뿐이고, 안내가 두 줄로 접히는 순간 단추를 덮는다. 좌우로 나눠
-     세우면 폭이 어떻든 겹치지 않는다 — 안내는 왼쪽 아래, 단추는 오른쪽 아래.
-     안내의 최대 폭은 단추 자리를 비워 둔 만큼으로 묶는다. */
+     세로 틈뿐이고, 안내가 두 줄로 접히는 순간 버튼을 덮는다. 좌우로 나눠
+     세우면 폭이 어떻든 겹치지 않는다 — 안내는 왼쪽 아래, 버튼은 오른쪽 아래.
+     안내의 최대 폭은 버튼 자리를 비워 둔 만큼으로 묶는다. */
   .ghint{left:12px;right:auto;bottom:10px;max-width:calc(100% - 168px)}
   .gfit{left:auto;right:12px;bottom:10px;transform:none}
 

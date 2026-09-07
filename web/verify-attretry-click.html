@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- REQ-20260830-003 (부모 REQ-20260829-019) 검증 하니스 (same-origin 보조 페이지):
-     못 받은 그림의 `다시` 단추를 **실제 좌표 클릭**으로 눌러 본다.
+     못 받은 그림의 `다시` 버튼을 **실제 좌표 클릭**으로 눌러 본다.
 
      부모 건은 "눌러서 회수되는 것 자체는 미검증"을 남기고 닫혔다 — 이 환경에
      브라우저 조작 수단이 없다고 봤기 때문이다. 그런데 수단은 있다:
@@ -11,7 +11,7 @@
 
      ?doc=<문서id>&n=<빗나가게 할 장수> — 기본 REQ-20260827-079-62x6 · 3장.
      대상 화면은 `/?attfail=n&attdead&attstat#docs/<doc>` 다: 앞 n 장이 끝까지
-     못 오게 해 `다시` 단추가 있는 자리를 세운다. -->
+     못 오게 해 `다시` 버튼이 있는 자리를 세운다. -->
 <html><head><meta charset="utf-8"><title>verify att retry click</title>
 <style>
  html,body{margin:0;background:#111;color:#eee;font:13px/1.6 ui-monospace,monospace}
@@ -123,19 +123,19 @@ async function run(){
     say(`[전]  첫 자리: ${esc(misses[0].querySelector(".attf").textContent)}`, "dim");
     say(`[전]  그림 naturalWidth=${img.naturalWidth} · 시도=${img.dataset.atttry} · 링크 hidden=${link.hidden}`, "dim");
 
-    say(`\n① 단추가 링크 밖에 있고, 눌리는 자리에 있는가`);
-    check("단추의 조상에 <a> 가 없다", btn.closest("a") === null,
+    say(`\n① 버튼이 링크 밖에 있고, 눌리는 자리에 있는가`);
+    check("버튼의 조상에 <a> 가 없다", btn.closest("a") === null,
           "가장 가까운 a = " + desc(btn.closest("a")));
     const r = btn.getBoundingClientRect();
     const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + r.height / 2);
     const top = doc.elementFromPoint(cx, cy);
-    check("좌표 hit-test 의 맨 위 요소가 그 단추다",
+    check("좌표 hit-test 의 맨 위 요소가 그 버튼다",
           top === btn || btn.contains(top),
           `(${cx},${cy}) → ${desc(top)}`);
 
     say(`\n② 실제 좌표 클릭 — 링크가 열리지 않고 다시 받기 시작하는가`);
     const hit = realClick(win, doc, btn);
-    check("클릭이 단추에 닿았다", hit.top === btn || btn.contains(hit.top),
+    check("클릭이 버튼에 닿았다", hit.top === btn || btn.contains(hit.top),
           desc(hit.top));
     check("클릭이 막혔다(preventDefault) — <a> 를 따라가지 않는다",
           !!(lastClick && lastClick.prevented));
@@ -159,7 +159,7 @@ async function run(){
                15000, "다시 못 받은 자리");
     say(`  (이 화면은 끝내 안 오게 세운 것이라 그 시도도 빗나가 자리로 돌아온다)`, "dim");
 
-    say(`\n③ 밀리던 것이 풀린 뒤 그 단추를 누르면 그림이 돌아오는가`);
+    say(`\n③ 밀리던 것이 풀린 뒤 그 버튼을 누르면 그림이 돌아오는가`);
     // 일부러 빗나가게 하던 표식을 걷는다 = "이번엔 연결이 안 잘렸다".
     // 클릭 경로 자체는 손대지 않는다 — 누르는 것은 여전히 사람의 클릭이다.
     let healed = 0;
@@ -174,12 +174,12 @@ async function run(){
       const b2 = await wait(() => {
         const mm = m.closest(".attbox").querySelector(".attmiss:not([hidden]):not(.wait)");
         return mm && mm.querySelector("[data-attretry]");
-      }, 15000, "다시 단추");
+      }, 15000, "다시 버튼");
       b2.scrollIntoView({block: "center"});
       realClick(win, doc, b2);
       clicked++;
     }
-    check(`${N}개의 단추를 실제 클릭으로 눌렀다`, clicked === N);
+    check(`${N}개의 버튼을 실제 클릭으로 눌렀다`, clicked === N);
 
     const back = await wait(() => {
       const okAll = misses.every(m => {
@@ -210,7 +210,7 @@ async function run(){
 
     const bad = verdicts.filter(v => !v.pass);
     say(`\n>>> ${bad.length ? "실패 " + bad.length + "건: " + esc(bad.map(v => v.name).join(", "))
-                            : "전부 통과 — 다시 단추는 눌리고, 눌러서 그림이 돌아온다"}`,
+                            : "전부 통과 — 다시 버튼은 눌리고, 눌러서 그림이 돌아온다"}`,
         bad.length ? "bad" : "ok");
     box0.scrollIntoView({block: "center"});
   }catch(e){

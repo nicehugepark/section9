@@ -387,8 +387,8 @@ class ThePressedHandKeepsItsPlace(unittest.TestCase):
     """누른 손은 그 자리에 남는다 (REQ-20260831-009).
 
     049 로 성공 경로의 창이 사라지자 키보드 손이 갈 곳을 잃었다. CDP 실측:
-    ▶ 에 포커스를 주고 누르면 `activeAfter=BODY` — 눌린 단추를 `disabled` 로
-    만드는 순간 브라우저가 포커스를 걷고, 이어지는 재그리기가 그 단추 개체
+    ▶ 에 포커스를 주고 누르면 `activeAfter=BODY` — 눌린 버튼을 `disabled` 로
+    만드는 순간 브라우저가 포커스를 걷고, 이어지는 재그리기가 그 버튼 개체
     자체를 지운다. 창이 있던 동안에는 창이 landmark 노릇을 했지만 이제 없다.
 
     잠금을 지는 것은 원래 `wokePending`/`stopPending` 이지 `disabled` 가

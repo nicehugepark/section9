@@ -557,7 +557,7 @@ class TheStatesAreAllDrawn(unittest.TestCase):
         with self.subTest("without_the_right_the_button_is_gone_not_grey"):
             self.assertTrue(self.d["listNCreate"])
             self.assertFalse(self.d["listNoCreate"],
-                             "만들 권한이 없는데 단추가 그려졌다 — 회색 단추는 "
+                             "만들 권한이 없는데 버튼이 그려졌다 — 회색 버튼은 "
                              "눌릴 것 같은 거짓 약속이다")
         with self.subTest("the_viewer_sees_values_not_dead_controls"):
             self.assertGreater(self.d["ownerControls"], 0)

@@ -237,7 +237,7 @@ tr.rowoff td{opacity:.45}
 tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
 .wnote{margin:6px 0 0}
 /* 「더 보기」 부품 그대로 쓰되 앞머리 기호는 내가 적는다 — 펴기(+)와
-   접기(−)가 한 단추를 나눠 쓰므로 `+` 를 CSS 로 붙이면 접기에도 붙는다. */
+   접기(−)가 한 버튼을 나눠 쓰므로 `+` 를 CSS 로 붙이면 접기에도 붙는다. */
 .wmore{display:inline-block;width:auto;padding:6px 0 0;text-align:left;
   font-family:var(--mono);font-size:11px}
 .wmore::before{content:none}
@@ -250,7 +250,7 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
 
    `pull`·`push` 는 **이름**이라 mono 로 선다 — 사용자가 GitHub·터미널에서
    같은 글자로 다시 만나는 남의 도구 이름이고, 이 저장소는 이미 「이름은
-   이름처럼, 행위는 행위처럼」을 세워 뒀다(actions.css). 그래서 단추도
+   이름처럼, 행위는 행위처럼」을 세워 뒀다(actions.css). 그래서 버튼도
    `.deed`(본문체 600)를 입지 않고 `.acts button` 의 mono 얼굴 그대로다 —
    스킨 열 몇 벌의 override 가 그 셀렉터에 이미 걸려 있다.
 
@@ -270,7 +270,7 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
 .gline{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .gline .gstate{flex:0 1 auto}
 /* 스킨이 「더 보기」에 준 **위 여백과 제 정렬**을 이 자리에서만 푼다 — 그것은
-   목록 아래 홀로 서는 단추의 값이지 문장 옆에 나란히 서는 단추의 값이 아니다
+   목록 아래 홀로 서는 버튼의 값이지 문장 옆에 나란히 서는 버튼의 값이 아니다
    (calm 은 `margin-top:9px` + `align-self:flex-start` 를 준다). 좌우 칠은
    스킨의 것을 그대로 둔다: 알약을 그리는 스킨에서 그 알약이 납작해진다. */
 .gline button.wmore{margin:0;align-self:center;flex:0 0 auto;
@@ -288,7 +288,7 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
   color:var(--muted);max-width:62ch;margin-top:5px}
 .gfiles:empty{display:none}
 /* 목록 꼬리에 붙는 「더 보기」 — 스킨이 준 위 여백(calm `margin-top:9px`)을
-   푼다. 홀로 서는 단추의 값이지 문장 꼬리에 붙는 단추의 값이 아니다: 그 여백
+   푼다. 홀로 서는 버튼의 값이지 문장 꼬리에 붙는 버튼의 값이 아니다: 그 여백
    하나가 줄 높이를 부풀려 파일 목록이 두 줄로 벌어졌다. */
 .gfiles button.wmore,.gafter button.wmore{margin:0;display:inline-block;
   padding:0;vertical-align:baseline}
@@ -298,7 +298,7 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
 .grepo .wsay code{color:var(--text);font-weight:600}
 .gpath,.ghash{font-family:var(--mono);color:var(--faint)}
 .ghash{color:var(--muted)}
-/* 단추는 `.acts` 를 그대로 입되 그 기본 여백만 이 칸에서 접는다 — `.wctl` 이
+/* 버튼은 `.acts` 를 그대로 입되 그 기본 여백만 이 칸에서 접는다 — `.wctl` 이
    이미 한 줄을 이루고 있어 위 여백이 겹치면 행이 어긋난다. */
 .wctl>.acts{margin-top:0}
 /* 못 누르는 얼굴 — 잠금은 `disabled` 가 아니라 `aria-disabled` 다
@@ -307,14 +307,14 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
 
    **셀렉터를 `.acts.gacts` 로 잠근다** — 스킨이 `[data-skin=…] .acts button`
    으로 같은 특이도(0,2,1)를 들고 **뒤에** 실린다. 실측: calm 에서 잠긴 `pull`
-   이 손을 얹자 살아 있는 단추와 똑같이 잉크로 반전됐다(캡처로 잡았다). 카드의
+   이 손을 얹자 살아 있는 버튼과 똑같이 잉크로 반전됐다(캡처로 잡았다). 카드의
    `.acts button.wake[aria-disabled]` 가 같은 이유로 한 급 더 조인 자리다. */
 .acts.gacts button[aria-disabled="true"]{cursor:default;color:var(--muted);
   border-color:var(--hairline);background:var(--panel)}
 .acts.gacts button[aria-disabled="true"]:hover{background:var(--panel);
   color:var(--muted);border-color:var(--hairline)}
 /* 도는 중은 **숨으로** 말한다(카드의 `.deed.busy` 와 같은 맥박·같은 이름의
-   keyframes). 옅히기만 하면 잠긴 단추와 구별이 안 된다 — 그건 「못 누른다」는
+   keyframes). 옅히기만 하면 잠긴 버튼과 구별이 안 된다 — 그건 「못 누른다」는
    뜻이고 이건 「하고 있다」는 뜻이다. 라벨은 바뀌지 않는다: 폭이 흔들리면
    레이아웃이 흔들린다. */
 .acts.gacts button.busy{animation:deedbusy 1.4s ease-in-out infinite}

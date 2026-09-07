@@ -2,7 +2,7 @@
 
 사용자가 본 것: CSS 픽셀(배율 1) 수치로는 상하좌우 3.0px 균등이었는데, 실제
 화면(Windows 표시 배율 125%)에서는 ⏸ hover 원이 여전히 비대칭으로 그려졌다.
-뿌리는 상자가 둘이었던 것 — 원은 단추의 content-box 배경, 그림은 그 안에 1px
+뿌리는 상자가 둘이었던 것 — 원은 버튼의 content-box 배경, 그림은 그 안에 1px
 들여 놓인 다른 상자의 SVG 라, 비정수 배율에서 그 1px(=1.25화소)이 반화소에
 걸리며 배경 칠과 SVG 래스터가 서로 다른 쪽으로 반올림했다.
 
@@ -271,7 +271,7 @@ def grid():
     m = re.search(r"\.acts\.deedbelt button\.deed\.ico\{[^}]*?"
                   r"padding:(\d+(?:\.\d+)?)px", css)
     if not m:
-        raise AssertionError("actions.css 에서 벨트 단추 padding 을 못 찾았다")
+        raise AssertionError("actions.css 에서 벨트 버튼 padding 을 못 찾았다")
     pad = float(m.group(1))
     gs = glyph_sources()
     vb = {}
@@ -372,7 +372,7 @@ def _card_html(suffix, nudge, glyphs):
 
 
 class Face:
-    """한 배율에서 두 단추의 실측치."""
+    """한 배율에서 두 버튼의 실측치."""
     def __init__(self, scale):
         self.scale = scale
         self.metrics = {}
@@ -467,7 +467,7 @@ def measure_scale(chrome, win_mode, scale, tag):
                     ".style.visibility=''" % sel)
             time.sleep(0.15)
             hov = _shoot(ws)          # 손 얹힌 온전한 얼굴 — 눈으로 볼 그림
-            # 오려 내는 창은 단추 중심 ± 9css — 원(반지름 6.5)은 여백을 두고
+            # 오려 내는 창은 버튼 중심 ± 9css — 원(반지름 6.5)은 여백을 두고
             # 다 담고, 27px 과녁의 가장자리는 버린다. 더 넓히면 이웃의 잉크가
             # 글리프 측정에 섞인다: 벨트는 식별자에 -2px 로 붙어 서므로 낱자의
             # AA 꼬리가 과녁 왼끝 밑에 실제로 들어와 있었다 (첫 실행 실측).

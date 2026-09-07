@@ -343,7 +343,7 @@ function prjListHTML(list, o){
   const all = list || [];
   const live = prjSort(all.filter(p => p.status !== PRJ_ARCHIVED), o.statsBy);
   const arc = prjSort(all.filter(p => p.status === PRJ_ARCHIVED), o.statsBy);
-  // 만들 권한이 없으면 **아예 안 그린다** — 회색 단추는 눌릴 것 같은 거짓 약속
+  // 만들 권한이 없으면 **아예 안 그린다** — 회색 버튼은 눌릴 것 같은 거짓 약속
   const newBtn = o.canCreate
     ? `<button class="more pjnew" data-prjnew type="button"`
       + ` aria-label="${esc(PRJ_TEXT.createAria)}">${esc(PRJ_TEXT.create)}</button>` : "";
@@ -354,7 +354,7 @@ function prjListHTML(list, o){
     body += `<button class="more" data-prjmore type="button">`
       + `${esc(PRJ_TEXT.more(live.length - shown.length))}</button>`;
   /* 하나도 없을 때도 **머리는 그대로** 선다 (0→1→N 구조 불변). 만드는 손잡이를
-     빈 자리로 옮기면 첫 프로젝트를 만든 순간 단추가 다른 데로 걸어가고, 그때
+     빈 자리로 옮기면 첫 프로젝트를 만든 순간 버튼이 다른 데로 걸어가고, 그때
      배운 자리가 두 번째부터 틀린다. 빈 자리에는 한 줄만 — 행동은 바로 위에 있다. */
   if (!all.length)
     body = `<div class="pjnone">${esc(o.noneText || PRJ_TEXT.none)}</div>`;
@@ -408,7 +408,7 @@ function prjFormHTML(v){
     + f("customer", PRJ_TEXT.fCustomer, PRJ_TEXT.phCustomer)
     + `<div class="pjerr" hidden></div></div>`;
 }
-/* 창이 뜬 뒤 값을 모으고 검사를 건다. 확인 단추는 **검사가 통과할 때만** 눌린다 —
+/* 창이 뜬 뒤 값을 모으고 검사를 건다. 확인 버튼은 **검사가 통과할 때만** 눌린다 —
    눌러 보고 나서 다그치는 창이 되지 않게(s9dlg 의 required 와 같은 규율). */
 function prjFormWire(root, v, o){
   o = o || {};
@@ -440,7 +440,7 @@ function prjFormWire(root, v, o){
     });
   });
   sync();
-  /* 손은 **첫 칸에** 놓는다 — 창이 확인 단추에 초점을 주는 것은 물음이 하나인
+  /* 손은 **첫 칸에** 놓는다 — 창이 확인 버튼에 초점을 주는 것은 물음이 하나인
      창의 규칙이고(s9dlg), 여기는 적을 것이 넷인 창이다. 적으러 온 사람에게
      Tab 부터 누르게 하지 않는다. */
   const first = box.querySelector('[data-pjf="name"]');

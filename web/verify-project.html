@@ -18,7 +18,7 @@
      창(다이얼로그)의 껍데기는 s9dlg 의 것을 그대로 옮겨 세운다 — 창을 띄우려면
      dialog.js 가 화면 전체(tab·selectedDoc·render)를 요구하므로, 여기서는 그
      껍데기 안에 **진짜 폼(prjFormHTML)과 진짜 검사(prjFormWire)** 를 끼워
-     넣는다. 검사·자동 slug·확인 단추 잠금이 실제로 도는지 손으로 눌러 본다. -->
+     넣는다. 검사·자동 slug·확인 버튼 잠금이 실제로 도는지 손으로 눌러 본다. -->
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/header.css">
 <link rel="stylesheet" href="css/board.css">
@@ -126,7 +126,7 @@ if (want("list")) parts.push(box("① 목록 — N개 · 보관 접힘 · 만들
       docs(prjListHTML([], {...base, canCreate: true})), true)
   + box("목록 — 1개 (구조가 바뀌지 않는다)",
       docs(prjListHTML([P_PORTAL], {...base, canCreate: true})), true)
-  + box("목록 — 만들 권한 없음 (회색 단추가 아니라 없음)",
+  + box("목록 — 만들 권한 없음 (회색 버튼이 아니라 없음)",
       docs(prjListHTML([P_MAIN, P_OLD], {...base, canCreate: false})), true)
   + box("목록 — 보관 펼침",
       docs(prjListHTML([P_MAIN, P_OLD], {...base, canCreate: true, arcOpen: true})), true)

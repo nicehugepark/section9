@@ -149,7 +149,7 @@ class ThePress(unittest.TestCase):
 
     그 하니스(web/verify-attretry-click.html)로 눌러 봤다 — 못 받은 자리 3장,
     좌표 hit-test 통과, 클릭이 링크를 열지 않았고, 밀리던 것이 풀린 뒤 그
-    단추를 눌러 3장이 전부 돌아왔다(배너: 뜸 40 · 다시 걸어서 3 · 못 받음 0).
+    버튼을 눌러 3장이 전부 돌아왔다(배너: 뜸 40 · 다시 걸어서 3 · 못 받음 0).
     여기 계약은 그 클릭 경로가 나중에 조용히 바뀌지 않게 못박는다.
     """
 
@@ -164,7 +164,7 @@ class ThePress(unittest.TestCase):
     def _press(self):
         """`다시` 를 받는 처리기 한 덩이."""
         i = self.src.find('closest("[data-attretry]")')
-        self.assertNotEqual(i, -1, "다시 단추를 받는 곳이 없다")
+        self.assertNotEqual(i, -1, "다시 버튼을 받는 곳이 없다")
         s = self.src.rfind('document.addEventListener("click"', 0, i)
         self.assertNotEqual(s, -1, "그 처리기가 문서에 달려 있지 않다")
         e = re.compile(r"\n\}, (?:true|false)\);").search(self.src, i)
@@ -175,7 +175,7 @@ class ThePress(unittest.TestCase):
         """눌러서 되찾는다 (REQ-20260830-003 · 부모 REQ-20260829-019)."""
         with self.subTest("the_press_is_caught_where_it_is_thrown"):
             self.assertRegex(self._press(), r"\}, true\);\s*$",
-                             "다시 단추의 클릭을 잡는 단계에서 받지 않는다")
+                             "다시 버튼의 클릭을 잡는 단계에서 받지 않는다")
         with self.subTest("the_press_does_not_open_the_link"):
             fn = self._press()
             self.assertIn("preventDefault()", fn, "기본 동작을 막지 않는다")
@@ -193,7 +193,7 @@ class ThePress(unittest.TestCase):
             self.assertIn("MouseEvent", h, "실제 이벤트를 던지지 않는다")
             self.assertIn("elementFromPoint", h,
                           "덮여 있는지(좌표 hit-test)를 보지 않는다")
-            self.assertIn("data-attretry", h, "그 단추를 누르지 않는다")
+            self.assertIn("data-attretry", h, "그 버튼을 누르지 않는다")
             # 손대는 것은 **빗나가게 하던 표식** 하나뿐이다. 클릭 경로를 대신
             # 실행해 버리면 "눌러 봤다"가 아니라 "함수를 불러 봤다"가 된다.
             self.assertIn('removeAttribute("data-attbad")', h,

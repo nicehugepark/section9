@@ -7,7 +7,7 @@
 
   ① `!bl.length` — 카드만 가진 관문. 선행 대기 줄이 선 요청은 카드에서 멈춤 줄과
      손잡이를 통째로 잃었는데, 문서 화면은 그 관문을 몰라 같은 요청에 손잡이를
-     줬다. **같은 요청이 두 자리에서 다른 말을 한다** — 판정 단추가 세 번
+     줬다. **같은 요청이 두 자리에서 다른 말을 한다** — 판정 버튼이 세 번
      반려됐던 그 결함(REQ-20260828-007)과 같은 모양이다.
   ② 점은 `live_kind` 를, 손잡이는 `stalled_mins` 를 각자 읽었다. 서버가 둘을
      한 벌로 만들어도 화면이 두 필드를 따로 읽는 한, 한쪽만 서는 조합이 남는다
@@ -577,13 +577,13 @@ class StallRendersTheSame(unittest.TestCase):
     HANDLES = ("data-wake=", "data-stop=", "data-restart=")
 
     def test_the_belt_shows_one_handle_chosen_by_state(self):
-        """단추는 상태를 따른다 (REQ-20260830-042).
+        """버튼은 상태를 따른다 (REQ-20260830-042).
 
         사용자: "이미 play, pause를 동시에 실행이 가능한 상태라는게 모순적이다.
         상태에 따라 버튼을 노출시키는게 어때?"
 
         붙어 있으면 끊는 쪽(⏸), 아니면 잇는 쪽(▶), 어느 쪽도 아니면 아무것도.
-        관문은 벨트 한 곳이라 두 단추 함수는 서로를 모른다."""
+        관문은 벨트 한 곳이라 두 버튼 함수는 서로를 모른다."""
         out = self.render(self.ROWS)
         for rid, want in self.BELT.items():
             belt = out[rid]["belt"]
@@ -600,7 +600,7 @@ class StallRendersTheSame(unittest.TestCase):
 
         ▶⏸ 는 "한 축의 두 방향, 하나만 참"이라는 약속을 그림 자체로 한다.
         idle 갈래에 같은 ⏸ 를 준 순간 그 약속이 깨졌고(도는 것이 없는데 중단
-        단추가 있다), 여기가 그 약속을 지키는 자리다."""
+        버튼이 있다), 여기가 그 약속을 지키는 자리다."""
         out = self.render(self.ROWS)
         for rid, o in out.items():
             card = o["card"]
@@ -616,7 +616,7 @@ class StallRendersTheSame(unittest.TestCase):
         길은 새로 파지 않는다 — 같은 stop 경로의 idle 갈래를 그대로 쓴다."""
         out = self.render(self.ROWS)
         lock = out["REQ-H"]["lock"]
-        self.assertIn("자동 이어받기 끄기", lock, "문서에 낱말 단추가 없다")
+        self.assertIn("자동 이어받기 끄기", lock, "문서에 낱말 버튼이 없다")
         self.assertIn('data-kind="idle"', lock, "idle 갈래로 안 간다")
         self.assertIn("data-stop=", lock, "기존 stop 경로를 안 쓴다")
         # 카드에는 서지 않는다 — 카드의 한 결정은 "지금 이어갈까" 하나다
@@ -624,11 +624,11 @@ class StallRendersTheSame(unittest.TestCase):
         # 붙어 있는 카드에는 잠글 것이 없다
         for rid in ("REQ-F", "REQ-L"):
             self.assertEqual("", out[rid]["lock"],
-                             "%s: 붙어 있는데 잠금 단추가 섰다" % rid)
+                             "%s: 붙어 있는데 잠금 버튼이 섰다" % rid)
 
     def test_a_held_document_offers_no_lock(self):
         """이미 사람이 중단해 둔 문서에 「중단해 두기」가 또 서면 ▶ 와 나란히
-        반대 방향 두 단추가 된다 — 042 가 카드에서 걷어낸 그 모순이 낱말로
+        반대 방향 두 버튼이 된다 — 042 가 카드에서 걷어낸 그 모순이 낱말로
         갈아입고 문서에 옮겨 와 있었다 (REQ-20260830-046 designer ④)."""
         rows = [{"id": "REQ-HELD", "type": "request", "status": "in-progress",
                  "title": "중단해 둔 것", "user": "u",
@@ -637,7 +637,7 @@ class StallRendersTheSame(unittest.TestCase):
                  "updated": "2026-08-30T21:00:00+09:00"}]
         out = self.render(rows)
         self.assertEqual("", out["REQ-HELD"]["lock"],
-                         "중단해 둔 문서에 잠금 단추가 또 섰다 — 잠글 것이 없다")
+                         "중단해 둔 문서에 잠금 버튼이 또 섰다 — 잠글 것이 없다")
         self.assertIn("data-restart=", out["REQ-HELD"]["belt"],
                       "중단해 둔 문서의 벨트에 「이어가기」가 없다")
 
@@ -659,7 +659,7 @@ class StallRendersTheSame(unittest.TestCase):
     def test_a_stalled_card_always_offers_something_to_press(self):
         """멈췄다고 그려 놓고 누를 것이 없는 카드는 없다 (REQ-20260828-041).
 
-        배타 노출로 **어느** 단추가 서는지는 바뀌었지만(붙어 있으면 ⏸), 정지
+        배타 노출로 **어느** 버튼이 서는지는 바뀌었지만(붙어 있으면 ⏸), 정지
         마크가 선 카드에 손잡이가 있어야 한다는 계약은 그대로다."""
         out = self.render(self.ROWS)
         for rid, o in out.items():

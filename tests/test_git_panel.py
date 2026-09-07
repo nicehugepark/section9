@@ -125,7 +125,7 @@ class GitPanelBase(unittest.TestCase):
 
 
 class TheDistanceIsRead(GitPanelBase):
-    """A. 상태 읽기 — 셈과 작업 트리가 단추 옆에 이미 서 있다 (리드 제약 6)."""
+    """A. 상태 읽기 — 셈과 작업 트리가 버튼 옆에 이미 서 있다 (리드 제약 6)."""
 
     def test_s1_same(self):
         st = self.state()
@@ -450,7 +450,7 @@ class TheScreenSideKeepsItsPromises(unittest.TestCase):
         `disabled` 는 포커스를 걷어 키보드 손이 사유에 못 닿는다."""
         self.assertIn('setAttribute("aria-disabled"', self.code)
         self.assertNotIn(".disabled = ", self.code)
-        # 사유는 낭독기에도 들린다 — 단추가 그 자리를 가리킨다
+        # 사유는 낭독기에도 들린다 — 버튼이 그 자리를 가리킨다
         self.assertIn("aria-describedby", self.code)
         self.assertIn('role="status"', self.code)
 

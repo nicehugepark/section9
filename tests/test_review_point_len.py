@@ -34,7 +34,7 @@ CLAUDE_MD = os.path.join(HERE, "..", "CLAUDE.md")
 SKILL = os.path.join(HERE, "..", "harness", "claude", "skills",
                      "s9-protocol", "SKILL.md")
 
-OK = ("멈춰 있던 카드에 깨우기 단추가 생겼습니다. 먼저 서버를 다시 띄우고 Board 탭 "
+OK = ("멈춰 있던 카드에 깨우기 버튼이 생겼습니다. 먼저 서버를 다시 띄우고 Board 탭 "
       "IN-PROGRESS 열에서 멈춤 줄이 붙은 카드를 눌러 보세요. 깨워지면 점이 주황으로 "
       "바뀌고 멈춤 줄이 사라집니다. 못 깨운 이유가 붉은 실패 창으로 뜨면 반려해 주세요.")
 
@@ -112,7 +112,7 @@ class ReviewPointLen(unittest.TestCase):
     def test_f1_real_incident_rejected(self):
         """REQ-20260828-041 이 실제로 올린 982자 5갈래 확인 포인트가 막힌다."""
         doc = self.mk()
-        note = ("멈춰 있는 카드에 깨우기 단추를 달았다. " + "경위와 근거를 길게 적는다. " * 40
+        note = ("멈춰 있는 카드에 깨우기 버튼을 달았다. " + "경위와 근거를 길게 적는다. " * 40
                 + " ① 하나 ② 둘 ③ 셋 ④ 넷 ⑤ 다섯")
         out = self.cli("status", doc, "review", "--note", note, expect=1)
         self.assertIn("확인 포인트", out)

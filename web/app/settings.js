@@ -129,7 +129,7 @@ function renderSettingsSection(meAdmin){
   } else if (settingsSection === "repo"){
     /* 계정을 가리지 않는다 — **읽기는 자유**이고 저장소는 계정과 무관하다.
        누를 자격은 서버가 응답의 `can` 으로 따로 말하고, 못 누르는 사람에게는
-       단추를 숨기지 않고 못 누르는 얼굴로 두고 이유를 말한다. */
+       버튼을 숨기지 않고 못 누르는 얼굴로 두고 이유를 말한다. */
     showRepoPanel(v);
   } else if (settingsSection === "users"){
     if (!meAdmin){ v.innerHTML = `<p class="empty">사용자 관리는 admin만 가능합니다. (whoami=${esc((window.__whoami||{}).user||"?")})</p>`; return; }
@@ -435,7 +435,7 @@ async function showRoster(v){
   };
   v.querySelectorAll(".rrow").forEach(el => {
     el.addEventListener("click", () => openRow(el));
-    // 손만이 아니라 키보드로도 연다 — 행이 단추 노릇을 하면 단추의 얼굴을 다 갖춘다.
+    // 손만이 아니라 키보드로도 연다 — 행이 버튼 노릇을 하면 버튼의 얼굴을 다 갖춘다.
     el.addEventListener("keydown", ev => {
       if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); openRow(el); }
     });

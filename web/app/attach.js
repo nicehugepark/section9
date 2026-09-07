@@ -122,7 +122,7 @@ if (ATT_STAT) setInterval(attStat, 400);
    그림과 **못 받았을 때의 자리**를 한 덩이(.attbox)로 낸다. 자리를 나중에
    만들지 않고 처음부터 세워 두는 이유는 둘이다: 실패한 순간 DOM 을 짓느라
    한 프레임을 흘리면 깨진 아이콘이 보이고, 되돌아올 자리가 미리 있어야 다시
-   받았을 때 문단이 안 흔들린다. `다시` 단추는 `<a>` **밖**에 둔다 — 안에 두면
+   받았을 때 문단이 안 흔들린다. `다시` 버튼은 `<a>` **밖**에 둔다 — 안에 두면
    누르는 순간 링크가 먼저 열린다. */
 function attImg(did, f){
   const d = encodeURIComponent(did), fe = encodeURIComponent(f);

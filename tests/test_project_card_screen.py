@@ -290,7 +290,7 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
 
     # ---- ② 보이는 글자가 곧 손잡이다 ---------------------------------------
     def test_the_words_on_the_card_are_the_handle(self):
-        """slug 가 곧 단추이고, 빈 자리에는 「프로젝트 없음」이 선다."""
+        """slug 가 곧 버튼이고, 빈 자리에는 「프로젝트 없음」이 선다."""
         s, b = self.faces["set"], self.faces["bare"]
         self.assertEqual(s["tag"], "BUTTON")
         self.assertEqual(s["text"], "demo", "카드는 slug 하나만 적는다")
@@ -307,7 +307,7 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
             face = self.faces[key]
             self.assertIsNotNone(face, "%s: 값이 있는데 글자가 사라졌다" % key)
             self.assertEqual(face["tag"], "SPAN",
-                             "%s: 못 하는 조작에 단추가 섰다" % key)
+                             "%s: 못 하는 조작에 버튼이 섰다" % key)
             self.assertEqual(face["set"], "", "%s: 누를 문서를 들고 있다" % key)
             self.assertEqual(face["text"], "demo")
         for key in ("doneBare", "viewerBare"):

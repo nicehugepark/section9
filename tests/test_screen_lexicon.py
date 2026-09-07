@@ -363,7 +363,7 @@ class TheAutoNameOnlyStandsWhereItIsTrue(unittest.TestCase):
                              "점과 툴팁의 몫이다" % bad)
 
     def test_the_stop_hold_button_speaks_policy_grammar(self):
-        """정책 단추는 정책 문법(자동 OO 끄기)으로 선다 (REQ-20260901-005 3차).
+        """정책 버튼은 정책 문법(자동 OO 끄기)으로 선다 (REQ-20260901-005 3차).
 
         옛 이름 두 벌이 되살아나지 않는 것도 여기서 함께 잰다 — 1차는 개체
         오칭, 2차는 부정형 데뷔·무주어가 반려 사유였다."""
@@ -373,22 +373,22 @@ class TheAutoNameOnlyStandsWhereItIsTrue(unittest.TestCase):
                          "1차 반려 이름이 되살아났다 (DOC-20260831-005 로 개정)")
 
     def test_the_forecast_line_shares_the_buttons_gate(self):
-        """예고 줄과 정책 단추는 **한 관문**이다 (REQ-20260901-005 designer 1안).
+        """예고 줄과 정책 버튼은 **한 관문**이다 (REQ-20260901-005 designer 1안).
 
-        holdForecastHTML 이 제 조건을 지으면 줄만 서고 단추가 없는(또는 그
+        holdForecastHTML 이 제 조건을 지으면 줄만 서고 버튼이 없는(또는 그
         반대) 화면이 언젠가 생긴다 — 조건은 holdLockHTML 하나에서만 나온다."""
         with open(os.path.join(WEB, "app", "card.js"), encoding="utf-8") as f:
             raw = f.read()
         m = re.search(r"function holdForecastHTML\(r\)\{([\s\S]*?)\n\}", raw)
         self.assertTrue(m, "예고 줄 함수가 없다")
         body = m.group(1)
-        self.assertIn("holdLockHTML(", body, "예고 줄이 단추의 관문을 안 쓴다")
+        self.assertIn("holdLockHTML(", body, "예고 줄이 버튼의 관문을 안 쓴다")
         for own in ("stoppable", "heldState", "status"):
             self.assertNotIn(own, body,
                              "예고 줄이 제 조건을 지었다 — 관문이 둘이다: %s" % own)
-        # 낭독기에도 같은 짝이 들린다 — 단추가 줄을 가리킨다.
+        # 낭독기에도 같은 짝이 들린다 — 버튼이 줄을 가리킨다.
         self.assertIn('aria-describedby="pol-fore"', raw,
-                      "단추가 예고 줄을 가리키지 않는다")
+                      "버튼이 예고 줄을 가리키지 않는다")
         self.assertIn('id="pol-fore"', body, "예고 줄에 짝의 이름표가 없다")
         # 문서 화면이 실제로 그 줄을 세운다.
         with open(os.path.join(WEB, "app", "docs.js"), encoding="utf-8") as f:

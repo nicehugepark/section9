@@ -5,12 +5,12 @@
      ② PRJ 문서 뷰의 프로젝트 패널(.pjset · .pmem · .pjsum)
      ③ Board/Graph 위 문맥 띠(.pjstrip) — 244px 표를 대신하는 32px 한 줄
 
-   **여기 있는 것은 배치와 밀도뿐이다.** 색은 토큰에서만 오고(리터럴 0), 단추의
+   **여기 있는 것은 배치와 밀도뿐이다.** 색은 토큰에서만 오고(리터럴 0), 버튼의
    얼굴은 이 파일이 짓지 않는다 — 「프로젝트 만들기」·「보관된 프로젝트 N개」는 목록이 이미
    쓰는 `.more`, 표 안의 「추가」·「제거」는 카드·문서가 이미 쓰는 `.acts button`
-   이다. 그 둘은 스킨 열 벌이 저마다 잉크를 말해 둔 자리라, 새 단추를 그리는
+   이다. 그 둘은 스킨 열 벌이 저마다 잉크를 말해 둔 자리라, 새 버튼을 그리는
    순간 스킨 수만큼 색을 다시 적게 된다(벨트 글리프 때의 그 함정 —
-   s9-design 「벨트 글리프 단추의 확정값」).
+   s9-design 「벨트 글리프 버튼의 확정값」).
 
    같은 이유로 이 파일은 패널 껍데기(테두리 두른 상자·배경 판)를 만들지 않는다.
    `.proj-info` 는 스킨 여섯 벌이 저마다 다시 그려 놓은 상자였다 — 문서 뷰 안에
@@ -130,7 +130,7 @@ select.pjc{padding-right:4px}
 .pjmem{margin-top:22px}
 .pmemwrap{overflow-x:auto}
 .pmem{border-collapse:collapse;width:100%;min-width:520px;font-size:12px}
-/* 관리 얼굴은 칸마다 고르기·단추가 서서 자연폭이 더 크다 — min-width 가
+/* 관리 얼굴은 칸마다 고르기·버튼이 서서 자연폭이 더 크다 — min-width 가
    자연폭에 못 미치면 pmemwrap 의 가로 구름이 서기 전에 칸이 구겨진다
    (QA 실측 D1: 1000px 에서 「− 나가기」가 37×56px 세로 낙하). */
 .pmem.manage{min-width:680px}
@@ -156,11 +156,11 @@ select.pjc{padding-right:4px}
 .pmem tr.exp td{color:var(--muted)}
 .pmem tr.exp .pjc{color:var(--muted)}
 .pmem .pjadd td{border-bottom:0;border-top:1px solid var(--border);padding-top:8px}
-/* 표 안의 단추 무리 — 얼굴은 `.acts button` 이 짓고, 여기서는 자리만 없앤다 */
+/* 표 안의 버튼 무리 — 얼굴은 `.acts button` 이 짓고, 여기서는 자리만 없앤다 */
 .acts.pjcell{margin:0;display:inline-flex;gap:4px}
-/* **못 누르는 단추는 못 누르게 보여야 한다.** `.acts button` 은 잉크색을 못박아
+/* **못 누르는 버튼은 못 누르게 보여야 한다.** `.acts button` 은 잉크색을 못박아
    브라우저 기본 회색을 덮고, hover 반전은 disabled 를 가리지 않는다 — 그대로
-   두면 마지막 owner 의 「제거」가 멀쩡한 단추처럼 보이고 손을 얹으면 반전까지
+   두면 마지막 owner 의 「제거」가 멀쩡한 버튼처럼 보이고 손을 얹으면 반전까지
    된다(실캡처에서 그랬다). 회색은 여기서만 허용된다: 왜 이 한 자리만 다른가에
    title 이 답한다. */
 .acts.pjcell button:disabled{color:var(--faint);cursor:not-allowed}
