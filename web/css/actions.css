@@ -188,7 +188,13 @@
   .livedot.on::after,.livedot.busy::after{animation:none}
 }
 .card:focus-visible{outline:2px solid var(--text);outline-offset:-2px}
-.col .colempty{padding:14px;color:var(--faint);font-size:11.5px;line-height:1.5}
+/* 빈 칸은 두 줄이다 (REQ-20260907-019): 무엇이 없는가 · 무엇이 이 칸을 채우는가.
+   위계는 색면이 아니라 굵기와 크기로 만든다. 첫 줄을 faint(2.9:1)에서 muted 로
+   올린 것은 강조가 아니라 대비 수선이다 — 이 줄은 읽으라고 있는 글자다. */
+.col .colempty{padding:14px;color:var(--muted);font-size:11.5px;line-height:1.5;
+  font-weight:600}
+.col .colempty .colnext{display:block;margin-top:4px;font-weight:400;
+  font-size:11px;color:var(--muted)}
 /* 판정 블록 (REQ-20260825-071): 색면·띠 없이 "무엇을 판정하는가"를 드러낸다 —
    캡션 + 잉크 위계 + 헤어라인. 확인 포인트와 버튼을 한 덩어리로 묶어
    판정 단위가 눈에 잡히게 한다. */
@@ -732,3 +738,20 @@ button.asgnb:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 .card[draggable="true"]{cursor:grab}
 .col.dropok{outline:2px dashed var(--text);outline-offset:-2px;background:var(--accent-soft)}
 
+/* ── 빈 자리의 둘째 줄 (REQ-20260907-019) ──────────────────────────────
+   빈 상태는 안내가 아니라 다음 행동을 주는 자리다(s9-design 3절). 첫 줄이
+   무엇이 없는지 말하면, 둘째 줄이 **무엇을 하면 되는지 또는 왜 비었는지**를
+   말한다. 자리는 넷(Board 열·문서 뷰어·프로젝트 판·선행 대기 레일·Stream)
+   이고 규칙은 여기 한 곳이다 — 판마다 따로 적으면 위계가 판마다 갈린다.
+   위계는 색면이 아니라 굵기·크기다. 얼굴(font-family)은 정하지 않는다:
+   첫 줄이 무슨 얼굴이든 물려받아야 두 줄이 한 덩어리로 읽힌다. */
+.enext{display:block;margin-top:5px;font-weight:400;font-size:11.5px;
+  line-height:1.6;color:var(--muted)}
+/* 안내문은 상주하지 않는다 — 판을 열 때마다 보이는 문장은 두 번째부터 읽히지
+   않고 자리만 차지한다. 남겨야 하는 배경은 접어 두고 기본을 닫는다. */
+.ehelp{margin-top:10px;font-size:11px;line-height:1.7;color:var(--muted)}
+.ehelp summary{cursor:pointer;list-style:none;font-weight:600;display:inline-block;
+  border-bottom:1px dotted currentColor}
+.ehelp summary::-webkit-details-marker{display:none}
+.ehelp[open] summary{margin-bottom:6px}
+.ehelp summary:focus-visible{outline:1px solid currentColor;outline-offset:3px}

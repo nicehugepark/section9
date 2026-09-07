@@ -75,7 +75,12 @@ const PRJ_TEXT = {
   viewingTip: slug => `헤더의 프로젝트 필터가 지금 ${slug} 만 보고 있습니다`,
   // 탭 우측 — 아직 아무것도 안 고른 자리. 문서 목록이 쓰는 그 말투 그대로다
   // (「← 문서를 선택하세요」): 한 화면 안에서 같은 뜻에 두 문형을 쓰지 않는다.
-  pick: "← 프로젝트를 선택하세요",
+  pick: "← 왼쪽 목록에서 프로젝트를 골라 주세요",
+  pickNext: "고른 프로젝트의 설정과 멤버를 여기서 봅니다",
+  // 하나도 없는 자리는 고르라고 할 수 없다 — 만드는 길을 준다
+  pickNone: "아직 프로젝트가 없습니다",
+  pickNoneMake: "왼쪽 위의 「새 프로젝트」로 첫 프로젝트를 만들어 주세요",
+  pickNoneRead: "프로젝트는 등록된 계정만 만들 수 있습니다",
   listAria: "프로젝트 목록 — 방향키로 이동, Enter 로 열기",
   /* 문서의 관리 요약에서는 **멤버를 빼고 센다** — 바로 위 표의 캡션이 이미
      「멤버 5명 — 활성 4 · 만료 1」로 말했고, 그 줄에서 다시 「멤버 4」(활성만)를
@@ -811,7 +816,14 @@ function prjWire(root, p, o){
 
    폴링 계약은 그대로다: `/api/projects` 는 벨트 밖이고(부트 1회 · 탭 진입 ·
    변이 직후), 이 함수는 손에 있는 목록을 그릴 뿐 스스로 받지 않는다. */
-const prjPickHTML = () => `<p class="empty">${esc(PRJ_TEXT.pick)}</p>`;
+/* 아직 아무것도 안 고른 자리. **없는 목록과 안 고른 목록은 다른 화면이다** —
+   하나도 없는 자리에 "골라 주세요"라고 쓰면 사람이 없는 것을 찾는다. */
+const prjPickHTML = (n, canCreate) => n === 0
+  ? `<p class="empty">${esc(PRJ_TEXT.pickNone)}`
+    + `<span class="enext">${esc(canCreate ? PRJ_TEXT.pickNoneMake
+                                           : PRJ_TEXT.pickNoneRead)}</span></p>`
+  : `<p class="empty">${esc(PRJ_TEXT.pick)}`
+    + `<span class="enext">${esc(PRJ_TEXT.pickNext)}</span></p>`;
 
 function renderProjects(){
   const all = projects || [];
@@ -823,6 +835,16 @@ function renderProjects(){
   const shown = all.filter(p => prjMatch(p, q));
   // 세는 자리는 목록 머리(PROJECT n) 하나다 — 같은 수를 위에서 또 세지 않는다
   $("#count").textContent = "";
+  /* 고를 것이 하나뿐이면 고르라고 하지 않는다 (REQ-20260907-019). 선택지가 하나인
+     「선택」은 결정이 아니라 손품이다 — 사람이 내릴 결정이 없는 자리에서 클릭과 시선
+     이동을 받아 내면 안 된다. 조건 셋이 이 판단의 전부다: ① **전체**가 하나여야 하고
+     ② 검색어가 없어야 하며 ③ 아직 아무것도 고르지 않았어야 한다. ①②를 함께 거는
+     까닭은 필터로 하나가 된 것은 사람이 좁히는 중간 상태여서다 — 한 글자 칠 때마다
+     오른쪽 판이 열리면 화면이 튄다. 여럿일 때 첫 항목을 여는 것은 **잘못된 기본값**
+     이다: 목록 순서가 사람의 관심과 같다는 보장이 없고, 열린 것이 사람이 고른 것인지
+     기계가 고른 것인지 구별되지 않는다. 하나뿐일 때만 참인 것은 "그것 말고 고를 것이
+     없다"는 사실이고, 그때의 자동 열기는 추측이 아니라 유일한 답이다. */
+  if (!selectedDoc && !q && all.length === 1) selectedDoc = all[0].id;
   const opt = {...prjViewOpt(),
     selected: selectedDoc,
     // 지금 보는 범위를 **짚기만** 한다 — 좁히지 않는다(렌즈 ≠ 집)
@@ -852,7 +874,7 @@ function renderProjects(){
   else $("#view").innerHTML = `<div class="docs" data-pane="projects">`
     + `<div class="doclist" data-rove role="group"`
     + ` aria-label="${esc(PRJ_TEXT.listAria)}">${list}</div>`
-    + `<div class="viewer" id="viewer">${prjPickHTML()}</div></div>`;
+    + `<div class="viewer" id="viewer">${prjPickHTML(all.length, opt.canCreate)}</div></div>`;
   roveSync();
   sizeDocs();
   requestAnimationFrame(sizeDocs);   // 헤더가 자란 뒤(사용량 줄 등) 다시 잰다
@@ -862,7 +884,7 @@ function renderProjects(){
      프로젝트 판에 그대로 두면 이 탭이 무엇을 다루는 자리인지 흐려진다. */
   if (!mine){
     if (viewer && viewer.dataset.showing){
-      viewer.innerHTML = prjPickHTML();
+      viewer.innerHTML = prjPickHTML(all.length, opt.canCreate);
       viewer.dataset.showing = ""; viewer.dataset.updated = "";
     }
     return;

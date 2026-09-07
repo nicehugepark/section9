@@ -148,10 +148,15 @@ function tidyDecorate(){
     if (bar2){
       const n = tidySel.size, off = n ? "" : " disabled";
       const html = `<span class="n">고른 문서 <b>${n}</b></span>`
-        + `<button type="button" data-tidy="all">이 목록 전부</button>`
-        + `<button type="button" class="off" data-tidy="none"${off}>해제</button>`
-        + `<button type="button" data-tidy="archive"${off}>보관</button>`
-        + `<button type="button" data-tidy="rm"${off}>삭제</button>`;
+        /* 띠 버튼은 **목적어를 데리고** 선다 (REQ-20260907-019) — 「전부」·「해제」
+           처럼 부사·어간만 선 버튼은 무엇에 하는 일인지 말하지 않는다. 그리고
+           도착지를 말한다: 「삭제」는 되돌릴 수 없는 것으로 읽히는데 이 버튼이
+           실제로 하는 일은 휴지통으로 보내는 것이고, 되돌릴 수 있다는 사실이
+           버튼에서 읽혀야 확인 창을 덜 무서워한다(s9-design 4절). */
+        + `<button type="button" data-tidy="all">이 목록 전부 고르기</button>`
+        + `<button type="button" class="off" data-tidy="none"${off}>고른 것 해제</button>`
+        + `<button type="button" data-tidy="archive"${off}>보관함으로</button>`
+        + `<button type="button" data-tidy="rm"${off}>휴지통으로</button>`;
       /* 바꿀 때만 다시 그린다 — 비교는 innerHTML 이 아니라 **서명**으로 한다
          (REQ-20260907-028 실제 사고). 브라우저는 `disabled` 를 `disabled=""` 로
          되돌려 주므로 아직 하나도 안 골랐을 때(n=0) innerHTML 비교가 매번 어긋났고,
@@ -206,9 +211,9 @@ function tidyDecorate(){
       + ` data-tidy="${arch ? "unarch1" : "arch1"}"`
       + ` data-id="${esc(id)}" title="${arch
           ? "목록으로 되돌린다" : "목록에서 내린다 — 문서는 그대로 있고 언제든 되돌린다"}">`
-      + `${arch ? "보관 해제" : "보관"}</button>`)
+      + `${arch ? "보관 해제" : "보관함으로"}</button>`)
       + `<button type="button" class="deed tidy" data-tidy="rm1" data-id="${esc(id)}"`
-      + ` title="휴지통으로 보냅니다 — 목록에서 사라지되 되돌릴 수 있습니다">삭제</button>`;
+      + ` title="휴지통으로 보냅니다 — 목록에서 사라지되 되돌릴 수 있습니다">휴지통으로</button>`;
     let box = grp;
     if (!box){
       box = document.createElement("span");

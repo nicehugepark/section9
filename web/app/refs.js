@@ -99,8 +99,9 @@ function depSummaryHTML(rows){
     // .empty = 판을 버리고 여백 주석이 되는 신호. 폭은 .gsplit.empty 가 함께 줄인다
     return `<aside class="depsum empty" id="depsum">
       <div class="dshead"><span>선행 대기 현황</span><span class="dscount">없음</span>${scope}</div>
-      <p class="dsempty">지금 다른 요청 때문에 멈춘 요청이 없습니다. 진행이 막힌 요청에 선행을 걸면
-        여기에 줄이 쌓이고 왼쪽 그래프에 화살표가 그려집니다.
+      <p class="dsempty">지금 다른 요청 때문에 멈춘 요청이 없습니다
+        <span class="enext">어떤 요청에 선행을 걸면 이 자리와 왼쪽 그래프에 함께 나타납니다 —
+          선행을 거는 자리는 아직 터미널뿐입니다</span>
         <code>s9 link &lt;막힌 요청&gt;
   --blocked-by &lt;선행&gt;</code></p>
       ${note}</aside>`;

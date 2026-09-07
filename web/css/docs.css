@@ -116,7 +116,10 @@
   max-height:var(--docsh,calc(100vh - 150px));overflow-y:auto}
 /* 스트림 판은 붙박이 제목이 없다 — 윗 여백을 제자리에 돌려준다 */
 #sview{padding-top:24px}
-.viewer .empty{color:var(--faint);font-family:var(--mono);font-size:12px;padding-top:24px}
+/* 두 줄짜리 빈 자리 — calm 은 이 자리를 가운데로 모으는데(flex), 방향을 여기서
+   정해 두지 않으면 둘째 줄이 첫 줄 오른쪽에 가서 붙는다. */
+.viewer .empty{color:var(--muted);font-size:12.5px;font-weight:600;line-height:1.6;
+  padding-top:24px;flex-direction:column}
 .viewer h1{letter-spacing:-.015em;font-size:21px}
 /* **읽는 동안 제목을 잃지 않는다** (REQ-20260828-009).
 

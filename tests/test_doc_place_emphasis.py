@@ -162,8 +162,12 @@ class DocPlaceEmphasis(unittest.TestCase):
         with self.subTest("letting_go_shows_the_empty_state"):
                 m = re.search(r"function docDeselect\(\)\{(.+?)\n\}", self.src, re.S)
                 self.assertIsNotNone(m)
-                self.assertIn("문서를 선택하세요", m.group(1),
+                self.assertIn("docPickHTML()", m.group(1),
                               "푼 뒤에 오른쪽이 무엇을 보여 주는지 정해지지 않았다")
+                # 빈 자리의 문구는 **한 곳에서만** 정한다 (REQ-20260907-019) —
+                # 두 벌이면 푼 자리와 처음 연 자리가 다른 말을 한다.
+                self.assertEqual(self.src.count("const docPickHTML"), 1)
+                self.assertIn("골라 주세요", self.src)
 
             # --- 물려받은 규율 (REQ-20260829-012 에서 그대로 옮겨 온다) ---
         with self.subTest("switching_documents_rebuilds_the_list"):

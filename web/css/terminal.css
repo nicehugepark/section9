@@ -14,6 +14,11 @@
 .term details summary::before{content:"▸ "}
 .term details[open] summary::before{content:"▾ "}
 .term .meta{color:#5c6878;font-size:11px}
+/* 이 판의 빈 자리도 두 줄이다(REQ-20260907-019). 터미널 뷰는 tone 토큰 밖의
+   고정 다크라 --muted 를 물려받으면 배경에 잠긴다 — 세 층을 여기서 준다. */
+.term .meta .ehead{display:block;color:#cbd5e1;font-weight:600;font-size:12px}
+.term .meta .enext{color:#8b97a6}
+.term .ehelp{color:#7c8a9c}
 .term mark.reqhl{background:#d97706;color:#101418;padding:0 2px;border-radius:0}
 /* 화면이 실제 시각으로 고쳐 그린 도장 (REQ-20260827-010) — 고쳤다는 사실을
    감추지 않되 읽는 흐름을 끊지도 않는다: 색면 없이 점선 밑줄 하나. */

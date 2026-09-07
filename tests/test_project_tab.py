@@ -206,7 +206,8 @@ OPEN_TAB = r"""
        create: !!document.querySelector("#view [data-prjnew]"),
        rows: rows.length,
        ids: rows.map(x => x.dataset.doc),
-       empty: (document.querySelector("#viewer .empty") || {}).textContent || ""});
+       empty: (document.querySelector("#viewer .empty") || {}).textContent || "",
+       showing: ((document.querySelector("#viewer") || {}).dataset || {}).showing || ""});
   }, 700));
 })()
 """
@@ -373,8 +374,17 @@ class TheTabLineHoldsAndOpens(unittest.TestCase):
             self.assertGreaterEqual(d["rows"], 1, "프로젝트 줄이 하나도 없다")
             self.assertTrue(all(i.startswith("PRJ-") for i in d["ids"]),
                             "프로젝트가 아닌 줄이 섰다: %r" % d["ids"])
-            self.assertIn("프로젝트", d["empty"],
-                          "아무것도 안 고른 우측이 무엇을 고르라는지 말하지 않는다")
+            # 고를 것이 **하나뿐이면 고르라고 하지 않는다** (REQ-20260907-019):
+            # 선택지가 하나인 선택은 결정이 아니라 손품이다. 여럿일 때만 고르라고
+            # 하고, 그때의 문장은 무엇을 고르라는 것인지 이름을 댄다.
+            if d["rows"] == 1:
+                self.assertEqual(d["empty"], "",
+                                 "하나뿐인 프로젝트를 열지 않고 고르라고 한다")
+                self.assertTrue(d["showing"].startswith("PRJ-"),
+                                "하나뿐인 프로젝트가 열려 있지 않다: %r" % d["showing"])
+            else:
+                self.assertIn("프로젝트", d["empty"],
+                              "아무것도 안 고른 우측이 무엇을 고르라는지 말하지 않는다")
         with self.subTest("the_lens_marks_but_does_not_narrow"):
             d = self.out["viewing"]
             self.assertEqual(d["before"], d["after"],

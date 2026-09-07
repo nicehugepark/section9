@@ -15,11 +15,17 @@ let docReach = {}, docReachKey = "";
    미리보기·대화상자)을 닫는 키이고, 문서 선택은 떠 있는 것이 아니라 판의
    상태다. 같은 키에 두 층을 얹으면 호버카드를 닫으려던 Esc 가 읽던 문서까지
    되돌리기 없이 지운다. 손잡이는 진짜 button 이라 Tab 으로 닿고 Enter 로 눌린다. */
+/* 아직 아무것도 안 고른 자리 — **한 곳에서만** 정한다 (REQ-20260907-019).
+   두 줄이다: 무엇을 하면 되는지(왼쪽 목록) · 그러고 나면 이 자리가 무엇이 되는지.
+   둘째 줄은 「읽기만 하는 자리」라는 오해를 푼다 — 승인·반려도 여기서 한다. */
+const docPickHTML = () => `<p class="empty">← 왼쪽 목록에서 문서를 골라 주세요`
+  + `<span class="enext">고른 문서를 여기서 읽고 상태를 바꿉니다</span></p>`;
+
 function docDeselect(){
   selectedDoc = null;
   const v = $("#viewer");
   if (v){
-    v.innerHTML = `<p class="empty">← 문서를 선택하세요</p>`;
+    v.innerHTML = docPickHTML();
     v.dataset.showing = ""; v.dataset.updated = "";
   }
   pushRoute();
@@ -193,7 +199,7 @@ async function renderDocs(rows){
   }
   else $("#view").innerHTML = `<div class="docs" data-pane="docs"><div class="doclist" data-rove
       role="group" aria-label="문서 목록 — 방향키로 이동, Enter 로 열기">${list}</div>
-    <div class="viewer" id="viewer"><p class="empty">← 문서를 선택하세요</p></div></div>`;
+    <div class="viewer" id="viewer">${docPickHTML()}</div></div>`;
   roveSync();
   /* 고른 줄을 **보이게** 한다 (REQ-20260831-007). 자리를 위로 옮기는 대신 눈을
      그 자리로 옮긴다 — 다른 탭의 카드·본문 링크·주소로 들어와 그 줄이 목록
@@ -313,7 +319,7 @@ async function loadDoc(id, bg, force){
       res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
     }catch(e2){
       viewer.innerHTML = `<p class="empty">서버에 연결할 수 없어 문서를 열지 못했습니다 (${esc(id)}).
-        서버가 재시작 중일 수 있습니다. <button class="more" data-retrydoc="${esc(id)}">다시 시도</button></p>`;
+        서버가 재시작 중일 수 있습니다. <button class="more" data-retrydoc="${esc(id)}">다시 받기</button></p>`;
       return;
     }
   }

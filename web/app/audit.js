@@ -134,7 +134,7 @@ async function renderStream(){
     data = await ccFetch("/api/streams");
   }
   if (!data){
-    $("#view").innerHTML = `<div class="streamwrap"><div class="term"><span class="meta">stream 목록을 불러오지 못했습니다 — 잠시 뒤 다시 시도해 주세요</span></div></div>`;
+    $("#view").innerHTML = `<div class="streamwrap"><div class="term"><span class="meta">세션 목록을 받지 못했습니다 — 잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.</span></div></div>`;
     return;
   }
   const sesDocs = Object.fromEntries(
@@ -152,7 +152,13 @@ async function renderStream(){
   $("#view").innerHTML = `<div class="streamwrap">
     <div class="doclist" data-rove role="group"
       aria-label="세션 목록 — 방향키로 이동, Enter 로 열기">${list || '<div class="grp">아직 남은 기록이 없습니다 — 세션이 한 턴을 마칠 때마다 여기에 쌓입니다</div>'}</div>
-    <div class="term" id="term"><span class="meta">← 세션을 선택하세요. 터미널 transcript와 동일한 이벤트 흐름이 표시됩니다 (⚙agent = 서브에이전트 실행분). 검색창 = 이벤트 필터. 특정 요청의 구간만 보려면 Docs 탭에서 문서를 열고 "이 요청의 스트림"을 사용하세요.</span></div></div>`;
+    <div class="term" id="term"><span class="meta"><span class="ehead">← 왼쪽에서 세션을 골라 주세요</span>
+      <span class="enext">고른 세션에서 주고받은 말이 이 자리에 나옵니다</span>
+      <details class="ehelp"><summary>이 화면에서 할 수 있는 것</summary>
+        검색창에 낱말을 넣으면 그 낱말이 든 줄만 남습니다.
+        ⚙agent 로 시작하는 줄은 서브에이전트가 한 일입니다.
+        한 요청의 구간만 보려면 Docs 탭에서 그 문서를 열고 「이 요청의 스트림」을 눌러 주세요.
+      </details></span></div></div>`;
   roveSync();
   if (selectedStream) loadStream(selectedStream);
 }

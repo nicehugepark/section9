@@ -351,7 +351,7 @@ function showUserForm(u, host, isAdminEdit){
     if (!d || !Array.isArray(d.keys)){
       secList.className = "secempty";
       secList.innerHTML = `시크릿 목록을 받아오지 못했습니다.
-        <button type="button" class="gefix" id="sec-retry">다시 불러오기</button>`;
+        <button type="button" class="gefix" id="sec-retry">다시 받기</button>`;
       const rt = host.querySelector("#sec-retry");
       if (rt) rt.addEventListener("click", loadSecrets);
       extSay("unknown");

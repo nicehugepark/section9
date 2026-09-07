@@ -37,7 +37,7 @@ function attMissHtml(img, waiting){
     + `<span class="attw">그림을 받지 못했습니다 — 한 번에 여러 장을 부르면`
     + ` 몇 장이 밀립니다.</span>`
     + `<span class="atta">`
-    + `<button type="button" class="attr" data-attretry>다시</button>`
+    + `<button type="button" class="attr" data-attretry>다시 받기</button>`
     + `<a class="atto" href="${attUrl(img, 0)}" target="_blank">새 탭에서 열기</a>`
     + `</span>`;
 }

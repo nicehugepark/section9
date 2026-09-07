@@ -2374,12 +2374,18 @@ async function takeoverDoc(id){
 // 빈 상태는 안내가 아니라 다음 행동을 주는 자리다 (s9-design 완성도 기준 3)
 // 다섯 컬럼이 똑같이 "비어 있음"이면 어느 칸이 빈 것인지 눈이 다시 위를 훑어야
 // 한다. 각 칸이 비었다는 사실의 뜻을 한 줄로 말한다 (REQ-20260825-081).
+// 둘째 줄은 **그 칸을 무엇이 채우는가**를 말한다 (REQ-20260907-019). 없다는 사실만
+// 말하는 칸은 처음 온 사람에게 "여기는 원래 이런 자리인가"를 답해 주지 않는다 —
+// 다섯 줄이 서로 다른 답을 갖고, 되는 행동이 있는 칸(in-progress)만 행동을 말한다.
+const emptyCol = (head, next) =>
+  `<div class="colempty">${head}<span class="colnext">${next}</span></div>`;
 const EMPTY_COL = {
-  open: '<div class="colempty">착수를 기다리는 요청 없음</div>',
-  "in-progress": '<div class="colempty">진행 중인 요청 없음</div>',
-  blocked: '<div class="colempty">막혀 있는 요청 없음</div>',
-  review: '<div class="colempty">판정을 기다리는 요청 없음</div>',
-  done: '<div class="colempty">완료된 요청 없음</div>',
+  open: emptyCol("착수를 기다리는 요청 없음", "새로 들어온 요청이 이 칸에 놓입니다"),
+  "in-progress": emptyCol("진행 중인 요청 없음",
+    "왼쪽 칸의 카드를 끌어다 놓으면 착수합니다"),
+  blocked: emptyCol("막혀 있는 요청 없음", "진행이 막힌 요청이 까닭과 함께 이 칸에 놓입니다"),
+  review: emptyCol("판정을 기다리는 요청 없음", "판정을 청한 요청이 이 칸에 놓입니다"),
+  done: emptyCol("완료된 요청 없음", "끝낸 요청이 하루 동안 이 칸에 남습니다"),
 };
 
 // 끝난 컬럼이 접혀 있을 때 하는 말 — "몇 개 더"가 아니라 **왜 안 보이는지**를 말한다

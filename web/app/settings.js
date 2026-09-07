@@ -114,7 +114,7 @@ function renderSettingsSection(meAdmin){
     // 안 준 것과 계정이 없는 것은 다른 일이고, 다시 시도할 손잡이를 줘야 한다.
     if (u) showUserForm(u, v, false);
     else v.innerHTML = `<p class="empty">계정 정보를 받아오지 못했습니다.
-      <button class="gefix" type="button" id="uf-retry">다시 불러오기</button></p>`;
+      <button class="gefix" type="button" id="uf-retry">다시 받기</button></p>`;
     const rt = $("#uf-retry");
     if (rt) rt.addEventListener("click", () => renderSettings());
   } else if (settingsSection === "worker"){
@@ -123,7 +123,7 @@ function renderSettingsSection(meAdmin){
     // 못 받아 온 것과 계정이 없는 것은 다른 일이다 (「내 계정」과 같은 손잡이).
     if (wu) showWorkerCfg(wu, v);
     else v.innerHTML = `<p class="empty">계정 정보를 받아오지 못했습니다.
-      <button class="gefix" type="button" id="uf-retry">다시 불러오기</button></p>`;
+      <button class="gefix" type="button" id="uf-retry">다시 받기</button></p>`;
     const wrt = $("#uf-retry");
     if (wrt) wrt.addEventListener("click", () => renderSettings());
   } else if (settingsSection === "repo"){
@@ -321,7 +321,7 @@ async function showRoster(v){
     rows = (await r.json()).rows || [];
   }catch(e){
     v.innerHTML = `<h1 style="margin:0 0 10px">에이전트·스킬</h1>
-      <p class="empty">목록을 받아오지 못했습니다. <button class="gefix" type="button" id="ro-retry">다시 불러오기</button></p>`;
+      <p class="empty">목록을 받아오지 못했습니다. <button class="gefix" type="button" id="ro-retry">다시 받기</button></p>`;
     const rt = $("#ro-retry"); if (rt) rt.addEventListener("click", () => renderSettingsSection(isAdmin()));
     return;
   }
