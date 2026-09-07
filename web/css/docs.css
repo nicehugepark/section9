@@ -351,3 +351,88 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
    진단·캡처 전용 스위치라 사람이 쓰는 화면은 그대로다. */
 [data-noscroll] .doclist,[data-noscroll] .viewer{max-height:none;overflow:visible}
 [data-noscroll] .docs{align-items:stretch}
+
+/* ── 답 찾기 (REQ-20260907-042) ──────────────────────────────────────────
+   새 부품을 만들지 않는다: 손잡이는 문서 화면이 이미 쓰는 낱말 버튼(.deed),
+   무리 머리의 손잡이는 목록이 이미 쓰는 글자 손잡이(「N개 더 보기」)와 같은
+   계보다. 색면 하이라이트·좌측 세로 띠·행마다 버튼은 쓰지 않는다. */
+
+/* 무리 머리는 이제 두 몫을 진다 — 왼쪽에 구획 이름, 오른쪽에 행동 하나.
+   성격이 다른 둘이라 한 wrap 줄에 늘어놓지 않고 양끝으로 갈라 세운다
+   (전 스킨 검수 규칙 2). 이름이 없는 자리(타입을 골라 본 중)에서도 손잡이는
+   오른쪽 그대로다 — 자리가 상태에 따라 움직이지 않는다. */
+.doclist .grp{display:flex;align-items:baseline;gap:10px}
+.doclist .grp .grpf{margin-left:auto}
+/* 글자 손잡이 — 면도 테두리도 없다. 잉크와 밑줄만으로 「누를 수 있다」를
+   말하는 것이 이 목록의 어휘다(.more 와 같은 급). 무리 머리가 mono 대문자
+   자리이므로 손잡이도 그 얼굴을 입되, 읽어야 하는 글자라 잉크는 --faint 가
+   아니라 --muted 다(전 스킨 검수 규칙 5). */
+.doclist .grp .grpf{font-family:var(--sans);font-size:11px;
+  letter-spacing:.02em;text-transform:none;font-weight:600;
+  color:var(--muted);background:none;border:0;padding:0 0 1px;
+  cursor:pointer;border-bottom:1px solid transparent}
+.doclist .grp .grpf:hover{color:var(--text);border-bottom-color:var(--text)}
+.doclist .grp .grpf.on{color:var(--text);border-bottom-color:var(--text)}
+.doclist .grp .grpf:focus-visible{outline:1px solid var(--text);outline-offset:2px}
+
+/* 손잡이의 폭은 **가장 긴 얼굴로 미리 잡는다** — 「답 찾기」→「찾는 중 12초」로
+   얼굴이 바뀔 때 옆의 「이어 말하기」가 밀리면 그 자체가 결함이다
+   (s9-design 5절: 레이아웃이 흔들리는 모션은 결함).
+   값은 짝수 px 이다 — 홀수는 비정수 배율(125/150%)에서 좌우가 다르게
+   반올림된다(「배율 불변」). */
+.dacts .deed.ansbtn{min-width:108px;justify-content:center;
+  display:inline-flex;align-items:center;gap:6px}
+/* 경과는 mono 로, 잉크는 한 급 낮게 — 세는 것과 부르는 것이 한 버튼에 서므로
+   글꼴로 가른다(문서 화면이 이미 쓰는 그 규칙). 자릿수가 늘어도 폭이 흔들리지
+   않게 tabular-nums 를 준다. */
+.dacts .deed.ansbtn .ansela{font-family:var(--mono);font-size:10.5px;
+  font-weight:400;letter-spacing:.02em;color:var(--muted);
+  font-variant-numeric:tabular-nums}
+/* 도는 중에는 눌리지 않는다 — 색면·붉은 실패로 그리지 않고 잉크를 한 급 낮춰
+   「지금은 내 차례가 아니다」만 말한다(.wake 가 이미 쓰는 얼굴 그대로). */
+.dacts .deed.ansbtn[aria-disabled="true"]{cursor:default;color:var(--muted);
+  border-color:var(--hairline);background:var(--panel)}
+.dacts .deed.ansbtn[aria-disabled="true"]:hover{background:var(--panel);
+  color:var(--muted);border-color:var(--hairline)}
+.dacts .deed.ansbtn[aria-disabled="true"]:hover .ansela{color:var(--muted)}
+/* 반전(hover)에서는 경과도 함께 뒤집힌다 — 낮춘 급은 쉼 얼굴의 위계이지
+   반전의 대비를 깎는 값이 아니다 (REQ-20260907-006 과 같은 결함). */
+.dacts .deed.ansbtn:not([aria-disabled="true"]):hover .ansela{color:var(--bg)}
+
+/* 못 찾음 한 줄 — 붙박이 띠 안, 버튼 바로 아래. 실패를 붉은 면으로 그리지
+   않는다: 고장이 아니라 정직한 결과다. 잉크는 보조 급이고 줄은 하나다. */
+.anstell{font-size:11.5px;line-height:1.5;color:var(--muted);
+  margin:6px 0 0;word-break:keep-all}
+
+/* id 줄의 뱃지가 「찾는 중」일 때 — 점(livedot)과 낱말이 함께 선다.
+   점만으로는 색·모양에만 기대게 되고(s9-design 7절), 낱말만으로는 새로고침
+   너머의 같은 사실을 다른 화면과 같은 마크로 못 말한다. */
+.viewer .dtitle .dst.dstwork{margin-left:auto;display:inline-flex;
+  align-items:center;font-family:var(--mono);font-size:11px;font-weight:600;
+  letter-spacing:.04em;color:var(--muted)}
+.viewer .dtitle .dst.dstwork .livedot{margin-right:6px}
+
+/* 답이 붙은 자리로 눈을 옮기고 **한 번만** 말한다 (s9-design 5절).
+   잉크 언더라인 하나 — 색면 하이라이트는 이 제품의 금지 목록에 있다. */
+.md h3.ansland{position:relative}
+.md h3.ansland::after{content:"";position:absolute;left:0;right:0;bottom:-2px;
+  height:2px;background:var(--text);transform-origin:left center;
+  animation:ansland 180ms ease-out 1 forwards}
+@keyframes ansland{
+  0%{transform:scaleX(0);opacity:1}
+  100%{transform:scaleX(1);opacity:1}
+}
+@media (prefers-reduced-motion:reduce){
+  .md h3.ansland::after{animation:none;display:none}
+}
+
+/* 한글 라벨은 mono·uppercase·자간을 **벗는다** (s9-design 표 규칙 1의 근거를
+   그대로 적용). mono 를 주면 한글이 대체 글꼴로 떨어져 라틴 라벨과 글자 폭이
+   어긋나고, uppercase 는 한글에 아무 일도 하지 않으며, .04em 자간은 음절 사이를
+   벌려 「답 없음」을 낱글자로 흩어 놓는다. 질문의 답 축(답 있음/답 없음)만
+   한글이고 나머지 상태 값(in-progress·done)은 사람이 치는 글자라 그대로 mono 다.
+   낱말이 두 마디(4칸)로 늘었으므로 어절째 접는다 — 「답」과 「없음」이 갈려
+   두 줄이 되면 한 낱말이 둘로 읽힌다. */
+.doclist .row .st.ko,.viewer .dtitle .dst.ko{font-family:inherit;
+  text-transform:none;letter-spacing:.02em;white-space:nowrap;word-break:keep-all}
+.doclist .row .st.ko{font-size:10.5px;font-weight:600;margin-left:8px}

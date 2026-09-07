@@ -9,6 +9,11 @@
   --t-request:#1d4ed8; --t-knowledge:#0f766e; --t-session:#92400e; --t-question:#9d174d;
   --t-article:#6b21a8;
   --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+  /* 본문체를 **이름으로도** 부를 수 있게 한다 (REQ-20260907-042). mono 상자
+     안(무리 머리)에 한글 손잡이가 설 때 `inherit` 는 mono 를 물려주고, 한글은
+     대체 글꼴로 떨어져 자간이 흩어진다 — 그 자리에서 body 의 글꼴 더미를
+     다시 적지 않도록 여기 한 곳에 둔다(스킨은 이 값을 갈아 끼우면 된다). */
+  --sans:"Noto Sans KR",system-ui,sans-serif;
 }
 /* 테마: system(OS 추종) / paper(라이트 고정=기본 토큰) / carbon(다크 고정) / phosphor(CRT) */
 @media (prefers-color-scheme: dark){
@@ -48,6 +53,6 @@
 *::-webkit-scrollbar-track{background:transparent}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
   outline:1px solid var(--text);outline-offset:1px}
-body{margin:0;font-family:"Noto Sans KR",system-ui,sans-serif;
+body{margin:0;font-family:var(--sans);
   background:var(--bg);color:var(--text);font-size:13.5px;-webkit-font-smoothing:antialiased}
 

@@ -94,7 +94,13 @@ PROJECT_ROLES = ["owner", "maintainer", "contributor", "viewer"]
 # request 상태머신
 TRANSITIONS = {
     "draft":       {"open", "cancelled"},
-    "open":        {"in-progress", "blocked", "cancelled"},
+    # open→done 은 **이미 이뤄진 요구**를 닫는 길이다 (REQ-20260907-044). 실측:
+    # 취소 21건 중 7건이 「다른 요청·커밋이 이미 이뤘다」였다 — 취소는 「안 했다」는
+    # 뜻인데 이룬 것을 안 했다고 적고 있었다. 그 자리는 done + derived_from 이다.
+    # 대신 **무엇이 이뤘는지 지목**을 강제하고(_ALREADY_DONE_HINT), 화면에는 내지
+    # 않는다(SCREEN_TRANSITIONS) — 표가 곧 버튼의 원천이라, 그냥 넣으면 모든 open
+    # 카드에 「완료」가 생겨 일하지 않고 닫는 길을 화면에 내는 셈이 된다.
+    "open":        {"in-progress", "blocked", "done", "cancelled"},
     "in-progress": {"blocked", "review", "done", "cancelled"},
     "blocked":     {"open", "in-progress", "cancelled"},
     "review":      {"in-progress", "done"},
@@ -102,6 +108,35 @@ TRANSITIONS = {
     "cancelled":   set(),        # terminal
     "published":   set(),        # knowledge/session 고정 상태
 }
+
+# 화면이 받는 갈래 (REQ-20260907-044). `/api/transitions` 가 이것을 준다.
+# 표와 갈라 두는 이유: 화면 버튼은 「누구나 한 번에 누를 수 있는 것」이고,
+# open→done 은 근거를 적어야 하는 길이라 버튼의 모양이 아니다. CLI 는 표를 쓴다.
+SCREEN_TRANSITIONS = {"open": {"done"}}       # 상태 → 화면에서 뺄 갈래
+
+
+def screen_transitions():
+    """화면에 낼 전이표 — TRANSITIONS 에서 버튼으로 낼 수 없는 갈래를 뺀 것."""
+    return {k: sorted(v - SCREEN_TRANSITIONS.get(k, set()))
+            for k, v in TRANSITIONS.items()}
+
+
+# 「무엇이 이 요구를 이뤘는가」의 지목 (REQ-20260907-044). 문서 id 이거나
+# commit 해시다 — 실제 마감 문장이 둘 다 쓴다(「062 의 commit 2fd1d99 가 이미
+# 고쳤다」·「017 로 흡수」). 짧은 16진수는 낱말과 겹치므로 7자리부터 본다.
+COMMIT_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+
+
+def already_done_refs(note, self_id=""):
+    """마감 노트가 지목한 것들 — (문서 id 목록, commit 을 지목했는가).
+
+    자기 자신은 지목이 아니다 — 「이 요청이 이 요청을 이뤘다」는 아무 말도 하지
+    않는다. 이 판정 하나가 open→done 의 문을 지킨다.
+    """
+    ids = [c for c in DOC_ID_RE.findall(note or "") if c != self_id]
+    rest = DOC_ID_RE.sub(" ", note or "")
+    return ids, bool(COMMIT_SHA_RE.search(rest))
+
 
 LIST_KEYS = {"tags", "children", "relates", "blocked_by", "refs_docs",
              "refs_links", "refs_files", "agents", "contributions",
@@ -2726,7 +2761,10 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
     # 세션 승계: 다른(새) 세션이 REQ를 이어받아 착수하면 session 스탬프를 현재
     # 세션으로 갱신하고 이력은 sessions에 누적 — REQ가 여러 세션에 걸치는 경우
     # (재시작·이어받기)가 왕왕 있어, 스트림 터미널이 현재 작업 세션을 따라가야 한다.
-    if new_status == "in-progress" and meta.get("type") == "request":
+    # open→done 도 찍는다 (REQ-20260907-044): 일을 거치지 않고 닫는 유일한 길이라
+    # **누가 닫았는지**가 문서에 남아야 한다. 나머지는 종전대로 착수 시점이다.
+    if meta.get("type") == "request" and (
+            new_status == "in-progress" or (old == "open" and new_status == "done")):
         _merge_session_stamp(meta, os.environ.get("S9_SESSION", ""))
     # 반려 = 검증 무효화: 체크된 TDD 시나리오를 초기화해 재검증을 강제 —
     # 카드 카운터가 N/N 완료처럼 남아 반려 반영 여부를 오독하게 하던 문제 (REQ-20260824-009)
@@ -2768,6 +2806,18 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
                    if new_status == "done" else ""))
     # note 단일라인 정규화: History status 라인이 개행에 깨지면 reopened/reqstream 파싱 실패
     note = re.sub(r"\s+", " ", note).strip() if note else ""
+    # 일하지 않고 닫는 유일한 길에는 **근거 지목**이 붙는다 (REQ-20260907-044).
+    # open→done 은 「이미 이뤄진 요구」를 닫으라고 낸 길이지 「그냥 닫기」가 아니다 —
+    # 무엇이 이뤘는지 적지 않으면 다음 사람이 그 요구가 실제로 처리됐는지 알 길이
+    # 없고, 그 순간 이 전이는 취소를 done 이라고 적는 도구가 된다.
+    if old == "open" and new_status == "done" and not force and not approved:
+        _ids, _sha = already_done_refs(note, doc_id)
+        if not _ids and not _sha:
+            raise ValueError(
+                "무엇이 이 요구를 이뤘는지 --note 에 지목하라 — 요청 id(REQ-…) "
+                "또는 commit 해시. open 에서 곧바로 done 으로 가는 길은 '이미 "
+                "이뤄진 요구'를 닫는 자리다. 아직 할 일이 남았으면 in-progress, "
+                "하지 않기로 했으면 cancelled 다 (예외는 --force)")
     # 확인 포인트 길이 가드 (REQ-20260829-009): 판정 카드가 읽히지 않으면 판정
     # 자리가 아니다. 사람의 판정 전이(judge)는 막지 않는다 — 승인/반려 메모는
     # 확인 포인트가 아니다.
@@ -2794,6 +2844,18 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
     # blocked 전이의 사유에 문서 id가 있으면 그것이 곧 선행 의존이다
     # (REQ-20260825-097): 사람이 이미 쓰는 문장에서 관계를 건져 그래프가 읽을
     # 수 있게 한다 — note는 위에서 normalize_ids로 full-id 정규화를 마쳤다.
+    # open→done 이 지목한 문서는 **이 요구를 흡수한 곳**이다 (REQ-20260907-044).
+    # 관계 3층 중 derived_from 의 자리다(다른 요청이 그 요구를 흡수했을 때) —
+    # blocked 가 노트에서 blocked_by 를 건지는 것과 같은 패턴이고, 사람이 이미
+    # 쓴 문장에서 관계를 건져 그래프가 읽을 수 있게 한다.
+    if old == "open" and new_status == "done" and note:
+        _cur = list(meta.get("derived_from") or [])
+        for cand in already_done_refs(note, doc_id)[0]:
+            if cand in _cur or not locate(cand):
+                continue
+            _cur.append(cand)
+        if _cur != (meta.get("derived_from") or []):
+            meta["derived_from"] = _cur
     if new_status == "blocked" and note:
         cur = list(meta.get("blocked_by") or [])
         for cand in DOC_ID_RE.findall(note):
@@ -25133,7 +25195,7 @@ def cmd_serve(args):
                 # 여기에 실리지 않는다.
                 self._json(timezone_list())
             elif parsed.path == "/api/transitions":
-                self._json({k: sorted(v) for k, v in TRANSITIONS.items()})
+                self._json(screen_transitions())
             elif parsed.path == "/api/whoami":
                 # 서버 파생 신원 — 대시보드 라벨·admin 판정·개인화의 단일 출처
                 self._json(whoami_info())

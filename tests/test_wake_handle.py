@@ -113,8 +113,13 @@ class WakeHandle(unittest.TestCase):
                 # 벨트를 문서에서 빼면 문서 화면만 손잡이를 잃는다.
                 self.assertIn("deedBeltHTML(r)", self.card, "보드 카드가 벨트를 안 부른다")
                 # 문서는 낱말 얼굴(wordy)로 부른다 (REQ-20260830-046) — 함수는 같다.
-                self.assertIn("deedBeltHTML(stallDoc, true)", self.src,
-                              "문서 화면이 벨트를 안 부른다")
+                # **무엇을 넘기는지는 이 계약이 아니다** (REQ-20260907-046): 인자를
+                # 글자 그대로 못 박았더니 REQ-20260907-027 이 색인에 없는 문서까지
+                # 그리려고 `stallDoc || m` 로 넓힌 순간 계약이 깨졌다 — 뜻은 그대로인데
+                # 시험만 실패했다. 여기서 지킬 것은 「문서 화면이 벨트를 낱말 얼굴로
+                # 부른다」이지 인자의 모양이 아니다.
+                self.assertRegex(self.src, r"deedBeltHTML\([^)]*stallDoc[^)]*,\s*true\)",
+                                 "문서 화면이 벨트를 낱말 얼굴로 안 부른다")
                 # 문서 화면은 **자기 조건을 갖지 않는다** (REQ-20260828-041 2차) —
                 # 카탈로그 행을 넘길 뿐이고, 멈춤인지는 stallState 한 곳이 답한다.
                 self.assertNotIn("srow", self.src.split("const stallRow")[1][:200],
@@ -123,9 +128,13 @@ class WakeHandle(unittest.TestCase):
                 # (REQ-20260830-046) — 멈춤 줄이 실제로 놓이는 계약은 그대로다.
                 # 재는 것은 **자리**이지 붙어 있음이 아니다 (REQ-20260902-021 이 사이에
                 # 혈통 줄 하나를 세웠다): 사실 줄은 붙박이 띠 **밖**, 그 바로 아래 흐름에
-                # 놓인다. `${docActs}</div>` 가 .dhead 를 닫는 자리이고 그 뒤 흐름의
-                # 머리 몇 조각 안에 멈춤 줄이 있어야 한다.
-                flow = self.src.split("${docActs}</div>")[1][:200]
+                # 놓인다. 머리를 닫는 `</div>` 뒤 몇 조각 안에 멈춤 줄이 있어야 한다.
+                # **머리 안에 무엇이 더 서는지는 이 계약이 아니다** (REQ-20260907-046):
+                # `${docActs}</div>` 를 글자 그대로 찾았더니 REQ-20260907-042 가 머리에
+                # 손잡이 하나를 더한 순간 자리를 못 찾아 깨졌다 — 자리는 그대로였다.
+                _head = re.search(r"\$\{docActs\}.*?</div>", self.src, re.S)
+                self.assertIsNotNone(_head, "문서 머리 띠가 닫히는 자리를 못 찾는다")
+                flow = self.src[_head.end():_head.end() + 200]
                 self.assertIn("${stallRow}", flow,
                               "문서 화면에 멈춤 줄이 실제로 놓이지 않는다")
 

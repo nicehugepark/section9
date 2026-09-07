@@ -4,6 +4,21 @@ const PIN_OFF_LABEL = "닫기";
 /* 무리마다 "여기까지는 폈다" — 커지기만 하고, 조건이 바뀌면 한꺼번에 지워진다
    (REQ-20260831-007). 목록이 도로 짧아지며 흔들리는 것을 막는 유일한 기억이다. */
 let docReach = {}, docReachKey = "";
+/* 「답 없는 것만」 좁혀 보는 중인가 (REQ-20260907-042). 파생 가능한 값이 아니라
+   사람이 누른 사실이라 여기 하나만 산다 — 목록·손잡이가 같은 값을 읽는다. */
+let unansOnly = false;
+/* 손잡이의 두 얼굴을 **한 곳에서** 짓는다 — 누르는 자리와 되돌리는 자리가 같으니
+   글자도 한 함수에서 나온다(두 벌로 지으면 한 벌만 고쳐진다).
+   어휘는 이 목록이 이미 쓰는 글자 손잡이(「N개 더 보기」)와 같은 계보다. */
+function unansHandleHTML(total, left){
+  if (!unansOnly && !left) return "";
+  const label = unansOnly ? `전체 ${total}장 보기` : `답 없음 ${left}장만 보기`;
+  const tip = unansOnly
+    ? "답이 붙은 질문까지 다시 보여 줍니다"
+    : "아직 답이 없는 질문만 남깁니다 — 한 번 더 누르면 전체로 돌아옵니다";
+  return `<button type="button" class="grpf${unansOnly ? " on" : ""}" data-unans`
+    + ` title="${esc(tip)}" aria-pressed="${unansOnly}">${esc(label)}</button>`;
+}
 /* 고른 문서를 놓는다 (REQ-20260829-012).
 
    주소에서도 뺀다 — 새로고침에 되살아나면 아무것도 안 푼 것이다. 오른쪽 판도
@@ -83,6 +98,20 @@ async function renderDocs(rows){
      못 찾는다 — 실제 발생 2026-09-06: 미답 5장이 전부 8월 것이라 접힌 자리에 있었다.
      순서는 안정 정렬이라 답한 것들 사이의 순서는 그대로다. */
   groups.question.sort((a, b) => (isAnswered(a) === false ? 0 : 1) - (isAnswered(b) === false ? 0 : 1));
+  /* 답 없는 것만 보는 자리 (REQ-20260907-042 · 설계 REQ-20260907-037 designer).
+
+     타입 띠는 **수**를 말하고(43/46), 이 줄은 **행동**을 준다 — 「6장 남음」을
+     읽고도 그 여섯이 어디 있는지 못 찾던 자리다. 띠 옆에 수 칩을 새로 세우는
+     안은 반려됐다(REQ-20260828-018 이 「한 종류를 두 칸이 나눠 센다」로 이미
+     걷어낸 모양). 목록 행마다 버튼도 반려다(표·목록 규율 7).
+
+     0장이면 아무 줄도 서지 않는다 — 고칠 수 없는 빈 사실을 세우지 않는다.
+     좁혀 본 채로 마지막 한 장이 답을 얻으면 좁힘이 **스스로 풀린다**: 아무것도
+     없는 목록 앞에서 되돌리기 글자만 남기지 않는다. */
+  const qTotal = groups.question.length;
+  const qLeftInGrp = groups.question.filter(r => isAnswered(r) === false).length;
+  if (unansOnly && !qLeftInGrp) unansOnly = false;
+  if (unansOnly) groups.question = groups.question.filter(r => isAnswered(r) === false);
   /* 한 번 편 만큼은 **줄지 않는다**. 한도 밖 문서를 열어 무리를 폈다가 다음
      선택에서 도로 짧아지면, 뽑아 올리기를 걷어내고도 목록이 다시 흔들린다.
      조건이 바뀌거나 판을 새로 세울 때만 초기화한다(얼음과 같은 시점). */
@@ -118,7 +147,7 @@ async function renderDocs(rows){
     // 분수는 눈으로는 한 덩이지만 소리로는 "43 슬래시 46" 이다 — 읽어 줄 말을
     // 따로 준다. 다른 타입도 같은 규칙으로 이름을 갖는다.
     const tip = `${t} 문서만 보기 (다시 누르면 전체)` + (frac
-      ? ` · ${n}장 중 ${qAnswered}장 답함`
+      ? ` · ${n}장 중 ${qAnswered}장 답 있음`
         + (left ? ` · ${left}장 남음` : " · 남은 것 없음")
       : ` · ${n}장`);
     return `<button class="tb${curType===t?" on":""}" data-typef="${t}"
@@ -157,7 +186,7 @@ async function renderDocs(rows){
       return `<div class="row${on ? " sel" : ""}" data-doc="${esc(r.id)}"
         role="button" tabindex="-1" data-rove-item${on ? ' aria-current="true"' : ""}
         style="--sc:${sc}">
-        <span class="st">${esc(statusLabel(r))}</span>
+        <span class="st${r.type === "question" ? " ko" : ""}">${esc(statusLabel(r))}</span>
         <div class="id">${esc(shortId(r.id))}${prioHTML(r)}${off}</div><div>${esc(r.title)}</div>${snips}</div>`;
   };
   let list = `<div class="typebar">${bar}</div>`;
@@ -175,7 +204,15 @@ async function renderDocs(rows){
     // 건수는 타입바가 소유 — 그룹 헤더는 구획 표시만 한다(같은 숫자 중복 금지).
     // 타입을 골라 보는 중이면 그룹이 하나뿐 — 바로 위 타입바가 같은 단어를
     // 이미 밝혀 놓고 있으므로 헤더를 겹쳐 쓰지 않는다.
-    list += (curType ? "" : `<div class="grp">${g}</div>`) + shown.map(rowHTML).join("");
+    /* 무리 머리는 구획 표시이고 건수는 타입 띠가 소유한다 — 타입을 골라 보는
+       중이면 바로 위 띠가 같은 낱말을 이미 밝혀 놓았으므로 낱말을 겹쳐 쓰지
+       않는다. 다만 **손잡이는 그때도 서야 한다**: 질문만 보려고 띠를 누른
+       사람이야말로 답 없는 것만 보려는 사람이다. 그래서 낱말만 비우고 줄은
+       남긴다. */
+    const qh = g === "question" ? unansHandleHTML(qTotal, qLeftInGrp) : "";
+    if (!curType || qh)
+      list += `<div class="grp">${curType ? "" : g}${qh}</div>`;
+    list += shown.map(rowHTML).join("");
     if (grp.length > shown.length)
       list += `<button class="more" data-expand="grp:${g}">${grp.length - shown.length}개 더 보기</button>`;
   }
@@ -354,10 +391,19 @@ async function loadDoc(id, bg, force){
     // 한 단어로는 안 읽히고, 답을 붙이는 명령을 모르면 그대로 방치된다.
     // 질문의 점 색은 상태(published)가 아니라 타입색을 쓴다 — 상태 축이 없는
     // 문서에 상태색을 칠하면 없는 흐름을 읽게 된다.
+    /* 같은 사실을 두 벌로 말하지 않는다 (REQ-20260907-042). **라벨 자리**는 id
+       줄의 뱃지(「답 있음 / 답 없음」)이고 **문장 자리**가 여기다 — tech-writer 의
+       판정 그대로다. 종전에는 이 칸이 「미답」과 「아직 답이 없다 — s9 note …」를
+       나란히 세워 한 사실을 세 번 말했다. 명령어는 「답 찾기」 버튼의 툴팁으로
+       내렸다: 손잡이가 있는데 명령어를 함께 적으면 같은 일을 두 벌로 말한다. */
     ["status", isQ
-      ? `<span style="color:var(--t-question)">●</span> ${esc(statusLabel(m))}`
-        + (m.answered ? "" :
-           `<span class="prio-note">아직 답이 없다 — s9 note ${esc(shortId(m.id))} '…' --label answer</span>`)
+      ? `<span style="color:var(--t-question)">●</span> `
+        + (m.answered ? "답 있음" :
+           /* 명령어 문장은 **걷었다** (REQ-20260907-042 · designer). 손잡이가
+              없어서 명령어를 알려주던 대체물인데, 「답 찾기」 버튼과 나란히
+              서면 같은 일을 두 벌로 말한다. 명령어는 버튼 툴팁으로 내렸다.
+              남는 문장은 「…습니다」 한 층이다(전 스킨 검수 R1). */
+           `아직 답이 없습니다`)
       : (m.status ? `<span style="color:${SCOLOR[m.status]}">●</span> ${esc(m.status)}` : null)],
     ["blocked_by", depRow],
     ["summary", esc(m.summary) || null], ["goal", esc(m.goal) || null],
@@ -515,8 +561,14 @@ async function loadDoc(id, bg, force){
      행은 카탈로그가 아니라 **문서 자신**을 먹인다(색인에 아직 없는 새 문서). */
   const asgBtn = assignBtnHTML(m);
   // 무리 사이만 헤어라인(.adiv)이 가른다 — 빈 무리는 가를 것도 없다.
+  /* 답 찾기는 **왼쪽 무리의 맨 앞**이다 (REQ-20260907-042 · designer).
+     왼쪽 = 이 문서로 무언가를 한다(답을 찾는다 · 이어 말한다), 오른쪽(치우기)
+     = 이 문서를 치운다 — 성격이 다른 둘을 한 무리에 섞지 않는다. 「이어 말하기」와
+     같은 무리에 서는 것은 둘이 같은 축(이 문서로 무언가를 한다)이기 때문이고,
+     못 찾았을 때의 문장이 바로 옆의 그 글자를 가리키기 때문이다. */
+  const ansBtn = answerBtnHTML(m);
   const docActs = `<div class="acts dacts">`
-    + [beltDoc, polBtn, asgBtn, transBtns, pickBtn].filter(Boolean)
+    + [beltDoc, polBtn, asgBtn, transBtns, ansBtn + pickBtn].filter(Boolean)
         .map(h => `<span class="dgrp">${h}</span>`)
         .join(`<span class="adiv"></span>`) + `</div>`;
   /* 예고 줄은 사실 줄 층의 맨 앞이다 — 행동 띠 바로 아래에서 버튼(정책)와
@@ -638,8 +690,8 @@ async function loadDoc(id, bg, force){
     <div class="dhead">
     <h1 class="dtitle">${esc(m.title)}
       <span class="did" title="${esc(m.id)}">${esc(shortId(m.id))}</span>
-      <span class="dst" style="--sc:${SCOLOR[m.status] || "var(--muted)"}">${esc(statusLabel(m))}</span>
-    </h1>${docActs}</div>${lineage}${stallRow}${gate}
+      ${dstHTML(m)}
+    </h1>${docActs}${answerTellHTML(m)}</div>${lineage}${stallRow}${gate}
     ${meta}
     <div class="md">${md2html(d.body)}</div>${streamSec}
     <div class="backlinks" id="backlinks"></div>`;
@@ -658,6 +710,9 @@ async function loadDoc(id, bg, force){
   }
   viewer.dataset.showing = id;
   viewer.dataset.updated = m.updated || "";
+  // 다른 탭에서 눌려 문서에 사실이 적힌 채로 열린 경우에도 초가 흘러야 한다 —
+  // 시계는 그린 뒤에 건다(그리는 함수가 시계를 알 이유가 없다).
+  answerClock();
   // 표가 안 왔으면 **여기서 다시 받는다**. 받으면 이 문서를 다시 그려 버튼을
   // 채운다 — 사람이 새로고침해서 스스로 고치게 두지 않는다 (REQ-20260828-027).
   // 세 번 다 실패해 transFailed 가 서면 자동 반복은 멈춘다: 그때부터는 사람이
@@ -760,3 +815,180 @@ async function renderBacklinks(id){
    붙여 Tab 을 통과시켜 놓고도 "그래서 이게 어느 문서냐"는 마우스에게만 답하는
    꼴이 된다. 읽어 주는 도구에는 숨긴다(aria-hidden) — 링크가 이미 말한 것을
    그림으로 되풀이하는 자리라서다. */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   답 찾기 — 답 없는 질문의 손잡이와 다섯 얼굴 (REQ-20260907-042).
+   설계는 REQ-20260907-037 의 designer·tech-writer·ux-writer·translator 확정안이다.
+
+   **얼굴은 한 자리에서 바뀐다.** 버튼이 사라지고 결과가 다른 곳에 뜨면 눈을
+   옮겨야 한다 — 쉼 · 찾는 중 · 채워짐 · 못 찾음 · 볼 수만 있는 계정 다섯이
+   같은 자리에 선다. 폭은 가장 긴 얼굴로 미리 잡아(css .ansbtn) 줄이 흔들리지
+   않게 한다.
+
+   **진행은 문서가 말한다.** 눌린 사실을 이 브라우저의 기억에만 두면 새로고침에
+   상태가 사라지고, 같은 질문에 두 번 눌러 작업자가 둘 붙는 것도 못 막는다
+   (designer·architect 가 같은 결론). 그래서 화면이 읽는 것은 문서의
+   `answer_request` 이고, 여기 Map 은 **눌린 뒤 그 사실이 문서에 닿기까지의
+   몇 초**만 메우는 낙관적 기억이다 — 카드의 `wokeAt` 이 하는 그 일과 같다.
+
+   서버 쪽 손잡이(`POST /api/answer`)는 REQ-20260907-041 이 세운다. 아직
+   없을 때 404 를 「못 찾음」으로 그리면 못 찾은 것과 못 물은 것이 한 얼굴이
+   된다 — 그 둘은 여기서 갈린다(연결 창 vs 못 찾음 줄). */
+const ANSWER_REQ_KEY = "answer_request";   // 문서가 진행을 말하는 자리 (S3 와의 계약)
+const answerAt = new Map();                // id → 누른 시각(ms) · 낙관적 기억
+const answerMiss = new Map();              // id → true · 이번 화면에서 빈손으로 끝났다
+let answerTick = null;                     // 경과 초를 세는 시계 (한 벌)
+
+/* 이 문서가 지금 「찾는 중」인가 — **문서가 먼저, 기억은 보조**.
+   문서에 사실이 적혀 있으면 그것이 참이고(다른 탭·다른 사람도 같은 것을 본다),
+   없으면 방금 누른 손의 기억으로 몇 초를 메운다. */
+function answerSince(m){
+  const v = m && m[ANSWER_REQ_KEY];
+  const iso = v && typeof v === "object" ? (v.since || v.at) : v;
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!isNaN(t)) return t;
+  return answerAt.has(m && m.id) ? answerAt.get(m.id) : null;
+}
+const answerBusy = m => answerSince(m) !== null;
+
+/* 답을 찾을 수 있는 자리인가. 셋을 다 만족해야 손잡이가 선다:
+   질문 문서 · 아직 답이 없음 · 볼 수만 있는 계정이 아님.
+   관찰 계정에는 회색 버튼을 세우지 않고 **아예 세우지 않는다** — 이 화면
+   어디에서도 쓰지 못하는 계정이라 누를 곳을 주면 거절 창만 돌아온다
+   (프로젝트 손잡이가 이미 쓰는 규칙 그대로, card.js projBtnHTML). */
+function answerable(m){
+  return !!m && m.type === "question" && m.answered === false
+    && (window.__whoami || {}).role !== "viewer";
+}
+
+// 경과는 사람이 세는 단위로 (전 스킨 검수 R4) — 1분 미만은 초, 넘으면 분.
+function answerEla(ms){
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분`;
+}
+
+/* 버튼 — 쉼 · 찾는 중 · 다시 찾기 세 얼굴. 채워짐과 관찰 계정은 빈 문자열이다
+   (할 일이 없어졌거나, 애초에 없는 자리). */
+function answerBtnHTML(m){
+  if (!answerable(m)) return "";
+  const since = answerSince(m);
+  if (since !== null){
+    /* 잠금은 `disabled` 가 아니라 `aria-disabled` 다 (REQ-20260831-009 와 같은
+       판단) — `disabled` 는 눌린 손잡이에서 포커스를 걷어 키보드 손을 body 로
+       떨어뜨린다. 과녁은 그대로 두고 손맛만 물러선다.
+       말줄임표는 쓰지 않는다 — 옆의 경과가 이미 진행을 말한다(translator). */
+    return `<button type="button" class="deed ansbtn" data-answer="${esc(m.id)}"`
+      + ` data-anssince="${since}" aria-disabled="true" aria-live="polite"`
+      + ` title="그때의 작업 기록에서 답을 찾고 있습니다">찾는 중`
+      + `<span class="ansela">${esc(answerEla(Date.now() - since))}</span></button>`;
+  }
+  // 빈손 뒤에도 손잡이는 남는다(기록이 늘면 다시 눌러볼 수 있다). 그때의 글자는
+  // 「다시 찾기」 — 부사만 남기지 않는다(전 스킨 검수 R3).
+  const again = answerMiss.has(m.id);
+  const tip = `질문한 시각 앞뒤의 작업 기록을 모아 답을 맞춰 이 문서에 붙입니다`
+    + ` · 터미널에서는 s9 note ${shortId(m.id)} '…' --label answer`;
+  return `<button type="button" class="deed ansbtn" data-answer="${esc(m.id)}"`
+    + ` title="${esc(tip)}">${again ? "다시 찾기" : "답 찾기"}</button>`;
+}
+
+/* 못 찾음 한 줄. 이 대시보드의 실패 문장 틀 그대로다 — 무엇을 못 했나 —
+   무엇을 하면 되는지(audit.js·session.js 가 이미 쓰는 한 틀). 다음에 할 일이
+   바로 옆에 선 버튼이라 그 글자를 그대로 가리킨다. */
+function answerTellHTML(m){
+  if (!m || !answerMiss.has(m.id) || answerBusy(m)) return "";
+  return `<div class="anstell" role="status">기록에서 답을 찾지 못했습니다 —`
+    + ` 「이어 말하기」로 직접 물어봐 주세요</div>`;
+}
+
+/* id 줄의 뱃지. 찾는 중이면 그 자리가 **확정된 점(livedot)의 ◎**(링+심, 초록,
+   맥박 2.6s = 「일하는 중 · 기록은 아직」)로 바뀐다 — 새 마크도 새 색도 짓지
+   않는다. 이것이 있어야 새로고침·다른 탭·다른 사람에게도 상태가 보인다.
+   점만 세우지는 않는다(s9-design 7절: 색·모양만으로 상태를 말하지 않는다) —
+   낱말이 함께 선다. */
+function dstHTML(m){
+  const sc = SCOLOR[m.status] || "var(--muted)";
+  if (m.type === "question" && answerBusy(m))
+    return `<span class="dst ko dstwork"><span class="livedot busy"`
+      + ` title="이 질문의 답을 찾는 중입니다 — 아직 문서에 나간 것은 없습니다"></span>`
+      + `답을 찾는 중</span>`;
+  return `<span class="dst${m.type === "question" ? " ko" : ""}"`
+    + ` style="--sc:${sc}">${esc(statusLabel(m))}</span>`;
+}
+
+/* 경과를 세는 시계는 **한 벌**이다. 그리는 것은 버튼 안의 글자 하나뿐이라
+   판을 다시 세우지 않는다 — 1초마다 문서를 다시 그리면 읽던 자리가 튄다. */
+function answerClock(){
+  const tick = () => {
+    const els = document.querySelectorAll(".ansbtn .ansela");
+    if (!els.length){ clearInterval(answerTick); answerTick = null; return; }
+    /* 시각은 **버튼이 들고 있다** — 문서가 적어 준 것이든 방금 누른 손의
+       기억이든, 그린 자리가 이미 판정을 마쳤다. 시계가 그 판정을 다시 하면
+       두 벌이 되고, 문서에서 온 시각(다른 탭에서 눌린 것)은 세어지지 않는다. */
+    els.forEach(el => {
+      const since = +(el.closest("[data-answer]")?.dataset.anssince || 0);
+      if (since) el.textContent = answerEla(Date.now() - since);
+    });
+  };
+  if (!answerTick && document.querySelector(".ansbtn .ansela"))
+    answerTick = setInterval(tick, 1000);
+}
+
+/* 누르는 손 하나. 연타는 여기서 걸리고(이미 도는 중), 서버가 이 손잡이를
+   모르는 경우와 답을 못 찾은 경우가 여기서 갈린다. */
+async function answerDoc(id){
+  if (answerAt.has(id)) return;              // 연타 — 이미 도는 중이다
+  answerMiss.delete(id);
+  answerAt.set(id, Date.now());
+  await loadDoc(id, true, true);             // 얼굴을 그 자리에서 바꾼다
+  answerClock();
+  let d = null, reached = false, known = true;
+  try{
+    const r = await fetch("/api/answer", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(withAs({id}))});
+    reached = true; known = r.status !== 404;
+    d = await r.json();
+  }catch(e){}
+  /* **못 찾은 것과 못 물은 것을 가른다.** 서버에 이 손잡이가 아직 없거나
+     닿지 못한 것은 이 질문의 사정이 아니다 — 「기록에서 답을 찾지 못했습니다」로
+     그리면 있지도 않은 판정을 화면이 지어낸다. 그럴 때는 이어가기가 이미 쓰는
+     연결 창을 그대로 쓴다(같은 사정에 같은 얼굴). */
+  if (!known || !d || !d.message){
+    answerAt.delete(id);
+    await loadDoc(id, true, true);
+    s9dlg({kind: "alert", cap: "연결", stop: true,
+      title: reached ? "서버가 답 찾기를 알지 못합니다"
+                     : "서버에 닿지 못했습니다",
+      desc: reached ? "s9 serve 를 다시 띄우면 이 버튼이 다시 생깁니다."
+                    : "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
+      ok: "닫기"});
+    return;
+  }
+  if (!d.ok){
+    answerAt.delete(id);
+    answerMiss.set(id, true);
+    await loadDoc(id, true, true);
+    return;
+  }
+  /* 붙었다: 뱃지도 버튼도 함께 걷힌다(할 일이 없어졌다). 새 답 노트로 눈을
+     옮기고 잉크 언더라인 한 번 — 색면 하이라이트는 쓰지 않는다. */
+  answerAt.delete(id);
+  await refreshCatalog(true);
+  await loadDoc(id, true, true);
+  answerLand(id);
+}
+
+/* 어디가 달라졌는지 **한 번만** 말한다 (s9-design 5절: 움직임은 인과를 설명할
+   때만). 180ms ease-out 잉크 언더라인이고, `prefers-reduced-motion` 이면
+   움직이지 않고 그 자리로만 옮긴다. */
+function answerLand(id){
+  const v = $("#viewer");
+  if (!v || v.dataset.showing !== id) return;
+  const notes = v.querySelectorAll(".md h3");
+  const last = notes.length ? notes[notes.length - 1] : null;
+  if (!last) return;
+  last.scrollIntoView({block: "nearest"});
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  last.classList.add("ansland");
+  setTimeout(() => last.classList.remove("ansland"), 900);
+}

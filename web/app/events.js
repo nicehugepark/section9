@@ -223,6 +223,24 @@ document.addEventListener("click", e => {
     auditLimit = AUDIT_PAGE;
     render(); return;
   }
+  /* 답 찾기 (REQ-20260907-042). 문서를 여는 길보다 **먼저** 잡는다 — 목록
+     안의 손잡이는 목록이 아니라는 이 화면의 규칙 그대로다. 도는 중인 얼굴은
+     `aria-disabled` 로만 물러서 있으므로(포커스를 잃지 않게) 여기서 판정한다. */
+  const ab = evEl(e.target)?.closest("[data-answer]");
+  if (ab){
+    e.stopPropagation();
+    if (ab.getAttribute("aria-disabled") !== "true") answerDoc(ab.dataset.answer);
+    return;
+  }
+  /* 답 없는 질문만 좁혀 보기 — 누르는 자리와 되돌리는 자리가 같다. 한도
+     (더 보기)는 조건이 바뀌면 초기화된다는 이 목록의 규칙을 따른다. */
+  const uq = evEl(e.target)?.closest("[data-unans]");
+  if (uq){
+    e.stopPropagation();
+    unansOnly = !unansOnly;
+    docReach = {};
+    render(); return;
+  }
   const ex = evEl(e.target)?.closest("[data-expand]");
   if (ex){
     const k = ex.dataset.expand;

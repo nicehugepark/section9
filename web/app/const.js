@@ -161,7 +161,13 @@ function statusLabel(r, body){
   if (!r) return "";
   if (r.type !== "question") return r.status || "";
   const a = isAnswered(r, body);
-  return a === null ? "" : a ? "답함" : "미답";
+  /* 짝은 **한 벌**이다 (REQ-20260907-042, translator 확정). 종전의 「답함 ↔ 미답」은
+     한쪽이 보고서 명사형이고 다른 쪽이 한자어라 좁은 칸에서 짝으로 안 읽혔고,
+     「미답」은 未答(답 안 함)과 未踏(아무도 안 감)이 겹쳐 한 번에 안 읽힌다.
+     게시판 Q&A 가 쓰는 계열로 「답 있음 / 답 없음」이 한 눈에 짝이다.
+     값(`question`·`answer`·`--unanswered`)은 사람이 치는 글자라 그대로 둔다 —
+     고친 것은 화면에 읽히는 서술어뿐이다. */
+  return a === null ? "" : a ? "답 있음" : "답 없음";
 }
 
 

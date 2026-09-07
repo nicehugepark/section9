@@ -206,8 +206,13 @@ class TestQuestionOnScreen(unittest.TestCase):
                 label = re.search(r"function statusLabel\(r, body\)\{(.+?)\n\}",
                                   self.web, re.S)
                 self.assertIsNotNone(label)
-                self.assertIn("미답", label.group(1))
-                self.assertIn("답함", label.group(1))
+                # 짝은 한 벌이다 (REQ-20260907-042): 「답 있음 / 답 없음」.
+                # 옛 짝(「답함 / 미답」)은 한쪽이 보고서 명사형·다른 쪽이 한자어라
+                # 좁은 칸에서 짝으로 안 읽혔고, 「미답」은 未答과 未踏이 겹쳤다.
+                self.assertIn("답 있음", label.group(1))
+                self.assertIn("답 없음", label.group(1))
+                self.assertNotIn('"미답"', label.group(1))
+                self.assertNotIn('"답함"', label.group(1))
                 # 질문 상태를 status 값으로 갈라 읽으면 안 된다
                 self.assertNotIn('r.status === "published"', label.group(1))
 
@@ -215,8 +220,11 @@ class TestQuestionOnScreen(unittest.TestCase):
             #      질문 행에 'published' 가 뜬다 — 질문에 없는 흐름을 읽게 만드는 표기다.
             #      (헤드리스 캡처에서 Docs 목록 높이가 눌려 픽셀로 못 잡는 자리라 계약으로 잡는다)
         with self.subTest("v10_list_row_uses_label"):
+                # 한글 라벨은 mono·uppercase·자간을 벗는다 (REQ-20260907-042) —
+                # 칩에 `ko` 표식이 붙어도 **찍는 값은 판정 함수 그대로**여야 한다.
                 row = re.search(r'style="--sc:\$\{sc\}">\s*\n?\s*'
-                                r'<span class="st">\$\{esc\((.+?)\)\}</span>', self.web)
+                                r'<span class="st[^"]*(?:\$\{[^}]*\})?[^"]*">'
+                                r'\$\{esc\((.+?)\)\}</span>', self.web)
                 self.assertIsNotNone(row, "Docs 목록 행의 상태 칩을 찾지 못했다")
                 self.assertEqual(row.group(1), "statusLabel(r)")
                 # 행 색도 상태색이 아니라 "답이 남았는가"에서 온다
