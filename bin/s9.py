@@ -10719,7 +10719,7 @@ def _sync_rescue_untracked(stderr):
     """pull 을 막은 「추적 안 되는 파일」을 state/sync-rescue/<시각>-untracked/ 로 옮긴다.
 
     원격 리눅스 실사고 2026-09-06 01:19: s9 가 스스로 쓰는 users/<나>/machines.json 이
-    로컬 commit 에도 들어 있고 작업 나무에도 새로 생겨 있었다. pull --rebase 가
+    로컬 commit 에도 들어 있고 \uc791\uc5c5 \ub098\ubb34에도 새로 생겨 있었다. pull --rebase 가
     「untracked working tree files would be overwritten」로 서고, 이어진 abort 마저
     실패해 rebase 잔재가 남았다 — 그 뒤의 sync 는 전부 pull-fail 이었다. 지우지
     않고 옮긴다(옆으로 세운 것은 sync-rescue 에 남는다). 옮긴 경로 목록을 준다.
@@ -16083,7 +16083,7 @@ BANNED_TERMS = (
     # 시험 결과의 비유 — 화면 색을 말하는 줄(「붉은 글자」「초록 점」)은 banned_terms_in 이 건너뛴다
     ("붉음", "실패"), ("붉다", "실패"), ("붉었", "실패했"), ("붉으면", "실패하면"), ("붉은", "실패한"),
     ("붉어", "실패해"), ("붉는", "실패하는"), ("초록", "통과"),
-    ("작업 나무", "working tree"), ("나무가 더럽", "commit 하지 않은 변경이 있"),
+    ("\uc791\uc5c5 \ub098\ubb34", "working tree"), ("\ub098\ubb34\uac00 \ub354\ub7fd", "commit 하지 않은 변경이 있"),
     ("흔들린다", "간헐적으로 실패한다(flaky)"), ("살아 있는 세션", "실행 중인 세션"), ("살아있는 세션", "실행 중인 세션"),
     ("걷어낸다", "제거한다"), ("걷어냈", "제거했"), ("물러난다", "재시도를 미룬다"),
     ("옆문", "우회"), ("봉투", "프롬프트 템플릿"), ("잔재", "남은 파일"), ("배경에서", "백그라운드에서"),
@@ -16101,6 +16101,12 @@ BANNED_TERMS = (
     # 글자를 이스케이프로 적는 것은 이 검사 표 자신이 검사에 걸리지 않게 하려는
     # 것이다 — 실제로 리드가 일괄 치환하다 이 줄을 ("키","키") 로 만들었다.
     ("\uc5f4\uc1e0", "키"),
+    # 주인 지적 2026-09-07 19:35: 「tree는 뭘 말하는거야. 또 용어가 회귀됐나?」
+    # git 의 tree(commit tree·working tree)를 옮겨 쓴 것이다. 표가 「\uc791\uc5c5
+    # \ub098\ubb34」 네 글자만 잡아 「돈 ○○」「옛 ○○」「○○ 지문」이 서른 곳 넘게
+    # 빠져나갔다(REQ-20260907-065). 낱개로 잡되, 우리말 동사 나무라다(「사람을
+    # 나무라는 말」)는 banned_terms_in 이 건너뛴다 — 그것은 직역이 아니다.
+    ("\ub098\ubb34", "tree"),
 )
 
 
@@ -16118,6 +16124,8 @@ def banned_terms_in(text):
             around = plain[max(0, m.start() - 6):m.end() + 8]     # 「붉은 글자」「초록 점멸」이 드는 폭
             if _COLOR_CONTEXT.search(around):
                 continue                     # 「붉은 글자」「초록 점」 — 색이다
+            if a == "\ub098\ubb34" and plain[m.end():m.end() + 1] == "라":
+                continue                     # 나무라다(꾸짖다) — 우리말 동사, 직역이 아니다
             hits.append((a, b))
             break
     return hits

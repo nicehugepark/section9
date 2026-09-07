@@ -7,7 +7,7 @@
 보고 통과시켰고 커밋은 실패한 채로 들어갔다.
 
 고치는 방향은 「매 커밋에 전체를 돌린다」가 아니다(분 단위라 규율이 먼저
-죽는다). **돌리지 않고 묻는다**: 지금 이 나무 지문으로 전체가 통과였던
+죽는다). **돌리지 않고 묻는다**: 지금 이 tree 지문으로 전체가 통과였던
 기록이 있나. 있으면 비용 0으로 지나가고, 없을 때만 막는다.
 
 실행: python3 tests/ wide_gate
@@ -149,7 +149,7 @@ class TheAnswerIsARecord(unittest.TestCase):
                                lambda *_a: "abc"):
             self.assertTrue(self.runner.full_suite_green())
 
-    # W7b. 나무가 바뀌면(지문이 다르면) 그 기록은 이 나무의 것이 아니다.
+    # W7b. tree 가 바뀌면(지문이 다르면) 그 기록은 이 tree 의 것이 아니다.
     def test_w7b_a_changed_tree_drops_the_record(self):
         self._write("abc")
         with mock.patch.object(self.runner, "tree_fingerprint",

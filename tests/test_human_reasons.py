@@ -65,7 +65,7 @@ class SingleSourceOfTruth(unittest.TestCase):
     def test_no_scattered_string_comparison(self):
         """흩어진 `reason == "wake"` 비교가 남아 있으면 안 된다.
 
-        글자 찾기가 아니라 **구문 나무**로 본다 — 주석과 docstring 에는 이
+        글자 찾기가 아니라 **AST** 로 본다 — 주석과 docstring 에는 이
         결함의 경위가 남아 있어야 하고, 그것까지 잡으면 시험이 기록을 지우라고
         시키는 셈이 된다. 잡을 것은 실제로 도는 비교뿐이다.
         """

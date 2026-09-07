@@ -9,7 +9,7 @@
 로 만들어 **ssh 통로로 곧장** 건넨다 ③ 원격은 그것을 받아 그 커밋을 펴고, 편 커밋이
 요청한 커밋인지 되물어 확인한 뒤 `python3 tests/ --jobs N` 을 돈다 — 출력은 그대로
 흘려보낸다 ④ 종료 코드가 0 이고, 원격이 센 파일 수가 요청한 수와 같고, 이 머신에
-미커밋 변경이 없었으면 HEAD 의 나무 지문으로 통과 기록을 남긴다. 미커밋 변경은
+미커밋 변경이 없었으면 HEAD 의 tree 지문으로 통과 기록을 남긴다. 미커밋 변경은
 원격에 실리지 않는다(돌긴 돌되 통과 기록은 안 남긴다).
 
 **GitHub 을 거치지 않는다** (REQ-20260907-049 에서 바뀐 자리). 원래는 이 머신이
@@ -95,11 +95,11 @@ FP_SKIP = ("vault/", "state/", "docs/", "projects/", "users/", "index/",
 
 
 def head_state(repo=None, skip=FP_SKIP):
-    """(sha, 지문에 드는 미커밋 변경 수) — 원격은 **commit 된 나무**를 돈다.
+    """(sha, 지문에 드는 미커밋 변경 수) — 원격은 **commit 된 tree**를 돈다.
 
     skip 아래(문서·상태)의 변경은 지문에도 안 들고 시험 결과도 안 바꾸니 세지
     않는다. 실측 2026-09-06: commit 훅이 그 commit 을 REQ 문서에 노트로 붙이므로
-    commit 직후의 나무는 **언제나** vault/ 한 파일이 더러웠고, 그래서 post-commit
+    commit 직후의 tree는 **언제나** vault/ 한 파일이 더러웠고, 그래서 post-commit
     배경 실행이 통과 기록을 한 번도 남기지 못했다(「미커밋 변경 1개 …」).
     """
     repo = repo or REPO
@@ -135,7 +135,7 @@ def remote_script(sha, dest, jobs, pats_argv, *, user=""):
     원격의 키는 **다른 저장소의 deploy key** 라 GitHub 이 `ERROR: Repository not
     found.` 로 답했다(권한 없는 키에는 없는 저장소처럼 답한다). 실측 2026-09-07:
     원격 작업자리는 2026-09-06 14:46 의 커밋(시험 338개)에 **하루 내내 멈춰** 있었고,
-    준비 실패가 실행을 멈추지 못하던 때에는 그 옛 나무의 결과가 「전체 통과」로 나왔다.
+    준비 실패가 실행을 멈추지 못하던 때에는 그 옛 tree의 결과가 「전체 통과」로 나왔다.
     이 머신은 이미 그 커밋을 갖고 있다 — 남을 거쳐 다시 받을 이유가 없다. 커밋은
     ssh 통로로 bundle 을 흘려 **직접** 건넨다(하루치 증분 20MB, 전체는 첫 회만).
 
@@ -246,7 +246,7 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     반환: 원격 종료 코드 (준비 실패는 PREP_RC 의 코드로 구분된다).
 
     미커밋 변경이 있으면 돌리되 **통과 기록은 남기지 않는다** — 그 지문은 원격이
-    돈 나무의 것이 아니다.
+    돈 tree의 것이 아니다.
     """
     global LAST_RAN, LAST_HAVE
     LAST_RED[:] = []
@@ -297,8 +297,8 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     LAST_TOOK = took
     rc = r.returncode
     # 「돌지 않은 파일이 있으면 통과라고 하지 않는다」 (REQ-20260907-047).
-    # 원격이 제 나무에서 고른 파일 수를 표식으로 찍는다. 요청한 수보다 적으면
-    # 원격 나무가 이 머신과 다르다는 뜻이니 — 통과가 아니라 **집계 실패**다.
+    # 원격이 제 tree에서 고른 파일 수를 표식으로 찍는다. 요청한 수보다 적으면
+    # 원격 tree가 이 머신과 다르다는 뜻이니 — 통과가 아니라 **집계 실패**다.
     # 표식이 아예 없어도 통과로 치지 않는다: 셈을 못 했으면 통과를 증명하지 못한다.
     want = len(pats_argv)
     if rc == 0 and want:
@@ -308,7 +308,7 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
             rc = 97
         elif LAST_RAN < want:
             print(f"[원격] 통과라고 말하지 않는다 — 요청 {want}개인데 원격이 센 것은 "
-                  f"{LAST_RAN}개다 ({want - LAST_RAN}개가 원격 나무에 없었다)",
+                  f"{LAST_RAN}개다 ({want - LAST_RAN}개가 원격 tree에 없었다)",
                   file=sys.stderr)
             rc = 98
     if rc == 0:

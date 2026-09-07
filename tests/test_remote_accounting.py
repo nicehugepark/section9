@@ -13,7 +13,7 @@
    deploy key 였기 때문이고, 이제 커밋은 GitHub 을 거치지 않고 ssh 통로로 오는
    bundle 로 곧장 온다 — 아래 시험은 그 통로에서 같은 계약을 잰다.)
 ② 무엇이 실제로 돌았는지 아무도 세지 않았다. 원격에는 파일 이름을 패턴으로
-   넘기는데, 원격 나무에 없는 이름은 조용히 빠진다. 그런데 병렬 갈래에는
+   넘기는데, 원격 tree에 없는 이름은 조용히 빠진다. 그런데 병렬 갈래에는
    「고르지 못한 패턴」검사가 없었고, 이 머신이 보고한 「356파일」은 원격이 돈
    수가 아니라 **이 머신의 목록 길이**였다.
 
@@ -87,7 +87,7 @@ class RemoteScriptStopsOnPrepFailure(unittest.TestCase):
     def test_receiving_the_commit_fails_and_never_reaches_the_tests(self):
         """R1. 커밋을 못 받으면 시험이 아예 시작되지 않고 종료 코드가 남는다."""
         p, ran = self._run(FAKE_FETCH_FAIL="1")
-        self.assertFalse(ran, "커밋을 못 받았는데 옛 나무로 시험을 돌았다 "
+        self.assertFalse(ran, "커밋을 못 받았는데 옛 tree로 시험을 돌았다 "
                               "— cd166cc 가 「전체 통과」라고 말한 그 경로다")
         self.assertNotEqual(p.returncode, 0, "준비 실패가 종료 코드 0 으로 나왔다")
         self.assertEqual(p.returncode, 93, "받기 실패는 93 으로 구분된다")

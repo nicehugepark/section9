@@ -43,7 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 #   ② 연결을 `create_connection` 이라는 **글자**로만 셌다 — `socket().connect()` 는 못 본다.
 #   ③ 연결이 헬퍼 함수 뒤에 있으면 루프 본문 글자에 안 보인다.
 #
-# 그래서 글자 대신 **나무(AST)** 를 본다. 세는 규칙 한 줄:
+# 그래서 글자 대신 **AST** 를 본다. 세는 규칙 한 줄:
 # **연결을 열 수 있는 루프는 잠을 재우거나(백오프) 작게 묶여 있어야 한다.**
 #
 # 일부러 좁게 둔 곳: `for x in <이름>` 은 크기를 알 수 없어 걸지 않는다. 이 사고의
@@ -54,7 +54,7 @@ CONNECT_CALLS = {"create_connection", "connect"}
 
 
 def _calls(node):
-    """이 나무 안에서 불리는 이름들 — `f()` 와 `x.f()` 를 함께."""
+    """이 AST 안에서 불리는 이름들 — `f()` 와 `x.f()` 를 함께."""
     for n in ast.walk(node):
         if isinstance(n, ast.Call):
             f = n.func

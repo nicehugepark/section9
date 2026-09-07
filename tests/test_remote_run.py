@@ -35,7 +35,7 @@ class RemoteRun(unittest.TestCase):
     def test_k5_document_dirt_does_not_count_as_uncommitted(self):
         """K5. vault/·state/ 의 미커밋은 지문 밖 — 세지 않는다; bin/ 의 미커밋은 센다.
 
-        commit 훅이 REQ 문서에 commit 노트를 붙이므로 commit 직후의 나무는 늘 vault/
+        commit 훅이 REQ 문서에 commit 노트를 붙이므로 commit 직후의 tree는 늘 vault/
         하나가 더럽다. 그것을 세면 통과 기록은 영영 안 남는다(실측 2026-09-06).
         """
         import subprocess
@@ -77,7 +77,7 @@ class RemoteRun(unittest.TestCase):
         # (실측 2026-09-06 ee223fa: 표식이 없어 「실패 파일을 못 읽었다」, REQ-20260906-060).
         self.assertIn("S9_TEST_WORKER=1 python3 tests/", line)
         self.assertNotIn("tar", line,
-                         "나무를 통째로 보낸다 — 건네는 것은 커밋 꾸러미(bundle) 하나다")
+                         "tree 를 통째로 보낸다 — 건네는 것은 커밋 꾸러미(bundle) 하나다")
 
     def test_k4_full_means_no_pattern_and_jobs_is_not_a_pattern(self):
         """K4. 전체 = 패턴 없음. `--jobs 16` 의 16 과 `--remote relay1` 의 relay1 은 패턴이 아니다."""

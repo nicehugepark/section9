@@ -7,7 +7,7 @@
 돌며 서로의 포트·임시자리·CPU 를 뺏는다 — 실측으로 `test_port_pool` 이 그렇게
 깨졌다. 두 겹으로 막는다.
 
-  ① **기록** — 선택(패턴 묶음)마다 마지막 green 의 나무 지문을 적어 둔다.
+  ① **기록** — 선택(패턴 묶음)마다 마지막 green 의 tree 지문을 적어 둔다.
      지문이 같으면 돌 이유가 없다.
   ② **단일비행** — 같은 선택이 이미 돌고 있으면 두 번째는 새로 돌리지 않고
      **기다렸다가 그 결과를 받는다.**
@@ -63,7 +63,7 @@ class Reuse(unittest.TestCase):
         self.m.mark_green(pats, "fp1")
         self.assertTrue(self.m.green_seen(pats, "fp1"))
         self.assertFalse(self.m.green_seen(pats, "fp2"),
-                         "나무가 바뀌었는데 통과로 봤다 — 이러면 안 도는 게 아니라"
+                         "tree 가 바뀌었는데 통과로 봤다 — 이러면 안 도는 게 아니라"
                          " 안 재는 것이다")
 
     def test_selections_do_not_borrow_each_others_pass(self):
@@ -129,7 +129,7 @@ class Reuse(unittest.TestCase):
         """**커밋은 지문을 바꾸지 않는다** (REQ-20260904-005).
 
         예전 지문은 `HEAD 해시 + 미커밋 변경`이었다. 커밋은 파일 내용을 하나도
-        안 바꾸면서 HEAD 를 바꾸므로, 같은 나무인데 지문이 달라졌다 — 실측
+        안 바꾸면서 HEAD 를 바꾸므로, 같은 tree인데 지문이 달라졌다 — 실측
         2026-09-04: 한 무더기를 셋으로 나눠 커밋했더니 첫 커밋이 들어간 순간
         방금 만든 전체 통과 기록이 무효가 되어 둘째·셋째가 각각 다시 시험을
         물었다(40초 + 5분). 재사용이 「커밋 한 번에 한 번만」 듣는 셈이라
@@ -311,7 +311,7 @@ class FullCovers(unittest.TestCase):
         self.assertTrue(self.m.green_seen(["test_alpha.py"], "fp1"))
 
     def test_a_different_tree_is_not_covered(self):
-        """C4. 나무가 바뀌면 전체 기록이 있어도 덮지 않는다."""
+        """C4. tree 가 바뀌면 전체 기록이 있어도 덮지 않는다."""
         self.m.mark_green(self.full, "fp1")
         self.assertFalse(self.m.green_seen(["test_alpha.py"], "fp2"))
 
@@ -323,7 +323,7 @@ class FullCovers(unittest.TestCase):
         """C6. 「전체가 통과였나」는 전체 기록으로만 답한다.
 
         부분집합 기록으로 그렇다고 답하면 넓은 변경의 커밋 문(WIDE gate)이
-        거짓 통과를 보고 실패한 나무를 통과시킨다.
+        거짓 통과를 보고 실패한 tree를 통과시킨다.
         """
         self.m.mark_green(["test_alpha.py"], "fp1")
         self.assertFalse(self.m.green_seen(self.full, "fp1", cover=False))
