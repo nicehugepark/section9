@@ -113,7 +113,7 @@ class ThePlaceIsKeptInsideOneRuler(unittest.TestCase):
 
     def test_a_place_that_no_longer_fits_falls_back_to_the_default(self):
         """S4: 화면이 좁아져 적어 둔 자리가 안 들어가면 기본 자리로."""
-        fn = websrc.fn(self, self.js, "dlgPosPlace")
+        fn = websrc.fn(self, self.js, "dlgPosPlaceFor")
         self.assertIn("dlgClamp", fn, "적어 둔 자리를 재 보지 않는다")
         self.assertRegex(fn.replace(" ", ""), r"cx!==p\.x\|\|cy!==p\.y",
                          "안 들어가는 자리를 그대로 쓴다")
