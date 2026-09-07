@@ -107,7 +107,9 @@
 .doclist .row .id{font-family:var(--mono);font-size:10px;color:var(--faint)}
 .doclist .row .st{float:right;font-size:10px;color:var(--sc,var(--muted));
   font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em}
-.doclist .row>div:nth-child(3){font-size:13px;margin-top:1px}
+/* 목록 제목도 어절째 접는다 (REQ-20260907-021) — 식별자 줄(.row .id)은 그대로다 */
+.doclist .row>div:nth-child(3){font-size:13px;margin-top:1px;
+  word-break:keep-all;overflow-wrap:break-word}
 /* 위 여백은 판이 아니라 **제목 줄**이 가진다 (REQ-20260828-009). 스크롤 컨테이너에
    윗 패딩이 남아 있으면 붙박이 제목 위에 본문이 스쳐 지나가는 띠가 생긴다. */
 .viewer{--vpad:34px;flex:1;padding:0 var(--vpad) 24px;min-height:300px;
@@ -291,16 +293,40 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 
 /* ------- audit: 레저 테이블 ------- */
 .audit{border:1px solid var(--border);background:var(--panel)}
-.audit .cap{padding:10px 16px;border-bottom:1px solid var(--border);font-size:11.5px;
-  color:var(--muted)}
+/* 표 위 안내는 상주하지 않는다 — 접어 두고 기본은 닫힘 (s9-design 표 절, REQ-20260907-026).
+   판을 열 때마다 보이는 두 문장은 두 번째부터 읽히지 않고 자리만 차지했다. */
+.audit .cap{border-bottom:1px solid var(--border);font-size:11.5px;color:var(--muted)}
+/* 접힘의 이름은 한글 문장이라 mono·letter-spacing 을 주지 않는다 (표 절 1과 같은 까닭:
+   mono 는 한글을 대체 글꼴로 떨어뜨리고, .06em 은 음절 사이를 벌려 놓는다). */
+.audit .cap summary{padding:8px 16px;cursor:pointer;list-style:none;
+  font-size:11px;letter-spacing:.01em;color:var(--muted)}
+.audit .cap summary::-webkit-details-marker{display:none}
+.audit .cap summary::before{content:"▸ ";color:var(--faint)}
+.audit .cap[open] summary::before{content:"▾ "}
+.audit .cap summary:hover{color:var(--text);text-decoration:underline}
+.audit .cap p{margin:0;padding:0 16px 10px;line-height:1.65}
 .audit .tblwrap{overflow-x:auto}
 .audit table{width:100%;border-collapse:collapse;font-size:12.5px}
-.audit th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--faint);padding:9px 14px;border-bottom:1px solid var(--border);
-  white-space:nowrap;font-family:var(--mono);font-weight:600}
-.audit td{padding:7px 14px;border-bottom:1px solid var(--hairline);vertical-align:top}
+/* 열 머리는 mono·uppercase 규칙의 예외다 (표 절 1): 이 자리에 한글 라벨(시각·남긴
+   사람)이 서고, mono 는 한글을 대체 글꼴로 떨어뜨려 라틴 라벨과 얼굴이 두 벌이 된다.
+   capitalize 는 라틴만 첫 글자를 키우고 한글은 그대로 두므로 라벨 글자를 고치지
+   않고 두 문자를 한 얼굴로 세운다. */
+.audit th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.02em;
+  text-transform:capitalize;color:var(--muted);padding:9px 14px;
+  border-bottom:1px solid var(--border);white-space:nowrap}
+.audit td{padding:8px 14px;border-bottom:1px solid var(--hairline);vertical-align:top}
+/* 남는 폭은 마지막 본문 열이 가진다 (표 절 3) — 이것이 없으면 auto 배치가 남는 폭을
+   모든 열에 나눠, 접힌 열 셋이 폭만 차지하고 행의 좌우가 600px 떨어진다. */
+.audit th:last-child,.audit td:last-child{width:100%}
 .audit tr:hover td{background:var(--accent-soft)}
-.audit td.ts{font-family:var(--mono);font-size:10.5px;color:var(--faint);white-space:nowrap}
+.audit td.ts{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+/* 세션은 기계 문자열이라 음절이 없다 — 좁은 열에서 토큰 한가운데가 끊기지 않게 */
+.audit td.ses{white-space:nowrap}
+/* 연속한 같은 값은 첫 행에만 보인다 (표 절 8) — 값은 남기고 눈에서만 뺀다:
+   display:none 은 화면낭독기와 복사에서 값을 잃는다. */
+.audit td .dup{position:absolute;width:1px;height:1px;padding:0;margin:0;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .kind{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:600;
   white-space:nowrap;color:var(--kc);font-family:var(--mono);text-transform:uppercase;
   letter-spacing:.06em}

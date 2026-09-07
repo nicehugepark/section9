@@ -80,6 +80,14 @@
    보이는 것을 27px 손잡이와 맞바꾸는 셈이다. 게다가 폭은 창이 좁아지면 다시
    잃는 값이라, 예약을 걷어내는 쪽만이 최소폭(210px)에서도 성립한다. */
 [data-skin="soft"] .card .id,[data-skin="soft"] .card .t{padding-right:0}
+/* 경과의 자리 규칙과 **soft 하나의 예외** (REQ-20260907-022 · 검수 중-5):
+   경과는 식별자 줄이 선 모서리에 붙는다 — 위 모서리(ledger·field·grid·terminal)
+   든 아래 모서리(calm — 그 스킨은 식별자 줄이 카드의 마지막 줄이다)든 언제나
+   식별자와 같은 줄이다. soft 만 제 줄을 갖는데, 그것을 되돌리려면 식별자 줄에
+   폭 예약(11ch+8px)을 다시 세워야 하고 그러면 위 주석이 실측한 대로 5열 합이
+   판을 넘어 1440px 에서 보드에 가로 스크롤이 생긴다. 예약 없이 절대 위치로
+   띄우면 손잡이 벨트가 시각 아래로 들어간다 — 하필 멈춘 카드에서만 깨진다.
+   그래서 이 스킨은 규칙의 예외로 남기고 까닭을 여기 적어 둔다. */
 [data-skin="soft"] .card .elapsed{position:static;display:block;text-align:right;
   margin-top:7px;line-height:1.4}
 /* 집는 손잡이는 경과 시각이 선 칸을 빌려 쓴다 — soft 는 그 칸이 아래쪽이다.
@@ -95,8 +103,12 @@
   word-break:break-word;line-height:1.55}
 [data-skin="soft"] header{overflow-x:hidden}
 [data-skin="soft"] .ccterm{border-radius:10px}
-[data-skin="soft"] .badge{background:var(--accent-soft);border-radius:5px;padding:1px 7px}
-[data-skin="soft"] .badge::before{content:""}
+/* 사람 이름은 **한 어휘**다 (REQ-20260907-023 · s9-design 개정안 1).
+   soft 는 담당 표기를 칠한 칩으로 그렸다 — 이 화면이 금한 색면 하이라이트이고
+   (`@` 접두까지 지워) 같은 사실이 스킨마다 다른 부품으로 읽혔다. 스킨이 바꿔도
+   좋은 것은 재질(색·면·깊이·모서리)이고 바꾸면 안 되는 것은 어휘와 자리다 —
+   그래서 칩을 걷고 base 의 `@이름` 으로 돌려보낸다. soft 가 달리 말할 것이
+   남으면 잉크로 말한다. */
 [data-skin="soft"] .docs,[data-skin="soft"] .audit,[data-skin="soft"] .graphwrap,[data-skin="soft"] .depsum,
 [data-skin="soft"] .streamwrap{border-radius:12px;overflow:hidden}
 [data-skin="soft"] .term{border-radius:10px}
@@ -105,8 +117,10 @@
 [data-skin="soft"] .kind{background:color-mix(in srgb,var(--kc) 12%,transparent);
   border-radius:5px;padding:1px 8px}
 [data-skin="soft"] .kind::before{content:none}
-[data-skin="soft"] .more{border:1px dashed var(--border);border-radius:8px;text-align:center}
-[data-skin="soft"] .more::before{content:""}
+/* 「더 보기」도 한 부품이다 (REQ-20260907-023). soft 는 판 폭을 다 먹는 점선
+   상자에 접두 `+ ` 까지 지워, 다른 스킨의 글자 버튼과 다른 일로 읽혔다.
+   base 의 글자 버튼(mono · hover 밑줄)으로 돌려보낸다 — soft 의 둥근 재질은
+   카드·판이 이미 말하고 있다. */
 /* 세로 띠 override 제거 (REQ-20260828-009) — 베이스가 잉크 표식으로 바뀌었다 */
 [data-skin="soft"] .doclist .row.sel{box-shadow:none}
 
@@ -437,6 +451,9 @@
 /* 지브라 + 조밀 행 */
 [data-skin="grid"] .card{--card-pt:7px;--card-px:12px}
 [data-skin="grid"] .card .t{font-size:12.5px;margin:2px 0 4px;padding-right:52px}
+/* 줄무늬와 헤어라인 중 하나만 (s9-design 표 절 5) — 둘이 겹치면 한 행이 두 겹
+   상자로 읽힌다. 이 스킨은 줄무늬를 쓰므로 아래 경계를 내린다. */
+[data-skin="grid"] .audit td{border-bottom:0}
 [data-skin="grid"] .card:nth-child(even),
 [data-skin="grid"] .audit tbody tr:nth-child(even) td,
 [data-skin="grid"] .doclist .row:nth-child(even){

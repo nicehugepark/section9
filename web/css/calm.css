@@ -191,6 +191,10 @@
   line-height:1.45;letter-spacing:-.014em;color:var(--text)}
 [data-skin="calm"] .card .m{order:2;margin-top:9px;gap:9px;row-gap:5px;font-size:11px;
   align-items:center}
+/* 메타는 뜻으로 나뉜 두 줄이다 (REQ-20260907-022) — 덩이 사이(제목↔메타 9px)와
+   줄 사이(메타 1행↔2행)를 같은 수로 두면 눈이 넷을 같은 급으로 읽는다. calm 의
+   작은 눈금(row-gap 5px)을 그대로 쓴다. */
+[data-skin="calm"] .card .m+.m{margin-top:5px}
 /* 깨우기 줄도 멈춤 줄과 같은 칸에 선다 (REQ-20260828-041). calm 은 카드를
    order 로 다시 세우므로, 자리를 안 주면 order:0 이 되어 **제목보다 위로**
    튀어 오른다 — 카드 맨 윗줄에 버튼이 서는 화면이 된다. */

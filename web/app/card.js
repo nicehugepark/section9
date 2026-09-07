@@ -1931,20 +1931,50 @@ function cardHTML(r){
          ? `<span class="livedot spawn" title="${esc(spawnTell(r))}"></span>`
          : `<span class="livedot off" title="${esc(r.stall_why || "진행 중으로 되어 있는데 도는 기색이 없습니다 — 지금 이 요청을 담당하는 것이 없을 수 있습니다")}"></span>`)
     : "";
+  /* 메타는 **뜻으로 나뉜 두 줄**이다 (REQ-20260907-022 · s9-design 개정안 2).
+
+     종전에는 일곱 원소(담당·만든 사람·프로젝트·순위·크기·TDD·태그·토큰)가
+     성격 구분 없이 한 wrap 줄로 흘렀다. 원소는 카드마다 있고 없고가 다르니
+     접히는 자리도 카드마다 달라, 열을 훑는 눈이 같은 사실을 늘 다른 높이에서
+     만났다(줄 수 2~4). 카드끼리 비교가 안 되는 것이 결함의 실체다.
+
+     그래서 줄에 뜻을 준다. 1행은 「누구 · 어디」 — 이 요청이 **누구의 것이고
+     어디에 속하나**. 2행은 「무엇 · 얼마」 — 얼마나 급하고 얼마나 크고 어디까지
+     됐나. 원소가 늘거나 줄어도 사실이 사는 줄은 바뀌지 않는다.
+
+     **접힘은 2행 안에서만** 허용한다. 1행이 접히면 「누구」와 「어디」가 위아래로
+     갈려 다시 카드마다 높이가 달라지므로 nowrap 이고, 넘치면 줄이 아니라
+     프로젝트 이름이 줄어든다(CSS). 태그는 둘까지만 서고 나머지는 `+N` 으로
+     접는다 — 태그 다섯 개짜리 카드 하나가 열 전체의 리듬을 흔들던 자리다.
+
+     빈 줄은 세우지 않는다: 요청이 아닌 문서는 순위·크기가 없어 2행이 통째로
+     비는데, 빈 상자가 서면 그 카드만 한 줄 키가 크다. */
+  const mwhoBits = ownerBadgeHTML(r) + lineageChip(r) + projBtnHTML(r);
+  /* 태그는 **넘치면 한 칸을 접는 값에 내준다** — 실측: `#dashboard #design` 둘에
+     `+1` 이 더 붙으면 열 폭(210~250px)을 넘어 그 조각만 아랫줄에 혼자 선다.
+     그래서 접을 것이 있으면 태그는 하나만 세운다: `#dashboard +2` 는 두 태그와
+     거의 같은 폭이라 줄이 늘지 않고, 몇 개가 접혔는지는 손 위의 글이 다 말한다. */
+  const utags = (r.tags || []).filter(t => !SYS_TAGS.has(t));
+  const tagShow = utags.length > 2 ? 1 : 2;
+  const tagOver = utags.length - tagShow;
+  const mwhatBits = prioHTML(r)
+    + (r.size ? `<span class="size">${esc(r.size)}</span>` : "")
+    + (r.tdd ? `<span class="tdd${r.tdd.passed === r.tdd.total ? " full" : ""}"`
+        + ` title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">`
+        + `TDD ${r.tdd.passed}/${r.tdd.total}</span>` : "")
+    + utags.slice(0, tagShow).map(t =>
+        `<span class="tag" style="--th:${tagHue(t)}">#${esc(t)}</span>`).join("")
+    + (tagOver > 0
+        ? `<span class="tagmore" title="${esc(utags.join(" · "))}">+${tagOver}</span>` : "")
+    + tokensLineHTML(r);
+  const mwho = mwhoBits ? `<div class="m mwho">${mwhoBits}</div>` : "";
+  const mwhat = mwhatBits ? `<div class="m mwhat">${mwhatBits}</div>` : "";
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">
     <button type="button" class="pickdoc" data-pick="${esc(r.id)}"
       aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button>
     <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${vh}<span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</div>
     <div class="t">${esc(r.title)}</div>
-    <div class="m">
-      ${ownerBadgeHTML(r)}${lineageChip(r)}
-      ${projBtnHTML(r)}
-      ${prioHTML(r)}
-      ${r.size ? `<span class="size">${esc(r.size)}</span>` : ""}
-      ${r.tdd ? `<span class="tdd${r.tdd.passed===r.tdd.total?" full":""}" title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">TDD ${r.tdd.passed}/${r.tdd.total}</span>` : ""}
-      ${(r.tags||[]).filter(t=>!SYS_TAGS.has(t)).slice(0,2).map(t=>`<span class="tag" style="--th:${tagHue(t)}">#${esc(t)}</span>`).join("")}
-      ${tokensLineHTML(r)}
-    </div>${acts}${dep}${stall}
+    ${mwho}${mwhat}${acts}${dep}${stall}
     ${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}</div>`;
 }
 

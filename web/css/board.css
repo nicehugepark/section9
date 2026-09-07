@@ -21,7 +21,8 @@
 .col:last-child{border-right:0}
 .col h2{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin:0;
   padding:11px 14px;display:flex;align-items:center;gap:8px;font-weight:600;
-  color:var(--muted);border-bottom:1px solid var(--hairline);font-family:var(--mono)}
+  color:var(--muted);border-bottom:1px solid var(--hairline);font-family:var(--mono);
+  word-break:keep-all;overflow-wrap:break-word}
 .col h2 .cdot{width:7px;height:7px;background:var(--sc)}
 .col h2 .n{margin-left:auto;font-weight:400;color:var(--faint)}
 /* 열 머리의 멈춤 수 (REQ-20260828-036) — 총량 오른쪽에 붙는 단서다.
@@ -218,9 +219,39 @@ span.proj{cursor:default}
 /* 제목 줄은 예약이 필요 없다 (REQ-20260831-021): 시각·손잡이가 서는 모서리는
    id 줄(늘 제목 위에 있다)의 첫 줄이고, 제목은 그 아래에서 시작한다. 남아
    있던 56px 는 제목만 일찍 접던 죽은 예약이었다. */
-.card .t{margin:3px 0 6px;font-weight:600;line-height:1.45;font-size:13.5px;letter-spacing:-.01em}
+/* 한글은 낱말이 끊기지 않게 접는다 (REQ-20260907-021 · s9-design 개정안 3).
+   브라우저 기본값은 한글을 음절 단위로 끊어 「업그레이 / 드」를 만든다 — 사람이
+   읽는 제목·이름·문장은 어절째 내려보내고(keep-all), 한 어절이 줄보다 길 때만
+   (긴 라틴 식별자·경로) 마지막 수단으로 끊는다(overflow-wrap). 기계 문자열이
+   서는 자리(.card .id · .doclist .row .id)에는 걸지 않는다 — 그쪽은 식별자가
+   반으로 접히면 옆 카드와 구별이 안 되는 자리라 nowrap 이 이미 지키고 있다. */
+/* 카드 안의 눈금은 둘뿐이다 (REQ-20260907-022 · 검수 ② 간격 눈금):
+   **덩이 사이 8px · 줄 사이 4px.** 제목과 메타 덩이 사이가 6px, 메타 줄 사이가
+   2~3px 이던 것이 위계를 흐렸다 — 두 수가 가까우면 눈이 「제목 / 메타」와
+   「메타 1행 / 2행」을 같은 급으로 읽는다. */
+.card .t{margin:3px 0 8px;font-weight:600;line-height:1.45;font-size:13.5px;letter-spacing:-.01em;
+  word-break:keep-all;overflow-wrap:break-word}
 .card .m{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);
-  font-family:var(--mono);align-items:baseline}
+  font-family:var(--mono);align-items:baseline;word-break:keep-all}
+/* **접힘은 줄 안에서만 일어난다.** 1행을 nowrap 으로 묶어 봤더니 열이 좁은
+   스킨(soft, 실측 ~200px)에서 세 원소(@담당 95 + 만든 사람 105 + 프로젝트 55
+   + 틈 20 ≈ 275px)가 카드 밖으로 밀려 **프로젝트 표기가 통째로 잘렸다** — 줄
+   수를 지키려고 사실을 지운 셈이다. 그래서 규율은 「한 줄」이 아니라 「제 줄」이다:
+   1행은 접혀도 「누구 · 어디」만 담고, 2행의 원소가 1행으로 올라오거나 1행의
+   원소가 2행으로 내려가지 않는다. 카드끼리 비교가 깨지던 원인은 줄 수가 아니라
+   **같은 사실이 카드마다 다른 줄에 서던 것**이고, 그것이 여기서 멎는다. */
+.card .m.mwho{row-gap:4px}
+.card .m.mwho .proj{min-width:0;overflow:hidden}
+.card .m.mwho .pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  display:inline-block;max-width:100%;vertical-align:bottom}
+/* 2행 「무엇 · 얼마」만 접힌다. 줄 사이는 카드의 작은 눈금(4px) */
+.card .m.mwhat{row-gap:4px}
+.card .m+.m{margin-top:4px}
+/* 접어 둔 태그 수 — 열 머리의 `+ N개 더 보기` 와 같은 어휘(+N), 색면 없이 잉크다 */
+.card .tagmore{color:var(--muted)}
+/* 사실 줄은 `.rvpt`(actions.css)의 것이다 — 걸어야 하는 것은 줄바꿈 하나뿐이라
+   그 파일을 열지 않고 여기서 `.card` 를 앞세워 특이도(0,2,0)로 맞춘다. */
+.card .rvpt,.card .deedrow,.card .judge{word-break:keep-all;overflow-wrap:break-word}
 /* 요청에 쓰인 토큰 한 줄 (REQ-20260907-009) — 작은 글자, 색은 주변(muted)을 따른다 */
 .card .m .tok{font-size:10px;white-space:nowrap}
 
@@ -233,8 +264,12 @@ span.proj{cursor:default}
 .urow .st{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase}
 .badge{color:var(--text);font-family:var(--mono);font-size:11px}
 .badge::before{content:"@"}
-.size{color:var(--faint)}
-.tag{color:var(--faint)}
+/* 읽어야 하는 보조 글자는 `--muted` 다 (REQ-20260907-022 · 검수 중-4).
+   `--faint` 는 어두운 tone 의 배경 위에서 3:1 아래로 떨어져, 크기(S/M/L)와
+   태그가 「있는지 없는지」만 보이고 읽히지 않았다. `--faint` 는 구분선·자리
+   표시처럼 **읽지 않아도 되는 것**에 남긴다. */
+.size{color:var(--muted)}
+.tag{color:var(--muted)}
 /* 작업 자리 (REQ-20260829-030) — 백그라운드 작업이 worktree 에 앉았나 본 저장소에
    앉았나. **새 줄을 주지 않는다**: 이 화면의 규칙은 "줄은 사람의 손을 요구하는
    사실에만 준다"(REQ-20260827-017)이고, 자리는 읽고 나서 대개 할 일이 없는

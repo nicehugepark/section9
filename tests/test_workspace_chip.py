@@ -265,10 +265,16 @@ class WorkspaceChip(unittest.TestCase):
             # W10 — 줄이 아니라 칩이고, 그 칩이 서는 곳은 **문서의 메타 표**다
         with self.subTest("w10_a_chip_not_a_row"):
                 self.assertNotIn("rvpt", self.chip, "자리에 대기·멈춤과 같은 줄을 줬다")
-                # 카드 메타 줄(.m)에는 없다
-                m = re.search(r'<div class="m">(.*?)</div>', self.card, re.S)
-                self.assertTrue(m and "wsChip" not in m.group(1),
-                                "자리 칩이 카드 메타 줄로 돌아왔다")
+                # 카드 메타 줄에는 없다 — 그 줄은 이제 뜻으로 나뉜 둘이고
+                # (mwhoBits 「누구·어디」 / mwhatBits 「무엇·얼마」, REQ-20260907-022)
+                # 조각을 변수로 짓는다. 두 조각 어디에도 자리 칩이 없어야 한다.
+                m = re.search(r"const mwhoBits =(.*?)const mwho =", self.card, re.S)
+                self.assertTrue(m, "카드 메타 줄을 짓는 자리를 못 찾았다")
+                self.assertNotIn("wsChip", m.group(1),
+                                 "자리 칩이 카드 메타 줄로 돌아왔다")
+                for cls_ in ('class="m mwho"', 'class="m mwhat"'):
+                    self.assertIn(cls_, self.card,
+                                  "카드 메타의 두 줄 규율이 사라졌다")
                 # 문서 화면에서는 제목 줄이 아니라 메타 표의 한 칸이다
                 self.assertIn('["workspace", wsChip(catFind(m.id)) || null]', self.src,
                               "문서 메타 표에 자리 칸이 없다")
