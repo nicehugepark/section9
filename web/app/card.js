@@ -356,7 +356,12 @@ function lineageTell(r){
   if (creator) bits.push(`만든 사람 ${creator}`);
   if (owner) bits.push(`맡은 사람 ${owner}`);
   const ob = originBits(r, false).map(x => x.replace(/<[^>]*>/g, ""));
-  return bits.concat(ob).join(" · ");
+  /* 기원은 「만든 사람」의 꼬리다 — 괄호 없이 값 뒤에 붙이면 「만든 사람이
+     직접」이라는 없는 문장이 된다(REQ-20260907-012 검수 상-2). 손 위의 글과
+     낭독기가 같은 자리·같은 괄호를 쓴다. */
+  if (ob.length && bits.length) bits[0] += ` (${ob.join(" · ")})`;
+  else if (ob.length) bits.push(`(${ob.join(" · ")})`);
+  return bits.join(" · ");
 }
 /* 문서 머리의 온전한 한 줄. 카드와 **같은 재료**(originBits)를 쓰므로 두 화면이
    갈라질 자리가 없다 — 같은 사실을 두 함수가 지으면 한쪽만 고쳐진다. */
@@ -376,7 +381,7 @@ function lineageRowHTML(r){
      않게 한다. */
   const ob = originBits(r, true);
   if (ob.length){
-    if (creator) cells[0] += ` ${ob.join(" · ")}`;
+    if (creator) cells[0] += ` <span class="linorg">(${ob.join(" · ")})</span>`;
     else cells.push(`<span class="lincap">만든 사람</span>${ob.join(" · ")}`);
   }
   if (!cells.length) return "";

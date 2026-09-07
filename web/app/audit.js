@@ -15,7 +15,7 @@ async function renderAudit(){
     (!u || e.by === u) &&
     (!q || q.split(/\s+/).every(t =>
       (e.text + " " + e.session + " " + e.by + " " + e.ts).toLowerCase().includes(t))));
-  $("#count").textContent = `${evs.length} / ${auditCache.length} audit events`;
+  $("#count").textContent = `기록 ${evs.length}건 / 전체 ${auditCache.length}건`;
   const page = evs.slice(0, auditLimit);
   /* 연속한 같은 값은 첫 행에만 보인다 — 장부의 관행이고 s9-design 표 절 8 이다.
      걸러 놓고 보면 종류·남긴 사람·세션 열이 스무 행 내리 같은 값이었다
@@ -42,12 +42,12 @@ async function renderAudit(){
     </tr>`;
   }).join("");
   $("#view").innerHTML = `<div class="audit">
-    <details class="cap"><summary>이 화면은?</summary><p>audit 이벤트는 세션 문서(SES-*)의 History에서 실시간 생성됩니다 —
-      session 클릭 = 원본 SES 문서, 이벤트 속 ID 클릭 = 해당 문서.
-      작업 상세(구현·응답 전문)는 각 REQ 문서의 Notes에 있습니다.</p></details>
+    <details class="cap"><summary>이 화면은 무엇인가요?</summary><p>세션마다 쌓인 기록을 시각 순으로 모아 놓은 표입니다.
+      세션 칸을 누르면 그 세션 문서가, 내용 속 문서 번호를 누르면 그 문서가 열립니다.
+      구현·응답 전문은 각 요청 문서 안에 있습니다.</p></details>
     <div class="tblwrap"><table>
-    <thead><tr><th>time</th><th>type</th><th>by</th><th>session</th><th>event</th></tr></thead>
-    <tbody>${body || '<tr><td colspan="5" style="color:var(--faint);padding:18px">no events</td></tr>'}</tbody>
+    <thead><tr><th>시각</th><th>종류</th><th>남긴 사람</th><th>세션</th><th>내용</th></tr></thead>
+    <tbody>${body || '<tr><td colspan="5" style="color:var(--faint);padding:18px">아직 남은 기록이 없습니다</td></tr>'}</tbody>
     </table></div>
     ${evs.length > page.length ? `<button class="more" data-audit-more>이전 이벤트 ${evs.length - page.length}건 더 보기</button>` : ""}
   </div>`;
@@ -139,12 +139,12 @@ async function renderStream(){
   }
   const sesDocs = Object.fromEntries(
     catalog.filter(r => r.type === "session").map(r => [r.session, r]));
-  $("#count").textContent = `${data.streams.length} stream logs (streams/*.jsonl — transcript 미러, 시간은 서버 설정 시간대)`;
+  $("#count").textContent = `세션 기록 ${data.streams.length}건 · 시간은 서버 시간대`;
   const list = data.streams.map(s => {
     const d = sesDocs[s.session];
     return `<div class="row${s.session===selectedStream?" sel":""}" data-stream="${esc(s.session)}"
       role="button" tabindex="-1" data-rove-item${s.session===selectedStream?' aria-current="true"':""}>
-      <span class="st">${(s.size/1024).toFixed(0)}KB</span>
+      <span class="st">${fmtSize(s.size)}</span>
       <div class="id">${esc(s.session)}</div>
       <div>${esc(d ? d.title : "(SES 문서 없음)")}</div>
       <div class="snip">${esc(s.mtime.slice(0,16).replace("T"," "))}</div></div>`;
@@ -169,7 +169,7 @@ async function loadStream(s){
   const term = $("#term");
   if (!term) return;
   const d = await ccFetch("/api/stream?session=" + encodeURIComponent(s));
-  if (!d){ term.textContent = "stream not found: " + s; return; }
+  if (!d){ term.textContent = "이 세션의 기록을 찾지 못했습니다 — 기록이 지워졌거나 다른 컴퓨터의 세션입니다. 왼쪽 목록에서 다른 세션을 골라 주세요."; return; }
   const q = $("#q").value.trim().toLowerCase();
   let offset = d.offset, total = d.count;
   /* 죽은 세션의 로그는 일하던 모습 그대로 멈춰 있어 실행 중처럼 읽힌다

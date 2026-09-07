@@ -77,7 +77,9 @@ class AuditTable(unittest.TestCase):
         m = re.search(r"<thead><tr>(.*?)</tr></thead>", self.page)
         self.assertIsNotNone(m, "audit 표의 열 머리를 찾지 못했다")
         heads = re.findall(r"<th>([^<]+)</th>", m.group(1))
-        self.assertEqual(["time", "type", "by", "session", "event"], heads,
+        # 라벨은 한글이다 (REQ-20260907-018) — designer 가 세운 한글 열 머리
+        # 얼굴(본문체 11px·600·muted·capitalize) 위에 읽히는 낱말이 선다.
+        self.assertEqual(["시각", "종류", "남긴 사람", "세션", "내용"], heads,
                          "폭이 고정된 열이 앞, 폭이 변하는 본문 열이 마지막이다 (표 절 3)")
 
     # ── S6 안내문이 상주하지 않는다 ──────────────────────────────────────

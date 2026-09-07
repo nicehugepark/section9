@@ -60,6 +60,9 @@ function fmtElapsed(sinceIso){
    자리만 먹고, 오늘이 아니면 날짜가 붙어 그 사실이 드러난다. */
 function fmtStall(mins){
   const m = Math.max(0, Math.floor(Number(mins) || 0));
+  // "0분째"는 없는 시각이다 (REQ-20260907-012 검수 상-6). 1분이 차기 전에는
+  // 사람이 세는 말로 물러난다 — "스모크 테스트 방금".
+  if (m < 1) return "방금";
   if (m < 60) return `${m}분째`;
   const h = Math.floor(m / 60);
   // 하루를 넘기면 시간으로 세지 않는다 — "72시간째"는 사람이 다시 나눠야 하는 수다.

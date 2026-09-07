@@ -214,7 +214,7 @@ async function renderGraph(rows){
       ${GRAPH_TYPES.map(t => `<button type="button" class="gtype${gtypes.has(t) ? "" : " off"}${gWant.has(t) ? " want" : ""}" data-gtype="${t}" aria-pressed="${gtypes.has(t)}"
         title="${gWant.has(t) ? "이걸 켜면 지금 조건의 문서가 보인다 — " : ""}${t} 표시 켜기/끄기"><span class="dot" style="background:${TCOLOR[t]}"></span>${t}</button>`).join("")}
       <span class="gedge${depEdgeN ? "" : " none"}" title="blocked_by — 선행이 끝나야 후행이 풀린다. 화살촉이 가리키는 쪽이 막혀 있는 요청이다. 계보(parent 실선 · derived/relates 가는 점선)와 달리 잉크로 그리고, 여러 건을 붙잡은 선행일수록 진하고 굵다. 선행이 끝나면 이 화살표는 사라진다."><svg width="40" height="9" aria-hidden="true"><line x1="0" y1="4.5" x2="28" y2="4.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="9 5"/><polygon points="28,0.7 39,4.5 28,8.3" fill="currentColor"/></svg>선행 → 후행 대기 <b class="gecount">${depEdgeN}</b></span>
-      <span style="margin-left:auto">앰버 호+숫자 = 미완료 파생 병목(1건=¼둘레, 4건+=만원) · 점멸 = in-progress · 실선 링 = blocked · 점선 링 = review</span>
+      <span style="margin-left:auto">앰버 호+숫자 = 이 요청이 붙잡고 있는 미완료 파생 요청 수(1건이면 4분의 1 바퀴, 4건부터 한 바퀴) · 점멸 = in-progress · 실선 링 = blocked · 점선 링 = review</span>
     </div>
     <canvas id="gcanvas"></canvas>${graphEmptyHTML(gEmpty)}
     <button type="button" class="gfit" id="gfit" hidden>⤢ 전체 보기</button>

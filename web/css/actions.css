@@ -534,6 +534,9 @@
   margin:9px 0 0;font-family:var(--mono);font-size:11px;color:var(--muted)}
 .lineage .lincell{display:inline-flex;align-items:baseline;gap:5px;min-width:0}
 .lineage .badge{font-size:11px}
+/* 기원은 「만든 사람」의 꼬리라 값보다 한 단 낮게 선다 — 괄호가 자리를,
+   muted 가 위계를 말한다 (REQ-20260907-018). */
+.linorg{color:var(--muted)}
 /* 카드의 담당 배지 = 손잡이 (직접 조작). 누를 수 있다는 것은 이 화면이 이미
    가진 문법이 말한다 — `.wsat`·`.pname` 의 점선 밑줄 하나뿐이고, 배지 자신의
    생김새(글꼴·색·둥글기)는 한 화소도 바뀌지 않는다. 새 표식을 발명하면 배울

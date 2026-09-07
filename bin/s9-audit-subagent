@@ -239,7 +239,7 @@ def main():
               *(["--started", started] if started else []),
               inp=text)
     if out.returncode == 0:
-        run(env, "log", f"subagent({actor}) → {req} ({len(text)} chars)")
+        run(env, "log", f"subagent({actor}) → {req} ({len(text)}자)")
 
 
 if __name__ == "__main__":
