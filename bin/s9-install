@@ -155,7 +155,14 @@ def install_git_hooks():
              'MAIN="$(cd "$(dirname "$(git rev-parse --git-common-dir)")" '
              '&& pwd)"\n'
              'unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_PREFIX\n')
+    # rebase 가 진행 중이면 아무것도 하지 않는다 (REQ-20260907-004, 실제 발생
+    # 2026-09-07 10:36~11:54): rebase 의 첫 걸음 `checkout @{u}` 가 옛 문서를 작업
+    # 트리에 잠깐 올려놓고 이 훅이 그것으로 카탈로그를 다시 지었다 — 이어진 abort 는
+    # 작업 트리만 되돌리고 카탈로그는 되돌리지 않아 보드가 한 시간 넘게 옛 상태였다.
+    # rebase 가 끝나면 sync 가 pull 범위의 증분(index sync)을 따로 돌린다.
     sync = ('#!/bin/sh\n' + py + where +
+            'for K in rebase-merge rebase-apply; do G="$(git rev-parse --git-path $K 2>/dev/null)"; '
+            '[ -n "$G" ] && [ -d "$G" ] && exit 0; done\n'
             'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9" index rebuild '
             '>/dev/null 2>&1 || true\n'
             'S9_ROOT="$MAIN" "$PY" "$TOP/bin/s9-install" --quiet || true\n')

@@ -248,6 +248,51 @@ def clean_git_env(env=None):
     return e
 
 
+def staged_source_error(path, text):
+    """담긴 본의 파이썬 소스를 컴파일해 오류를 한 줄로 돌려준다 — 없으면 None."""
+    try:
+        compile(text, path, "exec")
+    except SyntaxError as e:
+        return f"{path}:{e.lineno}: {e.msg}"
+    return None
+
+
+def _is_python_source(path, text):
+    if path.endswith(".py"):
+        return True
+    return path.startswith("bin/") and text.startswith("#!") and "python" in text.split("\n", 1)[0]
+
+
+def staged_compile_gate(staged):
+    """담긴 파이썬 소스가 컴파일되는지 본다 (REQ-20260907-004).
+
+    보는 것은 작업 트리가 아니라 **index 의 본**이다 — hunk 를 갈라 담은 commit
+    (fc3011a, 2026-09-07 10:34)이 작업 트리는 멀쩡한 채 HEAD 의 s9.py 만 깨뜨렸고,
+    시험은 작업 트리를 보니 전부 통과했다. 그 commit 을 rebase 가 재생할 때마다
+    훅이 깨진 본을 컴파일해 sync 가 78분 동안 매번 섰다(DOC-20260907-001)."""
+    bad = []
+    for f in staged:
+        if not (f.endswith(".py") or f.startswith("bin/")) or f.endswith(".cmd"):
+            continue
+        r = subprocess.run(["git", "show", f":{f}"], capture_output=True, cwd=ROOT)
+        if r.returncode != 0:
+            continue                     # 지워진 파일은 볼 본이 없다
+        text = r.stdout.decode("utf-8", "replace")
+        if not _is_python_source(f, text):
+            continue
+        err = staged_source_error(f, text)
+        if err:
+            bad.append(err)
+    if bad:
+        print("s9-guard: 담기는 파이썬 소스가 컴파일되지 않습니다 — 작업 트리가 아니라 "
+              "index 의 본을 봤습니다:", file=sys.stderr)
+        for b in bad[:10]:
+            print(f"  - {b}", file=sys.stderr)
+        print("hunk 를 갈라 담았다면 파일을 통째로 다시 담으세요 (DOC-20260907-001).",
+              file=sys.stderr)
+        sys.exit(1)
+
+
 def staged_tests_gate(staged):
     """커밋 게이트 = 담긴 시험 ∪ 스모크 (REQ-20260830-029, 필수 계층 배선).
 
@@ -656,6 +701,7 @@ def _pre_commit_gates():
                          capture_output=True,
                              encoding="utf-8", errors="replace", cwd=ROOT)
     staged = [l for l in out.stdout.splitlines() if l.strip()]
+    staged_compile_gate(staged)   # 가장 싸고, 깨진 본은 아래 어느 문도 볼 필요가 없다
     concurrent_gate(staged)
     # **넓은 변경 판정을 먼저 묻는다** (REQ-20260904-003). 아래 게이트가 시험을
     # 돌리면 그 실행이 나무를 건드려(임시 파일·복원되는 파일) 지문이 움직이고,
