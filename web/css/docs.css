@@ -421,6 +421,23 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .anstell{font-size:11.5px;line-height:1.5;color:var(--muted);
   margin:6px 0 0;word-break:keep-all}
 
+/* 찾은 답 한 줄 — 못 찾음 줄과 같은 자리, 같은 급 (REQ-20260907-053).
+   면도 테두리도 색도 없다: 이것은 경고가 아니라 답을 읽기 전에 알아야 할
+   한계와, 그 답으로 가는 길이다. 손잡이는 목록의 글자 손잡이(.more)를
+   그대로 쓴다 — 새 부품을 만들지 않는다. */
+.ansfound{font-size:11.5px;line-height:1.5;color:var(--muted);
+  margin:6px 0 0;word-break:keep-all}
+/* 글자 손잡이 — 목록 무리 머리의 `.grpf` 와 같은 어휘다: 면도 테두리도 없이
+   잉크와 밑줄만으로 「누를 수 있다」를 말한다. 읽어야 하는 글자라 `--muted`
+   이고 `--faint` 가 아니다(전 스킨 검수 규칙 5). 문장 끝에 이어 서므로 줄이
+   좁아지면 통째로 다음 줄로 내려간다. */
+.ansfound .ansjump{display:inline;font-family:inherit;font-size:11.5px;
+  font-weight:600;color:var(--muted);background:none;border:0;padding:0 0 1px;
+  margin-left:4px;cursor:pointer;white-space:nowrap;
+  border-bottom:1px solid transparent}
+.ansfound .ansjump:hover{color:var(--text);border-bottom-color:var(--text)}
+.ansfound .ansjump:focus-visible{outline:1px solid var(--text);outline-offset:2px}
+
 /* id 줄의 뱃지가 「찾는 중」일 때 — 점(livedot)과 낱말이 함께 선다.
    점만으로는 색·모양에만 기대게 되고(s9-design 7절), 낱말만으로는 새로고침
    너머의 같은 사실을 다른 화면과 같은 마크로 못 말한다. */

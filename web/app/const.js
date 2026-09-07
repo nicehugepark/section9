@@ -144,6 +144,46 @@ const DOC_ID_WIKI_RE = new RegExp(`\\[\\[((?:${DOC_ID_PREFIX})${DOC_ID_TAIL})\\]
 // 진실을 만들지 않는다). 목록·뷰어·백링크가 이 함수 하나를 쓴다.
 // 노트 경계는 s9 의 NOTE_HDR_RE 와 같은 형식('### <ts> <label> (by ..)')이다.
 const ANSWER_NOTE_RE = /^### \S+ (?:answer|response)\b/im;
+/* 답의 축은 **셋**이다 (REQ-20260907-053, 사용자 실측 「1분 넘게 기다렸는데
+   바뀐게 없다」). 사람이 준 답(`answer`) · 에이전트가 찾아 온 답
+   (`agent-answer`) · 아무것도 없음. 앞뒤 둘만 그리면 찾아 온 답이 문서에
+   붙어 있는데도 화면이 「답 없음」이라 말한다 — 거짓이다.
+   `isAnswered` 는 그대로다: 찾아 온 답은 사람이 확정하기 전까지 답이 아니고
+   타입 띠 분수는 지금처럼 `answer` 만 센다 (REQ-20260907-040). 이 축은 그
+   판정을 바꾸지 않고 **화면이 셋을 말하게** 할 뿐이다. */
+const AGENT_ANSWER_HDR_RE = /^### (\S+) agent-answer\b/;
+const NOTE_HDR_ANY_RE = /^### \S+ \S/;
+// 빈손을 말하는 표식 — 서버(bin/s9.py AGENT_ANSWER_MISS_MARK)가 작업자에게
+// 이 글자로 시작하라고 시키고, 화면은 그 표식 하나만 본다. 표식이 어긋난
+// 경우를 대비해 첫 줄의 「찾지 못했」도 빈손으로 본다(넓히는 쪽이 안전하다).
+const AGENT_ANSWER_MISS_MARK = "기록에서 답을 찾지 못했다";
+/* 본문을 들고 있는 자리(뷰어)만 쓴다 — 마지막 agent-answer 노트의
+   {at: 시각, miss: 빈손인가}. 없으면 null. */
+function agentAnswerNote(body){
+  const lines = String(body || "").split("\n");
+  let last = null;
+  for (let i = 0; i < lines.length; i++){
+    const h = AGENT_ANSWER_HDR_RE.exec(lines[i]);
+    if (!h) continue;
+    const txt = [];
+    for (let j = i + 1; j < lines.length && !NOTE_HDR_ANY_RE.test(lines[j]); j++)
+      txt.push(lines[j]);
+    const head = txt.join("\n").trim();
+    last = {at: h[1], miss: head.startsWith(AGENT_ANSWER_MISS_MARK)
+      || /찾지 못했/.test(head.split("\n", 1)[0] || "")};
+  }
+  return last;
+}
+// "" / "found" / "miss". 본문이 있으면 본문에서, 없으면 카탈로그 파생 필드에서
+// — `isAnswered` 와 같은 규율이다(판정 규칙은 한 곳에만 산다).
+function agentAnswer(r, body){
+  if (!r || r.type !== "question") return "";
+  if (typeof body === "string"){
+    const n = agentAnswerNote(body);
+    return n ? (n.miss ? "miss" : "found") : "";
+  }
+  return r.agent_answer || "";
+}
 // 본문을 들고 있는 자리(뷰어)는 원본에서 직접 읽고, 본문이 없는 자리(목록·백링크)는
 // 카탈로그 파생 필드를 쓴다 — 판정 규칙 자체는 이 함수 하나에만 있다.
 // 3상이다: true(답함) · false(미답) · null(모른다). 파생 필드가 아직 카탈로그에
@@ -167,7 +207,12 @@ function statusLabel(r, body){
      게시판 Q&A 가 쓰는 계열로 「답 있음 / 답 없음」이 한 눈에 짝이다.
      값(`question`·`answer`·`--unanswered`)은 사람이 치는 글자라 그대로 둔다 —
      고친 것은 화면에 읽히는 서술어뿐이다. */
-  return a === null ? "" : a ? "답 있음" : "답 없음";
+  /* 셋째 값 「찾은 답 있음」은 tech-writer 확정표(REQ-20260907-037)에 처음부터
+     있었는데 구현이 앞의 둘만 세웠다 (REQ-20260907-053). 빈손으로 끝난
+     agent-answer 는 「답 없음」이다 — 찾아본 것과 찾은 것은 다르다. */
+  if (a === null) return "";
+  if (a) return "답 있음";
+  return agentAnswer(r, body) === "found" ? "찾은 답 있음" : "답 없음";
 }
 
 

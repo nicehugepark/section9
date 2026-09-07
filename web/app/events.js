@@ -226,6 +226,11 @@ document.addEventListener("click", e => {
   /* 답 찾기 (REQ-20260907-042). 문서를 여는 길보다 **먼저** 잡는다 — 목록
      안의 손잡이는 목록이 아니라는 이 화면의 규칙 그대로다. 도는 중인 얼굴은
      `aria-disabled` 로만 물러서 있으므로(포커스를 잃지 않게) 여기서 판정한다. */
+  /* 찾은 답으로 건너뛰기 (REQ-20260907-053) — 누르면 그 노트로 눈이 옮겨 가고
+     잉크 언더라인이 한 번 돈다. 답이 붙는 그 순간과 **같은 얼굴**이라, 나중에
+     다시 열어 본 사람도 같은 자리를 같은 방식으로 만난다. */
+  const aj = evEl(e.target)?.closest("[data-ansjump]");
+  if (aj){ e.stopPropagation(); answerLand(aj.dataset.ansjump); return; }
   const ab = evEl(e.target)?.closest("[data-answer]");
   if (ab){
     e.stopPropagation();

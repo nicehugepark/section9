@@ -190,6 +190,40 @@ class ThePromptSaysFindNotInvent(unittest.TestCase):
             mod._spawn_worker = real
         return got
 
+    def test_miss_mark_is_dictated(self):
+        """빈손이면 **정해진 한 마디로 시작하라**고 시킨다 (REQ-20260907-053).
+
+        화면은 이 표식 하나로 「못 찾았다」와 「찾았다」를 가른다 — 빈손도
+        찾은 답과 같은 `agent-answer` 라벨로 남기 때문이다(그래야 「찾는 중」이
+        걷힌다). 표식을 안 시키면 작업자가 한 글자만 다르게 써도 화면이 조용히
+        「찾았다」가 되고, 그것이 이 요청을 만든 결함 그 자체다.
+        """
+        prompt = self._prompt()["prompt"]
+        self.assertIn(mod.AGENT_ANSWER_MISS_MARK, prompt)
+        self.assertIn("그대로", prompt)
+
+    def test_the_mark_decides_found_or_miss(self):
+        """그 표식으로 `_agent_answer` 가 셋을 가른다 — "" / found / miss."""
+        hdr = "### 2026-09-07T17:07:34+09:00 agent-answer (by tester)\n"
+        self.assertEqual(mod._agent_answer(""), "")
+        self.assertEqual(
+            mod._agent_answer("### 2026-01-01 workspace (by t)\n메모\n"), "")
+        self.assertEqual(mod._agent_answer(hdr + "답은 REQ-20260827-064 로 갔다.\n"),
+                         "found")
+        self.assertEqual(
+            mod._agent_answer(hdr + mod.AGENT_ANSWER_MISS_MARK + " — 뒤진 자리: …\n"),
+            "miss")
+        # 나중에 붙은 것이 이긴다: 빈손으로 끝난 뒤 다시 눌러 찾아냈으면 「찾은 답」이다.
+        self.assertEqual(
+            mod._agent_answer(hdr + mod.AGENT_ANSWER_MISS_MARK + "\n" + hdr + "여기 있다.\n"),
+            "found")
+
+    def test_agent_answer_does_not_count_as_answered(self):
+        """찾은 답은 `answered` 를 바꾸지 않는다 — 분수는 여전히 `answer` 만 센다."""
+        body = "### 2026-09-07T17:07:34+09:00 agent-answer (by t)\n답을 찾았다.\n"
+        self.assertFalse(mod._answered(body, {}))
+        self.assertEqual(mod._agent_answer(body), "found")
+
     def test_it_says_find_not_invent(self):
         p = self._prompt()["prompt"]
         self.assertIn("답을 짓지 마라", p)

@@ -1829,6 +1829,10 @@ def catalog_row(meta, path, body=""):
         "tokens": meta.get("tokens") or "",
         # 질문 문서의 미답 여부 (REQ-20260826-017) — 본문 파생. 다른 타입은 빈 값.
         "answered": (_answered(body, meta) if meta.get("type") == "question" else ""),
+        # 에이전트가 찾아 온 답 (REQ-20260907-053) — "" / "found" / "miss".
+        # `answered` 와 별개 축이다: 목록 뱃지가 셋째 상태(「찾은 답 있음」)를
+        # 본문 없이 말하는 유일한 길이고, 분수는 여전히 `answer` 만 센다.
+        "agent_answer": (_agent_answer(body) if meta.get("type") == "question" else ""),
         # 처리 주체 상태 요약 (REQ-20260825-089): 카드 점등이 문서를 다시 열지
         # 않고 "이 요청을 붙잡은 주체가 멈췄는가"를 읽을 수 있게 인덱스에 올린다.
         "agent_state": _contrib_state(meta),
@@ -1905,6 +1909,47 @@ def _answered(body, meta=None):
     if re.search(r"(?m)^### \S+ (?:answer|response)\b", body or ""):
         return True
     return bool((meta or {}).get("children"))
+
+
+# 빈손을 말하는 표식 — 작업자가 이 글자로 노트를 시작한다 (REQ-20260907-053).
+# 프롬프트(_spawn_answer 5번)와 이 상수가 한 쌍이고, 시험이 그 계약을 잰다.
+AGENT_ANSWER_MISS_MARK = "기록에서 답을 찾지 못했다"
+
+
+def _agent_answer(body):
+    """에이전트가 찾아 온 답이 있는가 — "" / "found" / "miss".
+
+    답의 축은 셋이다 (REQ-20260907-053, 사용자 실측): 사람이 준 답(`answer`) ·
+    에이전트가 찾아 온 답(`agent-answer`) · 아무것도 없음. 종전에는 앞뒤 둘만
+    화면에 있어서, 찾아 온 답이 문서에 붙어 있는데도 화면이 「답 없음」이라고
+    말했다 — 거짓이다. 이 값은 목록 행처럼 본문을 안 들고 있는 자리가 셋째
+    상태를 읽는 유일한 길이다.
+
+    **`answered` 는 건드리지 않는다** — 찾아 온 답은 사람이 확정하기 전까지
+    답이 아니고, 타입 띠 분수는 지금처럼 `answer` 만 센다 (REQ-20260907-040).
+
+    찾았는지 못 찾았는지는 라벨로 안 갈린다 — 빈손도 같은 `agent-answer` 로
+    남기 때문이다(그래야 「찾는 중」이 걷힌다). 그래서 작업자에게 **표식을
+    적게** 한다: 빈손이면 노트가 AGENT_ANSWER_MISS_MARK 로 시작한다. 표식이
+    어긋난 경우를 대비해 첫 줄에 「찾지 못했」이 있으면 그것도 빈손으로 본다 —
+    넓히는 방향이 안전한 쪽이다(못 찾은 것을 찾았다고 말하는 것이 이 요청의
+    결함 그 자체다).
+    """
+    lines = (body or "").split("\n")
+    out = ""
+    for i, ln in enumerate(lines):
+        if not re.match(r"^### \S+ agent-answer\b", ln):
+            continue
+        txt = []
+        for j in range(i + 1, len(lines)):
+            if re.match(r"^### \S+ \S", lines[j]):
+                break
+            txt.append(lines[j])
+        head = "\n".join(txt).strip()
+        first = head.split("\n", 1)[0]
+        out = ("miss" if head.startswith(AGENT_ANSWER_MISS_MARK)
+               or "찾지 못했" in first else "found")
+    return out
 
 
 def _review_point(body):
@@ -9522,8 +9567,10 @@ def _spawn_answer(doc_id, meta, by="", out=None):
         f"`{s9bin} new request --parent {doc_id} ...` 로 요청을 세워라 — "
         f"회고는 일하지 않는다.\n"
         f"5. 근거를 못 찾았으면 **그 사실을** `{s9bin} note {doc_id} "
-        f"'기록에서 답을 찾지 못했다 — 뒤진 자리: …' --label agent-answer` 로 "
-        f"남겨라. 빈손이라고 말하는 것이 지어내는 것보다 낫다. "
+        f"'{AGENT_ANSWER_MISS_MARK} — 뒤진 자리: …' --label agent-answer` 로 "
+        f"남겨라. **첫 글자는 반드시 「{AGENT_ANSWER_MISS_MARK}」 그대로** 시작하라 "
+        f"— 화면이 그 표식 하나로 「못 찾았다」와 「찾았다」를 가른다. "
+        f"빈손이라고 말하는 것이 지어내는 것보다 낫다. "
         f"그럴듯한 재구성을 답으로 적지 마라 — 그것은 답 없는 것보다 나쁘다.\n\n"
         f"화면의 「찾는 중」은 `agent-answer` 노트가 붙는 순간 스스로 걷힌다 — "
         f"따로 지울 것은 없다.")

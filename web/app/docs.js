@@ -393,7 +393,25 @@ async function loadDoc(id, bg, force){
   // 질문은 여기서 본문을 들고 있다 — 미답 판정을 카탈로그 파생 필드에 의존하지
   // 않고 원본(answer 노트)에서 직접 읽는다 (REQ-20260826-017).
   const isQ = m.type === "question";
-  if (isQ) m.answered = isAnswered(m, d.body);
+  if (isQ){
+    m.answered = isAnswered(m, d.body);
+    /* 셋째 축도 원본에서 직접 읽는다 (REQ-20260907-053) — 목록은 카탈로그
+       파생 필드를 쓰고 뷰어는 본문을 쓴다, `answered` 와 같은 규율이다. */
+    const an = agentAnswerNote(d.body);
+    m.agent_answer = an ? (an.miss ? "miss" : "found") : "";
+    m.agent_answer_at = an ? an.at : "";
+  }
+  /* **채워짐 얼굴은 답이 실제로 닿을 때 온다** (REQ-20260907-053).
+     종전에는 「답 찾기」를 누른 직후, 작업자가 뜨기만 한 그 순간에 스크롤과
+     잉크 언더라인이 돌았다 — 그때 문서에는 답이 없으니 눈이 옮겨 간 자리는
+     엉뚱한 노트였고, 100초 뒤 답이 실제로 붙을 때는 아무 일도 일어나지
+     않았다(사용자 실측 「1분 넘게 기다렸는데 바뀐게 없다」). 이제 판정은
+     **문서가 달라진 그 순간**에 선다: 이 문서의 답 축이 방금 값을 얻었으면
+     그린 뒤에 한 번 말한다. */
+  const ansWas = answerSeen.get(id);
+  const ansNow = isQ ? (m.agent_answer || "") : "";
+  if (isQ) answerSeen.set(id, ansNow);
+  const ansLanded = isQ && ansWas !== undefined && ansWas !== ansNow && !!ansNow;
   const li = v => Array.isArray(v) && v.length
     ? v.map(x => DOC_ID_FULL_RE.test(x)
         ? `${dlink(x, esc(shortId(x)))}` : esc(x)).join(", ") : null;
@@ -420,7 +438,11 @@ async function loadDoc(id, bg, force){
        내렸다: 손잡이가 있는데 명령어를 함께 적으면 같은 일을 두 벌로 말한다. */
     ["status", isQ
       ? `<span style="color:var(--t-question)">●</span> `
-        + (m.answered ? "답 있음" :
+        + (m.answered ? "답 있음"
+           /* 찾아 온 답이 붙어 있으면 이 칸도 그 사실을 말한다
+              (REQ-20260907-053). 여기가 「아직 답이 없습니다」로 남아 있던
+              것이 사용자가 본 거짓말이다. 글자는 확정표 그대로다. */
+           : m.agent_answer === "found" ? "답을 찾아 붙였습니다" :
            /* 명령어 문장은 **걷었다** (REQ-20260907-042 · designer). 손잡이가
               없어서 명령어를 알려주던 대체물인데, 「답 찾기」 버튼과 나란히
               서면 같은 일을 두 벌로 말한다. 명령어는 버튼 툴팁으로 내렸다.
@@ -713,7 +735,7 @@ async function loadDoc(id, bg, force){
     <h1 class="dtitle">${esc(m.title)}
       <span class="did" title="${esc(m.id)}">${esc(shortId(m.id))}</span>
       ${dstHTML(m)}
-    </h1>${docActs}${answerTellHTML(m)}</div>${lineage}${stallRow}${gate}
+    </h1>${docActs}${answerFoundHTML(m)}${answerTellHTML(m)}</div>${lineage}${stallRow}${gate}
     ${meta}
     <div class="md">${md2html(d.body)}</div>${streamSec}
     <div class="backlinks" id="backlinks"></div>`;
@@ -735,6 +757,8 @@ async function loadDoc(id, bg, force){
   // 다른 탭에서 눌려 문서에 사실이 적힌 채로 열린 경우에도 초가 흘러야 한다 —
   // 시계는 그린 뒤에 건다(그리는 함수가 시계를 알 이유가 없다).
   answerClock();
+  // 답이 방금 닿았으면 그 자리로 눈을 옮기고 한 번만 말한다 (REQ-20260907-053).
+  if (ansLanded) answerLand(id);
   // 표가 안 왔으면 **여기서 다시 받는다**. 받으면 이 문서를 다시 그려 버튼을
   // 채운다 — 사람이 새로고침해서 스스로 고치게 두지 않는다 (REQ-20260828-027).
   // 세 번 다 실패해 transFailed 가 서면 자동 반복은 멈춘다: 그때부터는 사람이
@@ -859,6 +883,10 @@ async function renderBacklinks(id){
 const ANSWER_REQ_KEY = "answer_request";   // 문서가 진행을 말하는 자리 (S3 와의 계약)
 const answerAt = new Map();                // id → 누른 시각(ms) · 낙관적 기억
 const answerMiss = new Map();              // id → true · 이번 화면에서 빈손으로 끝났다
+/* id → 마지막으로 그린 답 축("" / found / miss). 채워짐 얼굴은 이 값이
+   **달라진 순간**에만 온다 — 문서를 다시 열 때마다 스크롤이 튀면 그것은
+   인과를 설명하는 움직임이 아니라 소음이다(s9-design 5절). */
+const answerSeen = new Map();
 let answerTick = null;                     // 경과 초를 세는 시계 (한 벌)
 
 /* 자리지기 — 손잡이의 폭을 **가장 긴 얼굴의 제 글자**로 잡는다
@@ -896,7 +924,11 @@ const answerBusy = m => answerSince(m) !== null;
    어디에서도 쓰지 못하는 계정이라 누를 곳을 주면 거절 창만 돌아온다
    (프로젝트 손잡이가 이미 쓰는 규칙 그대로, card.js projBtnHTML). */
 function answerable(m){
+  /* 찾아 온 답이 이미 붙어 있으면 손잡이는 걷힌다 (REQ-20260907-053 ·
+     designer ④). 할 일이 없어진 자리에 손잡이를 남기면 사람은 눌러 봤자
+     같은 답을 다시 받는다 — 다음 일은 그 답을 읽고 확정하는 것이다. */
   return !!m && m.type === "question" && m.answered === false
+    && agentAnswer(m) !== "found"
     && (window.__whoami || {}).role !== "viewer";
 }
 
@@ -925,7 +957,8 @@ function answerBtnHTML(m){
   }
   // 빈손 뒤에도 손잡이는 남는다(기록이 늘면 다시 눌러볼 수 있다). 그때의 글자는
   // 「다시 찾기」 — 부사만 남기지 않는다(전 스킨 검수 R3).
-  const again = answerMiss.has(m.id);
+  // 빈손은 문서에도 남는다 — 새로고침·다른 탭에서도 「다시 찾기」여야 한다.
+  const again = answerMiss.has(m.id) || m.agent_answer === "miss";
   const tip = `질문한 시각 앞뒤의 작업 기록을 모아 답을 맞춰 이 문서에 붙입니다`
     + ` · 터미널에서는 s9 note ${shortId(m.id)} '…' --label answer`;
   return `<button type="button" class="deed ansbtn" data-answer="${esc(m.id)}"`
@@ -937,9 +970,47 @@ function answerBtnHTML(m){
    무엇을 하면 되는지(audit.js·session.js 가 이미 쓰는 한 틀). 다음에 할 일이
    바로 옆에 선 버튼이라 그 글자를 그대로 가리킨다. */
 function answerTellHTML(m){
-  if (!m || !answerMiss.has(m.id) || answerBusy(m)) return "";
+  /* **못 찾았음도 문서에 남는다** (REQ-20260907-053). 종전에는 이 브라우저의
+     기억(answerMiss)만 보아서, 찾기가 끝난 뒤 새로고침하거나 다른 탭에서 열면
+     빈손이 흔적도 없이 사라졌다 — 그래서 「찾았는데 답이 없는 것」과 「아직
+     아무것도 안 해 본 것」이 화면에서 똑같이 보였다(사용자의 둘째 물음
+     「답이 진짜 없으면 어떻게 되는거지?」가 가리킨 자리). */
+  if (!m || !(answerMiss.has(m.id) || m.agent_answer === "miss")
+      || answerBusy(m)) return "";
   return `<div class="anstell" role="status">기록에서 답을 찾지 못했습니다 —`
     + ` 「이어 말하기」로 직접 물어봐 주세요</div>`;
+}
+
+/* 경과는 사람이 세는 단위로 (전 스킨 검수 R4) — 한 시간 안이면 「조금 뒤에」,
+   하루 안이면 시간, 넘으면 날. 확정표(ux-writer)의 규칙 그대로다. */
+function answerWhen(from, to){
+  const a = Date.parse(from || ""), b = Date.parse(to || "");
+  if (isNaN(a) || isNaN(b) || b < a) return "";
+  const h = (b - a) / 3600000;
+  if (h < 1) return "조금 뒤에";
+  if (h < 24) return `${Math.max(1, Math.round(h))}시간 뒤에`;
+  return `${Math.round(h / 24)}일 뒤에`;
+}
+
+/* 찾은 답 한 줄 — 한계를 **답보다 먼저** 말하고, 그 답으로 건너뛴다
+   (REQ-20260907-053 · ux-writer 확정 문구).
+
+   자리는 못 찾음 줄과 같다(붙박이 띠 안, 버튼 아래). 여기 서는 이유는 셋이다:
+   ① 찾아 온 답은 사람이 준 답과 같은 얼굴로 서면 안 된다 — 그때의 기록만으로
+   다시 맞춘 것이라 빠진 데가 있다 ② 그 한계는 답을 다 읽고 나서가 아니라 읽기
+   전에 닿아야 한다 ③ 찾은 답이 ORIGINAL 과 다른 노트 아래 묻혀 사람이 스크롤로
+   찾아야 했다(사용자 실측). 손잡이는 목록이 이미 쓰는 글자 손잡이(.more)와 같은
+   계보다(`.more` 자체는 아니다 — 그 부품은 「+ N개 더 보기」의 `+` 를 달고 오고
+   잉크가 `--faint` 라, 읽어야 하는 글자에 쓰면 규칙 5 를 어긴다). */
+function answerFoundHTML(m){
+  if (!m || m.type !== "question" || m.agent_answer !== "found") return "";
+  const when = answerWhen(m.created, m.agent_answer_at);
+  return `<div class="ansfound"><span class="ansfw">`
+    + (when ? `질문하고 ${esc(when)}, 그때` : `그때`)
+    + ` 남은 작업 기록만으로 다시 맞춘 답입니다 — 그 자리에서 보던 화면은`
+    + ` 남아 있지 않아 빠진 데가 있을 수 있습니다.</span>`
+    + ` <button type="button" class="ansjump" data-ansjump="${esc(m.id)}">`
+    + `찾은 답 보기</button></div>`;
 }
 
 /* id 줄의 뱃지. 찾는 중이면 그 자리가 **확정된 점(livedot)의 ◎**(링+심, 초록,
@@ -1017,10 +1088,13 @@ async function answerDoc(id){
   }
   /* 붙었다: 뱃지도 버튼도 함께 걷힌다(할 일이 없어졌다). 새 답 노트로 눈을
      옮기고 잉크 언더라인 한 번 — 색면 하이라이트는 쓰지 않는다. */
+  /* 여기서는 **아직 아무것도 안 붙었다** — 방금 한 일은 작업자를 띄운 것뿐이다
+     (REQ-20260907-053). 그래서 스크롤도 언더라인도 여기서 돌지 않는다: 얼굴은
+     답이 실제로 문서에 닿는 순간(loadDoc 의 ansLanded)에 온다. 이 자리는
+     문서에 적힌 「찾는 중」을 화면에 세우는 데까지다. */
   answerAt.delete(id);
   await refreshCatalog(true);
   await loadDoc(id, true, true);
-  answerLand(id);
 }
 
 /* 어디가 달라졌는지 **한 번만** 말한다 (s9-design 5절: 움직임은 인과를 설명할
@@ -1029,10 +1103,14 @@ async function answerDoc(id){
 function answerLand(id){
   const v = $("#viewer");
   if (!v || v.dataset.showing !== id) return;
-  const notes = v.querySelectorAll(".md h3");
-  const last = notes.length ? notes[notes.length - 1] : null;
+  /* 짚는 것은 **찾아 온 답 노트**다 (REQ-20260907-053). 종전에는 마지막
+     h3 를 짚었는데, 그 사이에 다른 노트가 붙으면 엉뚱한 자리로 눈이 갔다.
+     그 노트가 없으면(빈손·아직 안 붙음) 마지막 노트로 물러선다. */
+  const notes = [...v.querySelectorAll(".md h3")];
+  const last = notes.filter(h => /agent-answer/.test(h.textContent || "")).pop()
+    || (notes.length ? notes[notes.length - 1] : null);
   if (!last) return;
-  last.scrollIntoView({block: "nearest"});
+  last.scrollIntoView({block: "start"});
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
   last.classList.add("ansland");
   setTimeout(() => last.classList.remove("ansland"), 900);
