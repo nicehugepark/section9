@@ -672,7 +672,7 @@ async function renderGraph(rows){
   const labWCache = new Map();
   const labText = n => n.title.length > 16 ? n.title.slice(0, 16) + "…" : n.title;
   function labWidth(t, bold){
-    const key = (bold ? "b " : "n ") + t;
+    const key = (bold ? "b\u0000" : "n\u0000") + t;
     let w = labWCache.get(key);
     if (w === undefined){
       ctx.font = bold ? LAB_FONT_B : LAB_FONT_N;
