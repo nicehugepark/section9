@@ -189,8 +189,17 @@ class WhereTheReadingLives(unittest.TestCase):
     def test_s6b_signature_defined_once(self):
         self.assertEqual(self.src.count('"reached your" in'), 2,
                          "한도 서명 검사가 판독기 밖에 또 있다")
-        self.assertEqual(self.src.count('startswith("<")'), 2,
-                         "합성 표기 검사가 판독기 밖에 또 있다")
+        # **모델 칸의** 합성 표기를 재는 자리만 센다 (REQ-20260907-061).
+        # 종전엔 `startswith("<")` 를 통째로 셌는데, 그 글자는 뜻이 다른 자리에도
+        # 선다 — REQ-20260907-034 가 프롬프트 첫 줄에서 `<system-reminder>` 를
+        # 거르며 같은 글자를 썼고, 계약은 아무것도 안 바뀌었는데 깨졌다.
+        # 여기서 지킬 것은 「합성 응답을 모델로 읽지 않는다」이지 그 글자가
+        # 소스에 몇 번 나오는가가 아니다 (DOC-20260907-002).
+        model_synth = re.findall(
+            r'model[^\n]{0,40}\)?\.startswith\("<"\)|str\(m\)\.startswith\("<"\)',
+            self.src)
+        self.assertEqual(len(model_synth), 2,
+                         f"합성 표기 검사가 판독기 밖에 또 있다: {model_synth}")
 
 
 if __name__ == "__main__":

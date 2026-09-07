@@ -176,10 +176,27 @@ def live_workers():
         return []
 
 
+def concurrent_token(fresh):
+    """담긴 파일 **집합**에서 나오는 짧은 표. 순서가 달라도 같은 값이다.
+
+    이 표는 「목록을 봤다」의 증거다 (REQ-20260907-062). 첫 시도에서 가드가
+    목록과 함께 알려 주므로, 표를 손에 넣는 유일한 길이 목록을 보는 것이다.
+    목록이 바뀌면 표도 바뀐다 — 그 사이 남이 또 고쳤으면 다시 봐야 한다.
+    """
+    import hashlib
+    key = "\n".join(sorted(f for f, _ in fresh))
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:6]
+
+
 def concurrent_gate(staged):
-    """워커가 도는 중에 '방금 만져진' 파일을 담으려 하면 막는다."""
-    if os.environ.get(OVERRIDE):
-        return
+    """워커가 도는 중에 '방금 만져진' 파일을 담으려 하면 막는다.
+
+    **빠져나가려면 목록을 봐야 한다** (REQ-20260907-062). 예전엔 여기서
+    `if os.environ.get(OVERRIDE): return` 으로 **목록을 세기도 전에** 돌아갔다 —
+    `=1` 은 「읽었다」는 주장일 뿐이고 읽었는지는 아무도 안 봤다. 2026-09-07
+    18:26 에 리드가 그 문으로 남의 진행 중 변경 셋을 제 커밋에 쓸어 담았다.
+    사람이 규율을 안 지킨 것이 아니라 **지키지 않아도 지나갈 수 있었다.**
+    """
     workers = live_workers()
     if not workers:
         return
@@ -195,6 +212,18 @@ def concurrent_gate(staged):
         if age < FRESH_SEC:
             fresh.append((f, int(age)))
     if not fresh:
+        return
+    tok = concurrent_token(fresh)
+    if os.environ.get(OVERRIDE) == tok:
+        # 지나간 사실을 남긴다 — commit-msg 가 이것을 읽어 trailer 로 붙인다.
+        # 옛 사고의 아픈 곳이 「그 커밋 메시지가 그 파일들을 설명하지 않는다」였다.
+        try:
+            os.makedirs(os.path.join(ROOT, "state"), exist_ok=True)
+            with open(os.path.join(ROOT, "state", "concurrent-swept.txt"),
+                      "w", encoding="utf-8") as f:
+                f.write("\n".join(sorted(x for x, _ in fresh)) + "\n")
+        except OSError:
+            pass
         return
     print("s9-guard: 다른 작업자가 붙어 있는 중에, 그 사이 바뀐 파일을 "
           "담으려 합니다.", file=sys.stderr)
@@ -212,7 +241,12 @@ def concurrent_gate(staged):
           file=sys.stderr)
     print("`git diff --cached` 로 담기는 내용을 실제로 읽고, 네 것만 맞으면",
           file=sys.stderr)
-    print(f"`{OVERRIDE}=1 git commit ...` 으로 진행하세요.", file=sys.stderr)
+    if os.environ.get(OVERRIDE):
+        print(f"  ({OVERRIDE} 가 붙어 있지만 이 목록의 표가 아닙니다 — "
+              f"목록이 그 사이 바뀌었거나, 보지 않고 지나가려는 것입니다)",
+              file=sys.stderr)
+    print(f"`{OVERRIDE}={tok} git commit ...` 으로 진행하세요 — 위 목록을 "
+          f"읽었다는 표입니다. 목록이 바뀌면 표도 바뀝니다.", file=sys.stderr)
     sys.exit(1)
 
 
@@ -676,8 +710,43 @@ def commit_msg_terms(path):
     return 0
 
 
+def commit_msg_swept(path):
+    """작업자가 붙은 채 지나간 커밋에는 **쓸려 담긴 파일이 적힌다**
+    (REQ-20260907-062).
+
+    2026-09-07 18:26 의 아픈 곳이 이것이었다: 리드의 커밋에 남의 진행 중 변경
+    셋이 들어갔는데 **커밋 메시지가 그 셋을 설명하지 않았다.** 다음 사람은
+    「Stream 행 제목」 커밋에서 실브라우저 시험이 바뀐 까닭을 찾지 못한다.
+    막지는 않는다 — 지나간 것을 **보이게** 만드는 일이다.
+    """
+    mark = os.path.join(ROOT, "state", "concurrent-swept.txt")
+    try:
+        with open(mark, encoding="utf-8") as f:
+            files = [ln.strip() for ln in f if ln.strip()]
+    except OSError:
+        return
+    try:
+        os.remove(mark)
+    except OSError:
+        pass
+    if not files:
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            msg = f.read()
+        tail = ("\n다른 작업자가 붙은 채 담긴 파일 (S9_ALLOW_CONCURRENT):\n"
+                + "".join(f"  {x}\n" for x in files))
+        if tail.strip() in msg:
+            return
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(tail)
+    except OSError:
+        pass
+
+
 def main():
     if sys.argv[1:2] == ["commit-msg"] and len(sys.argv) > 2:
+        commit_msg_swept(sys.argv[2])
         return commit_msg_terms(sys.argv[2])
     if "--after-commit" in sys.argv[1:]:
         k = sys.argv.index("--after-commit")

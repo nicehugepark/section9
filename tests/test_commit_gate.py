@@ -165,13 +165,21 @@ class CommitGate(unittest.TestCase):
                     self.m.concurrent_gate([rel])
             finally:
                 os.utime(p, None)
-        with self.subTest("g4_override_passes"):
+        with self.subTest("g4_override_needs_the_token"):
+            # **`1` 로는 못 지나간다** (REQ-20260907-062). 그 값은 「목록을
+            # 읽었다」는 주장일 뿐 증거가 아니었고, 2026-09-07 18:26 에 그 문으로
+            # 남의 진행 중 변경 셋이 리드의 커밋에 쓸려 담겼다. 이제 담긴 파일
+            # 집합에서 나온 표를 받는다 — 표를 얻는 유일한 길이 목록을 보는 것이다.
             rel = "tests/test_commit_gate.py"
             os.utime(os.path.join(self.m.ROOT, rel), None)
-            with mock.patch.dict(os.environ, {self.m.OVERRIDE: "1"}), \
-                 mock.patch.object(self.m, "live_workers",
+            with mock.patch.object(self.m, "live_workers",
                                    return_value=["- REQ-x (pid 1)"]):
-                self.m.concurrent_gate([rel])
+                with mock.patch.dict(os.environ, {self.m.OVERRIDE: "1"}):
+                    with self.assertRaises(SystemExit):
+                        self.m.concurrent_gate([rel])
+                tok = self.m.concurrent_token([(rel, 0)])
+                with mock.patch.dict(os.environ, {self.m.OVERRIDE: tok}):
+                    self.m.concurrent_gate([rel])
         with self.subTest("g5_failing_staged_test_blocks"):
             def fake_run(argv, **kw):
                 return subprocess.CompletedProcess(argv, 1, "FAILED (failures=1)", "")
