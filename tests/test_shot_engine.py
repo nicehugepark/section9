@@ -94,3 +94,52 @@ class ShotEngine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShotDirectNode(unittest.TestCase):
+    """runner 옆에 node.exe 와 playwright/cli.js 가 있으면 cmd.exe 없이 node 를 직접 부른다
+    (REQ-20260907-016) — 그러면 url 의 `&`·`?` 가 껍데기에 먹히지 않는다."""
+
+    def test_direct_node_accepts_special_url(self):
+        import importlib.machinery, importlib.util, tempfile, shutil
+        loader = importlib.machinery.SourceFileLoader("s9shotdirect", S9)
+        spec = importlib.util.spec_from_loader("s9shotdirect", loader)
+        m = importlib.util.module_from_spec(spec); loader.exec_module(m)
+        d = tempfile.mkdtemp(prefix="s9-shotdirect-")
+        try:
+            os.makedirs(os.path.join(d, "node-v22.0.0-win-x64"))
+            open(os.path.join(d, "node-v22.0.0-win-x64", "node.exe"), "w").close()
+            os.makedirs(os.path.join(d, "node_modules", "playwright"))
+            open(os.path.join(d, "node_modules", "playwright", "cli.js"), "w").close()
+            runner = os.path.join(d, "run-npx.cmd")
+            cmd = m._shot_webkit_cmd("http://127.0.0.1:9909/?nosse&noscroll#terminal",
+                                     "768x1024", 4000, r"C:\x.png", runner=runner, browser="chromium")
+            self.assertTrue(cmd[0].endswith("node.exe"), cmd)
+            self.assertTrue(cmd[1].endswith("cli.js"), cmd)
+            self.assertIn("--browser=chromium", cmd)
+            self.assertIn("--viewport-size=768,1024", cmd)
+            self.assertIn("http://127.0.0.1:9909/?nosse&noscroll#terminal", cmd)
+            self.assertNotIn("cmd.exe", cmd)
+            # node 가 없으면 종전 cmd.exe 경로 그대로
+            os.remove(os.path.join(d, "node-v22.0.0-win-x64", "node.exe"))
+            cmd2 = m._shot_webkit_cmd("http://127.0.0.1:9909/#board", "768x1024", 4000,
+                                      r"C:\x.png", runner=runner)
+            self.assertEqual(cmd2[:2], ["cmd.exe", "/c"])
+            self.assertEqual(m._shot_win_path("/mnt/c/Temp/x/cli.js"), r"C:\Temp\x\cli.js")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class ShotNavRetry(unittest.TestCase):
+    """탐색 단계의 소켓 오류만 다시 시도한다 (REQ-20260907-016)."""
+
+    def test_retryable_predicate(self):
+        import importlib.machinery, importlib.util
+        loader = importlib.machinery.SourceFileLoader("s9shotretry", S9)
+        spec = importlib.util.spec_from_loader("s9shotretry", loader)
+        m = importlib.util.module_from_spec(spec); loader.exec_module(m)
+        self.assertTrue(m._shot_nav_retryable(b"Error: net::ERR_SOCKET_NOT_CONNECTED at http://h/"))
+        self.assertTrue(m._shot_nav_retryable("Error: net::ERR_CONNECTION_RESET"))
+        self.assertFalse(m._shot_nav_retryable(b"Error: page.goto: 404"))
+        self.assertFalse(m._shot_nav_retryable(b""))
+        self.assertGreaterEqual(m.SHOT_NAV_RETRIES, 2)

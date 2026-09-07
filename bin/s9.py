@@ -20661,7 +20661,9 @@ def _shot_webkit_install_guide():
         "`npx --yes playwright %*`):\n"
         "    printf '@echo off\\r\\nset \"PATH=%%~dp0node-v22.23.2-win-x64;%%PATH%%\"\\r\\n"
         "call npx --yes playwright %%*\\r\\n' > run-npx.cmd   # node 폴더 이름은 푼 것에 맞춘다\n"
-        "  cmd.exe /c " + SHOT_WEBKIT_RUNNER_WIN + " install webkit\n")
+        "  cmd.exe /c " + SHOT_WEBKIT_RUNNER_WIN + " install webkit\n"
+        "  cmd.exe /c \"cd /d " + SHOT_WEBKIT_DIR_WIN + " && node-v22.23.2-win-x64\\npm.cmd init -y "
+        "&& node-v22.23.2-win-x64\\npm.cmd i playwright\"   # node.exe 직접 호출용(url 의 &·? 가 그대로 간다)\n")
 
 
 def _shot_size_wh(size):
@@ -20670,6 +20672,30 @@ def _shot_size_wh(size):
     if len(parts) != 2 or not all(t.strip().isdigit() for t in parts):
         raise ValueError(f"--size 는 WxH 또는 W,H 꼴이어야 합니다: {size!r}")
     return int(parts[0]), int(parts[1])
+
+
+def _shot_win_path(p):
+    """WSL 경로(/mnt/c/…)를 Windows 경로(C:\\…)로 — 그 밖의 경로는 그대로."""
+    m = re.match(r"^/mnt/([a-zA-Z])/(.*)$", p or "")
+    return (m.group(1).upper() + ":\\" + m.group(2).replace("/", "\\")) if m else p
+
+
+def _shot_pw_direct(runner):
+    """run-npx.cmd 옆의 node.exe 와 node_modules/playwright/cli.js — 둘 다 있으면
+    (node 실행 경로, cli 의 Windows 경로). 없으면 None (REQ-20260907-016).
+
+    cmd.exe 를 거치면 url 의 `&` 가 명령 구분자로 먹히고(`?nosse&noscroll` 을 붙이는
+    #terminal·#settings 가 매번 실패했다) `/?` 는 배치의 call 이 도움말 요청으로 먹는다.
+    node.exe 를 인자 목록으로 직접 부르면 껍데기가 없어 어떤 url 도 그대로 간다."""
+    import glob as _glob
+    d = os.path.dirname(runner or "")
+    if not d:
+        return None
+    nodes = sorted(_glob.glob(os.path.join(d, "node-v*-win-x64", "node.exe")))
+    cli = os.path.join(d, "node_modules", "playwright", "cli.js")
+    if not nodes or not os.path.exists(cli):
+        return None
+    return nodes[-1], _shot_win_path(cli)
 
 
 def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit"):
@@ -20685,6 +20711,13 @@ def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit"):
     """
     w, h = _shot_size_wh(size)
     runner = runner or SHOT_WEBKIT_RUNNER_WIN
+    direct = _shot_pw_direct(runner)
+    if direct:
+        node, cli = direct
+        return [node, cli, "screenshot", f"--browser={browser}",
+                f"--viewport-size={w},{h}", f"--wait-for-timeout={int(wait)}",
+                url, win_out]
+    runner = _shot_win_path(runner)
     bad = [c for c in '&|<>^"' + " \t" if c in url]
     if bad:
         raise ValueError(f"--engine webkit 은 cmd.exe 특수문자 {bad!r} 가 든 url 을 "
@@ -20692,6 +20725,17 @@ def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit"):
     line = (f"{runner} screenshot --browser={browser} --viewport-size={w},{h} "
             f"--wait-for-timeout={int(wait)} {url} {win_out}")
     return ["cmd.exe", "/c", line]
+
+
+def _shot_nav_retryable(stderr):
+    """탐색 단계의 연결 오류인가 — Windows 쪽 localhost 중계가 연결을 간헐적으로
+    끊는다(2026-09-07 실측: 같은 url 이 `net::ERR_SOCKET_NOT_CONNECTED` 로 섰다가
+    다음 번엔 200). 페이지 쪽 오류(404·JS)가 아니라 소켓 오류만 다시 시도한다."""
+    t = (stderr or b"").decode("utf-8", "replace") if isinstance(stderr, bytes) else str(stderr or "")
+    return bool(re.search(r"net::ERR_(SOCKET|CONNECTION|EMPTY_RESPONSE|NETWORK)|ECONNRESET|ECONNREFUSED", t))
+
+
+SHOT_NAV_RETRIES = 3
 
 
 def _shot_webkit(url, size, wait, out, browser="webkit"):
@@ -20724,19 +20768,28 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
         print(_shot_webkit_install_guide(), file=sys.stderr, end="")
         sys.exit(3)
     try:
-        cmd = _shot_webkit_cmd(url, size, wait, win_out, browser=browser)
+        cmd = _shot_webkit_cmd(url, size, wait, win_out, runner=runner_check, browser=browser)
     except ValueError as e:
         print(f"s9 shot: {e}", file=sys.stderr)
         sys.exit(2)
     try:
-        r = subprocess.run(cmd, capture_output=True, timeout=SHOT_WEBKIT_TIMEOUT)
+        for attempt in range(1, SHOT_NAV_RETRIES + 1):
+            r = subprocess.run(cmd, capture_output=True, timeout=SHOT_WEBKIT_TIMEOUT)
+            if r.returncode == 0 or attempt == SHOT_NAV_RETRIES \
+                    or not _shot_nav_retryable(r.stderr):
+                break
+            first = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            first = next((ln for ln in first if "Error" in ln), first[0] if first else "")
+            print(f"s9 shot: 탐색 연결 오류 — 다시 시도 {attempt}/{SHOT_NAV_RETRIES}: {first[:120]}",
+                  file=sys.stderr)
+            time.sleep(1.5)
     except subprocess.TimeoutExpired:
         print(f"s9 shot: {browser} 캡처가 {SHOT_WEBKIT_TIMEOUT}초 안에 끝나지 않았다: "
-              f"{cmd[2]}", file=sys.stderr)
+              f"{' '.join(cmd)}", file=sys.stderr)
         sys.exit(3)
     if r.returncode != 0:
         tail = (r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()[-800:]
-        print(f"s9 shot: {browser} 캡처 실패 (exit {r.returncode}): {cmd[2]}\n{tail}\n"
+        print(f"s9 shot: {browser} 캡처 실패 (exit {r.returncode}): {' '.join(cmd)}\n{tail}\n"
               + _shot_webkit_install_guide(), file=sys.stderr, end="")
         sys.exit(3)
     if mid is not None:
