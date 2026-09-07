@@ -258,11 +258,17 @@ Playwright WebKit 은 **맥에 가기 전에 싸게 걸러 내는 자리**이지
    캡처는 `vault/requests/<연>/<월>/assets/<REQ>/` 에 두면 `s9 sync` 로 이쪽에도 와서
    리드가 직접 Read 로 본다 — 맥의 파일 경로를 그대로 받지 마라, 이 머신에는 없다.
 
-   맥에서 **지금 못 하는 것**(사람이 Safari ▸ 설정 ▸ 고급 ▸ 개발자용에서 켜야 한다):
-   「Allow Remote Automation」이 꺼져 있어 safaridriver 가 안 되고, 「Allow JavaScript
-   from Apple Events」가 꺼져 있어 값(innerWidth·option 문구 등)을 못 읽는다. 그래서
-   **눌러야 보이는 것**(select 를 펼쳐 읽기)과 **계산값**은 맥에서 못 잰다 — 그 항목만
-   WebKit 이나 사람이 보고, 노트에 「맥에서 못 잰 항목」으로 남긴다.
+   **보낼 때는 push 한 sha 를 준다** (2026-09-07 실측): 아직 안 민 sha 를 적어 보내면
+   맥은 그 객체를 모른다 — 그쪽은 origin 최신으로 재고, 무엇을 잰 것인지 어긋난다.
+   `git push` 뒤에 `git rev-parse --short origin/main` 을 적어 보낸다.
+
+   맥이 **무엇까지 잴 수 있는지는 그 맥의 Safari 설정이 정한다**(Safari ▸ 설정 ▸ 고급 ▸
+   개발자용). 「Allow Remote Automation」과 「Allow JavaScript from Apple Events」가
+   켜져 있으면 safaridriver 로 **누르는 것**까지 되고 계산값도 읽힌다(2026-09-07 확인:
+   POST /session · /url · /execute/sync, `innerWidth`·DOM 값 · 새 창은 800x600 이라
+   `/window/rect` 로 맞춘다). 꺼져 있으면 **눌러야 보이는 것**(select 를 펼쳐 읽기)과
+   **계산값**을 못 잰다 — 그때는 그 항목만 WebKit 이나 사람이 보고 노트에 「맥에서 못 잰
+   항목」으로 남긴다. 켜고 끄는 것은 사람의 몫이니 행동 요청 가이드로 청한다.
 2. **Playwright WebKit** — Safari 가 없으면 WebKit 엔진으로 찍는다. 이 WSL 에서는
    **`s9 shot` 의 기본 엔진(auto)도 이 러너가 있으면 Playwright chromium 이다** (REQ-20260906-096):
    Playwright 는 뷰포트를 탐색 전에 잡아 페이지의 실측(--docsh 레일 높이 등)이 맞는다.
