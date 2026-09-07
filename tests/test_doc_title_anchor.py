@@ -116,9 +116,18 @@ class DocTitleAnchor(unittest.TestCase):
                 self.assertIn("docRank", fn, "순위를 기억하지 않는다")
                 self.assertIn("refreeze", fn, "다시 얼릴 조건이 없다")
                 self.assertIn("docRankKey !== key", fn, "조건이 바뀌어도 얼음이 그대로다")
-                # 새 문서는 맨 위로 — 얼렸다고 새것을 묻어 두지 않는다
+                # 새 문서는 맨 위로 — 얼렸다고 새것을 묻어 두지 않는다.
+                # **어떻게 그러는지는 이 계약이 아니다** (REQ-20260907-058):
+                # 예전엔 `Math.min` 으로 순위를 밀어 올렸고 이 줄이 그 글자를
+                # 못 박았는데, 그 방식이 바로 결함이었다 — Board 에서 좁게 얼린
+                # 뒤 돌아오면 옛 문서 901장이 「새 문서」가 되어 맨 위에 앉았다.
+                # 이제는 제 시각이 놓이는 자리에 끼우고, 진짜 새 문서는 시각이
+                # 가장 커서 **결과로** 맨 위에 선다. 그 결과를 재는 시험은
+                # tests/test_docs_order_thaw.py 가 node 로 실행해서 잰다
+                # (DOC-20260907-002: 계약은 뜻을 재고 글자를 재지 않는다).
                 self.assertIn("!docRank.has(r.id)", fn, "새 문서를 알아보지 못한다")
-                self.assertIn("Math.min", fn, "새 문서가 맨 위로 오지 않는다")
+                self.assertIn("docFroze", fn,
+                              "얼린 시각을 기억하지 않는다 — 끼워 넣을 자리를 못 찾는다")
                 # 목록은 이제 얼린 순서로 그린다
                 rd = self._fn("renderDocs")
                 self.assertIn("stableOrder(rows, okey, refreeze)", rd,
