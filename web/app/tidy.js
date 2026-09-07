@@ -53,7 +53,7 @@ async function tidyFetch(){
 
 const tidyIsArchived = id => !!(tidyArch || []).some(r => r.id === id);
 
-/* 서버에 보내는 유일한 문 — 실패는 삼키지 않는다. 스무 개를 골라 누른 사람에게
+/* 서버에 보내는 유일한 경로 — 실패는 삼키지 않는다. 스무 개를 골라 누른 사람에게
    "됐다"만 돌려주면 무엇이 안 됐는지 알 수 없어서, 넘어진 것은 이름과 사유로
    말한다. */
 async function tidySend(op, ids, extra){
@@ -397,7 +397,7 @@ document.addEventListener("click", e => {
      지키는 자리를 둘로 나누면 언젠가 한쪽만 지켜진다. 그래서 물음은 `near`
      한 곳에서만 던진다.
 
-     그리고 그 `near` 도 자기 문을 따로 파지 않는다 — 여기서 한 번 막은 뒤
+     그리고 그 `near` 도 자기 경로를 따로 두지 않는다 — 여기서 한 번 막은 뒤
      `events.js` 에서 **같은 오류가 그대로 다시 났고**(REQ-20260830-010,
      글자를 끌면 dragstart 의 target 이 텍스트 노드다), 조각 하나가 또 통째로
      죽었다. 조각마다 자기 방어를 두면 조각 수만큼 구멍이 남는다. 판정은

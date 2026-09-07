@@ -150,7 +150,7 @@ let docFresh = false;
 
    **목적지는 문서의 종류가 정한다** (REQ-20260831-026 G0′). 여는 손잡이는 여전히
    하나지만, 프로젝트 문서의 자리는 이제 Projects 탭이다 — 문맥 띠의 「열기」도,
-   Graph 노드도, 본문의 doclink 도 같은 문으로 들어와 제 자리에서 열린다. 손잡이를
+   Graph 노드도, 본문의 doclink 도 같은 진입점으로 들어와 제 자리에서 열린다. 손잡이를
    종류마다 하나씩 만들면 언젠가 한쪽만 고쳐진다. */
 function docOpen(id){
   selectedDoc = id;

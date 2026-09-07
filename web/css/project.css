@@ -17,7 +17,7 @@
    사는 이 패널은 상자가 아니라 **문서의 한 절**이라 `.metatbl`·`.viewer` 가
    이미 입혀 둔 옷을 그대로 입는다.
 
-   ── 멤버 표의 관문은 여기 한 곳이다 (.pmem)
+   ── 멤버 표의 경로는 여기 한 곳이다 (.pmem)
    header.css 의 `.proj-info table|th|td|select|input|.pi-x|.m-*` 는 B2 에서
    **지워졌다** — 그 마크업이 이제 `.pmem` 을 입는다. 규칙이 두 벌이면 스킨 열
    벌이 저마다 한 벌만 고친다(벨트 글리프 때의 그 함정). 되살리지 마라.
@@ -76,8 +76,8 @@ select.pjc{padding-right:4px}
    에서는 손잡이 줄이 머리의 전부라, 선 하나만 남으면 뜻 없는 획이 된다. */
 .pjhead .pjtail:first-child{margin-top:0;padding-top:0;border-top:0}
 /* `.more` 는 목록에서 한 줄을 통째로 먹는 문법이다 — 머리에 설 때만 폭을 놓는다.
-   **잉크는 한 급 올린다**(리드 판정 1): 이 REQ 가 푸는 문제가 「문이 없다」인데
-   `.more` 의 `--faint`(≈2.8:1)로 그리면 그 문을 화면에서 가장 옅게 그린 셈이다.
+   **잉크는 한 급 올린다**(리드 판정 1): 이 REQ 가 푸는 문제가 「손잡이가 없다」인데
+   `.more` 의 `--faint`(≈2.8:1)로 그리면 그 손잡이를 화면에서 가장 옅게 그린 셈이다.
    hover 는 base 그대로 `--text` 로 올라온다.
    선택자를 한 급 올린 이유: 클래스 둘(`.pjhead .more`)은 `[data-skin=calm] .more`
    와 같은 급인데 calm.css 가 뒤에 실려, calm 에서만 이 손잡이가 `padding:6px 12px`

@@ -15,7 +15,7 @@
 
    **판정은 서버가 한다.** 화면이 네 조건(도는 일·고치던 파일·갈라짐·자격)을
    다시 세면 규칙이 두 벌이 되어 언젠가 갈린다 — 전이가 `do_transition` 한
-   문을 지나는 그 규율이다. 화면은 서버가 준 `can.pull{ok,why}` /
+   경로를 지나는 그 규율이다. 화면은 서버가 준 `can.pull{ok,why}` /
    `can.push{ok,why}` 를 **그대로** 그리고, 누른 순간 서버가 다시 판정한다
    (화면이 「없다」고 그려 준 사이에 백그라운드 작업이 뜰 수 있다).
 
@@ -58,7 +58,7 @@ let gitFilesOpen = false;
 
 // 헤드리스 캡처 갈래 (`?git=same|push|pull|split|dirty|jobs|denied`) —
 // `?mh=demo`·`?dlg=` 와 동형. 상태만 지어내고 **판정과 문장은 서버의
-// 진짜 문을 지난다**: 거울이 옛 문장을 들면 캡처가 거짓을 증언한다.
+// 진짜 경로를 지난다**: 거울이 옛 문장을 들면 캡처가 거짓을 증언한다.
 const gitDemo = () => (/[?&]git=([a-z]+)/.exec(location.search) || ["", ""])[1];
 
 /* ---------------- 문장 ---------------- */
@@ -419,10 +419,10 @@ async function gitDo(what){
 
 function wireRepoPanel(host){
   if (!host) return;
-  /* **한 그릇에 한 번만 문다.** 구역을 갈아도 `#sview` 는 살아남고 안쪽 글자만
+  /* **한 그릇에 한 번만 건다.** 구역을 갈아도 `#sview` 는 살아남고 안쪽 글자만
      바뀐다 — 「저장소 → 시스템 → 저장소」로 돌아오면 같은 그릇에 손잡이가 한 벌
      더 물려, 한 번 누른 push 가 창을 두 개 연다. 그릇에 표를 남겨 막는다(판을
-     통째로 다시 세우면 그릇도 새것이라 표가 없다 — 그때는 다시 문다). */
+     통째로 다시 세우면 그릇도 새것이라 표가 없다 — 그때는 다시 건다). */
   if (host.dataset.gwired) return;
   host.dataset.gwired = "1";
   // 판은 상태가 바뀔 때마다 다시 그려지는 조각을 품는다(고치던 파일 목록·
@@ -430,7 +430,7 @@ function wireRepoPanel(host){
   // 받는다.
   host.addEventListener("click", async ev => {
     // 대상에게 직접 묻지 않는다 — 텍스트 노드가 오면 `.closest` 가 없어 이
-    // 조각이 통째로 죽는다 (state.js `evEl` 이 그래서 있는 문이다).
+    // 조각이 통째로 죽는다 (state.js `evEl` 이 그래서 있는 경로다).
     const btn = evEl(ev.target)?.closest("button");
     if (!btn || btn.getAttribute("aria-disabled") === "true") return;
     if (btn.id === "g-recheck"){

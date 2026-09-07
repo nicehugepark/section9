@@ -43,7 +43,7 @@ function supplyPump(){
   }
 }
 function supplyFree(){ supplyBusy--; supplyPump(); }
-// 나중 것은 판이 그려진 뒤에야 줄을 선다 — 첫 화면을 밀지 않기 위한 문이다.
+// 나중 것은 판이 그려진 뒤에야 줄을 선다 — 첫 화면을 밀지 않으려고 붙잡아 두는 것이다.
 function supplyRelease(){ supplyOpen = true; supplyPump(); }
 
 async function loadSupply(key, fetcher, opts){
@@ -163,9 +163,9 @@ async function supplyAgain(key){
    그래서 `TRANS` 는 그 세션 내내 빈 채로 남고, 문서 화면은 아무 말 없이 상태
    옮기기 버튼을 안 그렸다 — 사용자는 "이 문서는 옮길 수 없구나"로 읽는다.
 
-   표를 받는 문은 여기 하나다. 물러섰다 다시 받고, 그래도 못 받으면 **그 사실을
+   표를 받는 경로는 여기 하나다. 물러섰다 다시 받고, 그래도 못 받으면 **그 사실을
    남긴다**(transFailed) — 화면이 "없다"와 "아직 안 왔다"를 가르는 근거가
-   이것이다. 물러서기·재시도·기록은 REQ-20260828-039 에서 공통 문(loadSupply)
+   이것이다. 물러서기·재시도·기록은 REQ-20260828-039 에서 공통 경로(loadSupply)
    으로 옮겼다: 이 화면이 받아 오는 값 전부가 같은 규칙을 탄다. */
 let transFailed = false, transWait = null, transAt = 0;
 const transReady = () => Object.keys(TRANS).length > 0;

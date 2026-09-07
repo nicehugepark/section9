@@ -34,7 +34,7 @@ async function postJSON(url, body){
 let settingsSection = "display";  // display | account | worker | users | repo | about
 
 async function renderSettings(){
-  // 같은 값은 같은 문을 지난다 (REQ-20260828-039) — 여기서만 조용히 빈 목록으로
+  // 같은 값은 같은 경로를 지난다 (REQ-20260828-039) — 여기서만 조용히 빈 목록으로
   // 물러나면 "등록된 사용자가 없다" 는 거짓말이 화면에 선다.
   await loadUsers();
   const data = {users: window.__users || []};
@@ -52,7 +52,7 @@ async function renderSettings(){
        「내 계정」 안에 아홉째 덩이로 얹지 않는 이유는 캡처가 근거다: 그 판은
        이미 덩이 여덟에 세로 1,400px 를 넘고, 「내가 누구인가」와 「내가 없을 때
        무엇이 일어나는가」를 한 스크롤에 섞게 된다.
-       부제는 상태를 겸한다 — 목록만 봐도 열려 있는 문이 보인다. */
+       부제는 상태를 겸한다 — 목록만 봐도 그 자리의 상태가 보인다. */
     ["worker", "백그라운드 작업", workerNavSub(
       me ? (data.users || []).find(x => x.name === me) : null)],
     ["users", "사용자 관리", meAdmin ? "등록·역할·시점 미리보기 (admin)" : "admin 전용"],

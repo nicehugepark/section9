@@ -171,7 +171,7 @@ const ccDocs = escaped =>
 
    아래 세 이름은 서버(`bin/s9` 의 CODE_ROOTS·CODE_FILES·CODE_EXT)의 **사본**이다.
    사본을 두는 이유는 하나뿐이다: **열리지 않는 경로를 링크로 세우지 않기 위해서.**
-   이것은 게이트가 아니다 — 막는 것은 오직 서버의 `code_visible` 하나이고, 여기
+   이것은 검사가 아니다 — 막는 것은 오직 서버의 `code_visible` 하나이고, 여기
    글자를 고쳐도 열리는 파일은 한 개도 늘지 않는다. 두 벌이 갈라지는 것을
    막는 것은 시험이다(tests/test_code_peek_ui.py 가 두 벌을 맞대 본다). */
 const CODE_ROOTS = ["bin", "docs", "harness", "tests", "web"];
@@ -305,7 +305,7 @@ function ccText(raw, at){
       .replace(/`([^`\n]+)`/g, (m0, c) =>
         keep(`<span class="cccode">${ccDocs(ccPathRules(c, keep))}</span>`))
       .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
-      /* 문서 첨부 경로 — 이미 있는 게이트(/api/asset, 문서 가시성 상속)로만
+      /* 문서 첨부 경로 — 이미 있는 검사(/api/asset, 문서 가시성 상속)로만
          내준다. 저장소의 아무 파일이나 내주는 길은 만들지 않는다: 무엇을
          내줄지의 경계는 화면이 정할 것이 아니다 (REQ-20260828-028). */
       .replace(/((?:[\w.-]+\/)*assets\/((?:REQ|DOC|SES|QST)-\d{8}-\d{3,}(?:-[0-9a-z]{4})?)\/([\w.@%+-]+))/g,

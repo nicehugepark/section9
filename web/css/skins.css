@@ -149,7 +149,7 @@
    칩은 `.acts button:hover{background:var(--text)}` 로 칠해지므로, 반전된 카드
    배경과 **같은 색**이 된다 — 손을 얹으면 칩이 사라지고 글리프도 함께 배경색이
    되어 손잡이가 통째로 없어졌다. 색만 뒤집는다: 칩은 종이색, 글리프는 잉크색.
-   (칠해지는 자리는 여전히 actions.css 의 관문이 정한다 — 여기서는 `background`
+   (칠해지는 자리는 여전히 actions.css 의 경로가 정한다 — 여기서는 `background`
    단축을 쓰지 않아 그 `background-clip` 을 되돌리지 않는다.) */
 [data-skin="terminal"] .card:hover .acts.deedbelt button.deed.ico:hover{
   background-color:var(--bg)}

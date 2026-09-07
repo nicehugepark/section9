@@ -122,8 +122,8 @@ async function run(){
           `class="${esc(tabBtn.className)}" · hash ${esc(was || "(빈)")} → `
           + esc(win.location.hash || "(빈)"));
 
-    /* ③ 문이 하나인가. 조각마다 자기 방어를 두면 조각 수만큼 구멍이 남는다. */
-    say(`\n③ 대상을 요소로 바꾸는 문이 하나인가`);
+    /* ③ 경로가 하나인가. 조각마다 자기 방어를 두면 조각 수만큼 구멍이 남는다. */
+    say(`\n③ 대상을 요소로 바꾸는 경로가 하나인가`);
     check("evEl 이 화면에 서 있다", typeof win.evEl === "function");
     check("텍스트 노드는 감싼 요소로 올라간다",
           win.evEl(txt) === card || card.contains(win.evEl(txt)),

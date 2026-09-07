@@ -78,13 +78,9 @@ GATE_OK = re.compile(r"(을|를|글자를|상수를) 문[ 다것]")
 class NoGateMetaphor(unittest.TestCase):
     """gate 를 「문」으로 부르지 않는다 — 검사·경로·진입점으로 적는다."""
 
-    # web/ 은 이번 회차 밖이다 (REQ-20260907-071 — 같은 시각 frontend-developer 가
-    # web/app/ 을 고치고 있었다). 화면 쪽을 손질한 회차에서 이 줄을 지워라.
-    NOT_YET = "/web/"
-
     def test_the_gate_is_called_a_check_not_a_door(self):
         offenders = []
-        for path in [p for p in _sources() if self.NOT_YET not in p.replace(os.sep, "/")]:
+        for path in [p for p in _sources()] :
             in_table = False
             with open(path, encoding="utf-8", errors="replace") as f:
                 for no, line in enumerate(f, 1):
@@ -104,7 +100,7 @@ class NoGateMetaphor(unittest.TestCase):
         """시험 이름·식별자에도 door 를 쓰지 않는다 — gate·path·entry 로 적는다."""
         rx = re.compile(r"(?<![A-Za-z])[Dd]oors?(?![A-Za-z])")
         offenders = [f"{os.path.relpath(p, ROOT)}:{no}"
-                     for p in _sources() if self.NOT_YET not in p.replace(os.sep, "/")
+                     for p in _sources()
                      for no, line in enumerate(open(p, encoding="utf-8", errors="replace"), 1)
                      if rx.search(line)]
         self.assertEqual(offenders, [], "식별자에 door 가 남아 있다:\n" + "\n".join(offenders[:40]))

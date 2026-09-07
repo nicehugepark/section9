@@ -379,7 +379,7 @@ function wireWorkerCfg(host, u){
   paint();
 }
 
-/* 좌측 목록의 부제는 **상태를 겸한다** — 목록만 봐도 열려 있는 문이 보인다.
+/* 좌측 목록의 부제는 **상태를 겸한다** — 목록만 봐도 그 자리의 상태가 보인다.
    (「내 계정」이 `⚠ 미기재 N` 을 다는 그 자리다.) */
 function workerNavSub(u){
   if (!u) return "미등록 계정";

@@ -182,7 +182,7 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 .settings-note{font-size:11px;color:var(--faint);margin:2px 0 0;line-height:1.5}
 /* 프로젝트 패널의 규칙은 여기 없다 (REQ-20260831-028 B2). Board 위 244px 표는
    32px 문맥 띠(.pjstrip)가 대신하고, 멤버 표·설정 격자는 PRJ 문서 뷰로 옮겨
-   `web/css/project.css` 의 `.pmem`·`.pjset` 한 관문을 지난다 — 규칙이 두 벌이면
+   `web/css/project.css` 의 `.pmem`·`.pjset` 한 경로를 지난다 — 규칙이 두 벌이면
    스킨 열 벌이 저마다 한 벌만 고친다(벨트 글리프 때의 그 함정). */
 .hrow2 input[type="text"],.hrow2 select{border:1px solid var(--border);
   padding:5px 9px;font-size:12.5px;background:var(--panel);color:var(--text);font-family:inherit}
