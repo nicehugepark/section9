@@ -348,6 +348,7 @@ class StallRendersTheSame(unittest.TestCase):
             g("stopBtnHTML"), g("holdTell"), g("holdTellHTML"),
             g("wakeBtnHTML"), g("driftBtnHTML"),
             g("deedBeltHTML"), g("holdLockHTML"), g("stallHTML"),
+            g("tokensLineHTML"),   # REQ-20260907-009 — cardHTML 이 부른다
             g("cardHTML"),
             "CAT = %s;" % json.dumps(rows),
             # 눌린 직후의 기억 상태를 세우는 자리 — 서버 왕복 없이 그 얼굴만 본다
