@@ -246,6 +246,16 @@ document.addEventListener("click", e => {
     docReach = {};
     render(); return;
   }
+  /* 얼린 순서를 사람이 녹인다 (REQ-20260907-058). 저절로 녹이지 않는 까닭은
+     `stableOrder` 주석에 있다 — 읽던 줄이 발밑에서 튀는 것을 막으려고 얼린 것이라,
+     푸는 것도 사람의 손이어야 한다. 편 만큼(docReach)은 그대로 둔다: 목록이 도로
+     짧아지면 순서를 맞추려다 다시 흔드는 꼴이 된다. */
+  const rm = evEl(e.target)?.closest("[data-remelt]");
+  if (rm){
+    e.stopPropagation();
+    thawDocOrder();
+    render(); return;
+  }
   const ex = evEl(e.target)?.closest("[data-expand]");
   if (ex){
     const k = ex.dataset.expand;

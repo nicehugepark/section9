@@ -362,18 +362,29 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
    (전 스킨 검수 규칙 2). 이름이 없는 자리(타입을 골라 본 중)에서도 손잡이는
    오른쪽 그대로다 — 자리가 상태에 따라 움직이지 않는다. */
 .doclist .grp{display:flex;align-items:baseline;gap:10px}
+/* 순서가 낡았다는 한 줄 (REQ-20260907-058). 붙박이 띠(타입바) 바로 아래, 첫 무리
+   머리 위. 띠와 달리 따라붙지 않는다 — 목록을 내려 읽는 동안까지 자리를 차지할
+   말이 아니고, 무리 머리 둘이 같은 자리에 겹치면 어느 쪽이 따라붙는지 알 수 없다.
+   면도 테두리도 색도 없다: 고장이 아니라 사실 한 줄이다. 손잡이는 문장 끝에 이어
+   서고, 줄이 좁아지면 통째로 다음 줄로 내려간다(문서 판의 「찾은 답」 줄과 같은 모양). */
+.doclist .freeze{margin:0;padding:10px 14px;font-size:11.5px;line-height:1.5;
+  color:var(--muted);word-break:keep-all;border-bottom:1px solid var(--hairline)}
+.doclist .freeze .grpf{font-size:11.5px;margin-left:2px;white-space:nowrap}
 .doclist .grp .grpf{margin-left:auto}
 /* 글자 손잡이 — 면도 테두리도 없다. 잉크와 밑줄만으로 「누를 수 있다」를
    말하는 것이 이 목록의 어휘다(.more 와 같은 급). 무리 머리가 mono 대문자
    자리이므로 손잡이도 그 얼굴을 입되, 읽어야 하는 글자라 잉크는 --faint 가
-   아니라 --muted 다(전 스킨 검수 규칙 5). */
-.doclist .grp .grpf{font-family:var(--sans);font-size:11px;
+   아니라 --muted 다(전 스킨 검수 규칙 5).
+   선택자를 무리 머리에서 **목록 전체**로 넓혔다 (REQ-20260907-058) — 같은 손잡이가
+   머리 밖(순서 낡음 줄)에도 서기 때문이다. 자리마다 규칙을 새로 적으면 한 벌만
+   고쳐진다. 오른쪽으로 미는 것(margin-left:auto)만 머리의 몫으로 남는다. */
+.doclist .grpf{font-family:var(--sans);font-size:11px;
   letter-spacing:.02em;text-transform:none;font-weight:600;
   color:var(--muted);background:none;border:0;padding:0 0 1px;
   cursor:pointer;border-bottom:1px solid transparent}
-.doclist .grp .grpf:hover{color:var(--text);border-bottom-color:var(--text)}
-.doclist .grp .grpf.on{color:var(--text);border-bottom-color:var(--text)}
-.doclist .grp .grpf:focus-visible{outline:1px solid var(--text);outline-offset:2px}
+.doclist .grpf:hover{color:var(--text);border-bottom-color:var(--text)}
+.doclist .grpf.on{color:var(--text);border-bottom-color:var(--text)}
+.doclist .grpf:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 
 /* 손잡이의 폭은 **가장 긴 얼굴의 제 글자**가 잡는다 — 「답 찾기」→「찾는 중
    12초」로 얼굴이 바뀔 때 옆의 「이어 말하기」가 밀리면 그 자체가 결함이다

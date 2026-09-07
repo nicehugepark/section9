@@ -19,6 +19,26 @@ function unansHandleHTML(total, left){
   return `<button type="button" class="grpf${unansOnly ? " on" : ""}" data-unans`
     + ` title="${esc(tip)}" aria-pressed="${unansOnly}">${esc(label)}</button>`;
 }
+/* 얼린 순서에서 **나가는 문** (REQ-20260907-058).
+
+   목록은 읽는 동안 자리를 잡아 둔다(state.js 의 `stableOrder`). 그 사이 문서가
+   여럿 바뀌면 얼린 순서가 실제와 어긋나는데, 그때까지는 그 사실이 화면에 없어서
+   사람 눈에는 순서가 고장 난 것으로 보였다.
+
+   저절로 녹이지 않는 까닭과 문턱 셋의 근거는 `stableOrder` 주석에 있다. 여기서는
+   그 셈을 **한 줄로 말하고 손잡이 하나를 준다** — 어휘는 이 목록이 이미 쓰는 글자
+   손잡이(「N개 더 보기」·「답 없음 N장만 보기」)와 같은 계보이고, 문장 끝에 손잡이가
+   이어 서는 모양은 문서 판의 「찾은 답」 줄(`.ansfound`)이 이미 쓰는 것이다.
+   새 부품을 만들지 않는다. */
+function staleHandleHTML(){
+  const n = docStaleCount();
+  if (!n) return "";
+  const act = "새 순서로 보기";
+  const tell = `목록을 연 뒤 ${n}개가 바뀌었습니다`;
+  return `<p class="freeze">${esc(tell)} <button type="button" class="grpf"
+    data-remelt title="목록을 연 때의 순서를 지금 순서로 다시 세웁니다"
+    aria-label="${esc(tell + " — " + act)}">${esc(act)}</button></p>`;
+}
 /* 고른 문서를 놓는다 (REQ-20260829-012).
 
    주소에서도 뺀다 — 새로고침에 되살아나면 아무것도 안 푼 것이다. 오른쪽 판도
@@ -206,7 +226,7 @@ async function renderDocs(rows){
         <span class="st${r.type === "question" ? " ko" : ""}">${esc(statusLabel(r))}</span>
         <div class="id">${esc(shortId(r.id))}${prioHTML(r)}${off}</div><div>${esc(r.title)}</div>${snips}</div>`;
   };
-  let list = `<div class="typebar">${bar}</div>`;
+  let list = `<div class="typebar">${bar}</div>` + staleHandleHTML();
   for (const [g, grp] of Object.entries(groups)){
     if (!grp.length) continue;
     const open = expanded.has("grp:"+g) || !!matchMap;

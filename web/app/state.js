@@ -41,8 +41,8 @@ const workOrder = rows => [...rows].sort((a, b) =>
 // 집을까"를 묻는 화면이라 우선순위가 앞서지만, Docs 는 "무슨 일이 있었나"를
 // 훑는 화면이다 — 거기서는 우선순위 50짜리 옛 문서가 방금 고친 문서 위에
 // 앉아 있는 것이 방해가 된다. 정렬 규칙을 흩지 않으려고 여기 나란히 둔다.
-const recentOrder = rows => [...rows].sort((a, b) =>
-  (b.updated || b.created || "").localeCompare(a.updated || a.created || ""));
+const upd = r => r.updated || r.created || "";
+const recentOrder = rows => [...rows].sort((a, b) => upd(b).localeCompare(upd(a)));
 
 /* **읽는 동안 목록이 발밑에서 움직이지 않게** 한다 (REQ-20260828-009).
 
@@ -59,20 +59,53 @@ const recentOrder = rows => [...rows].sort((a, b) =>
    바꾸거나 Docs 화면에 새로 들어올 때. 그 사이에 **새로 생긴 문서는 맨 위로**
    올라온다: 그건 발밑이 흔들리는 것이 아니라 실제로 새것이 온 것이다. */
 const curType0 = () => { const e = document.querySelector("#f-type"); return e ? e.value : ""; };
-let docRank = null, docRankKey = "";
+/* 얼음에는 **나가는 문**이 있어야 한다 (REQ-20260907-058).
+
+   사용자: "문서 목록 순서가 또 뭔가 이상해진듯한데.."
+
+   정렬은 맞았다. 어긋난 것은 얼린 순서다 — 한 화면을 열어 둔 채 문서 스무 건이
+   넘게 바뀌자, 새로 생긴 문서는 맨 위에 서는데 **글이 붙은 문서는 옛 자리에
+   머물러** 둘이 섞였다. 얼림은 위(REQ-20260828-009)의 까닭대로 옳지만, 그때는
+   낡았다는 사실이 화면에 보이지도 않았고 탭을 옮겼다 오지 않으면 다시 얼릴 수도
+   없었다.
+
+   그래서 얼음을 **저절로 녹이지는 않는다** — 읽던 줄이 발밑에서 튀는 것이 이
+   장치가 애초에 막으려던 것이다. 대신 얼마나 낡았는지를 세어 두고, 화면이 그
+   사실을 말하고 사람이 고른다(docs.js 의 `staleHandleHTML`).
+
+   문턱이 세 건인 까닭: 얼림은 "읽는 사이 두어 건이 바뀐다"를 전제로 만든 장치다.
+   그 두어 건까지는 설계가 감당하는 자리이고, 넘어서는 순간이 감당하도록 만들어지지
+   않은 자리다. 한 건마다 목록 머리에 줄이 서면 그 줄은 늘 서 있어 벽지가 된다. */
+const STALE_MIN = 3;
+let docRank = null, docRankKey = "", docFroze = null, docStale = 0;
 function stableOrder(rows, key, refreeze){
   if (docRank === null || refreeze || docRankKey !== key){
-    docRank = new Map(); docRankKey = key;
-    recentOrder(rows).forEach((r, i) => docRank.set(r.id, i));
+    docRank = new Map(); docRankKey = key; docFroze = new Map();
+    recentOrder(rows).forEach((r, i) => { docRank.set(r.id, i); docFroze.set(r.id, upd(r)); });
   }
   const fresh = rows.filter(r => !docRank.has(r.id));
   if (fresh.length){
-    let min = Math.min(0, ...docRank.values());
     // 뒤집어 넣어야 가장 최근 것이 가장 작은 순위(=맨 위)를 받는다
-    recentOrder(fresh).reverse().forEach(r => docRank.set(r.id, --min));
+    let min = Math.min(0, ...docRank.values());
+    recentOrder(fresh).reverse().forEach(r => {
+      docRank.set(r.id, --min); docFroze.set(r.id, upd(r)); });
   }
-  return [...rows].sort((a, b) => docRank.get(a.id) - docRank.get(b.id));
+  const ordered = [...rows].sort((a, b) => docRank.get(a.id) - docRank.get(b.id));
+  /* 낡은 만큼을 센다 — **얼린 뒤 글이 붙었고, 그래서 제 자리를 떠나야 하는** 문서만.
+     새로 온 문서는 이미 맨 위에 서 있으니 세지 않고, 글이 붙었어도 자리가 그대로인
+     문서(맨 위에서 또 갱신된 것)도 세지 않는다 — 그것까지 세면 "바뀌었습니다"가
+     사람 눈에 보이는 것과 어긋나 거짓이 된다. */
+  const now = new Map();
+  recentOrder(rows).forEach((r, i) => now.set(r.id, i));
+  docStale = 0;
+  ordered.forEach((r, i) => {
+    if (docFroze.get(r.id) !== upd(r) && now.get(r.id) !== i) docStale++; });
+  return ordered;
 }
+// 화면에 말할 만큼 낡았는가 — 문턱 아래는 0 으로 접는다(파생 값이라 저장하지 않는다).
+const docStaleCount = () => docStale >= STALE_MIN ? docStale : 0;
+// 사람이 얼음을 녹인다. 다음 렌더가 지금 순서로 다시 얼린다.
+function thawDocOrder(){ docRank = null; }
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g,
