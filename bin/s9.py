@@ -612,6 +612,22 @@ def fm_parse(text):
     return meta, body
 
 
+def derived_ids(meta):
+    """`derived_from` 을 **언제나 목록으로** 읽는다 (REQ-20260907-075).
+
+    쓰는 자리가 둘이라 저장된 모양도 둘이다: `new`·`set` 은 문자열 하나를 쓰고,
+    흡수(open→done 의 note 에서 건진 것)는 여럿일 수 있어 목록을 쓴다. 읽는
+    자리마다 모양을 다시 가르면 한 곳을 빠뜨리는 날 그 화면이 통째로 죽는다 —
+    2026-09-07 21:17 에 목록인 문서가 하나 생기자 `/api/graph` 가
+    `unhashable type: list` 로 끊겼고, 사람에게는 「Graph 탭이 열리지 않는다」로
+    보였다. 그래서 모양을 가르는 자리는 여기 하나다.
+    """
+    v = (meta or {}).get("derived_from") or ""
+    if isinstance(v, str):
+        return [v] if v.strip() else []
+    return [x for x in v if x]
+
+
 def read_doc(path):
     with open(path, encoding="utf-8") as f:
         return fm_parse(f.read())
@@ -9322,11 +9338,11 @@ def _spawn_rework(doc_id, meta, note):
     # 후행(파생·relates 중 review/in-progress)만 봉투에 실어 읽고 판단하게
     # 한다. 워처·rush 킥이 수렴하는 단일 지점이 여기다.
     heirs = sorted(
-        f"{r['id']}({'파생' if doc_id in (r.get('parent'), r.get('derived_from')) else '연관'}·{r['status']})"
+        f"{r['id']}({'파생' if doc_id == r.get('parent') or doc_id in derived_ids(r) else '연관'}·{r['status']})"
         for r in load_catalog()
         if r.get("type") == "request" and r["id"] != doc_id
         and r.get("status") in ("review", "in-progress")
-        and (doc_id in (r.get("parent"), r.get("derived_from"))
+        and (doc_id == r.get("parent") or doc_id in derived_ids(r)
              or doc_id in (r.get("relates") or [])
              or r["id"] in (meta.get("relates") or [])))
     heir_clause = (
@@ -10413,7 +10429,7 @@ def review_family(rows):
         return rows
 
     def edges(r):
-        return ([r.get("parent") or "", r.get("derived_from") or ""]
+        return ([r.get("parent") or ""] + derived_ids(r)
                 + list(r.get("relates") or []))
 
     up = {i: i for i in rv}         # union-find — 순환도 그저 같은 성분이다
@@ -13648,12 +13664,14 @@ def link_audit(fix=False):
                 if fix:
                     meta["blocked_by"] = [x for x in meta["blocked_by"] if x != b]
                     mark(did)
-        df = (meta.get("derived_from") or "").strip()
-        if df and df not in docs:
+        gone = [d for d in derived_ids(meta) if d not in docs]
+        for df in gone:
             issues.append(f"{did}: derived_from {df} 미존재")
-            if fix:
-                meta["derived_from"] = ""
-                mark(did)
+        if gone and fix:
+            keep = [d for d in derived_ids(meta) if d in docs]
+            meta["derived_from"] = keep if isinstance(
+                meta.get("derived_from"), list) else (keep[0] if keep else "")
+            mark(did)
     # parent 순환
     for did in docs:
         seen, cur = set(), did
@@ -24426,8 +24444,8 @@ def cmd_serve(args):
             src = meta["id"]
             if meta.get("parent"):
                 edges.append({"from": src, "to": meta["parent"], "rel": "parent"})
-            if meta.get("derived_from"):
-                edges.append({"from": src, "to": meta["derived_from"], "rel": "derived_from"})
+            for t in derived_ids(meta):
+                edges.append({"from": src, "to": t, "rel": "derived_from"})
             for t in meta.get("relates", []):
                 edges.append({"from": src, "to": t, "rel": "relates"})
             for t in meta.get("refs_docs", []):

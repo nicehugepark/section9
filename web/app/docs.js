@@ -70,6 +70,18 @@ function staleHandleHTML(){
    둘째 줄은 「읽기만 하는 자리」라는 오해를 푼다 — 승인·반려도 여기서 한다. */
 const docPickHTML = () => `<p class="empty">← 왼쪽 목록에서 문서를 골라 주세요`
   + `<span class="enext">고른 문서를 여기서 읽고 상태를 바꿉니다</span></p>`;
+/* 고른 것이 있는데 오른쪽이 비어 있으면 「골라 주세요」는 거짓말이다
+   (REQ-20260907-073). 사용자가 본 것: 목록의 한 줄은 고른 표시(닫기 손잡이·굵은
+   제목)를 달고 있는데 오른쪽은 「왼쪽 목록에서 문서를 골라 주세요」였다.
+
+   판을 새로 세울 때(탭을 옮겼다 돌아올 때) 오른쪽은 빈 판으로 서고, 그 뒤
+   `loadDoc` 이 채운다 — 그 사이의 한 순간이 이 화면이고, 그 사이가 길어지면
+   (응답이 늦거나 늦은 응답으로 판정돼 조용히 돌아가면) 그대로 남는다.
+   말을 갈라 둔다: 고른 것이 없으면 고르라고 하고, 있으면 불러오는 중이라고
+   한다. 화면의 두 자리가 같은 것을 가리키는 것이 이 조항의 전부다.
+   말은 새로 짓지 않는다 — 목록이 쓰는 「문서 목록을 불러오는 중…」의 짝이다. */
+const docLoadingHTML = () => `<p class="empty">문서를 불러오는 중…</p>`;
+const docBlankHTML = () => selectedDoc ? docLoadingHTML() : docPickHTML();
 
 function docDeselect(){
   selectedDoc = null;
@@ -294,7 +306,7 @@ async function renderDocs(rows){
   }
   else $("#view").innerHTML = `<div class="docs" data-pane="docs"><div class="doclist" data-rove
       role="group" aria-label="문서 목록 — 방향키로 이동, Enter 로 열기">${list}</div>
-    <div class="viewer" id="viewer">${docPickHTML()}</div></div>`;
+    <div class="viewer" id="viewer">${docBlankHTML()}</div></div>`;
   if (painted) roveSync();
   /* 고른 줄을 **보이게** 한다 (REQ-20260831-007). 자리를 위로 옮기는 대신 눈을
      그 자리로 옮긴다 — 다른 탭의 카드·본문 링크·주소로 들어와 그 줄이 목록
@@ -521,7 +533,9 @@ async function loadDoc(id, bg, force){
        0 으로 그리면 「안 썼다」로 읽히고, 모르는 것은 비워 둔다. */
     ["tokens", tokensLineHTML(m) || null],
     ["parent", rel(m.parent)], ["children", li(m.children)],
-    ["derived_from", rel(m.derived_from)], ["relates", li(m.relates)],
+    ["derived_from", Array.isArray(m.derived_from) ? li(m.derived_from)
+                                               : rel(m.derived_from)],
+    ["relates", li(m.relates)],
     ["refs_docs", li(m.refs_docs)],
     ["refs_links", (m.refs_links||[]).map(u => `<a href="${esc(u)}" target="_blank">${esc(u)}</a>`).join("<br>") || null],
     ["refs_files", li(m.refs_files)],
