@@ -67,7 +67,7 @@ class RemoteRun(unittest.TestCase):
         for part in ("cat > ", "refs/ci/0123456", "-q -f " + sha,
                      "index rebuild", "user attach 'nicehugepark'", "--jobs 16", "'test_a.py'"):
             self.assertIn(part, line)
-        # 커밋은 남을 거쳐 오지 않는다 — 원격의 열쇠는 다른 저장소의 것이라
+        # 커밋은 남을 거쳐 오지 않는다 — 원격의 키는 다른 저장소의 것이라
         # GitHub 이 「없는 저장소」로 답했다 (REQ-20260907-049).
         self.assertNotIn("github", line.lower(), "커밋이 GitHub 을 거친다")
         self.assertNotIn("git clone", line, "남의 저장소에서 받아 온다")

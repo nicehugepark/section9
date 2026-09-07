@@ -14,8 +14,8 @@
 
 **GitHub 을 거치지 않는다** (REQ-20260907-049 에서 바뀐 자리). 원래는 이 머신이
 `refs/ci/<sha7>` 로 origin 에 push 하고 원격이 같은 origin 에서 그것을 받았다
-(「동기화의 축은 GitHub」, 2026-09-05). 그런데 원격의 열쇠는 **다른 저장소의 deploy
-key** 라 GitHub 이 `ERROR: Repository not found.` 로 답했고 — 권한 없는 열쇠에는
+(「동기화의 축은 GitHub」, 2026-09-05). 그런데 원격의 키는 **다른 저장소의 deploy
+key** 라 GitHub 이 `ERROR: Repository not found.` 로 답했고 — 권한 없는 키에는
 없는 저장소처럼 답한다 — 원격 작업자리는 2026-09-06 14:46 커밋에 하루 내내 멈춰
 있었다. 이 머신은 이미 그 커밋을 갖고 있으니 남을 거쳐 다시 받을 이유가 없다.
 저장소 자체의 GitHub 동기화는 그대로다; 바뀐 것은 **시험용 커밋 전달 통로** 하나다.
@@ -132,8 +132,8 @@ def remote_script(sha, dest, jobs, pats_argv, *, user=""):
 
     **GitHub 을 거치지 않는다** (REQ-20260907-049). 예전에는 이 머신이 HEAD 를
     `refs/ci/<sha7>` 로 origin 에 push 하고 원격이 같은 origin 에서 그것을 받았는데,
-    원격의 열쇠는 **다른 저장소의 deploy key** 라 GitHub 이 `ERROR: Repository not
-    found.` 로 답했다(권한 없는 열쇠에는 없는 저장소처럼 답한다). 실측 2026-09-07:
+    원격의 키는 **다른 저장소의 deploy key** 라 GitHub 이 `ERROR: Repository not
+    found.` 로 답했다(권한 없는 키에는 없는 저장소처럼 답한다). 실측 2026-09-07:
     원격 작업자리는 2026-09-06 14:46 의 커밋(시험 338개)에 **하루 내내 멈춰** 있었고,
     준비 실패가 실행을 멈추지 못하던 때에는 그 옛 나무의 결과가 「전체 통과」로 나왔다.
     이 머신은 이미 그 커밋을 갖고 있다 — 남을 거쳐 다시 받을 이유가 없다. 커밋은

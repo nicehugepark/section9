@@ -7573,9 +7573,9 @@ def _lineage_write(wrapper_pid, old_sid, from_pid=0, **kv):
     """재시작이 낳을 새 세션을 옛 세션에 이을 실마리를 **덧붙인다**.
 
     `claude --resume` 는 대개 **새 sid** 를 만든다(실측 2026-09-01: a8186437 →
-    60e39ff2). 화면의 완료 판정도 s9 의 클레임·SES 승계도 전부 sid 를 열쇠로
+    60e39ff2). 화면의 완료 판정도 s9 의 클레임·SES 승계도 전부 sid 를 키로
     써서, sid 가 갈리는 순간 성공한 재시작이 「돌아오지 않음」이 되고(사용자가
-    본 1m31s) 문서가 고아가 됐다. 열쇠는 **래퍼 pid** 다 — 재시작 루프를 든
+    본 1m31s) 문서가 고아가 됐다. 키는 **래퍼 pid** 다 — 재시작 루프를 든
     `s9 code` 프로세스는 sid 가 갈려도 그대로다.
 
     덮어쓰기가 아니라 append 인 이유 (REQ-20260901-017): 래퍼당 한 파일이라
@@ -7711,7 +7711,7 @@ def _lineage_apply(rec, linked):
     old = str(rec.get("from") or "")
     from_pid = int(rec.get("from_pid") or 0)
     if not wrapper or not old:
-        return "no-key"                         # 열쇠 없는 기록은 쓸 데가 없다
+        return "no-key"                         # 키 없는 기록은 쓸 데가 없다
     machine = current_machine()
     for bp in _glob.glob(os.path.join(
             STATE, f"{safe_name(machine)}__*.json")):
@@ -8611,8 +8611,8 @@ def claude_usage(cfg_dir=None, ttl=60, offline=False):
 
     `cfg_dir` 이 없으면 `@home`(=`~/.claude`). 종전에는 인자가 아예 없었고 경로
     가 홈으로 하드코딩돼 있어서, 프로필로 뜬 세션도 헤더는 홈 계정을 찍었다
-    (REQ-20260901-017 R1). 캐시 열쇠도 홈 자격증명의 mtime 이라 **프로필을
-    바꿔도 캐시가 갱신조차 되지 않았다** — 열쇠는 이제 `(cfg_dir, cred_mtime)`.
+    (REQ-20260901-017 R1). 캐시 키도 홈 자격증명의 mtime 이라 **프로필을
+    바꿔도 캐시가 갱신조차 되지 않았다** — 키는 이제 `(cfg_dir, cred_mtime)`.
 
     계정 전환(/login)·토큰 갱신은 파일 mtime 변화로 감지해 캐시를 즉시 버린다.
 
@@ -8714,7 +8714,7 @@ def claude_usage(cfg_dir=None, ttl=60, offline=False):
 
 
 def _model_key(name):
-    """모델 이름 비교용 열쇠 — `claude-fable-5` 와 `Fable 5` 를 같은 것으로 본다."""
+    """모델 이름 비교용 키 — `claude-fable-5` 와 `Fable 5` 를 같은 것으로 본다."""
     return re.sub(r"[^a-z0-9]", "", (name or "").lower()).replace("claude", "")
 
 
@@ -15221,7 +15221,7 @@ def transcript_usage(path, started, ended):
         u = event_usage(ev)
         if u is None:
             continue
-        # id 가 없으면 **그 줄만의 열쇠**를 준다 (REQ-20260907-051). 예전엔
+        # id 가 없으면 **그 줄만의 키**를 준다 (REQ-20260907-051). 예전엔
         # timestamp 로 물러났는데, 같은 시각의 id 없는 두 줄이 한 칸에 겹쳐
         # 하나가 조용히 사라졌다. 묶을 근거가 없으면 묶지 않는다.
         mid = event_msg_id(ev) or f"#{len(seen)}"
@@ -15502,7 +15502,7 @@ def wrapper_stamp_write(pid=None):
 def wrapper_stamp_sweep(alive=None):
     """죽은 래퍼가 남긴 것을 치운다 — 지문과 재시작 이력.
 
-    pid 를 열쇠로 쓰는 파일들이라 재사용된 pid 가 남의 기록을 물면 안 된다.
+    pid 를 키로 쓰는 파일들이라 재사용된 pid 가 남의 기록을 물면 안 된다.
     계보 이력(lineage-*)은 살아 있는 동안에는 지우지 않는다(그 파일이 곧
     조사 자료다) — 래퍼가 죽고 나서야 치운다.
     """
@@ -16060,6 +16060,13 @@ BANNED_TERMS = (
     ("낱말", "용어"), ("실사고", "실제 사고"),
     # 주인 지시 2026-09-07 (REQ-20260907-007): 「단추」는 의복에서만 쓴다
     ("단추", "버튼"),
+    # 주인 지적 2026-09-07 18:26: 「캐시 \uc5f4\uc1e0라는 말은 없다. 캐시 키는 있어도.」
+    # key 는 기술 용어다 — cache key · dict key · deploy key · SSH key 어느
+    # 자리에서도 「키」로 쓴다. \uc5f4\uc1e0 는 이 제품이 지어낸 직역이고, 규약 2조 ③
+    # (기술 용어는 정직하게, 비유와 직역은 금지)이 막으려던 바로 그 모양이다.
+    # 글자를 이스케이프로 적는 것은 이 검사 표 자신이 검사에 걸리지 않게 하려는
+    # 것이다 — 실제로 리드가 일괄 치환하다 이 줄을 ("키","키") 로 만들었다.
+    ("\uc5f4\uc1e0", "키"),
 )
 
 
@@ -21000,7 +21007,7 @@ def port_guard_tick():
         left = total - bound
         head = ("거의 찼다" if ratio >= 0.75 else
                 "여유가 줄고 있다" if ratio >= 0.5 else "평시보다 높다")
-        # 판단이 달라지는 것만 열쇠에 넣는다 — 숫자가 12956 → 12973 으로
+        # 판단이 달라지는 것만 키에 넣는다 — 숫자가 12956 → 12973 으로
         # 흔들리는 것은 사람이 다시 판단할 일이 아니다. 심각도 구간(5%p 단위)과
         # 최다 점유자가 그것이다. "우리 몫"은 여기 없다 — 알 수 없는 값이라
         # 지웠고(REQ-20260827-022), 지우면서 이 줄의 참조를 남겨 경고 분기가

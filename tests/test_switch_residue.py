@@ -5,7 +5,7 @@
 걸쳐 있는데 둘의 코드·설정 나이가 따로 논다.**
 
   ① 계정을 바꿨는데 헤더는 옛 계정을 찍는다. `claude_usage()` 가 홈 경로를
-     하드코딩해 언제나 `~/.claude` 를 읽었다 — 캐시 열쇠까지 홈 자격증명의
+     하드코딩해 언제나 `~/.claude` 를 읽었다 — 캐시 키까지 홈 자격증명의
      mtime 이라 프로필을 바꿔도 갱신조차 되지 않았다. 화면이 "안 바뀌었다"고
      말하니 사용자는 방금 성공한 전환을 되돌렸다.
   ② 「세션 다시 시작 중」 칩이 안 걷힌다. 완료 판정의 유일한 증거가
@@ -146,7 +146,7 @@ class TheHeaderFollowsTheSession(unittest.TestCase):
     def test_r1_3_no_argument_means_home(self):
         self.assertEqual(mod.claude_usage()["email"], "home@ex.com")
 
-    # R1-4. 캐시 열쇠는 (설정 디렉토리, 자격증명 mtime)
+    # R1-4. 캐시 키는 (설정 디렉토리, 자격증명 mtime)
     def test_r1_4_the_cache_key_is_the_pair(self):
         mod.claude_usage(self.a)
         mod.claude_usage(self.a)

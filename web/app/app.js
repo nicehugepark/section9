@@ -287,7 +287,7 @@ function renderMyStrip(){
 
 // skipType — 타입 진입점(Docs 타입바)의 카운트용: 지금 보고 있는 타입과 무관하게
 // "다른 타입에 몇 건 있는지"를 세야 하므로 타입 조건만 뺀 같은 필터를 쓴다.
-// skip — 조건 하나를 빼고 다시 세어 보기 위한 열쇠 집합(q·type·user·project·tag·mine).
+// skip — 조건 하나를 빼고 다시 세어 보기 위한 키 집합(q·type·user·project·tag·mine).
 // 빈 화면이 "무엇 때문에 비었나"에 답하려면 조건을 하나씩 빼 보는 수밖에 없다:
 // 빼자마자 찾던 종류가 나타나는 조건, 그게 범인이다 (REQ-20260827-054).
 function filtered(skipQ, skipType, skip){

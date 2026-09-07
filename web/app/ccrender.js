@@ -544,9 +544,9 @@ function ccTsKey(x){ return (x.ts || "").replace("T", " ").slice(0, 19); }
 
    순수 로직만 여기 둔다 — fetch·DOM 없이 node 로 그대로 돌려 볼 수 있게. */
 const SUB_BACKFILL_MAX = 200;   // 붙일 때 에이전트당 되돌려 그릴 줄의 상한
-/* 정렬 열쇠는 **표시 시각(ts)** — ccTsKey 와 같은 잣대다. 여기 섞이는 것은
+/* 정렬 키는 **표시 시각(ts)** — ccTsKey 와 같은 잣대다. 여기 섞이는 것은
    세 원천(수신함 채팅·리드 transcript·에이전트 파일)인데 채팅 줄에는 at(원본
-   UTC)이 없다. 원본 UTC 를 우선 열쇠로 삼으면 UTC 와 지역시각을 나란히
+   UTC)이 없다. 원본 UTC 를 우선 키로 삼으면 UTC 와 지역시각을 나란히
    비교하게 되어 채팅 줄이 아홉 시간 어긋난 자리로 끌려간다. */
 const subKey = e => String((e && (e.ts || e.at)) || "").replace("T", " ").slice(0, 19);
 /* 이번 틱에 물어볼 목록. 이미 따라가던 에이전트는 자기 offset 에서 이어 받고
