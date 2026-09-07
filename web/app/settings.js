@@ -43,7 +43,7 @@ async function renderSettings(){
   const meAdmin = isAdmin();
   const myMiss = me ? profileMissing((data.users || []).find(x => x.name === me)) : [];
   const SECTIONS = [
-    ["display", "디스플레이", "스킨·톤·밀도 (내 계정에 저장)"],
+    ["display", "디스플레이", "skin·tone·density (내 계정에 저장)"],
     ["account", "내 계정", me
       ? `@${me} 프로필·개인화${myMiss.length ? ` ⚠ 미기재 ${myMiss.length}` : ""}`
       : "미등록 계정"],
@@ -186,7 +186,7 @@ function renderSettingsSection(meAdmin){
       if(r.type==="request") byStatus[r.status]=(byStatus[r.status]||0)+1; });
     v.innerHTML = `<h1 style="margin:0 0 10px">시스템</h1>
       <table class="metatbl">
-        <tr><td>저장소</td><td class="path">~/section9 (로컬 md + git 동기화)</td></tr>
+        <tr><td>저장소</td><td class="path">~/section9 (이 컴퓨터의 md 파일 + git 동기화)</td></tr>
         <tr><td>문서 수</td><td>${c.length} — request ${byType.request||0}, knowledge ${byType.knowledge||0}, session ${byType.session||0}</td></tr>
         <tr><td>요청 상태</td><td>${Object.entries(byStatus).map(([k,n])=>`${k} ${n}`).join(" · ")||"(없음)"}</td></tr>
         <tr><td>등록 사용자</td><td>${(window.__users||[]).map(u=>`@${esc(u.name)}[${esc(u.role)}]`).join(" ")||"(없음)"}</td></tr>
@@ -246,7 +246,7 @@ function machineHistoryHTML(u){
   // 빈 것은 고장이 아니다 — 이 계정으로 세션을 연 적이 없을 뿐이다. 옛 프로필은
   // 정말로 비어 있으므로 표를 세우지 않고 한 줄로 이유를 말한다.
   if (!rows.length)
-    return `<div class="cfg-h">머신·계정 이력</div>
+    return `<div class="cfg-h">컴퓨터·계정 이력</div>
       <p class="empty mhempty">이 계정으로 세션을 연 적이 없습니다.</p>`;
   const body = rows.map(r => {
     const t = Date.parse(r.last || "") || 0;
@@ -264,9 +264,9 @@ function machineHistoryHTML(u){
                             : esc(shortWhen(r.last))}
         <span class="mel">${esc(fmtElapsed(r.last))}</span></td></tr>`;
   }).join("");
-  return `<div class="cfg-h">머신·계정 이력</div>
+  return `<div class="cfg-h">컴퓨터·계정 이력</div>
     <div class="mhwrap"><table class="mhtbl"><thead><tr>
-      <th>머신</th><th>운영체제</th><th>계정</th><th>처음</th><th>마지막</th>
+      <th>컴퓨터</th><th>운영체제</th><th>계정</th><th>처음</th><th>마지막</th>
     </tr></thead><tbody>${body}</tbody></table></div>`;
 }
 

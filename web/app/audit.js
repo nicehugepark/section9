@@ -137,7 +137,7 @@ async function renderStream(){
   }).join("");
   $("#view").innerHTML = `<div class="streamwrap">
     <div class="doclist" data-rove role="group"
-      aria-label="세션 목록 — 방향키로 이동, Enter 로 열기">${list || '<div class="grp">no streams — 훅이 턴 종료마다 미러링합니다</div>'}</div>
+      aria-label="세션 목록 — 방향키로 이동, Enter 로 열기">${list || '<div class="grp">아직 남은 기록이 없습니다 — 세션이 한 턴을 마칠 때마다 여기에 쌓입니다</div>'}</div>
     <div class="term" id="term"><span class="meta">← 세션을 선택하세요. 터미널 transcript와 동일한 이벤트 흐름이 표시됩니다 (⚙agent = 서브에이전트 실행분). 검색창 = 이벤트 필터. 특정 요청의 구간만 보려면 Docs 탭에서 문서를 열고 "이 요청의 스트림"을 사용하세요.</span></div></div>`;
   roveSync();
   if (selectedStream) loadStream(selectedStream);

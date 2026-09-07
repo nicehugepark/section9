@@ -428,7 +428,7 @@ async function termAttach(T, nt){
   const w = $("#cc-wait");
   if (w) w.insertAdjacentHTML("beforebegin", html ||
     ccLine("✻", "var(--cc-dim)",
-      '<span style="color:var(--cc-dim)">empty transcript — 첫 메시지를 보내보세요</span>'));
+      '<span style="color:var(--cc-dim)">아직 주고받은 말이 없습니다 — 첫 메시지를 보내 보세요</span>'));
   const out = $("#ccout");
   if (out) out.scrollTop = out.scrollHeight;
   termMeta(T); termSpinnerEval(T); termAgentsRender(T);

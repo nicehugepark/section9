@@ -664,7 +664,7 @@ async function loadDoc(id, bg, force){
         const nearBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 140;
         t.innerHTML = r.events?.length
           ? `<div class="meta">${r.count} events · session ${esc(r.session)}${r.live ? ' · <span style="color:#34d399">● live</span>' : ""}</div>` + renderEvents(r.events, "")
-          : `<span class="meta">이 요청 구간의 스트림이 없습니다 (스트림 미러 이전 문서이거나 다른 머신 세션).</span>`;
+          : `<span class="meta">이 요청 구간의 스트림이 없습니다 (스트림 미러 이전 문서이거나 다른 컴퓨터의 세션).</span>`;
         // 자기 요청 언급 하이라이트 (REQ-20260824-029): 다중 REQ 턴에서 내 구간 식별
         const rid = det.dataset.req;
         if (r.events?.length && t.innerHTML.includes(rid)){

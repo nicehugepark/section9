@@ -44,7 +44,7 @@ class MachineHistory(unittest.TestCase):
             self.assertIn("${machineHistoryHTML(u)}", self._fn("showUserForm"),
                           "프로필 화면에 이력을 세우지 않았다")
             fn = self._fn("machineHistoryHTML")
-            for col in ("머신", "운영체제", "계정", "처음", "마지막"):
+            for col in ("컴퓨터", "운영체제", "계정", "처음", "마지막"):
                 self.assertIn(col, fn, "열이 없다: %s" % col)
             # 이 칸에는 OS 계정이 올 수도, 사람이 정한 하네스 이름이 올 수도 있다
             # (2026-08-27 반려). 둘 중 하나라고 이름 붙이면 절반은 거짓말이 된다.

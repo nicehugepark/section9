@@ -373,7 +373,7 @@ def main():
                     *tok, inp=text)
             if r.returncode == 0:
                 ok += 1
-                run(env, "log", f"answer → {q} by {agent} ({len(text)} chars)")
+                run(env, "log", f"answer → {q} by {agent} ({len(text)}자)")
         run(env, "bind", "pending_qst", "")
         run(env, "bind", "last_qst", "")
         if ok:
@@ -386,7 +386,7 @@ def main():
     out = run(env, "note", req, "--label", label, "--agent", agent, *tok,
               inp=text)
     if out.returncode == 0:
-        run(env, "log", f"{label} → {req} by {agent} ({len(text)} chars)")
+        run(env, "log", f"{label} → {req} by {agent} ({len(text)}자)")
 
 
 if __name__ == "__main__":

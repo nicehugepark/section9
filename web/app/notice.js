@@ -145,15 +145,15 @@ function renderOldCode(){
   const chg = Array.isArray(d.changed) && d.changed.length ? d.changed : ["bin/s9"];
   el.innerHTML = `<span class="oc-t"><span class="oc-mark" aria-hidden="true">▲</span>`
     + ` 서버가 옛 코드로 실행 중입니다</span>`
-    + `<span class="oc-d">${at ? esc(at) + " 기동 이후 " : ""}`
+    + `<span class="oc-d">${at ? esc(at) + " 시작 이후 " : ""}`
     + `${chg.map(f => `<code>${esc(f)}</code>`).join(" · ")} 가 바뀌었습니다`
-    + ` — 서버 쪽 변경은 재기동해야 동작합니다.</span>`
+    + ` — 서버 쪽 변경은 재시작해야 동작합니다.</span>`
     + `<span class="oc-act">`
-    +   `<span class="oc-note">재기동은 진행 중 요청·실시간 연결을 끊습니다</span>`
+    +   `<span class="oc-note">재시작은 진행 중 요청·실시간 연결을 끊습니다</span>`
     +   `<button class="oc-cmd" id="oc-cmd" title="클릭하면 복사됩니다 — 터미널에 붙여넣어 실행하세요">`
     +     `s9 serve --restart</button>`
     +   `<span class="oc-copied" id="oc-copied" role="status"></span>`
-    +   `<button class="oc-fold" id="oc-fold" title="이 서버가 재기동될 때까지 한 줄로 접어 둡니다">접기</button>`
+    +   `<button class="oc-fold" id="oc-fold" title="이 서버가 재시작될 때까지 한 줄로 접어 둡니다">접기</button>`
     + `</span>`;
   $("#oc-cmd").addEventListener("click", ocCopyCmd);
   $("#oc-fold").addEventListener("click", () => {
@@ -208,7 +208,7 @@ const GW_FRESH_BAD = 24 * 3600 * 1000;  // 자동 복구가 멈춘 사실을 말
 const GW_ROWS = 8;                   // 기록 표시 제한 (무한 목록 금지)
 // 기록의 종류를 사용자 말로 옮긴다 — 원래 값을 그대로 보여주면 기록이 아니라 암호다
 const GW_EV = {start:"감시 시작", died:"멈춤", "clean-exit":"정상 종료",
-               "gave-up":"감시 포기", "spawn-error":"기동 실패",
+               "gave-up":"감시 포기", "spawn-error":"시작 실패",
                "guard-error":"감시자 오류", stop:"감시 중지", end:"감시 종료"};
 const GW_SEV = {died:"bad", "gave-up":"bad", "spawn-error":"bad",
                 "guard-error":"bad", start:"on", "clean-exit":"ok"};
@@ -284,7 +284,7 @@ function renderGuard(){
     // 조사를 붙이면(로/으로) 어느 한쪽이 반드시 어긋난다.
     const why = ev.reason ? ` (<code>${esc(ev.reason)}</code>)` : "";
     let detail = (d.guard === "gave-up")
-      ? `서버가 ${ev.fails || "여러"}번 잇따라 자리잡지 못해 감시자가 다시 띄우기를 그만뒀습니다${why}.`
+      ? `서버가 ${ev.fails || "여러"}번 잇따라 자리잡지 못해 감시자가 재시작을 그만뒀습니다${why}.`
       : `${at} 에 멈춘 뒤로 서버를 지켜보는 것이 없습니다${why}.`;
     detail += " 지금 서버가 종료되면 자동으로 다시 시작되지 않습니다.";
     el.innerHTML = `<span class="gw-t" style="color:var(--c-blocked)">`
@@ -497,7 +497,7 @@ function renderSvChip(){
       act: () => document.querySelector('header [data-tab="terminal"]')?.click()});
   const oc = ocInfo;
   if (oc && oc.stale && ocAck() === oc.started)
-    items.push({tone: "sv-warn", mark: "▲", label: "서버 재기동 필요",
+    items.push({tone: "sv-warn", mark: "▲", label: "서버 재시작 필요",
       title: "실행 중인 서버가 시작 당시 코드로 동작하고 있습니다 — 눌러서 자세히",
       act: () => { ocSetAck(null); renderOldCode(); }});
   /* sync 되풀이 실패 (REQ-20260907-005) — 같은 사유로 N회 연속 실패해 로컬 commit 이

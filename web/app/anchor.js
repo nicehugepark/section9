@@ -132,7 +132,7 @@ async function anchorSend(docId, anchor, text, r){
   }catch(ex){
     s9dlg({kind: "alert", cap: "메모", title: "메모를 남기지 못했습니다",
       desc: String((ex && ex.message) || "")
-        || "잠시 뒤 다시 해 주세요. 서버가 재기동 중일 수 있습니다.", ok: "닫기"});
+        || "잠시 뒤 다시 해 주세요. 서버가 재시작 중일 수 있습니다.", ok: "닫기"});
   }
 }
 /* 앵커 달린 노트를 **그 구간 옆에서** 읽게 짚는다.

@@ -206,7 +206,7 @@ def main():
                 break
         if not req:
             run(env, "log", "귀속 거부: " + ", ".join(dict.fromkeys(mentioned))
-                + " (언급만 — 이 세션이 클레임하지 않았거나 종결된 문서, "
+                + " (언급만 — 이 세션이 맡지 않았거나 종결된 문서, "
                   "REQ-20260825-066)")
 
     atype = data.get("agent_type") or "subagent"
@@ -218,7 +218,7 @@ def main():
     # 진행성 소음 필터: generic 타입 + REQ 무언급 보고는 문서에 붙이지 않는다(로그만) —
     # 장시간 위임 중 수십 건의 중간 보고가 무관 REQ를 오염시키던 문제
     if not req and atype == "subagent":
-        run(env, "log", f"subagent 중간보고 생략 ({len(text)} chars)")
+        run(env, "log", f"서브에이전트 중간보고 생략 ({len(text)}자)")
         return
     # 최종 폴백(last_req)도 소유 확인을 거친다 — 훅이 매 프롬프트 회전시키는
     # 포인터가 stale이면 그 자체로 남의 문서를 가리킨다. --active가 아니라

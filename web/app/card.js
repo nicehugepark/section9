@@ -346,7 +346,7 @@ function lineageChip(r){
             : (creator && creator !== owner) ? creator : "";
   if (!who) return "";
   return `<span class="lin" title="${esc(lineageTell(r))}">`
-    + `<span class="lincap">만든이</span>${esc(who)}</span>`;
+    + `<span class="lincap">만든 사람</span>${esc(who)}</span>`;
 }
 // 손 위의 글과 낭독기가 함께 읽는 한 문장 — 조각이 줄인 것을 여기서 다 말한다.
 function lineageTell(r){
@@ -377,7 +377,7 @@ function lineageRowHTML(r){
   const ob = originBits(r, true);
   if (ob.length){
     if (creator) cells[0] += ` ${ob.join(" · ")}`;
-    else cells.push(`<span class="lincap">만든이</span>${ob.join(" · ")}`);
+    else cells.push(`<span class="lincap">만든 사람</span>${ob.join(" · ")}`);
   }
   if (!cells.length) return "";
   return `<div class="lineage">`
@@ -846,7 +846,7 @@ function holdForecastHTML(r){
 }
 /* 진행 축의 **줄 하나** (REQ-20260830-040 규칙 2). 사다리는 구체성 순이다:
 
-       중단 (사람이 세운 것)  >  멈춤 (진전이 끊긴 것)  >  오래 걸림  >  (없음)
+       중단 (사람이 중단한 것)  >  멈춤 (진전이 끊긴 것)  >  오래 걸림  >  (없음)
 
    중단이 멈춤을 이기는 이유는 라운드4 반려가 세웠다: 중단하면 그 사유가 문서에
    적히고, 15분이 지나면 그 문서는 다시 '조용한' 것이 되어 멈춤 줄이 함께 서려

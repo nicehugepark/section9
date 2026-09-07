@@ -44,7 +44,7 @@
 (function svChipPreview(){
   const m = /[?&]svchip=([a-z]+)/.exec(location.search);
   if (!m) return;
-  const d = {reason: "턴 진행 중 — 유휴 상태에서만 재기동(작업 보호)",
+  const d = {reason: "턴 진행 중 — 유휴 상태에서만 재시작(작업 보호)",
              cmd: "bin/s9 code --resume 01c62d83"};
   const n = +((/[?&]again=(\d+)/.exec(location.search) || [])[1] || 0);
   if (n) d.again = n;
@@ -59,7 +59,7 @@
 (function ccSayPreview(){
   if (!/[?&]ccsay/.test(location.search)) return;
   const rows = [
-    ["↻", {ok: false, reason: "턴 진행 중 — 유휴 상태에서만 재기동(작업 보호)"}, "모델을"],
+    ["↻", {ok: false, reason: "턴 진행 중 — 유휴 상태에서만 재시작(작업 보호)"}, "모델을"],
     ["↻", {ok: false, reason: "서버 연결 실패"}, "모델을"],
     ["↻", {ok: false, reason: "세션 없음/종료됨"}, "계정을"],
     ["↻", {ok: false, reason: "대시보드 서버가 구버전(재시작 API 없음) — 세션 터미널에서 serve 재시작 후 재시도"}, "생각의 깊이를"],
