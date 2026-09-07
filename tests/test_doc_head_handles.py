@@ -35,6 +35,10 @@ S9 = os.path.join(ROOT, "bin", "s9")
 ROWS = r"""
 (async () => {
   const fetch0 = window.fetch, w0 = window.__whoami, p0 = window.__projects;
+  /* 신원 위에 role 만 덮어쓴다 — `w0 || {}` 로 물러나면 신원이 아직 안 온 판에서
+     화면이 그 사이 받아 온 진짜 신원으로 role 을 덮어써(loadWhoami) 이 블록이
+     정한 얼굴과 갈린다. 전제가 깨지면 전제가 실패하게 둔다. */
+  if (!w0) throw new Error('신원이 아직 안 왔다 — 준비 신호가 재료를 안 기다렸다');
   window.__projects = [{slug: 'demo', title: '데모', members: []}];
   const base = {type: 'request', status: 'in-progress', title: '견본',
                 user: 'x', size: 'S', project: 'demo',
@@ -67,7 +71,7 @@ ROWS = r"""
   const mk = (id, extra) => Object.assign({}, base, {id}, extra || {});
   const tok = {in: 708, out: 5391, cache_read: 2208961, cache_create: 130361};
   const out = {};
-  window.__whoami = Object.assign({}, w0 || {}, {role: 'admin'});
+  window.__whoami = Object.assign({}, w0, {role: 'admin'});
   out.withTokens = await show(mk('REQ-T1', {tokens: tok}));
   out.noTokens = await show(mk('REQ-T2'));
   out.badTokens = await show(mk('REQ-T3', {tokens: ''}));
@@ -81,7 +85,7 @@ ROWS = r"""
                         created: '2026-09-07T00:00:00+09:00'});
   out.bare = await show(mk('REQ-T6', {project: ''}));
   out.doneBare = await show(mk('REQ-T7', {status: 'done', project: ''}));
-  window.__whoami = Object.assign({}, w0 || {}, {role: 'viewer'});
+  window.__whoami = Object.assign({}, w0, {role: 'viewer'});
   out.viewer = await show(mk('REQ-T8'));
   window.__whoami = w0;
   window.__projects = p0;
@@ -94,7 +98,8 @@ CLICK = r"""
 (async () => {
   const fetch0 = window.fetch, choose0 = window.s9choose;
   const w0 = window.__whoami, p0 = window.__projects;
-  window.__whoami = Object.assign({}, w0 || {}, {role: 'admin'});
+  if (!w0) throw new Error('신원이 아직 안 왔다 — 준비 신호가 재료를 안 기다렸다');
+  window.__whoami = Object.assign({}, w0, {role: 'admin'});
   window.__projects = [{slug: 'demo', title: '데모', members: []},
                        {slug: 'next', title: '다음', members: []}];
   const meta = {id: 'REQ-T9', type: 'request', status: 'in-progress',
@@ -192,7 +197,10 @@ class TheDocumentHeadCarriesTheSameTwoLines(unittest.TestCase):
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
             for _ in range(200):
-                if cls.ws.eval("!!(window.__S9_APP_READY && "
+                # 이 시험은 손잡이의 얼굴을 신원의 role 로 가른다(admin/viewer).
+                # 그 신원은 판이 섰다는 신호보다 늦게 오는 서버 왕복이라, 재료를
+                # 이름으로 적어 기다린다 (REQ-20260907-057 · DOC-20260907-003).
+                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
                                "document.querySelector('#viewer'))"):
                     break
                 time.sleep(0.25)

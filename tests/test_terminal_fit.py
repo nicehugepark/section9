@@ -66,7 +66,12 @@ class TerminalFit(unittest.TestCase):
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
             for _ in range(200):
-                if cls.ws.eval("!!(window.__S9_APP_READY && document.getElementById('cc-root'))"):
+                # 판의 높이는 내 화면 설정(skin·tone·density)이 정하고, 그 설정은
+                # 신원과 사용자 목록이 **둘 다** 온 뒤에야 applyMyUI 가 입힌다 —
+                # 신호만 보고 재면 설정이 입혀지는 도중을 잰다
+                # (REQ-20260907-057 · DOC-20260907-003).
+                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
+                               "window.__users && document.getElementById('cc-root'))"):
                     break
                 time.sleep(0.25)
             else:
@@ -132,11 +137,20 @@ class TerminalFit(unittest.TestCase):
             if self.ws.eval("!!document.querySelector('[data-typef=\"question\"]')"):
                 break
             time.sleep(0.25)
+        else:
+            self.fail("타입바에 question 무리가 안 섰다 — 순서를 잴 재료가 없다")
         self.ws.eval("document.querySelector('[data-typef=\"question\"]').click(); true")
-        time.sleep(0.8)
-        rows = self.ws.eval("[...document.querySelectorAll('.doclist .row')].map(r => r.dataset.doc)")
+        # 고정 대기(0.8초)는 부하가 걸린 판에서 짧다 — 목록이 다시 그려질 때까지
+        # 기다리되, 안 오면 아래 판정이 그대로 실패한다 (REQ-20260907-057).
+        rows, head = [], []
+        for _ in range(40):
+            time.sleep(0.25)
+            rows = self.ws.eval(
+                "[...document.querySelectorAll('.doclist .row')].map(r => r.dataset.doc)") or []
+            head = rows[:len(want)]
+            if rows and sorted(head) == sorted(want):
+                break
         self.assertTrue(rows, "질문 목록이 비어 있다")
-        head = rows[:len(want)]
         self.assertEqual(sorted(head), sorted(want),
                          "타입바가 %d장 남았다는데 목록 맨 앞이 그 다섯이 아니다: %r" % (len(want), head))
 

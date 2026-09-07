@@ -170,14 +170,22 @@ async function renderStream(){
        문서가 없는 행도 있는 행과 **같은 자리·같은 위계**로 선다 — 이름과 시각은
        스트림 자신이 가진 사실이라 늘 차고, 모르는 것 하나(컴퓨터)만 「모름」으로
        적는다. 문서가 없다는 사실은 목록의 글자가 아니라 툴팁 한 문장이 말한다(R6). */
-    const tip = d
-      ? `${when} 까지 ${where || "이 컴퓨터"} 에서 움직인 세션입니다`
-      : `${when} 까지 움직였고, 세션 문서가 없어 어느 컴퓨터인지 모릅니다`;
+    /* 제목은 **그 세션에서 사람이 처음 친 말**이다 (REQ-20260907-034, designer).
+       시각은 76행이 다 갖는 사실이라 고를 때 쓸모가 적다 — 「무슨 일을 하던
+       자리였나」가 사람이 찾는 것이다. 훅이 넣은 줄과 도구가 얹은 줄은 서버가
+       걸러 주므로(stream_first_prompt) 여기 오는 것은 사람의 말뿐이고, 사람이
+       친 말이 없는 자리(무인 작업자)는 빈 값이라 **종전의 시각 제목으로
+       물러난다** — 행의 자리와 위계는 그대로다.
+
+       시각은 사라지지 않는다: 툴팁이 늘 그것을 말한다. */
+    const tip = (s.first_prompt ? `${when} · ` : `${when} 까지 `)
+      + (d ? `${where || "이 컴퓨터"} 에서 움직인 세션입니다`
+           : "움직였고, 세션 문서가 없어 어느 컴퓨터인지 모릅니다");
     return `<div class="row${s.session===selectedStream?" sel":""}" data-stream="${esc(s.session)}"
       role="button" tabindex="-1" title="${esc(tip)}"${s.session===selectedStream?' aria-current="true"':""} data-rove-item>
       <span class="st">${fmtSize(s.size)}</span>
       <div class="id">${esc(s.session.slice(0, 8))}</div>
-      <div>${esc(when)}</div>${only === null
+      <div>${esc(s.first_prompt || when)}</div>${only === null
         ? `\n      <div class="snip">${esc(where || "컴퓨터 모름")}</div>` : ""}</div>`;
   }).join("");
   $("#view").innerHTML = `<div class="streamwrap">

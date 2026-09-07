@@ -299,7 +299,14 @@ class TheTabLineHoldsAndOpens(unittest.TestCase):
             page = next(p for p in pages if p.get("type") == "page")
             cls.ws = WS(page["webSocketDebuggerUrl"])
             for _ in range(200):
-                if cls.ws.eval("!!(window.__S9_APP_READY && "
+                # 판이 섰다는 신호는 스크립트가 실린 시점에 서고, 이 시험이 재는
+                # 것(프로젝트 줄 · 렌즈의 표식)은 그 뒤 서버 왕복으로 오는 재료다 —
+                # 신원 · 사용자 목록 · 프로젝트 목록 · 그 목록에서 지은 렌즈 칸까지
+                # 이름으로 적어 기다린다 (REQ-20260907-057 · DOC-20260907-003).
+                if cls.ws.eval("!!(window.__S9_APP_READY && window.__whoami && "
+                               "window.__users && (window.__projects || []).length && "
+                               "(document.querySelector('#f-project') || {options: []})"
+                               ".options.length > 1 && "
                                "document.querySelector('#view .col,#view .docs'))"):
                     break
                 time.sleep(0.25)
@@ -316,13 +323,17 @@ class TheTabLineHoldsAndOpens(unittest.TestCase):
             cls.out["open"] = cls.await_(OPEN_TAB)
             cls.out["viewing"] = cls.await_(VIEWING % json.dumps("section9"))
             cls.out["row"] = cls.await_(OPEN_ROW)
-            for k, v in cls.out.items():
-                if v is None:
-                    raise ConnectionError("%s 를 재지 못했다" % k)
+            unmeasured = [k for k, v in cls.out.items() if v is None]
         except (ConnectionError, StopIteration, OSError, RuntimeError,
                 urllib.error.URLError) as e:
             cls.tearDownClass()
             raise unittest.SkipTest("실브라우저 미검증 — %r" % e)
+        # 브라우저가 없는 것과 브라우저는 섰는데 못 잰 것은 다른 사실이다.
+        # 뒤엣것을 건너뛰기로 접으면 계약이 조용히 안 지켜진다 — 건너뛴 검사는
+        # 없는 검사다 (REQ-20260907-057). AssertionError 는 위 except 가 안 잡는다.
+        if unmeasured:
+            cls.tearDownClass()
+            raise AssertionError("판은 섰는데 재지 못했다: %s" % ", ".join(unmeasured))
 
     @classmethod
     def await_(cls, expr):

@@ -60,16 +60,25 @@ FILTER = r"""
       out.rows = rows.map(r => r.id).sort();
       el.value = keep;
     }
-    // '내 것만' ON 에서는 이 옵션이 서지 않는다 — mine 가드가 먼저 걸러
-    // 프로젝트 없는 문서는 한 건도 안 보이므로, 남기면 조용한 빈 결과가 된다.
-    if (viewMe()){
-      const had = localStorage.getItem('s9mine');
-      localStorage.setItem('s9mine', '1');
-      fillProjects();
-      out.mine = [...el.options].some(o => /^프로젝트 없음/.test(o.textContent));
-      if (had === null) localStorage.removeItem('s9mine');
-      else localStorage.setItem('s9mine', had);
-    }
+    /* '내 것만' ON 에서는 이 옵션이 서지 않는다 — mine 가드가 먼저 걸러
+       프로젝트 없는 문서는 한 건도 안 보이므로, 남기면 조용한 빈 결과가 된다.
+
+       종전엔 이 확인이 `if (viewMe())` 안에 있었다. 신원이 빈 판에서는 통째로
+       건너뛰어 **실패가 아니라 미검증**이 됐다 — 건너뛴 검사는 없는 검사다
+       (REQ-20260907-057). 가드 자체가 `!!viewMe() && s9mine` 이라 신원이 비면
+       설 수 없으니, 신원을 여기서 고정해 언제나 잰다. 고정한 값을 화면이 실제로
+       그렇게 읽는지는 out.me 로 내보내 시험이 확인한다 — 전제가 깨지면
+       옵션 판정 대신 전제가 실패한다. */
+    const w1 = window.__whoami;
+    window.__whoami = {user: '__s9mine__', registered: true, role: 'admin'};
+    out.me = viewMe();
+    const had = localStorage.getItem('s9mine');
+    localStorage.setItem('s9mine', '1');
+    fillProjects();
+    out.mine = [...el.options].some(o => /^프로젝트 없음/.test(o.textContent));
+    if (had === null) localStorage.removeItem('s9mine');
+    else localStorage.setItem('s9mine', had);
+    window.__whoami = w1;
     // 다 채워진 판에는 옵션이 서지 않는다 — 없는 더미를 가리키지 않는다.
     catalog = [row('REQ-A', 'demo')];
     fillProjects();
@@ -298,9 +307,11 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
         f = self.filter
         self.assertEqual(f["rows"], ["REQ-B", "REQ-C"],
                          "라벨이 말한 것과 실제로 걸러진 것이 다르다")
-        if f.get("mine") is not None:
-            self.assertFalse(f["mine"],
-                             "'내 것만' 에서는 고르는 즉시 빈 결과가 된다")
+        self.assertEqual(f.get("me"), "__s9mine__",
+                         "화면이 읽는 신원이 시험이 고정한 값이 아니다 — "
+                         "'내 것만' 가드의 전제가 안 섰다")
+        self.assertFalse(f["mine"],
+                         "'내 것만' 에서는 고르는 즉시 빈 결과가 된다")
 
     # ---- ② 보이는 글자가 곧 손잡이다 ---------------------------------------
     def test_the_words_on_the_card_are_the_handle(self):

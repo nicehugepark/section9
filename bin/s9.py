@@ -15105,6 +15105,73 @@ def _tokens_add(a, b, sign=1):
             for k in TOKEN_KEYS}
 
 
+# 행 제목으로 쓸 첫 프롬프트 (REQ-20260907-034). 목록이 80줄이라 파일마다
+# 통째로 읽으면 목록 한 번에 수백 MB 다 — 앞부분만 본다.
+STREAM_TITLE_MAX = 60          # 행에 들어가는 글자 수
+# 사람의 첫 말은 생각보다 뒤에 있다 — 실측 232·286번째 줄(부트 문구와 그
+# 뒤의 도구 결과가 앞을 채운다). 200 줄에서 끊었더니 여든 행 중 예순넷이
+# 제목을 잃었다. 대신 **한 번 찾은 것은 다시 찾지 않는다**: 첫 말은 바뀌지
+# 않으므로 파일마다 한 번만 읽고 기억한다(목록은 15초마다 다시 그려진다).
+STREAM_HEAD_LINES = 2000
+_first_prompt_cache = {}
+
+def stream_first_prompt(path):
+    """그 세션에서 **사람이 처음 친 말**의 첫 줄 — 없으면 "".
+
+    미러의 첫 `user` 이벤트가 곧 사람의 말은 아니다. 이 판에서 실측한 것들:
+    ① `s9 code` 가 넣는 부트 문구(`[section9 bootstrap]`)가 늘 맨 앞에 선다
+    ② 도구 결과(`tool_result`)도 `user` 로 실린다 ③ 그림을 붙이면 content 가
+    블록 목록이라 글자가 그 안에 있다. 셋을 다 걸러야 사람의 말이 나온다.
+
+    훅이 넣은 줄을 제목으로 쓰면 목록의 모든 행이 같은 말로 시작한다 —
+    제목이 있으나 마나가 된다.
+    """
+    if path in _first_prompt_cache:
+        return _first_prompt_cache[path]
+    got = _read_first_prompt(path)
+    _first_prompt_cache[path] = got
+    return got
+
+def _read_first_prompt(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for n, line in enumerate(f):
+                if n >= STREAM_HEAD_LINES:
+                    break
+                if '"user"' not in line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                if ev.get("type") != "user":
+                    continue
+                c = (ev.get("message") or {}).get("content")
+                if isinstance(c, list):
+                    # 그림·도구 결과가 섞인 블록 목록 — 글자 블록만 본다
+                    c = " ".join(b.get("text", "") for b in c
+                                 if isinstance(b, dict) and b.get("type") == "text")
+                if not isinstance(c, str):
+                    continue
+                # 거르는 단위는 **줄이 아니라 프롬프트**다. 줄 단위로 거르면
+                # 부트 문구의 첫 줄만 빠지고 **둘째 줄이 제목이 된다** —
+                # 실측: 목록 여든 행 중 여럿이 「이 턴에서 할 일은 하나다…」
+                # 로 같아졌다. 훅이 넣은 프롬프트는 통째로 사람의 말이 아니다.
+                head = next((t for t in (ln.strip() for ln in c.splitlines())
+                             if t), "")
+                # `[Image: original 1520x2430, displayed at …]` 은 그림을
+                # 붙였을 때 도구가 얹는 설명이라 사람의 말이 아니다.
+                # `[Image #1] …` 은 사람이 친 프롬프트 안의 참조라 남긴다.
+                if not head or head.startswith("[section9") \
+                        or head.startswith("[Image:") or head.startswith("<"):
+                    continue
+                return (head[:STREAM_TITLE_MAX - 1] + "…"
+                        if len(head) > STREAM_TITLE_MAX else head)
+    except OSError:
+        pass
+    return ""
+
+
 def event_msg_id(ev):
     """이 줄이 **어느 응답**의 것인가 — 모르면 "" (REQ-20260907-051).
 
@@ -24409,7 +24476,10 @@ def cmd_serve(args):
             mt = datetime.datetime.fromtimestamp(
                 os.path.getmtime(p)).astimezone().isoformat(timespec="seconds")
             out.append({"session": fn[:-6],
-                        "size": os.path.getsize(p), "mtime": mt})
+                        "size": os.path.getsize(p), "mtime": mt,
+                        # 있으면 화면이 제목으로 쓰고, 없으면 지금의 시각 제목
+                        # 으로 물러난다 — 칸을 더하기만 한다 (REQ-20260907-034).
+                        "first_prompt": stream_first_prompt(p)})
         out.sort(key=lambda s: s["mtime"], reverse=True)
         return {"streams": out}
 
