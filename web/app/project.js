@@ -367,8 +367,14 @@ function prjListHTML(list, o){
     : `<span>${esc(PRJ_TEXT.head)}<span class="pjn"> ${all.length}</span></span>`;
   // 할 말도 손잡이도 없으면 머리도 없다 — 빈 띠 한 줄은 자리만 먹는 유령이다
   // (낱말을 접은 자리에서 만들 권한까지 없는 사람이 그 경우다)
-  const head = (label || newBtn)
-    ? `<div class="pjhead">${label}${newBtn}</div>` : "";
+  /* 손잡이는 **제 줄에** 선다 (REQ-20260907-024 · 013 의 `.tbtail` 과 같은 문법):
+     세는 라벨과 한 줄에 세워 오른끝으로 밀면, 성격이 다른 둘이 화면에서 가장 먼
+     두 자리에 앉는다. 줄을 감싸는 것은 span 이고 손잡이는 그 안에서 왼끝에 선다 —
+     버튼 자체를 줄로 쓰면 스킨이 버튼에 준 얼굴(둥근 칠·안여백)이 줄 전체로
+     퍼진다. */
+  const tail = newBtn ? `<span class="pjtail">${newBtn}</span>` : "";
+  const head = (label || tail)
+    ? `<div class="pjhead">${label}${tail}</div>` : "";
   return `<div class="pjlist">${head}${body}</div>`;
 }
 

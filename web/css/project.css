@@ -52,16 +52,39 @@ select.pjc{padding-right:4px}
 .pjv .none{font-family:var(--mono);font-size:11px;color:var(--faint)}
 
 /* ── ① Docs › PROJECT 목록 ───────────────────────────────── */
-.pjhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-  padding:8px 14px;border-bottom:1px solid var(--hairline);font-family:var(--mono);
+/* 머리는 두 줄이다 — **세는 줄과 손잡이 줄** (REQ-20260907-024, 013 의 규칙을
+   그대로). 한 줄에 「PROJECT 1」과 「+ 프로젝트 만들기」를 함께 세우고
+   `justify-content:space-between` 으로 손잡이를 오른끝까지 밀었더니 둘이 화면에서
+   가장 먼 두 자리에 앉았고, 세는 라벨은 왼끝·손잡이는 오른끝이라 눈이 한 번 더
+   건너가야 했다. 성격이 다른 둘(세는 것 · 누르는 것)을 한 줄에 섞지 않는다 —
+   `.tbtail` 이 타입 띠에서 그렇게 서고, 이 머리도 같은 문법을 쓴다.
+   `--pjgut` 은 안여백 한 곳 — 손잡이 줄의 가르는 선이 머리의 아래 선과 같은 폭으로
+   서게, 음수 여백으로 그만큼 되돌린다(compact 는 이 변수만 바꾼다). */
+.pjhead{--pjgut:14px;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;
+  padding:8px var(--pjgut);border-bottom:1px solid var(--hairline);
+  font-family:var(--mono);
   font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
   font-weight:600}
+/* 폭이 `100%` 면 음수 여백은 상자를 **옮기기만** 한다 — 테두리를 그리는 상자는
+   여전히 안쪽 폭이라, 왼쪽은 판 끝에 닿고 오른쪽은 안여백만큼 모자란 선이 된다
+   (3배 확대 캡처로 잡았다). 늘릴 폭을 폭에 적어야 양끝이 함께 닿는다. */
+.pjhead .pjtail{flex:none;width:calc(100% + var(--pjgut) * 2);
+  display:flex;align-items:center;
+  margin:6px calc(-1 * var(--pjgut)) 0;padding:6px var(--pjgut) 0;
+  border-top:1px solid var(--hairline)}
+/* 가르는 선은 가를 이웃이 있을 때만 선다 — 세는 줄을 접은 자리(Docs 좌측 레일)
+   에서는 손잡이 줄이 머리의 전부라, 선 하나만 남으면 뜻 없는 획이 된다. */
+.pjhead .pjtail:first-child{margin-top:0;padding-top:0;border-top:0}
 /* `.more` 는 목록에서 한 줄을 통째로 먹는 문법이다 — 머리에 설 때만 폭을 놓는다.
    **잉크는 한 급 올린다**(리드 판정 1): 이 REQ 가 푸는 문제가 「문이 없다」인데
    `.more` 의 `--faint`(≈2.8:1)로 그리면 그 문을 화면에서 가장 옅게 그린 셈이다.
-   hover 는 base 그대로 `--text` 로 올라온다. */
-.pjhead .more{display:inline-block;width:auto;padding:0;font-size:11px;
-  text-align:left;color:var(--muted)}
+   hover 는 base 그대로 `--text` 로 올라온다.
+   선택자를 한 급 올린 이유: 클래스 둘(`.pjhead .more`)은 `[data-skin=calm] .more`
+   와 같은 급인데 calm.css 가 뒤에 실려, calm 에서만 이 손잡이가 `padding:6px 12px`
+   + `margin:9px 0 0 2px` 를 받아 같은 줄에서 16px 아래로 내려앉았다 — 한 줄이
+   두 줄로 보인 까닭의 절반이 이것이다. 자리는 스킨이 바꾸지 않는다. */
+.pjlist .pjhead .more{display:inline-block;width:auto;margin:0;padding:0;
+  font-size:11px;text-align:left;color:var(--muted)}
 .pjhead .pjn{color:var(--faint)}
 /* 보관 묶음은 펴면 접을 수 있어야 한다 — `.more::before` 의 "+ " 는 여는 손짓이라
    접는 자리에서는 반대 부호가 선다(목록의 다른 「더 보기」와 같은 층). */
@@ -189,10 +212,13 @@ select.pjc{padding-right:4px}
 /* ── 밀도 (compact) — 여백만 줄인다. 과녁(28px)과 테두리는 그대로.
    B2 에서 density.css 로 옮길지는 그 축의 주인이 정한다 — 지금 여기 두는 것은
    이 물결이 기존 css 를 만지지 않기 때문이다. */
-[data-density="compact"] .pjhead{padding:6px 10px}
+[data-density="compact"] .pjhead{--pjgut:10px;padding:6px var(--pjgut)}
 [data-density="compact"] .pmem td{padding:3px 8px 3px 0}
 [data-density="compact"] .pmem th{padding:2px 8px 5px 0}
 [data-density="compact"] .pjh{margin:16px 0 6px}
 [data-density="compact"] .pjmem{margin-top:16px}
 [data-density="compact"] .pjstrip{margin-bottom:10px}
 [data-density="compact"] .pjlist .more,[data-density="compact"] .pjnone{padding-left:10px}
+/* 머리의 손잡이는 **줄이** 안여백을 갖는다(`.pjtail`) — 낱개에 또 주면 두 겹이 되어
+   손잡이만 세는 라벨보다 10px 안으로 들어간다(compact 768 캡처에서 잡았다). */
+[data-density="compact"] .pjlist .pjhead .more{padding-left:0}

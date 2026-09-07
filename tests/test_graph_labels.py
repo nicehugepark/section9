@@ -80,8 +80,12 @@ class GraphLabels(unittest.TestCase):
             self.assertNotIn("st.tf.k > 0.75 && n.near > 0.45", self.src,
                              "줌·깊이 절벽이 남아 있다 — 전체 보기에서 이름이 사라진다")
         with self.subTest("off_screen_labels_are_culled"):
+            # 잣대가 상자에서 **노드**로 바뀌었다 (REQ-20260907-025): 상자가 조금만
+            # 걸쳐도 남기면, 노드가 판 밖으로 나간 뒤 가리킬 마크 없는 낱말 반
+            # 토막이 가장자리에 떠 있었다. 마크가 있어야 이름이다.
             self.assertRegex(self._fn("pickLabels"),
-                             r"b\.x1 < 0 \|\| b\.x0 > W \|\| b\.y1 < 0 \|\| b\.y0 > H",
+                             r"sxOf\(n\) < 0 \|\| sxOf\(n\) > W"
+                             r" \|\| syOf\(n\) < 0 \|\| syOf\(n\) > H",
                              "화면 밖 컬링이 없다")
         with self.subTest("measure_text_is_cached_per_title"):
             fn = self._fn("labWidth")
@@ -113,8 +117,8 @@ class GraphLabels(unittest.TestCase):
                 pick = self._fn("pickLabels")
                 self.assertRegex(pick, r"for \(const dy of \[0, -\(2 \* rr \+ 21\)",
                                  "hover 이름이 자리를 옮겨 보지 않는다 — 서로 포갠다")
-                self.assertIn("n.id === hov.id || !hot.some", pick,
-                              "얹은 노드 자신의 이름이 밀려날 수 있다")
+                self.assertRegex(pick, r"n\.id === hov\.id\s*\|\|\s*!hot",
+                                 "얹은 노드 자신의 이름이 밀려날 수 있다")
 
             # ---------- ⑤ 층 접기 ----------
         with self.subTest("layers_wrap_instead_of_crushing_into_one_row"):

@@ -693,11 +693,51 @@ async function renderGraph(rows){
   let labPrev = new Set();        // 직전 프레임 채택 — 관성(히스테리시스)
   let labChurn = 0;               // 프레임당 교체 수 (지수이동평균)
   let labChurnLast = 0;           // 직전 프레임의 교체 수 (?gpan 이 프레임마다 합산)
+  /* 이름은 **캔버스 안에 온전히** 선다 (REQ-20260907-025). 노드를 가운데 두고
+     아래에 그리는 것이 기본인데, 판 가장자리의 노드는 그 상자가 캔버스를 넘어가
+     글자가 반만 그려졌다 — 오른쪽 레일 바로 옆이라 사람에게는 「판이 이름을
+     잘랐다」로 보인다(검수 보고 상-3). 넘치면 상자를 안쪽으로 물린다. 노드가
+     판 안에 있을 때만 물리므로 옮기는 거리는 이름 절반을 넘지 않는다 — 이름은
+     여전히 제 노드에 붙어 있다. 밖으로 나간 노드는 위의 화면 밖 컬링이 거른다.
+     아래가 막히면(바닥 가장자리) 위로 뒤집는다 — 눌러 붙이면 제 노드를 덮는다. */
+  const LAB_EDGE = 6;
   function labBox(n, bold, dy){
-    const px = sxOf(n), py = syOf(n), rr = n.r * scOf(n) * (st.hover === n ? 1.12 : 1);
-    const w = labWidth(labText(n), bold), y0 = py + rr + 4 + (dy || 0);
+    const nx = sxOf(n), py = syOf(n), rr = n.r * scOf(n) * (st.hover === n ? 1.12 : 1);
+    const w = labWidth(labText(n), bold);
+    let px = nx;
+    if (nx >= 0 && nx <= W){
+      const half = w / 2, lo = half + LAB_EDGE, hi = W - half - LAB_EDGE;
+      px = hi > lo ? Math.min(Math.max(nx, lo), hi) : W / 2;
+    }
+    let y0 = py + rr + 4 + (dy || 0);
+    if (y0 + 13 > H - LAB_EDGE){
+      const up = py - rr - 4 - 13 - (dy || 0);
+      if (up >= LAB_EDGE) y0 = up;
+    }
     return {n, bold, t: labText(n), px, ty: y0 + 9,
             x0: px - w / 2, x1: px + w / 2, y0, y1: y0 + 13};
+  }
+  /* 캔버스 위에 **떠 있는 판**은 이름이 쓸 수 없는 자리다: 조작 안내(.ghint)와
+     「전체 보기」(.gfit)는 캔버스 밖이 아니라 그 위에 얹혀 있어, 그 아래 그린
+     이름은 판에 지워진 것처럼 보인다. 자리는 폭마다 다르므로(tablet.css 가 768
+     에서 둘을 좌우로 가른다) 값을 베껴 적지 않고 **실측**한다. 판은 크기 변화와
+     hidden 전환에만 움직이니 0.4초에 한 번만 다시 잰다 — 매 프레임 재면 레이아웃
+     계산을 프레임마다 강제한다. */
+  let fbCache = [], fbAt = -1e9;
+  function floatBoxes(){
+    const now = performance.now();
+    if (now - fbAt < 400) return fbCache;
+    fbAt = now;
+    const cb = canvas.getBoundingClientRect(), out = [];
+    for (const sel of [".ghint", ".gfit"]){
+      const el = wrap.querySelector(sel);
+      if (!el || el.hidden) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      out.push({x0: r.left - cb.left, x1: r.right - cb.left,
+                y0: r.top - cb.top, y1: r.bottom - cb.top});
+    }
+    return fbCache = out;
   }
   const labHits = (a, b) => a.x0 < b.x1 + LAB_PADX && a.x1 > b.x0 - LAB_PADX
                          && a.y0 < b.y1 + LAB_PADY && a.y1 > b.y0 - LAB_PADY;
@@ -715,16 +755,22 @@ async function renderGraph(rows){
         const rr = n.r * scOf(n) * (st.hover === n ? 1.12 : 1);
         for (const dy of [0, -(2 * rr + 21), 15, -(2 * rr + 36), 30]){
           const c = labBox(n, true, dy);
-          if (n.id === hov.id || !hot.some(a => labHits(a, c))){ hot.push(c); break; }
+          if (n.id === hov.id
+              || !hot.concat(floatBoxes()).some(a => labHits(a, c))){ hot.push(c); break; }
         }
       }
     }
+    const fb = floatBoxes();
     const cands = [];
     // 얹은 동안에는 그 노드와 이웃만 이름을 갖는다 — 나머지는 이미 물러나 있고
     // (비이웃 fade 0.12) 물러난 것에 이름을 남기면 강조가 흐려진다(기존 거동 유지).
     for (const n of hov ? [] : nodes){
+      /* 이름은 **판 안에 선 노드**만 갖는다. 전에는 상자가 조금이라도 걸치면
+         남겼는데, 노드가 판 밖으로 나가면 가리킬 마크가 화면에 없는 채로 낱말
+         반 토막만 왼쪽 가장자리에 떠 있었다(「로 줄인다」·「표기」). 마크가
+         있어야 이름이다. */
+      if (sxOf(n) < 0 || sxOf(n) > W || syOf(n) < 0 || syOf(n) > H) continue;
       const b = labBox(n, false);
-      if (b.x1 < 0 || b.x0 > W || b.y1 < 0 || b.y0 > H) continue;   // 화면 밖 컬링
       // 관성: 직전 프레임에 있던 이름을 맨 앞에. 없으면 팬 중 프레임당 3.19개가
       // 깜빡여 읽히지 않고 고장으로 보인다(실측). 넣으면 0.81개로 떨어진다.
       b.key = (!LABNOHYS && labPrev.has(n.id) ? 1e6 : 0) + labPri(n);
@@ -733,7 +779,8 @@ async function renderGraph(rows){
     cands.sort((a, b) => b.key - a.key);
     const acc = [], ids = new Set();
     // hover 이름이 이미 차지한 자리는 채택 집합이 피한다 — 겹치면 hover 가 덮인다
-    const taken = hot.slice();
+    // 떠 있는 판도 이미 차지한 자리로 셈한다 — 같은 기계로 한 번에 피한다
+    const taken = hot.concat(fb);
     for (const c of cands){
       if (!LABRAW && acc.length >= LAB_BUDGET) break;
       let ok = true;
