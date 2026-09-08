@@ -3,3 +3,13 @@
 vault/**/*.md merge=s9doc
 users/*/profile.md merge=s9doc
 users/*/machines.json merge=s9doc
+
+# 배포판(git archive · GitHub 릴리스의 Source code zip)에는 코드만 담는다
+# (REQ-20260908-069). 이 저장소가 track 하는 자기 문서·사용자·상태는 하네스가
+# 아니라 이 설치의 데이터다 — 태그를 따 받은 사람의 저장소에 들어가면 안 된다.
+vault/      export-ignore
+users/      export-ignore
+projects/   export-ignore
+state/      export-ignore
+scratchpad/ export-ignore
+.s9-sync    export-ignore
