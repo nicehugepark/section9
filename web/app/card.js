@@ -1970,8 +1970,16 @@ function cardHTML(r){
     + utags.slice(0, tagShow).map(t =>
         `<span class="tag" style="--th:${tagHue(t)}">#${esc(t)}</span>`).join("")
     + (tagOver > 0
-        ? `<span class="tagmore" title="${esc(utags.join(" · "))}">+${tagOver}</span>` : "")
-    + tokensLineHTML(r);
+        ? `<span class="tagmore" title="${esc(utags.join(" · "))}">+${tagOver}</span>` : "");
+  /* 토큰 사용량은 카드에 서지 않는다 (REQ-20260908-004, 주인 지적 2026-09-08).
+     보드에서 내리는 판단은 셋이다 — 다음에 무엇을 집을까 · 무엇이 막혔나 ·
+     무엇을 승인·반려할까. 이미 쓴 값은 그 셋 중 무엇도 바꾸지 않는다.
+     게다가 그 값은 **하한값**이다: 서브에이전트 transcript 가 있는 몫만 세므로
+     리드가 직접 한 요청은 늘 비어 있고(요청 362건 중 값이 있는 것 22건),
+     값이 있는 카드만 줄이 하나 더 생겨 키가 들쭉날쭉해진다 — 아무 신호도
+     아닌 것이 신호처럼 보인다. 읽는 자리(문서)에는 그대로 둔다: 거기서는
+     size 바로 아래라 예상 대비 실적으로 읽히고 노트가 옆에서 까닭을 답한다.
+     `tokensLineHTML` 은 docs.js 가 쓰므로 그대로 산다. */
   const mwho = mwhoBits ? `<div class="m mwho">${mwhoBits}</div>` : "";
   const mwhat = mwhatBits ? `<div class="m mwhat">${mwhatBits}</div>` : "";
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">

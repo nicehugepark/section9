@@ -178,10 +178,17 @@ class ReportCliTest(unittest.TestCase):
 
 class CardTest(unittest.TestCase):
     def test_s8_card_token_line(self):
-        """S8: card.js 가 tokens 가 있을 때만 「출력 · 입력 · 캐시」 한 줄을 그린다."""
+        """S8: 토큰 줄은 **카드에 서지 않는다** (REQ-20260908-004).
+
+        한때 카드에도 그렸다(REQ-20260907-009). 주인이 2026-09-08 에 「카드에까지
+        보여줄 필요는 없다」고 했고, 값이 하한값이라(서브에이전트 몫만 세므로
+        리드가 직접 한 요청은 늘 비어 있다) 값 있는 카드만 줄이 하나 더 생겨
+        키가 들쭉날쭉해지던 자리다. 짓는 함수는 문서 화면이 쓰므로 그대로 산다.
+        """
         src = open(os.path.join(ROOT, "web", "app", "card.js"), encoding="utf-8").read()
         self.assertIn("function tokensLineHTML(r)", src)
-        self.assertIn("tokensLineHTML(r)", src.split("function cardHTML(r)")[1])
+        self.assertNotIn("tokensLineHTML(r)", src.split("function cardHTML(r)")[1],
+                         "카드가 토큰 줄을 다시 그린다")
         body = src.split("function tokensLineHTML(r)")[1].split("\nfunction cardHTML")[0]
         self.assertIn("if (!t", body)      # 없으면 아무것도 그리지 않는다
         for word in ("출력", "입력", "캐시"):
