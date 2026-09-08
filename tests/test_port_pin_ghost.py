@@ -18,9 +18,12 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
+HOOK_SESSION = os.path.join(HERE, "..", "bin", "s9-audit-session")
+INSTALL = os.path.join(HERE, "..", "bin", "s9-install")
 
 TMP = tempfile.mkdtemp(prefix="s9-pinghost-")
 _prev = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_MACHINE")}
@@ -54,6 +57,59 @@ class OnlyAPersonPins(unittest.TestCase):
     def test_a_person_giving_the_port_is_not_marked(self):
         """사람이 친 명령에는 그 표식이 없다 — 그래야 못박힌다."""
         self.assertNotIn("--port-auto", ["serve", "--supervise", "--port", "9911"])
+
+
+def _load(name, path):
+    spec = importlib.util.spec_from_loader(
+        name, importlib.machinery.SourceFileLoader(name, path))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+class MachinesMarkThemselves(unittest.TestCase):
+    """기계가 serve 를 띄우는 자리는 전부 `--port-auto` 를 단다 (REQ-20260908-064).
+
+    033 은 s9 code 와 감시자의 자기 재실행만 고쳤다. 훅(s9-audit-session)과 설치
+    (s9-install)가 같은 값을 표식 없이 넘겨, 실측 2026-09-08 18:21 훅이 9911 을
+    사람의 결정(port.pinned)으로 굳혔다 — 그 뒤로 9909 가 비어도 돌아오지 못했다.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="s9-pinghost-m-")
+        os.makedirs(os.path.join(self.root, "state"), exist_ok=True)
+        self._saved = {k: os.environ.pop(k, None) for k in ("S9_PORT", "S9_ROOT")}
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is not None:
+                os.environ[k] = v
+
+    def test_a1_the_session_hook_marks_the_port_as_machine_chosen(self):
+        hook = _load("s9_sess_pg", HOOK_SESSION)
+        spawned = []
+        with mock.patch.dict(os.environ, {"S9_ROOT": self.root}), \
+             mock.patch.object(hook.subprocess, "Popen",
+                               lambda argv, **kw: spawned.append(argv)):
+            hook.ensure_serve()
+        serve = [a for a in spawned if "serve" in a]
+        self.assertTrue(serve, "훅이 serve 를 세우지 않았다")
+        self.assertIn("--port-auto", serve[0], "훅이 읽은 포트가 사람의 결정으로 굳는다")
+        self.assertEqual(serve[0][serve[0].index("--port") + 1], "9909")
+
+    def test_a2_the_installer_marks_the_port_as_machine_chosen(self):
+        inst = _load("s9_install_pg", INSTALL)
+        spawned = []
+        with mock.patch.dict(os.environ, {"S9_ROOT": self.root}), \
+             mock.patch.object(inst, "ROOT", self.root), \
+             mock.patch.object(inst, "say", lambda *a, **k: None), \
+             mock.patch("subprocess.Popen", lambda argv, **kw: spawned.append(argv)):
+            with open(os.path.join(self.root, "state", "port"), "w") as f:
+                f.write("1")            # 아무도 듣지 않는 포트 — 기동 갈래로 간다
+            inst.start_dashboard()
+        serve = [a for a in spawned if "serve" in a]
+        self.assertTrue(serve, "설치가 serve 를 세우지 않았다")
+        self.assertIn("--port-auto", serve[0], "설치가 읽은 포트가 사람의 결정으로 굳는다")
 
 
 class TheGhostIsOurs(unittest.TestCase):

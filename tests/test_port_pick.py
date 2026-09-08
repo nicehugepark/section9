@@ -112,6 +112,43 @@ class PickPort(unittest.TestCase):
         self.assertEqual((port, why), (9909, "mine"))
         self.assertEqual(self._port_file(), "", "되돌아왔는데 state/port 가 남아 있다")
 
+    def _moved_to(self, port):
+        st = os.path.join(self.root, "state")
+        os.makedirs(st, exist_ok=True)
+        with open(os.path.join(st, "port"), "w") as f:
+            f.write(str(port))
+        with open(os.path.join(st, "port.auto"), "w") as f:
+            f.write("other x\n")
+
+    def test_p11_an_auto_moved_port_comes_back_when_the_default_is_free(self):
+        """P11. 9909 가 비어 있으면 돌아온다 (REQ-20260908-064) — 내 서버가 답할 때만
+        돌아오던 것을 넓혔다. 사용자 물음 2026-09-08: 「9909가 비게되면 9909로 돌아오면 안되나」."""
+        self._moved_to(9913)
+        port, why = self.m.pick_dashboard_port(
+            None, root=self.root, _info=lambda p: None, _bindable=lambda p: True)
+        self.assertEqual((port, why), (9909, "free"))
+        self.assertEqual(self._port_file(), "", "돌아왔는데 state/port 가 남아 있다")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "state", "port.auto")))
+
+    def test_p12_stays_while_my_server_still_lives_on_the_moved_port(self):
+        """P12. 옮겨 앉은 포트에 내 서버가 살아 있으면 9909 가 비어 있어도 옮기지 않는다
+        — 돌아오면 대시보드가 둘이 된다."""
+        self._moved_to(9913)
+        port, why = self.m.pick_dashboard_port(
+            None, root=self.root,
+            _info=lambda p: {"started": "x", "root": self.root} if p == 9913 else None,
+            _bindable=lambda p: True)
+        self.assertEqual((port, why), (9913, "mine"))
+        self.assertEqual(self._port_file(), "9913")
+
+    def test_p13_a_busy_default_keeps_the_moved_port(self):
+        """P13. 9909 가 답은 없는데 bind 가 안 되면(다른 프로그램) 그대로 옮겨 앉은 자리다."""
+        self._moved_to(9913)
+        port, why = self.m.pick_dashboard_port(
+            None, root=self.root, _info=lambda p: None,
+            _bindable=lambda p: p != 9909)
+        self.assertEqual((port, why), (9913, "free"))
+
     def test_p4_a_pinned_port_is_never_moved(self):
         """P4. 사람이 S9_PORT 로 못박았으면 옮기지 않는다 — 그건 사람의 결정이다."""
         os.environ["S9_PORT"] = "9909"

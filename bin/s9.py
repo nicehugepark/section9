@@ -21041,14 +21041,33 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
     auto = os.path.join(root, "state", "port.auto")
     if port is None and os.path.exists(auto) and not os.environ.get("S9_PORT"):
         base_info = serveinfo_at(9909) if _info is None else _info(9909)
-        if base_info is not None and ("root" not in base_info or os.path.realpath(
-                str(base_info.get("root") or "")) == os.path.realpath(root)):
+
+        def _forget():
             for f in (auto, os.path.join(root, "state", "port")):
                 try:
                     os.remove(f)
                 except OSError:
                     pass
+
+        def _mine(info):
+            return "root" not in info or os.path.realpath(
+                str(info.get("root") or "")) == os.path.realpath(root)
+
+        if base_info is not None and _mine(base_info):
+            _forget()
             return 9909, "mine"
+        # 9909 가 **비어 있어도** 돌아온다 (REQ-20260908-064, 사용자 물음 2026-09-08
+        # 18:49: 「9909가 비게되면 9909로 돌아오면 안되나」). 단, 옮겨 앉은 포트에
+        # 내 서버가 아직 살아 있으면 그대로 둔다 — 돌아오면 대시보드가 둘이 된다.
+        if base_info is None:
+            moved = s9_port(root)
+            moved_info = serveinfo_at(moved) if _info is None else _info(moved)
+            if (moved_info is None or not _mine(moved_info)) and \
+                    (_bindable or port_bindable)(9909):
+                own = (_foreign or windows_listen_owner)(9909)
+                if not (own and own[1] and not _is_wsl_relay(own[1])):
+                    _forget()
+                    return 9909, "free"
     port = port or s9_port(root)
     info = serveinfo_at(port) if _info is None else _info(port)
     if info is not None:

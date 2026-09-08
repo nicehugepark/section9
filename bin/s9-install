@@ -859,7 +859,9 @@ def start_dashboard():
             kw["creationflags"] = flags
         else:
             kw["start_new_session"] = True
-        subprocess.Popen([sys.executable, s9, "serve", "--supervise",
+        # `--port-auto`: 기계가 읽은 포트다 — 사람의 결정(port.pinned)으로 굳히지
+        # 않는다 (REQ-20260908-064).
+        subprocess.Popen([sys.executable, s9, "serve", "--supervise", "--port-auto",
                           "--port", str(port)], **kw)
         say(f"대시보드 기동: http://127.0.0.1:{port}/ (감시 포함)")
     except Exception as e:

@@ -322,7 +322,11 @@ def ensure_serve():
     try:
         os.makedirs(os.path.join(root, "state"), exist_ok=True)
         lf = open(os.path.join(root, "state", "serve.log"), "a", encoding="utf-8")
-        subprocess.Popen([*S9_ARGV, "serve", "--supervise", "--port", str(port)],
+        # `--port-auto`: 이 포트는 기계가 읽은 값이다 (REQ-20260908-064) — 없으면
+        # serve 가 사람의 결정(port.pinned)으로 굳혀 옮겨 앉은 포트가 영영 9909 로
+        # 돌아오지 못한다 (실측 2026-09-08 18:21: 훅이 9911 을 못박았다).
+        subprocess.Popen([*S9_ARGV, "serve", "--supervise", "--port-auto",
+                          "--port", str(port)],
                          stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
                          start_new_session=True)
     except Exception:
