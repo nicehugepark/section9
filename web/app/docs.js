@@ -789,13 +789,13 @@ async function loadDoc(id, bg, force){
         <div class="artby"><span class="badge" style="--ah:${tagHue(m.user||"?")}"><i class="av">${esc((m.user||"?").slice(0,1).toUpperCase())}</i>${esc(m.user||"?")}</span>
           <span>${esc((m.created||"").slice(0,10))}</span>
           <span class="path" title="${esc(m.id)}">${esc(shortId(m.id))}</span></div>
-        <div class="md artmd">${md2html(artBody)}</div>
+        <div class="md artmd">${md2html(artBody, m.id)}</div>
       </article>
       <details class="artmeta"><summary>이 글이 나온 자리 — 원문 · 메타 · 이력</summary>
         <div class="path">${esc(d.path)}</div>
         ${reviewActs}
         <table class="metatbl">${fields.filter(f=>f[1]).map(f=>`<tr><td>${f[0]}</td><td>${f[1]}</td></tr>`).join("")}</table>
-        <div class="md">${md2html(rest)}</div>
+        <div class="md">${md2html(rest, m.id)}</div>
       </details>${streamSec}
       <div class="backlinks" id="backlinks"></div>`;
   } else {
@@ -829,7 +829,7 @@ async function loadDoc(id, bg, force){
       ${dstHTML(m)}
     </h1>${docActs}${answerFoundHTML(m)}${answerTellHTML(m)}</div>${outside}${lineage}${stallRow}${gate}
     ${meta}
-    <div class="md">${md2html(d.body)}</div>${streamSec}
+    <div class="md">${md2html(d.body, m.id)}</div>${streamSec}
     <div class="backlinks" id="backlinks"></div>`;
     /* 배선은 그린 직후에 — 부르는 쪽이 `reload` 를 주어야 원복이 완성된다
        (낙관적 갱신 금지). 되읽기 순서가 곧 계약이다: 프로젝트 → 카탈로그 →

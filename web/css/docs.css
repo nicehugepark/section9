@@ -247,7 +247,12 @@
    제 모양을 가진 컨트롤이라 보더를 두르지 않는다(두 겹 상자로 읽힌다).
    자동 재생 없음 — `preload="none"` 이라 누르기 전에는 받지도 않는다. */
 .attmed{display:block;margin:4px 0 10px}
-video.attmed{width:min(100%,760px);max-width:100%;box-sizing:border-box;
+/* 높이를 묶는다 (REQ-20260908-048). 폭만 정하면 4:3 짜리 작은 영상이 760px 로
+   늘어나 570px 높이를 차지하고, 그 아래의 글이 전부 밀린다 — 2026-09-08 WebKit
+   캡처에서 실측했다. 문서 안의 재생기는 문서의 한 조각이지 문서의 주인이 아니다.
+   contain 은 묶인 자리 안에서 비율을 지킨다(늘어난 그림 금지). */
+video.attmed{width:min(100%,760px);max-width:100%;max-height:min(52vh,420px);
+  box-sizing:border-box;object-fit:contain;
   border:1px solid var(--border);background:var(--bg)}
 audio.attmed{width:min(100%,560px);max-width:100%}
 /* 재생기 위의 이름 줄 — 그림과 달리 소리는 무엇을 트는지 이름이 없으면 모른다 */

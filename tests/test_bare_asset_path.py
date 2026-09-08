@@ -111,13 +111,15 @@ class BareAssetPath(unittest.TestCase):
         self.assertIn("attImg(", body, "표기와 같은 함수를 쓰지 않는다")
         self.assertIn("catFind", body,
                       "축약 id 를 풀지 않는다 — 사람이 쓰는 모양이 축약이다")
-        m = re.search(r"function attImg\(did, f\)\{([\s\S]{0,900}?)\n\}",
+        m = re.search(r"function attImg\(did, f, p\)\{([\s\S]{0,900}?)\n\}",
                       self.src)
         self.assertIsNotNone(m, "attImg 를 찾지 못했다")
         self.assertIn("attimg", m.group(1), "표기와 같은 클래스를 쓰지 않는다")
-        self.assertIn("/api/asset?doc=", m.group(1),
+        # 주소를 짓는 자리는 attAssetUrl 한 곳이다 (REQ-20260908-047) — 산출물의
+        # `p=` 갈래가 생기면서 두 벌이 될 뻔했다. 그 함수가 라우트를 쥔다.
+        self.assertIn("attAssetUrl(did, f, p)", m.group(1),
                       "문서 가시성을 상속하는 라우트로 내야 한다")
-        self.assertIn("attImg(did, f)", self.src,
+        self.assertIn("attImg(did, f, p)", self.src,
                       "표기 쪽이 그 함수를 쓰지 않는다 — 갈라진 채로 둔 것이다")
 
     def test_the_marker_rule_runs_first(self):

@@ -12,7 +12,10 @@ const ATT_DEAD = /[?&]attdead/.test(location.search);
 const ATT_SLOW = /[?&]attslow/.test(location.search);
 let attSeq = 0;
 function attUrl(img, n){
-  let u = `/api/asset?doc=${img.dataset.attd}&f=${img.dataset.attf}`;
+  // 산출물은 `p=`(프로젝트 상대경로), 문서 옆 첨부는 `f=`(파일 이름) — 서버의
+  // asset_full 이 가르는 그 두 갈래다 (REQ-20260908-047).
+  let u = `/api/asset?doc=${img.dataset.attd}`
+    + (img.dataset.attp ? `&p=${img.dataset.attp}` : `&f=${img.dataset.attf}`);
   if (+img.dataset.attbad && (ATT_DEAD || !n)) u += ".nope";
   /* 재시도만 주소를 가른다 — 서버가 첨부에 캐시를 주기 시작하면(ETag·max-age)
      성공한 응답은 그대로 캐시를 타야 하고, 실패한 시도는 캐시에 물리면 안 된다.
@@ -124,14 +127,16 @@ if (ATT_STAT) setInterval(attStat, 400);
    한 프레임을 흘리면 깨진 아이콘이 보이고, 되돌아올 자리가 미리 있어야 다시
    받았을 때 문단이 안 흔들린다. `다시` 버튼은 `<a>` **밖**에 둔다 — 안에 두면
    누르는 순간 링크가 먼저 열린다. */
-function attImg(did, f){
+function attImg(did, f, p){
   const d = encodeURIComponent(did), fe = encodeURIComponent(f);
-  const u = `/api/asset?doc=${d}&f=${fe}`;
+  const pe = p ? encodeURIComponent(p) : "";
+  const u = attAssetUrl(did, f, p);
   const bad = attSeq++ < ATT_FAIL_N ? 1 : 0;      // 진단 (?attfail=)
   return `<span class="attbox">`
     + `<a class="attlink" href="${u}" target="_blank">`
     + `<img class="attimg" src="${u}${bad ? ".nope" : ""}" alt="${f}" loading="lazy"`
-    + ` data-attd="${d}" data-attf="${fe}"${bad ? ' data-attbad="1"' : ""}></a>`
+    + ` data-attd="${d}" data-attf="${fe}"${pe ? ` data-attp="${pe}"` : ""}`
+    + `${bad ? ' data-attbad="1"' : ""}></a>`
     + `<span class="attmiss" hidden></span></span>`;
 }
 
@@ -147,12 +152,16 @@ function attExt(f){
   const m = /\.([A-Za-z0-9]+)$/.exec(String(f || ""));
   return m ? m[1].toLowerCase() : "";
 }
-/* 이 브라우저가 그릴 수 있는가. **목록으로 못 박지 않는다** — 같은 .webm 을
-   Chrome 은 그리고 Safari 는 못 그린다. 답은 브라우저가 그 자리에서 준다.
+/* 이 브라우저가 그릴 수 있는가 — **목록으로 한 번, 브라우저에게 한 번.**
+   목록(PLAYABLE_EXTS)이 먼저인 까닭은 Chrome 이 .mkv 에도 "그릴 수 있다"고
+   답하기 때문이고, 브라우저에게 다시 묻는 까닭은 같은 .webm 을 Chrome 은
+   그리고 Safari 는 못 그리기 때문이다. 둘 다 통과해야 재생기를 세운다.
    한 번 물어 기억한다(문서 하나에 같은 형식이 여러 개 있을 수 있다). */
 const attPlayable = {};
 function attCanPlay(ext){
   if (ext in attPlayable) return attPlayable[ext];
+  // 목록에 없는 것은 묻지도 않는다 — 위 PLAYABLE_EXTS 주석 참조.
+  if (!PLAYABLE_EXT.test("." + ext)){ attPlayable[ext] = false; return false; }
   let ok = false;
   try{
     const mime = MEDIA_MIME[ext];
@@ -162,15 +171,17 @@ function attCanPlay(ext){
   attPlayable[ext] = ok;
   return ok;
 }
-function attAssetUrl(did, f){
-  return `/api/asset?doc=${encodeURIComponent(did)}&f=${encodeURIComponent(f)}`;
+function attAssetUrl(did, f, p){
+  const base = `/api/asset?doc=${encodeURIComponent(did)}`;
+  return p ? `${base}&p=${encodeURIComponent(p)}`
+           : `${base}&f=${encodeURIComponent(f)}`;
 }
 /* 파일 한 줄 — 칩(누르면 새 탭에서 열림)과 「내려받기」. 둘을 한 덩이로 묶는
    이유는 못 받은 그림의 자리와 같다: 따로 두면 좁은 폭에서 하나만 다음 줄로
    떨어져 서로 다른 것처럼 보인다. 둘 다 "이 파일을 손에 넣는 길"이다.
    `f` 는 이미 esc() 를 지나온 글자라 여기서 또 감싸지 않는다. */
-function attFileChip(did, f){
-  const u = attAssetUrl(did, f);
+function attFileChip(did, f, p){
+  const u = attAssetUrl(did, f, p);
   // 칩의 여는 태그는 **한 조각**으로 둔다 — 중간에서 끊으면 "칩이 제 문서와
   // 파일을 들고 있는가"를 재는 시험이 그 태그를 못 찾는다 (test_asset_text_ui).
   return `<span class="atta">`
@@ -180,10 +191,10 @@ function attFileChip(did, f){
 /* 소리·영상 한 자리. 자동 재생은 하지 않는다 — `preload="none"` 이라 누르기
    전에는 내려받지도 않고, 그래서 문서를 여는 것만으로 회선을 쓰지 않는다.
    못 그리는 형식이면 재생기를 세우지 않고 칩으로 떨어뜨린다(빈 자리 금지). */
-function attMedia(did, f){
+function attMedia(did, f, p){
   const ext = attExt(f);
-  if (!attCanPlay(ext)) return attFileChip(did, f);
-  const u = attAssetUrl(did, f), vid = VIDEO_EXT.test("." + ext);
+  if (!attCanPlay(ext)) return attFileChip(did, f, p);
+  const u = attAssetUrl(did, f, p), vid = VIDEO_EXT.test("." + ext);
   const tag = vid ? "video" : "audio";
   return `<span class="attbox">`
     + `<span class="atta">`
@@ -192,15 +203,16 @@ function attMedia(did, f){
     + `<${tag} class="attmed" controls preload="none" playsinline`
     + ` src="${u}" aria-label="${f}"`
     + ` data-attd="${encodeURIComponent(did)}" data-attf="${encodeURIComponent(f)}"`
+    + (p ? ` data-attp="${encodeURIComponent(p)}"` : "")
     + `></${tag}>`
     + `<span class="attmiss" hidden></span></span>`;
 }
 /* 표기든 맨 경로든 여기 한 곳으로 모인다 — 갈리면 같은 파일이 자리마다 다른
    모양으로 선다. */
-function attAny(did, f){
-  if (isImageName(f)) return attImg(did, f);
-  if (MEDIA_EXT.test(f)) return attMedia(did, f);
-  return attFileChip(did, f);
+function attAny(did, f, p){
+  if (isImageName(f)) return attImg(did, f, p);
+  if (MEDIA_EXT.test(f)) return attMedia(did, f, p);
+  return attFileChip(did, f, p);
 }
 /* 재생기가 파일을 못 받았을 때. 그림과 달리 다시 걸지 않는다 — 사람이 재생을
    누른 뒤라 자동 재시도는 소리가 뒤늦게 튀어나오는 일이 된다. 자리를 비우지
@@ -211,7 +223,8 @@ function attMedFail(el){
   if (!miss || !miss.hidden) return;
   let nm = el.dataset.attf || "";
   try{ nm = decodeURIComponent(nm); }catch(e){ /* 그대로 쓴다 */ }
-  const u = `/api/asset?doc=${el.dataset.attd}&f=${el.dataset.attf}`;
+  const u = `/api/asset?doc=${el.dataset.attd}`
+    + (el.dataset.attp ? `&p=${el.dataset.attp}` : `&f=${el.dataset.attf}`);
   el.hidden = true;
   miss.hidden = false;
   miss.className = "attmiss";
@@ -228,7 +241,7 @@ document.addEventListener("error", e => {
 }, true);
 
 /* minimal markdown renderer */
-function md2html(src){
+function md2html(src, docId){
   const lines = esc(src).split("\n");
   let out = [], inCode = false, inList = false, para = [];
   const flushPara = () => { if (para.length){ out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; } };
@@ -258,6 +271,16 @@ function md2html(src){
       // 레거시 절대경로(미이전) — 로드 불가라 파일명 칩으로만
       .replace(/\[(?:Image|File|Audio|Video): ([^\]\n]*\/([^\]\/\n]+))\]/g,
         (mm, full, f) => hold(`<span class="attchip" title="${full}">🖼 ${f}</span>`))
+      /* 요청으로 만든 산출물 (REQ-20260908-047). 이 경로에는 문서 id 가 없어
+         지금 열려 있는 문서의 id 를 함께 보낸다 — 서버가 그 문서 본문이 이
+         경로를 적고 있는지까지 보고 내준다. 문서 첨부 규칙보다 **앞**이다:
+         `projects/…/assets/REQ-…/a.png` 같은 경로가 아래 규칙에 먼저 잡히면
+         있지도 않은 문서 첨부를 부르게 된다. */
+      .replace(PROJ_ASSET_RE, (mm, f, offset, whole) => {
+        if (whole[offset - 1] === "`" || whole[offset + mm.length] === "`") return mm;
+        if (!docId) return mm;      // 문서 밖(설정 화면 등)에서는 낼 곳이 없다
+        return hold(attAny(docId, f, mm));
+      })
       /* 그림이 아닌 맨 경로 (REQ-20260908-047). 여태 이 줄은 아무것도 아닌
          글자로 남아 산출물이 문서에 적히고도 열리지 않았다. 규칙은 아래 그림
          줄과 같다 — 백틱 안은 건드리지 않고, 축약 id 는 카탈로그로 푼다.

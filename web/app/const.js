@@ -165,6 +165,24 @@ const OTHER_EXTS = [
 const BARE_FILE_RE = new RegExp(
   `(?:[\\w.@+-]+\\/)*assets\\/((?:${DOC_ID_PREFIX})${DOC_ID_TAIL})\\/`
   + `([\\w.@+-]+\\.(?:${OTHER_EXTS}))`, "gi");
+/* 요청으로 만든 **산출물**의 경로 (REQ-20260908-047). 문서 옆 첨부와 달리
+   경로 안에 문서 id 가 없다 — `projects/<slug>/assets/…` 는 프로젝트의 자리이지
+   문서의 자리가 아니다. 그래서 화면은 **지금 열려 있는 문서**의 id 를 함께
+   보내고, 서버가 그 문서가 이 경로를 실제로 적고 있는지까지 본다(asset_full).
+   하위 디렉토리를 허용한다 — 실물 vault 의 산출물 참조는 거의 다
+   `assets/<주제>/<파일>` 꼴이다. */
+const PROJ_ASSET_RE = new RegExp(
+  "projects\\/[\\w.@+-]+\\/assets\\/(?:[\\w.@+-]+\\/)*"
+  + `([\\w.@+-]+\\.(?:${IMAGE_EXTS}|${AUDIO_EXTS}|${VIDEO_EXTS}|${OTHER_EXTS}))`,
+  "gi");
+/* 그 자리에서 재생되는 형식 (REQ-20260908-048). **브라우저 말만 믿지 않는다** —
+   Chrome 의 `canPlayType("video/x-matroska")` 는 빈 문자열이 아니라서, 물어만
+   보면 .mkv 에도 재생기를 세운다(2026-09-08 캡처로 실측). 사람은 눌리지 않는
+   검은 상자를 본다. 그래서 목록으로 한 번 거르고, 남은 것만 브라우저에 묻는다 —
+   목록에 있어도 그 브라우저가 못 그리면(Safari 의 .webm) 브라우저 말이 이긴다.
+   서버의 `PLAYABLE_EXTS`(bin/s9.py)와 같은 벌이고 시험이 둘을 맞대어 본다. */
+const PLAYABLE_EXTS = "mp3|m4a|wav|ogg|oga|aac|opus|flac|mp4|m4v|webm|mov";
+const PLAYABLE_EXT = new RegExp(`\\.(?:${PLAYABLE_EXTS})$`, "i");
 // 재생기에 건네는 형식 이름 — canPlayType 이 읽는다.
 const MEDIA_MIME = {
   mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4",

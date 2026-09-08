@@ -104,11 +104,37 @@ class MediaAsset(unittest.TestCase):
 
     def test_one_place_decides_what_a_file_becomes(self):
         """표기든 맨 경로든 attAny 한 곳으로 모인다 — 갈리면 자리마다 다르게 선다."""
-        self.assertIn("function attAny(did, f)", self.src, "가르는 곳이 없다")
+        self.assertIn("function attAny(did, f, p)", self.src, "가르는 곳이 없다")
         self.assertIn("hold(attAny(did, f))", self.src,
                       "[File:] 표기가 그 곳을 쓰지 않는다")
         self.assertIn("hold(attAny(r ? r.id : did, f))", self.src,
                       "맨 경로가 그 곳을 쓰지 않는다")
+
+    def test_an_output_path_gets_a_handle_too(self):
+        """산출물 경로도 같은 곳으로 모인다 (REQ-20260908-047).
+
+        사용자가 본 자리다: 「요청 문서에서 경로가 표시되긴 한데 대시보드에서
+        직접 다운로드나 열어보기가 되지 않는다.」 `projects/<slug>/assets/…` 는
+        문서 첨부 규칙이 잡지 못한다 — 그 경로에는 문서 id 가 없다. 그래서
+        규칙을 따로 두고, 지금 열려 있는 문서의 id 를 함께 보낸다.
+        """
+        self.assertIn("PROJ_ASSET_RE", self.src,
+                      "산출물 경로 규칙이 없다 — 경로가 맨 글자로 남는다")
+        self.assertIn("hold(attAny(docId, f, mm))", self.src,
+                      "산출물이 attAny 한 곳으로 모이지 않는다")
+        self.assertIn("function md2html(src, docId)", self.src,
+                      "렌더러가 지금 문서의 id 를 모른다 — 서버가 가시성을 못 잰다")
+        # 서버의 두 갈래(`p=` 산출물 · `f=` 문서 첨부)를 그대로 쓴다
+        self.assertIn("&p=", self._fn("attAssetUrl"), "산출물 갈래를 부르지 않는다")
+        # 하위 디렉토리를 허용해야 한다 — 실물 참조는 `assets/<주제>/<파일>` 꼴이다
+        rx = re.search(r"const PROJ_ASSET_RE = new RegExp\(([\s\S]{0,400}?)\);",
+                       self.src)
+        self.assertTrue(rx, "PROJ_ASSET_RE 를 읽지 못했다")
+        # 역슬래시를 세지 않는다 — 정규식 원문은 자바스크립트 문자열 안에
+        # 다시 escape 돼 있어, 그 개수를 시험이 세면 시험이 먼저 깨진다.
+        compact = rx.group(1).replace("\\", "")
+        self.assertIn("(?:[w.@+-]+/)*", compact,
+                      "하위 디렉토리를 허용하지 않는다")
 
     # ---------- ② 열고 내려받는 손잡이 (REQ-047) ----------
 
@@ -118,7 +144,7 @@ class MediaAsset(unittest.TestCase):
         self.assertIn('class="attfile"', body, "있던 칩 어휘를 쓰지 않는다")
         self.assertIn("/api/asset?doc=", self._fn("attAssetUrl"),
                       "문서 가시성을 상속하는 라우트로 내야 한다")
-        self.assertIn("attAssetUrl(did, f)", body, "그 라우트를 쓰지 않는다")
+        self.assertIn("attAssetUrl(did, f, p)", body, "그 라우트를 쓰지 않는다")
         self.assertIn("data-adoc=", body, "첨부 본문이 읽는 자리가 사라졌다")
         self.assertIn("내려받기", body, "내려받는 길이 없다")
         self.assertIn("download=", body, "download 속성이 없다 — 새 탭만 열린다")
@@ -142,7 +168,7 @@ class MediaAsset(unittest.TestCase):
     def test_a_format_the_browser_cannot_draw_falls_back(self):
         """S3. 못 그리는 형식은 빈 자리가 아니라 칩과 내려받기로 떨어진다."""
         body = self._fn("attMedia")
-        self.assertIn("if (!attCanPlay(ext)) return attFileChip(did, f);", body,
+        self.assertIn("if (!attCanPlay(ext)) return attFileChip(did, f, p);", body,
                       "못 그리는 형식에 빈 재생기를 세운다")
         can = self._fn("attCanPlay")
         self.assertIn("canPlayType", can,
@@ -184,6 +210,20 @@ class MediaAsset(unittest.TestCase):
                 want |= exts
         self.assertEqual(set(self.consts["OTHER_EXTS"].split("|")), want,
                          "그림 아닌 확장자 목록이 서버와 다르다")
+        # 재생되는 것과 붙는 것은 다른 물음이다 (REQ-20260908-048). 화면이
+        # 브라우저에게만 물으면 Chrome 이 .mkv 에도 "그린다"고 답해 눌리지 않는
+        # 검은 상자가 선다 — 2026-09-08 캡처로 실측했다. 두 벌이 갈리면 그 자리가
+        # 다시 생긴다.
+        pm = re.search(r"PLAYABLE_EXTS = \{([^}]+)\}", src)
+        self.assertIsNotNone(pm, "서버 PLAYABLE_EXTS 를 찾지 못했다")
+        srv = {e.strip().strip('"').lstrip(".") for e in pm.group(1).split(",")
+               if e.strip()}
+        cm = re.search(r'const PLAYABLE_EXTS = "([^"]+)";', self.src)
+        self.assertIsNotNone(cm, "화면에 PLAYABLE_EXTS 가 없다 — 브라우저 말만 믿는다")
+        self.assertEqual(set(cm.group(1).split("|")), srv,
+                         "재생되는 형식 목록이 서버와 다르다")
+        self.assertIn('if (!PLAYABLE_EXT.test("." + ext))', self.src,
+                      "그 목록으로 먼저 거르지 않는다")
 
     # ---------- 손 ----------
 
