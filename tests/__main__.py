@@ -1151,7 +1151,16 @@ def main():
                 print(f"[원격 머신] 전체 통과 — commit {(_sha or '')[:7]} 의 통과 시각을 남겼다"
                       "(작업 트리에 미커밋 변경이 있어 지문 기록은 생략)", file=sys.stderr)
         elif rc != 0 and full:
-            record_last_red(remote_run.LAST_RED or ["(원격 머신)"], fp)
+            # 이름을 못 걷었으면 **지어내지 않는다** (REQ-20260908-058). 예전엔
+            # `["(원격 머신)"]` 을 적었는데, 그 기록은 무엇을 고쳐야 할지 말해
+            # 주지 않으면서 다음 커밋을 막았다 — 남는 길이 `S9_FIX_RED` 뿐이었다.
+            # 빈 목록으로 남기면 기록은 보이되(다음 전체 실행이 덮는다) 커밋을
+            # 막지는 않는다(bin/s9-guard 의 `_red_unnamed`).
+            record_last_red(list(remote_run.LAST_RED), fp)
+            if not remote_run.LAST_RED:
+                print("[원격 머신] 실패했지만 어느 파일인지 못 걷었다 — 위 출력을 "
+                      "읽어라. 이름 없는 기록은 다음 커밋을 막지 않는다.",
+                      file=sys.stderr)
         if remote_run.LAST_FLAKY:
             record_flaky(remote_run.LAST_FLAKY, "원격 샤드에서 실패 · 단독 실행은 통과",
                          sha=(remote_run.LAST_SHA or _sha or ""), attempt=2, where="원격")

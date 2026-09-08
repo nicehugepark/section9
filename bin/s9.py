@@ -20456,7 +20456,12 @@ def instance_upgrade(root=None, run=None):
         die("여기는 인스턴스가 아니다 — upstream remote 가 없다. "
             "`s9 instance init` 이 만든 저장소에서만 쓴다 "
             "(업스트림 자신은 그냥 pull 하면 된다)")
-    git("fetch", "--quiet", "upstream")
+    # 원격의 **모든** 가지를 받아 온다 — clone 이 새긴 refspec 하나에 기대지
+    # 않는다. `--depth 1` clone 은 「그 하나의 가지」만 받는 refspec 을 새기는데,
+    # 업스트림이 가지 없이 특정 commit 에 놓여 있으면(원격 CI) 그 refspec 이
+    # 없는 가지를 가리켜 fetch 가 아무것도 안 가져온다 (REQ-20260908-061).
+    git("fetch", "--quiet", "upstream",
+        "+refs/heads/*:refs/remotes/upstream/*", check=False)
     # **업스트림의 가지 이름을 지어내지 않는다** (REQ-20260908-059). `upstream/main`
     # 으로 못박았더니 원격 CI 에서 죽었다 — 그 머신은 저장소를 `checkout <sha>` 로
     # 놓고 돌아서 가지가 하나도 없다(같은 사정이 instance init 에도 적혀 있다,
@@ -20472,8 +20477,15 @@ def instance_upgrade(root=None, run=None):
                     "refs/remotes/upstream", check=False).stdout or "").split()
         ref = rows[0] if rows else ""
     if not ref:
-        die("업스트림에 받아 올 가지가 없다 — upstream remote 를 확인하라 "
-            "(가지 없이 특정 commit 만 놓인 저장소는 업그레이드의 출처가 못 된다)")
+        # 가지가 하나도 없는 저장소(특정 commit 만 놓인 자리)라도 그 commit 은
+        # 받아 올 수 있다 — HEAD 를 직접 묻는다.
+        if git("fetch", "--quiet", "upstream", "HEAD",
+               check=False).returncode == 0 and \
+                git("rev-parse", "--verify", "--quiet", "FETCH_HEAD",
+                    check=False).returncode == 0:
+            ref = "FETCH_HEAD"
+    if not ref:
+        die("업스트림에서 받아 올 것이 없다 — upstream remote 를 확인하라")
     have = [p for p in INSTANCE_CODE_PATHS
             if git("cat-file", "-e", f"{ref}:{p}", check=False).returncode == 0]
     if not have:

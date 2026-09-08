@@ -616,6 +616,19 @@ def full_green_age():
         return None
 
 
+RED_NO_NAME = "(원격 머신)"     # 러너가 실패 파일을 못 걷었을 때 적던 자리표시
+
+
+def _red_unnamed(red):
+    """그 실패 기록이 **파일 이름을 하나도 담고 있지 않은가.**"""
+    files = [str(f).strip() for f in (red.get("files") or [])]
+    files = [f for f in files if f]
+    if not files:
+        return True
+    # 파일 이름처럼 보이는 것이 하나도 없다 — `(원격 머신)` 같은 자리표시뿐이다
+    return not any(f.endswith(".py") for f in files)
+
+
 def red_ratchet(staged, red=None, green_age=None, now=None, fix_env=None):
     """(막나, 실패한 파일들) — 마지막 실패가 마지막 통과보다 새로우면 막는다.
 
@@ -624,6 +637,16 @@ def red_ratchet(staged, red=None, green_age=None, now=None, fix_env=None):
     """
     red = _read_json(LAST_RED) if red is None else red
     if not red or not red.get("at"):
+        return (False, [])
+    # **이름 없는 실패는 막지 않는다** (REQ-20260908-058, 실제 사고 2026-09-08).
+    # 그날 기록의 `files` 가 `["(원격 머신)"]` 이었다 — 실패한 파일 이름이 아니다.
+    # 그러면 「그 파일을 고쳐 담으라」를 따를 수 없고, 원격 러너는 미커밋 변경이
+    # 있는 동안 통과 기록을 남기지 않으므로 손으로 전체를 돌려도 기록이 안
+    # 지워진다. 커밋해야 지워지는데 커밋은 그 기록이 막는다. 남는 길이
+    # `S9_FIX_RED` 뿐이라 리드가 하루에 세 번 썼다 — **매번 쓰는 비상구는 검사가
+    # 아니다.** 그래서 이름을 못 적은 기록은 경고로 낮춘다. 기록은 남고
+    # (다음 전체 실행이 덮는다) 사람은 로그를 보면 된다.
+    if _red_unnamed(red):
         return (False, [])
     now = time.time() if now is None else now
     green_age = full_green_age() if green_age is None else green_age

@@ -244,6 +244,23 @@ def _sh_quote(s):
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
+def _split_uncommitted(sha, pats_argv):
+    """(그 커밋에 있는 것, 아직 없는 것) — 파일 이름이 아닌 인자는 그대로 남긴다."""
+    if not sha:
+        return list(pats_argv), []
+    keep, missing = [], []
+    for a in pats_argv:
+        if a.startswith("-") or not a.endswith(".py"):
+            keep.append(a)
+            continue
+        rel = a if "/" in a else "tests/" + a
+        if _git("cat-file", "-e", f"{sha}:{rel}").returncode == 0:
+            keep.append(a)
+        else:
+            missing.append(a)
+    return keep, missing
+
+
 def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=None,
                on_red=None):
     """원격이 가진 커밋을 묻고 → 증분 bundle 을 ssh 로 건네고 → 원격이 돈다.
@@ -271,6 +288,18 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     if dirty:
         print(f"[원격] 미커밋 변경 {dirty}개는 원격에 실리지 않는다 — HEAD {sha[:7]} 를 돈다. "
               f"통과 기록은 남기지 않는다(commit 뒤 다시 돌면 남는다)", file=sys.stderr)
+    # **아직 커밋되지 않은 파일은 보내지 않는다** (REQ-20260908-058, 실제 사고
+    # 2026-09-08). 원격은 이 커밋(bundle)을 받아 도는데, 그 커밋에 없는 파일을
+    # 목록으로 주면 원격이 「고르지 못한 패턴」으로 rc=1 을 낸다 — 시험이 진 것도
+    # 아닌데 커밋 차단이 걸리고, 무엇이 실패했는지도 안 남는다. 그날 새로 만든
+    # 시험 파일 하나가 그 자리였다.
+    pats_argv, not_yet = _split_uncommitted(sha, pats_argv)
+    if not_yet:
+        print(f"[원격] 아직 커밋되지 않아 보내지 않는다: {' '.join(not_yet)} "
+              f"— commit 뒤 다시 돌면 함께 돈다", file=sys.stderr)
+    if not pats_argv:
+        print("[원격] 보낼 파일이 하나도 없다 — 원격을 부르지 않는다", file=sys.stderr)
+        return 0
     t0 = time.time()
     # ① 원격이 이미 가진 커밋을 묻는다 → ② 그 뒤부터의 증분만 bundle 로 만든다.
     _ssh(key, probe_script(dest), stream=False, timeout=180)
