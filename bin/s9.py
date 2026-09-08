@@ -15541,6 +15541,122 @@ def transcript_usage(path, started, ended):
     return total
 
 
+# 리드 turn 의 앞을 transcript 뒤에서부터 찾을 때 한 번에 읽는 크기.
+# 파일이 수십 MB 라(실측 22~34MB) 통째로 읽지 않는다 — 못 찾으면 네 배씩 넓힌다.
+TURN_TAIL_BYTES = 4 << 20
+
+
+def transcript_turn_start(path):
+    """이 transcript 에서 **마지막 사람 프롬프트**의 시각 — 리드 한 턴의 앞이다.
+    tool_result 만 든 user 이벤트는 사람의 말이 아니라 도구의 답이니 건너뛴다.
+    못 찾으면 "" — 창을 못 잡으면 아무것도 적지 않는다.
+
+    왜 여기에 두는가 (REQ-20260908-020): Stop 훅은 이 잣대로 `--started` 를 넘겨
+    주지만, 리드가 손으로 남기는 `s9 note` 에는 훅이 없다. 그 항목은 started 와
+    ended 가 같은 순간이라 창이 [지금, 지금] 으로 닫히고, transcript 를 채워도
+    창 안 usage 가 0 건이라 토큰이 안 적혔다 — 9월 요청 371건 중 27건만 토큰이
+    있던 이유다."""
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return ""
+    span = TURN_TAIL_BYTES
+    while True:
+        try:
+            with open(path, "rb") as f:
+                f.seek(max(0, size - span))
+                data = f.read()
+        except OSError:
+            return ""
+        lines = data.splitlines()
+        if span < size and lines:
+            lines = lines[1:]        # 가운데를 잘라 읽었으니 첫 줄은 조각이다
+        for raw in reversed(lines):
+            if b'"user"' not in raw:
+                continue
+            try:
+                ev = json.loads(raw.decode("utf-8", "ignore"))
+            except ValueError:
+                continue
+            if ev.get("type") != "user" or not ev.get("timestamp"):
+                continue
+            content = (ev.get("message") or {}).get("content")
+            if isinstance(content, list) and any(
+                    isinstance(c, dict) and c.get("type") == "tool_result"
+                    for c in content):
+                continue
+            return ev.get("timestamp")
+        if span >= size:
+            return ""
+        span *= 4
+
+
+def lead_transcript(session=None):
+    """이 세션 **리드**의 native transcript 경로 — 없으면 "".
+
+    하네스마다 갈리는 자리다 (PROTOCOL 0'). 갈래는 하나로 모아 둔다:
+      · Claude — Stop 훅이 세션 바인딩에 적어 둔 `transcript_path`, 없으면
+        `~/.claude/projects/<cwd>/<세션>.jsonl` 을 찾는다(`_discover_transcript`).
+      · 그 밖의 하네스 — native transcript 를 주지 않으므로 "" 다.
+    못 찾으면 "" 를 돌려주고 부르는 쪽은 아무것도 적지 않는다."""
+    sid = (session or os.environ.get("S9_SESSION") or "").strip()
+    if not sid:
+        return ""
+    tp = ""
+    try:
+        tp = (read_binding(current_machine(), sid) or {}).get("transcript_path") or ""
+    except Exception:
+        tp = ""
+    if not tp:
+        try:
+            tp = _discover_transcript(sid)
+        except Exception:
+            tp = ""
+    return tp if tp and os.path.exists(tp) else ""
+
+
+def _window_floor(rows, actor, start, skip=None):
+    """창의 앞을 **같은 actor 가 이미 센 끝**까지 민다 (REQ-20260908-020).
+
+    한 턴에 노트를 둘 남기거나, 손 노트 뒤에 Stop 훅이 그 턴의 보고를 또 붙이면
+    두 항목의 창이 겹쳐 같은 토큰이 문서 머리에 두 번 더해진다. 항목마다 앞을
+    직전 항목의 끝으로 밀면 창들이 이어 붙기만 하고 겹치지 않는다."""
+    lo = iso_epoch(start)
+    if not lo:
+        return start
+    for r in rows:
+        if r is skip or r.get("actor") != actor:
+            continue
+        e = iso_epoch(r.get("ended"))
+        if e and e > lo:
+            start, lo = r.get("ended"), e
+    return start
+
+
+def _fill_lead_window(rows, entry, actor):
+    """리드가 손으로 남긴 항목의 transcript 와 창의 앞을 채운다 (REQ-20260908-020).
+
+    조건 셋을 모두 만족할 때만 손댄다 — 넓히다 다른 문서의 몫까지 끌어오는 것이
+    안 적는 것보다 나쁘다:
+      ① 항목에 transcript 가 없다(훅이 넘긴 것이 있으면 그 말이 옳다),
+      ② actor 가 리드다(서브에이전트는 제 출력 파일이 따로 있다),
+      ③ 그 항목이 **이 턴 안에서 시작**했다. 지난 턴에 열린 항목을 지금 닫으며
+         창을 턴 너머로 넓히면 그 사이의 모든 턴이 이 한 문서에 얹힌다.
+
+    창의 앞은 이 턴의 시작이되, 같은 문서에서 같은 actor 의 직전 기여가 이 턴
+    안에서 끝났으면 **그 끝**을 앞으로 삼는다 — 한 턴에 노트를 둘 남겨도 같은
+    토큰을 두 번 세지 않는다."""
+    if entry.get("transcript") or actor_kind(actor) != "lead":
+        return
+    tp = lead_transcript()
+    turn = transcript_turn_start(tp) if tp else ""
+    t0 = iso_epoch(turn) if turn else 0
+    if not t0 or (iso_epoch(entry.get("started")) or 0) < t0:
+        return
+    entry["transcript"] = tp
+    entry["started"] = _window_floor(rows, actor, turn, skip=entry)
+
+
 def record_contribution(meta, actor, item="", result="done", transcript="",
                         ts=None, started=None):
     """문서 meta 의 contributions 에 항목별 처리 이력을 누적 (단일 쓰기 경로).
@@ -15577,9 +15693,13 @@ def record_contribution(meta, actor, item="", result="done", transcript="",
             if r.get("actor") == actor and r.get("result") == "running":
                 r["result"] = "done" if result != "failed" else "failed"
                 r["ended"] = ts
-        entry = {"actor": actor, "item": item, "started": started or ts,
+        entry = {"actor": actor, "item": item,
+                 "started": _window_floor(rows, actor, started or ts),
                  "ended": ts, "result": result, "transcript": transcript}
         rows.append(entry)
+    # 리드가 손으로 남긴 항목은 transcript 도 창도 없이 온다 (REQ-20260908-020).
+    # 훅이 없는 그 자리를 여기서 메운다 — 못 메우면 종전대로 아무것도 안 적는다.
+    _fill_lead_window(rows, entry, actor)
     # 토큰 (REQ-20260907-009): 이 항목의 창 안 usage 를 항목에 적고, 문서 머리
     # 에는 **늘어난 만큼만** 더한다 — 같은 항목을 다시 닫으면 창이 넓어져
     # 다시 합산되므로 차이만 더해야 이중 계산이 없고, CONTRIB_MAX 로 오래된
