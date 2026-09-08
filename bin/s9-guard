@@ -207,6 +207,23 @@ def fresh_staged(staged):
     return out
 
 
+DATA_PREFIXES = ("vault/", "users/", "projects/")
+DATA_FILES = (".s9-sync",)
+
+
+def is_data_path(rel):
+    """동기화가 담는 데이터인가 — 코드가 아니라 (REQ-20260908-049).
+
+    목록은 `SYNC_DATA_PATHS`(bin/s9.py) 와 같은 뜻이다. 여기서 다시 적는
+    까닭은 guard 가 s9.py 를 import 하지 않기 때문이다 — 훅은 본체가 못 뜰
+    때도 돌아야 한다. 두 곳이 갈리면 시험(test_concurrent_gate)이 잡는다.
+    """
+    p = (rel or "").replace("\\", "/")
+    while p.startswith("./"):
+        p = p[2:]
+    return p in DATA_FILES or p.startswith(DATA_PREFIXES)
+
+
 def concurrent_gate(staged):
     """워커가 도는 중에 '방금 만져진' 파일을 담으려 하면 막는다.
 
@@ -218,6 +235,15 @@ def concurrent_gate(staged):
     """
     workers = live_workers()
     if not workers:
+        return
+    # **문서만 담는 커밋은 이 검사의 몫이 아니다** (REQ-20260908-049).
+    # 이 검사가 막으려는 것은 남의 커밋하지 않은 **코드**를 내 커밋이 쓸어
+    # 담는 것이다(REQ-20260907-062). 문서는 하나가 파일 하나이고, 동기화가
+    # 제가 쓴 것만 담으며, 겹치면 의미 병합기가 푼다. 그런데 이 검사가 그
+    # 커밋까지 막아, 서브에이전트가 도는 동안 **문서가 밖으로 못 나갔다** —
+    # 2026-09-08 하루의 대부분이 그랬고 다른 머신이 그만큼 뒤처졌다.
+    # 코드가 한 파일이라도 섞이면 종전대로 막는다.
+    if staged and all(is_data_path(f) for f in staged):
         return
     fresh = fresh_staged(staged)
     if not fresh:

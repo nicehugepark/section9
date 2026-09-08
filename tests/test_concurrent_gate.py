@@ -135,5 +135,51 @@ class TheCommitMessageSaysIt(unittest.TestCase):
         self.assertNotIn("남의것", self._msg("다음 커밋\n"))
 
 
+class DataOnlyCommits(unittest.TestCase):
+    """문서만 담는 커밋은 이 검사가 막지 않는다 (REQ-20260908-049).
+
+    2026-09-08 하루의 대부분, 동기화(sync)의 문서 커밋이 전부 이 검사에 막혔다 —
+    서브에이전트가 하나라도 돌고 있으면 `vault/…` 한 파일을 담는 커밋조차 「다른
+    작업자가 붙어 있는 중」으로 거부됐고, 다른 머신은 그만큼 뒤처졌다. 검사가
+    지키려던 것은 남의 **코드**이지 문서가 아니다.
+    """
+
+    def test_the_paths_match_the_ones_sync_stages(self):
+        # 두 곳이 갈리면 문서가 다시 막힌다 — bin/s9.py 의 SYNC_DATA_PATHS 가 원천
+        src = open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8").read()
+        line = [l for l in src.splitlines() if l.startswith("SYNC_DATA_PATHS")]
+        self.assertTrue(line, "bin/s9.py 에 SYNC_DATA_PATHS 가 없다")
+        names = set(eval(line[0].split("=", 1)[1].strip()))
+        guard = set(x.rstrip("/") for x in g.DATA_PREFIXES) | set(g.DATA_FILES)
+        self.assertEqual(names, guard,
+                         "동기화가 담는 경로와 가드가 아는 경로가 갈렸다")
+
+    def test_a_document_is_a_data_path(self):
+        for rel in ("vault/requests/2026/09/REQ-1.md", "users/nice.md",
+                    "projects/section9/CONTEXT.md", ".s9-sync"):
+            self.assertTrue(g.is_data_path(rel), rel)
+
+    def test_code_is_not(self):
+        for rel in ("bin/s9.py", "web/app/app.js", "tests/test_x.py",
+                    "harness/common/PROTOCOL.md", "CLAUDE.md"):
+            self.assertFalse(g.is_data_path(rel), rel)
+
+    def test_a_document_only_commit_passes_while_a_worker_runs(self):
+        with mock.patch.object(g, "live_workers",
+                               return_value=[("서브에이전트", "s1", 2)]), \
+             mock.patch.object(g, "fresh_staged") as fresh:
+            g.concurrent_gate(["vault/requests/2026/09/REQ-1.md", ".s9-sync"])
+        self.assertEqual(fresh.call_count, 0,
+                         "문서만 담았는데 검사가 돌았다 — 동기화가 또 막힌다")
+
+    def test_one_code_file_mixed_in_still_stops_it(self):
+        with mock.patch.object(g, "live_workers",
+                               return_value=[("서브에이전트", "s1", 2)]), \
+             mock.patch.object(g, "fresh_staged", return_value=[]) as fresh:
+            g.concurrent_gate(["vault/requests/2026/09/REQ-1.md", "bin/s9.py"])
+        self.assertEqual(fresh.call_count, 1,
+                         "코드가 섞였는데 검사를 건너뛰었다 — 남의 변경이 쓸려 담긴다")
+
+
 if __name__ == "__main__":
     unittest.main()
