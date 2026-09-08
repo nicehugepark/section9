@@ -22747,6 +22747,92 @@ def port_guard_tick():
 # 백지를 성공으로 반환하면 규율 자체가 무의미해진다. 실제로 21:56 에 빈 그래프
 # 캡처를 진짜 결함으로 한 번 오인했다.
 SHOT_SIZE_DEFAULT = "1440,900"   # `--size` 의 기본값 — 화면별 조정과 가르는 기준
+# 캡처를 줄이는 도구 (REQ-20260908-055). **있으면 쓰고 없으면 그대로 둔다** —
+# 설치하지 않는다. 주인 물음 2026-09-08: 「필요한 프로그램들을 설치할 때 같이
+# 설치하는 건 어때?」에 대한 판정이 이것이다: 필수로 두면 `s9-install` 이
+# 네트워크·프록시·잠긴 머신에서 실패할 수 있고 「python3 하나로 돈다」가 깨진다.
+# 이 도구는 캡처를 줄이는 데만 쓰므로 없다고 하네스가 멈추지 않는다. Chrome·
+# Playwright 와 같은 모양이다 — 없으면 doctor 가 설치 절차를 찍어 준다.
+#
+# 파이썬 import 가 아니라 **외부 실행 파일**이라 pyproject 의 「의존성 0」 정책과
+# test_stdlib_only 를 건드리지 않는다.
+#
+# 잰 값: 첨부 872개·142MB·중앙값 112KB 이고 1MB 를 넘는 것은 7개(전체의 15.6%)
+# 뿐이다 — 무게는 거인이 아니라 **개수**에 있다. 그래서 모든 캡처에 일률로 듣는
+# 축소라야 값이 있다. 실제로 몇 퍼센트가 줄어드는지는 이 머신에 도구가 없어
+# 아직 못 쟀다(일반값은 60~70% 라고 하나 이 저장소의 실측이 아니다).
+SHOT_SHRINK_TOOLS = (
+    # (실행 파일, 인자 만들기(입력, 출력) → argv, 설치 안내 한 줄)
+    ("pngquant", lambda src, dst: [
+        "pngquant", "--force", "--skip-if-larger", "--quality=60-90",
+        "--output", dst, "--", src],
+     "pngquant — apt: `sudo apt install pngquant` · mac: `brew install pngquant` "
+     "· win: https://pngquant.org 의 실행 파일 하나"),
+    ("oxipng", lambda src, dst: [
+        "oxipng", "-o", "4", "--strip", "safe", "--out", dst, src],
+     "oxipng — cargo: `cargo install oxipng` · mac: `brew install oxipng` "
+     "· https://github.com/shssoichiro/oxipng/releases 의 실행 파일 하나"),
+)
+SHOT_SHRINK_TIMEOUT = 20    # 초 — 검증을 느리게 만드는 검증 도구는 꺼진다
+
+
+def shot_shrink_tool():
+    """쓸 수 있는 축소 도구 — (이름, argv 만들기) 또는 (None, None)."""
+    for name, argv, _guide in SHOT_SHRINK_TOOLS:
+        if shutil.which(name):
+            return name, argv
+    return None, None
+
+
+def shot_shrink_guides():
+    """없는 도구의 설치 안내 — doctor 가 읽는 **한 곳**이다."""
+    return [g for name, _a, g in SHOT_SHRINK_TOOLS if not shutil.which(name)]
+
+
+def shot_shrink(path, out=None):
+    """캡처를 줄인다 — 도구가 없으면 아무 일도 하지 않는다 (REQ-20260908-055).
+
+    지키는 것 셋. ① **줄어들 때만 바꾼다** — 결과가 더 크거나 도구가 실패하면
+    원본이 남는다. ② **크기(가로·세로)를 바꾸지 않는다** — 판정에 쓰는 그림이
+    잘리면 캡처가 거짓말을 한다(그래서 폭을 줄이는 것이 아니라 색을 줄인다).
+    ③ **시한을 둔다** — 캡처마다 몇십 초가 붙으면 사람이 검증을 건너뛴다.
+
+    반환: 줄인 바이트 수(0 이면 안 바꿨다).
+    """
+    import subprocess
+    w = out or sys.stderr
+    name, mk = shot_shrink_tool()
+    if not name:
+        return 0
+    try:
+        before = os.path.getsize(path)
+    except OSError:
+        return 0
+    dst = path + ".shrink"
+    try:
+        r = subprocess.run(mk(path, dst), capture_output=True,
+                           encoding="utf-8", errors="replace",
+                           timeout=SHOT_SHRINK_TIMEOUT)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        r = None
+    try:
+        ok = (r is not None and r.returncode == 0 and os.path.isfile(dst)
+              and 0 < os.path.getsize(dst) < before
+              # 줄인 것도 여전히 읽히는 PNG 여야 한다 — 백지 판정이 그 뒤에 선다
+              and _png_blank_rows(dst) is not None)
+        if not ok:
+            return 0
+        after = os.path.getsize(dst)
+        os.replace(dst, path)
+        w.write(f"s9 shot: {name} 로 {before // 1024}KB → {after // 1024}KB "
+                f"({100 - after * 100 // before}% 줄임)\n")
+        return before - after
+    finally:
+        try:
+            os.remove(dst)
+        except OSError:
+            pass
+
 SHOT_BLANK_ROWS = 0.75     # 균일한 가로줄 비율이 이보다 높으면 '덜 그려졌다'
 SHOT_MAX_WAIT = 15000      # 재시도 상한 (ms)
 # 화면마다 필요한 조건이 다르다 — 사람이 매번 기억할 일이 아니라 도구가 안다.
@@ -23046,6 +23132,7 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
               f"--wait 를 늘려 다시 찍어라. 이 캡처를 '확인했다'의 근거로 쓰지 "
               f"마라: {out}", file=sys.stderr)
         sys.exit(5)
+    shot_shrink(out)      # 판정은 원본으로 끝났다 — 남기는 것만 줄인다
     print(out)
 
 
@@ -23193,6 +23280,7 @@ def cmd_shot(args):
                   f"'확인했다'의 근거로 쓰지 마라. 서버가 떠 있는지, 그 화면이 "
                   f"실제로 무언가를 그리는지 먼저 보라: {out}", file=sys.stderr)
             sys.exit(5)
+        shot_shrink(out)  # 판정은 원본으로 끝났다 — 남기는 것만 줄인다
         print(out)
     else:
         print(f"s9 shot: 스크린샷 생성 실패 ({candidates[0]}). "
