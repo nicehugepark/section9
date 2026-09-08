@@ -64,11 +64,14 @@ async function renderSettings(){
        「시스템」보다 앞인 이유는 하나다 — 시스템은 읽기만 하는 안내판이고
        저장소는 손잡이가 있는 판이다. 부제는 여기서도 상태를 겸한다. */
     ["repo", "저장소", repoNavSub()],
-    /* 「Jira 연동」은 저장소 다음이다 — 바깥 서비스와 오가는 판이라 저장소와
-       같은 갈래이고, **선택 사항**이라 부제가 그 말을 먼저 한다 (REQ-20260908-079).
-       주인이 Settings 의 한 자리를 지정했다: 「세팅스탭의 적당한 위치에 jira
-       연동을 위한 공간을 확보하고 준비 시켜라」. */
-    ["jira", "Jira 연동", jiraNavSub()],
+    /* 「외부 서비스」는 저장소 다음이다 — 바깥과 오가는 판이라 저장소와 같은
+       갈래다. Jira 를 대놓고 세우지 않고 이 묶음 아래 절로 둔다(주인 2026-09-08
+       21:43: 「지라만 연동할 것이 아니니까」, REQ-20260908-080). 이름은 tech-writer
+       판정: 「외부 시스템 연동」은 아래 「시스템」과 글자가 겹치고, 「연동」만으로는
+       「저장소」와 뜻이 겹친다. 부제는 들어 있는 서비스 이름(원어)이고, 하나뿐일 때만
+       준비 정도를 뒤에 붙인다. 이 제품 안의 둘을 잇는 것은 「연결」, 바깥 서비스와
+       주고받는 것은 「연동」 — 두 낱말을 섞지 않는다. */
+    ["external", "외부 서비스", jiraNavSub()],
     /* 「에이전트·스킬」은 저장소 다음, 시스템 앞이다 — 손잡이가 있는 판이고
        (내 것·프로젝트는 고친다), 공용은 읽기 전용이라 안내판 성격을 겸한다
        (REQ-20260906-021). */
@@ -85,7 +88,7 @@ async function renderSettings(){
     <div class="viewer" id="sview"></div></div>`;
   renderSettingsSection(meAdmin);
   repoNavRefresh();   // 「저장소」 부제는 판을 열지 않아도 거리를 말한다
-  jiraNavRefresh();   // 「Jira 연동」 부제도 준비 정도를 말한다
+  jiraNavRefresh();   // 「외부 서비스」 부제도 준비 정도를 말한다
 }
 
 function renderSettingsSection(meAdmin){
@@ -134,8 +137,8 @@ function renderSettingsSection(meAdmin){
       <button class="gefix" type="button" id="uf-retry">다시 받기</button></p>`;
     const wrt = $("#uf-retry");
     if (wrt) wrt.addEventListener("click", () => renderSettings());
-  } else if (settingsSection === "jira"){
-    showJiraPanel(v, me);
+  } else if (settingsSection === "external" || settingsSection === "jira"){
+    showJiraPanel(v, me);        // "jira" 는 옛 주소 — 같은 판을 연다
   } else if (settingsSection === "repo"){
     /* 계정을 가리지 않는다 — **읽기는 자유**이고 저장소는 계정과 무관하다.
        누를 자격은 서버가 응답의 `can` 으로 따로 말하고, 못 누르는 사람에게는

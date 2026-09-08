@@ -30,20 +30,26 @@ const JIRA_ROWS = [
    mean: "Atlassian 계정 설정 › 보안 › API tokens 에서 만듭니다. 값은 만들 때 한 번만 "
        + "보이니 바로 여기에 넣으십시오. 넣은 값은 내 계정 › 시크릿에 "
        + "JIRA_API_TOKEN 으로 남고, 다시 보이지 않습니다."},
-  {key: "project", name: "프로젝트 연결", kind: "fact",
+  {key: "ping", name: "연동 확인", kind: "ping",
+   mean: "위의 셋으로 Jira 에 한 번 물어봅니다(GET /rest/api/3/myself). 계정 이름이 "
+       + "돌아오면 준비가 맞은 것입니다. 틀린 토큰으로는 한 번만 묻습니다 — 반복하면 "
+       + "계정이 잠깁니다."},
+  {key: "project", name: "프로젝트 연동", kind: "fact",
    mean: "우리 프로젝트 하나에 Jira 프로젝트 하나(project key, 예: ABC)를 짝짓습니다. "
        + "프로젝트 문서의 jira.project_key 가 그 자리이고, 여기에 손잡이가 서는 것은 "
        + "다음 단계입니다."},
 ];
 
+/* 부제 = 들어 있는 서비스 이름(원어). 서비스가 하나뿐인 동안만 준비 정도를 뒤에
+   붙인다 — Notion 이 들어오면 `Jira · Notion` 이 된다 (tech-writer, REQ-20260908-080). */
 function jiraNavSub(){
   const s = jiraState;
-  if (!s || !s.registered) return "선택 사항";
-  return `선택 사항 · 준비 ${s.ready_n}/${s.ready_total}`;
+  if (!s || !s.registered) return "Jira";
+  return `Jira · 준비 ${s.ready_n}/${s.ready_total}`;
 }
 
 function jiraNavPaint(){
-  const nav = document.querySelector('[data-sset="jira"] .path');
+  const nav = document.querySelector('[data-sset="external"] .path');
   if (nav) nav.textContent = jiraNavSub();
 }
 
@@ -65,12 +71,13 @@ function jiraNavRefresh(){ jiraLoad(); }
 
 function jiraSummary(s){
   if (!s.registered) return "이 계정은 미등록입니다 — 등록한 뒤에 채울 수 있습니다.";
-  const left = JIRA_ROWS.filter(r => !s.ready[r.kind === "secret" ? "token"
+  const left = JIRA_ROWS.filter(r => r.kind !== "ping")
+                        .filter(r => !s.ready[r.kind === "secret" ? "token"
                                               : r.kind === "fact" ? "project"
                                               : r.key.replace("jira_", "")])
                         .map(r => r.name);
   if (!left.length)
-    return "준비가 끝났습니다 — 연결 확인(s9 jira ping)은 다음 단계에서 섭니다.";
+    return "준비가 끝났습니다 — 아래 「연동 확인」으로 한 번 물어보십시오.";
   return `준비 ${s.ready_n}/${s.ready_total} — 남은 것: ${left.join(" · ")}`;
 }
 
@@ -87,11 +94,17 @@ function jiraRowHTML(r, s){
              s.registered ? "" : " disabled"}>
            <button type="button" class="more wmore" id="j-token-put"${
              s.registered ? "" : " disabled"}>넣기</button>`;
+    // 있음은 사실이지 경고가 아니다 — `.wfact` 의 글자색(경고)을 쓰지 않고 안내 색으로.
     fact = s.token
-      ? `넣어 두었습니다 (${s.token_where === "external" ? "저장소 밖" : "저장소 안"}) — `
-        + `값은 다시 보이지 않습니다. 바꾸려면 새 값을 넣고, 지우려면 내 계정 › 시크릿에서.`
+      ? `<span class="path">넣어 두었습니다 (${s.token_where === "external" ? "저장소 밖" : "저장소 안"}) — `
+        + `값은 다시 보이지 않습니다. 바꾸려면 새 값을 넣고, 지우려면 내 계정 › 시크릿에서.</span>`
       : `아직 없습니다 — <a href="${esc(s.token_url)}" target="_blank" rel="noopener">`
         + `id.atlassian.com › API tokens</a> 에서 만들어 붙여 넣으십시오.`;
+  } else if (r.kind === "ping"){
+    const can = s.registered && s.ready && s.ready.site && s.ready.email && s.ready.token;
+    ctl = `<button type="button" id="j-ping" aria-describedby="j-ping-why"
+             aria-disabled="${!can}">연동 확인</button>`;
+    fact = can ? "" : "주소·이메일·API token 셋이 있어야 물어볼 수 있습니다.";
   } else {
     const rows = (s.projects || []);
     ctl = rows.length
@@ -108,10 +121,12 @@ function jiraRowHTML(r, s){
 }
 
 function jiraPanelHTML(s){
-  return `<h1 style="margin:0 0 4px">Jira 연동</h1>
-    <div class="path secnote"><b>선택 사항입니다.</b> 연결하지 않으면 아무것도 달라지지 않습니다. `
-    + `연결하면 요청이 Jira 이슈로 나가고 카드·문서에 그 이슈가 보입니다 — 그 동작은 다음 `
-    + `단계에서 오고, 이 판은 그때 쓸 넷을 미리 준비하는 자리입니다.</div>
+  return `<h1 style="margin:0 0 4px">외부 서비스</h1>
+    <div class="path secnote"><b>선택 사항입니다.</b> 연동하지 않으면 아무것도 달라지지 않습니다. `
+    + `바깥 서비스와 주고받는 자리이고, 지금은 Jira 하나입니다.</div>
+    <div class="cfg-h gname">Jira</div>
+    <div class="path secnote">연동하면 사람이 직접 만든 요청이 Jira 이슈로 나가고 카드·문서에 그 이슈가 `
+    + `보입니다 — 그 동작은 다음 단계에서 오고, 이 절은 그때 쓸 것을 미리 준비하는 자리입니다.</div>
     <div class="path wnote" id="j-summary">${esc(jiraSummary(s))}</div>
     <table class="metatbl wtbl grepo">${JIRA_ROWS.map(r => jiraRowHTML(r, s)).join("")}</table>`;
 }
@@ -163,6 +178,19 @@ function showJiraPanel(host, me){
     if (sum && jiraState) sum.textContent = jiraSummary(jiraState);
   });
   host.addEventListener("click", async ev => {
+    const ping = evEl(ev.target)?.closest("#j-ping");
+    if (ping){
+      if (ping.getAttribute("aria-disabled") === "true" || !me) return;
+      ping.setAttribute("aria-disabled", "true");
+      jiraSay("ping", "Jira 에 묻는 중…");
+      const res = await postJSONRaw("/api/jira/ping", {});
+      ping.setAttribute("aria-disabled", "false");
+      const fact = host.querySelector("#j-ping-fact");
+      if (!res.ok){ jiraSay("ping", "✕ " + res.error, "bad"); if (fact) fact.textContent = ""; return; }
+      jiraSay("ping", `연동됐습니다 — ${res.name || "(이름 없음)"}${res.email ? " <" + res.email + ">" : ""}`);
+      if (fact) fact.textContent = `마지막 확인: 연동됨 — ${res.name || ""}`;
+      return;
+    }
     const btn = evEl(ev.target)?.closest("#j-token-put");
     if (!btn || !me) return;
     const inp = host.querySelector("#j-token");

@@ -6934,6 +6934,7 @@ TOKEN_PATTERNS = (
     (re.compile(r"\bghp_[A-Za-z0-9]{20,}"), "GitHub 개인 토큰(ghp_)"),
     (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"), "GitHub 세분 토큰(github_pat_)"),
     (re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}"), "Anthropic API 키(sk-ant-)"),
+    (re.compile(r"\bATATT3[A-Za-z0-9_=\-]{20,}"), "Atlassian API token(ATATT3)"),
 )
 
 
@@ -26149,6 +26150,127 @@ def jira_state(user=""):
             "ready_n": sum(1 for v in ready.values() if v), "ready_total": len(ready)}
 
 
+JIRA_TIMEOUT_SEC = 10
+JIRA_RETRY_MAX = 3            # 5xx·timeout·연결 실패에만 — 401 은 한 번뿐이다
+JIRA_401_GUIDE = ("토큰이나 이메일이 맞지 않습니다 — 재시도하지 않습니다(반복하면 계정이 "
+                  "잠깁니다). 절차: ① id.atlassian.com › API tokens 에서 새 token 을 "
+                  "만든다 ② Settings 의 Jira 판에서 API token 을 다시 넣는다 ③ 이메일이 "
+                  "Jira 로그인 이메일인지 본다 ④ 다시 연결 확인.")
+
+
+def jira_auth_header(user):
+    """Authorization 한 줄 — 값은 이 함수 밖으로 문장에 실리지 않는다. 준비가 모자라면
+    (None, [빠진 것])."""
+    cfg = user_config(user) or {}
+    site = str(cfg.get("jira_site") or "").strip()
+    email = str(cfg.get("jira_email") or "").strip()
+    token = secret_value(user, JIRA_SECRET_KEY) or ""
+    kind = str(cfg.get("jira_auth") or "basic").strip().lower()
+    missing = []
+    if not site:
+        missing.append("Jira 주소")
+    if kind != "bearer" and not email:
+        missing.append("Atlassian 이메일")
+    if not token:
+        missing.append("API token")
+    if missing:
+        return None, missing
+    if kind == "bearer":                       # Data Center 의 PAT
+        return {"Authorization": "Bearer " + token, "site": site}, []
+    import base64 as _b64
+    raw = _b64.b64encode(f"{email}:{token}".encode()).decode()
+    return {"Authorization": "Basic " + raw, "site": site}, []
+
+
+def jira_http(user, method, path, body=None, timeout=JIRA_TIMEOUT_SEC,
+              _urlopen=None, _sleep=None):
+    """Jira REST 한 번 — (status, json, err). 재시도 규칙은 여기 한 곳이다:
+    401 은 재시도 없음 · 429 는 Retry-After 만큼 한 번 더 · 5xx·timeout·연결 실패는
+    backoff(1·2·4초) 로 JIRA_RETRY_MAX 회. 토큰은 문장 어디에도 실리지 않는다."""
+    import socket as _sock
+    import time as _time
+    import urllib.error as _ue
+    import urllib.request as _ur
+    auth, missing = jira_auth_header(user)
+    if auth is None:
+        return 0, None, "준비가 모자랍니다 — " + " · ".join(missing) + " 이(가) 없습니다."
+    url = auth["site"].rstrip("/") + path
+    hdr = {"Authorization": auth["Authorization"], "Accept": "application/json",
+           "Content-Type": "application/json", "User-Agent": "section9"}
+    data = json.dumps(body).encode() if body is not None else None
+    opener = _urlopen or _ur.urlopen
+    sleep = _sleep or _time.sleep
+    attempts, waited_429 = 0, False
+    while True:
+        attempts += 1
+        req = _ur.Request(url, data=data, method=method, headers=hdr)
+        try:
+            with opener(req, timeout=timeout) as r:
+                raw = r.read().decode("utf-8", "replace")
+                try:
+                    return r.status, (json.loads(raw) if raw else None), ""
+                except ValueError:
+                    return r.status, None, "Jira 가 JSON 이 아닌 답을 보냈습니다."
+        except _ue.HTTPError as e:
+            st = e.code
+            if st == 401:
+                return 401, None, JIRA_401_GUIDE
+            if st == 403:
+                return 403, None, "권한이 없습니다 — 그 계정이 이 Jira 프로젝트를 볼 수 있는지 보십시오."
+            if st == 429 and not waited_429:
+                waited_429 = True
+                try:
+                    wait = min(30, max(1, int(e.headers.get("Retry-After") or "2")))
+                except ValueError:
+                    wait = 2
+                sleep(wait)
+                continue
+            if 500 <= st < 600 and attempts < JIRA_RETRY_MAX:
+                sleep(2 ** (attempts - 1))
+                continue
+            try:
+                msg = e.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                msg = ""
+            return st, None, f"Jira 가 {st} 로 거절했습니다. {msg}".strip()
+        except (_ue.URLError, _sock.timeout, TimeoutError, OSError) as e:
+            if attempts < JIRA_RETRY_MAX:
+                sleep(2 ** (attempts - 1))
+                continue
+            why = getattr(e, "reason", None) or e
+            return 0, None, f"Jira 에 닿지 못했습니다({attempts}회) — {why}"
+
+
+def jira_ping(user, **kw):
+    """연결 확인 — GET /rest/api/3/myself. 반환 {ok, name, email, error, missing}."""
+    auth, missing = jira_auth_header(user) if user else (None, ["등록된 계정"])
+    if auth is None:
+        return {"ok": False, "missing": missing, "name": "", "email": "",
+                "error": "준비가 모자랍니다 — " + " · ".join(missing) + " 이(가) 없습니다."}
+    st, d, err = jira_http(user, "GET", "/rest/api/3/myself", **kw)
+    if st == 200 and isinstance(d, dict):
+        return {"ok": True, "missing": [], "name": str(d.get("displayName") or ""),
+                "email": str(d.get("emailAddress") or ""), "status": st, "error": ""}
+    return {"ok": False, "missing": [], "name": "", "email": "", "status": st,
+            "error": err or f"Jira 가 {st} 로 답했습니다."}
+
+
+def cmd_jira(args):
+    """`s9 jira ping` — 연결 확인 (REQ-20260908-071). 그 밖의 동작은 뒤 단위가 더한다."""
+    user = resolve_user(getattr(args, "user", None))
+    if args.action == "ping":
+        res = jira_ping(user)
+        if getattr(args, "json", False):
+            print(json.dumps(res, ensure_ascii=False, indent=1))
+            return
+        if res["ok"]:
+            print(f"연동됐습니다 — {res['name'] or '(이름 없음)'}"
+                  + (f" <{res['email']}>" if res.get("email") else ""))
+            return
+        die(res["error"])
+    die("usage: s9 jira ping")
+
+
 def git_do(what, actor="", proxy_for=""):
     """pull·push 를 실제로 돌린다 — **누른 순간 다시 판정한다.**
 
@@ -28544,6 +28666,11 @@ def cmd_serve(args):
                                  proxy_for=(proxy if proxy != w.get("user")
                                             else ""))
                     self._json(res, 200 if res.get("ok") else 409)
+                elif parsed.path == "/api/jira/ping":
+                    # Settings Jira 판의 「연결 확인」 (REQ-20260908-071) — 서버 파생
+                    # 신원의 준비물로만 부르고 대리(as)를 받지 않는다.
+                    res = jira_ping(w["user"] if w.get("registered") else "")
+                    self._json(res, 200 if res.get("ok") else 409)
                 elif parsed.path == "/api/sync/mode":
                     # Settings 「저장소」 판의 문서 동기화 모드 (REQ-20260908-068).
                     # pull·push 와 같은 신원 규율 — 진짜 나, 대리 중이면 잠김.
@@ -30273,6 +30400,12 @@ def main():
     md.add_argument("ours")
     md.add_argument("theirs")
     md.set_defaults(fn=cmd_merge_doc)
+
+    ji = sub.add_parser("jira", help="Jira 연동 (REQ-20260908-071) — ping: 연결 확인")
+    ji.add_argument("action", choices=["ping"])
+    ji.add_argument("--user", help="누구의 준비물로 (기본: 나)")
+    ji.add_argument("--json", action="store_true")
+    ji.set_defaults(fn=cmd_jira)
 
     sy = sub.add_parser("sync", help="문서 이벤트 git 동기화 — 수동 실행/상태 (REQ-048)")
     sy.add_argument("--on", action="store_true",
