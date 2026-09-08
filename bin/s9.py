@@ -24387,6 +24387,128 @@ def _restart_under_guard(host, port, held):
         f"`s9 serve --supervise` 로 다시 세운다)")
 
 
+# 대시보드 데이터 4종 (REQ-20260908-007). cmd_serve() 안 중첩 정의였던 것을
+# 모듈 최상위로 끌어올렸다 — 클로저가 잡던 값은 없었고(전부 모듈 전역),
+# 전송 코드와 경로 문자열은 그대로다. 서버를 띄우지 않고 직접 부를 수
+# 있어야 회귀 시험이 붙는다: 2026-09-07 에 graph_data 가 derived_from 의
+# 모양 하나로 죽었을 때(REQ-20260907-075) 그 자리를 잴 시험이 없어 사용자가
+# 화면으로 발견했다. 시험: tests/test_serve_data.py
+# 관계 필드까지 포함한 그래프 데이터 (본문 제외 — 토큰/전송량 최소)
+def graph_data():
+    nodes, edges, dep_rows = [], [], []
+    for p in walk_docs():
+        meta, _body = read_doc(p)
+        if not meta.get("id"):
+            continue
+        nodes.append({k: meta.get(k, "") for k in
+                      ("id", "type", "title", "status", "user", "project")}
+                     | {"tags": meta.get("tags", [])})
+        src = meta["id"]
+        if meta.get("parent"):
+            edges.append({"from": src, "to": meta["parent"], "rel": "parent"})
+        for t in derived_ids(meta):
+            edges.append({"from": src, "to": t, "rel": "derived_from"})
+        for t in meta.get("relates", []):
+            edges.append({"from": src, "to": t, "rel": "relates"})
+        for t in meta.get("refs_docs", []):
+            edges.append({"from": src, "to": t, "rel": "ref"})
+        dep_rows.append({"id": src, "blocked_by": meta.get("blocked_by", [])})
+    ids = {n["id"] for n in nodes}
+    edges = [e for e in edges if e["to"] in ids]
+    # 선행 의존 (REQ-20260825-097): 엣지 모양은 dep_edges 한 곳에서 정의.
+    # from=막힌 문서, to=선행 문서 — 렌더는 화살촉을 to→from 방향(선행이
+    # 후행을 푼다)으로 그린다.
+    edges += dep_edges(dep_rows)
+    return {"nodes": nodes, "edges": edges}
+
+# 본문 grep — CLI `s9 search --body` 와 같은 의미론 (모든 term AND 매치)
+def search_data(query):
+    terms = [t.lower() for t in query.split() if t]
+    if not terms:
+        return {"results": []}
+    results = []
+    for row in load_catalog():
+        try:
+            with open(os.path.join(ROOT, row["path"]), encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        # 문서 본문 + 첨부 추출 본문 사이드카 — CLI `search --body` 와
+        # 같은 한 곳(asset_texts)에서 읽는다 (REQ-20260826-020).
+        segs = [("", text)] + asset_texts(
+            os.path.join(ROOT, row["path"]), row["id"])
+        if not all(any(t in s.lower() for _n, s in segs) for t in terms):
+            continue
+        matches = []
+        for name, s in segs:
+            for i, line in enumerate(s.splitlines(), 1):
+                if any(t in line.lower() for t in terms):
+                    m = {"n": i, "text": line.strip()[:160]}
+                    if name:
+                        m["file"] = name   # 첨부에서 나온 줄
+                    matches.append(m)
+                    if len(matches) >= 8:
+                        break
+            if len(matches) >= 8:
+                break
+        results.append({**row, "matches": matches})
+    return {"results": results}
+
+# 모든 SES 문서의 History 라인 → 이벤트 타임라인
+def audit_data():
+    events = []
+    for p in walk_docs():
+        meta, body = read_doc(p)
+        if meta.get("type") != "session":
+            continue
+        in_hist = False
+        for line in body.splitlines():
+            if line.startswith("## "):
+                in_hist = line.strip() == "## History"
+                continue
+            if in_hist and line.startswith("- "):
+                m = re.match(r"- (\S+) (.*?)(?:\s*\(by ([^)]+)\))?$", line)
+                if m:
+                    events.append({
+                        "ts": m.group(1), "text": m.group(2),
+                        "by": m.group(3) or "",
+                        "session": meta.get("session", ""),
+                        "machine": meta.get("machine", ""),
+                        "doc": meta.get("id", ""),
+                    })
+    events.sort(key=lambda e: e["ts"], reverse=True)
+    return {"events": events}
+
+def projects_data():
+    """모든 프로젝트 + 멤버(활성/만료) — 대시보드 셀렉터·정보패널용.
+    history_tail 은 관리정보 패널용 additive 확장 (REQ-20260831-027) —
+    body 가 필요해 all_projects(meta만) 대신 직접 읽는다."""
+    out = []
+    docs = []
+    if os.path.isdir(PROJECTS):
+        for fn in sorted(os.listdir(PROJECTS)):
+            if fn.endswith(".md"):
+                docs.append(read_doc(os.path.join(PROJECTS, fn)))
+    for meta, body in docs:
+        members = []
+        for m in meta.get("members", []):
+            members.append({**m, "active": member_active(m)})
+        out.append({
+            "id": meta.get("id", ""), "slug": meta.get("slug", ""),
+            "title": meta.get("title", ""), "summary": meta.get("summary", ""),
+            "status": meta.get("status", ""), "customer": meta.get("customer", ""),
+            "contact_name": meta.get("contact_name", ""),
+            "contact_email": meta.get("contact_email", ""),
+            "contact_phone": meta.get("contact_phone", ""),
+            "contact_org": meta.get("contact_org", ""),
+            "members": members,
+            "member_active": sum(1 for m in members if m["active"]),
+            "member_total": len(members),
+            "history_tail": project_history_tail(body),
+        })
+    return {"projects": out}
+
+
 def cmd_serve(args):
     # **사람이 정한 포트만 못박는다** (REQ-20260907-033). `--port` 가 붙어 있다는
     # 것만으로는 못 가른다 — `s9 code` 도 감시자의 자기 재실행도 기계가 고른 값을
@@ -24553,121 +24675,6 @@ def cmd_serve(args):
     import http.server
     import urllib.parse
     web_index = os.path.join(ROOT, "web", "index.html")
-
-    # 관계 필드까지 포함한 그래프 데이터 (본문 제외 — 토큰/전송량 최소)
-    def graph_data():
-        nodes, edges, dep_rows = [], [], []
-        for p in walk_docs():
-            meta, _body = read_doc(p)
-            if not meta.get("id"):
-                continue
-            nodes.append({k: meta.get(k, "") for k in
-                          ("id", "type", "title", "status", "user", "project")}
-                         | {"tags": meta.get("tags", [])})
-            src = meta["id"]
-            if meta.get("parent"):
-                edges.append({"from": src, "to": meta["parent"], "rel": "parent"})
-            for t in derived_ids(meta):
-                edges.append({"from": src, "to": t, "rel": "derived_from"})
-            for t in meta.get("relates", []):
-                edges.append({"from": src, "to": t, "rel": "relates"})
-            for t in meta.get("refs_docs", []):
-                edges.append({"from": src, "to": t, "rel": "ref"})
-            dep_rows.append({"id": src, "blocked_by": meta.get("blocked_by", [])})
-        ids = {n["id"] for n in nodes}
-        edges = [e for e in edges if e["to"] in ids]
-        # 선행 의존 (REQ-20260825-097): 엣지 모양은 dep_edges 한 곳에서 정의.
-        # from=막힌 문서, to=선행 문서 — 렌더는 화살촉을 to→from 방향(선행이
-        # 후행을 푼다)으로 그린다.
-        edges += dep_edges(dep_rows)
-        return {"nodes": nodes, "edges": edges}
-
-    # 본문 grep — CLI `s9 search --body` 와 같은 의미론 (모든 term AND 매치)
-    def search_data(query):
-        terms = [t.lower() for t in query.split() if t]
-        if not terms:
-            return {"results": []}
-        results = []
-        for row in load_catalog():
-            try:
-                with open(os.path.join(ROOT, row["path"]), encoding="utf-8") as f:
-                    text = f.read()
-            except OSError:
-                continue
-            # 문서 본문 + 첨부 추출 본문 사이드카 — CLI `search --body` 와
-            # 같은 한 곳(asset_texts)에서 읽는다 (REQ-20260826-020).
-            segs = [("", text)] + asset_texts(
-                os.path.join(ROOT, row["path"]), row["id"])
-            if not all(any(t in s.lower() for _n, s in segs) for t in terms):
-                continue
-            matches = []
-            for name, s in segs:
-                for i, line in enumerate(s.splitlines(), 1):
-                    if any(t in line.lower() for t in terms):
-                        m = {"n": i, "text": line.strip()[:160]}
-                        if name:
-                            m["file"] = name   # 첨부에서 나온 줄
-                        matches.append(m)
-                        if len(matches) >= 8:
-                            break
-                if len(matches) >= 8:
-                    break
-            results.append({**row, "matches": matches})
-        return {"results": results}
-
-    # 모든 SES 문서의 History 라인 → 이벤트 타임라인
-    def audit_data():
-        events = []
-        for p in walk_docs():
-            meta, body = read_doc(p)
-            if meta.get("type") != "session":
-                continue
-            in_hist = False
-            for line in body.splitlines():
-                if line.startswith("## "):
-                    in_hist = line.strip() == "## History"
-                    continue
-                if in_hist and line.startswith("- "):
-                    m = re.match(r"- (\S+) (.*?)(?:\s*\(by ([^)]+)\))?$", line)
-                    if m:
-                        events.append({
-                            "ts": m.group(1), "text": m.group(2),
-                            "by": m.group(3) or "",
-                            "session": meta.get("session", ""),
-                            "machine": meta.get("machine", ""),
-                            "doc": meta.get("id", ""),
-                        })
-        events.sort(key=lambda e: e["ts"], reverse=True)
-        return {"events": events}
-
-    def projects_data():
-        """모든 프로젝트 + 멤버(활성/만료) — 대시보드 셀렉터·정보패널용.
-        history_tail 은 관리정보 패널용 additive 확장 (REQ-20260831-027) —
-        body 가 필요해 all_projects(meta만) 대신 직접 읽는다."""
-        out = []
-        docs = []
-        if os.path.isdir(PROJECTS):
-            for fn in sorted(os.listdir(PROJECTS)):
-                if fn.endswith(".md"):
-                    docs.append(read_doc(os.path.join(PROJECTS, fn)))
-        for meta, body in docs:
-            members = []
-            for m in meta.get("members", []):
-                members.append({**m, "active": member_active(m)})
-            out.append({
-                "id": meta.get("id", ""), "slug": meta.get("slug", ""),
-                "title": meta.get("title", ""), "summary": meta.get("summary", ""),
-                "status": meta.get("status", ""), "customer": meta.get("customer", ""),
-                "contact_name": meta.get("contact_name", ""),
-                "contact_email": meta.get("contact_email", ""),
-                "contact_phone": meta.get("contact_phone", ""),
-                "contact_org": meta.get("contact_org", ""),
-                "members": members,
-                "member_active": sum(1 for m in members if m["active"]),
-                "member_total": len(members),
-                "history_tail": project_history_tail(body),
-            })
-        return {"projects": out}
 
     # streams/ 목록 (transcript 미러 파일)
     def streams_list():
