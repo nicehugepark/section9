@@ -75,7 +75,8 @@ function jiraNavRefresh(){ jiraLoad(); }
 
 function jiraSummary(s){
   if (!s.registered) return "이 계정은 미등록입니다 — 등록한 뒤에 채울 수 있습니다.";
-  const left = JIRA_ROWS.filter(r => r.kind !== "ping")
+  // 만료일은 준비 항목이 아니다(선택) — 남은 것에 세지 않는다
+  const left = JIRA_ROWS.filter(r => r.kind !== "ping" && r.key !== "jira_token_expires")
                         .filter(r => !s.ready[r.kind === "secret" ? "token"
                                               : r.kind === "fact" ? "project"
                                               : r.key.replace("jira_", "")])

@@ -677,4 +677,54 @@ git push
 
 **section9 자체를 개발하는 사람만** section9 upstream 카피(`~/section9`)에서 작업합니다. 한 기계에서 upstream 카피와 인스턴스를 병행해도 됩니다 — 훅은 세션의 현재 디렉토리 기준으로 해당 인스턴스의 vault 에 기록합니다. 
 
+## 10. 외부 서비스 — Jira 연동
+
+선택 사항입니다. 연동하지 않으면 아무것도 달라지지 않습니다. 연동하면 **사람이 직접 만든 요청**이 Jira 이슈로 나가고, 카드·문서에 그 이슈가 보이며, 상태가 서로 따라옵니다(설계 결정 DOC-20260908-002).
+
+Jira Cloud(`https://<site>.atlassian.net`) 기준입니다. 회사 안에 설치한 Jira(Data Center)는 `s9 user config <이름> jira_auth bearer` 한 줄이 다르고 나머지는 같습니다.
+
+### 준비 넷 — Settings › 외부 서비스
+
+- **API token 발급** — 브라우저에서 [id.atlassian.com › Security › API tokens](https://id.atlassian.com/manage-profile/security/api-tokens) → **Create API token** → 이름은 아무거나(예: section9) → 만료일을 정하고 → 만들어진 값을 복사합니다. 값은 그 창에서 한 번만 보입니다. 만료일을 함께 적어 두십시오. 
+- **대시보드 Settings → 외부 서비스** 를 엽니다(`http://127.0.0.1:9909/#settings/external`).  
+  - **Jira 주소** — 보드 주소를 통째로 붙여 넣어도 됩니다. 손을 떼면 `https://<site>.atlassian.net` 만 남아 저장됩니다. 
+  - **Atlassian 이메일** — Jira 에 로그인하는 이메일. 
+  - **API token** — 1 의 값을 붙여 넣고 **넣기**. 내 계정 › 시크릿에 `JIRA_API_TOKEN` 으로 남고 다시 보이지 않습니다. 
+  - **token 만료일** — 1 에서 정한 날짜(YYYY-MM-DD). 7일 전부터 여기와 「연동 확인」이 미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다. 
+
+ 왼쪽 부제가 **Jira · 준비 3/4** 가 됩니다. 
+- **연동 확인** 을 누릅니다 — `연동됐습니다 — <이름>` 이 뜨면 준비가 맞은 것입니다. 터미널로는 `s9 jira ping`. 
+- **프로젝트 연동** — 우리 프로젝트 하나에 Jira 프로젝트 하나(project key)를 짝짓습니다. 터미널 한 줄, 또는 Projects 정보 패널의 세 행(Jira 주소 · Jira project key · 연동 방향)에서 채웁니다. 
+
+```
+~/section9/bin/s9 project jira <slug> set --site https://<site>.atlassian.net --key <KEY>
+# 예) s9 project jira pay set --site https://acme.atlassian.net --key PAY
+pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=all export_origin=human issue_type=Task)
+```
+
+ 부제가 **준비 4/4** 가 됩니다. 풀기: `s9 project jira <slug> unset`. 
+
+### 그다음은 저절로
+
+| 이렇게 하면 | 이렇게 됩니다 |
+| --- | --- |
+| 연동된 프로젝트에서 요청을 만든다 | 30초 안에 이슈가 생깁니다 — 제목 `[REQ-…] 제목`, label `s9-REQ-…`. 카드 id 줄에 이슈 키(예: PAY-12)가 서고 누르면 새 창에서 Jira 가 열립니다. 문서에는 **Jira** 행(키 · Jira 상태 · 마지막 연동). |
+| 요청을 in-progress·done 으로 옮긴다 | 30초 안에 이슈가 따라 옮겨집니다(In Progress · Done). Jira 는 상태를 직접 쓰지 못해 transition 을 고릅니다 — 프로젝트 `status_map` 의 이름 먼저, 없으면 카테고리(할 일·진행·완료). |
+| Jira 쪽에서 이슈를 옮긴다 (방향 `pull`·`both` 일 때) | 60초 안에 요청이 따라옵니다 — 단, 우리 검사(TDD·goal 등)를 지나는 전이만. 못 지나면 카드에 **다름** 이 서고 어느 쪽이 무엇인지 툴팁이 말합니다. |
+| Jira 가 죽어 있거나 token 이 틀리다 | 요청·전이는 그대로 성공합니다. 문서에 까닭이 남고 30초·1분·2분… 간격으로 다시 보냅니다(`s9 jira outbox` 로 봅니다). 틀린 token 으로는 한 번만 묻습니다 — 반복하면 계정이 잠깁니다. |
+
+### 규칙 — 무엇이 나가고 무엇이 안 나가나
+
+- **사람이 직접 만든 요청만** 나갑니다(`export_origin=human` 기본). 백그라운드·에이전트·타치코마가 만든 요청은 나가지 않습니다. 바꾸려면 `--export-origin all`. 
+- 이슈에 실리는 것은 **제목 · 요약 · 완료 기준 · 요청 id** 뿐입니다. 본문(원문·노트)은 나가지 않습니다. 
+- 기본 방향은 **push**(여기 → Jira). `pull`·`both` 는 프로젝트마다 고릅니다 — 문서가 기준이라 밖에서 온 값은 검사를 지난 것만 들어옵니다. 
+- 백그라운드 작업자는 내 token 으로 Jira 를 만지지 않습니다. 허용하려면 Settings › 백그라운드 작업 › **Jira 쓰게 하기** — Jira 의 기록에는 내가 한 것으로 남습니다. 
+- 손으로: `s9 jira create <REQ>`(지금 만들기) · `s9 jira push <REQ>`(지금 보내기) · `s9 jira pull`(지금 받기) · `s9 jira outbox --run`. 
+
+### 하지 말 것
+
+- token 을 채팅·문서·프롬프트에 붙여 넣지 마십시오 — 그 자리는 기록에 남습니다. 넣는 자리는 Settings 의 API token 칸(또는 `s9 secret set JIRA_API_TOKEN`)뿐입니다. 
+- section9 자체 저장소를 연동하지 마십시오 — 하루 수십 건이 그대로 티켓이 됩니다. 시험은 별도 프로젝트(예: `s9 project add mp1`)로. 
+- 401 이 났다고 여러 번 다시 누르지 마십시오 — 새 token 을 만들어 넣은 뒤 「연동 확인」 한 번. 
+
  section9 user guide · verified 2026-09-06 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측, 맥은 실측 전) · 캡처: 실제 화면(개발 인스턴스, 현재 코드로 재기동한 뒤 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md)
