@@ -223,7 +223,9 @@
 .attmiss{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
   margin:8px 0;padding:11px 13px;border:1px dashed var(--border);
   max-width:min(100%,760px);box-sizing:border-box}
-.attmiss .attf{font-family:var(--mono);font-size:11.5px;color:var(--text);
+/* 파일 이름은 못 받은 자리에만 서던 것인데, 재생기 위에도 같은 이름이 필요해
+   져 규칙을 한 층 올렸다 (REQ-20260908-048) — 두 자리가 같은 얼굴을 쓴다. */
+.attf{font-family:var(--mono);font-size:11.5px;color:var(--text);
   word-break:break-all}
 .attmiss .attw{font-size:11.5px;line-height:1.6;color:var(--muted);flex:1 1 200px}
 /* 손잡이는 "더 보기"가 쓰는 그 텍스트 버튼 어휘 — 목록의 줄과 헷갈리지 않는다 */
@@ -231,9 +233,26 @@
   font:inherit;font-size:11.5px;color:var(--text);cursor:pointer}
 .attmiss .attr:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 .attmiss .attr:focus-visible{outline:1px solid var(--text);outline-offset:2px}
-.attmiss .atta{display:flex;align-items:center;gap:11px;flex:0 0 auto}
-.attmiss .atto{font-size:11px;color:var(--muted);text-decoration:underline;
+/* 손잡이 묶음 — 못 받은 자리에서만 쓰던 것을 문서 본문의 파일·재생기에서도
+   쓴다 (REQ-20260908-047). 한 덩이여야 좁은 폭에서 하나만 떨어지지 않는다. */
+.atta{display:inline-flex;align-items:center;gap:11px;flex-wrap:wrap;
+  vertical-align:middle;max-width:100%}
+.attmiss .atta{display:flex;flex:0 0 auto}
+.atto{font-size:11px;color:var(--muted);text-decoration:underline;
   text-decoration-style:dotted;text-underline-offset:3px;white-space:nowrap}
+.atto:hover{color:var(--text)}
+.atto:focus-visible{outline:1px solid var(--text);outline-offset:2px}
+/* 그 자리의 재생기 (REQ-20260908-048) — 계기판 언어 그대로: 라운드 0, 그림자 0.
+   영상은 그림과 같은 사각 면이라 .attimg 와 같은 1px 보더를 두르고, 소리는
+   제 모양을 가진 컨트롤이라 보더를 두르지 않는다(두 겹 상자로 읽힌다).
+   자동 재생 없음 — `preload="none"` 이라 누르기 전에는 받지도 않는다. */
+.attmed{display:block;margin:4px 0 10px}
+video.attmed{width:min(100%,760px);max-width:100%;box-sizing:border-box;
+  border:1px solid var(--border);background:var(--bg)}
+audio.attmed{width:min(100%,560px);max-width:100%}
+/* 재생기 위의 이름 줄 — 그림과 달리 소리는 무엇을 트는지 이름이 없으면 모른다 */
+.attbox > .atta{margin:8px 0 0}
+.attbox > .atta > .attf{color:var(--muted)}
 /* 재는 자리 (?attstat) — 진단용. 화면 위에 얹히되 아무것도 가리지 않는다. */
 .attstat{position:fixed;right:10px;top:52px;z-index:90;font-family:var(--mono);
   font-size:11px;letter-spacing:.03em;color:var(--text);background:var(--panel);

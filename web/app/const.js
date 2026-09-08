@@ -133,6 +133,46 @@ const isImageName = n => IMAGE_EXT.test(String(n || ""));
 const BARE_ASSET_RE = new RegExp(
   `(?:[\\w.@+-]+\\/)*assets\\/((?:${DOC_ID_PREFIX})${DOC_ID_TAIL})\\/`
   + `([\\w.@+-]+\\.(?:${IMAGE_EXTS}))`, "gi");
+/* **무엇이 소리이고 무엇이 영상인가** (REQ-20260908-048).
+
+   그림과 같은 규율이다 — 목록은 서버 `TYPE_GROUPS["audio"]·["video"]` 와 글자
+   그대로 같아야 하고, 시험이 두 벌을 맞대어 본다. 어긋나면 그 확장자만 재생기가
+   서지 않고 조용히 파일 칩으로 떨어진다.
+
+   **여기 있다고 다 재생되는 것은 아니다.** 이 목록은 "미디어인가"만 가르고,
+   "이 브라우저가 그릴 수 있는가"는 `canPlayType` 이 그 자리에서 답한다 —
+   Safari 와 Chrome 이 갈리는 자리라 목록으로 못 박을 수 없다. */
+const AUDIO_EXTS = "mp3|wav|m4a|flac|ogg|oga|opus|aac";
+const VIDEO_EXTS = "mp4|mov|avi|mkv|webm|m4v";
+const AUDIO_EXT = new RegExp(`\\.(?:${AUDIO_EXTS})$`, "i");
+const VIDEO_EXT = new RegExp(`\\.(?:${VIDEO_EXTS})$`, "i");
+const MEDIA_EXT = new RegExp(`\\.(?:${AUDIO_EXTS}|${VIDEO_EXTS})$`, "i");
+/* 그림이 아닌 첨부의 확장자 — 문서·표·발표·데이터·코드·묶음, 그리고 미디어.
+   서버 `TYPE_GROUPS` 에서 image 를 뺀 나머지의 합집합이고, 시험이 맞대어 본다. */
+const OTHER_EXTS = [
+  AUDIO_EXTS, VIDEO_EXTS,
+  "pdf|docx|doc|md|txt|rtf|odt|hwp|hwpx|epub|pages",
+  "xlsx|xls|csv|tsv|ods|numbers",
+  "pptx|ppt|odp|key",
+  "parquet|orc|avro|jsonl|ndjson|db|sqlite|sqlite3",
+  "py|js|ts|sh|sql|html|css|json|yaml|yml|xml|diff|patch|toml",
+  "zip|tar|gz|tgz|7z|rar",
+].join("|");
+/* 맨 경로로 적힌 **그림이 아닌** 첨부 (REQ-20260908-047). BARE_ASSET_RE 와
+   같은 모양이되 확장자만 다르다 — 그림은 그림으로, 나머지는 재생기나 칩으로
+   가른다. 한 정규식으로 합치지 않는 이유는 그림 쪽 규칙(재시도·못 받은 자리)이
+   이미 자기 시험을 갖고 있어서다. */
+const BARE_FILE_RE = new RegExp(
+  `(?:[\\w.@+-]+\\/)*assets\\/((?:${DOC_ID_PREFIX})${DOC_ID_TAIL})\\/`
+  + `([\\w.@+-]+\\.(?:${OTHER_EXTS}))`, "gi");
+// 재생기에 건네는 형식 이름 — canPlayType 이 읽는다.
+const MEDIA_MIME = {
+  mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4",
+  flac: "audio/flac", ogg: "audio/ogg", oga: "audio/ogg",
+  opus: "audio/ogg; codecs=opus", aac: "audio/aac",
+  mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+  mkv: "video/x-matroska", avi: "video/x-msvideo", m4v: "video/mp4",
+};
 const DOC_ID_FULL_RE = new RegExp(`^(?:${DOC_ID_PREFIX})${DOC_ID_TAIL}$`);
 const DOC_ID_WIKI_RE = new RegExp(`\\[\\[((?:${DOC_ID_PREFIX})${DOC_ID_TAIL})\\]\\]`, "g");
 

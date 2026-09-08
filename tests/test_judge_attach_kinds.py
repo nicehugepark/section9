@@ -62,12 +62,19 @@ class TheMark(unittest.TestCase):
                 with self.subTest(n):
                     self.assertEqual(self.fn("/tmp/" + n), f"[Image: /tmp/{n}]")
         with self.subTest("a_video_is_not_a_picture"):
+            # 처음엔 `[File:]` 이었다 — 그림이 아니라는 것까지만 말했다.
+            # REQ-20260908-048 에서 문서 뷰어가 재생기를 세우게 되면서, 무엇을
+            # 세울지 고를 근거가 필요해 종류를 그대로 적는다.
             for n in ("screen.mp4", "a.MOV", "b.webm", "c.mkv"):
                 with self.subTest(n):
-                    self.assertEqual(self.fn("/tmp/" + n), f"[File: /tmp/{n}]")
+                    self.assertEqual(self.fn("/tmp/" + n), f"[Video: /tmp/{n}]")
+        with self.subTest("sound_is_sound"):
+            for n in ("sound.mp3", "a.M4A", "b.wav", "c.flac", "d.ogg"):
+                with self.subTest(n):
+                    self.assertEqual(self.fn("/tmp/" + n), f"[Audio: /tmp/{n}]")
         with self.subTest("documents_and_data_are_files"):
             for n in ("report.pdf", "sheet.xlsx", "log.txt", "dump.csv",
-                      "notes.hwp", "sound.mp3", "bundle.zip"):
+                      "notes.hwp", "bundle.zip"):
                 with self.subTest(n):
                     self.assertEqual(self.fn("/tmp/" + n), f"[File: /tmp/{n}]")
         with self.subTest("an_unknown_extension_is_a_file"):

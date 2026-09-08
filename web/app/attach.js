@@ -135,6 +135,98 @@ function attImg(did, f){
     + `<span class="attmiss" hidden></span></span>`;
 }
 
+/* ---- 첨부를 여는 길 · 재생 (REQ-20260908-047 · -048) ----------------------
+   여태 문서에서 열리는 첨부는 그림뿐이었다. 그림이 아닌 것은 📎 칩 하나였고
+   (누르면 새 탭), 표기 없이 맨 경로로 적힌 산출물은 아무것도 아닌 글자로 남았다 —
+   경로는 보이는데 열 수가 없었다.
+
+   여기서 셋으로 가른다: 그림은 그림으로(위 attImg), 소리·영상은 그 자리의
+   재생기로, 나머지는 칩과 「내려받기」 손잡이로. 손잡이 어휘는 못 받은 그림의
+   자리(.attmiss)가 이미 쓰던 것을 그대로 쓴다 — 새 부품을 만들지 않는다. */
+function attExt(f){
+  const m = /\.([A-Za-z0-9]+)$/.exec(String(f || ""));
+  return m ? m[1].toLowerCase() : "";
+}
+/* 이 브라우저가 그릴 수 있는가. **목록으로 못 박지 않는다** — 같은 .webm 을
+   Chrome 은 그리고 Safari 는 못 그린다. 답은 브라우저가 그 자리에서 준다.
+   한 번 물어 기억한다(문서 하나에 같은 형식이 여러 개 있을 수 있다). */
+const attPlayable = {};
+function attCanPlay(ext){
+  if (ext in attPlayable) return attPlayable[ext];
+  let ok = false;
+  try{
+    const mime = MEDIA_MIME[ext];
+    const el = document.createElement(VIDEO_EXT.test("." + ext) ? "video" : "audio");
+    ok = !!(mime && el.canPlayType && el.canPlayType(mime));
+  }catch(e){ ok = false; }
+  attPlayable[ext] = ok;
+  return ok;
+}
+function attAssetUrl(did, f){
+  return `/api/asset?doc=${encodeURIComponent(did)}&f=${encodeURIComponent(f)}`;
+}
+/* 파일 한 줄 — 칩(누르면 새 탭에서 열림)과 「내려받기」. 둘을 한 덩이로 묶는
+   이유는 못 받은 그림의 자리와 같다: 따로 두면 좁은 폭에서 하나만 다음 줄로
+   떨어져 서로 다른 것처럼 보인다. 둘 다 "이 파일을 손에 넣는 길"이다.
+   `f` 는 이미 esc() 를 지나온 글자라 여기서 또 감싸지 않는다. */
+function attFileChip(did, f){
+  const u = attAssetUrl(did, f);
+  // 칩의 여는 태그는 **한 조각**으로 둔다 — 중간에서 끊으면 "칩이 제 문서와
+  // 파일을 들고 있는가"를 재는 시험이 그 태그를 못 찾는다 (test_asset_text_ui).
+  return `<span class="atta">`
+    + `<a class="attfile" data-adoc="${did}" data-af="${f}" href="${u}" target="_blank">📎 ${f}</a>`
+    + `<a class="atto" href="${u}" download="${f}">내려받기</a></span>`;
+}
+/* 소리·영상 한 자리. 자동 재생은 하지 않는다 — `preload="none"` 이라 누르기
+   전에는 내려받지도 않고, 그래서 문서를 여는 것만으로 회선을 쓰지 않는다.
+   못 그리는 형식이면 재생기를 세우지 않고 칩으로 떨어뜨린다(빈 자리 금지). */
+function attMedia(did, f){
+  const ext = attExt(f);
+  if (!attCanPlay(ext)) return attFileChip(did, f);
+  const u = attAssetUrl(did, f), vid = VIDEO_EXT.test("." + ext);
+  const tag = vid ? "video" : "audio";
+  return `<span class="attbox">`
+    + `<span class="atta">`
+    + `<span class="attf">${f}</span>`
+    + `<a class="atto" href="${u}" download="${f}">내려받기</a></span>`
+    + `<${tag} class="attmed" controls preload="none" playsinline`
+    + ` src="${u}" aria-label="${f}"`
+    + ` data-attd="${encodeURIComponent(did)}" data-attf="${encodeURIComponent(f)}"`
+    + `></${tag}>`
+    + `<span class="attmiss" hidden></span></span>`;
+}
+/* 표기든 맨 경로든 여기 한 곳으로 모인다 — 갈리면 같은 파일이 자리마다 다른
+   모양으로 선다. */
+function attAny(did, f){
+  if (isImageName(f)) return attImg(did, f);
+  if (MEDIA_EXT.test(f)) return attMedia(did, f);
+  return attFileChip(did, f);
+}
+/* 재생기가 파일을 못 받았을 때. 그림과 달리 다시 걸지 않는다 — 사람이 재생을
+   누른 뒤라 자동 재시도는 소리가 뒤늦게 튀어나오는 일이 된다. 자리를 비우지
+   말고 내려받는 길을 준다. */
+function attMedFail(el){
+  const box = el.closest(".attbox");
+  const miss = box && box.querySelector(".attmiss");
+  if (!miss || !miss.hidden) return;
+  let nm = el.dataset.attf || "";
+  try{ nm = decodeURIComponent(nm); }catch(e){ /* 그대로 쓴다 */ }
+  const u = `/api/asset?doc=${el.dataset.attd}&f=${el.dataset.attf}`;
+  el.hidden = true;
+  miss.hidden = false;
+  miss.className = "attmiss";
+  miss.innerHTML = `<span class="attf">${esc(nm)}</span>`
+    + `<span class="attw">이 파일을 재생하지 못했습니다 — 브라우저가 모르는`
+    + ` 형식이거나 파일을 받지 못했습니다.</span>`
+    + `<span class="atta">`
+    + `<a class="atto" href="${u}" target="_blank">새 탭에서 열기</a>`
+    + `<a class="atto" href="${u}" download="${esc(nm)}">내려받기</a></span>`;
+}
+document.addEventListener("error", e => {
+  const t = e.target;
+  if (t && t.classList && t.classList.contains("attmed")) attMedFail(t);
+}, true);
+
 /* minimal markdown renderer */
 function md2html(src){
   const lines = esc(src).split("\n");
@@ -156,12 +248,25 @@ function md2html(src){
         (mm, rel, did, f) => hold(attImg(did, f)))
       // data-adoc/data-af: 첨부 본문(attachTexts)이 읽는 자리. data-doc 이라는
       // 이름은 쓰지 않는다 — 그건 문서 열기 위임의 이름이라 칩 클릭을 가로챈다.
-      .replace(/\[File: (assets\/([A-Z]{3}-[\w-]+)\/([^\]\/\n]+))\]/g,
-        (mm, rel, did, f) => hold(
-          `<a class="attfile" data-adoc="${did}" data-af="${f}" href="/api/asset?doc=${encodeURIComponent(did)}&f=${encodeURIComponent(f)}" target="_blank">📎 ${f}</a>`))
+      /* 소리·영상은 칩이 아니라 그 자리의 재생기다 (REQ-20260908-048) —
+         가르는 곳은 attAny 한 곳이고, 아래 맨 경로도 같은 곳으로 간다.
+         `[Audio:]`·`[Video:]` 는 서버가 새로 적기 시작한 표기다(asset_mark).
+         여기서 안 받으면 대괄호가 글자로 남고 그 안의 경로만 따로 그려진다 —
+         실제로 그렇게 찍혔다. */
+      .replace(/\[(?:File|Audio|Video): (assets\/([A-Z]{3}-[\w-]+)\/([^\]\/\n]+))\]/g,
+        (mm, rel, did, f) => hold(attAny(did, f)))
       // 레거시 절대경로(미이전) — 로드 불가라 파일명 칩으로만
-      .replace(/\[(?:Image|File): ([^\]\n]*\/([^\]\/\n]+))\]/g,
+      .replace(/\[(?:Image|File|Audio|Video): ([^\]\n]*\/([^\]\/\n]+))\]/g,
         (mm, full, f) => hold(`<span class="attchip" title="${full}">🖼 ${f}</span>`))
+      /* 그림이 아닌 맨 경로 (REQ-20260908-047). 여태 이 줄은 아무것도 아닌
+         글자로 남아 산출물이 문서에 적히고도 열리지 않았다. 규칙은 아래 그림
+         줄과 같다 — 백틱 안은 건드리지 않고, 축약 id 는 카탈로그로 푼다.
+         그림 줄과는 확장자가 겹치지 않아 서로 순서를 다투지 않는다. */
+      .replace(BARE_FILE_RE, (mm, did, f, offset, whole) => {
+        if (whole[offset - 1] === "`" || whole[offset + mm.length] === "`") return mm;
+        const r = catFind(did);
+        return hold(attAny(r ? r.id : did, f));
+      })
       /* 표기 없이 적힌 경로 (REQ-20260829-008). 위 셋보다 **뒤**여야 한다 —
          표기는 이미 자리표시자로 빠졌으므로 같은 줄을 두 번 집을 일이 없다.
          백틱 안은 건드리지 않는다: 그 자리는 경로 자체를 보여주려고 쓴 것이고,

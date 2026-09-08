@@ -11094,16 +11094,77 @@ def sync_mode():
     return "remote"          # "remote" · 옛 "on — …" · 빈 파일
 
 
-def sync_set_mode(mode):
+# 설치가 기본으로 둔 값과 **사람이 고른 값**을 가른다 (REQ-20260908-050).
+# 이 줄이 있으면 아직 아무도 안 골랐다는 뜻이고, 사실(origin 이 생김·두 번째
+# 머신이 붙음)이 나타나면 remote 로 올라간다. 사람이 한 번이라도 고르면
+# (`s9 sync --on/--off`, 설치 때의 대화) 이 줄은 사라지고 사실이 뒤집지 않는다.
+SYNC_UNCHOSEN_LINE = "아직 고르지 않음 — origin 이 있으면 remote 로 올라간다\n"
+
+
+def sync_mode_chosen():
+    """사람이 이 모드를 골랐나 — 아니면 설치가 기본으로 둔 것인가."""
+    try:
+        with open(SYNC_MARKER, encoding="utf-8") as f:
+            return SYNC_UNCHOSEN_LINE.split(" —")[0] not in f.read()
+    except OSError:
+        return True
+
+
+def sync_set_mode(mode, chosen=True):
     """모드를 바꾼다 — "파일을 지우세요" 를 사람이 외우지 않게."""
     if mode not in SYNC_MODES:
         raise ValueError(f"모드는 {' | '.join(SYNC_MODES)} 다")
     body = ("local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)\n"
             if mode == "local" else
             "remote — 문서 이벤트마다 commit→pull→push (여럿이 쓰는 자리)\n")
+    if not chosen:
+        body += SYNC_UNCHOSEN_LINE
     with open(SYNC_MARKER, "w", encoding="utf-8") as f:
         f.write(body)
     return mode
+
+
+def sync_has_origin():
+    import subprocess as _sp
+    try:
+        r = _sp.run(["git", "remote", "get-url", "origin"], cwd=ROOT,
+                    capture_output=True, encoding="utf-8", errors="replace",
+                    timeout=10)
+        return r.returncode == 0 and bool(r.stdout.strip())
+    except (OSError, ValueError, _sp.SubprocessError):
+        return False
+
+
+_SYNC_RAISE_AT = [0.0]
+
+
+def sync_autoraise(now=None):
+    """origin 이 있는데 모드가 기본 local 이면 remote 로 올린다 (REQ-20260908-050).
+
+    실제 사고 2026-09-08: 인스턴스를 만들고 다른 머신에서 클론했는데 요청 문서가
+    GitHub 으로 나가지 않았다. 마커가 `local` 이었고 그 마커는 track 되므로
+    **클론에도 그대로 실려 갔다.** 아무도 「혼자 쓴다」고 고른 적이 없다 —
+    `s9 instance init` 이 파이프 안에서 돌아 물음이 막혔고, 기본값이 local 이었다.
+
+    설계는 원래 사실로 판정하려 했다(REQ-20260905-013: 「두 번째 머신이 붙는 순간이
+    곧 판정이다」). 그런데 그 판정의 재료가 **사용자 문서에 붙은 머신 수** 하나뿐이라,
+    새 머신에서 사용자를 새로 등록하면 붙은 머신은 영영 하나다. 재료를 하나 더 둔다 —
+    **origin 이 있다**는 사실. 없으면 내보낼 곳이 없으니 local 이 맞고, 있으면
+    내보내라고 둔 것이다.
+
+    사람이 고른 값은 뒤집지 않는다 — `s9 sync --off` 가 무력해지면 안 된다.
+    """
+    import time as _time
+    now = now or _time.time()
+    if now - _SYNC_RAISE_AT[0] < 60:
+        return ""
+    _SYNC_RAISE_AT[0] = now
+    if sync_mode() != "local" or sync_mode_chosen() or not sync_has_origin():
+        return ""
+    sync_set_mode("remote", chosen=False)
+    _sync_log("mode local→remote: origin 이 있고 아무도 고른 적이 없다 "
+              "(REQ-20260908-050) — 되돌리려면 `s9 sync --off`")
+    return "remote"
 
 
 def ask_sync_mode(interactive=None):
@@ -11893,6 +11954,8 @@ def sync_transport_tick(now=None):
             did.append("index")
     except Exception:
         pass
+    if sync_autoraise(now):
+        did.append("mode:remote")
     if sync_mode() != "remote":
         return did
     try:
@@ -13187,7 +13250,7 @@ def cmd_tag(args):
 # TYPE_GROUPS 를 못 읽는 별도 스크립트라 Image/File 을 스스로 가를 수 없고, 가르게
 # 하면 확장자 목록이 두 벌이 된다(한 벌만 고쳐진다). 그래서 훅은 경로만 적고
 # ingest 가 asset_mark 로 갈라 준다 — 판정은 여기 한 곳이다.
-ASSET_RE = re.compile(r"\[(Image|File|Attach): ([^\]\n]+)\]")
+ASSET_RE = re.compile(r"\[(Image|Audio|Video|File|Attach): ([^\]\n]+)\]")
 # 첨부 본문 추출 (REQ-20260825-054) — 전부 stdlib로 처리한다(의존성 0 원칙):
 # 텍스트류는 그대로, PDF는 zlib 스트림에서 텍스트 연산자, OOXML(docx/xlsx/pptx)은
 # zip 내부 XML에서 태그를 걷어내 뽑는다. 실패는 조용히 빈 문자열(첨부는 저장됨).
@@ -13213,10 +13276,25 @@ TYPE_GROUPS = {
     "code": {".py", ".js", ".ts", ".sh", ".sql", ".html", ".css", ".json",
              ".yaml", ".yml", ".xml", ".diff", ".patch", ".toml"},
     "archive": {".zip", ".tar", ".gz", ".tgz", ".7z", ".rar"},
-    "video": {".mp4", ".mov", ".avi", ".mkv", ".webm"},
-    "audio": {".mp3", ".wav", ".m4a", ".flac", ".ogg"},
+    "video": {".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm"},
+    "audio": {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".oga", ".aac",
+              ".opus"},
 }
 ATTACH_MAX_BYTES = 30 * 1024 * 1024      # 첨부 상한 (REQ-054: 10MB → 30MB)
+# 음악·영상만 상한이 다르다 (REQ-20260908-048). 30MB 는 1080p 영상 1분 언저리라
+# **영상은 사실상 못 붙는 값**이었다 — 사용자 지적("음악, 영상 등 미디어 파일도
+# 다양하게 등록이 되어야 할 것 같다")의 실제 벽이 타입 검사가 아니라 이 숫자다.
+# 64MB 에서 멈추는 이유 둘. ① 업로드가 base64 JSON 이라 한 요청이 원본의 약
+# 4배를 메모리에 든다(64MB → 본문 85MB + decode 85MB + 디코드본 64MB ≈ 235MB).
+# 그 위로 열려면 multipart 스트리밍이 먼저다. ② vault/ 와 projects/ 는 git
+# 추적이고 미디어는 이미 압축돼 있어 delta 이득이 0 이다 — 붙인 크기가 그대로
+# 저장소 무게다(그 무게를 REQ-20260908-045 가 따로 보고 있다).
+ATTACH_MAX_MEDIA_BYTES = 64 * 1024 * 1024
+# 브라우저가 그 자리에서 재생할 수 있는 확장자 (REQ-20260908-048). TYPE_GROUPS
+# 의 audio/video 와 다른 집합이다 — mkv·avi 는 미디어지만 웹 재생기가 못 연다.
+# .mov 는 Safari 는 열고 Chrome 은 코덱에 따라 갈린다(H.264 면 열린다).
+PLAYABLE_EXTS = {".mp3", ".m4a", ".wav", ".ogg", ".oga", ".aac", ".opus",
+                 ".flac", ".mp4", ".m4v", ".webm", ".mov"}
 # 문서 노트에 허용하는 구획 이름 (REQ-20260829-015). 아무 낱말이나 라벨이 되면
 # 문서의 구획이 사람마다 달라져 나중에 아무도 훑을 수 없다.
 NOTE_LABELS = ("ask", "response", "note", "judge", "tdd", "designer",
@@ -13253,10 +13331,127 @@ def asset_mark(path):
 
     모르는 확장자는 그림이라고 우기지 않는다 — 깨진 칸보다 이름 한 줄이 낫다.
     확장자 목록은 TYPE_GROUPS 하나에서 온다(두 벌로 만들면 한 벌만 고쳐진다).
+
+    음악·영상은 `Audio`·`Video` 로 따로 적는다 (REQ-20260908-048). `File` 로
+    뭉뚱그리면 문서 뷰어가 재생기를 세울 근거가 없다 — 그림이 `<img>` 를 얻는
+    것과 같은 이유로 미디어는 자기 이름을 얻어야 한다.
     """
     ext = os.path.splitext(str(path or ""))[1].lower()
-    kind = "Image" if ext in TYPE_GROUPS["image"] else "File"
+    if ext in TYPE_GROUPS["image"]:
+        kind = "Image"
+    elif ext in TYPE_GROUPS["audio"]:
+        kind = "Audio"
+    elif ext in TYPE_GROUPS["video"]:
+        kind = "Video"
+    else:
+        kind = "File"
     return f"[{kind}: {path}]"
+
+
+def asset_kind(path):
+    """첨부의 종류 — image·audio·video·document·… 또는 "file" (모르는 것).
+
+    TYPE_GROUPS 하나에서 온다. 표기(asset_mark)·상한(attach_max_for)·화면에
+    싣는 사실(/api/asset-info)이 전부 이 함수를 지난다 — 확장자 목록이 세 벌이
+    되면 한 벌만 고쳐진다.
+    """
+    ext = os.path.splitext(str(path or ""))[1].lower()
+    for g in ("image", "audio", "video", "document", "spreadsheet", "slides",
+              "data", "code", "archive"):
+        if ext in TYPE_GROUPS[g]:
+            return g
+    return "file"
+
+
+def attach_max_for(name):
+    """이 파일에 걸리는 첨부 상한 — 음악·영상만 다르다 (REQ-20260908-048)."""
+    return (ATTACH_MAX_MEDIA_BYTES
+            if asset_kind(name) in ("audio", "video") else ATTACH_MAX_BYTES)
+
+
+def asset_ctype(path):
+    """첨부의 Content-Type — 판정은 여기 한 곳이다 (REQ-20260908-048).
+
+    `/api/asset` 이 내주는 값과 `/api/asset-info` 가 화면에 말해 주는 값이
+    갈리면 화면은 재생기를 세워 놓고 서버는 다른 것을 보낸다.
+
+    글자 파일에 charset 을 붙이는 이유는 REQ-20260901-016: charset 없는 text/*
+    를 받은 브라우저는 인코딩을 추측하고 한글 UTF-8 은 그 추측에서 깨진다.
+    """
+    import mimetypes
+    ctype = mimetypes.guess_type(str(path or ""))[0] or "application/octet-stream"
+    if (ctype.startswith("text/") or ctype in (
+            "application/json", "application/javascript",
+            "application/xml")) and "charset" not in ctype:
+        ctype += "; charset=utf-8"
+    return ctype
+
+
+def asset_playable(path):
+    """브라우저가 그 자리에서 재생하나 (REQ-20260908-048)."""
+    return os.path.splitext(str(path or ""))[1].lower() in PLAYABLE_EXTS
+
+
+def project_asset_path(rel):
+    """`projects/<slug>/assets/…` 안의 실경로 — 밖이면 "" (REQ-20260908-047).
+
+    요청으로 만든 산출물이 사는 자리다. 문서에는 이 상대경로가 적히는데
+    (REQ-20260908-044 원문: "projects/*/assets/ 하위에 생성이 된다"), 그것을
+    내주는 문이 없어서 사람은 경로만 보고 열지는 못했다.
+
+    이 함수는 **모양만** 판정한다 — 누가 볼 수 있는가는 부르는 자리에서
+    doc_visible·project_can 이 정한다. 둘을 한 함수에 섞으면 다음에 이 문을
+    쓰는 사람이 검사를 지나쳤는지 알 수 없다.
+
+    경로 탈출은 두 번 막는다: 글자(`..`·절대경로·NUL)와 실경로(심링크).
+    `code_visible` 이 `_code_shape_ok` 를 정규화 전후로 두 번 부르는 것과 같은
+    까닭이다 — 글자로는 흠이 없는 심링크가 있다.
+    """
+    rel = str(rel or "").replace("\\", "/").strip()
+    if (not rel or len(rel) > 512 or "\0" in rel
+            or rel.startswith("/") or ".." in rel.split("/")):
+        return ""
+    parts = rel.split("/")
+    # projects/<slug>/assets/<…> — 최소 네 마디, 그 아래는 자유(하위 구조는
+    # 참여자의 몫이라고 CONTEXT 규약이 정해 두었다).
+    if len(parts) < 4 or parts[0] != "projects" or parts[2] != "assets":
+        return ""
+    if not parts[1] or parts[1] != safe_name(parts[1]):
+        return ""
+    base = os.path.realpath(os.path.join(ROOT, "projects", parts[1], "assets"))
+    full = os.path.realpath(os.path.join(ROOT, rel))
+    if full != base and not full.startswith(base + os.sep):
+        return ""
+    return full if os.path.isfile(full) else ""
+
+
+def doc_refs_path(body, rel):
+    """문서 본문이 그 경로를 적고 있나 (REQ-20260908-047).
+
+    프로젝트 에셋을 내주는 문의 **두 번째 자물쇠**다. 첫째는 문서 가시성이고
+    (doc_visible), 이것은 그 문서가 실제로 그 산출물을 가리키는가를 본다.
+    없으면 아무 문서 하나만 보이면 그 프로젝트의 에셋 전부를 읽는 문이 된다 —
+    문서 가시성을 상속한다는 말이 그 순간 거짓이 된다.
+    """
+    body = body or ""
+    if not rel:
+        return False
+    if rel in body:
+        return True
+    # 문서는 흔히 **자리**를 적는다 — 실물 vault 를 훑으면 산출물 참조는
+    # `projects/section9/assets/014-sync-design/` 처럼 디렉토리로 적혀 있고
+    # 파일 이름은 그 안에 있다(2026-09-08 실측: 파일명을 적은 문서 0건).
+    # 그 자리를 적은 문서는 그 자리의 것을 가리킨 것이다.
+    #
+    # 다만 **`assets/` 바로 아래 한 마디는 반드시 적혀 있어야 한다**. 그
+    # 아래를 안 적은 `projects/<slug>/assets/` 하나로 열어 주면 그 문서 하나가
+    # 프로젝트의 산출물 전부를 여는 만능 문이 된다 — 이 함수가 있는 까닭이
+    # 바로 그것을 막는 데 있다.
+    parts = rel.split("/")
+    for i in range(4, len(parts)):
+        if "/".join(parts[:i]) + "/" in body:
+            return True
+    return False
 # 추출 본문 사이드카 (REQ-20260826-020). 태깅용 8000자와 달리 여기는 '보존'이
 # 목적이라 상한이 넉넉하다 — 200,000자면 산문 400쪽 남짓. 사이드카는 vault/ 안이라
 # git 대상이 아니고 카탈로그에도 싣지 않으므로 비용은 로컬 디스크뿐이다.
@@ -18279,15 +18474,15 @@ def attach_turns_sync_on(meta):
         machines = [machines]
     if len(set(machines)) < 2:
         return False
-    if os.path.exists(SYNC_MARKER) or not os.path.isdir(os.path.join(ROOT, ".git")):
+    # 예전엔 `os.path.exists(SYNC_MARKER)` 로 물러났다 — 그런데 `s9 instance init`
+    # 은 마커를 **항상** 만든다. 그래서 이 판정은 인스턴스에서 한 번도 실행된 적이
+    # 없었다 (REQ-20260908-050). 물러날 자리는 「표식이 있다」가 아니라
+    # 「이미 remote 다」이고, 사람이 골라 local 로 둔 것도 뒤집지 않는다.
+    if not os.path.isdir(os.path.join(ROOT, ".git")):
         return False
-    import subprocess as _sp
-    try:
-        r = _sp.run(["git", "remote", "get-url", "origin"], cwd=ROOT,
-                    capture_output=True, text=True, timeout=10)
-        return r.returncode == 0 and bool(r.stdout.strip())
-    except (OSError, ValueError):
+    if sync_mode() == "remote" or (sync_mode() and sync_mode_chosen()):
         return False
+    return sync_has_origin()
 
 
 def do_user_update(name, display=None, email=None, role=None, actor="",
@@ -20087,12 +20282,19 @@ def cmd_instance(args):
     # 이벤트 동기화 마커 (REQ-048): 인스턴스는 문서 이벤트마다 commit→pull→push.
     # track되는 파일이라 팀원 클론에도 자동 적용된다 — 명시적 opt-in 산물(051 제약).
     # 사용 형태를 묻고 정한다 (REQ-20260828-019) — 기본은 혼자.
-    _mode = ask_sync_mode()
+    _tty = sys.stdin.isatty()
+    _mode = ask_sync_mode(interactive=_tty)
     _body = ("local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)\n"
              if _mode == "local" else
              "remote — 문서 이벤트마다 commit→pull→push (여럿이 쓰는 자리)\n")
+    # 물음이 막힌 설치(파이프·CI)는 **고른 것이 아니다** (REQ-20260908-050) —
+    # 그렇게 둔 local 은 origin 이 생기는 순간 remote 로 올라간다.
+    if not _tty:
+        _body += SYNC_UNCHOSEN_LINE
     with open(os.path.join(target, ".s9-sync"), "w", encoding="utf-8") as f:
         f.write(_body)
+    print(f"  동기화: {_mode}" + ("" if _tty else
+          "  (물음이 막혀 기본값 — origin 이 있으면 자동으로 remote 가 된다)"))
     # 인스턴스별 대시보드 포트 자동 배정 (REQ-060): 9909(기본 워크스페이스)와
     # 공존하도록 9910부터 빈 포트를 찾아 state/port에 기록(로컬 전용, git 제외)
     import socket as _sock
@@ -26117,6 +26319,44 @@ def cmd_serve(args):
             return a
         return w["user"]
 
+    def asset_full(qs, me, fn):
+        """열람이 허락된 첨부·산출물의 실경로 — 아니면 "" (REQ-20260908-047).
+
+        **가시성 판정은 여기 한 곳이다.** `/api/asset`(내주기)과
+        `/api/asset-info`(사실 말하기)가 같은 함수를 부른다 — 갈라 두면 원본은
+        못 보는 사람이 크기와 종류는 다 아는 자리가 생긴다. `/api/asset-text`
+        가 `/api/asset` 과 "글자 그대로 같은 검사" 를 써야 했던 그 규율이다.
+
+        두 갈래를 낸다. 둘 다 **문서의 가시성을 상속한다**:
+        - `f=<파일명>`  문서 옆 `assets/<문서ID>/` 의 첨부. 기존 그대로.
+        - `p=projects/<slug>/assets/…`  요청으로 만든 산출물. 자물쇠가 셋이다:
+          ① 그 문서가 보이는가(doc_visible) ② 그 문서 본문이 그 경로를 실제로
+          적고 있는가(doc_refs_path) ③ 그 프로젝트를 읽을 수 있는가
+          (project_can read). ② 가 없으면 보이는 문서 하나가 그 프로젝트
+          에셋 전부를 여는 만능 문이 되어, "문서 가시성을 상속한다" 는 말이
+          그 자리에서 거짓이 된다.
+        """
+        doc_id = qs.get("doc", [""])[0]
+        dp = locate(doc_id)
+        if not dp:
+            return ""
+        meta_a, body_a = read_doc(dp)
+        if not doc_visible(meta_a, me):
+            return ""
+        rel = (qs.get("p", [""])[0] or "").strip()
+        if rel:
+            full = project_asset_path(rel)
+            if not full or not doc_refs_path(body_a, rel):
+                return ""
+            slug = rel.replace("\\", "/").split("/")[1]
+            if not project_can(slug, me, "read"):
+                return ""
+            return full
+        if not fn:
+            return ""
+        full = os.path.join(doc_asset_dir(doc_id), fn)
+        return full if os.path.isfile(full) else ""
+
     class Handler(http.server.BaseHTTPRequestHandler):
         # keep-alive (REQ-20260824-039): HTTP/1.0 은 요청마다 커넥션을 끊어
         # 대시보드 폴링에서 간헐 ERR_CONNECTION_RESET 을 유발했다.
@@ -26303,7 +26543,54 @@ def cmd_serve(args):
             self.end_headers()
             self.wfile.write(data)
 
-        def _send_asset(self, full, ctype):
+        def _asset_disposition(self, full, download):
+            """`Content-Disposition` 한 줄 (REQ-20260908-047).
+
+            내려받기는 `attachment`, 열어 보기는 `inline` 이다. 파일명은 둘 다
+            싣는다 — inline 이어도 브라우저의 「다른 이름으로 저장」이 그 이름을
+            쓴다. 한글 이름은 RFC 5987 의 `filename*` 로만 온전히 간다(헤더는
+            latin-1 이라 한글을 그대로 넣으면 그 자리에서 UnicodeEncodeError 다).
+            """
+            name = os.path.basename(full)
+            q = urllib.parse.quote(name, safe="")
+            ascii_name = name.encode("ascii", "replace").decode("ascii")
+            ascii_name = ascii_name.replace('"', "_").replace("\\", "_")
+            return ('%s; filename="%s"; filename*=UTF-8\'\'%s'
+                    % ("attachment" if download else "inline", ascii_name, q))
+
+        def _range_of(self, size):
+            """`Range: bytes=…` → (start, end) 또는 None(범위 없음)/False(불만족).
+
+            영상은 seek 이 없으면 못 쓴다 — 재생기는 붙자마자 끝의 moov 를
+            찾으려 부분 요청을 보내고, 200 만 돌려주는 서버에서는 되감기도
+            건너뛰기도 죽는다. Safari 는 한술 더 떠 206 을 못 받으면 **재생
+            자체를** 시작하지 않는다.
+
+            여러 구간(multipart/byteranges)은 받지 않는다 — 재생기가 실제로
+            보내는 것은 단일 구간이고, 안 쓰는 갈래를 구현하면 시험할 수 없는
+            코드가 남는다. 단일 구간이 아니면 범위 없음으로 보고 전체를 준다.
+            """
+            hdr = (self.headers.get("Range") or "").strip()
+            if not hdr.lower().startswith("bytes="):
+                return None
+            spec = hdr[6:].strip()
+            if "," in spec:
+                return None
+            m = re.match(r"^(\d*)-(\d*)$", spec)
+            if not m or not (m.group(1) or m.group(2)):
+                return None
+            if not m.group(1):                      # bytes=-N (끝에서 N 바이트)
+                n = int(m.group(2))
+                if n <= 0:
+                    return False
+                return (max(0, size - n), size - 1)
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else size - 1
+            if start >= size or start > end:
+                return False
+            return (start, min(end, size - 1))
+
+        def _send_asset(self, full, ctype, download=False):
             """첨부 서빙 — 잠깐 물리고, 안 바뀌었으면 안 보낸다 (REQ-20260829-019).
 
             이 환경의 루프백은 같은 순간에 도착한 연결을 열 개쯤에서 자른다
@@ -26315,35 +26602,63 @@ def cmd_serve(args):
             판·목록·상태는 여전히 `no-store` 다(`_send`). 그것들은 사람이 옮긴
             결과를 곧바로 보여야 하고, 첨부와는 성질이 다르다.
             """
-            # 글자 파일은 새 탭에서도 읽혀야 한다 (REQ-20260901-016). charset
-            # 없는 text/* 를 받은 브라우저는 인코딩을 추측하고, 한글 UTF-8 은
-            # 그 추측(레거시 인코딩)에서 전부 깨진다 — 소스 파일 첨부를 새
-            # 탭으로 연 실캡처가 그것이다. 판정은 경로 한 곳(여기): 글자로
-            # 읽히는 종류에만 charset 을 붙이고 그림·이진은 그대로 둔다.
-            if (ctype.startswith("text/") or ctype in (
-                    "application/json", "application/javascript",
-                    "application/xml")) and "charset" not in ctype:
-                ctype += "; charset=utf-8"
+            # 글자 파일의 charset 은 `asset_ctype` 한 곳이 붙인다
+            # (REQ-20260901-016). 여기서 다시 붙이면 두 벌이 된다.
             tag = asset_etag(full)
-            if tag and self.headers.get("If-None-Match") == tag:
-                self.send_response(304)
-                self.send_header("ETag", tag)
-                self.send_header("Cache-Control",
-                                 f"private, max-age={ASSET_CACHE_SEC}")
+            cache = f"private, max-age={ASSET_CACHE_SEC}"
+            disp = self._asset_disposition(full, download)
+            try:
+                size = os.path.getsize(full)
+            except OSError:
+                self._send(404, "text/plain", b"not found")
+                return
+            # 부분 요청은 캐시 재검증보다 **먼저** 본다 (REQ-20260908-048).
+            # 재생기는 If-None-Match 와 Range 를 함께 보내는데, 304 를 먼저
+            # 내주면 그 부분 요청은 영원히 답을 못 받는다.
+            rng = self._range_of(size)
+            if rng is False:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            with open(full, "rb") as f:
-                data = f.read()
-            self.send_response(200)
+            if rng is None and tag and self.headers.get("If-None-Match") == tag:
+                self.send_response(304)
+                self.send_header("ETag", tag)
+                self.send_header("Cache-Control", cache)
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            start, end = rng if rng else (0, size - 1)
+            length = 0 if size == 0 else end - start + 1
+            self.send_response(206 if rng else 200)
             self.send_header("Content-Type", ctype)
             if tag:
                 self.send_header("ETag", tag)
-            self.send_header("Cache-Control",
-                             f"private, max-age={ASSET_CACHE_SEC}")
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", cache)
+            self.send_header("Content-Disposition", disp)
+            # 재생기는 이 한 줄을 보고 seek 을 켠다 — 없으면 되감기도
+            # 건너뛰기도 회색으로 죽는다 (REQ-20260908-048).
+            self.send_header("Accept-Ranges", "bytes")
+            if rng:
+                self.send_header("Content-Range",
+                                 f"bytes {start}-{end}/{size}")
+            self.send_header("Content-Length", str(length))
             self.end_headers()
-            self.wfile.write(data)
+            if self.command == "HEAD" or length <= 0:
+                return
+            # 통째로 읽지 않는다 — 64MB 영상을 재생기 하나가 여러 구간으로
+            # 물어 오면 그때마다 64MB 사본이 생긴다.
+            left = length
+            with open(full, "rb") as f:
+                f.seek(start)
+                while left > 0:
+                    chunk = f.read(min(262144, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
 
         def _json(self, obj, code=200):
             self._send(code, "application/json; charset=utf-8",
@@ -26994,23 +27309,48 @@ def cmd_serve(args):
                 # 첨부 서빙 (REQ-20260825-050): 소유 문서의 가시성을 그대로
                 # 상속 — 비가시 문서의 첨부는 존재를 숨기는 404. 파일명은
                 # basename+safe_name으로 정규화해 경로 탈출을 차단한다.
+                #
+                # 산출물도 **같은 문**으로 낸다 (REQ-20260908-047): `p=` 는
+                # `projects/<slug>/assets/…` 를 가리키는 상대경로다. 문을 하나
+                # 더 내지 않는 까닭은 `/api/asset-text` 가 `/api/asset` 과
+                # "글자 그대로 같은 검사" 를 써야 했던 그 규율이다 — 문이
+                # 둘이면 검사도 둘이 되고, 언젠가 한쪽만 고쳐진다.
                 doc_id = qs.get("doc", [""])[0]
                 fn = safe_name(os.path.basename(qs.get("f", [""])[0]))
                 me = viewer_of(qs)
                 dp = locate(doc_id)
-                ok = False
-                if dp and fn:
-                    meta_a = read_doc(dp)[0]
-                    if doc_visible(meta_a, me):
-                        full = os.path.join(doc_asset_dir(doc_id), fn)
-                        if os.path.isfile(full):
-                            import mimetypes
-                            ctype = (mimetypes.guess_type(full)[0]
-                                     or "application/octet-stream")
-                            self._send_asset(full, ctype)
-                            ok = True
-                if not ok:
+                meta_a = read_doc(dp)[0] if dp else {}
+                full = (asset_full(qs, me, fn)
+                        if dp and doc_visible(meta_a, me) else "")
+                if full:
+                    self._send_asset(full, asset_ctype(full),
+                                     download=qs.get("dl", [""])[0] == "1")
+                else:
                     self._send(404, "text/plain", b"not found")
+            elif parsed.path == "/api/asset-info":
+                # 화면이 무엇을 세울지 정하는 데 필요한 사실 (REQ-20260908-048).
+                # 종류·크기·재생 가능 여부를 서버가 말한다 — 확장자 목록을
+                # 화면이 다시 지으면 두 벌이 되고 한 벌만 고쳐진다.
+                #
+                # 검사는 `/api/asset` 과 같은 함수(asset_full) 하나다. 못 보는
+                # 것은 크기도 종류도 흘리지 않는 404 다.
+                fn = safe_name(os.path.basename(qs.get("f", [""])[0]))
+                full = asset_full(qs, viewer_of(qs), fn)
+                if not full:
+                    self._send(404, "text/plain", b"not found")
+                else:
+                    q = urllib.parse.urlencode(
+                        {k: v[0] for k, v in qs.items()
+                         if k in ("doc", "f", "p", "as")})
+                    name = os.path.basename(full)
+                    self._json({
+                        "ok": True, "name": name,
+                        "ext": os.path.splitext(name)[1].lower(),
+                        "kind": asset_kind(name), "mime": asset_ctype(full),
+                        "size": os.path.getsize(full),
+                        "playable": asset_playable(name),
+                        "url": "/api/asset?" + q,
+                        "download_url": "/api/asset?" + q + "&dl=1"})
             elif parsed.path == "/api/asset-text":
                 # 첨부에서 뽑은 본문 (REQ-20260827-005). 검색은 이미 이 글자를
                 # 찾는데(REQ-20260826-020) 화면에서는 읽을 수가 없었다.
@@ -27563,9 +27903,14 @@ def cmd_serve(args):
                     import base64 as _b64
                     name = safe_name(str(req.get("name") or "file"))[:80]
                     raw = str(req.get("data") or "")
-                    # base64는 원본의 4/3 — 30MB 실데이터 기준 (REQ-054)
-                    if len(raw) > int(ATTACH_MAX_BYTES * 1.4):
-                        raise ValueError("첨부가 너무 크다 (30MB 한도)")
+                    # base64는 원본의 4/3 — 실데이터 기준 (REQ-054). 상한은
+                    # 종류로 갈린다 (REQ-20260908-048): 음악·영상 64MB, 그 밖
+                    # 30MB. 판정은 attach_max_for 하나 — 화면이 제 목록으로
+                    # 다시 재면 두 벌이 되고 한 벌만 고쳐진다.
+                    cap = attach_max_for(name)
+                    if len(raw) > int(cap * 1.4):
+                        raise ValueError(
+                            f"첨부가 너무 크다 ({cap // (1024 * 1024)}MB 한도)")
                     try:
                         blob = _b64.b64decode(raw.split(",", 1)[-1],
                                               validate=True)

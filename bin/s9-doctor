@@ -1592,12 +1592,59 @@ def authz_verdict(a):
               advice or None)
 
 
+# 동기화 모드 (REQ-20260908-050). 실제 사고 2026-09-08: 인스턴스를 만들고 다른
+# 머신에서 클론했는데 요청 문서가 GitHub 으로 나가지 않았다. 마커가 `local` 이었고
+# 그 마커는 track 되므로 클론에도 그대로 실려 갔다. **아무 화면에도 나타나지 않는
+# 어긋남**이라 사람이 알 길이 없었다 — 문서는 만들어지고 로컬 커밋도 되니까.
+def sync_info():
+    path = os.path.join(ROOT, ".s9-sync")
+    try:
+        with open(path, encoding="utf-8") as f:
+            body = f.read()
+    except OSError:
+        return {"instance": False}
+    head = (body.strip().split() or [""])[0].lower()
+    try:
+        r = subprocess.run(["git", "remote", "get-url", "origin"], cwd=ROOT,
+                           capture_output=True, encoding="utf-8",
+                           errors="replace", timeout=10)
+        origin = r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        origin = ""
+    return {"instance": True,
+            "mode": "local" if head == "local" else "remote",
+            "chosen": "아직 고르지 않음" not in body,
+            "origin": origin}
+
+
+def sync_verdict(s):
+    if not s.get("instance"):
+        # 코드 저장소를 그냥 클론한 자리 — 어떤 git 쓰기도 하지 않는다(설계 그대로)
+        return _v("sync", "동기화", "ok", "동기화: 인스턴스가 아니다 — git 쓰기 없음")
+    mode, origin = s["mode"], s.get("origin") or ""
+    if mode == "remote" and not origin:
+        return _v("sync", "동기화", "warn",
+                  "동기화: remote 인데 origin 이 없다 — 로컬 commit 만 남는다",
+                  "`git remote add origin <주소>` 로 내보낼 곳을 정하라.")
+    if mode == "local" and origin:
+        lvl = "warn" if s.get("chosen") else "critical"
+        why = ("사람이 고른 값이다" if s.get("chosen")
+               else "아무도 고른 적이 없다 — 설치가 기본으로 둔 값이다")
+        return _v("sync", "동기화", lvl,
+                  f"동기화: local 인데 origin 이 있다 — 문서가 밖으로 나가지 않는다 ({why})",
+                  "`s9 sync --on` 으로 켜라. 이 마커는 track 되므로 한 번 켜면 "
+                  "다른 머신의 클론에도 따라간다.")
+    return _v("sync", "동기화", "ok",
+              f"동기화: {mode}" + (f" · origin {origin}" if origin else ""))
+
+
 def system_checks():
     return [boot_verdict(boot_info()),
             tmp_verdict(tmp_info()),
             disk_verdict(disk_info()),
             serve_verdict(serve_info()),
             repo_verdict(repo_info()),
+            sync_verdict(sync_info()),
             project_verdict(project_info()),
             hooks_verdict(hooks_info()),
             login_verdict(login_info()),
