@@ -11059,15 +11059,9 @@ def _spawn_retry_tick(doc_id, cfg=None, now=None):
     return out
 
 
-def _sync_event(reason, stage, t0, r, attempt=0, kind=""):
-    """단계 하나의 관측 한 줄 — state/sync.jsonl (REQ-20260902-022).
-    `s9 sync --stats` 가 p50/p95·거부율을 이것으로 낸다. 실패해도 조용하다."""
-    import time as _time
-    rec = {"ts": now_iso(), "reason": (reason or "")[:40], "stage": stage,
-           "ms": int((_time.time() - t0) * 1000),
-           "rc": getattr(r, "returncode", -1), "attempt": attempt}
-    if kind:
-        rec["kind"] = kind
+def _sync_event_write(rec):
+    """관측 한 줄을 state/sync.jsonl 에 붙인다 — 이 파일을 쓰는 **유일한 자리**.
+    상한을 넘으면 앞을 버린다. 실패해도 조용하다(관측이 동기화를 막지 않는다)."""
     try:
         os.makedirs(os.path.dirname(_SYNC_EVENTS), exist_ok=True)
         with open(_SYNC_EVENTS, "a", encoding="utf-8") as f:
@@ -11079,6 +11073,18 @@ def _sync_event(reason, stage, t0, r, attempt=0, kind=""):
                 f.writelines(lines)
     except OSError:
         pass
+
+
+def _sync_event(reason, stage, t0, r, attempt=0, kind=""):
+    """단계 하나의 관측 한 줄 — state/sync.jsonl (REQ-20260902-022).
+    `s9 sync --stats` 가 p50/p95·거부율을 이것으로 낸다. 실패해도 조용하다."""
+    import time as _time
+    rec = {"ts": now_iso(), "reason": (reason or "")[:40], "stage": stage,
+           "ms": int((_time.time() - t0) * 1000),
+           "rc": getattr(r, "returncode", -1), "attempt": attempt}
+    if kind:
+        rec["kind"] = kind
+    _sync_event_write(rec)
 
 
 def sync_stats(limit=2000):
@@ -11383,11 +11389,80 @@ def maybe_sync(reason):
     return sync_run(reason)
 
 
+# ----------------------------------------- 수신 폴의 기록 (REQ-20260908-013)
+# 실제 발생 2026-09-08: 맥미니가 2시간 16분 동안 origin 의 커밋 46건을 한 건도
+# 받지 않았다. state/.sync-poll.ts 는 매분 갱신되고 있었으니 폴은 돌았는데,
+# sync_poll 이 sync.jsonl 에 아무것도 남기지 않아 **매번 조용히 건너뛴 것인지
+# 스레드가 죽은 것인지 가를 근거가 없었다**. 그래서 결과를 남긴다 — 다만 매
+# 폴마다는 아니다(10초 주기라 파일이 부풀고 진짜 신호가 묻힌다): 결과가 바뀌는
+# 순간은 언제나, 같은 사유가 이어지면 5분에 한 줄만 남기고 몇 번째인지를 적는다.
+SYNC_POLL_LOG_EVERY_SEC = 300     # 같은 사유가 이어질 때 기록 간격
+_SYNC_POLL_STATE = os.path.join(ROOT, "state", ".sync-poll.json")
+
+
+def _sync_poll_record(result, now=None, ms=0, path=None):
+    """폴 한 번의 결과를 남길지 정하고, 남기면 그 기록을 돌려준다(아니면 None).
+
+    남기는 자리: ① 결과가 직전과 다를 때(멈춤의 시작과 끝이 여기 걸린다)
+    ② 같은 결과가 이어지고 그것이 "none"(변경 없음)이 아닐 때 5분에 한 번.
+    "none" 이 이어지는 것은 정상이라 한 줄도 늘지 않는다."""
+    import time as _time
+    now = now or _time.time()
+    path = path or _SYNC_POLL_STATE
+    try:
+        with open(path, encoding="utf-8") as f:
+            prev = json.load(f)
+        if not isinstance(prev, dict):
+            prev = {}
+    except (OSError, ValueError):
+        prev = {}
+    changed = prev.get("result") != result
+    count = 1 if changed else int(prev.get("count") or 0) + 1
+    since = now_iso() if changed else (prev.get("since") or now_iso())
+    try:
+        logged = float(prev.get("logged") or 0.0)
+    except (TypeError, ValueError):
+        logged = 0.0
+    rec = None
+    if changed or (result != "none" and now - logged >= SYNC_POLL_LOG_EVERY_SEC):
+        rec = {"ts": now_iso(), "reason": "poll", "stage": "poll",
+               "result": result, "ms": int(ms), "attempt": 0,
+               "rc": 0 if result in ("ok", "none") else 1,
+               "count": count, "since": since}
+        if result not in ("ok", "none"):
+            rec["kind"] = result
+        _sync_event_write(rec)
+        logged = now
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"result": result, "count": count, "since": since,
+                       "logged": logged}, f, ensure_ascii=False)
+    except OSError:
+        pass
+    return rec
+
+
 def sync_poll(timeout=8):
     """수신 — fetch + fast-forward 만 (REQ-20260902-023). 쓰지 않는 머신도 남의
     변경을 본다. 로컬 커밋이 앞서 있어 ff 가 안 되면 조용히 건너뛴다(전송 루프의
     rebase 가 푼다). 화면의 pull 손잡이와 **같은 git 명령**을 쓴다.
-    반환: "ok"(당김) · "none"(변경 없음) · "diverged" · "net"."""
+    반환: "ok"(당김) · "none"(변경 없음) · "diverged" · "net".
+    결과는 _sync_poll_record 가 남긴다 — 기록이 실패해도 반환값은 그대로다."""
+    import time as _time
+    if sync_mode() != "remote":
+        return "none"          # 받을 곳이 없으면 기록할 일도 없다
+    t0 = _time.time()
+    result = _sync_poll_once(timeout)
+    try:
+        _sync_poll_record(result, ms=int((_time.time() - t0) * 1000))
+    except Exception:
+        pass
+    return result
+
+
+def _sync_poll_once(timeout=8):
+    """폴 한 번의 알맹이 — 기록은 sync_poll 이 한다."""
     import time as _time
     if sync_mode() != "remote":
         return "none"
@@ -11467,6 +11542,17 @@ def sync_transport_tick(now=None):
 # 사실을 내고, 표면 셋(git 판·digest 머리·훅 주입)은 **그 한 함수만** 본다.
 SYNC_STALL_WARN_SEC = 60         # 이보다 오래 밀리면 주황 글자
 SYNC_STALL_ALERT_SEC = 300       # 이보다 오래 밀리면 붉은 글자 + 훅 주입 1회
+# 받는 쪽도 같은 자리로 말한다 (REQ-20260908-013). 위 둘은 **보내는 쪽**의 밀림만
+# 재고, 받는 쪽이 멈춘 것은 어디에도 서지 않았다 — 맥미니가 2시간 16분 동안 커밋
+# 46건을 못 받는 동안 화면은 조용했다. 폴 주기가 10~60초이므로 임계는 그보다
+# 넉넉히 잡는다: 5분이면 설계 폭의 다섯 배, 15분이면 사고다.
+SYNC_RECV_WARN_SEC = 300         # 못 받은 채 이만큼 지나면 주황 글자
+SYNC_RECV_ALERT_SEC = 900        # 이만큼이면 붉은 글자 + 훅 주입 1회
+SYNC_RECV_WORD = {               # 받기가 막힌 사유의 낱말 (폴의 반환값)
+    "net": "받기 실패 — origin 에 닿지 못합니다",
+    "diverged": "받기 막힘 — 로컬 커밋이 앞서 ff 가 안 됩니다",
+}
+_LEVEL_RANK = {"": 0, "late": 1, "stale": 2}
 _SYNC_STALL_SEEN = os.path.join(ROOT, "state", ".sync-stall-seen")
 _SYNC_CONFLICT_DIR = os.path.join(ROOT, "state", "sync-conflict")
 _SYNC_RESCUE_DIR = os.path.join(ROOT, "state", "sync-rescue")
@@ -11680,6 +11766,12 @@ def sync_status(now=None):
         last_sent     마지막 push 성공(epoch, 없으면 0) — sync.jsonl
         last_received 마지막 pull/poll 성공(epoch) — state/.sync-pull.ts
         pending       로컬에 있고 origin 에 없는 커밋 수 (`@{u}..HEAD`)
+        behind        origin 에 있고 로컬에 없는 커밋 수 — **못 받은** 것
+        received_sec  마지막으로 받은 뒤 흐른 초(한 번도 못 받았으면 0)
+        recv_kind     마지막 폴 실패 사유(마지막 받음보다 늦을 때만) — net·diverged
+        recv_level    받는 쪽의 단계 — "" · late(5분↑) · stale(15분↑).
+                      **못 받은 커밋이 있거나 폴이 실패하고 있을 때만** 선다:
+                      아무도 안 밀어서 조용한 것은 멈춤이 아니다
         stalled_sec   가장 오래 기다리는 미전송 커밋의 나이(작성 시각 기준 —
                       rebase 가 갈아 끼우는 커밋 시각이 아니라). remote 가
                       아니면 0: 나갈 일이 없으면 멈춤도 없다
@@ -11691,25 +11783,34 @@ def sync_status(now=None):
     import time as _time
     now = now or _time.time()
     st = {"mode": sync_mode(), "last_sent": 0.0, "last_received": 0.0,
-          "pending": 0, "stalled_sec": 0, "kind": "", "diverged": False,
-          "level": "", "oldest": "", "upstream": "", "queued": False,
-          "backoff": False}
+          "pending": 0, "behind": 0, "stalled_sec": 0, "received_sec": 0,
+          "kind": "", "recv_kind": "", "diverged": False,
+          "level": "", "recv_level": "", "oldest": "", "upstream": "",
+          "queued": False, "backoff": False}
     recs = _sync_recent_events()
     last_ok_push = last_ok_pull = 0.0
     last_fail = (0.0, "")
+    last_poll_fail = (0.0, "")
     for r in recs:
         ts = _iso_epoch(r.get("ts"))
         if r.get("rc", 0) == 0:
             if r.get("stage") == "push":
                 last_ok_push = max(last_ok_push, ts)
-            elif r.get("stage") == "pull":
+            elif r.get("stage") in ("pull", "poll"):
                 last_ok_pull = max(last_ok_pull, ts)
+        elif r.get("stage") == "poll":
+            if ts >= last_poll_fail[0]:
+                last_poll_fail = (ts, r.get("result") or r.get("kind") or "net")
         elif r.get("stage") in ("pull", "push") and ts >= last_fail[0]:
             last_fail = (ts, r.get("kind") or "net")
     st["last_sent"] = last_ok_push
     st["last_received"] = max(_read_epoch_file(_SYNC_PULL_TS), last_ok_pull)
     if last_fail[0] and last_fail[0] > max(last_ok_push, last_ok_pull):
         st["kind"] = last_fail[1]
+    if last_poll_fail[0] and last_poll_fail[0] > st["last_received"]:
+        st["recv_kind"] = last_poll_fail[1]
+    if st["last_received"]:
+        st["received_sec"] = max(0, int(now - st["last_received"]))
     st["queued"] = os.path.exists(_SYNC_QUEUE)
     st["backoff"] = _sync_net_backoff(False)
     if not os.path.isdir(os.path.join(ROOT, ".git")):
@@ -11724,6 +11825,7 @@ def sync_status(now=None):
             ahead = int(cnt[0]) if len(cnt) == 2 and cnt[0].isdigit() else 0
             behind = int(cnt[1]) if len(cnt) == 2 and cnt[1].isdigit() else 0
             st["pending"] = ahead
+            st["behind"] = behind
             st["diverged"] = ahead > 0 and behind > 0
             if ahead:
                 first = _sync_git("log", "--reverse", "--format=%H %at",
@@ -11742,6 +11844,17 @@ def sync_status(now=None):
         st["level"] = "stale"
     elif st["stalled_sec"] > SYNC_STALL_WARN_SEC:
         st["level"] = "late"
+    # 받는 쪽 — 받을 것이 실제로 있을 때만 잰다. origin 에 못 받은 커밋이 있거나
+    # 폴이 실패하고 있는데 오래 못 받았으면 그것이 멈춤이다. 둘 다 아니면 조용한
+    # 것뿐이니 아무 말도 하지 않는다.
+    if (st["mode"] == "remote" and st["received_sec"]
+            and (st["behind"] > 0 or st["recv_kind"])):
+        if st["received_sec"] > SYNC_RECV_ALERT_SEC:
+            st["recv_level"] = "stale"
+        elif st["received_sec"] > SYNC_RECV_WARN_SEC:
+            st["recv_level"] = "late"
+    if _LEVEL_RANK.get(st["recv_level"], 0) > _LEVEL_RANK.get(st["level"], 0):
+        st["level"] = st["recv_level"]
     return st
 
 
@@ -11765,10 +11878,14 @@ def sync_status_line(st, now=None):
     line = (f"마지막 보냄 {_ago_word(st.get('last_sent'), now)} · "
             f"받음 {_ago_word(st.get('last_received'), now)} · "
             f"대기 {int(st.get('pending') or 0)}건")
+    if int(st.get("behind") or 0):
+        line += f" · 못 받은 커밋 {int(st['behind'])}건"
     if st.get("diverged"):
         line += " · 갈래가 갈렸습니다"
     if st.get("kind") in SYNC_KIND_WORD:
         line += " · " + SYNC_KIND_WORD[st["kind"]]
+    if st.get("recv_kind") in SYNC_RECV_WORD:
+        line += " · " + SYNC_RECV_WORD[st["recv_kind"]]
     return line
 
 
@@ -11782,17 +11899,31 @@ def sync_status_hint(st):
     if k == "net":
         return ("네트워크를 확인 — commit 은 로컬에 보존된다"
                 "(`s9 sync rescue` 로 patch 를 뽑아 둘 수 있다)")
+    if st.get("recv_level"):
+        rk = st.get("recv_kind")
+        if rk == "diverged":
+            return ("로컬 커밋이 앞서 ff 가 안 된다 — `s9 sync` 로 한 번 밀어 "
+                    "정리하면 다시 받는다")
+        if rk == "net":
+            return "origin 에 닿지 못한다 — 네트워크·인증을 확인하고 `s9 sync`"
+        return ("받는 쪽이 멈췄다 — `s9 sync` 로 한 번 당기고, 그래도 안 받으면 "
+                "`s9 serve --restart` (최근 폴 기록은 `s9 sync --stats`)")
     return "`s9 sync` 로 다시 밀고, 계속 밀리면 `s9 sync --status` 로 사유 확인"
 
 
 def sync_stall_once(st=None):
     """5분 넘게 밀렸을 때 **한 번만** 한 줄 — 훅 주입용 (`s9 sync --status --quiet`).
     에피소드 키는 가장 오래된 미전송 커밋 해시다: 그것이 나가면 키가 바뀌고,
-    다음 멈춤은 다시 한 번 말한다. 같은 멈춤을 매 턴 되풀이하지 않는다."""
+    다음 멈춤은 다시 한 번 말한다. 같은 멈춤을 매 턴 되풀이하지 않는다.
+    받는 쪽 멈춤(REQ-20260908-013)은 마지막으로 받은 시각을 키에 함께 넣는다 —
+    한 번이라도 받으면 키가 바뀌므로 다음 멈춤은 다시 말한다."""
     st = st or sync_status()
     if st.get("mode") != "remote" or st.get("level") != "stale":
         return ""
-    key = st.get("oldest") or "?"
+    key = st.get("oldest") or ""
+    if st.get("recv_level") == "stale":
+        key += f"|recv:{int(st.get('last_received') or 0)}"
+    key = key or "?"
     try:
         with open(_SYNC_STALL_SEEN, encoding="utf-8") as f:
             if f.read().strip() == key:
@@ -26582,11 +26713,16 @@ def cmd_serve(args):
     # 10초/60초마다 남의 변경을 당긴다. 끄기: S9_SYNC_LOOP=off
     if os.environ.get("S9_SYNC_LOOP", "").lower() != "off":
         def _sync_loop():
+            # 예외를 삼키지 않는다 (REQ-20260908-013): 종전엔 `except Exception:
+            # pass` 라 무엇이 났는지도, 스레드가 살아 있는지도 남지 않았다.
+            # BaseException 까지 잡는 것은 die() 가 올리는 SystemExit 이 이
+            # 데몬 스레드를 조용히 끝내 버리기 때문이다 — 그 뒤로는 아무도
+            # 받지 않는데 아무 자국도 없다.
             while True:
                 try:
                     sync_transport_tick()
-                except Exception:
-                    pass
+                except BaseException as e:
+                    _sync_log(f"⚠ 전송 루프 예외: {type(e).__name__}: {e}"[:300])
                 time.sleep(2)
         threading.Thread(target=_sync_loop, daemon=True).start()
 
