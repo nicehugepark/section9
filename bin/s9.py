@@ -11218,6 +11218,11 @@ def _sync_pull_cmd(timeout=8):
     FETCH_HEAD 2줄 모두 for-merge. 원격 추적 가지(refs/remotes/origin/<가지>)는
     둘이 겹쳐 써도 같은 값이라 경합이 없다. 반환은 마지막 git 의 결과다.
     """
+    # 앞 회차가 남기고 간 rebase 를 먼저 치운다 (REQ-20260908-051). 이 자리에
+    # 파일이 남아 있으면 이번 rebase 는 「already a rebase-merge directory」로
+    # 무조건 서고, 그 안의 autostash 에 남의 작업이 갇힌 채로 하루가 간다.
+    if os.path.isdir(os.path.join(ROOT, ".git", "rebase-merge")):
+        _sync_abort_rebase()
     f = _sync_git("fetch", "--quiet", timeout=timeout)
     if f.returncode != 0:
         return f
@@ -11319,13 +11324,65 @@ def _sync_rescue_untracked(stderr):
     return moved
 
 
+SYNC_ORPHAN_STASH = os.path.join(ROOT, "state", "sync-stash-orphan.txt")
+
+
+def _sync_restore_autostash(rb):
+    """`.git/rebase-merge/autostash` 에 갇힌 남의 작업을 되돌린다 (REQ-20260908-051).
+
+    실제 사고 2026-09-08 15:55. 서브에이전트 둘이 `bin/s9.py`·`web/` 를 고치는
+    사이 동기화의 pull 이 돌았고, `rebase --autostash` 가 **커밋하지 않은 494줄을
+    보관함으로 걷어 간 뒤 rebase 가 실패했다.** 남은 것은 `autostash` 파일 하나뿐인
+    자리였고, 작업 트리에서는 그 494줄이 조용히 사라졌다 — 두 에이전트의 보고는
+    「고쳤다」였고 파일은 되돌아가 있었다. 아무도 알려 주지 않았다.
+
+    `rebase --abort` 는 이것을 스스로 되돌린다. 그런데 abort 가 실패하면
+    (그날처럼 남은 파일이 온전치 않으면) 되돌릴 사람이 없다. 그래서 여기서 되돌린다.
+    되돌리지 못하면 **소리를 낸다** — sha 를 파일로 남기고 doctor 가 세운다.
+    조용한 유실이 이 사고의 본체다.
+    """
+    try:
+        with open(os.path.join(rb, "autostash"), encoding="utf-8") as f:
+            sha = f.read().strip()
+    except OSError:
+        return ""
+    if not re.fullmatch(r"[0-9a-f]{7,40}", sha or ""):
+        return ""
+    r = _sync_git("stash", "apply", "--index", sha, timeout=20)
+    if r.returncode != 0:          # index 까지는 못 얹어도 내용은 얹는다
+        r = _sync_git("stash", "apply", sha, timeout=20)
+    if r.returncode == 0:
+        _sync_log(f"↺ 보관해 둔 작업을 작업 트리에 되돌렸다 (autostash {sha[:8]})")
+        try:
+            os.remove(SYNC_ORPHAN_STASH)
+        except OSError:
+            pass
+        return sha
+    _sync_log(f"⚠ 보관해 둔 작업을 되돌리지 못했다 — 그 sha 는 {sha} 이고, "
+              f"`git stash apply {sha}` 로 손수 되돌릴 수 있다: "
+              f"{(r.stderr or '').strip()[:200]}")
+    try:
+        os.makedirs(os.path.dirname(SYNC_ORPHAN_STASH), exist_ok=True)
+        with open(SYNC_ORPHAN_STASH, "a", encoding="utf-8") as f:
+            f.write(f"{now_iso()} {sha}\n")
+    except OSError:
+        pass
+    return ""
+
+
 def _sync_abort_rebase():
-    """rebase 를 물린다 — abort 가 실패하면 잔재를 비우고 가지를 원위치로 되돌린다.
+    """rebase 를 물린다 — abort 가 실패하면 남은 파일을 비우고 가지를 원위치로.
 
     `rebase --abort` 가 「could not move back to <sha>」로 실패한 실사고(원격 리눅스
     2026-09-06)가 있다. 그때 .git/rebase-merge 가 남으면 그 뒤의 pull 이 전부
     「rebase in progress」로 선다. orig-head·head-name 을 읽어 --quit 뒤 가지를
     그 자리로 돌려놓는다 — 로컬 commit 은 하나도 잃지 않는다.
+
+    **모양이 온전치 않아도 물러나지 않는다** (REQ-20260908-051, 실제 사고
+    2026-09-08): 그날 남은 것은 `autostash` 파일 하나뿐이었고, orig-head 를 읽다
+    OSError 로 그냥 `False` 를 돌려주었다 — 남은 파일도 안 비우고 보관함도 안
+    되돌렸다. 그래서 순서를 바꾼다: ① 보관함부터 되돌리고 ② 읽히는 것만 읽어
+    가지를 되돌리고 ③ 어느 쪽이든 남은 파일은 비운다.
     """
     ab = _sync_git("rebase", "--abort", timeout=6)
     if ab.returncode == 0:
@@ -11333,17 +11390,28 @@ def _sync_abort_rebase():
     rb = os.path.join(ROOT, ".git", "rebase-merge")
     if not os.path.isdir(rb):
         return ab.returncode == 0
+    _sync_restore_autostash(rb)
+    orig = branch = ""
     try:
         with open(os.path.join(rb, "orig-head"), encoding="utf-8") as f:
             orig = f.read().strip()
-        with open(os.path.join(rb, "head-name"), encoding="utf-8") as f:
-            branch = f.read().strip().replace("refs/heads/", "") or "main"
     except OSError:
-        return False
+        pass
+    try:
+        with open(os.path.join(rb, "head-name"), encoding="utf-8") as f:
+            branch = f.read().strip().replace("refs/heads/", "")
+    except OSError:
+        pass
     _sync_git("rebase", "--quit", timeout=6)
-    _sync_git("checkout", "-q", "-B", branch, orig, timeout=6)
-    _sync_log(f"↺ rebase --abort 실패 → --quit 뒤 {branch} 를 {orig[:7]} 로 되돌렸다 "
-              f"(로컬 commit 보존)")
+    if orig:
+        _sync_git("checkout", "-q", "-B", branch or "main", orig, timeout=6)
+        _sync_log(f"↺ rebase --abort 실패 → --quit 뒤 {branch or 'main'} 를 "
+                  f"{orig[:7]} 로 되돌렸다 (로컬 commit 보존)")
+    else:
+        # --quit 이 지우지 못한 자리는 손으로 비운다 — 남으면 그 뒤 pull 이 전부 선다
+        if os.path.isdir(rb):
+            shutil.rmtree(rb, ignore_errors=True)
+        _sync_log("↺ rebase 가 남긴 파일이 온전치 않았다(orig-head 없음) — 비웠다")
     return True
 
 

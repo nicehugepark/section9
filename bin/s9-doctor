@@ -1611,13 +1611,32 @@ def sync_info():
         origin = r.stdout.strip() if r.returncode == 0 else ""
     except Exception:
         origin = ""
+    # 되돌리지 못한 보관함 (REQ-20260908-051). 동기화의 rebase 가 남의 커밋하지
+    # 않은 작업을 걷어 갔는데 되돌리지 못했으면 그 sha 가 여기 남는다 — 조용한
+    # 유실이 그 사고의 본체였으므로 doctor 가 소리를 낸다.
+    orphan = []
+    try:
+        with open(os.path.join(ROOT, "state", "sync-stash-orphan.txt"),
+                  encoding="utf-8") as f:
+            orphan = [l.strip() for l in f if l.strip()]
+    except OSError:
+        pass
     return {"instance": True,
             "mode": "local" if head == "local" else "remote",
             "chosen": "아직 고르지 않음" not in body,
+            "orphan": orphan,
             "origin": origin}
 
 
 def sync_verdict(s):
+    orphan = s.get("orphan") or []
+    if orphan:
+        last = orphan[-1].split()[-1]
+        return _v("sync", "동기화", "critical",
+                  f"동기화: 되돌리지 못한 보관함 {len(orphan)}건 — 커밋하지 않은 "
+                  f"작업이 그 안에 갇혀 있다 (마지막 {last[:8]})",
+                  f"`git stash apply {last}` 로 작업 트리에 되돌린 뒤, 되돌렸으면 "
+                  "state/sync-stash-orphan.txt 를 지워라.")
     if not s.get("instance"):
         # 코드 저장소를 그냥 클론한 자리 — 어떤 git 쓰기도 하지 않는다(설계 그대로)
         return _v("sync", "동기화", "ok", "동기화: 인스턴스가 아니다 — git 쓰기 없음")
