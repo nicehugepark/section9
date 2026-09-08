@@ -12,7 +12,11 @@
 import importlib.machinery
 import importlib.util
 import os
+import shutil
+import sys
+import tempfile
 import unittest
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -138,6 +142,98 @@ class TheSuiteIsWired(unittest.TestCase):
     def test_discover_returns_the_isolating_suite(self):
         suite, _empty = R.discover(["test_env_isolation.py"])
         self.assertIsInstance(suite, R.EnvIsolatingSuite)
+
+
+class PerModuleBaseline(unittest.TestCase):
+    """모듈마다 기준선 (REQ-20260908-062) — 먼저 import 된 모듈이 남의 뿌리를 보지 않는다.
+
+    서른 남짓한 파일이 모듈 최상위에서 `os.environ["S9_ROOT"]` 로 제 임시 뿌리를
+    세운다. 기준선이 프로세스에 하나면 그 값은 마지막으로 import 된 모듈의 것이라,
+    앞 모듈의 클래스는 경계를 넘을 때마다 남의 뿌리로 되돌려졌다 —
+    test_async_result_notify 가 전체 실행에서만 지던 까닭(REQ-20260908-060).
+    """
+
+    SRC = """import os, unittest
+MY_ROOT = {root!r}
+os.environ["S9_ROOT"] = MY_ROOT
+{extra}
+
+class T(unittest.TestCase):
+    def test_sees_own_root(self):
+        self.assertEqual(os.environ.get("S9_ROOT"), MY_ROOT)
+
+    def test_session_is_what_this_module_left(self):
+        self.assertEqual(os.environ.get("S9_SESSION"), {session!r})
+"""
+    LEAK = "zz-leak-from-a"
+
+    def setUp(self):
+        self._saved = dict(os.environ)
+        self._mods = set(sys.modules)
+        self._path = list(sys.path)
+        self.dir = tempfile.mkdtemp(prefix="s9envmod-")
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._saved)
+        for k in [k for k in sys.modules if k not in self._mods]:
+            del sys.modules[k]
+        sys.path[:] = self._path
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def two_modules(self):
+        """a 는 뿌리와 S9_SESSION 을 남기고, b 는 뿌리만 세운다. 이름순으로
+        a 가 먼저 import 된다 — 기준선이 하나면 a 가 b 의 뿌리를 본다."""
+        tag = uuid.uuid4().hex[:8]
+        names = []
+        outside = os.environ.get("S9_SESSION")      # b 가 볼 값 = discovery 전의 것
+        for who, extra, session in (
+                ("a", f'os.environ["S9_SESSION"] = {self.LEAK!r}', self.LEAK),
+                ("b", "", outside)):
+            name = f"test_zz_pm_{tag}_{who}"
+            with open(os.path.join(self.dir, name + ".py"), "w",
+                      encoding="utf-8") as f:
+                f.write(self.SRC.format(root=f"/root-of-{who}-{tag}",
+                                        extra=extra, session=session))
+            names.append(name)
+        return names
+
+    def run_suite(self, suite):
+        res = unittest.TestResult()
+        suite.run(res)
+        return res
+
+    def test_m2_each_class_sees_its_own_modules_root(self):
+        names = self.two_modules()
+        suite, empty = R.discover(["test_zz_pm_*.py"], start=self.dir)
+        self.assertEqual(empty, [])
+        self.assertEqual(suite.countTestCases(), 4)
+        self.assertEqual(set(suite.per_module), set(names),
+                         "모듈마다 기준선이 찍히지 않았다 — import 자리의 감싸기가 안 걸렸다")
+        res = self.run_suite(suite)
+        self.assertTrue(res.wasSuccessful(),
+                        [f for _, f in res.failures + res.errors])
+
+    def test_m3_one_baseline_for_all_makes_the_first_module_fail(self):
+        """고치기 전 동작을 그대로 흉내 낸다 — 기준선이 하나면 a 가 b 의 뿌리를 본다.
+        이 시험이 지면 M2 는 아무것도 가려내지 못하는 시험이다."""
+        self.two_modules()
+        suite, _ = R.discover(["test_zz_pm_*.py"], start=self.dir)
+        suite.per_module = None
+        suite.baseline = R.env_baseline()      # discovery 뒤의 값 = 마지막 모듈의 것
+        res = self.run_suite(suite)
+        self.assertFalse(res.wasSuccessful(), "기준선이 하나인데도 통과했다")
+        self.assertTrue(any("test_sees_own_root" in t.id() and t.id().endswith("_a.T.test_sees_own_root")
+                            for t, _ in res.failures),
+                        [t.id() for t, _ in res.failures])
+
+    def test_m4_a_module_does_not_inherit_what_the_one_before_left(self):
+        """a 가 남긴 S9_SESSION 을 b 는 보지 않는다 — 모듈마다 discovery 전 환경에서
+        import 하므로 홀로 돌 때와 같은 환경이다."""
+        names = self.two_modules()
+        suite, _ = R.discover(["test_zz_pm_*.py"], start=self.dir)
+        self.assertNotEqual(suite.per_module[names[1]].get("S9_SESSION"), self.LEAK)
+        self.assertEqual(suite.per_module[names[0]].get("S9_SESSION"), self.LEAK)
 
 
 if __name__ == "__main__":

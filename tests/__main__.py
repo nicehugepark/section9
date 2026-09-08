@@ -928,9 +928,17 @@ def flatten(suite):
 # 되돌린다. 클래스 안에서는 그 클래스가 세운 값이 그대로 산다 — 격리를 주는
 # 것이지 빼앗는 것이 아니다.
 #
-# 기준선을 **discovery 뒤**에 뜨는 까닭: unittest 은 모든 모듈을 먼저 import
-# 하므로 모듈 최상위에서 세운 값은 그 시점에 이미 들어와 있다. 그것까지
-# 기준선으로 인정해야 지금 도는 파일들이 그대로 돈다.
+# 기준선은 **모듈마다** 하나다 (REQ-20260908-062): unittest 은 샤드에 묶인
+# 모듈을 전부 먼저 import 하고, 서른 남짓한 파일이 모듈 최상위에서 제 임시
+# 뿌리(`os.environ["S9_ROOT"]`)를 세운다. 기준선이 프로세스에 하나면 그 값은
+# 마지막으로 import 된 모듈이 남긴 것이라, 앞 모듈의 클래스는 경계를 넘을
+# 때마다 **남의 뿌리**로 되돌려진다 — test_async_result_notify 가 전체 실행에서만
+# `document not found` 로 지던 까닭이다(REQ-20260908-060). 그래서 discover() 가
+# 모듈을 import 하는 자리에서 ① import 전에 discovery 전 환경으로 되돌리고(앞
+# 모듈이 남긴 것을 물려주지 않는다 — 홀로 돌 때와 같은 환경) ② import 직후의
+# S9_* 를 그 모듈의 기준선으로 찍는다. 클래스 경계에서는 그 클래스의 모듈
+# 기준선으로 되돌린다. 모듈 기준선이 없을 때(러너를 모듈로 집어 스위트를 손으로
+# 만든 시험)만 discovery 뒤에 뜬 전역 기준선으로 물러난다.
 
 ENV_PREFIX = "S9_"
 
@@ -958,26 +966,53 @@ class EnvIsolatingSuite(unittest.TestSuite):
     건다 — 조건을 따로 세우면 언젠가 둘이 갈린다.
     """
 
-    baseline = None
+    baseline = None          # 전역 기준선 — 모듈 기준선이 없을 때의 물러날 자리
+    per_module = None        # {모듈 이름: 그 모듈이 import 직후 남긴 S9_*}
 
     def _handleClassSetUp(self, test, result):
-        if self.baseline is not None and \
-                getattr(result, "_previousTestClass", None) is not test.__class__:
-            env_restore(self.baseline)
+        if getattr(result, "_previousTestClass", None) is not test.__class__:
+            base = (self.per_module or {}).get(test.__class__.__module__,
+                                               self.baseline)
+            if base is not None:
+                env_restore(base)
         super()._handleClassSetUp(test, result)
 
 
-def discover(pats):
+class ModuleBaselineLoader(unittest.TestLoader):
+    """시험 모듈을 import 하는 자리에서 그 모듈의 기준선을 찍는 loader
+    (REQ-20260908-062).
+
+    `_get_module_from_name` 은 unittest 이 discovery 에서 모듈 하나를 import 하는
+    유일한 자리다 — 사적 이름이지만 자리는 하나라 여기서 감싼다.
+    test_env_isolation 이 이 감싸기가 실제로 걸리는지 잰다.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.pre = env_baseline()      # discovery 전 — 어떤 모듈도 손대기 전
+        self.per_module = {}
+
+    def _get_module_from_name(self, name):
+        env_restore(self.pre)          # 앞 모듈이 남긴 것을 물려주지 않는다
+        module = super()._get_module_from_name(name)
+        # 같은 파일이 두 패턴에 걸리면 두 번째 import 는 모듈을 다시 돌리지
+        # 않는다 — 첫 번째가 찍은 기준선을 지우지 않는다.
+        self.per_module.setdefault(name, env_baseline())
+        return module
+
+
+def discover(pats, start=HERE):
     """패턴마다 모아 합친다. 반환: (스위트, 아무것도 못 고른 패턴들).
 
     같은 파일이 두 패턴에 걸리면 테스트 id 로 한 번만 담는다 — 두 번 도는 것은
     낭비이고, 상태를 쓰는 테스트에서는 두 번째가 첫 번째의 잔재를 본다.
+    `start` 는 시험이 임시 디렉터리의 모듈로 러너를 잴 때만 바꾼다.
     """
     seen, cases, empty = set(), [], []
+    loader = ModuleBaselineLoader()
     for pat in pats:
         picked = 0
-        for t in flatten(unittest.defaultTestLoader.discover(HERE,
-                                                             pattern=pat)):
+        for t in flatten(loader.discover(start, pattern=pat)):
             picked += 1
             tid = t.id()
             if tid in seen:
@@ -986,7 +1021,9 @@ def discover(pats):
             cases.append(t)
         if picked == 0:
             empty.append(pat)
-    return EnvIsolatingSuite(cases), empty
+    suite = EnvIsolatingSuite(cases)
+    suite.per_module = loader.per_module
+    return suite, empty
 
 
 def full_suite_green(repo=None):
@@ -1358,7 +1395,8 @@ def main():
         except Exception:
             pass                    # 되걸기가 없어도 시험은 돌아야 한다
         suite, empty = discover(pats)
-        # 기준선은 discovery(=모든 모듈 import) **뒤**에 뜬다 — 위 주석 참조.
+        # 모듈 기준선은 discover() 가 import 자리에서 찍었다. 전역 기준선은
+        # 그것이 없는 클래스가 물러날 자리 — discovery 뒤의 값이다(위 주석 참조).
         EnvIsolatingSuite.baseline = env_baseline()
         for p in empty:
             print(f"no tests matched: {p}", file=sys.stderr)
