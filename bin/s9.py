@@ -20457,18 +20457,34 @@ def instance_upgrade(root=None, run=None):
             "`s9 instance init` 이 만든 저장소에서만 쓴다 "
             "(업스트림 자신은 그냥 pull 하면 된다)")
     git("fetch", "--quiet", "upstream")
+    # **업스트림의 가지 이름을 지어내지 않는다** (REQ-20260908-059). `upstream/main`
+    # 으로 못박았더니 원격 CI 에서 죽었다 — 그 머신은 저장소를 `checkout <sha>` 로
+    # 놓고 돌아서 가지가 하나도 없다(같은 사정이 instance init 에도 적혀 있다,
+    # REQ-20260905-012). 실제로 있는 것을 골라 쓴다.
+    ref = ""
+    for cand in ("upstream/main", "upstream/HEAD"):
+        if git("rev-parse", "--verify", "--quiet", cand,
+               check=False).returncode == 0:
+            ref = cand
+            break
+    if not ref:
+        rows = (git("for-each-ref", "--format=%(refname:short)",
+                    "refs/remotes/upstream", check=False).stdout or "").split()
+        ref = rows[0] if rows else ""
+    if not ref:
+        die("업스트림에 받아 올 가지가 없다 — upstream remote 를 확인하라 "
+            "(가지 없이 특정 commit 만 놓인 저장소는 업그레이드의 출처가 못 된다)")
     have = [p for p in INSTANCE_CODE_PATHS
-            if git("cat-file", "-e", f"upstream/main:{p}",
-                   check=False).returncode == 0]
+            if git("cat-file", "-e", f"{ref}:{p}", check=False).returncode == 0]
     if not have:
-        die("업스트림에서 받을 코드 경로를 찾지 못했다 — upstream remote 를 확인하라")
-    git("checkout", "upstream/main", "--", *have)
+        die(f"{ref} 에서 받을 코드 경로를 찾지 못했다 — upstream remote 를 확인하라")
+    git("checkout", ref, "--", *have)
     st = git("status", "--porcelain", check=False).stdout or ""
     if not st.strip():
         print("업스트림과 같다 — 받을 것이 없다")
         return 0
     git("commit", "-q", "-m", "upstream 코드 갱신 (s9 instance upgrade)")
-    print("업스트림 코드를 받았다: " + " · ".join(have))
+    print(f"업스트림 코드를 받았다 ({ref}): " + " · ".join(have))
     print("  문서(vault·users·projects)는 건드리지 않았다.")
     return 0
 

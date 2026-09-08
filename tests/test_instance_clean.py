@@ -123,8 +123,14 @@ class CleanStart(unittest.TestCase):
 
     # ④ 업그레이드는 코드 경로만 받는다
     def test_upgrade_brings_code_and_leaves_documents_alone(self):
-        # 업스트림을 이 저장소로 돌려 놓는다(네트워크 없이 잰다)
-        sh("git", "remote", "set-url", "upstream", ROOT, cwd=self.target)
+        # 업스트림을 **가지가 있는 사본**으로 돌려 놓는다(네트워크 없이 잰다).
+        # 이 저장소를 그대로 가리키면 원격 CI 에서 깨진다 — 그 머신은 저장소를
+        # `checkout <sha>` 로 놓고 돌아 가지가 하나도 없다(REQ-20260908-059).
+        # 얕게 만들지 않는다 — 얕은 저장소는 남에게 fetch 를 내주지 못한다.
+        up = os.path.join(self.base, "upstream-copy")
+        sh("git", "clone", "-q", ROOT, up)
+        sh("git", "checkout", "-q", "-B", "main", cwd=up)
+        sh("git", "remote", "set-url", "upstream", up, cwd=self.target)
         # 인스턴스에 문서 하나를 만들고, 코드 하나를 흠집 낸다
         env = {**self.env, "S9_ROOT": self.target}
         r = sh(S9, "new", "request", "--title", "인스턴스 요청", "--summary", "s",
