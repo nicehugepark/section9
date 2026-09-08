@@ -2732,6 +2732,9 @@ def cmd_new(args):
         rebuild_index(quiet=True)
     finally:
         release_lock()
+    # Jira 로 내보낼 요청이면 outbox 에 싣는다 (REQ-20260908-073) — 네트워크 없이.
+    if args.doc_type == "request":
+        jira_after_new_request(doc_id, meta)
     ft = (getattr(args, "from_chat", "") or "").strip()
     if ft:
         sid8 = (os.environ.get("S9_SESSION") or "")[:8]
@@ -26398,8 +26401,229 @@ def jira_ping(user, **kw):
             "error": err or f"Jira 가 {st} 로 답했습니다."}
 
 
+# ── 요청 → Jira 이슈 (REQ-20260908-073) ─────────────────────────────────────
+# 문서의 `jira:` 한 덩이가 진실이다(DOC-20260908-002 ⑥). 만드는 길은 둘 —
+# `s9 jira create <REQ>`(사람이 시킨 것, 규칙을 지나간다) · outbox 를 워처가
+# 비우는 것(요청 생성 훅이 실어 둔다). Jira 가 죽어 있어도 요청은 성공한다.
+JIRA_OUTBOX = os.path.join(ROOT, "state", "jira-outbox.jsonl")
+JIRA_BACKOFF_MAX = 3600
+JIRA_LABEL_PREFIX = "s9-"
+
+
+def jira_label(doc_id):
+    return JIRA_LABEL_PREFIX + doc_id
+
+
+def jira_export_wanted(meta, manual=False):
+    """이 요청을 Jira 로 내보내나 — (연동 설정 또는 None, 까닭). 까닭이 비면 내보낸다.
+    manual(s9 jira create)은 사람이 시킨 것이라 export·export_origin 규칙을 지나간다."""
+    if meta.get("type") != "request":
+        return None, "요청 문서가 아니다"
+    j = project_jira(meta.get("project") or "")
+    if not j:
+        return None, "프로젝트에 Jira 연동이 없다 (s9 project jira <slug> set …)"
+    if not manual:
+        if j.get("export_origin", "human") == "human" and meta.get("origin") != "human":
+            return j, ("사람이 직접 만든 요청만 내보낸다 (origin: "
+                       f"{meta.get('origin') or '모름'} — 프로젝트 export_origin=all 로 바꾸거나 "
+                       "s9 jira create 로 직접)")
+        ex = j.get("export", "all")
+        if ex == "manual":
+            return j, "이 프로젝트는 s9 jira create 로만 내보낸다 (export=manual)"
+        if ex == "size:M+" and str(meta.get("size") or "").upper() not in ("M", "L"):
+            return j, f"size {meta.get('size') or '없음'} 은 내보내지 않는다 (export=size:M+)"
+    return j, ""
+
+
+def _jira_adf(lines):
+    return {"type": "doc", "version": 1,
+            "content": [{"type": "paragraph",
+                         "content": [{"type": "text", "text": ln}]} for ln in lines if ln]}
+
+
+def jira_issue_fields(meta, j):
+    """이슈에 실을 것 — 허용 목록뿐(title·summary·goal·요청 id). 본문은 나가지 않는다."""
+    doc_id = meta.get("id", "")
+    return {"project": {"key": j["project_key"]},
+            "issuetype": {"name": j.get("issue_type") or "Task"},
+            "summary": f"[{doc_id}] {meta.get('title') or ''}"[:250],
+            "labels": [jira_label(doc_id)],
+            "description": _jira_adf([
+                f"section9 요청 {doc_id}",
+                f"요약: {meta.get('summary')}" if meta.get("summary") else "",
+                f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
+                f"담당: {meta.get('user') or ''} · 크기: {meta.get('size') or ''} · "
+                f"상태: {meta.get('status') or ''}"])}
+
+
+def jira_find_issue(user, j, doc_id, **kw):
+    """label 로 선검색 — (status, key|''). 새 검색 API 가 없으면 옛 것으로 한 번 더."""
+    from urllib.parse import quote
+    jql = f'project = {j["project_key"]} AND labels = "{jira_label(doc_id)}"'
+    for path in ("/rest/api/3/search/jql", "/rest/api/3/search"):
+        st, d, err = jira_http(user, "GET", f"{path}?jql={quote(jql)}&fields=status&maxResults=1", **kw)
+        if st in (404, 410):
+            continue
+        if st == 200 and isinstance(d, dict):
+            issues = d.get("issues") or []
+            return 200, (issues[0].get("key") if issues else "")
+        return st, ""
+    return 404, ""
+
+
+def _jira_write(doc_id, patch, line=""):
+    """문서의 jira: 를 갱신하고 History 한 줄을 남긴다 — 쓰는 자리는 여기 하나다."""
+    path = find_path(doc_id)
+    if not path:
+        return None
+    meta, body = read_doc(path)
+    cur = dict(meta.get("jira") or {}) if isinstance(meta.get("jira"), dict) else {}
+    cur.update(patch)
+    ts = now_iso()
+    meta["jira"] = cur
+    meta["updated"] = ts
+    if line:
+        body = body.rstrip("\n") + f"\n- {ts} jira: {line}\n"
+    acquire_lock()
+    try:
+        write_doc(path, meta, body)
+        rebuild_index(quiet=True)
+    finally:
+        release_lock()
+    return cur
+
+
+def jira_outbox_add(doc_id, kind="create", now=None):
+    import time as _time
+    now = now or _time.time()
+    rows = jira_outbox_read()
+    if any(r.get("id") == doc_id and r.get("kind") == kind for r in rows):
+        return False
+    rows.append({"id": doc_id, "kind": kind, "at": now, "next_at": now, "attempts": 0})
+    jira_outbox_write(rows)
+    return True
+
+
+def jira_outbox_read():
+    try:
+        with open(JIRA_OUTBOX, encoding="utf-8") as f:
+            return [json.loads(ln) for ln in f if ln.strip()]
+    except (OSError, ValueError):
+        return []
+
+
+def jira_outbox_write(rows):
+    os.makedirs(os.path.dirname(JIRA_OUTBOX), exist_ok=True)
+    tmp = JIRA_OUTBOX + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    os.replace(tmp, JIRA_OUTBOX)
+
+
+def jira_issue_create(doc_id, actor="", manual=False, **kw):
+    """요청 하나를 Jira 이슈로 — {ok, key, url, error, skipped}. 실패는 문서에 남고
+    outbox 로 간다(호출자가 워처든 사람이든 같은 길)."""
+    import time as _time
+    path = find_path(doc_id)
+    if not path:
+        return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
+    meta, _body = read_doc(path)
+    doc_id = meta.get("id") or doc_id
+    cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+    if cur.get("key"):
+        return {"ok": True, "key": cur["key"], "url": cur.get("url", ""), "skipped": True,
+                "error": ""}
+    j, why = jira_export_wanted(meta, manual=manual)
+    if why:
+        return {"ok": False, "error": why, "skipped": True}
+    user = meta.get("user") or actor
+    auth, missing = jira_auth_header(user)
+    if auth is None:
+        msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
+        _jira_write(doc_id, {"pending": "create", "last_error": msg}, "")
+        return {"ok": False, "error": msg, "skipped": True}
+    st, found = jira_find_issue(user, j, doc_id, **kw)
+    site = j["site"].rstrip("/")
+    if found:
+        cur = _jira_write(doc_id, {"site": site, "key": found, "url": f"{site}/browse/{found}",
+                                   "synced_at": now_iso(), "synced_by": "s9",
+                                   "pending": "", "last_error": "", "actor": actor or user},
+                          f"이미 있던 이슈 {found} 를 붙였다 by {actor or user}")
+        return {"ok": True, "key": found, "url": cur["url"], "skipped": False, "error": "",
+                "adopted": True}
+    if st not in (200, 404):
+        return _jira_create_failed(doc_id, f"검색 실패({st})", cur)
+    st, d, err = jira_http(user, "POST", "/rest/api/3/issue",
+                           body={"fields": jira_issue_fields(meta, j)}, **kw)
+    if st in (200, 201) and isinstance(d, dict) and d.get("key"):
+        key = d["key"]
+        status = ""
+        st2, d2, _ = jira_http(user, "GET", f"/rest/api/3/issue/{key}?fields=status", **kw)
+        if st2 == 200 and isinstance(d2, dict):
+            status = str(((d2.get("fields") or {}).get("status") or {}).get("name") or "")
+        cur = _jira_write(doc_id, {"site": site, "key": key, "url": f"{site}/browse/{key}",
+                                   "status": status, "synced_at": now_iso(),
+                                   "synced_by": "s9", "pending": "", "last_error": "",
+                                   "actor": actor or user,
+                                   "via": "manual" if manual else "watcher"},
+                          f"이슈 {key} 생성 by {actor or user}" + (" (s9 jira create)" if manual else ""))
+        return {"ok": True, "key": key, "url": cur["url"], "skipped": False, "error": "",
+                "status": status}
+    return _jira_create_failed(doc_id, err or f"Jira 가 {st} 로 답했다", cur)
+
+
+def _jira_create_failed(doc_id, err, cur):
+    attempts = int((cur or {}).get("attempts") or 0) + 1
+    _jira_write(doc_id, {"pending": "create", "last_error": err, "attempts": attempts}, "")
+    jira_outbox_add(doc_id, "create")
+    return {"ok": False, "error": err, "skipped": False, "attempts": attempts}
+
+
+def jira_after_new_request(doc_id, meta):
+    """요청 생성 훅 — 네트워크 없이 outbox 에만 싣는다(요청 생성을 늦추지 않는다).
+    워처(serve)가 30초 안에 만든다. 내보낼 요청이 아니면 아무것도 안 남긴다."""
+    try:
+        j, why = jira_export_wanted(meta)
+        if why:
+            return False
+        _jira_write(doc_id, {"pending": "create"}, "")
+        jira_outbox_add(doc_id, "create")
+        return True
+    except Exception:
+        return False
+
+
+def jira_outbox_tick(now=None, limit=5, **kw):
+    """워처 1틱 — 때가 된 항목을 최대 limit 개 처리. 실패는 backoff(30초×2^n, 최대
+    1시간)로 미룬다. 반환: [(id, ok)]."""
+    import time as _time
+    now = now or _time.time()
+    rows = jira_outbox_read()
+    if not rows:
+        return []
+    done, keep, n = [], [], 0
+    for r in rows:
+        if n >= limit or float(r.get("next_at") or 0) > now:
+            keep.append(r)
+            continue
+        n += 1
+        res = jira_issue_create(r["id"], actor="watcher", **kw)
+        if res.get("ok") or res.get("skipped"):
+            done.append((r["id"], bool(res.get("ok"))))
+            continue
+        a = int(r.get("attempts") or 0) + 1
+        r["attempts"] = a
+        r["next_at"] = now + min(JIRA_BACKOFF_MAX, 30 * (2 ** (a - 1)))
+        r["last_error"] = res.get("error", "")
+        keep.append(r)
+        done.append((r["id"], False))
+    jira_outbox_write(keep)       # 성공·건너뜀은 빠지고, 실패는 다음 때와 함께 남는다
+    return done
+
+
 def cmd_jira(args):
-    """`s9 jira ping` — 연결 확인 (REQ-20260908-071). 그 밖의 동작은 뒤 단위가 더한다."""
+    """`s9 jira ping|create|outbox` (REQ-20260908-071·073)."""
     user = resolve_user(getattr(args, "user", None))
     if args.action == "ping":
         res = jira_ping(user)
@@ -26411,7 +26635,34 @@ def cmd_jira(args):
                   + (f" <{res['email']}>" if res.get("email") else ""))
             return
         die(res["error"])
-    die("usage: s9 jira ping")
+    if args.action == "create":
+        doc_id = full_doc_id(args.id or "") if args.id else ""
+        if not doc_id:
+            die("usage: s9 jira create <REQ-id>")
+        res = jira_issue_create(doc_id, actor=user, manual=True)
+        if getattr(args, "json", False):
+            print(json.dumps(res, ensure_ascii=False, indent=1))
+            return
+        if res.get("ok"):
+            print((f"{doc_id}: 이미 이슈 {res['key']} 가 있다" if res.get("skipped") else
+                   f"{doc_id} → {res['key']}  {res.get('url', '')}"
+                   + ("  (이미 있던 이슈를 붙였다)" if res.get("adopted") else "")))
+            return
+        die(res.get("error") or "실패")
+    if args.action == "outbox":
+        rows = jira_outbox_read()
+        if getattr(args, "run", False):
+            for i, ok in jira_outbox_tick():
+                print(f"{i}: {'생성' if ok else '실패 — 다음에 다시'}")
+            rows = jira_outbox_read()
+        if not rows:
+            print("outbox 비어 있음")
+            return
+        for r in rows:
+            print(f"{r['id']}  {r.get('kind')}  시도 {r.get('attempts', 0)}회  "
+                  f"{('— ' + r['last_error']) if r.get('last_error') else ''}")
+        return
+    die("usage: s9 jira ping|create <REQ>|outbox [--run]")
 
 
 def git_do(what, actor="", proxy_for=""):
@@ -28929,6 +29180,10 @@ def cmd_serve(args):
             while True:
                 try:
                     rework_watch_tick()
+                    try:
+                        jira_outbox_tick()      # 요청→Jira 이슈 (REQ-20260908-073)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 # 10분(20틱)마다 유실 감사 (REQ-20260901-009) — 스냅샷이 이미
@@ -30554,9 +30809,11 @@ def main():
     md.set_defaults(fn=cmd_merge_doc)
 
     ji = sub.add_parser("jira", help="Jira 연동 (REQ-20260908-071) — ping: 연결 확인")
-    ji.add_argument("action", choices=["ping"])
+    ji.add_argument("action", choices=["ping", "create", "outbox"])
+    ji.add_argument("id", nargs="?", help="create: 요청 id")
     ji.add_argument("--user", help="누구의 준비물로 (기본: 나)")
     ji.add_argument("--json", action="store_true")
+    ji.add_argument("--run", action="store_true", help="outbox: 지금 한 틱 처리")
     ji.set_defaults(fn=cmd_jira)
 
     sy = sub.add_parser("sync", help="문서 이벤트 git 동기화 — 수동 실행/상태 (REQ-048)")
