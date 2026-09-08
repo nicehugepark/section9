@@ -25,8 +25,9 @@ GUARD = os.path.join(REPO, "bin", "s9-guard")
 RUNNER = os.path.join(HERE, "__main__.py")
 
 ROOT = tempfile.mkdtemp(prefix="s9arn-")
+MACHINE = "testbox"
 os.environ["S9_ROOT"] = ROOT          # 모듈 로드 전에 — s9.py 의 ROOT 는 import 때 정해진다
-os.environ["S9_MACHINE"] = "testbox"
+os.environ["S9_MACHINE"] = MACHINE
 os.environ.pop("S9_SESSION", None)
 os.environ.pop("S9_TESTS_ASYNC", None)
 os.environ.pop("S9_TESTS_ASYNC_SHA", None)
@@ -38,8 +39,37 @@ an = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(an)
 
 
+def env_for(**over):
+    """이 시험이 부르는 s9 의 환경 — 뿌리와 머신을 **인자로 못박는다**
+    (REQ-20260908-060).
+
+    모듈 최상위의 `os.environ["S9_ROOT"]` 하나에 기대면 전체 실행에서만 진다:
+    러너는 클래스 경계마다 S9_* 를 discovery 직후의 기준선으로 되돌리는데
+    (tests/__main__.py env_restore·EnvIsolatingSuite), 그 기준선은 **마지막으로
+    import 된 모듈**이 남긴 값이다. 이 파일과 한 샤드에 묶인 다른 시험 파일이
+    제 임시 뿌리를 남겨 두면 setUpClass 는 남의 뿌리에 문서를 세우고,
+    `notify_full_result(root=ROOT)` 는 제 뿌리에서 그 문서를 못 찾는다
+    (`s9: error: document not found`). 단독 실행은 덮는 모듈이 없어 늘 통과한다.
+    """
+    e = dict(os.environ)
+    e["S9_ROOT"] = ROOT
+    e["S9_MACHINE"] = MACHINE
+    e.pop("S9_SESSION", None)
+    e.pop("S9_TESTS_ASYNC", None)
+    e.pop("S9_TESTS_ASYNC_SHA", None)
+    e.update(over)
+    return e
+
+
+def pin_env():
+    """프로세스 안에서 도는 갈래(`an.target_sessions` → `s9.current_machine()`)도
+    같은 뿌리·머신을 보게 한다. 클래스가 세운 값은 그 클래스 안에서 산다."""
+    os.environ["S9_ROOT"] = ROOT
+    os.environ["S9_MACHINE"] = MACHINE
+
+
 def cli(*a):
-    r = subprocess.run([S9, *a], capture_output=True, text=True, env=os.environ,
+    r = subprocess.run([S9, *a], capture_output=True, text=True, env=env_for(),
                        stdin=subprocess.DEVNULL)
     assert r.returncode == 0, f"{a}: {r.stderr}"
     return r.stdout.strip()
@@ -58,11 +88,11 @@ def bind(sid, active=(), ended=False):
     tp = os.path.join(ROOT, f"transcript-{sid}.jsonl")
     with open(tp, "w", encoding="utf-8") as f:
         f.write("{}\n")
-    b = {"session": sid, "machine": "testbox", "user": "alice",
+    b = {"session": sid, "machine": MACHINE, "user": "alice",
          "active_reqs": list(active), "transcript_path": tp}
     if ended:
         b["ended"] = True
-    with open(os.path.join(ROOT, "state", "sessions", f"testbox__{sid}.json"), "w",
+    with open(os.path.join(ROOT, "state", "sessions", f"{MACHINE}__{sid}.json"), "w",
               encoding="utf-8") as f:
         json.dump(b, f)
 
@@ -85,6 +115,7 @@ def req_docs():
 class AsyncResultNotify(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        pin_env()
         cli("init")
         cli("user", "add", "alice")
         cls.req = cli("new", "request", "--title", "알림 대상", "--summary", "s",
@@ -93,7 +124,10 @@ class AsyncResultNotify(unittest.TestCase):
         bind("sess1234", active=[cls.req])      # 클레임한 세션
         bind("other999")                        # 활성이지만 클레임 없음
         bind("ended000", active=[cls.req], ended=True)
-        cls.on = {**os.environ, "S9_TESTS_ASYNC": "1"}
+        cls.on = env_for(S9_TESTS_ASYNC="1")
+
+    def setUp(self):
+        pin_env()
 
     @classmethod
     def tearDownClass(cls):
@@ -115,6 +149,10 @@ class AsyncResultNotify(unittest.TestCase):
         self.assertEqual(rows[0]["text"], "[전체 테스트] abc1234 통과 · 297파일 96초")
         self.assertEqual([l for l in inbox("other999") if "abc1234" in l["text"]], [])
         self.assertEqual(inbox("ended000"), [])
+        # 못 남겼으면 **까닭부터** 말한다 (REQ-20260908-060) — 이 시험이 전체
+        # 실행에서 가끔 졌을 때 사람이 본 것은 「문서에서 못 찾았다」뿐이었고,
+        # 까닭은 샤드 로그에 묻혀 두 번을 그냥 넘겼다.
+        self.assertEqual(r.get("note_err", ""), "", "노트를 못 남겼다")
         d = self.doc()
         self.assertIn("전체 테스트 통과(원격 96초)", d)
         self.assertIn("test-runner", d)
@@ -157,7 +195,8 @@ class AsyncResultNotify(unittest.TestCase):
 
     def test_s4_manual_run_is_silent(self):
         """S4. S9_TESTS_ASYNC 없음(손 실행) → 수신함·문서·요청 어느 것도 안 바뀐다."""
-        off = {k: v for k, v in os.environ.items() if k != "S9_TESTS_ASYNC"}
+        off = env_for()          # 표식 없음 — env_for 가 이미 걷어 준다
+        self.assertNotIn("S9_TESTS_ASYNC", off)
         before, nbefore = self.doc(), len(req_docs())
         r = an.notify_full_result(False, ["test_q.py"], 5, 9, root=ROOT, env=off,
                                   sha="quiet00", req=self.req)
@@ -218,6 +257,32 @@ class AsyncResultNotify(unittest.TestCase):
         self.assertFalse(an.active())
         # 러너 자신은 tty 를 보지 않는다 — 판정은 env 한 줄(async_notify.active)뿐
         self.assertIn("S9_TESTS_ASYNC", _read(os.path.join(HERE, "async_notify.py")))
+
+    def test_s7_another_modules_root_does_not_move_this_test(self):
+        """S7. 같은 프로세스의 다른 시험 파일이 S9_ROOT 를 제 것으로 덮어써도,
+        노트·수신함은 이 시험의 임시 뿌리에 선다 (REQ-20260908-060).
+
+        전체 실행에서만 지던 자리를 그대로 만든다: 러너가 클래스 경계에서
+        되돌리는 기준선이 남의 뿌리일 때가 이것이다. 머신 이름은 setUp 이
+        못박는다 — 수신함 후보를 고르는 갈래는 프로세스 안에서 돌아
+        os.environ 을 그때 읽는다."""
+        decoy = tempfile.mkdtemp(prefix="s9arn-decoy-")
+        try:
+            os.environ["S9_ROOT"] = decoy
+            before = len(req_docs())
+            r = an.notify_full_result(True, [], 7.0, 12, where="원격", root=ROOT,
+                                      env=self.on, sha="leak000", req=self.req)
+            self.assertEqual(r["sessions"], ["sess1234"])
+            rows = [l for l in inbox("sess1234") if "leak000" in l["text"]]
+            self.assertEqual(len(rows), 1)
+            self.assertIn("전체 테스트 통과(원격 7초)", self.doc())
+            self.assertEqual(len(req_docs()), before)
+            # 남의 뿌리에는 아무것도 안 생겼다
+            self.assertEqual(glob.glob(os.path.join(decoy, "vault", "**", "REQ-*.md"),
+                                       recursive=True), [])
+        finally:
+            pin_env()
+            shutil.rmtree(decoy, ignore_errors=True)
 
 
 if __name__ == "__main__":

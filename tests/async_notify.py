@@ -237,12 +237,17 @@ def notify_full_result(ok, red=(), took=0.0, n_files=0, where="로컬", root=Non
         if new_req:
             inbox += f" · 후속 요청 {new_req}"
             note += f" · 후속 요청 {new_req}"
+    # 노트를 못 남긴 **까닭을 돌려준다** (REQ-20260908-060). 예전엔 stderr 로만
+    # 말했는데, 전체 실행에서 이 시험이 가끔 질 때 사람이 보는 것은 「문서에서 그
+    # 글자를 못 찾았다」뿐이었다 — 까닭은 샤드 로그 어딘가에 묻혔다. 부르는 쪽이
+    # 판정에 쓸 수 있게 값으로 낸다.
+    note_err = ""
     if req:
         r = _s9(root, "note", req, note, "--label", "response", "--agent", "test-runner",
                 env=env)
         if r.returncode != 0:
-            print(f"[알림] 노트를 못 남겼다({req}): {(r.stderr or r.stdout).strip()[:200]}",
-                  file=sys.stderr)
+            note_err = (r.stderr or r.stdout).strip()[:400]
+            print(f"[알림] 노트를 못 남겼다({req}): {note_err[:200]}", file=sys.stderr)
     sent = []
     try:
         s9 = _load_s9(root)
@@ -258,4 +263,5 @@ def notify_full_result(ok, red=(), took=0.0, n_files=0, where="로컬", root=Non
     print(f"[알림] {inbox} → 세션 {len(sent)}개"
           + (f", 노트 {req}" if req else ", 커밋 메시지에 REQ 없음 — 노트 생략"),
           file=sys.stderr)
-    return {"sha": sha, "req": req, "sessions": sent, "new_req": new_req}
+    return {"sha": sha, "req": req, "sessions": sent, "new_req": new_req,
+            "note_err": note_err}
