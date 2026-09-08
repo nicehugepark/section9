@@ -19467,6 +19467,13 @@ def do_project_add(slug, name=None, summary=None, customer=None,
             "contact_email": contact_email or "",
             "contact_phone": contact_phone or "",
             "contact_org": contact_org or "",
+            # 출처 (REQ-20260908-024): 같은 slug 가 두 설치에서 만났을 때
+            # 「다른 설치가 만든 다른 것」임을 보여 주는 근거. 문서 id 는 머신
+            # 지문을 달고 그 값이 파일 이름에 들어가 두 머신이 안 부딪히는데,
+            # 프로젝트 문서의 파일 이름은 slug 라 그 장치가 없다. 이미 있는
+            # 문서에는 소급하지 않는다 — 그때 어디서 만들었는지는 짐작이다.
+            "creator": actor, "machine": current_machine(),
+            "machine_fp": machine_fp(),
             "members": [{"user": actor, "role": "owner",
                          "since": today_date(), "until": ""}],
             "created": ts, "updated": ts,
@@ -19622,6 +19629,121 @@ def do_project_set(slug, name=None, summary=None, customer=None, status=None,
             "status": meta.get("status", "")}
 
 
+def _project_field_swap(text, old, new):
+    """문서 frontmatter 의 `project:` 한 줄만 바꾼다 — 본문은 손대지 않는다.
+
+    본문에는 slug 와 같은 글자가 얼마든지 나온다(「section9 을 옮겼다」). 거기까지
+    바꾸면 그때 무엇을 적었는지에 대한 거짓말이 된다. 바뀔 것이 없으면 None."""
+    if not text.startswith("---"):
+        return None
+    end = text.find("\n---", 3)
+    if end < 0:
+        return None
+    head, tail = text[:end], text[end:]
+    head2 = re.sub(r"(?m)^project:[ \t]*['\"]?" + re.escape(old) + r"['\"]?[ \t]*$",
+                   "project: " + new, head)
+    return None if head2 == head else head2 + tail
+
+
+def do_project_rename(old, new, actor=None, via=""):
+    """slug 를 바꾸는 단일 코드 경로 (REQ-20260908-023). 거부는 ValueError.
+
+    slug 는 네 자리에 굳는다: ① `vault/projects/<slug>.md` ② `projects/<slug>/`
+    (CONTEXT.md·assets·agents) ③ 모든 문서의 `project:` ④ 에이전트 미러 이름
+    `.claude/agents/<slug>--<이름>.md`. 넷을 한 번에 옮기지 않으면 남은 한 자리가
+    「이 문서는 어느 프로젝트인가」를 조용히 틀리게 만든다 — cmd_user_rename 이
+    같은 이유로 한 번에 옮긴다.
+
+    **부분 적용을 남기지 않는다**: 이름 둘(문서 파일·에셋 공간)을 먼저 옮기고,
+    글 쓰기는 옛 글을 손에 쥔 채 진행해 한 건이라도 실패하면 쓴 것을 전부 되돌린
+    뒤 이름도 되돌리고 올린다. 출처(creator·machine·machine_fp)는 건드리지
+    않는다 — 옮긴 것은 이름이지 만든 자리가 아니다.
+    권한: own(owner) — slug 는 프로젝트의 신원이라 설정 변경보다 무겁다."""
+    pr = load_project(old)
+    if not pr:
+        raise ValueError(f"not found: {old}")
+    meta, _body, path = pr
+    src = meta.get("slug", "")
+    new = (new or "").strip()
+    if not new or not re.fullmatch(r"[A-Za-z0-9._-]+", new):
+        raise ValueError(f"invalid slug: {new!r} (허용: 영문/숫자/._-)")
+    if new == src:
+        raise ValueError(f"이름이 그대로다: {src}")
+    if not project_can(src, actor, "own"):
+        raise ValueError(
+            f"권한 없음: '{actor}'({project_role(src, actor) or '미참여'})는 "
+            f"프로젝트 이름을 바꿀 수 없다 (owner 필요)")
+    ts = now_iso()
+    acquire_lock()
+    try:
+        new_path = os.path.join(PROJECTS, new + ".md")
+        old_dir, new_dir = asset_dir(src), asset_dir(new)
+        # 중복 검사도 lock 안 — 동시 rename 에서 두 승자가 나오지 않게
+        if project_path(new) or os.path.exists(new_path):
+            raise ValueError(f"already exists: {new}")
+        if os.path.exists(new_dir):
+            raise ValueError(f"already exists: projects/{new}/")
+        os.rename(path, new_path)                       # ①
+        moved_dir = False
+        back = {}                                       # 되돌릴 옛 글
+        try:
+            if os.path.isdir(old_dir):                  # ②
+                os.rename(old_dir, new_dir)
+                moved_dir = True
+            edits = []                                  # ③ 대상 수집(쓰기 전)
+            for dirpath, _dirs, files in os.walk(VAULT):
+                for fn in files:
+                    if not fn.endswith(".md"):
+                        continue
+                    q = os.path.join(dirpath, fn)
+                    try:
+                        with open(q, encoding="utf-8") as f:
+                            t = f.read()
+                    except (OSError, UnicodeDecodeError):
+                        continue
+                    t2 = _project_field_swap(t, src, new)
+                    if t2 is not None:
+                        edits.append((q, t, t2))
+            try:
+                m2, b2 = read_doc(new_path)
+                with open(new_path, encoding="utf-8") as f:
+                    back[new_path] = f.read()   # 프로젝트 문서도 되돌림 대상
+                m2["slug"] = new
+                m2["updated"] = ts
+                b2 = b2.rstrip("\n") + (
+                    f"\n- {ts} 이름 변경 {src} -> {new} "
+                    f"(by {actor or '(모름)'}{via})\n")
+                write_doc(new_path, m2, b2)
+                for q, t, t2 in edits:
+                    back[q] = t
+                    with open(q, "w", encoding="utf-8") as f:
+                        f.write(t2)
+            except OSError:
+                for q, t in back.items():
+                    try:
+                        with open(q, "w", encoding="utf-8") as f:
+                            f.write(t)
+                    except OSError:
+                        pass
+                raise
+        except Exception:
+            if moved_dir:
+                try:
+                    os.rename(new_dir, old_dir)
+                except OSError:
+                    pass
+            try:
+                os.rename(new_path, path)
+            except OSError:
+                pass
+            raise
+        sync_project_agents()   # ④ 미러 이름 — 매니페스트가 옛 이름을 치운다
+        rebuild_index(full=True)
+    finally:
+        release_lock()
+    return {"old": src, "new": new, "docs": len(edits), "assets": moved_dir}
+
+
 def cmd_project(args):
     action = args.action
 
@@ -19654,6 +19776,19 @@ def cmd_project(args):
             die(str(e))
         print(f"기본 프로젝트: {res['slug']} — 이제 프로젝트를 고르지 않은 "
               f"새 문서가 여기 붙는다 (기존 문서는 그대로)")
+        return
+
+    if action == "rename":
+        actor = resolve_user(args.user)
+        new = args.member_action or die("usage: s9 project rename <old> <new>")
+        try:
+            res = do_project_rename(args.slug, new, actor=actor)
+        except ValueError as e:
+            die(str(e))
+        print(f"{res['old']} -> {res['new']}: 프로젝트 문서·"
+              f"{'에셋 공간·' if res['assets'] else ''}"
+              f"문서 {res['docs']}건의 project·에이전트 미러를 옮겼다")
+        print("   출처(만든 사람·머신)는 그대로다 — 옮긴 것은 이름이다.")
         return
 
     if action == "agents":
@@ -19702,9 +19837,15 @@ def cmd_project(args):
             mem = meta.get("members", [])
             act = sum(1 for m in mem if member_active(m))
             cust = f"  고객:{meta['customer']}" if meta.get("customer") else ""
+            # 출처: 같은 slug 가 두 설치에서 만났을 때 사람이 가르는 자리.
+            # 옛 문서에는 이 칸이 없다(소급 금지) — 없으면 그냥 안 붙는다.
+            fp = meta.get("machine_fp", "")
+            org = f"  만든 곳:{meta['machine']}" if meta.get("machine") else ""
+            org += f"({fp})" if (org and fp) else ""
+            org += f"  만든이:{meta['creator']}" if meta.get("creator") else ""
             print(f"{meta.get('id','')}  ({meta.get('slug','')})  "
                   f"[{meta.get('status','')}]  {meta.get('title','')}"
-                  f"{cust}  멤버:{act}/{len(mem)}")
+                  f"{cust}  멤버:{act}/{len(mem)}{org}")
         return
 
     if action == "show":
@@ -19784,7 +19925,7 @@ def cmd_project(args):
         print(role or "(none)")
         return
 
-    die("usage: s9 project <add|ls|show|set|member|authz> ...")
+    die("usage: s9 project <add|ls|show|set|member|authz|rename> ...")
 
 
 INSTANCE_TRACK_GITIGNORE = """# section9 인스턴스 저장소 — 데이터(vault 등)를 track한다.
@@ -28855,10 +28996,10 @@ def main():
     pj = sub.add_parser("project", help="프로젝트 관리 (문서·멤버·역할·만료)")
     pj.add_argument("action",
                     choices=["add", "ls", "show", "set", "member", "authz",
-                             "scaffold", "agents", "default"])
+                             "scaffold", "agents", "default", "rename"])
     pj.add_argument("slug", nargs="?", help="프로젝트 slug 또는 id")
     pj.add_argument("member_action", nargs="?",
-                    help="member: add|rm|ls (authz: 대상 사용자)")
+                    help="member: add|rm|ls (authz: 대상 사용자, rename: 새 slug)")
     pj.add_argument("member", nargs="?", help="member add/rm 대상 사용자")
     pj.add_argument("--name", help="add/set: 표시명(title)")
     pj.add_argument("--summary")
