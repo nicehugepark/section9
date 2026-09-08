@@ -99,7 +99,7 @@ class TheReadySignalWaitsForTheMaterial(unittest.TestCase):
         self.assertEqual(HANDMADE_READY_OK, {},
                          "허용 목록에 처음 이름을 올린다면 이 줄도 함께 고쳐라 — "
                          "사유를 두 자리에 적게 하는 것이 이 문턱이다"
-                         "(BUDGET.json 의 라쳇과 같은 결)")
+                         "(BUDGET.json 의 기준선과 같은 결)")
 
 
 if __name__ == "__main__":

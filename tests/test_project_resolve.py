@@ -192,7 +192,7 @@ class ProjectResolve(unittest.TestCase):
         with self.assertRaises(SystemExit):
             m.code_project("zzz")
         # 세션 훅을 실제로 돌린다 — S9_PROJECT 가 바인딩 project 로 적히는지 (동작 시험;
-        # 소스 글자 대조는 test_test_budget 의 라쳇에 걸린다, REQ-20260906-062)
+        # 소스 글자 대조는 test_test_budget 의 기준선에 걸린다, REQ-20260906-062)
         payload = json.dumps({"session_id": "projsess-full-id", "source": "startup"})
         r = subprocess.run([HOOK_SESSION, "start"], input=payload, capture_output=True,
                            text=True, timeout=30,
