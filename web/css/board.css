@@ -148,6 +148,18 @@
   display:flex;flex-wrap:wrap;align-items:center;padding-right:calc(11ch + 8px)}
 .card .id::before{content:"";height:var(--card-edge)}
 .card .id .idn{white-space:nowrap}
+/* 식별자와 Jira 키는 **한 덩이**다 (REQ-20260909-005). 키를 id 줄의 낱개
+   항목으로 두었더니, 줄이 wrap 이라 폭이 모자라는 순간 키가 통째로 아랫줄로
+   내려가 카드 키가 한 줄만큼 커졌다(주인 캡처 2026-09-09). flex 의 줄바꿈은
+   **줄이기보다 먼저** 일어나므로, 항목으로 남겨 두는 한 `text-overflow` 를
+   붙여도 말줄임은 실행되지 않는다.
+   그래서 덩이의 기준폭을 0 으로 두고(`flex-basis:0`) 남는 폭만큼 자라게 하되
+   내용폭에서 멈춘다(`max-width:max-content`) — 기준폭이 0 이라 이 덩이는
+   줄바꿈을 일으키지 않고, 자람이 내용폭에서 멎으니 뒤따르는 집힘 낱말·벨트는
+   지금 서던 자리에 그대로 선다. 좁아질 때 줄어드는 것은 키뿐이다: 덩이의
+   자동 최소폭이 식별자의 폭(nowrap·안 줄어듦)이라 이름은 한 글자도 깎이지
+   않고, 키는 제 안에서 말줄임으로 접힌다. */
+.card .id .idg{display:flex;align-items:baseline;flex:1 1 0;max-width:max-content}
 /* 우선순위 표기 (REQ-20260827-029 재작업 — REQ-20260826-005의 계약은 유지).
    지켜야 하는 것: 기본값 50도 반드시 그린다. 값이 기본과 다를 때만 찍었더니
    전 문서가 50이라 화면 어디에도 아무 값이 없었고 "숨겨져 있는 건가"로
@@ -241,7 +253,12 @@ span.proj{cursor:default}
    원소가 2행으로 내려가지 않는다. 카드끼리 비교가 깨지던 원인은 줄 수가 아니라
    **같은 사실이 카드마다 다른 줄에 서던 것**이고, 그것이 여기서 멎는다. */
 .card .m.mwho{row-gap:4px}
-.card .m.mwho .proj{min-width:0;overflow:hidden}
+/* 프로젝트 이름이 길어져도 줄 수를 바꾸지 않는다 (REQ-20260909-005). 이름이
+   길면 `.proj` 가 통째로 아랫줄로 내려가 카드마다 키가 달라졌다 — id 줄의 키와
+   같은 성질이라 처방도 같다: 기준폭 0 · 내용폭에서 멈추는 자람. 이름은 제자리에서
+   말줄임으로 접히고(전체 이름은 title 툴팁), 담당·만든 사람은 밀리지 않는다.
+   `.proj` 는 이 줄의 마지막 항목이라 자람이 뒤를 밀 일도 없다. */
+.card .m.mwho .proj{min-width:0;overflow:hidden;flex:1 1 0;max-width:max-content}
 .card .m.mwho .pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   display:inline-block;max-width:100%;vertical-align:bottom}
 /* 2행 「무엇 · 얼마」만 접힌다. 줄 사이는 카드의 작은 눈금(4px) */
@@ -316,7 +333,11 @@ span.proj{cursor:default}
 
 /* Jira 이슈 키 (REQ-20260908-074) — id 줄에 글자로만: mono · 흐린 글자색 · 점선 밑줄.
    테두리·칠은 없다(칩은 세는 것에만). 「다름」은 글자 두 칸, 색은 같은 흐린색이다. */
+/* 폭이 모자라면 **키만** 줄어 말줄임으로 접힌다 (REQ-20260909-005) — 최소폭 0 에
+   overflow:hidden 이라 이 덩이의 최소 크기가 식별자만 남는다. 「다름」은 두 글자짜리
+   판정이라 줄지 않는다(줄면 무슨 말인지 사라진다). */
 .card .id .jkey{margin-left:8px;color:var(--muted);text-decoration:underline dotted;
-  text-underline-offset:2px;white-space:nowrap}
+  text-underline-offset:2px;white-space:nowrap;
+  flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .card .id .jkey:hover{color:var(--text)}
-.card .id .jdiff{margin-left:4px;color:var(--muted);white-space:nowrap}
+.card .id .jdiff{margin-left:4px;color:var(--muted);white-space:nowrap;flex:0 0 auto}
