@@ -988,6 +988,126 @@ def repo_verdict(r):
                if dirty else None))
 
 
+# 프로젝트 등록부 (REQ-20260908-025). 두 어긋남은 조용히 남는다 — 화면 어디에도
+# 나타나지 않아 아무도 모른다. ① 두 설치의 vault 가 만나면 같은 slug 의 프로젝트
+# 문서가 둘이 될 수 있다(git 충돌로 멈추지만, 사람이 잘못 풀면 남는다). ② 문서가
+# `project: <slug>` 로 가리키는 프로젝트 문서가 아예 없을 수 있다. doctor 는 세어
+# 보여 줄 뿐 고치지 않는다 — 어느 id 를 남기고 어느 이름이 맞는지는 사람의 판정이다.
+# 이 도구는 s9 가 못 뜰 때도 써야 해서 s9 를 import 하지 않는다(위 CONCURRENCY 와
+# 같은 규율) — vault 파일의 프론트매터를 직접 읽는다.
+PROJECT_DOC_MAX = 20000     # 안전장치: 이보다 많으면 세다 만다(진단이 느려지지 않게)
+PROJECT_EX = 3              # 줄에 붙이는 예시 개수
+
+
+def _front(fp, keys):
+    """문서 프론트매터에서 필요한 키만 읽는다 — 본문은 읽지 않는다."""
+    out = {}
+    try:
+        with open(fp, encoding="utf-8", errors="replace") as f:
+            if f.readline().strip() != "---":
+                return out
+            for line in f:
+                if line.strip() == "---":
+                    break
+                m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", line.rstrip("\n"))
+                if m and m.group(1) in keys:
+                    out[m.group(1)] = m.group(2).strip().strip('"\'')
+    except OSError:
+        return out
+    return out
+
+
+def project_info(root=None):
+    """vault 의 프로젝트 등록부와 문서가 가리키는 slug 를 맞춰 본다."""
+    base = root or ROOT
+    vault = os.path.join(base, "vault")
+    pdir = os.path.join(vault, "projects")
+    empty = {"readable": False, "registered": {}, "duplicates": [],
+             "unknown": [], "docs": 0}
+    if not os.path.isdir(pdir):
+        return empty
+    try:
+        names = sorted(os.listdir(pdir))
+    except OSError:
+        return empty
+    registered = {}
+    for fn in names:
+        if not fn.endswith(".md"):
+            continue
+        meta = _front(os.path.join(pdir, fn), ("id", "slug"))
+        # slug 프론트매터가 없으면 파일 이름이 곧 slug 다 (s9 의 project_path 와 같은 규칙).
+        slug = meta.get("slug") or fn[:-3]
+        registered.setdefault(slug, []).append(
+            {"id": meta.get("id") or "?", "file": fn})
+
+    counts, examples, docs = {}, {}, 0
+    pabs = os.path.abspath(pdir)
+    for dirpath, dirnames, filenames in os.walk(vault):
+        dirnames[:] = [d for d in dirnames if d not in ("assets", "attachments")]
+        if os.path.abspath(dirpath) == pabs:
+            continue
+        for fn in filenames:
+            if not fn.endswith(".md"):
+                continue
+            docs += 1
+            if docs > PROJECT_DOC_MAX:
+                break
+            meta = _front(os.path.join(dirpath, fn), ("id", "project"))
+            slug = meta.get("project") or ""
+            if not slug or slug in registered:
+                continue
+            counts[slug] = counts.get(slug, 0) + 1
+            examples.setdefault(slug, []).append(meta.get("id") or fn[:-3])
+
+    duplicates = [{"slug": s, "docs": v} for s, v in sorted(registered.items())
+                  if len(v) > 1]
+    unknown = [{"slug": s, "count": counts[s],
+                "examples": examples[s][:PROJECT_EX]}
+               for s in sorted(counts, key=lambda k: (-counts[k], k))]
+    return {"readable": True, "registered": registered,
+            "duplicates": duplicates, "unknown": unknown, "docs": docs}
+
+
+def project_verdict(p):
+    """어긋남이 없으면 조용하다(ok 는 advise 에 실리지 않는다)."""
+    if not p.get("readable"):
+        return _v("project", "프로젝트", "unknown",
+                  "프로젝트: 등록부를 읽지 못했다 — vault/projects 가 없다",
+                  "이 자리가 section9 저장소가 맞는지 확인하라.")
+    lines, advice = [], []
+    for d in p.get("duplicates") or []:
+        # 안쪽 목록은 쉼표, 어긋남끼리는 " · " — 둘이 같은 글자면 어디까지가
+        # 한 어긋남인지 읽는 사람이 가를 수 없다.
+        who = ", ".join(f"{x['id']}({x['file']})" for x in d["docs"])
+        lines.append(f"slug 하나에 프로젝트 문서가 {len(d['docs'])}개 — "
+                     f"{d['slug']}: {who}")
+        advice.append("두 설치의 vault 가 합류할 때 생긴다. 어느 id 를 남길지 "
+                      "사람이 정해 나머지 문서를 지우고, 남긴 slug 로 문서의 "
+                      "project 값을 맞춰라(이름을 바꿀 거면 `s9 project rename`).")
+    unk = p.get("unknown") or []
+    if unk:
+        total = sum(u["count"] for u in unk)
+        detail = ", ".join(
+            f"{u['slug']} {u['count']}건({', '.join(u['examples'])}"
+            + (" 외" if u["count"] > len(u["examples"]) else "") + ")"
+            for u in unk[:PROJECT_EX])
+        more = (f" 외 slug {len(unk) - PROJECT_EX}개"
+                if len(unk) > PROJECT_EX else "")
+        lines.append(f"등록되지 않은 slug 를 가리키는 문서 {total}건 — "
+                     f"{detail}{more}")
+        known = ", ".join(sorted(p.get("registered") or {})) or "없음"
+        advice.append(f"쓰려던 이름이면 `s9 new project --slug <slug>` 로 등록하고, "
+                      f"잘못 적힌 이름이면 그 문서의 project 값을 등록된 slug 로 "
+                      f"고쳐라(등록된 slug: {known}).")
+    if not lines:
+        return _v("project", "프로젝트", "ok",
+                  f"프로젝트: 등록 {len(p.get('registered') or {})}개 · 문서 "
+                  f"{p.get('docs') or 0}건이 모두 등록된 slug 를 가리킨다")
+    return _v("project", "프로젝트",
+              "critical" if p.get("duplicates") else "warn",
+              "프로젝트: " + " · ".join(lines), " ".join(advice))
+
+
 PY_FLOOR = (3, 10)     # pyproject.toml requires-python — 여기와 그 파일이 같은 값이어야 한다
 
 
@@ -1478,6 +1598,7 @@ def system_checks():
             disk_verdict(disk_info()),
             serve_verdict(serve_info()),
             repo_verdict(repo_info()),
+            project_verdict(project_info()),
             hooks_verdict(hooks_info()),
             login_verdict(login_info()),
             deps_verdict(deps_info()),
