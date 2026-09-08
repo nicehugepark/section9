@@ -168,6 +168,33 @@ class CleanStart(unittest.TestCase):
         # 그리고 남의 문서를 되살리지 않는다 — merge 였다면 1390건이 돌아온다
         self.assertLess(len(still), 5, "업스트림의 문서가 되살아났다")
 
+    def test_the_upstream_vault_is_untouched(self):
+        """인스턴스에서 만든 문서는 그 저장소에만 생긴다 — 업스트림은 그대로다."""
+        before = len([n for _b, _d, ns in os.walk(os.path.join(ROOT, "vault"))
+                      for n in ns if n.endswith(".md")])
+        env = {**self.env, "S9_ROOT": self.target}
+        r = sh(S9, "new", "request", "--title", "여기서만 산다", "--summary", "s",
+               "--goal", "g", "--size", "S", "--user", "alice", "--body", "b",
+               env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        after = len([n for _b, _d, ns in os.walk(os.path.join(ROOT, "vault"))
+                     for n in ns if n.endswith(".md")])
+        self.assertEqual(after, before,
+                         "인스턴스의 요청이 업스트림 vault 에 생겼다")
+
+    def test_a_non_empty_target_is_refused(self):
+        """대상 자리가 비어 있지 않으면 거부한다 — 남의 파일 위에 짓지 않는다."""
+        occupied = os.path.join(self.base, "occupied")
+        os.makedirs(occupied, exist_ok=True)
+        with open(os.path.join(occupied, "있던것.txt"), "w") as f:
+            f.write("x")
+        r = sh(S9, "instance", "init", self.origin, "--dir", occupied,
+               env=self.env)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("비어있지 않다", r.stdout + r.stderr)
+        self.assertTrue(os.path.exists(os.path.join(occupied, "있던것.txt")),
+                        "거부하면서 남의 파일을 건드렸다")
+
     def test_upgrade_refuses_where_there_is_no_upstream(self):
         # 업스트림 자신에서는 돌지 않는다 — 그냥 pull 하면 되는 자리다.
         # 가르는 것은 `.s9-sync`(업스트림도 갖고 있다)가 아니라 upstream remote 다.
