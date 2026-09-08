@@ -79,7 +79,10 @@ class LoadDocAsksAtEveryWait(unittest.TestCase):
         body = DOCS_SRC[DOCS_SRC.index("async function loadDoc("):]
         body = body[:body.index("\n}\n")]
         self.assertIn("docLoadStart()", body, "세대 표를 받지 않는다")
-        self.assertGreaterEqual(body.count("docLoadStale(gen)"), 3,
+        # 인자는 그 뒤에 늘었다 (REQ-20260908-003: `docLoadStale(gen, id, viewer)` —
+        # 번호만 보고 버리지 않고 「지금 필요한 응답인가」를 묻는다). 계약은
+        # **기다림마다 묻는다** 이지 인자의 모양이 아니므로 여는 괄호까지만 센다.
+        self.assertGreaterEqual(body.count("docLoadStale(gen"), 3,
                                 "재시도 대기 뒤·응답 뒤·본문 파싱 뒤 세 자리에서 물어야 한다")
 
 
