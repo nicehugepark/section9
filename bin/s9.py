@@ -20975,6 +20975,20 @@ def cmd_code(args):
                 verb, name = first_run_identity(u, registered_users(), input)
                 subprocess.run([os.path.realpath(__file__), "user", verb, name],
                                stdin=subprocess.DEVNULL)
+                # 사람이 생겼으니 이제 기본 프로젝트가 설 수 있다 (REQ-20260908-031).
+                # `s9-install` 은 `s9 init` 을 부르지만 그때는 등록된 사람이 없어
+                # 프로젝트가 서지 않는다 — 그리고 사람이 실제로 치는 것은
+                # `s9-install` 과 `s9 code` 둘뿐이다(주인 2026-09-08). 그래서 이
+                # 자리다: 신원이 정해지는 그 순간이 프로젝트가 설 수 있는 첫
+                # 순간이고, 여기 말고는 사람이 다시 무언가를 쳐야 한다.
+                # 이미 프로젝트가 있으면 아무 일도 하지 않는다(멱등).
+                try:
+                    made = ensure_default_project()
+                    if made:
+                        print(f"◌ 기본 프로젝트 '{made}' — 프로젝트를 고르지 않은 "
+                              f"새 문서가 여기 붙는다 (옮기기: s9 project default <slug>)")
+                except Exception:
+                    pass
             else:
                 known = registered_users()
                 print(f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 "
