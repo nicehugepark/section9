@@ -47,10 +47,17 @@ BUDGET = os.path.join(HERE, "BUDGET.json")
 # 시험 파일(test_code_open.py)이 라쳇에 걸렸다. 진짜 소스 읽기는 `open(`·`read(`·
 # `read_text(`·`slurp(` 처럼 동사로 끝난다. 좁힌 뒤 62개 목록은 그대로이고 그 오탐
 # 하나만 빠졌다(전수 대조).
+# 읽기 동사는 **이름의 한 마디**여야 한다 (REQ-20260908-009). 끝에 오는 것만으로는
+# 모자랐다 — `_chat_context(SID, …)` 는 「context」의 끝 네 글자가 「text」라 걸렸고,
+# 소스를 한 번도 안 읽는 파일(test_chat_documented.py)이 라쳇에 잡혔다. 마디 경계
+# (`_` 또는 이름의 시작)를 요구하면 대문자 상수를 받는 `_src`·`read` 자리는 그대로
+# 세면서 「context」·「pretext」 류만 빠진다. **이 주석에 그 호출 꼴을 그대로 적지
+# 마라** — 이 파일 자신이 제 검사에 걸린다(실제로 한 번 걸렸다).
+_VERB = r'_?(?:[A-Za-z0-9]+_)*(?:open|read|src|slurp|text)'
 READS_SOURCE = re.compile(
-    r'\b[A-Za-z_]*(?:open|read|src|slurp|text)\(\s*(?:S9|DOCTOR|SRC|RUNNER|APP|WEB|[A-Z][A-Z0-9_]{1,})\s*[,)]'
+    r'\b' + _VERB + r'\(\s*(?:S9|DOCTOR|SRC|RUNNER|APP|WEB|[A-Z][A-Z0-9_]{1,})\s*[,)]'
     r'|\.read_text\(\)'
-    r'|\b[A-Za-z_]*(?:open|read|src|slurp|text)\(\s*os\.path\.join\(\s*HERE\s*,\s*"\.\."')
+    r'|\b' + _VERB + r'\(\s*os\.path\.join\(\s*HERE\s*,\s*"\.\."')
 
 
 def scan(here=None):
