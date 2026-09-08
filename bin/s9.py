@@ -2554,13 +2554,14 @@ def resolve_project(args, user, session):
       ① 명시 --project — 의도된 행동이라 등록 프로젝트에 contribute 권한이 없으면 die.
       ② 프롬프트 첫 줄 표기 `[프로젝트: slug]` — 훅이 --project-tag 로 넘긴 것.
       ③ 세션 바인딩 project — `s9 code --project` · `s9 bind project`.
-      ④ 사용자가 contribute 할 수 있는 프로젝트가 **하나뿐**이면 그것.
+      ④ 사람이 지정한 **기본 프로젝트**(프로젝트 문서의 is_default).
+      ④' 지정이 없는 옛 저장소만 — contribute 할 수 있는 프로젝트가 하나뿐이면 그것.
       ⑤ 빈 값 — 후보를 돌려주어 부르는 쪽이 「프로젝트 미정」 한 줄을 낼 수 있게.
     ②③④ 자동 신호는 권한이 없거나 미등록이면 die 하지 않고 다음 단계로 내려간다 —
     잘못 붙는 것이 안 붙는 것보다 나쁘다(격리 경계를 조용히 넘는다). 직전 요청의
     승계·LLM 추정은 넣지 않는다(화제 전환을 조용히 오귀속시킨다, product-owner 판정).
 
-    반환 (slug, source, candidates): source ∈ explicit|tag|session|only|"" —
+    반환 (slug, source, candidates): source ∈ explicit|tag|session|default|only|"" —
     프론트매터 project_source 로 남아 오귀속 추적·회귀 시험의 판정 근거가 된다.
     """
     proj = args.project
@@ -2586,10 +2587,22 @@ def resolve_project(args, user, session):
         bound = (b.get("project") or "").strip() if isinstance(b.get("project"), str) else ""
         if bound and usable(bound):
             return usable(bound), "session", []
+    # ④ 기본 프로젝트 (REQ-20260908-022). 예전의 ④ 는 「후보가 하나뿐이면」이라
+    # **개수**에 기대고 있었다 — 프로젝트가 0개인 새 설치에서는 첫 문서부터 미정이고,
+    # 두 번째 프로젝트를 만드는 순간에도 꺼져 그 뒤 문서가 전부 미정으로 떨어졌다.
+    # 지정으로 옮기면 0개일 때도 2개 이상일 때도 같은 답이 나온다.
+    dflt = default_project_slug()
+    if dflt and usable(dflt):
+        return usable(dflt), "default", []
     mine = sorted({p["slug"] for p in user_projects(user)
                    if p.get("slug") and project_can(p["slug"], user, "contribute")})
+    # ④' 기본 지정이 없는 저장소(이 규칙보다 먼저 선 판)를 위해 남긴다 — 지정이
+    # 생기면 위에서 먼저 잡히므로 두 규칙이 다투지 않는다.
     if len(mine) == 1:
         return mine[0], "only", []
+    # ⑤ 후보가 여럿이면 **사람이 고른다**. 여기에 기본 프로젝트를 폴백으로 넣지
+    # 마라 — 나눌 것이 있다고 말한 판에서 기계가 값을 채우면 프로젝트 격리
+    # 경계를 조용히 넘는다 (architect 판정, REQ-20260908-022).
     return "", "", mine
 
 
@@ -18080,6 +18093,18 @@ def do_user_add(name, role="member", display="", email="", machine=None,
         raise ValueError(f"invalid role: {role} (valid: {', '.join(ROLES)})")
     udir = os.path.join(USERS, name)
     if os.path.isdir(udir):
+        # 설치(`s9 init`)가 먼저 등록해 둔 이름을 그 사람이 다시 치는 것은 오류가
+        # 아니다 (REQ-20260908-022) — 같은 OS 계정이고 등급도 같으면 그대로 둔다.
+        # 이름이 남의 것이거나 등급이 다르면 여전히 거부한다: 같은 이름은 같은
+        # 사람이어야 하고, 등급을 조용히 올리는 길을 내면 _write_gate 의 판정이
+        # 무의미해진다.
+        try:
+            prev, _ = read_doc(os.path.join(udir, "profile.md"))
+        except OSError:
+            prev = {}
+        if (prev and os_identity() in (prev.get("os_accounts") or [])
+                and (prev.get("role") or "member") == role):
+            return udir
         raise ValueError(f"already registered: {name}")
     ts = now_iso()
     meta = {"name": name, "role": role}
@@ -18658,6 +18683,21 @@ def all_projects():
     return out
 
 
+def default_project_slug():
+    """사람이 지정한 기본 프로젝트 slug — 없으면 '' (REQ-20260908-022).
+
+    「어느 것이 기본인가」는 **프로젝트 문서의 `is_default` 칸**에 적는다.
+    `state/` 는 커밋되지 않아 남의 설치가 못 보고, 프로젝트 문서는 이미 사람이
+    읽고 고치는 자리다 — 지정을 옮기는 길은 `s9 project default <slug>`.
+    보관(archived)된 프로젝트는 기본이 될 수 없다: 치운 자리에 새 문서를
+    붙이는 것은 안 붙는 것보다 나쁘다. 손으로 편집해 지정이 둘이 된 판에서도
+    답이 흔들리지 않게 slug 정렬 첫 번째를 쓴다(all_projects 가 정렬 순)."""
+    for meta in all_projects():
+        if meta.get("is_default") and meta.get("status") != "archived":
+            return meta.get("slug", "")
+    return ""
+
+
 def member_active(m, today=None):
     """멤버십 활성 여부: until 이 비었거나 오늘 이후(포함)면 활성."""
     today = today or today_date()
@@ -18701,6 +18741,21 @@ def context_path(slug):
     return os.path.join(asset_dir(slug), "CONTEXT.md")
 
 
+# ── 기본 프로젝트 (REQ-20260908-022) ─────────────────────────────────────────
+# 이름은 **여기 세 줄에서만** 난다. 판정이 바뀌면 이 줄만 고치면 되고, 코드도
+# 시험도 글자를 박아 두지 않는다(참조만 한다). 화면 표시는 다른 프로젝트와 같은
+# 틀 —「기본 프로젝트 (general)」.
+#
+# **역할 이름과 실체 이름을 같은 글자로 짓지 않는다.** slug 는 `projects/<slug>/`
+# 와 수천 건의 `project:` 에 굳는 **불변 식별자**이고, 「기본」은 지정을 옮기면
+# 따라 옮겨 다니는 **역할**이다(④ 는 이제 개수가 아니라 지정을 본다). slug 를
+# `default` 로 지으면 지정을 옮기는 순간 `projects/default/` 는 기본도 아니면서
+# 기본이라 적힌 폴더가 된다.
+DEFAULT_PROJECT_SLUG = "general"
+DEFAULT_PROJECT_NAME = "기본 프로젝트"
+DEFAULT_PROJECT_SUMMARY = "따로 정하지 않은 문서가 오는 자리"
+
+
 CONTEXT_TEMPLATE = """\
 # {title} — 프로젝트 컨텍스트
 
@@ -18722,15 +18777,56 @@ CONTEXT_TEMPLATE = """\
 """
 
 
-def scaffold_asset_space(slug, title=""):
-    """projects/<slug>/ 스캐폴드 (멱등 — 기존 CONTEXT.md는 보존). 반환: 신규 생성 여부."""
+# digest 는 CONTEXT.md 의 **앞 30줄만** 싣는다(CONTEXT_HEAD). 그래서 이 뼈대는
+# 30줄 안에 넷을 세운다: 이 자리가 무엇인지 · 세 칸에 각각 무엇을 적는지 ·
+# 저장소 정책 칸(PROTOCOL 19조가 지정한 자리) · 프로젝트를 더 만들거나 이름을
+# 바꾸는 법. 30줄 밖의 안내문은 매 세션 예산만 먹고 읽히지 않는다.
+DEFAULT_CONTEXT_TEMPLATE = """\
+# {title} ({slug}) — 프로젝트 컨텍스트
+
+따로 정하지 않으면 문서가 여기로 옵니다 — 설치할 때 하나 만들어 둔 자리이고,
+`s9 project default <slug>` 로 다른 프로젝트에 넘길 수 있습니다(기존 문서는 그대로).
+
+**프로젝트는 조직 단위가 아닙니다** — 혼자서도 용도마다 더 만들어 쓸 수 있습니다.
+새로 만들기: `s9 project add <slug> --name '<표시 이름>'`
+이름 바꾸기: `s9 project set <slug> --name '<새 이름>'`
+
+## 배경
+
+(이 자리에서 무엇을 왜 하는지 2~3문장 — 용도가 갈리면 프로젝트를 새로 만드세요.)
+
+## 용어
+
+- (이 프로젝트 안에서만 통하는 말): (뜻)
+
+## 저장소 정책
+
+(이 저장소에 속한 규칙을 적는 칸 — PROTOCOL 19조가 지정한 자리입니다. push 규칙 ·
+ 커밋 금지 · 브랜치 규칙처럼 사람의 취향이 아니라 저장소의 규칙은 개인 설정
+ (`s9 user config pref_*`)이 아니라 여기 섭니다. 비어 있어도 칸은 남겨 둡니다.)
+
+## 핵심 링크
+
+- 프로젝트 문서(메타·멤버·이력): vault/projects/{slug}.md
+- 에셋(외부 파일): projects/{slug}/assets/
+- 프로젝트 에이전트: projects/{slug}/agents/
+"""
+
+
+def scaffold_asset_space(slug, title="", template=None):
+    """projects/<slug>/ 스캐폴드 (멱등 — 기존 CONTEXT.md는 보존). 반환: 신규 생성 여부.
+
+    template 은 CONTEXT.md 의 뼈대다(기본: CONTEXT_TEMPLATE). 기본 프로젝트가
+    다른 뼈대를 쓰는 이유는 그 자리가 사람이 이름까지 붙여 만든 프로젝트가 아니라
+    **설치가 만들어 둔 자리**라, 무엇을 적는 칸인지부터 알려 줘야 하기 때문이다.
+    slug 로 분기하지 않는다 — 부르는 쪽이 명시한다."""
     os.makedirs(os.path.join(asset_dir(slug), "assets"), exist_ok=True)
     os.makedirs(os.path.join(asset_dir(slug), "agents"), exist_ok=True)
     ctx = context_path(slug)
     if os.path.exists(ctx):
         return False
     with open(ctx, "w", encoding="utf-8") as f:
-        f.write(CONTEXT_TEMPLATE.format(title=title or slug, slug=slug))
+        f.write((template or CONTEXT_TEMPLATE).format(title=title or slug, slug=slug))
     return True
 
 
@@ -19355,7 +19451,7 @@ def _next_project_id():
 
 def do_project_add(slug, name=None, summary=None, customer=None,
                    contact_name=None, contact_email=None, contact_phone=None,
-                   contact_org=None, actor=None, via=""):
+                   contact_org=None, actor=None, via="", context_template=None):
     """프로젝트 생성의 단일 코드 경로 — CLI(project add)와 웹 서버
     (POST /api/project/add)가 공유. 거부는 ValueError.
     권한(REQ-20260831-026 G0): 등록 사용자 누구나 + 생성자 자동 owner.
@@ -19395,9 +19491,88 @@ def do_project_add(slug, name=None, summary=None, customer=None,
         rebuild_index(quiet=True)
     finally:
         release_lock()
-    scaffold_asset_space(slug, name or slug)  # 멱등·인덱스 무관 — lock 밖
+    scaffold_asset_space(slug, name or slug, template=context_template)  # 멱등·인덱스 무관 — lock 밖
     return {"id": doc_id, "slug": slug, "owner": actor,
             "title": meta["title"]}
+
+
+def do_project_default(slug, actor=None, via=""):
+    """기본 프로젝트 지정을 옮기는 단일 코드 경로 (REQ-20260908-022). 거부는 ValueError.
+
+    지정은 **하나뿐**이다 — 옮기면 앞의 것은 풀린다. 둘이 남으면 resolve_project
+    가 무엇을 고를지 사람이 예측할 수 없다. 기존 문서의 project 값은 건드리지
+    않는다(소급 금지 — 「기계가 판정했다」를 나중에 써 넣는 것은 그 문서가 어떻게
+    생겼는지에 대한 거짓말이다).
+    권한: manage(maintainer 이상) — 이 지정은 프로젝트 설정이다."""
+    pr = load_project(slug)
+    if not pr:
+        raise ValueError(f"not found: {slug}")
+    target = pr[0].get("slug", "")
+    if not project_can(target, actor, "manage"):
+        raise ValueError(
+            f"권한 없음: '{actor}'({project_role(target, actor) or '미참여'})는 "
+            f"기본 프로젝트 지정을 바꿀 수 없다 (maintainer 이상 필요)")
+    ts = now_iso()
+    changed = []
+    acquire_lock()
+    try:
+        for meta in all_projects():
+            sl = meta.get("slug", "")
+            want = (sl == target)
+            if bool(meta.get("is_default")) == want:
+                continue
+            path = project_path(sl)
+            if not path:
+                continue
+            m, b = read_doc(path)
+            if want:
+                m["is_default"] = True
+            else:
+                m.pop("is_default", None)
+            m["updated"] = ts
+            what = "기본 프로젝트로 지정" if want else "기본 프로젝트 지정 해제"
+            b = b.rstrip("\n") + f"\n- {ts} {what} by {actor or '(모름)'}{via}\n"
+            write_doc(path, m, b)
+            changed.append(sl)
+        rebuild_index(quiet=True)
+    finally:
+        release_lock()
+    return {"slug": target, "changed": changed}
+
+
+def ensure_default_project():
+    """설치가 프로젝트를 **최소 하나** 갖게 한다 — `s9 init` 한 곳 (REQ-20260908-022).
+
+    프로젝트가 하나라도 있으면 아무 일도 하지 않는다(멱등). 이미 선 저장소에는
+    아무 일도 일어나지 않는다는 뜻이다 — 옛 문서를 옮기지도, 표시를 소급해 적지도
+    않는다.
+
+    **사용자 등록 → 프로젝트 생성** 순서다: owner 가 `users/` 에 없으면
+    project_can(..., "contribute") 가 거짓이라 프로젝트는 서 있는데 문서가 하나도
+    안 붙는다(architect 판정). 그래서 등록된 사용자가 하나도 없으면 지금 계정을
+    먼저 등록한다. 계정 이름이 slug 규칙에 안 맞는 판은 사람이 `s9 user add` 로
+    이름을 골라야 하므로 조용히 넘어간다 — init 이 실패하지는 않는다.
+    반환: 만든 slug, 아니면 ''."""
+    if all_projects():
+        return ""
+    owner = resolve_user()
+    if owner not in registered_users():
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", owner or ""):
+            return ""
+        try:
+            do_user_add(owner)
+        except (ValueError, OSError):
+            return ""
+    try:
+        res = do_project_add(
+            DEFAULT_PROJECT_SLUG, name=DEFAULT_PROJECT_NAME,
+            summary=DEFAULT_PROJECT_SUMMARY, actor=owner,
+            via=" — s9 init 이 만든 기본 프로젝트",
+            context_template=DEFAULT_CONTEXT_TEMPLATE)
+        do_project_default(res["slug"], actor=owner, via=" (s9 init)")
+    except ValueError:
+        return ""
+    return res["slug"]
 
 
 # set 이 받는 8필드 (요청 키 → frontmatter 키). status 만 own 검사가 따로 선다.
@@ -19478,6 +19653,22 @@ def cmd_project(args):
             die(str(e))
         print(f"{res['id']}  ({res['slug']})  owner={res['owner']}")
         print(f"  ↳ 에셋 공간: projects/{res['slug']}/ — CONTEXT.md(진입점) + assets/")
+        return
+
+    if action == "default":
+        # 지정 없이 부르면 **지금 무엇이 기본인지** 답한다 — 바꾸기 전에 확인하는 자리
+        if not args.slug:
+            cur = default_project_slug()
+            print(f"기본 프로젝트: {cur}" if cur
+                  else "기본 프로젝트 지정 없음 — s9 project default <slug>")
+            return
+        user = resolve_user(args.user)
+        try:
+            res = do_project_default(args.slug, actor=user)
+        except ValueError as e:
+            die(str(e))
+        print(f"기본 프로젝트: {res['slug']} — 이제 프로젝트를 고르지 않은 "
+              f"새 문서가 여기 붙는다 (기존 문서는 그대로)")
         return
 
     if action == "agents":
@@ -28257,7 +28448,14 @@ def cmd_init(_args):
         os.makedirs(d, exist_ok=True)
     if not os.path.exists(CATALOG):
         open(CATALOG, "w", encoding="utf-8").close()
+    # 설치는 프로젝트를 하나 갖고 시작한다 (REQ-20260908-022) — 없으면 첫 문서부터
+    # 「프로젝트 미정」이고, 사람은 일을 시작하기 전에 프로젝트를 등록해야 한다는
+    # 것을 모른다. 이미 프로젝트가 있는 저장소에서는 아무 일도 일어나지 않는다.
+    created = ensure_default_project()
     print(f"initialized: {ROOT}")
+    if created:
+        print(f"  ↳ 기본 프로젝트 '{created}' — 프로젝트를 고르지 않은 새 문서가 "
+              f"여기 붙는다 (옮기기: s9 project default <slug>)")
 
 
 # -------------------------------------------------------------------- main
@@ -28667,7 +28865,7 @@ def main():
     pj = sub.add_parser("project", help="프로젝트 관리 (문서·멤버·역할·만료)")
     pj.add_argument("action",
                     choices=["add", "ls", "show", "set", "member", "authz",
-                             "scaffold", "agents"])
+                             "scaffold", "agents", "default"])
     pj.add_argument("slug", nargs="?", help="프로젝트 slug 또는 id")
     pj.add_argument("member_action", nargs="?",
                     help="member: add|rm|ls (authz: 대상 사용자)")
