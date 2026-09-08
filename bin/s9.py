@@ -1853,6 +1853,10 @@ def catalog_row(meta, path, body=""):
         # 문서를 열지 않고 그린다. 옛 문서는 읽기 규칙(doc_creator)으로 같은 답.
         "lease": doc_lease(meta),          # 리스 판정 원재료 (REQ-20260902-020)
         "creator": doc_creator(meta),
+        # 권한 판정이 읽는 **원 필드** (REQ-20260908-026): 위의 `creator` 는 옛 문서를
+        # 담당(user)으로 대신 읽는 표시값이라 가시성·이동 판정에 쓸 수 없다. 두 값을
+        # 한 행에 나란히 두어, 카드는 표시값을 쓰고 creator_field() 는 이쪽만 본다.
+        "creator_raw": meta.get("creator", ""),
         "origin": doc_origin(meta),
         "origin_actor": meta.get("origin_actor", ""),
         "origin_req": meta.get("origin_req", ""),
@@ -2537,6 +2541,28 @@ def request_origin(args, session=""):
 def doc_creator(meta):
     """생성자 — 필드가 없는 옛 문서는 user(생성자=담당자)로 읽는다."""
     return str((meta or {}).get("creator") or (meta or {}).get("user") or "")
+
+
+def creator_field(row):
+    """**권한 판정용** 생성자 — 원 필드만 읽는다 (REQ-20260908-026·032).
+
+    doc_creator() 와 갈리는 자리다. 저쪽은 **표시**라 옛 문서를 user 로 대신 읽어
+    주지만, `user` 는 `s9 assign` 으로 바뀌는 값이다 — 그 폴백을 권한 판정에 쓰면
+    비멤버가 creator 필드 없는 옛 문서를 **자기에게 배정해** 열람·이동 자격을 스스로
+    부여한다(do_assign 은 프로젝트 멤버십을 보지 않는다). 그래서 여기서는 폴백이 없다.
+
+    catalog row 는 표시용 `creator`(폴백 포함)와 원 필드 `creator_raw` 를 **따로**
+    싣는다. `creator_raw` 가 없는 행은 이 코드 이전의 인덱스가 만든 것이라 원 필드를
+    알 수 없다 — 그때는 빈 값을 돌려 예외를 **닫는다**(fail-closed: 재인덱스 전까지는
+    예외 없이 지금까지의 규칙 그대로). 프론트매터 meta 에는 `path` 가 없으므로 그것으로
+    두 모양을 가른다.
+    """
+    row = row or {}
+    if "creator_raw" in row:
+        return str(row.get("creator_raw") or "")
+    if "path" in row:
+        return ""          # 옛 인덱스가 만든 catalog row — 원 필드 미상
+    return str(row.get("creator") or "")
 
 
 def doc_origin(meta):
@@ -12928,6 +12954,22 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
             raise ValueError(f"「{new}」에 요청을 넣을 권한이 없습니다 — {actor} 는 "
                              f"{project_role(new, actor) or '멤버가 아님'}이고, contributor 이상이어야 "
                              f"합니다. Projects 탭에서 멤버 권한을 확인해 주세요.")
+        # 옛 프로젝트도 본다 (REQ-20260908-032). 새 쪽만 검사하면 confused deputy 다:
+        # B 의 contributor 가 A 의 문서를 B 로 끌어와 doc_visible 의 멤버 갈래를 통과시켜
+        # **열람을 스스로 부여**한다. 반대 방향(A 의 문서를 프로젝트 없음으로 빼기)도
+        # A 의 멤버들 화면에서 문서를 지우는 일이라 같은 자격을 요구한다.
+        # 면제 셋은 project_can 이 이미 담고 있다 — 시스템 admin 우회 · 옛 slug 가
+        # 미등록이면 비강제(정책 부재) · contributor 이상. 여기에 문서를 **만든
+        # 사람**만 더한다: 자기가 쓴 글은 자기가 옮길 수 있어야 한다.
+        # creator 는 **원 필드만** 읽는다(creator_field) — doc_creator() 의 user 폴백을
+        # 쓰면 담당(`s9 assign` 으로 바뀌는 값)이 곧 이동 권한이 되어 이 검사가 도로 열린다.
+        if old != new and old and not (
+                project_can(old, actor, "contribute")
+                or (actor and actor == creator_field(meta))):
+            raise ValueError(f"「{old}」에서 이 문서를 옮길 권한이 없습니다 — {actor} 는 "
+                             f"{project_role(old, actor) or '멤버가 아님'}이고, 옮기려면 옛 프로젝트의 "
+                             f"contributor 이상이거나 이 문서를 만든 사람이어야 합니다. "
+                             f"Projects 탭에서 멤버 권한을 확인해 주세요.")
         if new != old:
             meta["project"] = new
             meta["project_source"] = "manual"
@@ -19178,6 +19220,28 @@ def code_visible(rel):
 
 def doc_visible(row, me):
     """열람 가시성 (REQ-20260824-017): me가 이 문서(catalog row 또는 meta)를 보나.
+    판정의 본문은 doc_access 한 곳이고 이것은 그 bool 겉면이다 — 부르는 자리 수십
+    곳이 까닭까지 알 필요는 없다.
+
+    ⚠ project_can과 같은 자기신고(me) 기반 **가드레일**이다 — 인증이 아니며
+    파일 직접 열람이나 me 위장은 막지 못한다 (DOC-20260823-001).
+    ① 시스템 admin → 전부. ② 프로젝트 문서 → 활성 멤버, 그리고 그 문서를 **만든
+       사람**(REQ-20260908-026 — 멤버에서 빠져도 자기가 쓴 글은 보인다; PRJ 문서는
+       예외 밖이고 쓰기 권한은 주지 않는다).
+    ③ project가 없거나 미등록(정책 부재) → 담당(doc_owner)과 만든 사람
+       (doc_creator) 둘 다. 담당만 보게 하면 `s9 assign` 으로 넘기는 순간
+       만든 사람의 화면에서 자기 문서가 사라진다 (REQ-20260906-009,
+       두 머신 실측 tests/p5_live.py 장면 4).
+    HTTP 응답 직전에만 적용할 것 — 서버 내부 로직(워처/live 판정)은 무필터."""
+    return bool(doc_access(row, me))
+
+
+def doc_access(row, me):
+    """열람 가시성 (REQ-20260824-017): me가 이 문서(catalog row 또는 meta)를 보나.
+
+    반환은 **까닭**이다 — "" (안 보임) 또는 admin·unregistered·observe·member·
+    creator-outside·owner. 화면이 "왜 보이는가"를 말해야 하는 자리가 생겨
+    (REQ-20260908-026) 판정과 까닭을 한 함수에 둔다. 둘로 나누면 두 곳이 갈린다.
 
     ⚠ project_can과 같은 자기신고(me) 기반 **가드레일**이다 — 인증이 아니며
     파일 직접 열람이나 me 위장은 막지 못한다 (DOC-20260823-001).
@@ -19189,13 +19253,13 @@ def doc_visible(row, me):
     HTTP 응답 직전에만 적용할 것 — 서버 내부 로직(워처/live 판정)은 무필터."""
     role = user_role(me) if me else ""
     if role == "admin":
-        return True
+        return "admin"
     if not role:
         # 뷰어가 미등록(부트스트랩/서버 기동 계정 미등록) = 정책 부재 →
         # project_can의 비강제 원칙과 동일하게 강제하지 않는다.
         # 단 여럿이 쓰는 인스턴스(remote)에서는 뒤집는다 (REQ-20260902-030):
         # 거기서 미등록은 부트스트랩이 아니라 **모르는 사람**이다.
-        return not _unregistered_denied()
+        return "" if _unregistered_denied() else "unregistered"
     proj = (row.get("project") or "").strip()
     if row.get("type") == "project":
         proj = row.get("slug") or row.get("id") or proj
@@ -19205,12 +19269,32 @@ def doc_visible(row, me):
         # admin 이 준 observe(all | slug 목록, until 만료)가 얹힌다.
         scope = observe_scope(me)
         if scope == "all":
-            return True
+            return "observe"
         if scope and pr and (pr[0].get("slug") or "") in scope:
-            return True
+            return "observe"
     if pr:
-        return bool(project_role(proj, me))
-    return bool(me) and me in (doc_owner(row), doc_creator(row))
+        if project_role(proj, me):
+            return "member"
+        # 만든 사람은 멤버가 아니어도 자기 문서를 본다 (REQ-20260908-026).
+        # 두 vault 가 만나 같은 slug 가 충돌하고 사람이 한쪽을 택하면 진 쪽
+        # 사용자는 멤버가 아니게 되는데, 그 사람들 문서는 project: <slug> 를
+        # 그대로 들고 있어 **자기가 쓴 글이 자기 화면에서 사라졌다**.
+        # 새는 것은 없다 — 대상은 그 사람이 직접 쓴 문서이고, vault 는 git 으로
+        # 통째 오가므로 바이트는 이미 그 사람 손에 있다. 규칙은 단조다(더하기만).
+        # 좁히는 자물쇠 셋:
+        #  ① creator **원 필드만**(creator_field) — user 폴백을 쓰면 비멤버가
+        #     옛 문서를 자기에게 assign 해 열람을 스스로 부여한다.
+        #  ② PRJ 문서(type=project)는 예외 밖 — 그것은 「내가 쓴 글」이 아니라
+        #     「지금의 남의 명부」다. 만들고 빠진 사람에게 현재 멤버 명단을
+        #     계속 보여 줄 이유가 없다.
+        #  ③ 보임 ≠ 권한 — 쓰기·전이는 project_can 이 그대로 막는다. 그래서
+        #     이 갈래는 까닭을 따로 돌려주고(creator-outside), 화면이 「이 문서는
+        #     <프로젝트>에 속하고 당신은 멤버가 아닙니다 — 만든 사람이라 보입니다」
+        #     를 붙여 거절을 미리 설명한다.
+        if row.get("type") == "project":
+            return ""
+        return "creator-outside" if (me and me == creator_field(row)) else ""
+    return "owner" if (me and me in (doc_owner(row), doc_creator(row))) else ""
 
 
 def _unregistered_denied():
@@ -26964,12 +27048,20 @@ def cmd_serve(args):
                     self._json({"error": f"not found: {doc_id}"}, 404)
                     return
                 meta, body = read_doc(path)
-                if not doc_visible(meta, viewer_of(qs)):
+                via = doc_access(meta, viewer_of(qs))
+                if not via:
                     # 비가시 = 미존재와 같은 응답 — 존재 여부 누설 방지
                     self._json({"error": f"not found: {doc_id}"}, 404)
                     return
-                self._json({"meta": meta, "body": body,
-                            "path": os.path.relpath(path, ROOT)})
+                resp = {"meta": meta, "body": body,
+                        "path": os.path.relpath(path, ROOT)}
+                if via == "creator-outside":
+                    # 멤버가 아닌데 만든 사람이라 보이는 자리 (REQ-20260908-026).
+                    # 서버는 **사실만** 싣는다 — 문구와 배치는 화면의 몫(파생 REQ).
+                    # 이 표시가 없으면 사람은 쓰기가 거절될 때에야 자기가
+                    # 비멤버임을 알게 된다.
+                    resp["outside_project"] = (meta.get("project") or "").strip()
+                self._json(resp)
             elif parsed.path == "/api/trash":
                 # 휴지통 (REQ-20260829-025). 지운 것도 남의 것은 안 보인다 —
                 # 삭제가 격리를 우회하는 열람 경로가 되면 안 된다.

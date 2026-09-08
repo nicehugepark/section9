@@ -112,13 +112,21 @@ class DocVisibleCreator(unittest.TestCase):
     def test_s4_admin_sees(self):
         self.assertTrue(self.m.doc_visible(self.solo_row, ROOT))
 
-    # S5 — 프로젝트 규칙 회귀: creator 여도 멤버가 아니면 못 본다
-    def test_s5_project_rule_unchanged(self):
+    # S5 — 프로젝트 규칙: 멤버, 그리고 **그 문서를 만든 사람**
+    #
+    # 이 시험은 원래 「creator 여도 멤버가 아니면 못 본다」였다. REQ-20260908-026
+    # 이 그 판정을 뒤집었다 — 두 vault 가 만나 같은 slug 가 충돌하고 사람이 한쪽을
+    # 택하면 진 쪽 사용자가 멤버에서 빠지는데, 그 사람들 문서는 project 를 그대로
+    # 들고 있어 **자기가 쓴 글이 자기 화면에서 사라졌다**. 새는 것은 없다(그 사람이
+    # 쓴 글이고 vault 는 git 으로 통째 오간다). 남은 자물쇠 셋(creator 원 필드만 ·
+    # PRJ 문서 제외 · 보임≠권한)은 tests/test_project_access_gate.py 가 지킨다.
+    def test_s5_project_rule_creator_added(self):
         self.assertEqual(self.px_row["creator"], ALICE)
-        self.assertTrue(self.m.doc_visible(self.px_row, BOB))
-        self.assertFalse(self.m.doc_visible(self.px_row, ALICE),
-                         "project 문서는 멤버십이 판정이다 — creator 가 우회하면 안 된다")
-        self.assertFalse(self.m.doc_visible(self.px_row, DAVE))
+        self.assertTrue(self.m.doc_visible(self.px_row, BOB))       # 활성 멤버
+        self.assertTrue(self.m.doc_visible(self.px_row, ALICE),
+                        "만든 사람은 멤버에서 빠져도 자기 문서를 본다 (REQ-20260908-026)")
+        self.assertEqual(self.m.doc_access(self.px_row, ALICE), "creator-outside")
+        self.assertFalse(self.m.doc_visible(self.px_row, DAVE))     # 남은 남이다
 
     # S6 — 설명과 판정이 같다
     def test_s6_docstring_matches_verdict(self):
