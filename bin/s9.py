@@ -2143,6 +2143,80 @@ def index_forget(*paths):
     index_upsert(*paths)
 
 
+_INDEX_HEAD = os.path.join(ROOT, "state", ".index-head")
+
+
+def repo_head_sha():
+    """지금 HEAD 의 sha — **git 을 부르지 않고** 파일로 읽는다.
+
+    이 값은 서버 루프가 매 틱 묻는다(REQ-20260908-017). 틱마다 서브프로세스를
+    띄우면 그 자체가 비용이라, 흔한 자리(loose ref)는 파일 두 번 읽기로 끝낸다.
+    packed-refs 처럼 파일이 없는 판에서만 git 에게 묻는다.
+    """
+    try:
+        h = open(os.path.join(ROOT, ".git", "HEAD"), encoding="utf-8").read().strip()
+    except OSError:
+        return ""
+    if not h.startswith("ref: "):
+        return h                              # 분리된 HEAD — 그 자리에 sha 가 있다
+    ref = h[5:].strip()
+    try:
+        return open(os.path.join(ROOT, ".git", ref), encoding="utf-8").read().strip()
+    except OSError:
+        pass
+    try:
+        r = _sync_git("rev-parse", "HEAD", timeout=5)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _index_head_read():
+    try:
+        return open(_INDEX_HEAD, encoding="utf-8").read().strip()
+    except OSError:
+        return ""
+
+
+def index_head_stamp(sha=""):
+    """카탈로그가 **어느 커밋을 반영했는지** 적어 둔다 (REQ-20260908-017)."""
+    sha = sha or repo_head_sha()
+    if not sha:
+        return
+    try:
+        os.makedirs(os.path.dirname(_INDEX_HEAD), exist_ok=True)
+        with open(_INDEX_HEAD, "w", encoding="utf-8") as f:
+            f.write(sha)
+    except OSError:
+        pass                       # 표를 못 남기는 것이 색인을 막지는 않는다
+
+
+def index_catch_up(quiet=True):
+    """HEAD 가 표와 다르면 그 사이만 반영한다 — **어느 경로로 움직였든**.
+
+    사고 2026-09-08 (REQ-20260908-017): 맥이 지운 문서의 삭제가 pull 로 들어왔는데
+    목록에는 그대로 남아 「문서를 찾을 수 없습니다」가 떴다. 색인 쪽은 지운 문서를
+    다룰 줄 안다(`index_upsert` 가 묘비를 세운다) — 빠진 것은 **그 길을 타지 않는
+    pull** 이었다. HEAD 를 움직이는 자리는 넷인데(수신 폴 · `_pull_if_stale` ·
+    전송 루프의 rebase · 사람이 손으로 친 `git pull`) 색인을 부르는 것은 앞의
+    둘뿐이었다. 그래서 부르는 자리마다 잇는 대신, **표와 HEAD 를 견주는 자리**를
+    하나 두고 서버 루프가 매 틱 묻는다.
+
+    반환: 반영한 문서 수 · 전량으로 물러났으면 -1 · 할 일이 없으면 0.
+    """
+    head = repo_head_sha()
+    if not head:
+        return 0
+    mark = _index_head_read()
+    if mark == head:
+        return 0
+    n = index_sync_range(mark, head, quiet=quiet) if mark else -1
+    if not mark:
+        rebuild_index(quiet=quiet)
+    index_head_stamp(head)
+    return n
+
+
 def index_sync_range(before, after="HEAD", quiet=True):
     """pull 이 들여온 것만 반영한다 (REQ-20260902-035 §3).
 
@@ -2174,6 +2248,7 @@ def index_sync_range(before, after="HEAD", quiet=True):
         return -1
     if paths:
         index_upsert(*paths)
+    index_head_stamp(after if after != "HEAD" else "")
     return len(paths)
 
 
@@ -2309,6 +2384,8 @@ def rebuild_index(quiet=False, full=False):
 
     if not quiet:
         print(f"index rebuilt: {len(rows)} docs, {len(groups)} index files")
+    # 전량을 다시 읽었으니 카탈로그는 지금 HEAD 를 반영한다 (REQ-20260908-017)
+    index_head_stamp()
     return rows
 
 
@@ -11765,6 +11842,15 @@ def sync_transport_tick(now=None):
     import time as _time
     now = now or _time.time()
     did = []
+    # HEAD 가 표와 다르면 색인을 먼저 맞춘다 (REQ-20260908-017) — 이 틱이
+    # 무엇을 하든, **누가 HEAD 를 움직였든** 목록이 따라온다. 같으면 파일 두 번
+    # 읽고 끝난다. 여기가 remote 판정보다 앞인 까닭: 손으로 친 pull 은 모드와
+    # 상관없이 일어난다.
+    try:
+        if index_catch_up():
+            did.append("index")
+    except Exception:
+        pass
     if sync_mode() != "remote":
         return did
     try:
