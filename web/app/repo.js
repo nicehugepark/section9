@@ -133,7 +133,89 @@ function repoPanelHTML(){
     <div class="cfg-h gname">GitHub 과 주고받기</div>
     <table class="metatbl wtbl grepo">
       ${gitHandRowHTML("pull")}${gitHandRowHTML("push")}</table>
-    <div class="gafter" id="g-after"></div>`;
+    <div class="gafter" id="g-after"></div>
+    <div class="cfg-h gname">문서 동기화</div>
+    <table class="metatbl wtbl grepo">${gitSyncModeRowHTML()}</table>`;
+}
+
+/* 문서 동기화 모드 (REQ-20260908-068) — 값은 이 저장소 하나의 것(`.s9-sync`)이라
+   계정 판이 아니라 여기 선다. select 에는 **값 글자**(local·remote)가 선다 —
+   `s9 sync --status` 가 찍는 그 글자라 화면 밖에서 같은 이름으로 다시 만난다
+   (tech-writer). 「동기화 없음」·「origin 없음」은 고를 수 있는 값이 아니라
+   사실이라 옵션이 아니다: 바꿀 수 없는 얼굴은 `disabled select`(흐려져 고장으로
+   읽힌다)가 아니라 값 글자 한 줄이고, 왜 못 바꾸는지는 `.wfact` 가 말한다
+   (designer). 문장은 전부 서버가 짓는다. */
+// 닫힌 select 에는 앞 절만 선다 — 긴 설명은 아래 뜻 줄이 맡는다(translator:
+// 닫힌 선택 상자에서는 뒤 문장이 잘려 나간다, 캡처 2026-09-08 21:12 실측).
+const SYNC_MODE_OPTS = [
+  ["local", "local — 이 컴퓨터에만"],
+  ["remote", "remote — origin 과 주고받기"],
+];
+const SYNC_MODE_MEAN = "요청을 만들거나 상태를 바꾸거나 노트를 남길 때마다 그 기록을 "
+  + "GitHub 의 origin 저장소와 주고받습니다(commit → pull → push). "
+  + "이 값은 이 저장소를 쓰는 모든 사람에게 똑같이 적용됩니다.";
+
+function gitSyncModeRowHTML(){
+  return `<tr class="wrow grow" data-gk="syncmode">
+    <td><span class="wlab">모드</span>
+        <span class="wkey">sync_mode</span></td>
+    <td><div class="wctl" id="g-syncmode-ctl"></div>
+      <div class="wsay">
+        <div class="wmean" id="g-syncmode-why">${esc(SYNC_MODE_MEAN)}</div>
+        <div class="wmsg hid" role="status" aria-live="polite"
+             id="g-syncmode-msg"></div></div>
+      <div class="wfact" id="g-syncmode-fact"></div></td></tr>`;
+}
+
+function gitSyncModePaint(sc){
+  const ctl = document.getElementById("g-syncmode-ctl");
+  if (!ctl) return;
+  const fact = document.getElementById("g-syncmode-fact");
+  if (!sc || !sc.can){
+    ctl.innerHTML = `<span class="wlab">…</span>`;
+    fact.textContent = "";
+    return;
+  }
+  if (!sc.can.ok){
+    // 읽기 전용 얼굴 — 값 글자 한 줄. 왜 못 바꾸는지는 사실 줄이 말한다.
+    ctl.innerHTML = `<span class="wlab gcmd">${esc(sc.mode || "없음")}</span>`;
+    fact.textContent = sc.can.why || "";
+    return;
+  }
+  const cur = sc.mode || "local";
+  const busy = !!gitBusy;
+  ctl.innerHTML = `<select class="uf" id="g-syncmode" aria-describedby="g-syncmode-why"${
+      busy ? " disabled" : ""}>${
+    SYNC_MODE_OPTS.map(([v, t]) => `<option value="${v}"${v === cur ? " selected" : ""}${
+      (v === "remote" && !sc.origin) ? " disabled" : ""}>${esc(t)}</option>`).join("")
+    }</select>`;
+  fact.textContent = sc.origin ? "" : (sc.remote_why || "");
+}
+
+function gitSyncModeSay(text, cls){
+  const mean = document.getElementById("g-syncmode-why");
+  const msg = document.getElementById("g-syncmode-msg");
+  if (!msg) return;
+  const back = !text;
+  msg.className = "wmsg" + (cls ? " " + cls : "") + (back ? " hid" : "");
+  if (mean) mean.classList.toggle("hid", !back);
+  msg.textContent = text;
+  if (text && cls !== "bad") setTimeout(() => gitSyncModeSay(""), 3000);
+}
+
+async function gitSyncModeSet(sel){
+  const prev = (gitState && gitState.sync_cfg && gitState.sync_cfg.mode) || "local";
+  const mode = sel.value;
+  gitSyncModeSay("저장하는 중…");
+  const res = await postJSONRaw("/api/sync/mode", {mode});
+  if (!res.ok){
+    sel.value = prev;                 // 화면이 켜졌다고 보이는데 서버는 아니면 거짓말이다
+    gitSyncModeSay("✕ " + res.error, "bad");
+    return;
+  }
+  if (gitState) gitState.sync_cfg = res.state || gitState.sync_cfg;
+  gitSyncModeSay(res.said || "바꿨습니다.");
+  gitLoad(false);                     // 동기화 줄(마지막 보냄·받음)도 함께 바뀐다
 }
 
 /* ---------------- 그리기 ---------------- */
@@ -245,6 +327,7 @@ function gitPaint(){
   // 물러난다 — 그때는 서버가 이미 GitHub 에 묻고 있다.
   if (rc) rc.setAttribute("aria-disabled", String(!!gitBusy));
   ["pull", "push"].forEach(gitHandPaint);
+  gitSyncModePaint(st && st.sync_cfg);
   gitNavPaint();
 }
 
@@ -428,6 +511,10 @@ function wireRepoPanel(host){
   // 판은 상태가 바뀔 때마다 다시 그려지는 조각을 품는다(고치던 파일 목록·
   // 방금 오간 것). 손잡이를 조각마다 다시 물리면 한 벌이 남는다 — 위임 하나로
   // 받는다.
+  host.addEventListener("change", ev => {
+    const sel = evEl(ev.target)?.closest("#g-syncmode");
+    if (sel) gitSyncModeSet(sel);
+  });
   host.addEventListener("click", async ev => {
     // 대상에게 직접 묻지 않는다 — 텍스트 노드가 오면 `.closest` 가 없어 이
     // 조각이 통째로 죽는다 (state.js `evEl` 이 그래서 있는 경로다).

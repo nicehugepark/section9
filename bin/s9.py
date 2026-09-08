@@ -26018,7 +26018,74 @@ def git_state(ask_remote=False, actor="", proxy_for="", demo=""):
     except Exception:
         st["sync"] = {}
     st["can"] = git_can(st, proxy_for)
+    # 문서 동기화 모드 행 (REQ-20260908-068) — 같은 판, 같은 응답.
+    try:
+        st["sync_cfg"] = sync_panel_state(actor=actor, proxy_for=proxy_for)
+    except Exception:
+        st["sync_cfg"] = {}
     return st
+
+
+# ── Settings 「저장소」 판의 문서 동기화 행 (REQ-20260908-068) ─────────────────
+# 주인 물음 2026-09-08 21:00: 「깃헙 동기화 설정은 세팅스에서 기본값을 수정할 수
+# 있지?」 — 없었다. 바꾸는 길이 터미널(`s9 sync --on/--off`)뿐이었다. 값은 저장소
+# 하나의 것(`.s9-sync`)이라 계정 설정 판이 아니라 「저장소」 판에 선다(designer).
+# 문장은 서버가 짓고 화면은 그대로 그린다 — 「서버의 문장이 곧 팝업이다」.
+SYNC_CFG_WHY = {
+    "no_marker": "이 저장소에는 문서 동기화가 없습니다 — `s9 instance init` 으로 "
+                 "만든 저장소에서만 실행됩니다.",
+    "not_admin": "바꾸는 것은 admin 만 할 수 있습니다. 지금 값이 보이기만 합니다.",
+    "proxy": "남의 시점으로는 저장소를 바꾸지 않습니다.",
+    "no_origin": "보낼 곳이 없습니다 — 이 저장소에 origin(기록을 보낼 GitHub "
+                 "저장소)이 등록되어 있지 않습니다. 먼저 GitHub 저장소를 연결해 "
+                 "주세요.",
+}
+SYNC_CFG_SAID = {
+    "remote": "바꿨습니다 — 이제 문서를 origin 과 주고받습니다.",
+    "local": "바꿨습니다 — 이제 commit 만 하고 내보내지 않습니다.",
+}
+
+
+def sync_panel_state(actor="", proxy_for=""):
+    """(모드 · 조건 · 자격) — 화면이 다시 세지 않는다.
+
+        marker   `.s9-sync` 가 있는 저장소인가(없으면 동기화 자체가 없다)
+        mode     "" · local · remote
+        origin   origin 이 있나 — 없으면 remote 를 고를 수 없다
+        can      {ok, why} — 바꿀 수 있나, 못 바꾸면 왜
+        remote_why  remote 를 고를 수 없을 때의 문장(있을 때는 빈 값)"""
+    marker = bool(os.path.exists(SYNC_MARKER)
+                  and os.path.isdir(os.path.join(ROOT, ".git")))
+    origin = bool(marker and sync_has_origin())
+    admin = bool(actor) and user_role(actor) == "admin"
+    if not marker:
+        can = {"ok": False, "why": SYNC_CFG_WHY["no_marker"]}
+    elif proxy_for:
+        can = {"ok": False, "why": SYNC_CFG_WHY["proxy"]}
+    elif not admin:
+        can = {"ok": False, "why": SYNC_CFG_WHY["not_admin"]}
+    else:
+        can = {"ok": True, "why": ""}
+    return {"marker": marker, "mode": sync_mode() if marker else "",
+            "origin": origin, "admin": admin, "can": can,
+            "remote_why": "" if origin else SYNC_CFG_WHY["no_origin"]}
+
+
+def sync_mode_do(mode, actor="", proxy_for=""):
+    """화면에서 모드를 바꾼다 — 누른 순간 다시 판정한다. `s9 sync --on/--off`
+    와 같은 sync_set_mode 한 경로를 지난다(사람이 고른 값이다: chosen)."""
+    st = sync_panel_state(actor=actor, proxy_for=proxy_for)
+    if not st["can"]["ok"]:
+        return {"ok": False, "error": st["can"]["why"], "state": st}
+    if mode not in SYNC_MODES:
+        return {"ok": False, "error": f"모드는 {' | '.join(SYNC_MODES)} 중 하나입니다.",
+                "state": st}
+    if mode == "remote" and not st["origin"]:
+        return {"ok": False, "error": st["remote_why"], "state": st}
+    sync_set_mode(mode)
+    _sync_log(f"mode →{mode}: {actor} 이 화면에서 골랐다 (REQ-20260908-068)")
+    return {"ok": True, "mode": mode, "said": SYNC_CFG_SAID[mode],
+            "state": sync_panel_state(actor=actor, proxy_for=proxy_for)}
 
 
 def git_do(what, actor="", proxy_for=""):
@@ -28409,6 +28476,15 @@ def cmd_serve(args):
                                         else ""),
                                  proxy_for=(proxy if proxy != w.get("user")
                                             else ""))
+                    self._json(res, 200 if res.get("ok") else 409)
+                elif parsed.path == "/api/sync/mode":
+                    # Settings 「저장소」 판의 문서 동기화 모드 (REQ-20260908-068).
+                    # pull·push 와 같은 신원 규율 — 진짜 나, 대리 중이면 잠김.
+                    res = sync_mode_do(str(req.get("mode") or "").strip(),
+                                       actor=(w["user"] if w.get("registered")
+                                              else ""),
+                                       proxy_for=(proxy if proxy != w.get("user")
+                                                  else ""))
                     self._json(res, 200 if res.get("ok") else 409)
                 elif parsed.path == "/api/wake":
                     # 멈춘 요청을 사람이 눌러 다시 굴린다 (REQ-20260828-041).
