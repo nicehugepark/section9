@@ -1,6 +1,6 @@
 """산출물을 내주고 미디어를 받는 **서버 쪽** (REQ-20260908-047 · -048).
 
-화면 쪽 시험은 `test_media_asset.py` 에 있다. 이 파일은 그 뒤의 문 — 라우트·
+화면 쪽 시험은 `test_media_asset.py` 에 있다. 이 파일은 그 뒤 — 라우트·
 가시성·Range·상한 — 만 잰다.
 
 사용자 지적 둘. ① "그렇게 만들어진 산출물이 요청 문서에서 경로가 표시되긴 한데,
@@ -8,7 +8,7 @@
 파일도 다양하게 등록이 되어야 할 것 같다."
 
 막고 있던 것은 타입 검사가 아니었다 — 잰 사실 셋이다.
-- `projects/<slug>/assets/` 를 내주는 문이 **없었다**. 문서 첨부만 `/api/asset`
+- `projects/<slug>/assets/` 를 내주는 라우트가 **없었다**. 문서 첨부만 `/api/asset`
   으로 나갔고, 요청으로 만든 산출물은 본문에 적힌 글자로만 남았다.
 - `_send_asset` 이 `Range` 를 몰랐다. 영상은 seek 이 없으면 못 쓰고, Safari 는
   206 을 못 받으면 재생을 시작조차 하지 않는다.
@@ -116,13 +116,31 @@ class ProjectAssetPath(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.m = _load()
-        cls.dir = os.path.join(ROOT, "projects", "section9", "assets")
+        # **살아 있는 저장소에 쓰지 않는다** (2026-09-08 전체 실행에서 실패).
+        # 처음엔 실물 `projects/section9/assets/` 에 임시 파일을 만들어 잰다.
+        # 그 디렉토리는 동기화가 커밋하는 자리이고 전체 실행은 파일을 나눠
+        # 병렬로 도는 자리라, 남이 담아 가거나 지워 가면 이 시험이 진다 —
+        # 잰 것과 상관없는 이유로. 제 뿌리를 따로 세운다.
+        cls.tmp = tempfile.mkdtemp(prefix="s9assetpath-")
+        cls.dir = os.path.join(cls.tmp, "projects", "section9", "assets")
+        os.makedirs(cls.dir)
+        cls._prev = os.environ.get("S9_ROOT")
+        os.environ["S9_ROOT"] = cls.tmp
+        try:
+            cls.m = _load()
+        finally:
+            if cls._prev is None:
+                os.environ.pop("S9_ROOT", None)
+            else:
+                os.environ["S9_ROOT"] = cls._prev
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_project_asset_path(self):
         m = self.m
-        if not os.path.isdir(self.dir):
-            self.skipTest("projects/section9/assets 가 없다")
         with tempfile.NamedTemporaryFile(dir=self.dir, suffix=".mp3",
                                          delete=False) as f:
             f.write(b"ID3" + b"\0" * 100)
@@ -157,7 +175,7 @@ class ProjectAssetPath(unittest.TestCase):
             self.assertTrue(m.doc_refs_path(
                 "산출물: projects/section9/assets/014-sync-design/", deep))
             # 그러나 `assets/` 하나로는 열리지 않는다 — 그 문서 하나가
-            # 프로젝트의 산출물 전부를 여는 문이 되면 안 된다.
+            # 프로젝트의 산출물 전부를 여는 경로가 되면 안 된다.
             self.assertFalse(m.doc_refs_path(
                 "projects/section9/assets/", deep))
             self.assertFalse(m.doc_refs_path(
@@ -165,7 +183,7 @@ class ProjectAssetPath(unittest.TestCase):
 
 
 class Routes(unittest.TestCase):
-    """문은 하나, 검사도 하나 — 소스의 계약으로 잰다."""
+    """라우트는 하나, 검사도 하나 — 소스의 계약으로 잰다."""
 
     @classmethod
     def setUpClass(cls):
@@ -186,7 +204,7 @@ class Routes(unittest.TestCase):
             self.assertIn('self._send(404, "text/plain", b"not found")',
                           self.info)
             self.assertNotIn("403", self.info)
-        with self.subTest("s5_download_is_a_flag_on_the_same_door"):
+        with self.subTest("s5_download_is_a_flag_on_the_same_route"):
             self.assertIn('qs.get("dl", [""])[0] == "1"', self.asset)
         with self.subTest("s6_the_info_carries_what_a_player_needs"):
             for key in ('"kind"', '"mime"', '"size"', '"playable"',
