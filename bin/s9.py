@@ -1873,6 +1873,10 @@ def catalog_row(meta, path, body=""):
         # 문서를 다시 열지 않고 행만으로 연결 성분을 계산할 근거다.
         "derived_from": meta.get("derived_from", ""),
         "needs_os": meta.get("needs_os", ""),   # 어느 판에서 해야 하나 (REQ-20260906-080)
+        # Jira 이슈 (REQ-20260908-074) — 카드·문서가 읽는 것은 이 덩이뿐이다
+        "jira": ({k: v for k, v in (meta.get("jira") or {}).items()
+                  if k in ("key", "url", "status", "pending", "last_error", "synced_at")}
+                 if isinstance(meta.get("jira"), dict) else {}),
         "relates": meta.get("relates", []),
         "session": meta.get("session", ""),
         "tags": meta.get("tags", []),
@@ -3126,6 +3130,8 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
         maybe_sync(f"{doc_id} {old}->{new_status}")   # REQ-048: 전이마다 순차 동기화
     except Exception:
         pass
+    # Jira 로 상태를 보낸다 (REQ-20260908-075) — outbox 에만 싣고 워처가 보낸다.
+    jira_after_transition(doc_id, meta, note=note, auto=auto)
     # 닫힌 문서의 손길을 거둔다 (REQ-20260830-019) — 남으면 그 신호가 15분간
     # 아무 뜻 없이 살아 있다.
     if new_status in TERMINAL_STATUSES:
@@ -26608,7 +26614,8 @@ def jira_outbox_tick(now=None, limit=5, **kw):
             keep.append(r)
             continue
         n += 1
-        res = jira_issue_create(r["id"], actor="watcher", **kw)
+        res = (jira_status_push(r["id"], actor="watcher", **kw) if r.get("kind") == "push"
+               else jira_issue_create(r["id"], actor="watcher", **kw))
         if res.get("ok") or res.get("skipped"):
             done.append((r["id"], bool(res.get("ok"))))
             continue
@@ -26622,8 +26629,123 @@ def jira_outbox_tick(now=None, limit=5, **kw):
     return done
 
 
+# ── 우리 → Jira 상태 push (REQ-20260908-075) ─────────────────────────────────
+# Jira 는 상태를 직접 쓰지 못한다 — transition 을 골라 POST 한다. id 는 워크플로마다
+# 다르므로 이름(프로젝트 status_map)이나 카테고리(statusCategory: new · indeterminate ·
+# done)로 고른다. 전이 경로(do_transition)는 네트워크를 타지 않는다: outbox 에 싣고
+# 워처가 보낸다. pull 이 일으킨 전이는 되쏘지 않는다(note 가 「jira:」로 시작).
+JIRA_CATEGORY = {"open": "new", "in-progress": "indeterminate", "blocked": "indeterminate",
+                 "review": "indeterminate", "done": "done", "cancelled": "done"}
+
+
+def jira_push_wanted(meta, note="", auto=False):
+    """이 전이를 Jira 로 보내나 — (연동 설정 또는 None, 까닭)."""
+    cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+    if not cur.get("key"):
+        return None, "이슈가 없다"
+    j = project_jira(meta.get("project") or "")
+    if not j:
+        return None, "프로젝트에 Jira 연동이 없다"
+    if j.get("direction", "push") not in ("push", "both"):
+        return j, f"direction={j.get('direction')} — 우리 상태를 보내지 않는다"
+    # do_transition 이 auto 표식([auto])을 앞에 붙였을 수 있다 — 그 뒤의 「jira:」를 본다
+    if auto and re.match(r"^\s*(\[auto\]\s*)?jira:", note or ""):
+        return j, "Jira 가 일으킨 전이라 되쏘지 않는다"
+    return j, ""
+
+
+def jira_after_transition(doc_id, meta, note="", auto=False):
+    """do_transition 의 끝 — outbox 에만 싣는다(네트워크 없음)."""
+    try:
+        j, why = jira_push_wanted(meta, note=note, auto=auto)
+        if why:
+            return False
+        _jira_write(doc_id, {"pending": "push"}, "")
+        jira_outbox_add(doc_id, "push")
+        return True
+    except Exception:
+        return False
+
+
+def jira_pick_transition(transitions, our_status, j):
+    """(transition dict 또는 None, 까닭). 이름(status_map) → 카테고리 순."""
+    want_name = str((j.get("status_map") or {}).get(our_status) or "").strip().lower()
+    cat = JIRA_CATEGORY.get(our_status, "")
+    if want_name:
+        for t in transitions:
+            to = t.get("to") or {}
+            if str(to.get("name") or "").strip().lower() == want_name \
+                    or str(t.get("name") or "").strip().lower() == want_name:
+                return t, ""
+    for t in transitions:
+        to = t.get("to") or {}
+        if str(((to.get("statusCategory") or {}).get("key")) or "") == cat:
+            return t, ""
+    names = ", ".join(str((t.get("to") or {}).get("name") or t.get("name") or "?")
+                      for t in transitions) or "(없음)"
+    return None, (f"우리 상태 {our_status} 에 맞는 transition 이 없다 — 고를 수 있는 것: {names}. "
+                  f"프로젝트 status_map 으로 이름을 정해 주십시오")
+
+
+def jira_status_push(doc_id, actor="", **kw):
+    """요청의 지금 상태를 Jira 이슈에 반영 — {ok, status, skipped, error}."""
+    path = find_path(doc_id)
+    if not path:
+        return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
+    meta, _body = read_doc(path)
+    doc_id = meta.get("id") or doc_id
+    cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+    j, why = jira_push_wanted(meta)
+    if why:
+        return {"ok": False, "error": why, "skipped": True}
+    user = meta.get("user") or actor
+    auth, missing = jira_auth_header(user)
+    if auth is None:
+        msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
+        _jira_write(doc_id, {"pending": "push", "last_error": msg}, "")
+        return {"ok": False, "error": msg, "skipped": True}
+    key = cur["key"]
+    our = meta.get("status", "")
+    st, d, err = jira_http(user, "GET", f"/rest/api/3/issue/{key}?fields=status", **kw)
+    if st != 200 or not isinstance(d, dict):
+        return _jira_push_failed(doc_id, err or f"이슈 {key} 를 읽지 못했다({st})", cur)
+    now_st = (d.get("fields") or {}).get("status") or {}
+    now_name = str(now_st.get("name") or "")
+    now_cat = str(((now_st.get("statusCategory") or {}).get("key")) or "")
+    want_name = str((j.get("status_map") or {}).get(our) or "").strip().lower()
+    already = (want_name and now_name.lower() == want_name) or \
+              (not want_name and now_cat == JIRA_CATEGORY.get(our, ""))
+    if already:
+        _jira_write(doc_id, {"status": now_name, "synced_at": now_iso(), "synced_by": "s9",
+                             "pending": "", "last_error": ""}, "")
+        return {"ok": True, "status": now_name, "skipped": True, "error": ""}
+    st, d, err = jira_http(user, "GET", f"/rest/api/3/issue/{key}/transitions", **kw)
+    if st != 200 or not isinstance(d, dict):
+        return _jira_push_failed(doc_id, err or f"transition 목록을 읽지 못했다({st})", cur)
+    t, why = jira_pick_transition(d.get("transitions") or [], our, j)
+    if not t:
+        _jira_write(doc_id, {"pending": "", "last_error": why}, f"push 못 함 — {why}")
+        return {"ok": False, "error": why, "skipped": True}
+    st, d2, err = jira_http(user, "POST", f"/rest/api/3/issue/{key}/transitions",
+                            body={"transition": {"id": str(t.get("id"))}}, **kw)
+    if st not in (200, 204):
+        return _jira_push_failed(doc_id, err or f"transition 이 {st} 로 거절됐다", cur)
+    new_name = str((t.get("to") or {}).get("name") or "")
+    _jira_write(doc_id, {"status": new_name, "synced_at": now_iso(), "synced_by": "s9",
+                         "pending": "", "last_error": "", "actor": actor or user},
+                f"{key} → {new_name} (우리 {our}) by {actor or user}")
+    return {"ok": True, "status": new_name, "skipped": False, "error": ""}
+
+
+def _jira_push_failed(doc_id, err, cur):
+    attempts = int((cur or {}).get("attempts") or 0) + 1
+    _jira_write(doc_id, {"pending": "push", "last_error": err, "attempts": attempts}, "")
+    jira_outbox_add(doc_id, "push")
+    return {"ok": False, "error": err, "skipped": False, "attempts": attempts}
+
+
 def cmd_jira(args):
-    """`s9 jira ping|create|outbox` (REQ-20260908-071·073)."""
+    """`s9 jira ping|create|push|outbox` (REQ-20260908-071·073·075)."""
     user = resolve_user(getattr(args, "user", None))
     if args.action == "ping":
         res = jira_ping(user)
@@ -26649,6 +26771,18 @@ def cmd_jira(args):
                    + ("  (이미 있던 이슈를 붙였다)" if res.get("adopted") else "")))
             return
         die(res.get("error") or "실패")
+    if args.action == "push":
+        doc_id = full_doc_id(args.id or "") if args.id else ""
+        if not doc_id:
+            die("usage: s9 jira push <REQ-id>")
+        res = jira_status_push(doc_id, actor=user)
+        if getattr(args, "json", False):
+            print(json.dumps(res, ensure_ascii=False, indent=1))
+            return
+        if res.get("ok"):
+            print(f"{doc_id}: Jira {res.get('status') or '?'}" + ("  (이미 같다)" if res.get("skipped") else ""))
+            return
+        die(res.get("error") or "실패")
     if args.action == "outbox":
         rows = jira_outbox_read()
         if getattr(args, "run", False):
@@ -26662,7 +26796,7 @@ def cmd_jira(args):
             print(f"{r['id']}  {r.get('kind')}  시도 {r.get('attempts', 0)}회  "
                   f"{('— ' + r['last_error']) if r.get('last_error') else ''}")
         return
-    die("usage: s9 jira ping|create <REQ>|outbox [--run]")
+    die("usage: s9 jira ping|create <REQ>|push <REQ>|outbox [--run]")
 
 
 def git_do(what, actor="", proxy_for=""):
@@ -26932,6 +27066,7 @@ def projects_data():
             "contact_email": meta.get("contact_email", ""),
             "contact_phone": meta.get("contact_phone", ""),
             "contact_org": meta.get("contact_org", ""),
+            "jira": (dict(meta["jira"]) if isinstance(meta.get("jira"), dict) else None),
             "members": members,
             "member_active": sum(1 for m in members if m["active"]),
             "member_total": len(members),
@@ -30809,7 +30944,7 @@ def main():
     md.set_defaults(fn=cmd_merge_doc)
 
     ji = sub.add_parser("jira", help="Jira 연동 (REQ-20260908-071) — ping: 연결 확인")
-    ji.add_argument("action", choices=["ping", "create", "outbox"])
+    ji.add_argument("action", choices=["ping", "create", "push", "outbox"])
     ji.add_argument("id", nargs="?", help="create: 요청 id")
     ji.add_argument("--user", help="누구의 준비물로 (기본: 나)")
     ji.add_argument("--json", action="store_true")
