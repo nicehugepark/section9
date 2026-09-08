@@ -183,7 +183,11 @@ class ShortRefRule(unittest.TestCase):
             code = re.sub(r"/\*[\s\S]*?\*/", "", self.src)
             code = re.sub(r"(?m)^\s*//.*$", "", code)
             cc = re.search(r"const ccDocLink = id => \{[\s\S]*?\n\};", code).group(0)
-            self.assertIn("const r = catFind(id);", cc, "존재를 묻지 않는다")
+            # 묻는 자리의 이름은 그 뒤에 바뀌었다 (REQ-20260908-034: catFind →
+            # anyDoc — 카탈로그만이 아니라 전량 색인에도 묻는다). 계약은
+            # **존재를 묻는가**이지 함수 이름이 아니므로 둘 다 받는다.
+            self.assertRegex(cc, r"const r = (catFind|anyDoc)\(id\);",
+                             "존재를 묻지 않는다")
             self.assertIn("if (!r) return esc(id);", cc, "없는 문서에도 링크를 건다")
             li = re.search(r"const linkifyIds = [\s\S]*?\n", code).group(0) \
                 + code.split("const linkifyIds =")[1][:300]

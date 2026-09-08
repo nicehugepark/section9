@@ -886,6 +886,9 @@ def sse_close(tok):
 # 그리고 보낼 때는 gzip 이다. 해시·압축은 본문 세대당 한 번, 여기 캐시된다.
 _CATALOG_RESP = {"key": None, "body": b"", "etag": "", "zbody": b"", "win": ""}
 _CATALOG_RESP_LOCK = threading.Lock()
+# 문서 색인 응답 (REQ-20260908-034) — 카탈로그와 같은 세대·같은 뷰어면 재사용.
+_DOCIDX_RESP = {"key": None, "body": b"", "etag": "", "zbody": b""}
+_DOCIDX_RESP_LOCK = threading.Lock()
 # 기본 창이 싣는 '닫힌 요청' 수 (REQ-20260902-035 §4). 보드는 이미 하루 지난
 # 완료를 화면에서 내리고 있어(REQ-20260827-057) 그 뒤의 행은 보내는 순간부터
 # 버려지는 바이트다. 400 은 하루치 완료가 그 안에 넉넉히 드는 자리다.
@@ -26563,6 +26566,47 @@ def cmd_serve(args):
                                               _CATALOG_RESP["zbody"],
                                               _CATALOG_RESP.get("win", ""))
                 self._send_catalog(body, etag, zbody, win)
+            elif parsed.path == "/api/docindex":
+                # "그 문서가 있는가"의 답만 주는 자리 (REQ-20260908-034).
+                #
+                # /api/catalog 는 **화면이 그릴 것**을 준다 — 그래서 창
+                # (catalog_window)이 씌워지고, 보드는 전량 1380건 중 403건만
+                # 받는다. 그런데 화면은 그 목록을 "이 문서가 존재하는가"의
+                # 사전으로도 쓴다(catFind·resolveShortRef). 두 물음이 한
+                # 목록에 얹혀 있어서, 창 밖의 옛 문서는 **없는 문서**가 되고
+                # 답변 속 정식 id 가 링크로 서지 못했다.
+                #
+                # 그래서 존재를 묻는 자리를 따로 연다. 링크 판정에 필요한 것은
+                # 둘뿐이다 — 그 id 가 있는가(catFind), 언제 생겼는가
+                # (축약 번호를 그 줄이 쓰인 때 기준으로 푸는 resolveShortRef).
+                # 제목도 상태도 필요 없다. 실측(1380건): 전량 카탈로그
+                # 1364KB(gzip 168KB) · 보드 창 418KB(gzip 56KB) · 이 색인
+                # 76KB(**gzip 11KB**). 보드 응답의 1/5 을 한 번 더 싣고
+                # 화면은 저장소 전체를 알게 된다.
+                #
+                # 창을 씌우지 않는 이유가 여기 있다 — 창은 그림의 정책이고,
+                # 존재는 사실이다. 보관된 문서도 존재하므로 뺄 이유가 없다
+                # (열면 보관함에 그대로 있다). 가리는 것은 공개 범위 하나,
+                # doc_visible 뿐이다.
+                me = viewer_of(qs)
+                rows = catalog_with_live()
+                key = (catalog_with_live._state["seq"], me)
+                with _DOCIDX_RESP_LOCK:
+                    if _DOCIDX_RESP["key"] != key:
+                        import hashlib
+                        body = json.dumps(
+                            [[r.get("id", ""), r.get("created", "")]
+                             for r in rows if doc_visible(r, me)],
+                            ensure_ascii=False).encode()
+                        z = zlib.compressobj(6, zlib.DEFLATED, 31)
+                        _DOCIDX_RESP.update(
+                            key=key, body=body,
+                            etag='"' + hashlib.md5(body).hexdigest() + '"',
+                            zbody=z.compress(body) + z.flush())
+                    body, etag, zbody = (_DOCIDX_RESP["body"],
+                                         _DOCIDX_RESP["etag"],
+                                         _DOCIDX_RESP["zbody"])
+                self._send_catalog(body, etag, zbody, "index")
             elif parsed.path == "/api/graph":
                 me = viewer_of(qs)
                 g = graph_data()

@@ -134,7 +134,71 @@ function mergeNarrow(rows){
   return rows.filter(r => !had.has(r.id)).concat(kept);
 }
 
+/* ---- 문서 색인 — "그 문서가 있는가"를 카탈로그에 묻지 않는다 (REQ-20260908-034) ----
+
+   화면이 든 카탈로그는 **그릴 것**의 목록이다. 보드가 받는 것은 열린 일 전부 +
+   최근 닫힌 것이고(bin/s9.py `catalog_window`), 그래서 저장소에 1380건이 있어도
+   손에는 403건뿐이다. 그런데 링크를 걸지 말지를 판정하는 `catFind` 와 축약 번호를
+   푸는 `resolveShortRef` 는 그 목록을 **존재의 사전**으로 읽는다 — 두 물음이 한
+   목록에 얹혀 있었다. 그 탓에 답변에 적힌 `REQ-20260828-021-62x6` 같은 **정식 id**
+   조차 창 밖이면 없는 문서로 판정돼 맨 글자로 남았다(REQ-20260908-033 의 두 번째 원인).
+
+   전량을 늘 싣는 것으로는 안 갚는다 — 그 응답이 이 서버에서 가장 무거운 단건이다
+   (전량 gzip 168KB · 보드 창 56KB, REQ-20260908-001 실측). 링크 판정에 실제로 필요한
+   것은 **id 와 created 둘뿐**이라, 그 둘만 담은 색인은 gzip 11KB 다. 한 번 받아 두면
+   화면은 저장소 전체를 안다.
+
+   판정 엔진은 **하나로 둔다.** 같은 규칙을 두 벌 쓰면 갈라지고, 갈라지면 화면과
+   서버가 다른 문서를 가리킨다(REQ-20260828-021 이 계약표까지 만들어 막은 자리다).
+   그래서 함수를 새로 짜지 않고 `catalog` 를 잠깐 색인으로 바꿔 끼운 뒤 **원래 그
+   함수**를 부른다 — 자바스크립트는 한 줄기로 도니 이 사이에 다른 코드가 끼어들지
+   않고, 판정 규칙은 여전히 `catFind`·`resolveShortRef` 한 벌이다. */
+let docIdx = null;          // [{id, created}] — 링크 판정에 필요한 최소한의 행
+let docIdxIds = null;       // 신선도 확인용 집합
+let docIdxAt = 0;
+async function loadDocIdx(){
+  if (Date.now() - docIdxAt < 5000) return docIdx;   // 겹쳐 부르지 않는다
+  docIdxAt = Date.now();
+  try {
+    const r = await fetch("/api/docindex?" + meQ());
+    if (!r.ok) return docIdx;
+    const j = await r.json();
+    if (!Array.isArray(j)) return docIdx;
+    const first = !docIdx;
+    docIdx = j.map(([id, created]) => ({id, created}));
+    docIdxIds = new Set(docIdx.map(r2 => r2.id));
+    /* 색인이 카탈로그보다 늦게 오면 이미 그려진 판에는 링크가 빠져 있다 —
+       한 번 다시 그린다. Settings 는 폼 입력 중일 수 있어 건드리지 않는다
+       (폴링 재렌더와 같은 규칙). */
+    if (!first || !catalog.length) return docIdx;
+    if (typeof tab !== "undefined" && tab !== "settings") render();
+  } catch (e) {
+    /* 못 받으면 색인 없이 간다 — 화면은 색인이 없던 때와 똑같이 동작한다.
+       (카탈로그가 아는 문서만 링크가 된다: 죽은 링크보다 그 편이 낫다.) */
+  }
+  return docIdx;
+}
+/* 색인을 끼운 채 판정 함수를 부른다. 색인이 아직 없으면 그냥 부른다. */
+function withDocIdx(fn){
+  if (!docIdx) return fn();
+  const save = catalog;
+  catalog = docIdx;
+  try { return fn(); } finally { catalog = save; }
+}
+/* 저장소가 아는 문서인가 — 화면이 지금 든 목록이 아니라 저장소 전체에 묻는다. */
+function anyDoc(id){ return catFind(id) || withDocIdx(() => catFind(id)); }
+/* 축약 번호 풀기도 저장소 전체 기준이다. 창에 잘린 목록으로 풀면 답이 **틀린다** —
+   그때 있던 문서가 목록에 없으면 더 오래된 번호로 풀려 다른 문서를 가리킨다. */
+function anyShortRef(kind, num, atMs){
+  return withDocIdx(() => resolveShortRef(kind, num, atMs));
+}
+
 async function refreshCatalog(rerender){
+  /* 색인은 카탈로그와 **함께** 출발한다 (REQ-20260908-034). 카탈로그를 받은
+     뒤에 부르면 첫 판이 색인 없이 그려져, 화면에 처음 뜬 답변에서만 옛 문서
+     링크가 빠진다 — 그 한 판이 사람이 실제로 읽는 판이다. 색인은 gzip 11KB 라
+     418KB 카탈로그와 나란히 가도 먼저 도착한다. */
+  const idxP = docIdx ? null : loadDocIdx();
   /* 창을 **가져온 쪽에서** 돌려준다. loadSupply 는 같은 값을 두 곳에서 부르면
      한 번만 내보내므로(boot.js), 부르는 쪽에서 `catalogWantsAll()` 을 다시 재면
      실제로 나간 요청과 다른 답을 얻는다 — 판정은 요청을 만든 자리에 둔다. */
@@ -156,6 +220,13 @@ async function refreshCatalog(rerender){
      채로 그 시도가 끝나 버려 **아무도 안 받고 있는데 받는 중이라고 말하는**
      화면이 된다. 실제로 그렇게 찍혔다. */
   if (!transReady() && Date.now() - transAt > 10000) transRefill(selectedDoc);
+  /* **색인이 손에 들어온 뒤에 그린다** (REQ-20260908-034). 둘은 나란히 출발했고
+     여기서 늦은 쪽을 기다릴 뿐이라 왕복이 늘지 않는다. 안 기다리면 첫 판이 색인
+     없이 그려져 그 판의 답변에서만 옛 문서 링크가 빠지는데, 사람이 실제로 읽는
+     것이 그 첫 판이다. 색인이 안 오면 1.5초에 끊고 그냥 그린다 — 링크 하나 때문에
+     보드를 못 그리는 일은 없다. */
+  if (idxP) await Promise.race([idxP,
+    new Promise(r => setTimeout(r, 1500))]);
   if (!fresh) return fresh;   // 못 받았다 — 빈 판으로 덮지 않는다. 화면이 그렇게 말한다.
   if (got.all) catalogAll = true;
   const before = JSON.stringify(projects);
@@ -167,6 +238,10 @@ async function refreshCatalog(rerender){
   const changed = JSON.stringify(fresh) !== JSON.stringify(catalog)
                || JSON.stringify(projects) !== before;
   catalog = fresh;
+  /* 색인은 한 번 받아 두고, **카탈로그가 모르는 id 를 물어올 때만** 다시 받는다
+     (REQ-20260908-034). 새 문서는 열린 일이라 보드 창에 늘 실려 오므로, 그 한
+     줄이 곧 "색인이 낡았다"는 신호다 — 주기적으로 다시 받을 이유가 없다. */
+  if (docIdx && fresh.some(r => !docIdxIds.has(r.id))) loadDocIdx();
   rebuildIdMap();   // uid 축약 표시의 겹침 판정 갱신 (REQ-20260825-031)
   // 헤더 칩의 자리 이야기는 카탈로그에서 나온다 (REQ-20260829-030) — 값이
   // 바뀌었을 때만 다시 그리면 되지만, 칩 자신이 같은 내용을 걸러 내므로

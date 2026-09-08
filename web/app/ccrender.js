@@ -144,7 +144,7 @@ const ccDocLink = id => {
   // 없는 문서에는 링크를 걸지 않는다 (REQ-20260828-021) — 판정은 문서 화면과
   // 같은 `catFind` 하나다. 열 때 쓰는 값은 카탈로그의 정식 id 이고, 보이는
   // 글자는 원문 그대로다.
-  const r = catFind(id);
+  const r = anyDoc(id);
   if (!r) return esc(id);
   return `<a class="doclink" href="#docs/${esc(r.id)}" data-doc="${esc(r.id)}"`
     + ` data-tdoc="${esc(r.id)}" draggable="false"`
@@ -172,7 +172,7 @@ const ccGuessLink = (raw, r) =>
 const ccDocs = (escaped, atMs) =>
   escaped.replace(DOC_ID_INLINE_RE, (m0, pre, id) => pre + ccDocLink(id))
     .replace(SHORT_REF_RE, (m0, pre, kind, num) => {
-      const r = resolveShortRef(kind, num, atMs);
+      const r = anyShortRef(kind, num, atMs);
       return pre + (r ? ccGuessLink(`${kind}-${num}`, r) : `${kind}-${num}`);
     });
 
@@ -333,7 +333,7 @@ function ccText(raw, at){
       // 자리표시자로 빠져 있어 `REQ-20260828-021` 의 앞 세 자리를 다시 집지
       // 않는다. 종류 접두와 하이픈이 붙은 형태만 — `#028`·판 번호에는 안 번진다.
       .replace(SHORT_REF_RE, (m0, pre, kind, num) => {
-        const r = resolveShortRef(kind, num, atMs);
+        const r = anyShortRef(kind, num, atMs);
         return pre + (r ? keep(ccGuessLink(`${kind}-${num}`, r)) : `${kind}-${num}`);
       })
       // 해시류(7~40자리 16진, 영문자 포함 필수 — 날짜 등 순수 숫자 제외)
