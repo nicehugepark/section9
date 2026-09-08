@@ -15,6 +15,7 @@ REQ-20260908-003 으로 세워 둔 뒤였다.
 """
 import importlib.machinery
 import importlib.util
+import datetime
 import json
 import os
 import tempfile
@@ -38,6 +39,12 @@ finally:
         os.environ["S9_ROOT"] = _prev
 
 SID = "abcd1234"
+
+
+def _ago(sec):
+    """지금부터 sec 초 전의 시각 — 15분 창 안이라야 문맥에 실린다."""
+    return (datetime.datetime.now().astimezone()
+            - datetime.timedelta(seconds=sec)).isoformat(timespec="seconds")
 
 
 def write_inbox(lines):
@@ -95,7 +102,8 @@ class TheMarkStopsTheEcho(unittest.TestCase):
         표를 받는다. 사람이 채팅으로 말하는 자리라 그 일이 실제로 나기 어렵고,
         나더라도 잃는 것은 문맥 한 줄이라 열쇠를 더 무겁게 만들지 않았다.
         """
-        t1, t2 = "2026-09-08T10:00:00+09:00", "2026-09-08T10:00:05+09:00"
+        t1, t2 = _ago(90), _ago(30)   # 15분 창 안이어야 한다 — 붙박이 시각을 쓰면
+                                      # 그 시각이 창 밖으로 흘러가 시험이 저절로 실패한다
         write_inbox([chat(t1, "옛말"), chat(t2, "새말")])
         s9.mark_chat_documented(SID, t1, "REQ-1")
         self.assertEqual(self._ctx(), ["새말"])
