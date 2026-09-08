@@ -194,3 +194,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-07T14:12:51+09:00 config ui_skin=cork (by nicehugepark via dashboard)
 - 2026-09-07T15:35:26+09:00 config ui_skin=calm (by nicehugepark via dashboard)
 - 2026-09-08T12:56:16+09:00 config pref_응답길이=보고는 짧게. 판정할 것 하나를 맨 앞에 두고, 근거는 필요한 만큼만. 진행 상황을 다 늘어놓지 마라 — 사람이 무엇을 봐야 하는지가 흐려진다 (지적 2026-09-08 12:55: 「너무 장황해서 뭘 리뷰해야하는지 잘 모르겠다」). (by nicehugepark)
+- 2026-09-08T12:57:49+09:00 config pref_응답길이=(삭제) (by nicehugepark)
