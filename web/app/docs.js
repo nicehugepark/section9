@@ -83,6 +83,37 @@ const docPickHTML = () => `<p class="empty">← 왼쪽 목록에서 문서를 �
 const docLoadingHTML = () => `<p class="empty">문서를 불러오는 중…</p>`;
 const docBlankHTML = () => selectedDoc ? docLoadingHTML() : docPickHTML();
 
+/* 못 받았다는 말과 다시 받는 손잡이 — **한 곳에서만** 짓는다 (REQ-20260908-003).
+   fetch 가 던진 자리에 이미 있던 문장 그대로다; 기다림이 끝나는 자리가 둘이 되어
+   문장이 두 벌이 되는 것을 막으려고 함수로 떼었을 뿐이다. */
+const docFailHTML = id => `<p class="empty">서버에 연결할 수 없어 문서를 열지 못했습니다 (${esc(id)}).
+        서버가 재시작 중일 수 있습니다. <button class="more" data-retrydoc="${esc(id)}">다시 받기</button></p>`;
+
+/* 「불러오는 중」은 **유한하게 끝난다** (REQ-20260908-003).
+   응답이 안 오거나 늦은 응답으로 판정돼 조용히 돌아가면 그 말이 영영 남는다 —
+   사람은 그 앞에서 F5 밖에 할 것이 없었다. 기다림에 끝을 두고, 끝나면 못 받았다고
+   말하고 다시 받는 손잡이를 세운다. 손잡이는 events.js 의 `data-retrydoc` 이 받는다.
+   성공하면 시계를 걷고, 다음 폴이 다시 채우면 그 화면이 이 말을 덮는다. */
+const DOC_WAIT_MS = 8000;
+let docWaitT = 0;
+function docWaitClear(){ clearTimeout(docWaitT); docWaitT = 0; }
+function docWaitArm(id){
+  docWaitClear();
+  docWaitT = setTimeout(() => {
+    const v = $("#viewer");
+    if (!v || selectedDoc !== id || v.dataset.showing === id) return;
+    v.innerHTML = docFailHTML(id);
+  }, DOC_WAIT_MS);
+}
+
+/* 응답은 **지금 살아 있는 판**에 그린다 (REQ-20260908-003 갈래 ②).
+   `loadDoc` 은 fetch 전에 판을 잡아 두는데, 기다리는 사이 판이 새로 서면 그 손에
+   들린 것은 이미 떼어진 노드다 — 거기 그리면 아무 데도 안 그린 것과 같다. */
+function docLive(v){
+  if (v && v.isConnected) return v;
+  return $("#viewer") || v;
+}
+
 function docDeselect(){
   selectedDoc = null;
   const v = $("#viewer");
@@ -398,7 +429,7 @@ async function loadDoc(id, bg, force){
     on ? el.setAttribute("aria-current", "true") : el.removeAttribute("aria-current");
   });
   roveSync();
-  const viewer = $("#viewer");
+  let viewer = $("#viewer");
   if (!viewer) return;
   const row = catalog.find(r => r.id === id);
   // 주의: 뷰어의 '표시 중 문서' 상태는 data-showing에 둔다 — data-doc을 쓰면
@@ -406,6 +437,8 @@ async function loadDoc(id, bg, force){
   const sameDoc = viewer.dataset.showing === id;
   if (bg && !force && sameDoc && row
       && viewer.dataset.updated === (row.updated || "")) return;
+  // 판이 아직 이 문서를 못 그렸으면 기다림에 끝을 둔다 (REQ-20260908-003)
+  if (viewer.dataset.showing !== id) docWaitArm(id);
   let keep = null;  // 같은 문서의 백그라운드 재로드 — 읽던 위치를 잃지 않는다
   if (bg && sameDoc){
     keep = {viewerTop: viewer.scrollTop};
@@ -423,25 +456,29 @@ async function loadDoc(id, bg, force){
     res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
   }catch(e){
     await new Promise(r => setTimeout(r, 800));
-    if (docLoadStale(gen)) return;       // 기다리는 사이 다른 문서를 열었다
+    viewer = docLive(viewer);
+    if (docLoadStale(gen, id, viewer)) return;   // 기다리는 사이 다른 문서를 열었다
     try{
       res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
     }catch(e2){
-      viewer.innerHTML = `<p class="empty">서버에 연결할 수 없어 문서를 열지 못했습니다 (${esc(id)}).
-        서버가 재시작 중일 수 있습니다. <button class="more" data-retrydoc="${esc(id)}">다시 받기</button></p>`;
+      docWaitClear();
+      viewer.innerHTML = docFailHTML(id);
       return;
     }
   }
+  viewer = docLive(viewer);
   if (!res.ok){
+    docWaitClear();
     viewer.innerHTML = `<p class="empty">문서를 찾을 수 없습니다: ${esc(id)} — 삭제되었거나 목록이 오래되었습니다. 목록을 새로고침합니다.</p>`;
     viewer.dataset.showing = ""; viewer.dataset.updated = "";
     selectedDoc = null;
     refreshCatalog(true);
     return;
   }
-  if (docLoadStale(gen)) return;         // 응답이 왔지만 이미 다른 문서를 열었다
+  if (docLoadStale(gen, id, viewer)) return;   // 이미 다른 문서를 열었다
   const d = await res.json(), m = d.meta;
-  if (docLoadStale(gen)) return;
+  viewer = docLive(viewer);
+  if (docLoadStale(gen, id, viewer)) return;
   // 질문은 여기서 본문을 들고 있다 — 미답 판정을 카탈로그 파생 필드에 의존하지
   // 않고 원본(answer 노트)에서 직접 읽는다 (REQ-20260826-017).
   const isQ = m.type === "question";
@@ -808,6 +845,7 @@ async function loadDoc(id, bg, force){
   }
   viewer.dataset.showing = id;
   viewer.dataset.updated = m.updated || "";
+  docWaitClear();                     // 판이 섰다 — 기다림의 시계를 걷는다
   // 다른 탭에서 눌려 문서에 사실이 적힌 채로 열린 경우에도 초가 흘러야 한다 —
   // 시계는 그린 뒤에 건다(그리는 함수가 시계를 알 이유가 없다).
   answerClock();

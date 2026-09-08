@@ -50,9 +50,9 @@ class ServeData(unittest.TestCase):
         cls.env.pop("S9_SESSION", None)
         cls.cli("init")
         cls.cli("user", "add", "alice")
-        # 본문 검색용 — 한쪽에만 '알파', 양쪽에 '붉은열매'.
-        cls.A = cls.mk("검색 대상 알파", "붉은열매 알파\n" * 20)
-        cls.B = cls.mk("검색 대상 베타", "붉은열매 베타")
+        # 본문 검색용 — 한쪽에만 '알파', 양쪽에 '산딸기'.
+        cls.A = cls.mk("검색 대상 알파", "산딸기 알파\n" * 20)
+        cls.B = cls.mk("검색 대상 베타", "산딸기 베타")
 
         # 모듈 내부를 손대지 않고 환경으로 격리한다 — ROOT 는 import 시점에
         # 갈라져 나가는 값이라 나중에 덮으면 일부만 바뀐다.
@@ -149,9 +149,9 @@ class ServeData(unittest.TestCase):
 
     def test_s5_search_all_terms_and_match_cap(self):
         """S5. 모든 낱말이 든 문서만 나오고, 문서당 matches 는 8줄까지다."""
-        got = {r["id"] for r in self.m.search_data("붉은열매")["results"]}
+        got = {r["id"] for r in self.m.search_data("산딸기")["results"]}
         self.assertEqual({self.A, self.B} & got, {self.A, self.B})
-        only = self.m.search_data("붉은열매 알파")["results"]
+        only = self.m.search_data("산딸기 알파")["results"]
         self.assertEqual([r["id"] for r in only], [self.A])
         self.assertLessEqual(len(only[0]["matches"]), 8)
         self.assertTrue(only[0]["matches"])
