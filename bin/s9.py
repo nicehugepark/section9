@@ -11167,26 +11167,20 @@ def sync_autoraise(now=None):
     return "remote"
 
 
-def ask_sync_mode(interactive=None):
-    """설치 때 사용 형태를 묻는다 (REQ-20260828-019).
+def default_sync_mode(has_origin=None):
+    """설치가 두는 모드 — **묻지 않는다, origin 이 정한다** (REQ-20260908-065).
 
-    **답이 없으면 local 이다.** 무인 설치(파이프·CI)에서 물음이 막혀 설치가
-    멈추는 것이 더 나쁘고, 모르는 채로 바깥에 글을 내보내는 것은 더더욱 나쁘다.
+    처음(REQ-20260828-019)에는 설치 때 「혼자/여럿」을 묻고 답이 없으면 local 로
+    두었다. 주인이 2026-09-08 뒤집었다: 「켜져 있는 게 기본이고 끄는 게 옵션이어야
+    하는 거 아니야」. 맞다 — origin 을 준 사람은 내보내라고 준 것이고, 그 뒤에
+    `s9 sync --on` 을 한 번 더 치게 하는 것은 같은 뜻을 두 번 묻는 일이다
+    (실제 사고 REQ-20260908-041/050: 다른 머신의 설치가 local 로 서서 문서가 GitHub
+    으로 나가지 않았다). origin 이 없으면 내보낼 곳이 없으니 local 이다.
+    끄는 길은 `s9 sync --off` 하나이고, 그것만이 사람의 결정이다.
     """
-    if interactive is None:
-        interactive = sys.stdin.isatty()
-    if not interactive:
-        return "local"
-    try:
-        a = input("◌ 이 저장소를 혼자 쓰십니까, 여럿이 함께 쓰십니까? "
-                  "[1] 혼자 (기본)  [2] 여럿: ").strip()
-    except (EOFError, KeyboardInterrupt):
-        return "local"
-    if a not in ("2", "여럿"):
-        return "local"
-    print("  여럿 — 문서 이벤트마다 origin 으로 pull·push 합니다. "
-          "origin remote 가 있어야 합니다(없으면 로컬 commit 만 남습니다).")
-    return "remote"
+    if has_origin is None:
+        has_origin = sync_has_origin()
+    return "remote" if has_origin else "local"
 
 
 def sync_enabled():
@@ -20611,20 +20605,20 @@ def cmd_instance(args):
                    capture_output=True, encoding="utf-8", errors="replace")
     # 이벤트 동기화 마커 (REQ-048): 인스턴스는 문서 이벤트마다 commit→pull→push.
     # track되는 파일이라 팀원 클론에도 자동 적용된다 — 명시적 opt-in 산물(051 제약).
-    # 사용 형태를 묻고 정한다 (REQ-20260828-019) — 기본은 혼자.
-    _tty = sys.stdin.isatty()
-    _mode = ask_sync_mode(interactive=_tty)
+    # 묻지 않는다 — origin 이 정한다 (REQ-20260908-065): 있으면 remote, 없으면 local.
+    # 설치가 둔 값은 언제나 「아직 고르지 않음」이다 (REQ-20260908-050) — 나중에
+    # origin 이 생기면 사실이 remote 로 올리고, 사람이 `s9 sync --off` 로 끈 것만
+    # 사실이 뒤집지 않는다.
+    _mode = default_sync_mode(has_origin=bool(url))
     _body = ("local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)\n"
              if _mode == "local" else
              "remote — 문서 이벤트마다 commit→pull→push (여럿이 쓰는 자리)\n")
-    # 물음이 막힌 설치(파이프·CI)는 **고른 것이 아니다** (REQ-20260908-050) —
-    # 그렇게 둔 local 은 origin 이 생기는 순간 remote 로 올라간다.
-    if not _tty:
-        _body += SYNC_UNCHOSEN_LINE
+    _body += SYNC_UNCHOSEN_LINE
     with open(os.path.join(target, ".s9-sync"), "w", encoding="utf-8") as f:
         f.write(_body)
-    print(f"  동기화: {_mode}" + ("" if _tty else
-          "  (물음이 막혀 기본값 — origin 이 있으면 자동으로 remote 가 된다)"))
+    print(f"  동기화: {_mode}" + ("  — origin 이 있어 문서 이벤트마다 commit→pull→push 한다. "
+                                 "끄려면 `s9 sync --off`" if _mode == "remote" else
+                                 "  — origin 이 없다. 생기면 자동으로 remote 가 된다"))
     # 인스턴스별 대시보드 포트 자동 배정 (REQ-060): 9909(기본 워크스페이스)와
     # 공존하도록 9910부터 빈 포트를 찾아 state/port에 기록(로컬 전용, git 제외)
     import socket as _sock

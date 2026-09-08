@@ -132,18 +132,33 @@ class SyncMode(unittest.TestCase):
         self.assertEqual(self.m.sync_mode(), "local")
 
 
-class InstanceInitAsks(unittest.TestCase):
-    """B5 — 물음이 막혀 설치가 멈추면 안 된다."""
+class InstanceInitDoesNotAsk(unittest.TestCase):
+    """B5 → D1·D2·D5 (REQ-20260908-065) — 설치는 묻지 않는다, origin 이 정한다.
 
-    def test_b5_non_interactive_defaults_to_local(self):
+    처음에는 「혼자/여럿」을 묻고 답이 없으면 local 이었다(위 원문). 주인이
+    2026-09-08 뒤집었다: 「켜져 있는 게 기본이고 끄는 게 옵션이어야 하는 거
+    아니야」. origin 이 있으면 remote, 없으면 local, 끄는 길은 `s9 sync --off`."""
+
+    def _mod(self):
         spec = importlib.util.spec_from_loader(
             "s9_ask", importlib.machinery.SourceFileLoader("s9_ask", S9))
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
-        self.assertTrue(hasattr(m, "ask_sync_mode"),
-                        "설치가 사용 형태를 묻지 않는다")
-        self.assertEqual(m.ask_sync_mode(interactive=False), "local",
-                         "무인 설치인데 바깥과 오가도록 켠다")
+        return m
+
+    def test_d1_an_origin_means_remote_without_asking(self):
+        m = self._mod()
+        self.assertEqual(m.default_sync_mode(has_origin=True), "remote",
+                         "origin 을 줬는데 바깥과 오가지 않는다 — 켜진 것이 기본이다")
+
+    def test_d2_no_origin_means_local(self):
+        m = self._mod()
+        self.assertEqual(m.default_sync_mode(has_origin=False), "local",
+                         "내보낼 곳이 없는데 remote 다")
+
+    def test_d5_the_asking_name_is_gone(self):
+        """물음이 없는데 「묻는다」는 이름이 남으면 다음 사람이 물음을 되살린다."""
+        self.assertFalse(hasattr(self._mod(), "ask_sync_mode"))
 
 
 if __name__ == "__main__":
