@@ -20031,6 +20031,111 @@ def do_project_default(slug, actor=None, via=""):
     return {"slug": target, "changed": changed}
 
 
+# ── 프로젝트의 Jira 연동 설정 (REQ-20260908-072) ────────────────────────────
+# 프로젝트 문서 frontmatter `jira:` 한 덩이 — 연결은 팀의 것이라 track 되는 문서에
+# 두고(비밀은 사람의 것이라 s9 secret 에), 설계 결정 DOC-20260908-002 의 열쇠 넷이
+# 여기 산다: direction(push 기본) · create_on(open) · export(all) ·
+# export_origin(human — 주인 지시 2026-09-08 21:43: 「사람이 직접 만든 요청만」).
+JIRA_PROJECT_DEFAULTS = {"issue_type": "Task", "direction": "push",
+                         "create_on": "open", "export": "all", "export_origin": "human"}
+JIRA_PROJECT_CHOICES = {"direction": ("push", "pull", "both"),
+                        "create_on": ("open", "in-progress"),
+                        "export": ("all", "size:M+", "manual"),
+                        "export_origin": ("human", "all")}
+JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,9}$")
+
+
+def _jira_field_is_secret(name, value):
+    """projects/·vault/ 에 비밀 금지 — 이름이 비밀을 말하거나 값이 토큰 꼴이면 참."""
+    if re.search(r"token|secret|password|passwd", name, re.I):
+        return True
+    return any(pat.search(str(value or "")) for pat, _ in TOKEN_PATTERNS)
+
+
+def project_jira(slug):
+    """프로젝트의 jira: 설정(기본값 채움) 또는 None(연동 없음)."""
+    pr = load_project(slug)
+    if not pr:
+        return None
+    j = pr[0].get("jira")
+    if not isinstance(j, dict) or not j.get("project_key"):
+        return None
+    return {**JIRA_PROJECT_DEFAULTS, **j}
+
+
+def do_project_jira_set(slug, actor=None, via="", **fields):
+    """연동 설정을 적는 단일 경로 — CLI 와 화면이 함께 쓴다. 거부는 ValueError.
+    권한 manage(maintainer 이상). 없는 칸은 기본값, 이미 있으면 준 칸만 바뀐다."""
+    pr = load_project(slug)
+    if not pr:
+        raise ValueError(f"not found: {slug}")
+    meta, body, path = pr
+    target = meta.get("slug", "")
+    if not project_can(target, actor, "manage"):
+        raise ValueError(
+            f"권한 없음: '{actor}'({project_role(target, actor) or '미참여'})는 "
+            f"Jira 연동 설정을 바꿀 수 없다 (maintainer 이상 필요)")
+    cur = dict(meta.get("jira") or {}) if isinstance(meta.get("jira"), dict) else {}
+    for k, v in fields.items():
+        if v is None:
+            continue
+        if _jira_field_is_secret(k, v):
+            raise ValueError("비밀은 프로젝트 문서에 두지 않는다 — API token 은 "
+                             f"`s9 secret set {JIRA_SECRET_KEY}` (사람마다)")
+        v = str(v).strip()
+        if k == "site":
+            v = jira_site_normalize(v)
+        elif k == "project_key":
+            v = v.upper()
+            if not JIRA_KEY_RE.match(v):
+                raise ValueError(f"Jira project key 꼴이 아니다: {v!r} — 예: MP1, PAY")
+        elif k in JIRA_PROJECT_CHOICES and v not in JIRA_PROJECT_CHOICES[k]:
+            raise ValueError(f"{k} 는 {' | '.join(JIRA_PROJECT_CHOICES[k])} 중 하나다: {v!r}")
+        elif k not in ("site", "project_key", "issue_type", *JIRA_PROJECT_CHOICES):
+            raise ValueError(f"모르는 칸: {k}")
+        cur[k] = v
+    if not cur.get("site") or not cur.get("project_key"):
+        raise ValueError("site 와 project key 둘 다 있어야 연동이 선다 — "
+                         "--site https://<site>.atlassian.net --key MP1")
+    new = {**JIRA_PROJECT_DEFAULTS, **cur}
+    ts = now_iso()
+    acquire_lock()
+    try:
+        meta["jira"] = new
+        meta["updated"] = ts
+        body = body.rstrip("\n") + (f"\n- {ts} Jira 연동 설정 {new['site']} {new['project_key']} "
+                                    f"(direction={new['direction']} export_origin={new['export_origin']}) "
+                                    f"by {actor or '(모름)'}{via}\n")
+        write_doc(path, meta, body)
+        rebuild_index(quiet=True)
+    finally:
+        release_lock()
+    return {"slug": target, "jira": new}
+
+
+def do_project_jira_unset(slug, actor=None, via=""):
+    pr = load_project(slug)
+    if not pr:
+        raise ValueError(f"not found: {slug}")
+    meta, body, path = pr
+    target = meta.get("slug", "")
+    if not project_can(target, actor, "manage"):
+        raise ValueError(f"권한 없음: '{actor}' 는 Jira 연동 설정을 바꿀 수 없다 (maintainer 이상 필요)")
+    if not meta.get("jira"):
+        return {"slug": target, "changed": False}
+    ts = now_iso()
+    acquire_lock()
+    try:
+        meta.pop("jira", None)
+        meta["updated"] = ts
+        body = body.rstrip("\n") + f"\n- {ts} Jira 연동 해제 by {actor or '(모름)'}{via}\n"
+        write_doc(path, meta, body)
+        rebuild_index(quiet=True)
+    finally:
+        release_lock()
+    return {"slug": target, "changed": True}
+
+
 def ensure_default_project():
     """설치가 프로젝트를 **최소 하나** 갖게 한다 — `s9 init` 한 곳 (REQ-20260908-022).
 
@@ -20401,6 +20506,44 @@ def cmd_project(args):
             die(str(e))
         print(f"기본 프로젝트: {res['slug']} — 이제 프로젝트를 고르지 않은 "
               f"새 문서가 여기 붙는다 (기존 문서는 그대로)")
+        return
+
+    if action == "jira":
+        # s9 project jira <slug> set|show|unset (REQ-20260908-072)
+        sub_ = args.member_action or "show"
+        if not args.slug:
+            die("usage: s9 project jira <slug> [show|set|unset] [--site …] [--key …]")
+        if sub_ == "show":
+            j = project_jira(args.slug)
+            if not j:
+                print(f"{args.slug}: Jira 연동 없음 — s9 project jira {args.slug} set "
+                      f"--site https://<site>.atlassian.net --key <KEY>")
+                return
+            for k in ("site", "project_key", "issue_type", "direction", "create_on",
+                      "export", "export_origin"):
+                print(f"  {k:14s} {j.get(k, '')}")
+            return
+        actor = resolve_user(args.user)
+        try:
+            if sub_ == "unset":
+                res = do_project_jira_unset(args.slug, actor=actor)
+                print(f"{res['slug']}: Jira 연동 해제" if res["changed"]
+                      else f"{res['slug']}: 연동이 없었다")
+                return
+            if sub_ != "set":
+                die("usage: s9 project jira <slug> [show|set|unset]")
+            res = do_project_jira_set(
+                args.slug, actor=actor, site=args.site, project_key=args.key,
+                issue_type=args.issue_type, direction=args.direction,
+                create_on=args.create_on, export=args.export,
+                export_origin=args.export_origin)
+        except ValueError as e:
+            die(str(e))
+        j = res["jira"]
+        print(f"{res['slug']} ↔ {j['site']} {j['project_key']}  "
+              f"(direction={j['direction']} create_on={j['create_on']} "
+              f"export={j['export']} export_origin={j['export_origin']} "
+              f"issue_type={j['issue_type']})")
         return
 
     if action == "rename":
@@ -30344,7 +30487,7 @@ def main():
     pj = sub.add_parser("project", help="프로젝트 관리 (문서·멤버·역할·만료)")
     pj.add_argument("action",
                     choices=["add", "ls", "show", "set", "member", "authz",
-                             "scaffold", "agents", "default", "rename"])
+                             "scaffold", "agents", "default", "rename", "jira"])
     pj.add_argument("slug", nargs="?", help="프로젝트 slug 또는 id")
     pj.add_argument("member_action", nargs="?",
                     help="member: add|rm|ls (authz: 대상 사용자, rename: 새 slug)")
@@ -30362,6 +30505,15 @@ def main():
                     "— 권한 role과 직교하는 표시·배정용 축")
     pj.add_argument("--until", help="member add: 만료일 YYYY-MM-DD (없으면 무기한)")
     pj.add_argument("--meta", action="store_true", help="show: frontmatter만")
+    # jira <slug> set (REQ-20260908-072) — 비밀은 여기 없다(API token 은 s9 secret)
+    pj.add_argument("--site", help="jira set: https://<site>.atlassian.net (보드 주소를 줘도 호스트만 남는다)")
+    pj.add_argument("--key", help="jira set: Jira project key (예: MP1)")
+    pj.add_argument("--issue-type", dest="issue_type", help="jira set: 이슈 타입 (기본 Task)")
+    pj.add_argument("--direction", help="jira set: push(기본)|pull|both")
+    pj.add_argument("--create-on", dest="create_on", help="jira set: open(기본)|in-progress")
+    pj.add_argument("--export", help="jira set: all(기본)|size:M+|manual")
+    pj.add_argument("--export-origin", dest="export_origin",
+                    help="jira set: human(기본 — 사람이 직접 만든 요청만)|all")
     pj.add_argument("--user", help="행위 주체 (기본: 세션/OS 사용자)")
     pj.set_defaults(fn=cmd_project)
 

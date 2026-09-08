@@ -36,8 +36,8 @@ const JIRA_ROWS = [
        + "계정이 잠깁니다."},
   {key: "project", name: "프로젝트 연동", kind: "fact",
    mean: "우리 프로젝트 하나에 Jira 프로젝트 하나(project key, 예: ABC)를 짝짓습니다. "
-       + "프로젝트 문서의 jira.project_key 가 그 자리이고, 여기에 손잡이가 서는 것은 "
-       + "다음 단계입니다."},
+       + "지금은 터미널에서: s9 project jira <slug> set --site <위 주소> --key <KEY> "
+       + "(maintainer 이상). 화면의 손잡이는 Projects 정보 패널에 다음 단계로 섭니다."},
 ];
 
 /* 부제 = 들어 있는 서비스 이름(원어). 서비스가 하나뿐인 동안만 준비 정도를 뒤에
