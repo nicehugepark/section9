@@ -481,3 +481,9 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .doclist .row .st.ko,.viewer .dtitle .dst.ko{font-family:inherit;
   text-transform:none;letter-spacing:.02em;white-space:nowrap;word-break:keep-all}
 .doclist .row .st.ko{font-size:10.5px;font-weight:600;margin-left:8px}
+/* 「멤버 아님」 한 줄 (REQ-20260908-035). 새 컴포넌트가 아니라 `.rvpt` 한 줄
+   문법에 잉크만 얹는다 — 캡션이 `--c-blocked` 인 것은 선행 대기 줄(`.rvpt.dep`)과
+   같은 까닭이다: 이 줄은 문서의 상태가 아니라 **제약**(쓰기가 막힌 자리)을 말한다.
+   면도 띠도 없다 — 색은 캡션 글자에만, 프로젝트 이름은 굵기로만 도드라진다. */
+.viewer .rvpt.outside .rvcap{color:var(--c-blocked)}
+.viewer .rvpt.outside b{font-weight:600}

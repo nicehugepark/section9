@@ -721,6 +721,7 @@ async function loadDoc(id, bg, force){
 
      카탈로그 행이 아니라 **문서 자신(m)** 을 먹인다 — 색인에 아직 안 오른 새
      문서에서도 서야 한다. */
+  const outside = outsideProjectHTML(d);
   const lineage = lineageRowHTML(m);
   const stallRow = holdForecastHTML(stallDoc) + stallHTML(stallDoc)
     + holdTellHTML(stallDoc);
@@ -826,7 +827,7 @@ async function loadDoc(id, bg, force){
     <h1 class="dtitle">${esc(m.title)}
       <span class="did" title="${esc(m.id)}">${esc(shortId(m.id))}</span>
       ${dstHTML(m)}
-    </h1>${docActs}${answerFoundHTML(m)}${answerTellHTML(m)}</div>${lineage}${stallRow}${gate}
+    </h1>${docActs}${answerFoundHTML(m)}${answerTellHTML(m)}</div>${outside}${lineage}${stallRow}${gate}
     ${meta}
     <div class="md">${md2html(d.body)}</div>${streamSec}
     <div class="backlinks" id="backlinks"></div>`;
@@ -1061,6 +1062,29 @@ function answerBtnHTML(m){
 /* 못 찾음 한 줄. 이 대시보드의 실패 문장 틀 그대로다 — 무엇을 못 했나 —
    무엇을 하면 되는지(audit.js·session.js 가 이미 쓰는 한 틀). 다음에 할 일이
    바로 옆에 선 버튼이라 그 글자를 그대로 가리킨다. */
+/* 「보이는데 왜 안 되지」를 미리 막는 한 줄 (REQ-20260908-035 · 서버 자리는
+   REQ-20260908-026). 가시성이 넓어져 **자기가 만든 문서는 프로젝트 멤버가
+   아니어도 보인다.** 그런데 쓰기와 상태 전이는 그대로 막혀 있으니, 화면이
+   잠자코 있으면 사람은 눌러 본 뒤에야 거절을 만난다 — 까닭을 거절 뒤에 찾게
+   하지 않고 문서를 여는 순간 그 자리를 먼저 말한다.
+
+   **새 부품도 새 어휘도 만들지 않는다.** 한 줄 문법은 카드와 문서가 이미 쓰는
+   `.rvpt`(사실 한 줄 + mono 캡션)이고, 낱말은 이 화면이 이미 쓰는 셋 —
+   프로젝트 · 멤버 · 만든 사람 — 뿐이다. 캡션 잉크가 `--c-blocked` 인 것은 선행
+   대기 줄(`.rvpt.dep`)이 세운 규칙 그대로다: 이 줄이 말하는 것은 문서의 상태가
+   아니라 **제약**이라, 상태색이 아니라 제약의 잉크로 선다.
+
+   프로젝트는 slug 를 그대로 적는다 — 메타 표의 project 행(projBtnHTML)이 화면에
+   세우는 글자가 slug 라, 한 화면에서 같은 것을 두 이름으로 부르지 않는다.
+   서버가 값을 안 실으면 줄도 서지 않는다(빈 사실을 세우지 않는다). */
+function outsideProjectHTML(d){
+  const slug = String((d && d.outside_project) || "").trim();
+  if (!slug) return "";
+  return `<div class="rvpt outside"><span class="rvcap">멤버 아님</span>`
+    + `이 문서는 <b>${esc(slug)}</b> 프로젝트에 속합니다. 만든 사람이라 보이지만, `
+    + `멤버가 아니어서 고치거나 상태를 바꿀 수는 없습니다.</div>`;
+}
+
 function answerTellHTML(m){
   /* **못 찾았음도 문서에 남는다** (REQ-20260907-053). 종전에는 이 브라우저의
      기억(answerMiss)만 보아서, 찾기가 끝난 뒤 새로고침하거나 다른 탭에서 열면
