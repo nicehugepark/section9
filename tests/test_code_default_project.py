@@ -77,5 +77,62 @@ class TheProjectStandsWhenTheIdentityDoes(unittest.TestCase):
         self.assertEqual(proj, self.m.DEFAULT_PROJECT_SLUG)
 
 
+class TheGuideStandsWithTheProject(unittest.TestCase):
+    """기본 프로젝트가 처음 설 때 안내 요청이 함께 선다 (REQ-20260908-028).
+
+    주인 2026-09-08: 「기본 프로젝트에는 기본적으로 제공되는 open 상태의 요청이
+    존재하는데 사실상 설명서들이 될 것이다 … 설치하자마자 바로 이해를 할 수 있을
+    것 아닌가.」 설치한 사람이 처음 보는 보드에 읽을 것이 있어야 한다.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="s9-cdp-g-")
+        self.m = load(self.root)
+        self.m.cmd_init(type("A", (), {})())
+        self.m.do_user_add("hong", role="admin")
+
+    def _guides(self):
+        out = []
+        for dp, _dn, fns in os.walk(os.path.join(self.root, "vault", "requests")):
+            for fn in fns:
+                if fn.endswith(".md"):
+                    meta, body = self.m.read_doc(os.path.join(dp, fn))
+                    if "guide" in (meta.get("tags") or []):
+                        out.append((meta, body))
+        return out
+
+    def test_g1_guides_stand_open_in_the_default_project(self):
+        slug = self.m.ensure_default_project()
+        self.assertEqual(slug, self.m.DEFAULT_PROJECT_SLUG)
+        guides = self._guides()
+        self.assertGreaterEqual(len(guides), 3, "안내 요청이 서지 않았다")
+        self.assertEqual(len(guides), len(self.m.GUIDE_REQUESTS))
+        for meta, body in guides:
+            self.assertEqual(meta.get("status"), "open", meta.get("title"))
+            self.assertEqual(meta.get("project"), slug, meta.get("title"))
+            self.assertTrue(meta.get("goal"), f"goal 이 없다: {meta.get('title')}")
+            self.assertLessEqual(len(meta.get("title", "")), 20, meta.get("title"))
+            self.assertEqual(meta.get("user"), "hong")
+            self.assertIn("## Original", body)
+
+    def test_g2_calling_twice_does_not_double_the_guides(self):
+        self.m.ensure_default_project()
+        self.m.ensure_default_project()
+        self.assertEqual(len(self._guides()), len(self.m.GUIDE_REQUESTS))
+
+    def test_g3_an_existing_project_gets_no_guides(self):
+        """옛 설치에 소급하지 않는다 — 프로젝트가 이미 있으면 안내도 서지 않는다."""
+        self.m.do_project_add("pay", name="결제", summary="", actor="hong")
+        self.assertEqual(self.m.ensure_default_project(), "")
+        self.assertEqual(self._guides(), [])
+
+    def test_g5_each_guide_names_what_it_teaches(self):
+        """본문만 읽고 셋을 알 수 있다 — 요청이 생기는 자리 · 프로젝트 만들기 · review 판정."""
+        joined = "\n".join(g["body"] for g in self.m.GUIDE_REQUESTS)
+        for must in ("s9 code", "in-progress", "review", "project add",
+                     "+ 프로젝트 만들기", "✓ 승인", "↺ 반려"):
+            self.assertIn(must, joined, f"안내에 「{must}」가 없다")
+
+
 if __name__ == "__main__":
     unittest.main()

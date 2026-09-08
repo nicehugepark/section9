@@ -20055,7 +20055,136 @@ def ensure_default_project():
         do_project_default(res["slug"], actor=owner, via=" (s9 init)")
     except ValueError:
         return ""
+    # 처음 선 기본 프로젝트에는 읽을 것이 함께 선다 (REQ-20260908-028) — 이
+    # 함수는 프로젝트가 없을 때만 여기까지 오므로 안내도 한 벌만 선다.
+    try:
+        seed_guide_requests(res["slug"], owner)
+    except Exception:
+        pass                    # 안내가 못 서도 프로젝트는 섰다 — 설치를 막지 않는다
     return res["slug"]
+
+
+# ── 안내 요청 (REQ-20260908-028) ─────────────────────────────────────────────
+# 주인 2026-09-08 12:55: 「기본 프로젝트에는 기본적으로 제공되는 open 상태의 요청이
+# 존재하는데 사실상 설명서들이 될 것이다 … 설치하자마자 바로 이해를 할 수 있을 것
+# 아닌가. 둘러보는 퍼널이 짧아지고 말이야.」 설치한 사람이 처음 보는 보드에 읽을
+# 것이 있어야 한다 — guide.html 은 찾아가야 보이지만 카드는 첫 화면에 선다.
+# 본문은 화면의 글자(탭·단추 이름)를 그대로 쓴다. 다 읽은 카드는 ✓ 승인으로 done
+# 에 보내면 된다 — 그것이 곧 첫 판정 연습이다.
+GUIDE_REQUESTS = [
+    {
+        "title": "안내 1 — 요청은 어떻게 생기나",
+        "summary": "터미널에 일을 시키면 카드가 생기고 open → in-progress → review → done 으로 흐른다",
+        "goal": "이 카드를 읽은 사람이 터미널에 한 줄을 치고 Board 에 카드가 생기는 것을 본다",
+        "body": """이 카드는 section9 이 설치 때 세운 안내입니다. 다 읽었으면 카드의 ✓ 승인을 눌러 done 으로 보내십시오 — 그것이 첫 판정입니다.
+
+## 요청이 생기는 자리
+
+터미널에서 `~/section9/bin/s9 code` 를 실행하고, 뜨는 Claude Code 입력창에 평소 말하듯 적습니다.
+
+    결제 모듈에 환불 API 추가해줘
+
+그 한 줄이 곧 요청입니다. 따로 등록할 것은 없습니다 — 훅이 자동으로 REQ 카드를 만들고 화면에 「기록했다」는 안내가 뜹니다. 질문(「이 함수는 왜 이렇게 짰어?」)은 카드 없이 답만 받습니다.
+
+## 카드가 흐르는 순서
+
+- open — 접수. 터미널에서 일을 시킨 순간 생깁니다.
+- in-progress — 진행. 타치코마(리드)가 착수하면 옮깁니다. 카드 왼쪽의 점이 지금 실제로 실행 중인지를 말합니다.
+- review — 확인 대기. 사람만 답할 수 있는 판정을 청하는 자리입니다. 카드에 확인 포인트(무엇을 눌러 보고 무엇이 보이면 승인인지)가 뜹니다.
+- done — 완료. ✓ 승인을 누르면 옮겨집니다.
+- ↺ 반려 — 사유를 적으면 in-progress 로 돌아가고, 약 30초 안에 백그라운드 작업이 사유를 읽고 재작업해 다시 review 로 올립니다.
+- blocked — 대기. 사람의 손이나 다른 요청의 완료를 기다립니다. 카드에 대기 사유가 그대로 보입니다.
+
+## 알아 두면 좋은 명령 셋
+
+    ~/section9/bin/s9 digest                 # 지금 진행 중인 작업의 요약
+    ~/section9/bin/s9 show REQ-20260908-001  # 요청 문서 하나의 전문
+    ~/section9/bin/s9 blocked                # 대기 중인 요청과 사유
+
+더 자세한 것은 대시보드 우상단의 가이드(guide.html) 3·4장에 있습니다.
+""",
+    },
+    {
+        "title": "안내 2 — 프로젝트 만들기",
+        "summary": "카드가 쌓이면 프로젝트로 묶는다 — Projects 탭의 + 프로젝트 만들기, 또는 터미널 한 줄",
+        "goal": "이 카드를 읽은 사람이 프로젝트를 하나 만들고 요청이 그 프로젝트에 붙는 것을 본다",
+        "body": """이 카드는 section9 이 설치 때 세운 안내입니다. 다 읽었으면 카드의 ✓ 승인을 눌러 done 으로 보내십시오.
+
+## 지금 이 카드가 있는 자리
+
+이 카드는 「기본 프로젝트 (general)」에 있습니다. 프로젝트를 따로 정하지 않은 요청은 전부 여기 붙습니다 — 혼자 쓰는 동안은 이 하나로 충분합니다.
+
+## 프로젝트를 만드는 두 길
+
+카드가 쌓여 「결제 건」「사내 도구 건」처럼 묶고 싶어지면 프로젝트를 만듭니다. 만든 사람이 owner 가 됩니다.
+
+1. 화면 — 상단 탭 Projects → 왼쪽 목록 위의 + 프로젝트 만들기 → slug(영문·숫자·._-)와 이름을 적습니다.
+2. 터미널 — 한 줄:
+
+       ~/section9/bin/s9 project add pay --name "결제 시스템"
+
+## 요청을 프로젝트에 붙이는 법
+
+- 세션을 열 때: `~/section9/bin/s9 code --project pay` — 그 세션의 요청은 전부 pay 에 붙습니다.
+- 프롬프트 첫 줄에: `[프로젝트: pay] 환불 API 추가해줘` — 훅이 떼어 넘깁니다.
+- 이미 만든 카드는: `~/section9/bin/s9 set <REQ 번호> --project pay`, 또는 Board 카드에서 프로젝트를 고릅니다.
+
+프로젝트에 붙은 요청이 접수되면 그 프로젝트의 projects/pay/CONTEXT.md 가 세션에 자동으로 주입됩니다 — 배경 설명을 매번 반복하지 않아도 됩니다. 멤버·역할은 Projects 탭에서 프로젝트를 고르면 열리는 정보 패널에서 바꿉니다.
+
+더 자세한 것은 가이드(guide.html) 5장 「Projects」에 있습니다.
+""",
+    },
+    {
+        "title": "안내 3 — 확인 대기 카드 판정하기",
+        "summary": "review 열의 카드는 사람의 판정을 기다린다 — 확인 포인트대로 눌러 보고 ✓ 승인 또는 ↺ 반려",
+        "goal": "이 카드를 읽은 사람이 review 카드 하나를 확인 포인트대로 확인하고 승인 또는 반려한다",
+        "body": """이 카드는 section9 이 설치 때 세운 안내입니다. 다 읽었으면 카드의 ✓ 승인을 눌러 done 으로 보내십시오.
+
+## review 열에 카드가 오면
+
+타치코마가 일을 끝내고 사람만 답할 수 있는 것을 물을 때 카드가 review 열로 옵니다. 카드에는 확인 포인트가 있습니다 — 무엇이 달라졌나 / 어디서 무엇을 눌러 보나 / 무엇이 보이면 승인이고 무엇이 보이면 반려인가. 그대로 따라 해 보면 됩니다.
+
+## 판정 둘
+
+- ✓ 승인 — 카드가 done 으로 갑니다. 메모를 적으면 타치코마가 그 메모를 후속 작업으로 받습니다(질문이면 답하고, 「그다음 이것도」면 새 요청으로 착수합니다).
+- ↺ 반려 — 사유를 적으면 카드가 in-progress 로 돌아갑니다. 약 30초 안에 백그라운드 작업이 사유를 읽고 재작업해 다시 review 로 올립니다. 자리를 지킬 필요가 없습니다.
+
+## 자주 묻는 것
+
+- 기계로 확인되는 것(테스트·검사)은 타치코마가 스스로 닫습니다 — review 에 오는 것은 취향·방향·바깥 사실처럼 사람만 답할 수 있는 것입니다.
+- TDD 3/5 배지는 그 작업이 스스로 정한 검증 시나리오 5개 중 3개를 통과했다는 뜻입니다. 5/5 가 다 차야 review 로 올라옵니다. 반려하면 0 부터 다시 채웁니다 — 숫자가 준 것처럼 보여도 정상입니다.
+- 채팅으로 물어도 됩니다 — 대시보드의 채팅 입력창에 적으면 지금 열려 있는 세션이 곧바로 답합니다.
+
+더 자세한 것은 가이드(guide.html) 4장 「카드의 일생」에 있습니다.
+""",
+    },
+]
+
+
+def seed_guide_requests(slug, owner):
+    """기본 프로젝트가 처음 설 때 안내 요청을 open 으로 세운다 (REQ-20260908-028).
+    만드는 길은 cmd_new 하나다 — 문서의 모양·번호·색인이 사람이 만든 요청과 같아야
+    화면이 구분 없이 다룬다. 반환: 세운 문서 id 목록."""
+    import contextlib as _ctx
+    import io as _io
+    import types as _types
+    ids = []
+    for g in GUIDE_REQUESTS:
+        args = _types.SimpleNamespace(
+            doc_type="request", title=g["title"], summary=g["summary"],
+            goal=g["goal"], status="open", size="S", priority=None,
+            user=owner, assignee=None, tag_list=["guide"],
+            parent=None, derived_from=None, relates=None, why="",
+            ref_doc=None, ref_link=None, ref_file=None, needs_os="",
+            from_chat="", project=slug, project_tag=None,
+            body=g["body"], body_file=None, origin="human", agent="")
+        out = _io.StringIO()
+        with _ctx.redirect_stdout(out):
+            cmd_new(args)
+        first = (out.getvalue().strip().split() or [""])[0]
+        if first.startswith("REQ-"):
+            ids.append(first)
+    return ids
 
 
 # set 이 받는 8필드 (요청 키 → frontmatter 키). status 만 own 검사가 따로 선다.
@@ -21545,6 +21674,8 @@ def cmd_code(args):
                     if made:
                         print(f"◌ 기본 프로젝트 '{made}' — 프로젝트를 고르지 않은 "
                               f"새 문서가 여기 붙는다 (옮기기: s9 project default <slug>)")
+                        print(f"◌ 안내 요청 {len(GUIDE_REQUESTS)}건이 Board 의 open 열에 "
+                              f"섰다 — 처음이면 그것부터 읽는다")
                 except Exception:
                     pass
             else:
@@ -29518,6 +29649,7 @@ def cmd_init(_args):
     if created:
         print(f"  ↳ 기본 프로젝트 '{created}' — 프로젝트를 고르지 않은 새 문서가 "
               f"여기 붙는다 (옮기기: s9 project default <slug>)")
+        print(f"  ↳ 안내 요청 {len(GUIDE_REQUESTS)}건이 open 으로 섰다 — Board 에서 읽는다")
     elif not all_projects() and not registered_users():
         # 신원이 먼저다 — 등록 전에는 프로젝트를 만들어도 그 사람이 문서를
         # 붙일 수 없다(contribute 가 거짓).
