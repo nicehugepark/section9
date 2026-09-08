@@ -114,6 +114,12 @@ class TestInstanceInit(unittest.TestCase):
 
             # I4. 훅 cwd 감지: S9_ROOT 없이 cwd=인스턴스 → REQ가 인스턴스 vault에 생성
         with self.subTest("i4_hook_cwd_detection"):
+                # 인스턴스는 빈 자리에서 시작하므로 users/ 도 비어 있다
+                # (REQ-20260908-039). 훅은 등록되지 않은 계정의 말을 기록하지
+                # 않으므로(REQ-20260906-074) 사람이 먼저 선다 — 실제로는
+                # `s9 code` 첫 실행이 이 등록을 한다.
+                sh(S9, "user", "add", "alice",
+                   env={**self.env, "S9_ROOT": self.target})
                 payload = {"session_id": "instsess-full", "cwd": self.target,
                            "prompt": "인스턴스에서 대시보드 스킨을 추가해줘"}
                 r = sh(PHOOK, env=self.env, inp=json.dumps(payload))
@@ -134,8 +140,11 @@ class TestInstanceInit(unittest.TestCase):
                 ls = sh(S9, "ls", env=env).stdout
                 self.assertIn("샌드박스", ls)
 
-            # I6. 업그레이드: 업스트림 커밋 → 인스턴스 fetch+merge 로 수령
-        with self.subTest("i6_upgrade_merge"):
+            # I6. 업그레이드: 업스트림 커밋 → 인스턴스가 **코드 경로만** 수령
+            # (REQ-20260908-039). 예전엔 `git merge upstream/main` 이었다 —
+            # 이제 인스턴스의 이력은 업스트림과 갈라져 있어(orphan) merge 가
+            # 성립하지 않고, 성립하면 그 순간 업스트림의 문서가 되살아난다.
+        with self.subTest("i6_upgrade_takes_code_only"):
             up = os.path.join(self.base, "upstream-copy")
             sh("git", "clone", "-q", os.path.join(HERE, ".."), up)
             # 베이스가 detached HEAD(원격 CI)면 클론도 가지가 없어 아래 commit 이
@@ -148,13 +157,33 @@ class TestInstanceInit(unittest.TestCase):
             sh("git", "-c", "user.name=t", "-c", "user.email=t@t",
                "commit", "-q", "-m", "harness upgrade", cwd=up)
             sh("git", "remote", "set-url", "upstream", up, cwd=self.target)
-            r = sh("git", "fetch", "-q", "upstream", cwd=self.target)
-            self.assertEqual(r.returncode, 0, r.stderr)
-            r = sh("git", "-c", "user.name=t", "-c", "user.email=t@t",
-                   "merge", "--no-edit", "upstream/main", cwd=self.target)
-            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            # 인스턴스 안의 bin/s9 는 clone 시점의 것이라 이 명령을 아직 모를 수
+            # 있다 — 이 저장소의 코드로 잰다(실제 사용에서는 새 인스턴스가 이
+            # 코드를 갖고 태어난다).
+            import importlib.machinery
+            import importlib.util
+            prev = os.environ.get("S9_ROOT")
+            os.environ["S9_ROOT"] = self.target
+            try:
+                spec = importlib.util.spec_from_loader(
+                    "s9_upg2",
+                    importlib.machinery.SourceFileLoader("s9_upg2", S9))
+                m = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(m)
+                self.assertEqual(m.instance_upgrade(root=self.target), 0)
+            finally:
+                if prev is None:
+                    os.environ.pop("S9_ROOT", None)
+                else:
+                    os.environ["S9_ROOT"] = prev
             self.assertTrue(os.path.exists(
-                os.path.join(self.target, "docs", "upgrade-marker.md")))
+                os.path.join(self.target, "docs", "upgrade-marker.md")),
+                "업스트림의 코드가 안 왔다")
+            # 그리고 업스트림의 문서는 오지 않는다 — merge 였다면 왔을 것이다
+            up_docs = []
+            for base, _d, names in os.walk(os.path.join(self.target, "vault")):
+                up_docs += [n for n in names if n.startswith("DOC-2026082")]
+            self.assertEqual(up_docs, [], "업스트림의 문서가 함께 왔다")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -20425,6 +20425,54 @@ def cmd_project(args):
     die("usage: s9 project <add|ls|show|set|member|authz|rename> ...")
 
 
+# 업스트림에서 받아 오는 것 — **코드뿐이다** (REQ-20260908-039).
+# 인스턴스의 이력은 업스트림과 갈라져 있으므로(orphan) merge 는 성립하지 않고,
+# 성립한다 해도 그 순간 지운 문서 1390건이 되살아난다. 그래서 경로를 지정해
+# 받는다. 목록에 데이터 경로(vault·users·projects)를 넣지 마라 — 그것이 이
+# 명령이 존재하는 이유다.
+INSTANCE_INIT_BRANCH = "s9-instance-init"   # 첫 commit 까지만 쓰는 이름
+INSTANCE_CODE_PATHS = ("bin", "web", "harness", "docs", "tests", "README.md",
+                       "CLAUDE.md", "pyproject.toml", ".github", ".gitattributes")
+
+
+def instance_upgrade(root=None, run=None):
+    """업스트림의 코드만 받아 온다 — `s9 instance upgrade` (REQ-20260908-039)."""
+    import subprocess
+    root = root or ROOT
+
+    def git(*argv, check=True):
+        if run:
+            r = run(*argv)
+        else:
+            r = subprocess.run(["git", "-C", root, *argv], capture_output=True,
+                               encoding="utf-8", errors="replace")
+        if check and r.returncode != 0:
+            die(f"git {' '.join(argv)} 실패:\n{(r.stderr or '').strip()}")
+        return r
+
+    # 가르는 것은 `.s9-sync` 가 아니라 **upstream remote** 다 — 업스트림 자신도
+    # 마커를 갖고 있어서, 마커로 가르면 이 명령이 업스트림에서도 돈다.
+    if git("remote", "get-url", "upstream", check=False).returncode != 0:
+        die("여기는 인스턴스가 아니다 — upstream remote 가 없다. "
+            "`s9 instance init` 이 만든 저장소에서만 쓴다 "
+            "(업스트림 자신은 그냥 pull 하면 된다)")
+    git("fetch", "--quiet", "upstream")
+    have = [p for p in INSTANCE_CODE_PATHS
+            if git("cat-file", "-e", f"upstream/main:{p}",
+                   check=False).returncode == 0]
+    if not have:
+        die("업스트림에서 받을 코드 경로를 찾지 못했다 — upstream remote 를 확인하라")
+    git("checkout", "upstream/main", "--", *have)
+    st = git("status", "--porcelain", check=False).stdout or ""
+    if not st.strip():
+        print("업스트림과 같다 — 받을 것이 없다")
+        return 0
+    git("commit", "-q", "-m", "upstream 코드 갱신 (s9 instance upgrade)")
+    print("업스트림 코드를 받았다: " + " · ".join(have))
+    print("  문서(vault·users·projects)는 건드리지 않았다.")
+    return 0
+
+
 INSTANCE_TRACK_GITIGNORE = """# section9 인스턴스 저장소 — 데이터(vault 등)를 track한다.
 # 하네스 코드 개선은 업스트림(section9)에서만 하고 merge로 받는다 (docs/08).
 .s9.lock
@@ -20434,6 +20482,12 @@ index/
 users/*/secrets/
 # state/ 는 전부 이 머신 것 — 세션 바인딩도 (REQ-20260902-026, 담당은 문서 lease 가 말한다)
 state/*
+# 대화 원문은 동기화 대상의 96%(158MB)였고 한 번 이력에 쌓인 값을 이력 재작성으로
+# 치렀다 (REQ-20260827-047). 인스턴스에서 그 사고를 되풀이하지 않는다.
+streams/
+users/*/streams/
+# 비밀이 어디 있는지도 이 머신 것이다 (REQ-20260828-028)
+users/*/config/local.json
 scratchpad/
 .claude/
 *.log
@@ -20448,8 +20502,11 @@ def cmd_instance(args):
     section9(업스트림)을 베이스로 데이터를 track하는 사설 작업 저장소를 만든다.
     일반 사용자는 이 명령을 몰라도 된다 — 인스턴스를 clone해서 쓸 뿐."""
     import subprocess
+    if args.action == "upgrade":
+        return instance_upgrade()
     if args.action != "init":
-        die("usage: s9 instance init <사설 저장소 URL> [--dir 경로] [--create]")
+        die("usage: s9 instance init <사설 저장소 URL> [--dir 경로] [--create]\n"
+            "       s9 instance upgrade   # 업스트림의 코드만 받는다")
     url = args.url or die("사설 저장소 URL이 필요하다 — 예: s9 instance init "
                           "git@github.com:your-org/your-org-work.git")
     name = re.sub(r"\.git$", "", url.rstrip("/").rsplit("/", 1)[-1]) or "s9-instance"
@@ -20471,11 +20528,41 @@ def cmd_instance(args):
                             encoding="utf-8", errors="replace")
     upstream_url = up.stdout.strip() if up.returncode == 0 else ROOT
     print(f"① 베이스 clone: {ROOT} → {target}")
-    git("clone", "--quiet", ROOT, target, cwd=None)
-    # 베이스가 detached HEAD 면(원격 CI 가 `checkout <sha>` 로 돈다) 클론에도
-    # 가지가 없어 뒤의 `push origin main` 이 「src refspec main」으로 선다 —
-    # 인스턴스의 가지는 언제나 main 이다 (원격 리눅스 실측 2026-09-06, REQ-20260905-012).
-    git("checkout", "-q", "-B", "main")
+    # `--depth 1` + `file://` — 인스턴스는 업스트림의 **이력**을 쓸 일이 없다.
+    # 로컬 경로를 그대로 주면 git 이 depth 를 무시하므로(hardlink 최적화) file://
+    # 로 준다. 실측 2026-09-08: 그냥 clone 하면 .git 이 271MB 이고 `git log --all`
+    # 에 남의 문서 6,530줄이 남는다 — 인스턴스를 만든 사람이 자기 저장소에서
+    # 남의 기억을 보게 된다.
+    git("clone", "--quiet", "--depth", "1", "file://" + ROOT, target, cwd=None)
+    # **인스턴스는 빈 자리에서 시작한다** (REQ-20260908-039, 주인 지적 2026-09-08:
+    # 「vault 에서 section9 프로젝트의 문서들을 다 가져가는 건 싫은데 말이지…
+    # 아무것도 없이 깨끗하게 시작하는 방법은 없나?」).
+    #
+    # 여기가 `git clone` 으로 시작하는 것은 업스트림이 **코드만** track 한다는
+    # 전제 위에 있었는데, 이 저장소는 vault/·users/·projects/ 를 track 한다
+    # (REQ-20260827-036). 그래서 인스턴스는 코드가 아니라 이 저장소의 기억
+    # 전체를 물려받았다 — 실측 2026-09-08: 문서 1390건과 남의 프로필 4개.
+    # 파일을 나중에 지워도 이력에는 남는다.
+    #
+    # 그래서 가지를 **orphan** 으로 세운다: 이력이 없는 첫 commit 이 되고,
+    # 데이터 경로는 index 와 작업 트리 양쪽에서 뗀다. 코드는 clone 이 이미
+    # 가져다 놓았으니 그대로 남는다.
+    #
+    # 가지 이름이 언제나 main 인 까닭은 그대로다 — 베이스가 detached HEAD 면
+    # (원격 CI 가 `checkout <sha>` 로 돈다) 뒤의 `push origin main` 이
+    # 「src refspec main」으로 선다 (원격 리눅스 실측 2026-09-06, REQ-20260905-012).
+    # 이름을 잠시 빌린다 — clone 의 HEAD 가 이미 main 이라 `--orphan main` 은
+    # 「a branch named 'main' already exists」로 선다. 첫 commit 뒤에 -M 로
+    # 그 이름을 가져온다(옛 main 은 그때 사라진다).
+    git("checkout", "-q", "--orphan", INSTANCE_INIT_BRANCH)
+    git("rm", "-r", "-q", "--cached", "--ignore-unmatch",
+        "vault", "users", "projects", ".s9-sync", check=False)
+    for _d in ("vault", "users", "projects"):
+        shutil.rmtree(os.path.join(target, _d), ignore_errors=True)
+    try:
+        os.remove(os.path.join(target, ".s9-sync"))
+    except OSError:
+        pass
     git("remote", "rename", "origin", "upstream")
     git("remote", "set-url", "upstream", upstream_url)
     git("remote", "add", "origin", url)
@@ -20529,8 +20616,18 @@ def cmd_instance(args):
         print(f"   대시보드 포트: {inst_port} (state/port — 9909의 기본 워크스페이스와 공존)")
     git("add", "-A")
     git("-c", "user.name=s9-instance", "-c", "user.email=s9@local",
-        "commit", "-q", "-m", "instance init — 데이터 track 전환 (s9 instance init)")
-    print("③ 데이터 track 전환 + 초기 commit 완료")
+        "commit", "-q", "-m",
+        "section9 인스턴스 — 코드만, 문서는 빈 자리에서 시작 (s9 instance init)")
+    git("branch", "-M", "main")     # 빌린 이름을 돌려준다 (옛 이력은 여기서 사라진다)
+    # 업스트림의 흔적을 걷는다 (REQ-20260908-039). 원격 추적 가지가 남으면
+    # `git log --all` 에 남의 문서가 그대로 보이고 그 객체가 .git 에 남는다.
+    # 필요할 때 `s9 instance upgrade` 가 다시 fetch 한다.
+    for _ref in (git("for-each-ref", "--format=%(refname)", "refs/remotes/upstream",
+                     check=False).stdout or "").split():
+        git("update-ref", "-d", _ref, check=False)
+    git("reflog", "expire", "--expire=now", "--all", check=False)
+    git("gc", "--quiet", "--prune=now", check=False)
+    print("③ 빈 자리에서 첫 commit 완료 — 문서 0건, 이력 1개")
 
     if getattr(args, "create", False):
         gh = shutil.which("gh") or os.path.expanduser("~/.local/bin/gh")
@@ -20557,7 +20654,7 @@ def cmd_instance(args):
   cd {target} && bin/s9-install        # 이 머신의 훅·스킬 설치(멱등)
   bin/s9 code                          # 세션 시작 — 이후 평소처럼 프롬프트
 팀원 합류: git clone {url} 후 위 두 줄과 동일.
-업그레이드(관리자): cd {target} && git fetch upstream && git merge upstream/main && git push""")
+업그레이드(관리자): cd {target} && bin/s9 instance upgrade""")
 
 
 def _maybe_update_claude():
@@ -29793,7 +29890,7 @@ def main():
     sy.set_defaults(fn=cmd_sync)
 
     ins = sub.add_parser("instance", help="인스턴스 저장소 초기화 (업스트림-인스턴스 플로우, docs/08)")
-    ins.add_argument("action", choices=["init"])
+    ins.add_argument("action", choices=["init", "upgrade"])
     ins.add_argument("url", nargs="?", help="사설 인스턴스 저장소 URL")
     ins.add_argument("--dir", help="생성 위치 (기본 ~/<저장소 이름>)")
     ins.add_argument("--create", action="store_true",

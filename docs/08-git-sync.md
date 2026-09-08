@@ -114,7 +114,7 @@ rebase → push** 한다. 이 문서는 그 동작을 코드(`bin/s9.py` 의 `sy
 운영 방식은 둘이고 동기화 코드는 같다.
 
 - **section9 저장소 자체를 작업 공간으로** — `vault/ users/ projects/` 가 이 저장소에 track 된다. 혼자 또는 개발자가 쓰는 길.
-- **인스턴스 저장소** — `s9 instance init <사설 URL>` 이 section9 을 upstream 으로 두고 데이터를 track 하는 사설 저장소를 만들며, 그때 `.s9-sync` 를 쓴다. 팀원은 인스턴스만 clone 한다. 코어 경로는 pre-commit(`s9-guard`)이 보호한다(DOC-20260824-003, guide.md 9장).
+- **인스턴스 저장소** — `s9 instance init <사설 URL>` 이 section9 을 upstream 으로 두고 데이터를 track 하는 사설 저장소를 만들며, 그때 `.s9-sync` 를 쓴다. **인스턴스는 빈 자리에서 시작한다** (REQ-20260908-039): 가지를 orphan 으로 세워 업스트림의 문서·프로필이 작업 트리에도 이력에도 들어오지 않는다 — 코드만 온다. 그래서 업그레이드는 merge 가 아니라 `s9 instance upgrade` 다(이력이 갈라져 있고, merge 가 성공하면 그 순간 업스트림의 문서가 되살아난다). 팀원은 인스턴스만 clone 한다. 코어 경로는 pre-commit(`s9-guard`)이 보호한다(DOC-20260824-003, guide.md 9장).
 
 ## 9. 알려진 함정 — 2026-09-06 실제 발생 사례 셋
 

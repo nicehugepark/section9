@@ -630,7 +630,7 @@ cd ~/section9 && bin/s9 instance init git@github.com:your-org/your-org-work.git
   cd /home/admin/your-org-work && bin/s9-install    # 이 기계의 훅·스킬 설치(멱등)
   bin/s9 code                          # 세션 시작 — 이후 평소처럼 프롬프트
 팀원 합류: git clone git@github.com:your-org/your-org-work.git 후 위 두 줄과 동일.
-업그레이드(관리자): cd /home/admin/your-org-work && git fetch upstream && git merge upstream/main && git push
+업그레이드(관리자): cd /home/admin/your-org-work && bin/s9 instance upgrade
 ```
 
 - ⑤의 "push 실패"는 원격 사설 저장소를 아직 안 만든 첫 실행의 정상 경로입니다 — 출력이 알려 주는 세 단계대로 저장소를 만들고 다시 push 하면 끝. 
@@ -655,7 +655,7 @@ upstream(section9)에 개선이 올라오면, 관리자가 인스턴스에서 �
 
 ```
 cd ~/your-org-work
-git fetch upstream && git merge upstream/main
+bin/s9 instance upgrade
 git push
 ```
 
@@ -663,17 +663,17 @@ git push
 
 ### 보호 설정 — 코어 경로를 팀원이 못 고치게
 
-인스턴스에서 프레임워크 코드(`bin/`·`web/`·`harness/`·`.github/`·`.gitignore`)가 수정되면 upstream merge 가 깨끗하지 않게 됩니다. 두 겹으로 막습니다:
+인스턴스에서 프레임워크 코드(`bin/`·`web/`·`harness/`·`.github/`·`.gitignore`)가 수정되면 업그레이드가 그 수정을 덮어씁니다. 두 겹으로 막습니다:
 
 - **로컬 1차 — pre-commit 검사**: `s9-install` 이 설치하는 pre-commit 훅(s9-guard)이 admin 이 아닌 commit 의 코어 경로 변경을 차단합니다. 
 - **서버측 최종 — CODEOWNERS + branch protection**: 저장소의 `.github/CODEOWNERS` 에서 `@OWNER` 를 실제 admin GitHub 계정(또는 팀)으로 교체하고, Settings › Branches › main 에 보호 규칙을 추가합니다 — "Require a pull request before merging" + "Require review from Code Owners". 이러면 코어 경로 변경은 admin 승인 없이 main 에 들어갈 수 없습니다. 
 
 ### 충돌 시 대처 — upstream cherry-pick 원칙
 
-upstream merge 가 늘 깨끗한 이유는 교집합이 없기 때문입니다: 데이터 파일은 upstream 에 없고, 코어 파일은 인스턴스에서 수정하지 않습니다. 이 원칙이 깨졌을 때의 대처는 하나입니다:
+업그레이드가 늘 깨끗한 이유는 교집합이 없기 때문입니다: 데이터 파일은 upstream 에 없고, 코어 파일은 인스턴스에서 수정하지 않습니다. 이 원칙이 깨졌을 때의 대처는 하나입니다:
 
-- **section9 결함을 발견하면** 인스턴스에서 고치지 마세요. upstream(section9 카피)에서 수정·테스트·push 하고, 각 인스턴스는 다음 `merge upstream/main` 으로 수령합니다. 
-- **실수로 인스턴스에서 코어를 고쳤다면** — 비admin 은 검사가 commit 을 차단하니 그 자리에서 되돌리면 됩니다. admin commit 이 들어갔다면 그 commit 을 **upstream 에 cherry-pick** 한 뒤, 인스턴스는 merge 로 다시 정렬합니다. 
+- **section9 결함을 발견하면** 인스턴스에서 고치지 마세요. upstream(section9 카피)에서 수정·테스트·push 하고, 각 인스턴스는 다음 `s9 instance upgrade` 로 수령합니다. 
+- **실수로 인스턴스에서 코어를 고쳤다면** — 비admin 은 검사가 commit 을 차단하니 그 자리에서 되돌리면 됩니다. admin commit 이 들어갔다면 그 commit 을 **upstream 에 cherry-pick** 한 뒤, 인스턴스는 `s9 instance upgrade` 로 다시 정렬합니다 — 그 명령은 코드 경로를 upstream 것으로 덮어쓰므로 인스턴스의 흠집이 그대로 사라집니다. 
 
 **section9 자체를 개발하는 사람만** section9 upstream 카피(`~/section9`)에서 작업합니다. 한 기계에서 upstream 카피와 인스턴스를 병행해도 됩니다 — 훅은 세션의 현재 디렉토리 기준으로 해당 인스턴스의 vault 에 기록합니다. 
 
