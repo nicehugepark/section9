@@ -609,15 +609,108 @@ def should_retry(red):
     return 0 < len(red) <= RETRY_MAX_FILES
 
 
-def record_flaky(files, note):
-    """단독 재실행에서 통과로 바뀐 파일을 남긴다 — 간헐의 증거이자 격리의 재료."""
+FLAKY_MARK = "__S9_FLAKY="   # 원격 러너가 찍는 「뒤집힌 파일」 — 이 머신이 걷어 기록한다
+LAST_RUN_FLAKY = []          # 이번 실행에서 실패 → 통과로 뒤집힌 파일
+
+
+def flipped_files(red, retry_output):
+    """좁혀서-다시 실행에서 **실패 → 통과**로 뒤집힌 파일만 골라낸다.
+
+    예전에는 재실행이 통째로 통과했을 때만 기록했다(returncode == 0). 그래서
+    실패 셋 중 하나가 진짜 결함이면 나머지 둘의 간헐 실패는 한 줄도 남지 않았다 —
+    삼킨 자리다(REQ-20260908-006). 재실행 출력에서 아직 실패인 파일을 빼면
+    뒤집힌 것이 남는다.
+    """
+    still = set(red_files_from(retry_output or ""))
+    return [f for f in (red or []) if f not in still]
+
+
+def record_flaky(files, note, sha=None, attempt=2, where="로컬"):
+    """뒤집힌 파일을 **파일마다 한 줄씩** 남긴다 — 간헐의 증거이자 격리의 재료.
+
+    한 줄에 목록을 뭉쳐 담던 것을 파일 단위로 편다(REQ-20260908-006): 읽는
+    자리(--flaky)가 묻는 것은 「어느 파일이 몇 번」인데 뭉친 줄은 그 물음에
+    답하지 못한다. 실행 sha · 몇 번째 시도에 통과했는지 · 어디서 돌았는지를
+    함께 적어 어느 commit 의 무엇이었는지 되짚을 수 있게 한다. 옛 형식
+    (files 목록) 줄은 읽는 쪽이 함께 읽는다.
+    """
+    files = [f for f in (files or []) if f]
+    if not files:
+        return
+    if sha is None:
+        sha = (_git(REPO, "rev-parse", "HEAD") or "")[:7]
     try:
         os.makedirs(os.path.dirname(FLAKY_FILE), exist_ok=True)
         with open(FLAKY_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": time.time(), "files": files, "note": note},
-                               ensure_ascii=False) + "\n")
+            for name in files:
+                f.write(json.dumps({"ts": time.time(), "sha": (sha or "")[:7],
+                                    "file": name, "attempt": int(attempt),
+                                    "where": where, "note": note},
+                                   ensure_ascii=False) + "\n")
     except OSError:
         pass
+
+
+def read_flaky(days=14, now=None, path=None):
+    """기록을 파일별로 센다 — [(파일, 횟수, 마지막 ts, [sha…])] 잦은 순.
+
+    깨진 줄·옛 형식 줄이 섞여 있어도 세는 일을 멈추지 않는다.
+    """
+    now = time.time() if now is None else now
+    since = (now - days * 86400) if days else 0
+    try:
+        with open(path or FLAKY_FILE, encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+    rows = {}
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        try:
+            ts = float(rec.get("ts") or 0)
+        except (TypeError, ValueError):
+            ts = 0.0
+        if ts < since:
+            continue
+        names = rec.get("files") or ([rec.get("file")] if rec.get("file") else [])
+        sha = str(rec.get("sha") or "").strip()
+        for name in names:
+            if not name:
+                continue
+            n, last, shas = rows.get(name, (0, 0.0, []))
+            if sha and sha not in shas:
+                shas.append(sha)
+            rows[name] = (n + 1, max(last, ts), shas)
+    return sorted(((k, v[0], v[1], v[2]) for k, v in rows.items()),
+                  key=lambda r: (-r[1], -r[2]))
+
+
+def flaky_report(days=14, out=None):
+    """`python3 tests/ --flaky` — 최근 N일의 간헐 실패를 표 한 벌로 낸다."""
+    out = out or sys.stdout
+    rows = read_flaky(days)
+    rel = os.path.relpath(FLAKY_FILE, REPO)
+    if not rows:
+        print(f"최근 {days}일 간헐 실패 기록 없음 ({rel})", file=out)
+        return 0
+    total = sum(r[1] for r in rows)
+    print(f"간헐 실패 — 최근 {days}일 · {rel}", file=out)
+    print("횟수  마지막       파일", file=out)   # 한글은 두 칸이라 폭을 손으로 맞춘다
+    for name, n, ts, shas in rows:
+        when = time.strftime("%m-%d %H:%M", time.localtime(ts))
+        tail = f"  ({' '.join(shas[-3:])})" if shas else ""
+        print(f"{n:>4}  {when:<11}  {name}{tail}", file=out)
+    print(f"합계 {total}건 · 파일 {len(rows)}개 — 같은 파일이 두 번 넘게 보이면 "
+          f"격리(state/test-quarantine.json)하고 REQ 로 등록하라.", file=out)
+    return 0
 
 
 def run_sharded(pats, jobs, bump=None, skip=()):
@@ -629,6 +722,7 @@ def run_sharded(pats, jobs, bump=None, skip=()):
     된다. 반환: (ok, 돈 파일 수)."""
     import subprocess
     import tempfile
+    LAST_RUN_FLAKY[:] = []
     files = [f for f in matched_files(pats) if f not in set(skip)]   # skip = 격리 (18조)
     body = [f for f in files if f not in SERIAL]
     tail = [f for f in files if f in SERIAL]
@@ -762,16 +856,31 @@ def run_sharded(pats, jobs, bump=None, skip=()):
     if not ok and should_retry(red):
         print(f"[좁혀서 다시] 실패한 파일 {len(red)}개만 단독으로 한 번 더 실행한다: "
               f"{' '.join(red)}", file=sys.stderr)
+        # 출력을 걷어 **무엇이 뒤집혔는지**까지 본다 (REQ-20260908-006). 원출력은
+        # 그대로 흘려보낸다 — 재실행이 숨으면 이 구조가 거짓이 된다.
         r = subprocess.Popen([sys.executable, HERE, "--no-reuse", *red], env=env,
-                             stdin=subprocess.DEVNULL)
+                             stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         RETRY_PROCS.append(r)
+        chunks = []
+        for raw in r.stdout:
+            line = raw.decode("utf-8", "replace")
+            chunks.append(line)
+            sys.stderr.write(line)
+        sys.stderr.flush()
         r.wait()
         RETRY_PROCS.remove(r)
+        flipped = flipped_files(red, "".join(chunks))
+        if flipped:
+            LAST_RUN_FLAKY[:] = flipped
+            record_flaky(flipped, "샤드에서 실패 · 단독 실행은 통과", attempt=2,
+                         where=("원격" if os.environ.get("S9_TEST_WORKER") else "로컬"))
+            print(f"[좁혀서 다시] 단독 실행에서 통과로 뒤집힌 {len(flipped)}개를 간헐 "
+                  f"실패(flaky)로 기록했다: {' '.join(flipped)} — `python3 tests/ --flaky` "
+                  f"로 최근 기록을 본다. 같은 파일이 두 번 넘게 보이면 격리하고 REQ 로 등록하라.",
+                  file=sys.stderr)
         if r.returncode == 0:
             ok = True
-            record_flaky(red, "샤드에서 실패 · 단독 실행은 통과")
-            print(f"[좁혀서 다시] 단독 실행은 통과 — 간헐 실패(flaky)로 기록했다 ({FLAKY_FILE}). "
-                  f"두 번째 보이면 격리하고 REQ 로 등록하라.", file=sys.stderr)
     return ok, done_files
 
 
@@ -963,6 +1072,7 @@ def full_green_age(repo=None):
 
 USAGE = """usage: python3 tests/ [패턴 …] [--jobs N] [--no-reuse] [--smoke] [--changed]
                         [--remote <비밀 이름> [--remember]] [--local] [--is-green] [--full-green-age]
+                        [--flaky [N]]
 
   패턴 …          파일 이름 조각으로 골라 실행 (예: port_pool roster_api). 없으면 전체.
   --jobs N        병렬 샤드 수 (기본은 CPU·포트 구간에 맞춘 값)
@@ -972,6 +1082,7 @@ USAGE = """usage: python3 tests/ [패턴 …] [--jobs N] [--no-reuse] [--smoke] 
   --local         기억된 원격을 이번만 끈다
   --is-green      지금 내용의 전체 통과 기록이 있으면 0, 없으면 1 (실행 안 함)
   --full-green-age  마지막 전체 통과 기록의 나이(초)
+  --flaky [N]     최근 N일(기본 14)의 간헐 실패를 파일별 횟수 표로 (실행 안 함)
 """
 
 
@@ -984,6 +1095,11 @@ def main():
     # 임시 루트도 만들지 않는다: 이 갈래는 시험을 한 건도 돌지 않는다.
     if "--is-green" in sys.argv[1:]:
         return 0 if full_suite_green() else 1
+    if "--flaky" in sys.argv[1:]:
+        # 삼킨 것을 읽는 자리 (REQ-20260908-006). 시험은 한 건도 돌지 않는다.
+        rest = sys.argv[1:][sys.argv[1:].index("--flaky") + 1:]
+        days = int(rest[0]) if rest and rest[0].isdigit() else 14
+        return flaky_report(days)
     if "--full-green-age" in sys.argv[1:]:
         age = full_green_age()
         print("none" if age is None else int(age))
@@ -1036,6 +1152,11 @@ def main():
                       "(작업 트리에 미커밋 변경이 있어 지문 기록은 생략)", file=sys.stderr)
         elif rc != 0 and full:
             record_last_red(remote_run.LAST_RED or ["(원격 머신)"], fp)
+        if remote_run.LAST_FLAKY:
+            record_flaky(remote_run.LAST_FLAKY, "원격 샤드에서 실패 · 단독 실행은 통과",
+                         sha=(remote_run.LAST_SHA or _sha or ""), attempt=2, where="원격")
+            print(f"[원격 머신] 간헐 실패로 기록했다: {' '.join(remote_run.LAST_FLAKY)} — "
+                  f"`python3 tests/ --flaky`", file=sys.stderr)
         if full:
             # 결과가 스스로 도착한다 (REQ-20260906-029) — 백그라운드 실행일 때만 움직인다
             # 파일 수는 **원격이 센 것**을 말한다 — 이 머신의 목록 길이를 말하면
@@ -1205,6 +1326,11 @@ def main():
                 # 가른다(실측 2026-09-06 ee223fa: 표식이 안 찍혀 「실패 파일을 못
                 # 읽었다」로 알림이 왔다, REQ-20260906-060).
                 print(async_notify.RED_MARK + " ".join(LAST_RUN_RED), flush=True)
+            if os.environ.get("S9_TEST_WORKER") and LAST_RUN_FLAKY:
+                # 원격에서 뒤집힌 파일을 이 머신이 걷어 제 기록에 남긴다
+                # (REQ-20260908-006): 그러지 않으면 간헐 실패의 증거가 전부 원격
+                # 머신에만 쌓여 이쪽 state/test-flaky.jsonl 은 영영 비어 있다.
+                print(FLAKY_MARK + " ".join(LAST_RUN_FLAKY), flush=True)
             if os.environ.get("S9_TEST_WORKER"):
                 # 이 머신이 원격의 「몇 파일을 셌나」를 이 한 줄로 받는다. 통과/실패와
                 # 무관하게 언제나 찍는다 — 표식이 없으면 이 머신은 통과라고 하지 않는다.

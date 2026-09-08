@@ -168,12 +168,14 @@ def remote_script(sha, dest, jobs, pats_argv, *, user=""):
 
 RC_MARK = "__S9_REMOTE_RC="
 RED_MARK = "__S9_FULL_RED="       # 원격 러너가 끝에 찍는 실패 파일 목록 (async_notify 와 같은 글자)
+FLAKY_MARK = "__S9_FLAKY="        # 원격이 찍는 「실패 → 통과로 뒤집힌 파일」 (REQ-20260908-006)
 RAN_MARK = "__S9_RAN="            # 원격 러너가 끝에 찍는 **셈에 든 파일 수** (돈 것 + 격리한 것)
 HAVE_MARK = "__S9_HAVE="          # 원격이 이미 가진 커밋 (증분 bundle 의 기준점)
 PREP_RC = {90: "커밋 꾸러미(bundle)를 못 받음", 91: "작업자리를 못 만듦",
            92: "작업자리로 못 들어감", 93: "커밋 꾸러미에서 못 받음",
            94: "펴기 실패", 95: "clean 실패", 96: "편 커밋이 요청과 다름"}
 LAST_RED = []                     # 마지막 run_remote 가 걷은 실패 파일
+LAST_FLAKY = []                   # 마지막 run_remote 가 걷은 간헐 실패 파일
 LAST_RAN = None                   # 원격이 실제로 센 파일 수 (표식을 못 받았으면 None)
 LAST_HAVE = None                  # 원격이 이미 가진 커밋 (probe 가 채운다)
 LAST_TOOK = 0.0                   # 마지막 run_remote 의 소요(초)
@@ -203,6 +205,9 @@ def _ssh(key, remote_cmd, stdin=None, stream=True, timeout=None):
             continue
         if line.startswith(RED_MARK):
             LAST_RED[:] = line[len(RED_MARK):].split()
+            continue
+        if line.startswith(FLAKY_MARK):
+            LAST_FLAKY[:] = line[len(FLAKY_MARK):].split()
             continue
         if line.startswith(HAVE_MARK):
             global LAST_HAVE
@@ -250,6 +255,7 @@ def run_remote(key, pats_argv, jobs=16, name=None, fingerprint=None, on_green=No
     """
     global LAST_RAN, LAST_HAVE
     LAST_RED[:] = []
+    LAST_FLAKY[:] = []
     LAST_RAN = None
     LAST_HAVE = None
     name = name or os.path.basename(REPO)
