@@ -53,9 +53,19 @@ class DefaultProject(unittest.TestCase):
         self.root = tempfile.mkdtemp(prefix="s9defproj-")
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.base = {**os.environ, "S9_ROOT": self.root, "S9_MACHINE": "testbox"}
-        for k in ("S9_SESSION", "S9_AUTO_RESUME", "S9_JOB_REQ", "S9_USER",
-                  "S9_PROJECT"):
+        for k in ("S9_SESSION", "S9_AUTO_RESUME", "S9_JOB_REQ", "S9_PROJECT"):
             self.base.pop(k, None)
+        self.base["S9_USER"] = "me"      # 이 판의 사람 — 등록은 시험이 직접 한다
+
+    def install(self):
+        """설치의 순서 그대로: init → 사용자 등록 → init.
+
+        `s9 init` 은 **사용자를 등록하지 않는다** (REQ-20260908-027) — 임시 vault 에
+        OS 계정이 섞이면 남의 시험 픽스처가 오염된다. 등록이 끝난 뒤의 init 이
+        기본 프로젝트를 세운다."""
+        self.cli("init")
+        self.cli("user", "add", "me")
+        self.cli("init")
 
     def cli(self, *argv, env=None, check=True):
         r = subprocess.run([S9, *argv], capture_output=True, text=True,
@@ -99,29 +109,30 @@ class DefaultProject(unittest.TestCase):
 
     # ── S1. 빈 vault 에서 init 하면 프로젝트가 하나 선다 ─────────────────
     def test_s1_init_creates_default_project(self):
+        # 등록된 사용자가 없으면 init 은 아무것도 만들지 않는다 — 신원이 먼저다
+        r = self.cli("init")
+        self.assertFalse(os.listdir(os.path.join(self.root, "users")))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.root, "vault", "projects", self.SLUG + ".md")))
+        self.assertIn("s9 user add", r.stdout)          # 왜 안 섰는지 한 줄
+        # 등록한 뒤의 init 이 기본 프로젝트를 세운다
+        self.cli("user", "add", "me")
         r = self.cli("init")
         self.assertIn(self.SLUG, r.stdout)
         meta = self.proj_meta(self.SLUG)
         self.assertEqual(meta["slug"], self.SLUG)
         self.assertEqual(meta["title"], self.NAME)
         self.assertEqual((meta.get("is_default") or "").lower(), "true")
-        # 순서 제약: 사용자 등록 → 프로젝트 생성 (owner 가 users/ 에 없으면
-        # contribute 가 거짓이라 프로젝트는 서 있는데 문서가 하나도 안 붙는다)
-        owner = re.search(r"owner", open(
-            os.path.join(self.root, "vault", "projects", self.SLUG + ".md"),
-            encoding="utf-8").read())
-        self.assertTrue(owner)
-        self.assertTrue(os.listdir(os.path.join(self.root, "users")))
+        self.assertEqual(os.listdir(os.path.join(self.root, "users")), ["me"])
+        self.assertIn("me", open(os.path.join(
+            self.root, "vault", "projects", self.SLUG + ".md"),
+            encoding="utf-8").read())                   # owner 는 등록된 사람
         self.assertTrue(os.path.exists(os.path.join(
             self.root, "projects", self.SLUG, "CONTEXT.md")))
-        # 설치가 먼저 등록해 둔 이름을 그 사람이 다시 치는 것은 오류가 아니다 —
-        # digest 는 새 설치에 `s9 user add <이름>` 을 안내한다.
-        owner = os.listdir(os.path.join(self.root, "users"))[0]
-        self.cli("user", "add", owner)
 
     # ── S2. 멱등: 이미 프로젝트가 있으면 아무 일도 없다 ──────────────────
     def test_s2_idempotent_on_existing_repo(self):
-        self.cli("init")
+        self.install()
         self.cli("project", "add", "other", "--name", "다른 것")
         before = sorted(os.listdir(os.path.join(self.root, "vault", "projects")))
         users_before = sorted(os.listdir(os.path.join(self.root, "users")))
@@ -134,7 +145,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S3. 새 설치의 첫 요청이 미정 없이 붙는다 ────────────────────────
     def test_s3_first_request_lands_on_default(self):
-        self.cli("init")
+        self.install()
         r, meta = self.new_req()
         self.assertEqual(meta.get("project"), self.SLUG)
         self.assertEqual(meta.get("project_source"), "default")
@@ -142,7 +153,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S4. 둘째 프로젝트가 생겨도 미정으로 떨어지지 않는다 ─────────────
     def test_s4_second_project_does_not_break_it(self):
-        self.cli("init")
+        self.install()
         self.cli("project", "add", "other", "--name", "다른 것")
         r, meta = self.new_req()
         self.assertEqual(meta.get("project"), self.SLUG)
@@ -151,7 +162,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S5. 지정을 옮기면 그 뒤 문서만 따라간다 (소급 없음) ─────────────
     def test_s5_moving_the_designation(self):
-        self.cli("init")
+        self.install()
         self.cli("project", "add", "other", "--name", "다른 것")
         _, first = self.new_req()
         self.cli("project", "default", "other")
@@ -165,7 +176,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S6. 명시·세션 바인딩이 기본을 이긴다 (①③ > ④) ──────────────────
     def test_s6_explicit_and_binding_win(self):
-        self.cli("init")
+        self.install()
         self.cli("project", "add", "other", "--name", "다른 것")
         _, meta = self.new_req("--project", "other")
         self.assertEqual(meta.get("project"), "other")
@@ -177,7 +188,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S7. 기본 지정이 없는 옛 저장소는 종전 규칙(하나뿐이면) 그대로 ───
     def test_s7_legacy_only_rule_survives(self):
-        self.cli("init")
+        self.install()
         self.unset_default()
         _, meta = self.new_req()
         self.assertEqual(meta.get("project"), self.SLUG)
@@ -185,7 +196,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S8. 지정이 없고 후보가 여럿이면 사람이 고른다 (⑤ 보존) ──────────
     def test_s8_no_designation_many_candidates_stays_blank(self):
-        self.cli("init")
+        self.install()
         self.cli("project", "add", "other", "--name", "다른 것")
         self.unset_default()
         r, meta = self.new_req()
@@ -195,7 +206,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S9. CONTEXT.md 는 앞 30줄 안에 넷을 세운다 (digest 가 30줄만 싣는다) ──
     def test_s9_context_head_carries_four_things(self):
-        self.cli("init")
+        self.install()
         head = open(os.path.join(self.root, "projects", self.SLUG, "CONTEXT.md"),
                     encoding="utf-8").read().splitlines()[:self.m.CONTEXT_HEAD]
         text = "\n".join(head)
@@ -211,7 +222,7 @@ class DefaultProject(unittest.TestCase):
 
     # ── S10. 기본 프로젝트에 contribute 못 하는 사용자는 안 붙는다 ──────
     def test_s10_non_member_does_not_get_default(self):
-        self.cli("init")
+        self.install()
         self.cli("user", "add", "alice")
         r, meta = self.new_req("--user", "alice")
         self.assertEqual(meta.get("project", ""), "")

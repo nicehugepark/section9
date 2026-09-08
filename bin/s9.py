@@ -18093,18 +18093,6 @@ def do_user_add(name, role="member", display="", email="", machine=None,
         raise ValueError(f"invalid role: {role} (valid: {', '.join(ROLES)})")
     udir = os.path.join(USERS, name)
     if os.path.isdir(udir):
-        # 설치(`s9 init`)가 먼저 등록해 둔 이름을 그 사람이 다시 치는 것은 오류가
-        # 아니다 (REQ-20260908-022) — 같은 OS 계정이고 등급도 같으면 그대로 둔다.
-        # 이름이 남의 것이거나 등급이 다르면 여전히 거부한다: 같은 이름은 같은
-        # 사람이어야 하고, 등급을 조용히 올리는 길을 내면 _write_gate 의 판정이
-        # 무의미해진다.
-        try:
-            prev, _ = read_doc(os.path.join(udir, "profile.md"))
-        except OSError:
-            prev = {}
-        if (prev and os_identity() in (prev.get("os_accounts") or [])
-                and (prev.get("role") or "member") == role):
-            return udir
         raise ValueError(f"already registered: {name}")
     ts = now_iso()
     meta = {"name": name, "role": role}
@@ -19549,20 +19537,17 @@ def ensure_default_project():
 
     **사용자 등록 → 프로젝트 생성** 순서다: owner 가 `users/` 에 없으면
     project_can(..., "contribute") 가 거짓이라 프로젝트는 서 있는데 문서가 하나도
-    안 붙는다(architect 판정). 그래서 등록된 사용자가 하나도 없으면 지금 계정을
-    먼저 등록한다. 계정 이름이 slug 규칙에 안 맞는 판은 사람이 `s9 user add` 로
-    이름을 골라야 하므로 조용히 넘어간다 — init 이 실패하지는 않는다.
+    안 붙는다(architect 판정). 그래서 **등록된 사용자가 없으면 아무 일도 하지
+    않는다** — 여기서 OS 계정을 대신 등록하지 않는다(REQ-20260908-027 실제 사고:
+    임시 vault 에 init 이 도는 순간 그 계정이 사용자 목록에 섞여 시험 6파일이
+    깨졌다. 신원은 사람이 고르는 것이지 설치가 지어내는 것이 아니다). 등록이
+    끝난 뒤 이 함수를 다시 부르면(다음 `s9 init`) 그때 프로젝트가 선다.
     반환: 만든 slug, 아니면 ''."""
     if all_projects():
         return ""
     owner = resolve_user()
     if owner not in registered_users():
-        if not re.fullmatch(r"[A-Za-z0-9._-]+", owner or ""):
-            return ""
-        try:
-            do_user_add(owner)
-        except (ValueError, OSError):
-            return ""
+        return ""
     try:
         res = do_project_add(
             DEFAULT_PROJECT_SLUG, name=DEFAULT_PROJECT_NAME,
@@ -28456,6 +28441,11 @@ def cmd_init(_args):
     if created:
         print(f"  ↳ 기본 프로젝트 '{created}' — 프로젝트를 고르지 않은 새 문서가 "
               f"여기 붙는다 (옮기기: s9 project default <slug>)")
+    elif not all_projects() and not registered_users():
+        # 신원이 먼저다 — 등록 전에는 프로젝트를 만들어도 그 사람이 문서를
+        # 붙일 수 없다(contribute 가 거짓).
+        print("  ↳ 사용자를 먼저 등록하면(s9 user add <이름>) 다음 s9 init 에서 "
+              "기본 프로젝트가 선다")
 
 
 # -------------------------------------------------------------------- main
