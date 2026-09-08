@@ -18748,6 +18748,10 @@ def do_user_config_set(name, key, value, actor=""):
     # 지워진 뒤 같은 경로로 다시 저장하면 되살아나야 한다.
     if key == "external_secrets_path" and value:
         value = ensure_external_secret_dir(value)
+    # Jira 주소는 스킴+호스트만 남긴다 (REQ-20260908-079) — 보드 주소를 붙여 넣어도
+    # API 가 붙을 자리는 호스트뿐이다. 틀리면 그 자리에서 말한다(timezone 과 같은 규율).
+    if key == "jira_site" and value:
+        value = jira_site_normalize(value)
     # 시간대는 **틀리면 그 자리에서 말한다** (REQ-20260828-029). 지금까지는
     # `Asia/Seuol` 을 그대로 받아 두고 화면은 저장됐다고 보여 주는데 시각만
     # 조용히 시스템 로컬로 물러섰다 — 화면이 거짓말을 하는 상태였다.
@@ -26088,6 +26092,63 @@ def sync_mode_do(mode, actor="", proxy_for=""):
             "state": sync_panel_state(actor=actor, proxy_for=proxy_for)}
 
 
+# ── Settings 「Jira 연동」 판 (REQ-20260908-079) ───────────────────────────────
+# 주인 지시 2026-09-08 21:30: 「테스트를 위해서 내가 준비해야할 것을 알려주고, 그
+# 항목들을 세팅스탭의 적당한 위치에 jira 연동을 위한 공간을 확보하고 준비 시켜라.
+# jira 연동은 선택사항이지 필수 사항이 아니다.」 준비 항목 넷 — Jira 주소(site)·
+# Atlassian 이메일·API token·프로젝트 연결. 앞의 셋은 그 사람의 것(user config ·
+# s9 secret), 넷째는 프로젝트의 것(프로젝트 문서 frontmatter `jira.project_key`,
+# 손잡이는 REQ-20260908-072). 설계 결정: DOC-20260908-002.
+JIRA_SECRET_KEY = "JIRA_API_TOKEN"          # secret 키 규칙(SECRET_KEY_RE)에 맞는 이름
+JIRA_TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens"
+
+
+def jira_site_normalize(value):
+    """사람이 붙여 넣는 것은 보드 주소다 — `https://<site>.atlassian.net/jira/software/
+    projects/MP1/boards/1` 을 그대로 두면 API 호출이 그 경로에 붙는다. 스킴+호스트만
+    남긴다. 스킴이 없으면 https 를 붙인다. 호스트가 없으면 ValueError."""
+    from urllib.parse import urlsplit
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if "://" not in v:
+        v = "https://" + v
+    u = urlsplit(v)
+    host = (u.netloc or "").strip().lower()
+    if not host or " " in host or "." not in host:
+        raise ValueError(f"Jira 주소를 읽을 수 없습니다: {value!r} — 예: https://<site>.atlassian.net")
+    scheme = "http" if u.scheme == "http" else "https"
+    return f"{scheme}://{host}"
+
+
+def jira_state(user=""):
+    """준비 항목 넷의 지금 — 토큰은 **있는지만** 말한다(값은 어디에도 실리지 않는다)."""
+    cfg = (user_config(user) or {}) if user else {}
+    site = str(cfg.get("jira_site") or "").strip()
+    email = str(cfg.get("jira_email") or "").strip()
+    keys = secret_keys(user) if user else {}
+    tok = keys.get(JIRA_SECRET_KEY)
+    where = ""
+    if tok:
+        where = ("internal" if os.path.dirname(tok) == secret_dir(user)
+                 else "external")
+    projects = []
+    for m in all_projects():
+        j = m.get("jira")
+        key = str((j or {}).get("project_key") or "").strip() if isinstance(j, dict) else ""
+        if key:
+            projects.append({"slug": m.get("slug", ""), "key": key,
+                             "site": str((j or {}).get("site") or "")})
+    ready = {"site": bool(site), "email": bool(email), "token": bool(tok),
+             "project": bool(projects)}
+    return {"registered": bool(user), "user": user or "",
+            "site": site, "email": email,
+            "token": bool(tok), "token_where": where, "token_key": JIRA_SECRET_KEY,
+            "token_url": JIRA_TOKEN_URL,
+            "projects": projects, "ready": ready,
+            "ready_n": sum(1 for v in ready.values() if v), "ready_total": len(ready)}
+
+
 def git_do(what, actor="", proxy_for=""):
     """pull·push 를 실제로 돌린다 — **누른 순간 다시 판정한다.**
 
@@ -27824,6 +27885,12 @@ def cmd_serve(args):
                             "external_path": str((user_config(me) or {}).get(
                                 "external_secrets_path") or "").strip(),
                             "external_state": external_secret_state(me)})
+            elif parsed.path == "/api/jira/state":
+                # Settings 「Jira 연동」 판의 준비 항목 (REQ-20260908-079) — 서버
+                # 파생 신원에만 나가고 대리(as)를 받지 않는다(비밀 키 목록과 같은 축).
+                # 토큰은 있는지만 실린다.
+                w = whoami_info()
+                self._json(jira_state(w["user"] if w.get("registered") else ""))
             elif parsed.path == "/api/roster":
                 # Settings 의 에이전트·스킬 절 (REQ-20260906-021)
                 self._json({"rows": roster_list(viewer_of(qs) or "")})

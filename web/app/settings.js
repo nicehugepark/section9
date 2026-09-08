@@ -64,6 +64,11 @@ async function renderSettings(){
        「시스템」보다 앞인 이유는 하나다 — 시스템은 읽기만 하는 안내판이고
        저장소는 손잡이가 있는 판이다. 부제는 여기서도 상태를 겸한다. */
     ["repo", "저장소", repoNavSub()],
+    /* 「Jira 연동」은 저장소 다음이다 — 바깥 서비스와 오가는 판이라 저장소와
+       같은 갈래이고, **선택 사항**이라 부제가 그 말을 먼저 한다 (REQ-20260908-079).
+       주인이 Settings 의 한 자리를 지정했다: 「세팅스탭의 적당한 위치에 jira
+       연동을 위한 공간을 확보하고 준비 시켜라」. */
+    ["jira", "Jira 연동", jiraNavSub()],
     /* 「에이전트·스킬」은 저장소 다음, 시스템 앞이다 — 손잡이가 있는 판이고
        (내 것·프로젝트는 고친다), 공용은 읽기 전용이라 안내판 성격을 겸한다
        (REQ-20260906-021). */
@@ -80,6 +85,7 @@ async function renderSettings(){
     <div class="viewer" id="sview"></div></div>`;
   renderSettingsSection(meAdmin);
   repoNavRefresh();   // 「저장소」 부제는 판을 열지 않아도 거리를 말한다
+  jiraNavRefresh();   // 「Jira 연동」 부제도 준비 정도를 말한다
 }
 
 function renderSettingsSection(meAdmin){
@@ -128,6 +134,8 @@ function renderSettingsSection(meAdmin){
       <button class="gefix" type="button" id="uf-retry">다시 받기</button></p>`;
     const wrt = $("#uf-retry");
     if (wrt) wrt.addEventListener("click", () => renderSettings());
+  } else if (settingsSection === "jira"){
+    showJiraPanel(v, me);
   } else if (settingsSection === "repo"){
     /* 계정을 가리지 않는다 — **읽기는 자유**이고 저장소는 계정과 무관하다.
        누를 자격은 서버가 응답의 `can` 으로 따로 말하고, 못 누르는 사람에게는
