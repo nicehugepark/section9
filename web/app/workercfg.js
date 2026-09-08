@@ -79,6 +79,20 @@ const WCFG_SWITCHES = [
      ok: "권한 주기", cancel: "그만두기"}),
    said: {on: "켰습니다 — 이제 GitHub 계정으로 명령을 씁니다.",
           off: "껐습니다 — 앞으로는 GitHub 없이 일합니다."}},
+  {key: "auto_resume_jira", name: "Jira 쓰게 하기",
+   on: "켬 — 내 Jira 토큰으로 이슈를 만들고 옮깁니다",
+   off: "끔 — Jira 는 사람이 있을 때만",
+   mean: "백그라운드 작업이 s9 jira create·push·pull 로 내 API token 을 쓸 수 있게 합니다. "
+       + "Jira 의 기록에는 내가 한 것으로 남습니다. 요청이 생길 때·상태가 바뀔 때 "
+       + "저절로 나가는 이슈·상태(워처)는 이 스위치와 무관합니다.",
+   fact: n => `지금 켜져 있습니다 — 백그라운드 작업이 @${n} 의 API token 으로 Jira 이슈를 만들고 옮길 수 있습니다.`,
+   ask: n => ({kind: "confirm", stop: true, cap: "권한",
+     title: `@${n} 의 Jira API token 을 백그라운드 작업에 주시겠습니까?`,
+     desc: "켜면 이 창 밖에서 도는 작업이 내 token 으로 Jira 이슈를 만들고 상태를 옮깁니다. "
+         + "Jira 의 기록에는 내가 한 것으로 남아 나중에 가를 수 없습니다. 여기서 언제든 다시 끌 수 있습니다.",
+     safe: true, ok: "권한 주기", cancel: "그만두기"}),
+   said: {on: "켰습니다 — 이제 백그라운드 작업이 Jira 를 만집니다.",
+          off: "껐습니다 — Jira 는 사람이 있을 때만 만집니다."}},
   {key: "worker_worktree", name: "worktree 쓰게 하기",
    on: "켬 — 고친 내용은 작업이 끝난 뒤에 보입니다",
    off: "끔 — 고친 내용이 바로 보입니다",

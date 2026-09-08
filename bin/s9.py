@@ -18774,6 +18774,11 @@ def do_user_config_set(name, key, value, actor=""):
     # API 가 붙을 자리는 호스트뿐이다. 틀리면 그 자리에서 말한다(timezone 과 같은 규율).
     if key == "jira_site" and value:
         value = jira_site_normalize(value)
+    if key == "jira_token_expires" and value:
+        try:
+            value = datetime.date.fromisoformat(value.strip()).isoformat()
+        except ValueError:
+            raise ValueError(f"만료일은 YYYY-MM-DD 꼴입니다: {value!r} — 예: 2026-12-31")
     # 시간대는 **틀리면 그 자리에서 말한다** (REQ-20260828-029). 지금까지는
     # `Asia/Seuol` 을 그대로 받아 두고 화면은 저장됐다고 보여 주는데 시각만
     # 조용히 시스템 로컬로 물러섰다 — 화면이 거짓말을 하는 상태였다.
@@ -26286,6 +26291,31 @@ def jira_site_normalize(value):
     return f"{scheme}://{host}"
 
 
+JIRA_EXPIRY_SOON_DAYS = 7
+
+
+def jira_token_expiry(user, today=None):
+    """토큰 만료 (REQ-20260909-002, 주인: 「만료기간이 같이 저장돼 있어야 미리 경고할 수
+    있다」) — (만료일 문자열, 남은 날 또는 None, level '' | ok | soon | expired, 문장)."""
+    cfg = (user_config(user) or {}) if user else {}
+    raw = str(cfg.get("jira_token_expires") or "").strip()
+    if not raw:
+        return "", None, "", ""
+    try:
+        d = datetime.date.fromisoformat(raw)
+    except ValueError:
+        return raw, None, "", ""
+    today = today or datetime.date.today()
+    left = (d - today).days
+    if left < 0:
+        return raw, left, "expired", (f"API token 이 {raw} 에 만료됐습니다 — 새 token 을 만들어 "
+                                     f"다시 넣고 만료일도 고치십시오.")
+    if left <= JIRA_EXPIRY_SOON_DAYS:
+        return raw, left, "soon", (f"API token 이 {left}일 뒤({raw}) 만료됩니다 — 미리 새 token 을 "
+                                  f"만들어 넣어 두십시오.")
+    return raw, left, "ok", ""
+
+
 def jira_state(user=""):
     """준비 항목 넷의 지금 — 토큰은 **있는지만** 말한다(값은 어디에도 실리지 않는다)."""
     cfg = (user_config(user) or {}) if user else {}
@@ -26306,8 +26336,11 @@ def jira_state(user=""):
                              "site": str((j or {}).get("site") or "")})
     ready = {"site": bool(site), "email": bool(email), "token": bool(tok),
              "project": bool(projects)}
+    exp, left, level, line = jira_token_expiry(user) if user else ("", None, "", "")
     return {"registered": bool(user), "user": user or "",
             "site": site, "email": email,
+            "token_expires": exp, "expiry_days": left, "expiry_level": level,
+            "expiry_line": line,
             "token": bool(tok), "token_where": where, "token_key": JIRA_SECRET_KEY,
             "token_url": JIRA_TOKEN_URL,
             "projects": projects, "ready": ready,
@@ -26337,6 +26370,9 @@ def jira_auth_header(user):
         missing.append("Atlassian 이메일")
     if not token:
         missing.append("API token")
+    elif jira_token_expiry(user)[2] == "expired":
+        # 만료된 토큰으로는 부르지 않는다 — 401 을 되풀이하면 계정이 잠긴다
+        missing.append("API token(만료됨 — 재발급)")
     if missing:
         return None, missing
     if kind == "bearer":                       # Data Center 의 PAT
@@ -26413,8 +26449,10 @@ def jira_ping(user, **kw):
                 "error": "준비가 모자랍니다 — " + " · ".join(missing) + " 이(가) 없습니다."}
     st, d, err = jira_http(user, "GET", "/rest/api/3/myself", **kw)
     if st == 200 and isinstance(d, dict):
+        _exp, _left, level, line = jira_token_expiry(user)
         return {"ok": True, "missing": [], "name": str(d.get("displayName") or ""),
-                "email": str(d.get("emailAddress") or ""), "status": st, "error": ""}
+                "email": str(d.get("emailAddress") or ""), "status": st, "error": "",
+                "warning": line if level == "soon" else ""}
     return {"ok": False, "missing": [], "name": "", "email": "", "status": st,
             "error": err or f"Jira 가 {st} 로 답했습니다."}
 
@@ -26889,9 +26927,44 @@ def jira_pull_tick(now=None, force=False, **kw):
     return out
 
 
+JIRA_WORKER_DENIED = ("백그라운드 작업자는 사람의 토큰으로 Jira 를 바꾸지 않습니다 — 허용하려면 "
+                      "Settings › 백그라운드 작업 › 「Jira 쓰게 하기」를 켜십시오 "
+                      "(s9 user config <이름> auto_resume_jira on)")
+
+
+def jira_worker_actor(user):
+    """백그라운드 작업자가 Jira 를 바꾸려 하나 — (막을 문장 또는 '', actor).
+    auto_resume_gh 와 같은 갈래(REQ-20260908-077): 사람이 없는 자리에서 그 사람의
+    자격으로 바깥 서비스를 바꾸는 일은 따로 켠 사람에게만 열린다. 켜도 감사에는
+    worker:<세션> 이 남는다 — Jira 쪽 로그에는 그 사람이 한 것으로 남기 때문이다."""
+    if not os.environ.get("S9_AUTO_RESUME"):
+        return "", user
+    cfg = user_config(user) or {}
+    if str(cfg.get("auto_resume_jira") or "off").lower() != "on":
+        return JIRA_WORKER_DENIED, user
+    return "", f"worker:{(os.environ.get('S9_SESSION') or '')[:8] or 'auto-resume'}"
+
+
+def jira_watch_tick():
+    """워처 한 틱의 Jira 몫 — outbox(생성·push)와 pull. 한 줄로 부른다: 워처 루프의
+    글자를 늘리면 그 루프를 읽는 계약 시험(test_snapshot s6)이 스냅샷 호출을 못 본다.
+    실패는 워처를 세우지 않는다."""
+    for fn in (jira_outbox_tick, jira_pull_tick):
+        try:
+            fn()
+        except Exception:
+            pass
+
+
 def cmd_jira(args):
     """`s9 jira ping|create|push|pull|outbox` (REQ-20260908-071·073·075·076)."""
     user = resolve_user(getattr(args, "user", None))
+    if args.action in ("create", "push", "pull") or (args.action == "outbox" and getattr(args, "run", False)):
+        denied, actor = jira_worker_actor(user)
+        if denied:
+            die(denied)
+    else:
+        actor = user
     if args.action == "ping":
         res = jira_ping(user)
         if getattr(args, "json", False):
@@ -26900,13 +26973,15 @@ def cmd_jira(args):
         if res["ok"]:
             print(f"연동됐습니다 — {res['name'] or '(이름 없음)'}"
                   + (f" <{res['email']}>" if res.get("email") else ""))
+            if res.get("warning"):
+                print("⚠ " + res["warning"])
             return
         die(res["error"])
     if args.action == "create":
         doc_id = full_doc_id(args.id or "") if args.id else ""
         if not doc_id:
             die("usage: s9 jira create <REQ-id>")
-        res = jira_issue_create(doc_id, actor=user, manual=True)
+        res = jira_issue_create(doc_id, actor=actor, manual=True)
         if getattr(args, "json", False):
             print(json.dumps(res, ensure_ascii=False, indent=1))
             return
@@ -26920,7 +26995,7 @@ def cmd_jira(args):
         doc_id = full_doc_id(args.id or "") if args.id else ""
         if not doc_id:
             die("usage: s9 jira push <REQ-id>")
-        res = jira_status_push(doc_id, actor=user)
+        res = jira_status_push(doc_id, actor=actor)
         if getattr(args, "json", False):
             print(json.dumps(res, ensure_ascii=False, indent=1))
             return
@@ -29484,14 +29559,7 @@ def cmd_serve(args):
             while True:
                 try:
                     rework_watch_tick()
-                    try:
-                        jira_outbox_tick()      # 요청→Jira 이슈 (REQ-20260908-073)
-                    except Exception:
-                        pass
-                    try:
-                        jira_pull_tick()        # Jira→우리 상태 (REQ-20260908-076), 60초에 한 번
-                    except Exception:
-                        pass
+                    jira_watch_tick()           # Jira 오가기 (REQ-20260908-073·076)
                 except Exception:
                     pass
                 # 10분(20틱)마다 유실 감사 (REQ-20260901-009) — 스냅샷이 이미

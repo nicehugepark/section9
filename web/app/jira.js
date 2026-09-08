@@ -30,6 +30,10 @@ const JIRA_ROWS = [
    mean: "Atlassian 계정 설정 › 보안 › API tokens 에서 만듭니다. 값은 만들 때 한 번만 "
        + "보이니 바로 여기에 넣으십시오. 넣은 값은 내 계정 › 시크릿에 "
        + "JIRA_API_TOKEN 으로 남고, 다시 보이지 않습니다."},
+  {key: "jira_token_expires", name: "token 만료일", kind: "config", w: "160px",
+   ph: "YYYY-MM-DD",
+   mean: "API token 을 만들 때 정한 만료일입니다. 적어 두면 7일 전부터 여기와 「연동 확인」이 "
+       + "미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다(반복하면 계정이 잠깁니다)."},
   {key: "ping", name: "연동 확인", kind: "ping",
    mean: "위의 셋으로 Jira 에 한 번 물어봅니다(GET /rest/api/3/myself). 계정 이름이 "
        + "돌아오면 준비가 맞은 것입니다. 틀린 토큰으로는 한 번만 묻습니다 — 반복하면 "
@@ -88,6 +92,8 @@ function jiraRowHTML(r, s){
     ctl = `<input class="uf" id="j-${r.key}" style="width:${r.w}"
              value="${esc(v)}" placeholder="${esc(r.ph)}"
              aria-label="${esc(r.name)}"${s.registered ? "" : " disabled"}>`;
+    // 만료 경고는 사실 줄 — 문장은 서버가 짓는다(7일 전 · 만료됨). 색은 글자뿐이다.
+    if (r.key === "jira_token_expires" && s.expiry_line) fact = esc(s.expiry_line);
   } else if (r.kind === "secret"){
     ctl = `<input class="uf" type="password" id="j-token" style="width:${r.w}"
              placeholder="${esc(r.ph)}" autocomplete="off" aria-label="API token"${

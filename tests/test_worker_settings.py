@@ -174,9 +174,10 @@ class WorkerSettings(unittest.TestCase):
 
             # ---- ⑤ 무게 ---------------------------------------------------------
         with self.subTest("only_turning_gh_on_raises_a_dialog"):
-            # `ask` 는 gh 항목 하나에만 있고, 켤 때(val === "on")만 지난다.
-            self.assertEqual(self.wc.count("   ask: n => ({"), 1,
-                             "확인 창은 gh 하나에만 붙는다")
+            # `ask` 는 **바깥 계정의 권한을 주는** 항목에만 있고(gh · Jira,
+            # REQ-20260908-077), 켤 때(val === "on")만 지난다.
+            self.assertEqual(self.wc.count("   ask: n => ({"), 2,
+                             "확인 창은 gh·Jira 둘에만 붙는다")
             self.assertIn('if (r.ask && val === "on"', self.wc,
                           "끌 때는 창을 세우지 않는다")
             self.assertIn('cap: "권한"', self.wc)
