@@ -85,6 +85,28 @@ class ServeData(unittest.TestCase):
                      '{"user": "bob", "until": "2000-01-01"}]\n',
                body="## History\n- 만들었다\n")
 
+        # 선행 의존(blocked_by) — status 를 직접 정해야 해서 wr 대신 여기서
+        # 쓴다. T101→T102 만 살아 있는 선행이고, done 인 T104 와 요청이
+        # 아닌 SES-T003 은 선행 후보가 아니다.
+        dep = ("---\nid: {id}\ntype: {type}\ntitle: {title}\n"
+               "status: {status}\nuser: alice\nproject: section9\n"
+               "tags: []\n{extra}---\n\n본문\n")
+        for kw in (
+            dict(id="REQ-T101", type="request", title="막힌 요청",
+                 status="blocked", extra='blocked_by: ["REQ-T102"]\n'),
+            dict(id="REQ-T102", type="request", title="살아 있는 선행",
+                 status="in-progress", extra=""),
+            dict(id="REQ-T103", type="request", title="끝난 선행을 가리킴",
+                 status="blocked", extra='blocked_by: ["REQ-T104"]\n'),
+            dict(id="REQ-T104", type="request", title="끝난 선행",
+                 status="done", extra=""),
+            dict(id="REQ-T105", type="request", title="세션을 가리킴",
+                 status="blocked", extra='blocked_by: ["SES-T003"]\n'),
+        ):
+            with open(os.path.join(d, kw["id"] + ".md"), "w",
+                      encoding="utf-8") as f:
+                f.write(dep.format(**kw))
+
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.root, ignore_errors=True)
@@ -139,6 +161,27 @@ class ServeData(unittest.TestCase):
                        "rel": "derived_from"}, edges)     # 문자열 하나
         self.assertIn({"from": "REQ-T002", "to": "REQ-T001",
                        "rel": "derived_from"}, edges)     # 목록의 첫 항목
+
+    def dep_edges_of(self):
+        return [e for e in self.m.graph_data()["edges"]
+                if e["rel"] == "blocked_by"]
+
+    def test_s9_graph_blocked_by_edge(self):
+        """S9. 미완 요청끼리의 blocked_by 가 선행 화살표로 실린다.
+
+        회귀: dep_rows 가 {id, blocked_by} 만 실어 보내 dep_edges 의 후보
+        집합(type=request · 미완)이 늘 비었고, 선행 화살표가 그래프에 한
+        번도 그려지지 않았다 (REQ-20260908-014)."""
+        self.assertIn({"from": "REQ-T101", "to": "REQ-T102",
+                       "rel": "blocked_by"}, self.dep_edges_of())
+
+    def test_s10_graph_blocked_by_done_blocker_dropped(self):
+        """S10. 선행이 이미 done 이면 그 화살표는 나오지 않는다."""
+        self.assertNotIn("REQ-T104", {e["to"] for e in self.dep_edges_of()})
+
+    def test_s11_graph_blocked_by_non_request_dropped(self):
+        """S11. 요청이 아닌 문서를 가리킨 blocked_by 는 선행이 아니다."""
+        self.assertNotIn("SES-T003", {e["to"] for e in self.dep_edges_of()})
 
     # ---- search_data -----------------------------------------------------
 

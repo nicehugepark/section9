@@ -744,6 +744,15 @@ def main():
     except Exception:
         pass
 
+    # 다른 자리의 세션이 보낸 프롬프트 — 머리에 하네스가 붙인 표식에서 그 세션을
+    # **부르는 이름**을 얻어 그 세션의 vault 문서에 적는다 (REQ-20260908-019).
+    # vault 는 git 으로 머신 사이를 따라다니므로 이름도 따라다닌다.
+    if prompt.startswith("<cross-session-message"):
+        try:
+            run(env, "callname", "learn", "--head", prompt[:400])
+        except Exception:
+            pass
+
     # auto-resume 스폰 턴 — 대상 REQ가 이미 존재한다. 새 카드를 만들면 안 되지만,
     # 세션 id와 클레임 지시는 반드시 주입해야 한다: 이게 없으면 스폰된 작업자가
     # 자기 sid를 몰라 클레임을 못 하고, 워처가 쿨다운마다 중복 스폰한다

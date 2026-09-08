@@ -4435,7 +4435,17 @@ def cmd_peer(args):
         return
     # ls — 찾는 쪽이 대개 「맥이 어느 것이냐」이므로 --os 로 좁힌다
     want = (args.os or "").strip().lower()
-    rows = [(n, v) for n, v in sorted(peers.items())
+    # 사실의 원천은 세션 문서다 (REQ-20260908-019): 문서에 적힌 call_name 을
+    # 먼저 깔고, 손으로 적어 둔 이 머신의 목록을 덮되 machine 은 문서가 이긴다.
+    merged = {}
+    for nm, v in call_names_from_vault().items():
+        merged[nm] = {"machine": v.get("machine", ""), "session": v.get("session", "")}
+    for nm, v in peers.items():
+        cur = merged.setdefault(nm, {})
+        for k in ("machine", "os", "note"):
+            if v.get(k) and not cur.get(k):
+                cur[k] = v[k]
+    rows = [(n, v) for n, v in sorted(merged.items())
             if not want or want in str(v.get("os", "")).lower()]
     if not rows:
         print("아는 세션이 없다 — 한 번 물어 `s9 peer set '<부르는 이름>' "
@@ -4443,8 +4453,244 @@ def cmd_peer(args):
               "다시 묻지 않는다.")
         return
     for n, v in rows:
-        tail = " · ".join(f"{k}={v[k]}" for k in ("machine", "os", "note") if v.get(k))
+        tail = " · ".join(f"{k}={v[k]}"
+                          for k in ("machine", "session", "os", "note") if v.get(k))
         print(f"{n}" + (f"  ({tail})" if tail else ""))
+
+
+# ── 부르는 이름 (REQ-20260908-019) ────────────────────────────────────────
+# 다른 자리의 세션을 **밖에서 무엇이라 부르는가**는 하네스가 짓고 vault 는 몰랐다.
+# 그래서 2026-09-07 에 리드는 「어느 세션이 맥이냐」를 사람에게 물어야 했다.
+# 그 이름은 이미 오고 간 프롬프트 안에 있다 — 다른 컴퓨터의 세션이 보낸 프롬프트
+# 머리에 하네스가 `<cross-session-message from=… from-name=…>` 을 붙인다.
+# 두 걸음으로 나눠 적는다.
+#   ① 자기 이름표: 이 세션을 밖에서 가리키는 id(`bridge:session_…`)를 제 세션
+#      문서에 `harness_session` 으로 적는다. transcript 에 하네스가 적어 둔 것만
+#      읽는다 — 지어내지 않는다.
+#   ② 남이 부르는 이름: 받은 프롬프트 **머리**의 (from, from-name) 을, 그 id 를
+#      적어 둔 세션 문서의 `call_name` 으로 적는다.
+# 세션 문서는 git 으로 머신 사이를 따라다니므로 맥이 제 이름표를 적어 두면 이
+# 머신이 그 이름을 알게 된다. 사실의 원천은 세션 문서이고 `state/peers.json`
+# (`s9 peer`)은 사람이 손으로 적어 두는 이 머신의 목록이다 — `peer ls` 가 둘을
+# 합쳐 보이되 겹치면 문서가 이긴다.
+CALL_PENDING = os.path.join(ROOT, "state", "call-names.json")
+CROSS_TAG_RE = re.compile(r"^\s*<cross-session-message\b([^>]*)>")
+_ATTR_RE = re.compile(r"([A-Za-z][\w-]*)=\"([^\"]*)\"")
+_HARNESS_ID_RE = re.compile(r"claude\.ai/code/(session_[A-Za-z0-9_-]+)")
+CALL_NAME_MAX = 80
+
+
+def clean_call_name(name):
+    """프론트매터 한 줄에 그대로 들어가는 값이다 — 깨뜨릴 글자는 통째로 버린다."""
+    n = name or ""
+    if any(ch in n for ch in "\r\n") or any(not ch.isprintable() for ch in n):
+        return ""
+    return n.strip()[:CALL_NAME_MAX]
+
+
+def parse_cross_session(text):
+    """프롬프트 **머리**의 하네스 표식에서 (보낸 쪽 id, 부르는 이름).
+
+    머리에서만 읽는다 — 본문에 인용된 같은 글자는 하네스가 붙인 것이 아니라
+    사람이 적은 글자다. 그것으로 이름을 적으면 지어낸 이름이 된다.
+    """
+    m = CROSS_TAG_RE.match(text or "")
+    if not m:
+        return None
+    at = dict(_ATTR_RE.findall(m.group(1)))
+    src = (at.get("from") or "").strip()
+    name = clean_call_name(at.get("from-name") or "")
+    if not src or not name:
+        return None
+    return src, name
+
+
+def harness_id_from_transcript(path, tail=262144):
+    """transcript 에 하네스가 적어 둔 이 세션의 바깥 이름표.
+
+    표식(`claude.ai/code/session_…`)은 턴마다 들어오므로 꼬리만 읽는다 —
+    프롬프트마다 수십 MB 를 다시 읽지 않기 위해서다.
+    """
+    if not path:
+        return ""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - tail))
+            blob = f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+    ids = _HARNESS_ID_RE.findall(blob)
+    return "bridge:" + ids[-1] if ids else ""
+
+
+def _session_docs():
+    """vault 의 세션 문서 전부 — (경로, meta, body)."""
+    base = os.path.join(VAULT, "sessions")
+    for dirpath, _dirs, files in os.walk(base):
+        for fn in sorted(files):
+            if not (fn.startswith("SES-") and fn.endswith(".md")):
+                continue
+            path = os.path.join(dirpath, fn)
+            try:
+                meta, body = read_doc(path)
+            except (OSError, ValueError):
+                continue
+            yield path, meta, body
+
+
+def read_call_pending():
+    """아직 짝지을 문서가 없는 관측 — 파생물이다(vault History 에서 재생성된다)."""
+    try:
+        with open(CALL_PENDING, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_call_pending(d):
+    os.makedirs(os.path.dirname(CALL_PENDING), exist_ok=True)
+    with open(CALL_PENDING, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1, sort_keys=True)
+
+
+def note_call_name(src, name):
+    """관측한 (보낸 쪽 id → 부르는 이름) 을 그 id 를 적어 둔 문서에 적는다.
+
+    적을 문서를 못 찾으면 버리지 않고 대기에 남긴다 — 상대가 제 이름표를 적어
+    동기화되는 순간 채워진다. 채운 문서 id 를 돌려준다(못 찾으면 빈 문자열).
+    """
+    name = clean_call_name(name)
+    if not src or not name:
+        return ""
+    for path, meta, body in _session_docs():
+        if meta.get("harness_session") != src:
+            continue
+        if meta.get("call_name") != name:
+            meta["call_name"] = name
+            meta["updated"] = now_iso()
+            write_doc(path, meta, body)
+        pend = read_call_pending()
+        if pend.pop(src, None) is not None:
+            write_call_pending(pend)
+        return meta.get("id", "")
+    pend = read_call_pending()
+    if pend.get(src, {}).get("name") != name:
+        pend[src] = {"name": name, "seen": now_iso()}
+        write_call_pending(pend)
+    return ""
+
+
+def resolve_call_names():
+    """대기 중인 관측을 다시 짝지어 본다 — 채운 문서 id 목록."""
+    pend = read_call_pending()
+    if not pend:
+        return []
+    filled = []
+    for src, v in list(pend.items()):
+        did = note_call_name(src, (v or {}).get("name", ""))
+        if did:
+            filled.append(did)
+    return filled
+
+
+def call_names_from_vault():
+    """세션 문서가 말하는 「밖에서 부르는 이름」 — {이름: {machine, session, id}}."""
+    out = {}
+    for _path, meta, _body in _session_docs():
+        nm = (meta.get("call_name") or "").strip()
+        if not nm:
+            continue
+        cur = out.get(nm)
+        if cur and str(cur.get("updated", "")) >= str(meta.get("updated", "")):
+            continue
+        out[nm] = {"machine": meta.get("machine", ""),
+                   "session": meta.get("session", ""),
+                   "id": meta.get("id", ""),
+                   "updated": meta.get("updated", "")}
+    return out
+
+
+# 이미 쌓인 것에서 표식을 되찾는 자리. 세션 문서의 History 줄은 제목을 40자로
+# 자르므로 표식이 통째로 남지 않는다 — 프롬프트 원문을 보존하는 요청(REQ) 문서
+# 본문이 원천이다. **줄머리에 선 것만** 읽는다: 문장 속에 인용된 같은 글자는
+# 하네스가 붙인 것이 아니다 (parse_cross_session 과 같은 규율).
+_LOGGED_TAG_RE = re.compile(r"^[ \t>*-]*(<cross-session-message[^>]*>)", re.M)
+
+
+def sync_call_names():
+    """이미 vault 에 쌓인 것에서 다시 만든다 (파생물 재생성, REQ-20260908-019).
+
+    ① 이 머신의 세션은 바인딩에 적힌 transcript 로 제 이름표를 채우고,
+    ② 세션 문서 History 에 남은 표식(`… 기록: <cross-session-message …>`,
+       프롬프트 **머리**에 있던 것만 그 자리에 남는다)을 다시 읽어 짝짓는다.
+    (이름표를 채운 문서 수, 이름을 채운 문서 수) 를 돌려준다.
+    """
+    machine = current_machine()
+    tagged = 0
+    for path, meta, body in _session_docs():
+        if meta.get("harness_session") or meta.get("machine") != machine:
+            continue
+        b = read_binding(machine, meta.get("session") or "") or {}
+        src = harness_id_from_transcript(b.get("transcript_path") or "")
+        if not src:
+            continue
+        meta["harness_session"] = src
+        write_doc(path, meta, body)
+        tagged += 1
+    seen = {}
+    for dirpath, _dirs, files in os.walk(VAULT):
+        for fn in files:
+            if not fn.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(dirpath, fn), encoding="utf-8",
+                          errors="replace") as f:
+                    text = f.read()
+            except OSError:
+                continue
+            if "<cross-session-message" not in text:
+                continue
+            for tag in _LOGGED_TAG_RE.findall(text):
+                pair = parse_cross_session(tag)
+                if pair:
+                    seen[pair[0]] = pair[1]
+    named = set()
+    for src, nm in seen.items():
+        did = note_call_name(src, nm)
+        if did:
+            named.add(did)
+    named.update(resolve_call_names())
+    return tagged, len(named)
+
+
+def cmd_callname(args):
+    """부르는 이름 — 배우고(learn) · 보이고(ls) · 다시 만든다(sync)."""
+    act = args.action
+    if act == "learn":
+        pair = parse_cross_session(args.head or "")
+        if not pair:
+            print("표식 없음 — 적지 않는다")
+            return
+        src, name = pair
+        did = note_call_name(src, name)
+        print(f"{name} → {did}" if did
+              else f"{name}: 아직 짝지을 세션 문서가 없다 (대기: {src})")
+        return
+    if act == "sync":
+        tagged, named = sync_call_names()
+        print(f"이름표 {tagged}건 · 부르는 이름 {named}건")
+        return
+    rows = call_names_from_vault()
+    if not rows:
+        print("아는 이름이 없다 — 다른 자리의 세션이 한 번 말을 걸면 그 이름이 "
+              "그 세션의 문서에 적힌다.")
+        return
+    for nm, v in sorted(rows.items()):
+        tail = " · ".join(f"{k}={v[k]}" for k in ("machine", "session", "id") if v.get(k))
+        print(f"{nm}" + (f"  ({tail})" if tail else ""))
 
 
 def cmd_workers(args):
@@ -17649,6 +17895,13 @@ def session_log_append(session, text, user=None):
             b["ses_doc"] = ses_id
             write_binding(b)
         meta, body = read_doc(path)
+        if not meta.get("harness_session"):
+            # 이 세션을 밖에서 가리키는 이름표 (REQ-20260908-019) — 하네스가
+            # transcript 에 적어 둔 것만 읽는다. 여기 적혀야 다른 컴퓨터가
+            # 「그 세션을 뭐라고 부르는지」를 이 문서에 되돌려 적을 수 있다.
+            _src = harness_id_from_transcript(b.get("transcript_path") or "")
+            if _src:
+                meta["harness_session"] = _src
         if "## History" not in body:
             body = body.rstrip("\n") + "\n\n## History\n"
         body = body.rstrip("\n") + f"\n- {ts} {text} (by {user})\n"
@@ -24663,7 +24916,12 @@ def graph_data():
             edges.append({"from": src, "to": t, "rel": "relates"})
         for t in meta.get("refs_docs", []):
             edges.append({"from": src, "to": t, "rel": "ref"})
-        dep_rows.append({"id": src, "blocked_by": meta.get("blocked_by", [])})
+        # dep_edges 는 선행 후보를 type/status 로 거른다(끝난 선행은 유령
+        # 화살표가 된다) — 그 재료를 함께 실어 보낸다. 없이 보내면 후보
+        # 집합이 늘 비어 선행 화살표가 한 번도 그려지지 않는다.
+        dep_rows.append({"id": src, "type": meta.get("type", ""),
+                         "status": meta.get("status", ""),
+                         "blocked_by": meta.get("blocked_by", [])})
     ids = {n["id"] for n in nodes}
     edges = [e for e in edges if e["to"] in ids]
     # 선행 의존 (REQ-20260825-097): 엣지 모양은 dep_edges 한 곳에서 정의.
@@ -28076,6 +28334,13 @@ def main():
     pr.add_argument("--os", default="", help="macOS · Linux · Windows … (ls 에서는 좁히는 말)")
     pr.add_argument("--note", default="", help="무엇을 맡는 자리인가")
     pr.set_defaults(fn=cmd_peer)
+
+    cn = sub.add_parser("callname",
+                        help="세션을 밖에서 부르는 이름 (세션 문서가 원천)")
+    cn.add_argument("action", choices=("ls", "learn", "sync"), nargs="?", default="ls")
+    cn.add_argument("--head", default="",
+                    help="받은 프롬프트의 머리 — 하네스 표식을 여기서 읽는다")
+    cn.set_defaults(fn=cmd_callname)
 
     wk = sub.add_parser("workers", help="지금 실행 중인 백그라운드 작업 목록")
     wk.add_argument("--quiet", action="store_true")
