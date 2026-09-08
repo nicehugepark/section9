@@ -143,6 +143,7 @@ function docDeselect(){
 function docListStale(wrap, list){ return wrap.__s9list !== list; }
 
 async function renderDocs(rows){
+  const gen = renderGen;
   /* 사람이 방금 고른 문서인지를 **맨 위에서** 읽고 즉시 끈다 — 아래에 await 가
      있어 두 렌더가 겹칠 수 있고, 그때 표시가 서로에게 새면 폴링이 읽던 자리를
      되감거나 사람이 고른 문서가 옛 스크롤에 붙는다 (REQ-20260829-012 반려). */
@@ -151,6 +152,7 @@ async function renderDocs(rows){
   let matchMap = null;
   if ($("#q-body").checked && q){
     const data = await (await fetch("/api/search?q=" + encodeURIComponent(q) + "&" + meQ())).json();
+    if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
     matchMap = Object.fromEntries(data.results.map(r => [r.id, r.matches]));
     rows = rows.filter(r => matchMap[r.id]);
     $("#count").textContent = `${rows.length} matches (body search)`;

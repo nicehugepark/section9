@@ -247,7 +247,11 @@ async function refreshCatalog(rerender){
   // 바뀌었을 때만 다시 그리면 되지만, 칩 자신이 같은 내용을 걸러 내므로
   // 여기서는 부르기만 한다.
   renderSvChip();
-  if (changed){ fillFilters(); graph = null; }
+  /* 관계도를 **버리지 않는다** (REQ-20260908-056). 버리면 다음 그리기가 서버를
+     기다려야 하고, 그 기다림이 곧 탭과 화면이 갈리는 틈이다 — 15초마다 그 틈을
+     새로 여는 셈이었다. 낡았다고만 적어 두면 판은 손에 든 것으로 즉시 서고,
+     새 판은 도착한 뒤에 갈아 끼운다. */
+  if (changed){ fillFilters(); graphStale = true; }
   // Settings는 폼 입력 중일 수 있다 — 폴링발 재렌더로 DOM(입력값)을 파괴하지
   // 않는다. 탭을 떠날 때 render()가 최신 catalog로 다시 그린다 (REQ-055 E7).
   if (rerender && changed){ auditCache = null; if (tab !== "settings") render(); }
@@ -432,7 +436,12 @@ function syncTypeFilter(){
   if (el) el.hidden = (tab === "board");
 }
 
+/* 이번 그리기가 아직 유효한가 — 기다리는 사이 다른 화면이 그려졌으면 거짓이다.
+   문서 뷰어의 docLoadStale(gen) 과 같은 규율이다 (REQ-20260907-067). */
+function renderStale(gen){ return gen !== renderGen; }
+
 function render(){
+  renderGen++;   // 앞서 걸어 둔 늦은 그리기는 여기서 무효가 된다 (REQ-20260908-056)
   dlgCheckNav();   // 화면이 바뀐 채로 그려지면 열려 있던 창은 남지 않는다
   /* 상단 알약은 아래 조기 반환보다 **먼저** 맞춘다 — 살아있는 터미널 셸을
      재빌드하지 않으려는 그 return 뒤에 두면, 정작 결함이 났던 자리(보드 →

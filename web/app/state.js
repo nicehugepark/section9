@@ -1,6 +1,14 @@
 /* state.js — 화면 상태와 정렬 — catalog/tab/펼침, workOrder·recentOrder·stableOrder, esc·shortId·evEl */
 "use strict";
 let catalog = [], graph = null, auditCache = null, TRANS = {}, projects = [];
+/* 손에 든 관계도가 낡았다는 사실 — **없다**와는 다르다 (REQ-20260908-056).
+   없으면 받아 와야 그리지만, 낡은 것은 지금 그려 두고 새것이 오면 갈아 끼운다. */
+let graphStale = false;
+/* 그리기 세대. render() 를 부를 때마다 하나 오른다. 판을 늦게 그리는 손
+   (await 를 거치는 renderGraph·renderDocs·renderAudit·renderStream·
+   renderSettings)은 깨어난 뒤 제 세대를 견줘, 그 사이 다른 화면이 그려졌으면
+   판을 건드리지 않고 그리기를 그만둔다 — 알약과 판이 갈리던 자리다. */
+let renderGen = 0;
 /* 지금 손에 든 카탈로그가 **전량**인가 (REQ-20260907-066).
 
    보드에 머무는 동안 카탈로그는 좁혀 받는다(`catalogWantsAll`) — 405장. 그

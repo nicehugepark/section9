@@ -149,8 +149,45 @@ function graphEmptyHTML(st){
     `<p class="gemsg">${st.msg}</p>${f}<p class="genote">${st.note}</p></div>`;
 }
 
+/* 관계도 판을 받아 온다. 못 받으면 null 을 돌려주고 손에 든 것을 그대로 둔다 —
+   못 받은 것을 빈 그래프로 그리면 "관계가 없다"는 거짓말이 된다. */
+async function graphFetch(){
+  try{
+    const r = await fetch("/api/graph?" + meQ());
+    if (!r.ok) return null;
+    const g = await r.json();
+    if (!g || !Array.isArray(g.nodes)) return null;
+    graph = g;
+    return g;
+  }catch(e){ return null; }
+}
+
+/* 늦게 깨어난 그리기는 남의 판을 덮지 않는다 (REQ-20260908-056).
+
+   사용자가 본 것: 헤더 알약은 Board 인데 그려진 판은 관계도였다. 이 함수는
+   관계도를 받으러 한 번 멈추는데, 깨어난 뒤 조건 없이 `#view` 를 덮었다 —
+   그 사이 Board 로 옮겨 갔어도 마찬가지였다. 반대편도 같은 틈이다: 관계도를
+   누르고 응답을 기다리는 동안 판에는 직전 보드가 그대로 남아, 알약은 Graph 인데
+   화면은 Board 였다.
+
+   그래서 셋을 한다. ① 멈추기 전에 판을 「불러오는 중」으로 바꿔 직전 화면을
+   남기지 않는다. ② 깨어나면 제 세대를 견줘(renderStale) 지나간 그리기면 그만둔다.
+   ③ 손에 든 판이 낡았을 뿐이면 멈추지 않고 그것으로 그린 뒤, 새 판이 오면
+   다시 그린다 — 15초 벨트가 화면을 비우지 않게. */
 async function renderGraph(rows){
-  if (!graph) graph = await (await fetch("/api/graph?" + meQ())).json();
+  const gen = renderGen;
+  if (!graph){
+    $("#view").innerHTML = `<div class="gwait" role="status">관계도를 불러오는 중…</div>`;
+    const g = await graphFetch();
+    if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다
+    if (!g){
+      $("#view").innerHTML = `<div class="gwait bad" role="status">관계도를 받지 못했습니다 — 잠시 뒤 다시 시도해 주세요.</div>`;
+      return;
+    }
+  } else if (graphStale){
+    graphStale = false;
+    graphFetch().then(g => { if (g && tab === "graph") render(); });
+  }
   // 타입 표시 토글 (REQ-20260824-026): 세션 노드는 로그성 소음이라 기본 숨김 —
   // 범례 클릭으로 타입별 on/off (localStorage 유지)
   const visible = new Set(rows.filter(r => gtypes.has(r.type)).map(r => r.id));

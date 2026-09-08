@@ -112,3 +112,10 @@
   padding:11px 2px 0 4px;max-height:none}
 /* 레일을 세울 가로가 없으면 아래로 접힌다 — 그때는 높이를 제한해 캔버스를 지킨다.
    (base .depsum 뒤에 와야 max-height 가 덮인다) */
+
+/* 관계도를 받는 동안의 판 (REQ-20260908-056). 직전 탭의 화면을 남기지 않되,
+   자리는 판 크기 그대로 잡아 도착한 그래프가 화면을 흔들지 않는다. */
+.gwait{display:flex;align-items:center;justify-content:center;
+  min-height:340px;height:calc(100vh - 220px);
+  font-size:13px;color:var(--muted);letter-spacing:.01em}
+.gwait.bad{color:var(--c-blocked)}

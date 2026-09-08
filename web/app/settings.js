@@ -34,9 +34,11 @@ async function postJSON(url, body){
 let settingsSection = "display";  // display | account | worker | users | repo | about
 
 async function renderSettings(){
+  const gen = renderGen;
   // 같은 값은 같은 경로를 지난다 (REQ-20260828-039) — 여기서만 조용히 빈 목록으로
   // 물러나면 "등록된 사용자가 없다" 는 거짓말이 화면에 선다.
   await loadUsers();
+  if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
   const data = {users: window.__users || []};
   updateProfileBadge();
   const me = getMe();   // 서버 파생 whoami (미등록이면 "")

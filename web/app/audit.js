@@ -1,8 +1,11 @@
 /* audit.js — Audit 탭과 Stream 탭 — 사건 목록·응답 도장 */
 "use strict";
 async function renderAudit(){
-  if (!auditCache)
+  const gen = renderGen;
+  if (!auditCache){
     auditCache = (await (await fetch("/api/audit?" + meQ())).json()).events;
+  if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
+  }
   const q = $("#q").value.trim().toLowerCase();
   const u = $("#f-user").value;
   const kindOf = t =>
@@ -104,6 +107,7 @@ function renderEvents(events, q){
 }
 
 async function renderStream(){
+  const gen = renderGen;
   // 꺼져 있으면 목록을 부르지 않는다 (REQ-20260827-042). 서버는 빈 목록을 주지만
   // 그대로 그리면 아래 no-streams 안내가 나오는데, 그건 미러링을 안 하기로 한
   // 사용자에게 **미러링 중이라고 말하는** 화면이다 — 설정의 결과를 고장으로 읽게 된다.
@@ -133,6 +137,7 @@ async function renderStream(){
     await new Promise(r => setTimeout(r, 400));
     data = await ccFetch("/api/streams");
   }
+  if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
   if (!data){
     $("#view").innerHTML = `<div class="streamwrap"><div class="term"><span class="meta">세션 목록을 받지 못했습니다 — 잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.</span></div></div>`;
     return;
