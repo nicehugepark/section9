@@ -160,8 +160,21 @@ const ccGuessLink = (raw, r) =>
   + ` data-tdoc="${esc(r.id)}" data-guess="1" draggable="false"`
   + ` title="${esc(raw)} → ${esc(r.id)} · 이 줄을 쓴 때 기준으로 짐작한 것입니다`
   + ` — 눌러서 미리보기">${esc(raw)}</a>`;
-const ccDocs = escaped =>
-  escaped.replace(DOC_ID_INLINE_RE, (m0, pre, id) => pre + ccDocLink(id));
+/* 백틱 안(인라인 코드)의 문서 언급. **정식 id 와 축약 번호를 함께** 본다
+   (REQ-20260908-033). 바깥 체인에도 같은 두 규칙이 있지만 백틱 조각은 이미
+   자리표시자로 빠진 뒤라 거기까지 닿지 않는다 — 그런데 이 저장소의 대답은 문서
+   번호를 거의 늘 백틱에 넣는다(`REQ-026`). 그래서 축약이 백틱 안에 있으면 밑줄이
+   아예 서지 않았다.
+   순서는 정식 id 가 먼저다: 축약 규칙은 `REQ-` 뒤 숫자가 1~3자리로 **끝날** 때만
+   집으므로 `REQ-20260908-026-62x6` 도, 그것이 만든 앵커의 href·data-doc 속성값도
+   다시 집지 않는다. 못 푸는 축약은 맨 글자로 남는다 — 없는 약속은 하지 않는다.
+   `atMs` 는 그 줄이 **쓰인 때**다. 없으면 축약은 풀지 않는다(짐작의 기준이 없다). */
+const ccDocs = (escaped, atMs) =>
+  escaped.replace(DOC_ID_INLINE_RE, (m0, pre, id) => pre + ccDocLink(id))
+    .replace(SHORT_REF_RE, (m0, pre, kind, num) => {
+      const r = resolveShortRef(kind, num, atMs);
+      return pre + (r ? ccGuessLink(`${kind}-${num}`, r) : `${kind}-${num}`);
+    });
 
 /* ---- 터미널에 나온 코드 파일 경로를 손잡이로 (REQ-20260828-028-62x6) ----
 
@@ -303,7 +316,7 @@ function ccText(raw, at){
          블록은 읽을 것이 아니라 붙일 것이라 앵커가 섞이면 드래그 선택이
          링크 드래그가 된다 (REQ-20260828-023 designer 경고). */
       .replace(/`([^`\n]+)`/g, (m0, c) =>
-        keep(`<span class="cccode">${ccDocs(ccPathRules(c, keep))}</span>`))
+        keep(`<span class="cccode">${ccDocs(ccPathRules(c, keep), atMs)}</span>`))
       .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
       /* 문서 첨부 경로 — 이미 있는 검사(/api/asset, 문서 가시성 상속)로만
          내준다. 저장소의 아무 파일이나 내주는 길은 만들지 않는다: 무엇을

@@ -286,7 +286,11 @@ function shortRefDiag(){
   /* 규칙이 맞는 것과 **글에 그렇게 그려지는 것**은 다른 일이다 — 진짜 터미널
      렌더러(ccText)에 한 줄을 통과시켜 무엇이 링크가 되고 무엇이 맨 글자로
      남는지 눈으로 본다. 없는 문서·있는 문서·축약을 한 줄에 섞어 둔다. */
-  const sample = "REQ-20260828-021-62x6 과 REQ-20260828-999 과 REQ-017 을 봤다";
+  /* 백틱 안(`…`)을 함께 넣는다 — 이 저장소의 대답이 문서 번호를 실제로 쓰는
+     자리가 거기다(REQ-20260908-033). 맨 글자 자리와 백틱 자리가 같은 답을
+     내는지 한 줄에서 본다. */
+  const sample = "REQ-20260828-021-62x6 과 REQ-20260828-999 과 REQ-017 을 봤다"
+    + " · 백틱 `REQ-017` `REQ-041` `REQ-20260828-021-62x6` `REQ-20260828-999`";
   const box0 = document.createElement("div");
   box0.innerHTML = ccText(sample, "2026-08-24T16:19:49+09:00");
   lines.push("— 실제 렌더 (쓰인 때 2026-08-24) —", `  ${sample}`);
@@ -296,6 +300,28 @@ function shortRefDiag(){
   const plain = box0.textContent.match(/REQ-\d{8}-\d{3}(?:-[0-9a-z]{4})?/g) || [];
   const linked = [...box0.querySelectorAll("a.doclink")].map(a => a.textContent);
   lines.push(`  맨 글자로 남은 것: ${plain.filter(x => !linked.includes(x)).join(" ") || "(없음)"}`);
+  /* 두 번째 표본 — **지금 카탈로그의 진짜 번호**를 백틱 안과 밖에 같이 놓는다
+     (REQ-20260908-033). 위 표본은 굳은 계약을 재는 자리라 시각이 과거로 고정돼
+     있어서, "오늘 온 대답이 링크가 되는가"는 그것으로 답이 안 된다. 이 줄은
+     ㉮(백틱 안 축약도 풀린다)와 ㉯(못 푸는 것에는 밑줄이 없다)를 한 번에 본다. */
+  const newest = catalog.filter(r => /^REQ-\d{8}-\d+/.test(r.id || "") && Date.parse(r.created || ""))
+    .sort((a, b) => Date.parse(b.created) - Date.parse(a.created))[0];
+  if (newest){
+    const num = /^REQ-\d{8}-0*(\d+)/.exec(newest.id)[1].padStart(3, "0");
+    const s2 = `\`REQ-${num}\` 판정이 나왔습니다 · 맨 글자 REQ-${num}`
+      + ` · 정식 id \`${newest.id}\` · 없는 번호 \`REQ-998\``;
+    const box2 = document.createElement("div");
+    box2.innerHTML = ccText(s2, new Date().toISOString());
+    lines.push("— 실제 렌더 (지금 · 백틱 안과 밖) —", `  ${s2}`);
+    const got = [...box2.querySelectorAll("a.doclink")];
+    got.forEach(a => lines.push(`  ${a.textContent} → ${a.dataset.doc}`
+      + (a.dataset.guess ? "  [짐작]" : "  [확정]")));
+    const okAll = got.length === 3 && got.every(a => a.dataset.doc === newest.id)
+      && got.filter(a => a.dataset.guess).length === 2;
+    lines.push(okAll
+      ? `  ✓ 백틱 안 축약·맨 글자 축약은 짐작 링크, 백틱 안 정식 id 는 확정 링크 · 없는 번호 REQ-998 은 맨 글자`
+      : `  ✗ 링크 ${got.length}개 (짐작 2 + 확정 1 이어야 한다)`);
+  }
   const box = document.createElement("pre");
   box.id = "shortref-diag";
   box.style.cssText = "position:fixed;left:10px;top:10px;z-index:99;margin:0;"
