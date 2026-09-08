@@ -1837,6 +1837,20 @@ def cmd_assign(args):
     print(res["message"])
 
 
+def jira_card_block(meta):
+    """카드·문서가 읽는 Jira 덩이 (REQ-20260908-074). differs = 우리 상태의 카테고리와
+    Jira 상태의 카테고리가 다르다 — 판정은 여기 한 곳, 화면은 그린다."""
+    j = meta.get("jira")
+    if not isinstance(j, dict) or not (j.get("key") or j.get("pending") or j.get("last_error")):
+        return {}
+    out = {k: j.get(k, "") for k in ("key", "url", "status", "status_category",
+                                     "pending", "last_error", "synced_at")}
+    ours = JIRA_CATEGORY.get(str(meta.get("status") or ""), "")
+    out["differs"] = bool(j.get("key") and j.get("status_category") and ours
+                          and j.get("status_category") != ours)
+    return out
+
+
 def catalog_row(meta, path, body=""):
     return {
         "id": meta.get("id", ""),
@@ -1874,9 +1888,7 @@ def catalog_row(meta, path, body=""):
         "derived_from": meta.get("derived_from", ""),
         "needs_os": meta.get("needs_os", ""),   # 어느 판에서 해야 하나 (REQ-20260906-080)
         # Jira 이슈 (REQ-20260908-074) — 카드·문서가 읽는 것은 이 덩이뿐이다
-        "jira": ({k: v for k, v in (meta.get("jira") or {}).items()
-                  if k in ("key", "url", "status", "pending", "last_error", "synced_at")}
-                 if isinstance(meta.get("jira"), dict) else {}),
+        "jira": jira_card_block(meta),
         "relates": meta.get("relates", []),
         "session": meta.get("session", ""),
         "tags": meta.get("tags", []),
@@ -26564,12 +26576,14 @@ def jira_issue_create(doc_id, actor="", manual=False, **kw):
                            body={"fields": jira_issue_fields(meta, j)}, **kw)
     if st in (200, 201) and isinstance(d, dict) and d.get("key"):
         key = d["key"]
-        status = ""
+        status, cat = "", ""
         st2, d2, _ = jira_http(user, "GET", f"/rest/api/3/issue/{key}?fields=status", **kw)
         if st2 == 200 and isinstance(d2, dict):
-            status = str(((d2.get("fields") or {}).get("status") or {}).get("name") or "")
+            _st = (d2.get("fields") or {}).get("status") or {}
+            status = str(_st.get("name") or "")
+            cat = str(((_st.get("statusCategory") or {}).get("key")) or "")
         cur = _jira_write(doc_id, {"site": site, "key": key, "url": f"{site}/browse/{key}",
-                                   "status": status, "synced_at": now_iso(),
+                                   "status": status, "status_category": cat, "synced_at": now_iso(),
                                    "synced_by": "s9", "pending": "", "last_error": "",
                                    "actor": actor or user,
                                    "via": "manual" if manual else "watcher"},
@@ -26716,7 +26730,8 @@ def jira_status_push(doc_id, actor="", **kw):
     already = (want_name and now_name.lower() == want_name) or \
               (not want_name and now_cat == JIRA_CATEGORY.get(our, ""))
     if already:
-        _jira_write(doc_id, {"status": now_name, "synced_at": now_iso(), "synced_by": "s9",
+        _jira_write(doc_id, {"status": now_name, "status_category": now_cat,
+                             "synced_at": now_iso(), "synced_by": "s9",
                              "pending": "", "last_error": ""}, "")
         return {"ok": True, "status": now_name, "skipped": True, "error": ""}
     st, d, err = jira_http(user, "GET", f"/rest/api/3/issue/{key}/transitions", **kw)
@@ -26731,7 +26746,9 @@ def jira_status_push(doc_id, actor="", **kw):
     if st not in (200, 204):
         return _jira_push_failed(doc_id, err or f"transition 이 {st} 로 거절됐다", cur)
     new_name = str((t.get("to") or {}).get("name") or "")
-    _jira_write(doc_id, {"status": new_name, "synced_at": now_iso(), "synced_by": "s9",
+    new_cat = str((((t.get("to") or {}).get("statusCategory") or {}).get("key")) or "")
+    _jira_write(doc_id, {"status": new_name, "status_category": new_cat,
+                         "synced_at": now_iso(), "synced_by": "s9",
                          "pending": "", "last_error": "", "actor": actor or user},
                 f"{key} → {new_name} (우리 {our}) by {actor or user}")
     return {"ok": True, "status": new_name, "skipped": False, "error": ""}
@@ -29058,6 +29075,18 @@ def cmd_serve(args):
                         contact_phone=req.get("contact_phone"),
                         contact_org=req.get("contact_org"),
                         actor=actor, via=" via dashboard")
+                    self._json({"ok": True, **res})
+                elif parsed.path == "/api/project/jira":
+                    # Projects 정보 패널의 Jira 세 행 (REQ-20260908-074) —
+                    # do_project_jira_set 한 경로(manage 인가·비밀 거부·History).
+                    slug = str(req.get("slug") or "")
+                    if req.get("unset"):
+                        res = do_project_jira_unset(slug, actor=actor, via=" via dashboard")
+                    else:
+                        res = do_project_jira_set(
+                            slug, actor=actor, via=" via dashboard",
+                            site=req.get("site"), project_key=req.get("key"),
+                            direction=req.get("direction"))
                     self._json({"ok": True, **res})
                 elif parsed.path == "/api/user/config":
                     name = str(req.get("name") or "")

@@ -564,6 +564,8 @@ async function loadDoc(id, bg, force){
     // 카드와 같은 순서로 size보다 앞에 둔다(우선순위 → 크기).
     ["priority", m.type === "request" ? prioHTML(m, true) : null],
     ["size", esc(m.size) || null],
+    // Jira 이슈 한 행 (REQ-20260908-074) — 값은 서버가 실은 덩이(카탈로그 jira)뿐이다.
+    ["Jira", docJiraRowHTML(m, catFind(m.id)) || null],
     /* 이 요청에 쓰인 토큰 한 줄 (REQ-20260907-014) — 카드와 **같은 함수**가
        짓는다: 「출력 12.3k · 입력 1.1k · 캐시 4.2M」이고 넷(출력·입력·캐시 읽기·
        캐시 생성)은 손을 얹으면 title 로 따로 읽힌다. 자리는 size 다음이다 —
@@ -1232,4 +1234,25 @@ function answerLand(id){
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
   last.classList.add("ansland");
   setTimeout(() => last.classList.remove("ansland"), 900);
+}
+
+
+/* 문서의 「Jira」 행 (REQ-20260908-074, ux-writer·tech-writer): 「MP1-7 · In Progress ·
+   마지막 연동 3분 전」. 만드는 중/보내는 중/실패는 그 문장이고, 서버 문장은 원문 그대로
+   뒤에 붙는다. 「동기화」는 저장소 작업(s9 sync)의 말이라 여기서는 「연동」이다. */
+function docJiraRowHTML(m, rec){   // 이름은 Settings 의 jiraRowHTML(jira.js)과 겹치지 않게 — 번들이 한 이름 공간이다
+  const j = (rec && rec.jira) || (m && typeof m.jira === "object" && m.jira) || {};
+  if (!j.key && !j.pending && !j.last_error) return "";
+  const bits = [];
+  if (j.key)
+    bits.push(`<a class="jkey" href="${esc(j.url || "#")}" target="_blank" rel="noopener"
+      title="Jira 에서 ${esc(j.key)} 열기 (새 창)">${esc(j.key)}</a>`);
+  if (j.key && j.status) bits.push(esc(j.status));
+  if (j.differs) bits.push(`<span class="jdiff" title="Jira 는 ${esc(j.status || "?")}, 여기는 ${esc(m.status || "?")} 입니다.">다름</span>`);
+  if (j.pending === "create") bits.push("이슈 만드는 중 — 30초 안에 키가 붙습니다");
+  else if (j.pending === "push") bits.push("보내는 중 — 30초 안에");
+  if (j.last_error)
+    bits.push(`<span class="jerr">${j.key ? "보내지 못했습니다" : "이슈를 만들지 못했습니다"} — ${esc(j.last_error)}${j.pending ? " · 30초 뒤 다시 시도합니다" : ""}</span>`);
+  else if (j.key && j.synced_at) bits.push(`마지막 연동 ${esc(prjAgo(j.synced_at, Date.now()))}`);
+  return bits.join(" · ");
 }

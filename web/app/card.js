@@ -1756,6 +1756,23 @@ function tokensLineHTML(r){
     + ` · 입력 ${fmtTokens(t.in | 0)} · 캐시 ${fmtTokens(cache)}</span>`;
 }
 
+/* 카드의 Jira 이슈 키 (REQ-20260908-074, designer 070 ①·③) — id 줄에 키만, 새 창
+   링크. 저쪽 상태는 카드에 쓰지 않는다(상태가 둘이면 어느 쪽이 참인지 눈이 결정을
+   못 한다). 어긋남은 「다름」 글자(tech-writer: `≠` 는 부호 한 벌 밖) + 툴팁 한 문장.
+   카드가 role=button 이라 링크의 click 은 카드로 올라가지 않게 막는다(events.js 가
+   `a[href]` 를 먼저 보내 준다 — 없으면 아래 stopPropagation 이 막는다). */
+function jiraKeyHTML(r){
+  const j = r.jira || {};
+  if (!j.key) return "";
+  const diff = !!j.differs;
+  const title = diff
+    ? `Jira 는 ${j.status || "?"}, 여기는 ${r.status} 입니다.`
+    : `Jira 에서 ${j.key} 열기 (새 창)`;
+  return `<a class="jkey" href="${esc(j.url || "#")}" target="_blank" rel="noopener"
+     title="${esc(title)}" onclick="event.stopPropagation()">${esc(j.key)}</a>`
+    + (diff ? `<span class="jdiff" title="${esc(title)}">다름</span>` : "");
+}
+
 function cardHTML(r){
   const isReq = r.type === "request";
   // "무엇을 기다리는가" 한 줄 (REQ-20260826-009). blocked 전용이 아니다 —
@@ -1985,7 +2002,7 @@ function cardHTML(r){
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">
     <button type="button" class="pickdoc" data-pick="${esc(r.id)}"
       aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button>
-    <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${vh}<span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</div>
+    <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${jiraKeyHTML(r)}${vh}<span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</div>
     <div class="t">${esc(r.title)}</div>
     ${mwho}${mwhat}${acts}${dep}${stall}
     ${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}</div>`;

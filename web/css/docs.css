@@ -511,3 +511,8 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
    면도 띠도 없다 — 색은 캡션 글자에만, 프로젝트 이름은 굵기로만 도드라진다. */
 .viewer .rvpt.outside .rvcap{color:var(--c-blocked)}
 .viewer .rvpt.outside b{font-weight:600}
+
+/* 문서의 「Jira」 행 (REQ-20260908-074) — 키는 링크, 「다름」·실패 문장은 글자색으로만. */
+.metatbl .jkey{font-family:var(--mono);color:var(--text);text-decoration:underline dotted;text-underline-offset:2px}
+.metatbl .jdiff{color:var(--muted)}
+.metatbl .jerr{color:var(--warn,#b45309)}

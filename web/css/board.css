@@ -313,3 +313,10 @@ span.proj{cursor:default}
 .viewer .dtitle .wsat{align-self:center}
 .col .more{padding-left:14px}
 
+
+/* Jira 이슈 키 (REQ-20260908-074) — id 줄에 글자로만: mono · 흐린 글자색 · 점선 밑줄.
+   테두리·칠은 없다(칩은 세는 것에만). 「다름」은 글자 두 칸, 색은 같은 흐린색이다. */
+.card .id .jkey{margin-left:8px;color:var(--muted);text-decoration:underline dotted;
+  text-underline-offset:2px;white-space:nowrap}
+.card .id .jkey:hover{color:var(--text)}
+.card .id .jdiff{margin-left:4px;color:var(--muted);white-space:nowrap}

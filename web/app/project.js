@@ -129,6 +129,11 @@ const PRJ_TEXT = {
   phContactEmail: "이메일", phContactPhone: "전화",
   slugNote: "주소·폴더 이름이라 만든 뒤에는 바꾸지 않습니다",
   emptyVal: "—",
+  // Jira 연동 (REQ-20260908-074) — 라벨은 Settings 의 Jira 절과 같은 글자다
+  kJiraSite: "Jira 주소", kJiraKey: "Jira project key", kJiraDir: "연동 방향",
+  phJiraSite: "https://<site>.atlassian.net", phJiraKey: "MP1",
+  jiraEmpty: "연동된 Jira 가 없습니다 — 주소와 project key 를 넣으면 이 프로젝트의 사람이 만든 요청이 이슈로 올라갑니다.",
+  jiraDirs: [["push", "push · 여기 → Jira"], ["pull", "pull · Jira → 여기"], ["both", "both · 양쪽"]],
   // 만료가 없으면 「만료 0」을 세우지 않는다 — 없는 문제를 보고하는 꼴이 된다
   memCap: n => `멤버 ${n}명`,
   memCapMix: (n, act, exp) => `멤버 ${n}명 — 활성 ${act} · 만료 ${exp}`,
@@ -507,7 +512,36 @@ function prjSetRowsHTML(p, c){
     + opt(PRJ_TEXT.kContactName, "contact_name", p.contact_name, PRJ_TEXT.phContactName)
     + opt(PRJ_TEXT.kContactOrg, "contact_org", p.contact_org, PRJ_TEXT.phContactOrg)
     + opt(PRJ_TEXT.kContactEmail, "contact_email", p.contact_email, PRJ_TEXT.phContactEmail)
-    + opt(PRJ_TEXT.kContactPhone, "contact_phone", p.contact_phone, PRJ_TEXT.phContactPhone);
+    + opt(PRJ_TEXT.kContactPhone, "contact_phone", p.contact_phone, PRJ_TEXT.phContactPhone)
+    + prjJiraRowsHTML(p, c);
+}
+
+/* Jira 연동 세 행 (REQ-20260908-074, designer 070 ④⑤ · tech-writer 074 ④): 「Jira 주소」·
+   「Jira project key」·「연동 방향」. 값 글자(push·pull·both)는 사람이 --direction 에
+   치는 것이라 원어 그대로이고 뜻은 옵션 글자 뒤에 선다. 쓰는 길은 /api/project/jira
+   한 경로(do_project_jira_set — manage 인가·비밀 거부). 연동이 없고 고칠 수 없는
+   사람에게는 행이 서지 않는다(빈 칸은 채울 수 있는 사람에게만 자리다). */
+const PRJ_JIRA_DIRS = PRJ_TEXT.jiraDirs;     // 글자는 표(PRJ_TEXT) 한 곳에 산다
+function prjJiraRowsHTML(p, c){
+  const j = p.jira || null;
+  if (!j && !c.canManage) return "";
+  const row = (k, v) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`;
+  const val = (k, text, ph) => {
+    const shown = text ? esc(text) : `<span class="none">${esc(PRJ_TEXT.emptyVal)}</span>`;
+    return c.canManage
+      ? `<button class="pjv" type="button" data-pjjira="${k}" data-ph="${esc(ph || "")}"
+           data-val="${esc(text || "")}">${shown}</button>` : shown;
+  };
+  const dir = j ? (j.direction || "push") : "push";
+  const dirCell = (c.canManage && j)
+    ? `<select class="pjc" data-pjjiradir>` + PRJ_JIRA_DIRS.map(([v, t]) =>
+        `<option value="${v}"${v === dir ? " selected" : ""}>${esc(t)}</option>`).join("") + `</select>`
+    : (j ? esc((PRJ_JIRA_DIRS.find(([v]) => v === dir) || [dir, dir])[1]) : "");
+  const empty = (!j && c.canManage)
+    ? `<div class="pjhint">${esc(PRJ_TEXT.jiraEmpty)}</div>` : "";
+  return row(PRJ_TEXT.kJiraSite, val("site", j ? j.site : "", PRJ_TEXT.phJiraSite) + empty)
+    + row(PRJ_TEXT.kJiraKey, val("key", j ? j.project_key : "", PRJ_TEXT.phJiraKey))
+    + (j || c.canManage ? row(PRJ_TEXT.kJiraDir, dirCell || `<span class="none">${esc(PRJ_TEXT.emptyVal)}</span>`) : "");
 }
 function prjMemberRowHTML(m, p, c){
   const kind = prjUntilKind(m, c.now);
@@ -753,6 +787,43 @@ function prjWire(root, p, o){
       });
     });
   });
+  // Jira 세 행 — 주소·key 는 인라인 편집(같은 손맛), 방향은 select. 둘 다 /api/project/jira.
+  root.querySelectorAll("[data-pjjira]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const k = btn.dataset.pjjira, was = btn.dataset.val || "";
+      const inp = document.createElement("input");
+      inp.className = "pjc"; inp.value = was; inp.placeholder = btn.dataset.ph || "";
+      btn.replaceWith(inp);
+      inp.focus(); inp.select();
+      let done = false;
+      const close = save => {
+        if (done) return;
+        done = true;
+        const v = inp.value.trim();
+        inp.replaceWith(btn);
+        if (!save || v === was) return;
+        const cur = p.jira || {};
+        const body = {site: k === "site" ? v : (cur.site || ""),
+                      key: k === "key" ? v : (cur.project_key || "")};
+        if (!body.site || !body.key){
+          // 한쪽만 있는 동안은 서버에 보내지 않는다(둘 다 있어야 연동이 선다) —
+          // 값은 버튼에 담아 두고 다음 칸을 채우면 함께 나간다.
+          btn.dataset.val = v; btn.textContent = v || PRJ_TEXT.emptyVal;
+          p.jira = {...cur, ...(k === "site" ? {site: v} : {project_key: v})};
+          return;
+        }
+        post("/api/project/jira", body, m => PRJ_TEXT.errSet("jira", m));
+      };
+      inp.addEventListener("blur", () => close(true));
+      inp.addEventListener("keydown", e => {
+        if (e.key === "Enter"){ e.preventDefault(); close(true); }
+        else if (e.key === "Escape"){ e.stopPropagation(); close(false); }
+      });
+    });
+  });
+  const jdSel = root.querySelector("[data-pjjiradir]");
+  if (jdSel) jdSel.addEventListener("change", () =>
+    post("/api/project/jira", {direction: jdSel.value}, m => PRJ_TEXT.errSet("jira", m)));
   /* status 도 그 자리에서 저장한다 — 확인 창을 세우지 않는다(리드 중재 1).
      보관의 실효과는 「목록에서 접힘」 하나이고, 되돌리는 길(보관 해제)이 같은
      셀렉트에 있다. 되돌릴 수 있는 일에 확인을 걸면 다음번 진짜 경고를 안 읽는다. */
