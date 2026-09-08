@@ -2613,6 +2613,11 @@ def cmd_new(args):
         rebuild_index(quiet=True)
     finally:
         release_lock()
+    ft = (getattr(args, "from_chat", "") or "").strip()
+    if ft:
+        sid8 = (os.environ.get("S9_SESSION") or "")[:8]
+        mark_chat_documented(sid8, ft, doc_id)
+        print(f"◌ 채팅 줄 {ft} 에 표를 남겼다 — 다음 요청이 이 말을 다시 끌어오지 않는다")
     print(f"{doc_id}  {os.path.relpath(path, ROOT)}")
     if not proj and proj_candidates:
         # 후보만 낸다 — 고르는 것은 사람·리드의 몫이다(LLM 자동 기입 없음). 훅은
@@ -8385,6 +8390,43 @@ def _review_refs(text):
     return out[:5]
 
 
+def chat_documented_path(sid8):
+    """이미 요청으로 세운 채팅 줄의 표 (REQ-20260908-008).
+
+    수신함 줄 자체에 적지 않는 까닭: 그 파일은 서버가 계속 덧붙이는 중이라
+    다시 쓰면 그 사이의 줄을 잃는다. 표는 옆에 따로 쌓는다.
+    """
+    return os.path.join(ROOT, "state", "terminal", f"documented-{sid8}.jsonl")
+
+
+def mark_chat_documented(sid8, ts, req):
+    """이 채팅 줄은 이제 요청 문서가 있다 — 다음 요청의 선행 문맥에 싣지 않는다."""
+    if not (sid8 and ts and req):
+        return
+    try:
+        os.makedirs(os.path.dirname(chat_documented_path(sid8)), exist_ok=True)
+        with open(chat_documented_path(sid8), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": ts, "req": req}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass                      # 표를 못 남기는 것이 요청 생성을 막지는 않는다
+
+
+def chat_documented_set(sid8):
+    out = {}
+    try:
+        with open(chat_documented_path(sid8), encoding="utf-8") as f:
+            for ln in f:
+                try:
+                    d = json.loads(ln)
+                except ValueError:
+                    continue
+                if d.get("ts"):
+                    out[d["ts"]] = d.get("req") or ""
+    except OSError:
+        pass
+    return out
+
+
 def _chat_context(sid8, sender, window_sec=900, limit=5):
     """직전 미문서화 채팅(req 미동봉 kind=chat, 같은 발신자)을 원안 문맥으로 수집
     (REQ-20260825-007) — 질문→요청 연속 대화에서 Question 분류로 문서화되지
@@ -8398,6 +8440,7 @@ def _chat_context(sid8, sender, window_sec=900, limit=5):
     except OSError:
         return out
     now = _time.time()
+    _documented = chat_documented_set(sid8)
     for ln in reversed(lines):
         try:
             l = json.loads(ln)
@@ -8407,8 +8450,14 @@ def _chat_context(sid8, sender, window_sec=900, limit=5):
             continue
         if l.get("from") != sender:
             break
-        if l.get("req"):
-            out.append(l)      # 문서화된 줄 — 문맥 인용은 않되 관계용으로 전달
+        if l.get("req") or l.get("ts") in _documented:
+            # 문서화된 줄 — 문맥 인용은 않되 관계용으로 전달. 훅이 세운 것은
+            # `req` 가 줄에 실려 오고, **리드가 손으로 세운 것**은 옆 표로 온다
+            # (REQ-20260908-008): 표가 없으면 이미 요청이 있는 말을 다음 요청이
+            # 「미문서화 선행 메시지」로 또 끌어온다.
+            if not l.get("req"):
+                l = dict(l, req=_documented.get(l.get("ts")) or "")
+            out.append(l)
             break
         txt = (l.get("text") or "").strip()
         if not txt or re.match(r"^/[A-Za-z0-9_:-]+(\s|$)", txt):
@@ -27627,6 +27676,10 @@ def main():
                     help="프롬프트 첫 줄 표기 [프로젝트: slug] 를 훅이 넘기는 자리 — "
                          "자동 신호라 권한이 없으면 거부하지 않고 빈 값으로 둔다 "
                          "(REQ-20260906-052)")
+    np.add_argument("--from-chat", dest="from_chat", default="",
+                    help="이 요청이 그 채팅 줄에서 나왔다 — 그 줄의 ts 를 주면 "
+                         "표를 남겨 다음 요청이 같은 말을 선행 문맥으로 또 "
+                         "끌어오지 않는다 (REQ-20260908-008)")
     np.add_argument("--parent")
     np.add_argument("--derived-from")
     np.add_argument("--relates", action="append")
