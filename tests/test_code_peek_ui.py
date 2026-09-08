@@ -120,8 +120,11 @@ class CodePeekUI(unittest.TestCase):
 
     def test_a3_the_screen_reads_the_fields_the_server_sends(self):
         """카드가 읽는 이름이 서버가 보내는 이름과 같다."""
-        route = self.s9[self.s9.find("/api/code"):]
-        route = route[:route.find("/api/doc")]
+        # 경로 이름은 따옴표까지 붙여 찾는다 — 이름이 다른 경로의 앞부분이면
+        # 엉뚱한 자리에서 끊긴다(실제 발생 2026-09-08: `/api/docindex` 가
+        # 생기자 이 자리가 서버 절반을 통째로 집었다, REQ-20260908-037).
+        route = self.s9[self.s9.find('"/api/code"'):]
+        route = route[:route.find('"/api/doc"')]
         for k in ("path", "line", "from", "to", "total", "lines"):
             self.assertIn(f'"{k}"', route, f"서버가 {k} 를 보내지 않는다")
         draw = js_func(self.src, "ccCodeDraw")

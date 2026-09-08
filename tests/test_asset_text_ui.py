@@ -39,9 +39,12 @@ JARGON = ("sidecar", "asset-text", "API", "fetch", "404", "라우트", "인덱�
 
 def js_func(src, name):
     """함수 하나의 소스를 통째로 꺼낸다 (중괄호 균형)."""
-    i = src.find("function " + name)
+    # 이름 뒤에 여는 괄호까지 붙여 찾는다 — 이름이 다른 이름의 앞부분이면
+    # 엉뚱한 함수를 꺼낸다(실제 발생 2026-09-08: `loadDoc` 을 찾다가 새로 생긴
+    # `loadDocIdx` 를 꺼내 계약이 거짓으로 실패했다, REQ-20260908-037).
+    i = src.find("function " + name + "(")
     if i < 0:
-        i = src.find("async function " + name)
+        i = src.find("async function " + name + "(")
     if i < 0:
         return ""
     j = src.find("{", i)
