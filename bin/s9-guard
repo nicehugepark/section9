@@ -224,6 +224,74 @@ def is_data_path(rel):
     return p in DATA_FILES or p.startswith(DATA_PREFIXES)
 
 
+# 파일 하나의 크기 상한 (REQ-20260908-045). architect 실측 2026-09-08:
+# 저장소 나이 15일에 .git 296MB, 에셋 9.3MB/일, 가장 큰 파일 5.03MB. 기울기보다
+# 먼저 오는 것은 **벽**이다 — GitHub 는 파일 하나가 100MB 를 넘으면 push 를
+# 거부하고, 1080p60 화면 녹화는 80초면 거기 닿는다. 그리고 한 번 이력에 들어간
+# 파일은 이력 재작성 말고는 뺄 길이 없다(이 저장소는 streams/ 158MB 로 그 값을
+# 이미 한 번 치렀다). 그러니 벽을 **커밋 시점의 보이는 거절**로 앞당긴다.
+#
+# 자리가 s9-git-gate 가 아니라 여기인 까닭: 그 검사는 사람이 친 Bash 명령을 보고,
+# 동기화(sync)의 커밋은 s9 가 subprocess 로 직접 부르므로 그 검사에 걸리지 않는다.
+# 담긴 파일을 아는 자리는 pre-commit 인 여기뿐이다.
+SIZE_WARN = 10 * 1024 * 1024
+SIZE_STOP = 25 * 1024 * 1024
+SIZE_OK_ENV = "S9_BIG_FILE"       # 사유와 함께 지나가는 한 줄
+
+
+def _human_mb(n):
+    return f"{n / (1024 * 1024):.1f}MB"
+
+
+def big_staged(staged):
+    """담긴 것 중 큰 파일 — [(경로, 바이트)], 큰 것부터."""
+    out = []
+    for rel in staged or []:
+        try:
+            n = os.path.getsize(os.path.join(ROOT, rel))
+        except OSError:
+            continue
+        if n >= SIZE_WARN:
+            out.append((rel, n))
+    return sorted(out, key=lambda x: -x[1])
+
+
+def file_size_gate(staged, out=None):
+    """10MB 는 알리고, 25MB 는 막는다 (REQ-20260908-045).
+
+    막는 쪽에도 지나가는 길을 둔다 — 정말 큰 원본을 담아야 하는 날이 있고,
+    길이 없는 검사는 검사를 끄는 버릇을 만든다. 대신 **사유를 적게** 한다:
+    `S9_BIG_FILE=<REQ-id> git commit …`. 동시 작업 검사(REQ-20260907-062)와
+    같은 규율이다 — 빠져나가려면 무엇을 지나가는지 봐야 한다.
+    """
+    w = out or sys.stderr
+    big = big_staged(staged)
+    if not big:
+        return
+    stop = [(f, n) for f, n in big if n >= SIZE_STOP]
+    why = (os.environ.get(SIZE_OK_ENV) or "").strip()
+    if not stop:
+        w.write("s9-guard: 큰 파일이 담겼습니다 — "
+                + " · ".join(f"{f} {_human_mb(n)}" for f, n in big[:3])
+                + "\n  파일 하나가 100MB 를 넘으면 GitHub 이 push 를 거부하고, "
+                  "이력에 들어간 뒤에는 이력 재작성 말고 뺄 길이 없습니다.\n")
+        return
+    if why:
+        w.write(f"s9-guard: {_human_mb(stop[0][1])} 짜리 파일을 사유와 함께 "
+                f"담습니다 ({SIZE_OK_ENV}={why})\n")
+        return
+    w.write(f"s9-guard: 파일 하나가 {_human_mb(SIZE_STOP)} 를 넘습니다 — "
+            f"담지 않습니다.\n")
+    for f, n in stop:
+        w.write(f"  - {f}  {_human_mb(n)}\n")
+    w.write("이력에 한 번 들어가면 이력 재작성 말고는 뺄 길이 없고, 그것은 이 "
+            "저장소의 모든 클론을 끊습니다.\n")
+    w.write("줄여서 담거나(캡처는 `s9 shot` 이 스스로 줄입니다), 저장소 밖에 두고 "
+            "경로만 적으세요. 정말 담아야 하면 사유와 함께 지나갑니다:\n")
+    w.write(f"  {SIZE_OK_ENV}=<REQ-id> git commit ...\n")
+    sys.exit(1)
+
+
 def concurrent_gate(staged):
     """워커가 도는 중에 '방금 만져진' 파일을 담으려 하면 막는다.
 
@@ -852,6 +920,7 @@ def main():
 def _pre_commit_gates():
     staged = staged_now()
     staged_compile_gate(staged)   # 가장 싸고, 깨진 본은 아래 어느 검사도 볼 필요가 없다
+    file_size_gate(staged)        # stat 만 본다 — 시험보다 앞이라 값이 거의 0이다
     concurrent_gate(staged)
     # **넓은 변경 판정을 먼저 묻는다** (REQ-20260904-003). 아래 검사가 시험을
     # 돌리면 그 실행이 tree 를 건드려(임시 파일·복원되는 파일) 지문이 움직이고,

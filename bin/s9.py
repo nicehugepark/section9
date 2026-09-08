@@ -13168,22 +13168,83 @@ def cmd_ls(args):
     print_rows(rows)
 
 
+def doc_attachments(path, doc_id):
+    """그 문서가 가진 첨부 — [(파일명, 확장자)] (REQ-20260908-046).
+
+    catalog 에 싣지 않고 **물을 때 파일시스템에서 센다.** 두 번째 인덱스는
+    원본과 어긋날 수 있는 두 번째 진실이 되고, 이 저장소는 같은 이유로 첨부
+    본문을 catalog 에서 빼는 판정을 이미 내렸다(asset_texts 와 같은 규율).
+    """
+    d = os.path.join(os.path.dirname(path), "assets", doc_id)
+    try:
+        names = sorted(n for n in os.listdir(d) if not n.startswith("."))
+    except OSError:
+        return []
+    return [(n, os.path.splitext(n)[1].lower()) for n in names
+            if os.path.isfile(os.path.join(d, n))]
+
+
+def asset_group(ext):
+    """확장자가 속한 종류 — TYPE_GROUPS 한 벌만 읽는다."""
+    for g, exts in TYPE_GROUPS.items():
+        if ext in exts:
+            return g
+    return ""
+
+
+def attach_facet_hit(r, want_attach, want_types):
+    """`--attach`·`--type` 면을 통과하나. 통과하면 (True, 맞은 파일들)."""
+    if not (want_attach or want_types):
+        return True, []
+    files = doc_attachments(os.path.join(ROOT, r["path"]), r["id"])
+    if not files:
+        return False, []
+    if not want_types:
+        return True, [n for n, _e in files]
+    hit = [n for n, e in files if asset_group(e) in want_types]
+    return bool(hit), hit
+
+
 def cmd_search(args):
     rows = apply_filters(load_catalog(), args)
     terms = [t.lower() for t in args.terms]
+    # 산출물을 찾는 축 둘 (REQ-20260908-046). 사람이 실제로 묻는 말은 「그때
+    # 만든 그 영상」이고, 이 하네스에서 산출물의 정체성은 **그것을 만든 요청**이다.
+    # 그래서 다른 검색 명령을 내지 않고 같은 명령에 면만 더한다.
+    want_attach = bool(getattr(args, "attach", False))
+    want_types = set(getattr(args, "attach_type", None) or [])
+    if want_types:
+        want_attach = True
+    facet_files = {}
 
     def meta_hit(r):
         hay = " ".join([r["id"], r["title"], r["summary"], " ".join(r["tags"]),
                         r["project"], r.get("slug", "")]).lower()
         return all(t in hay for t in terms)
 
+    def facet_ok(r):
+        ok, files = attach_facet_hit(r, want_attach, want_types)
+        if ok and files:
+            facet_files[r["id"]] = files
+        return ok
+
+    if want_attach:
+        rows = [r for r in rows if facet_ok(r)]
+
+    def show(rr):
+        """면을 걸었으면 맞은 파일 이름까지 보여 준다 — 무엇이 맞았는지가 답이다."""
+        print_rows(rr)
+        for r in rr:
+            for n in facet_files.get(r["id"], [])[:6]:
+                print(f"    {r['id']}:assets/{r['id']}/{n}")
+
     hits = [r for r in rows if meta_hit(r)]
     if not args.body:
-        print_rows(hits)
+        show(hits)
         return
 
     seen = {r["id"] for r in hits}
-    print_rows(hits)
+    show(hits)
     for r in rows:
         path = os.path.join(ROOT, r["path"])
         try:
@@ -13198,7 +13259,7 @@ def cmd_search(args):
                                for n, t in asset_texts(path, r["id"])]
         if all(any(t in s for _n, s in segs) for t in terms):
             if r["id"] not in seen:
-                print_rows([r])
+                show([r])
                 seen.add(r["id"])
             for name, s in segs:
                 where = f"{r['id']}:{name}" if name else r["id"]
@@ -15822,6 +15883,86 @@ def cmd_review(args):
 CONTEXT_HEAD = 30      # digest 에 싣는 CONTEXT.md 앞줄 수 (REQ-20260905-020)
 
 
+ASSET_STAT_PATH = os.path.join(ROOT, "state", "asset-weight.json")
+ASSET_STAT_TTL = 6 * 3600      # 6시간 — 세션마다 vault 를 훑지 않는다
+
+
+def asset_weight(force=False, now=None):
+    """첨부의 총량·최대 파일·하루 증가율 (REQ-20260908-045).
+
+    **세는 자리가 없으면 다음에도 15일 뒤에야 안다.** architect 실측
+    2026-09-08: 저장소 나이 15일에 vault 첨부 139.5MB(png 860장)·.git 296MB 였고,
+    아무 화면에도 그 숫자가 없어서 아무도 몰랐다. 커지는 것 자체는 결함이 아니다 —
+    **안 보이는 것**이 결함이다.
+
+    vault 를 훑는 값은 6시간 캐시로 갚는다. 증가율은 앞 측정과의 차이로 낸다 —
+    파일마다 mtime 을 묻는 것보다 싸고, 사람이 보는 값(어제보다 얼마나)과 같다.
+    """
+    import time as _time
+    now = now or _time.time()
+    old = {}
+    try:
+        with open(ASSET_STAT_PATH, encoding="utf-8") as f:
+            old = json.load(f)
+    except (OSError, ValueError):
+        old = {}
+    if not force and old and now - float(old.get("at") or 0) < ASSET_STAT_TTL:
+        return old
+    total = files = 0
+    big_n, big_p = 0, ""
+    for base, dirs, names in os.walk(VAULT):
+        # 추출 본문 사이드카(.text/)는 첨부가 아니라 검색을 위한 파생물이다 —
+        # 세면 같은 것을 두 번 세게 된다.
+        dirs[:] = [d for d in dirs if d != ".text"]
+        if os.path.basename(base) != "assets" and \
+                os.path.basename(os.path.dirname(base)) != "assets":
+            continue
+        for n in names:
+            fp = os.path.join(base, n)
+            try:
+                sz = os.path.getsize(fp)
+            except OSError:
+                continue
+            total += sz
+            files += 1
+            if sz > big_n:
+                big_n, big_p = sz, os.path.relpath(fp, ROOT)
+    st = {"at": now, "bytes": total, "files": files,
+          "max_bytes": big_n, "max_path": big_p}
+    # 증가율 — 앞 측정과의 차이. 첫 측정에는 없다(짐작을 적지 않는다).
+    if old.get("at") and old.get("bytes") is not None:
+        days = max((now - float(old["at"])) / 86400.0, 1e-9)
+        if days >= 0.25:                      # 6시간 미만 차이로는 하루치를 못 낸다
+            st["per_day"] = (total - int(old["bytes"])) / days
+        elif old.get("per_day") is not None:
+            st["per_day"] = old["per_day"]
+    try:
+        os.makedirs(os.path.dirname(ASSET_STAT_PATH), exist_ok=True)
+        with open(ASSET_STAT_PATH, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False)
+    except OSError:
+        pass
+    return st
+
+
+def asset_weight_line(st=None):
+    """digest 에 싣는 한 줄. 잴 것이 없으면 빈 문자열."""
+    st = st if st is not None else asset_weight()
+    if not st or not st.get("files"):
+        return ""
+    mb = st["bytes"] / (1024 * 1024)
+    out = f"첨부 {mb:.0f}MB · {st['files']}개"
+    if st.get("per_day") is not None:
+        out += f" · {st['per_day'] / (1024 * 1024):+.1f}MB/일"
+    if st.get("max_path"):
+        out += (f" · 최대 {st['max_bytes'] / (1024 * 1024):.1f}MB "
+                f"{os.path.basename(st['max_path'])}")
+    # 벽을 함께 적는다 — 숫자만 적으면 그것이 큰지 작은지 아무도 모른다.
+    if st.get("max_bytes", 0) >= 25 * 1024 * 1024:
+        out += " ⚠ 25MB 이상은 커밋이 막는다"
+    return out
+
+
 def cmd_digest(args):
     """catalog을 컨텍스트 주입용으로 재요약 (인덱스의 인덱스).
 
@@ -15874,6 +16015,12 @@ def cmd_digest(args):
     head = (f"[section9] docs={len(rows)} | req: "
             + " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
             + f" | user={user}")
+    try:
+        aw = asset_weight_line()
+    except Exception:
+        aw = ""
+    if aw:
+        head += f" | {aw}"
     tail = ("조회: s9 show <id>|--meta · s9 ls --user/--status · s9 search <kw> --body · "
             "s9 digest --budget N. 프롬프트는 훅이 자동 REQ화한다.")
 
@@ -29257,6 +29404,16 @@ def main():
     se = sub.add_parser("search", help="search metadata (and body with --body)")
     se.add_argument("terms", nargs="+")
     se.add_argument("--body", action="store_true", help="grep document bodies too")
+    # 산출물을 찾는 축 (REQ-20260908-046) — 같은 명령에 면만 더한다
+    se.add_argument("--attach", action="store_true",
+                    help="첨부·산출물을 가진 문서만")
+    # 이름이 `--type` 이 아닌 까닭: 그 이름은 이미 **문서의 종류**(request·
+    # knowledge…)를 뜻한다. 같은 것에 이름은 하나이고, 다른 것에 같은 이름을
+    # 붙이면 둘 다 못 읽는다 (규약 2조 ⑤).
+    se.add_argument("--attach-type", dest="attach_type", action="append",
+                    choices=sorted(TYPE_GROUPS),
+                    help="그 종류의 첨부를 가진 문서만 (여러 번 쓸 수 있다). "
+                         "--attach 를 함께 켠다")
     add_filter_args(se)
     se.set_defaults(fn=cmd_search)
 
