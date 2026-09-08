@@ -41,6 +41,20 @@ document.addEventListener("drop", e => {
 });
 
 /* ---------------- events ---------------- */
+/* 탭을 새 브라우저 탭에 연다 — 주소는 지금 주소에 #<탭> 만 바꾼 것이라 필터·프로젝트
+   (query) 가 그대로 따라간다. noopener: 새 탭이 이 창을 만지지 못한다. */
+function tabOpenNew(name){
+  const url = location.pathname + location.search + "#" + name;
+  window.open(url, "_blank", "noopener");
+}
+// 가운데 버튼(auxclick button 1) — 헤더의 탭에만 (REQ-20260909-006)
+document.addEventListener("auxclick", e => {
+  if (e.button !== 1) return;
+  const b = evEl(e.target)?.closest("header [data-tab]");
+  if (!b) return;
+  e.preventDefault();
+  tabOpenNew(b.dataset.tab);
+});
 document.addEventListener("click", e => {
   /* 코드 블록 복사 (REQ-20260828-023). 터미널·스트림은 통째로 다시 그려지므로
      리스너는 손잡이마다가 아니라 여기 위임 하나로 둔다 — 붙이면 재렌더마다
@@ -75,6 +89,13 @@ document.addEventListener("click", e => {
   }
   const tabBtn = evEl(e.target)?.closest("[data-tab]");
   if (tabBtn){
+    /* 수정키 클릭은 **새 탭**이다 (REQ-20260909-006, 주인: 「가운데 버튼으로 눌렀을 때
+       브라우저 새 탭으로」). 탭이 <a href> 가 아니라 <button> 이라 브라우저가 스스로
+       못 하니 여기서 연다 — 가운데 버튼은 아래 auxclick 이 같은 함수로 받는다. */
+    if (tabBtn.closest("header") && (e.ctrlKey || e.metaKey || e.shiftKey)){
+      tabOpenNew(tabBtn.dataset.tab);
+      return;
+    }
     tab = tabBtn.dataset.tab;
     if (tab === "audit") auditCache = null;
     tabSync();
