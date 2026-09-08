@@ -26761,8 +26761,136 @@ def _jira_push_failed(doc_id, err, cur):
     return {"ok": False, "error": err, "skipped": False, "attempts": attempts}
 
 
+# ── Jira → 우리 상태 pull (REQ-20260908-076) ─────────────────────────────────
+# webhook 이 아니라 폴링이다(공개 URL 없음). 우리 문서에서 이슈 키를 모아 프로젝트별로
+# 한 번 묻는다(key in (…) AND updated >= -Nm). 들어오는 전이는 do_transition 의
+# 검사를 그대로 지나고, 걸리면 전이하지 않고 jira.status 만 갱신한다(카드 「다름」).
+# 문서가 진실이다 — 밖에서 온 값은 검사를 지난 것만 들어온다.
+JIRA_POLL_STATE = os.path.join(ROOT, "state", "jira-poll.json")
+JIRA_POLL_SEC = 60
+JIRA_FROM_CATEGORY = {"new": "open", "indeterminate": "in-progress", "done": "done"}
+
+
+def _jira_poll_read():
+    try:
+        with open(JIRA_POLL_STATE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _jira_poll_write(d):
+    os.makedirs(os.path.dirname(JIRA_POLL_STATE), exist_ok=True)
+    with open(JIRA_POLL_STATE, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+
+
+def jira_pull_targets():
+    """{(slug): {key: doc_id}} — direction pull|both 인 프로젝트의 이슈 달린 요청."""
+    dirs = {}
+    for m in all_projects():
+        j = m.get("jira") if isinstance(m.get("jira"), dict) else None
+        if j and j.get("project_key") and j.get("direction", "push") in ("pull", "both"):
+            dirs[m.get("slug", "")] = j
+    if not dirs:
+        return {}
+    out = {sl: {} for sl in dirs}
+    for row in load_catalog():
+        if row.get("type") != "request" or row.get("project") not in dirs:
+            continue
+        key = str((row.get("jira") or {}).get("key") or "")
+        if key:
+            out[row["project"]][key] = row["id"]
+    return {sl: keys for sl, keys in out.items() if keys}
+
+
+def jira_apply_remote(doc_id, key, status_name, category, actor="watcher"):
+    """Jira 의 상태 하나를 우리 문서에 — 전이가 필요하면 검사를 지나 전이, 아니면 값만."""
+    path = find_path(doc_id)
+    if not path:
+        return {"ok": False, "error": "문서 없음", "changed": False}
+    meta, _ = read_doc(path)
+    ours = str(meta.get("status") or "")
+    cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+    want = JIRA_FROM_CATEGORY.get(category, "")
+    same = JIRA_CATEGORY.get(ours, "") == category
+    if same or not want or ours in TERMINAL_STATUSES and want == "done":
+        if cur.get("status") != status_name or cur.get("status_category") != category:
+            _jira_write(doc_id, {"status": status_name, "status_category": category,
+                                 "synced_at": now_iso(), "synced_by": "jira"}, "")
+        return {"ok": True, "changed": False, "transitioned": False}
+    try:
+        do_transition(doc_id, want, note=f"jira: {key} → {status_name}", user=meta.get("user"),
+                      auto=True, via="jira")
+        _jira_write(doc_id, {"status": status_name, "status_category": category,
+                             "synced_at": now_iso(), "synced_by": "jira", "pending": "",
+                             "last_error": ""}, f"{key} 가 {status_name} 이라 {ours} → {want}")
+        return {"ok": True, "changed": True, "transitioned": True, "to": want}
+    except Exception as e:
+        # 검사에 걸렸다 — 전이하지 않는다. 값만 적어 카드가 「다름」을 말하게 한다.
+        _jira_write(doc_id, {"status": status_name, "status_category": category,
+                             "synced_at": now_iso(), "synced_by": "jira",
+                             "last_error": f"Jira 는 {status_name} 인데 {want} 로 옮기지 못했다 — {e}"},
+                    f"{key} 는 {status_name} 인데 전이 거부 — {e}")
+        return {"ok": False, "changed": False, "transitioned": False, "error": str(e)}
+
+
+def jira_pull_tick(now=None, force=False, **kw):
+    """워처 1틱 — 60초에 한 번, 프로젝트마다 JQL 한 번. 반환: [(doc_id, result)]."""
+    import time as _time
+    from urllib.parse import quote
+    now = now or _time.time()
+    st = _jira_poll_read()
+    last = float(st.get("at") or 0)
+    if not force and now - last < JIRA_POLL_SEC:
+        return []
+    targets = jira_pull_targets()
+    if not targets:
+        return []
+    out = []
+    window_min = max(2, int((now - last) / 60) + 2) if last else 60 * 24
+    for slug, keys in targets.items():
+        j = project_jira(slug)
+        if not j:
+            continue
+        # 누구의 자격으로 묻나 — 그 프로젝트의 요청 담당자 중 준비된 사람 하나
+        user = ""
+        for k, did in keys.items():
+            p = find_path(did)
+            if not p:
+                continue
+            u = read_doc(p)[0].get("user") or ""
+            if u and jira_auth_header(u)[0] is not None:
+                user = u
+                break
+        if not user:
+            continue
+        jql = (f'project = {j["project_key"]} AND key in ({", ".join(sorted(keys))}) '
+               f'AND updated >= "-{window_min}m"')
+        got = None
+        for path in ("/rest/api/3/search/jql", "/rest/api/3/search"):
+            code, d, err = jira_http(user, "GET", f"{path}?jql={quote(jql)}&fields=status&maxResults=100", **kw)
+            if code in (404, 410):
+                continue
+            got = (code, d)
+            break
+        if not got or got[0] != 200 or not isinstance(got[1], dict):
+            continue                     # 네트워크·권한 실패는 조용히 다음 틱
+        for iss in got[1].get("issues") or []:
+            key = str(iss.get("key") or "")
+            did = keys.get(key)
+            if not did:
+                continue
+            stf = (iss.get("fields") or {}).get("status") or {}
+            name = str(stf.get("name") or "")
+            cat = str(((stf.get("statusCategory") or {}).get("key")) or "")
+            out.append((did, jira_apply_remote(did, key, name, cat)))
+    _jira_poll_write({"at": now})
+    return out
+
+
 def cmd_jira(args):
-    """`s9 jira ping|create|push|outbox` (REQ-20260908-071·073·075)."""
+    """`s9 jira ping|create|push|pull|outbox` (REQ-20260908-071·073·075·076)."""
     user = resolve_user(getattr(args, "user", None))
     if args.action == "ping":
         res = jira_ping(user)
@@ -26800,6 +26928,18 @@ def cmd_jira(args):
             print(f"{doc_id}: Jira {res.get('status') or '?'}" + ("  (이미 같다)" if res.get("skipped") else ""))
             return
         die(res.get("error") or "실패")
+    if args.action == "pull":
+        res = jira_pull_tick(force=True)
+        if getattr(args, "json", False):
+            print(json.dumps(res, ensure_ascii=False, indent=1))
+            return
+        if not res:
+            print("바뀐 이슈 없음 (direction pull|both 인 프로젝트의 이슈만 묻는다)")
+            return
+        for did, r in res:
+            print(f"{did}: " + ("전이 → " + r.get("to", "") if r.get("transitioned")
+                                 else ("값만 갱신" if r.get("ok") else "거부 — " + str(r.get("error", "")))))
+        return
     if args.action == "outbox":
         rows = jira_outbox_read()
         if getattr(args, "run", False):
@@ -26813,7 +26953,7 @@ def cmd_jira(args):
             print(f"{r['id']}  {r.get('kind')}  시도 {r.get('attempts', 0)}회  "
                   f"{('— ' + r['last_error']) if r.get('last_error') else ''}")
         return
-    die("usage: s9 jira ping|create <REQ>|push <REQ>|outbox [--run]")
+    die("usage: s9 jira ping|create <REQ>|push <REQ>|pull|outbox [--run]")
 
 
 def git_do(what, actor="", proxy_for=""):
@@ -29348,6 +29488,10 @@ def cmd_serve(args):
                         jira_outbox_tick()      # 요청→Jira 이슈 (REQ-20260908-073)
                     except Exception:
                         pass
+                    try:
+                        jira_pull_tick()        # Jira→우리 상태 (REQ-20260908-076), 60초에 한 번
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 # 10분(20틱)마다 유실 감사 (REQ-20260901-009) — 스냅샷이 이미
@@ -30973,7 +31117,7 @@ def main():
     md.set_defaults(fn=cmd_merge_doc)
 
     ji = sub.add_parser("jira", help="Jira 연동 (REQ-20260908-071) — ping: 연결 확인")
-    ji.add_argument("action", choices=["ping", "create", "push", "outbox"])
+    ji.add_argument("action", choices=["ping", "create", "push", "pull", "outbox"])
     ji.add_argument("id", nargs="?", help="create: 요청 id")
     ji.add_argument("--user", help="누구의 준비물로 (기본: 나)")
     ji.add_argument("--json", action="store_true")
