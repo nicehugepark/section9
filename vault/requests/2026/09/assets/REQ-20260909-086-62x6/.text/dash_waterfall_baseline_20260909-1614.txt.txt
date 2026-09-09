@@ -1,0 +1,221 @@
+# dash_waterfall — http://127.0.0.1:9909 · 3회 중앙값 · idle 1200ms · 2026-09-09T16:15:40+0900 · 103.2s
+단계           | 왕복 | api | 실패 | 재시도 | 재시도지연ms | 첫그리기ms | 마지막요청ms | 마지막그리기ms | api중앙ms | 시한초과
+-------------+----+-----+----+-----+---------+--------+---------+----------+---------+-----
+load(#board) | 17 |  13 |  3 |   3 |    1502 |     88 |    9048 |     2695 |     177 |  0/3
+tab:board    |  2 |   2 |  0 |   0 |       0 |     72 |     351 |     1377 |    1591 |  0/3
+tab:docs     |  2 |   2 |  0 |   0 |       0 |     82 |     641 |      702 |     302 |  0/3
+docs:open    |  2 |   2 |  0 |   0 |       0 |     69 |     681 |      709 |     129 |  0/3
+tab:graph    |  3 |   3 |  0 |   0 |       0 |    216 |     785 |     1705 |     591 |  0/3
+tab:audit    |  3 |   3 |  0 |   0 |       0 |     12 |    2441 |     2473 |     844 |  0/3
+tab:terminal |  5 |   5 |  1 |   0 |       0 |     61 |    2593 |     3565 |     860 |  1/3
+tab:settings |  5 |   5 |  0 |   0 |       0 |     40 |    1217 |     1231 |     820 |  0/3
+합계(중앙값의 합): 왕복 39 · api 35 · 실패 4 · 재시도 3 · 마지막요청ms 17757
+첫 탐색(index.html) 리셋 횟수 회별: [0, 1, 4]
+
+## run 1
+- load(#board): 왕복 17(api 14, 스트림 0) 실패 3 재시도 3 첫그리기 113 마지막요청 5595 마지막그리기 1700
+    실패: /api/docindex? net::ERR_CONNECTION_RESET
+    실패: /api/catalog? net::ERR_CONNECTION_RESET
+    실패: /api/serveguard net::ERR_CONNECTION_RESET
+         9 +   92 200 GET /
+        99 + 1105 200 GET /css/all.css
+        99 + 4238 200 GET /app/all.js
+      4353 +  116 200 GET /api/whoami
+      4353 +  130 200 GET /api/users
+      4353 +   66 net::ERR_CONNECTION_RESET GET /api/docindex?
+      4353 +   74 net::ERR_CONNECTION_RESET GET /api/catalog?
+      4472 +  115 200 GET /api/projects?
+      4485 +  107 200 GET /api/transitions
+      4612 +  298 200 GET /api/docindex?
+      4627 +  394 200 GET /api/catalog?
+      5045 +  110 200 GET /api/claude/usage
+      5045 +  111 200 GET /api/serveinfo
+      5045 +  108 net::ERR_CONNECTION_RESET GET /api/serveguard
+      5328 +   32 200 GET /api/serveguard
+      5560 +   29 200 GET /api/catalog?archived=1&window=all
+      5560 +   35 200 GET /api/trash?
+- tab:board: 왕복 2(api 2, 스트림 0) 실패 0 재시도 0 첫그리기 83 마지막요청 351 마지막그리기 1377
+        83 +  268 200 GET /api/catalog?
+        83 +   58 200 GET /api/projects?
+- tab:docs: 왕복 2(api 2, 스트림 0) 실패 0 재시도 0 첫그리기 76 마지막요청 604 마지막그리기 662
+        78 +  526 200 GET /api/catalog?window=all
+        78 +   49 200 GET /api/projects?
+- docs:open: 왕복 2(api 2, 스트림 0) 실패 0 재시도 0 첫그리기 50 마지막요청 392 마지막그리기 409
+        50 +   28 200 GET /api/doc?id=REQ-20260909-086-62x6&
+       163 +  229 200 GET /api/graph?
+- tab:graph: 왕복 3(api 3, 스트림 0) 실패 0 재시도 0 첫그리기 178 마지막요청 487 마지막그리기 1705
+       141 +  181 200 GET /api/graph?
+       141 +  346 200 GET /api/catalog?window=all
+       141 +  346 200 GET /api/projects?
+- tab:audit: 왕복 3(api 3, 스트림 0) 실패 0 재시도 0 첫그리기 11 마지막요청 779 마지막그리기 799
+       218 +  561 200 GET /api/audit?
+       218 +   58 200 GET /api/catalog?window=all
+       218 +   59 200 GET /api/projects?
+- tab:terminal: 왕복 5(api 5, 스트림 1) 실패 1 재시도 0 첫그리기 57 마지막요청 1982 마지막그리기 1998
+    실패: /api/agents?session=c139e3c6 net::ERR_CONNECTION_RESET
+        57 +  893 200 GET /api/chat/target
+        57 + 1925 200 GET /api/catalog?window=all
+        57 +  827 200 GET /api/projects?
+       960 +   49 200 GET /api/chat/log?sid=c139e3c6
+       961 +   13 net::ERR_CONNECTION_RESET GET /api/agents?session=c139e3c6
+- tab:settings: 왕복 5(api 5, 스트림 0) 실패 0 재시도 0 첫그리기 28 마지막요청 2827 마지막그리기 2846
+        23 + 1638 200 GET /api/users
+        23 + 2804 200 GET /api/catalog?window=all
+        23 + 1715 200 GET /api/projects?
+      1664 +  570 200 GET /api/git/state?
+      1664 +  199 200 GET /api/jira/state
+
+## run 2
+- load(#board): 왕복 17(api 13, 스트림 0) 실패 3 재시도 3 첫그리기 81 마지막요청 9048 마지막그리기 4032
+    실패: / net::ERR_CONNECTION_RESET
+    실패: /api/catalog?archived=1&window=all net::ERR_CONNECTION_RESET
+    실패: /api/trash? net::ERR_CONNECTION_RESET
+         4 +  995 net::ERR_CONNECTION_RESET GET /
+      1506 +  211 200 GET /
+      1716 + 1057 200 GET /css/all.css
+      1716 + 4299 200 GET /app/all.js
+      6031 +   88 200 GET /api/whoami
+      6031 +   90 200 GET /api/users
+      6031 + 3014 200 GET /api/docindex?
+      6031 + 3017 200 GET /api/catalog?
+      6124 +  236 200 GET /api/projects?
+      6124 +  161 200 GET /api/transitions
+      6742 + 1021 200 GET /api/claude/usage
+      6744 +  848 200 GET /api/serveinfo
+      7242 +   68 net::ERR_CONNECTION_RESET GET /api/catalog?archived=1&window=all
+      7242 +  100 net::ERR_CONNECTION_RESET GET /api/trash?
+      7473 +  555 200 GET /api/catalog?archived=1&window=all
+      7531 + 1505 200 GET /api/trash?
+      7610 +   77 200 GET /api/serveguard
+- tab:board: 왕복 2(api 2, 스트림 0) 실패 0 재시도 0 첫그리기 72 마지막요청 3324 마지막그리기 4351
+        73 + 3251 200 GET /api/catalog?
+        73 + 2786 200 GET /api/projects?
+- tab:docs: 왕복 2(api 2, 스트림 0) 실패 0 재시도 0 첫그리기 82 마지막요청 641 마지막그리기 702
+        82 +  559 200 GET /api/catalog?window=all
+        82 +   44 200 GET /api/projects?
+- docs:open: 왕복 2(api 2, 스트림 0) 실패 0 재시도 0 첫그리기 69 마지막요청 681 마지막그리기 709
+        68 +   82 200 GET /api/doc?id=REQ-20260909-086-62x6&
+       236 +  445 200 GET /api/graph?
+- tab:graph: 왕복 4(api 4, 스트림 0) 실패 0 재시도 0 첫그리기 216 마지막요청 5023 마지막그리기 6276
+       177 + 4035 200 GET /api/graph?
+       177 + 4297 200 GET /api/catalog?window=all
+       177 + 2526 200 GET /api/projects?
+      4586 +  437 200 GET /api/graph?
+- tab:audit: 왕복 7(api 7, 스트림 0) 실패 0 재시도 0 첫그리기 12 마지막요청 4260 마지막그리기 4289
+       223 + 3061 200 GET /api/audit?
+       223 + 3216 200 GET /api/catalog?window=all
+       223 + 2208 200 GET /api/projects?
+      1751 +  844 200 GET /api/serveinfo
+      2431 +   66 200 GET /api/serveguard
+      3456 +  281 200 GET /api/docindex?
+      3456 +  804 200 GET /api/audit?
+- tab:terminal: 왕복 5(api 5, 스트림 1) 실패 0 재시도 0 첫그리기 61 마지막요청 2593 마지막그리기 3565
+        62 + 1566 200 GET /api/chat/target
+        62 + 2531 200 GET /api/catalog?window=all
+        62 + 1186 200 GET /api/projects?
+      1638 +  106 200 GET /api/chat/log?sid=c139e3c6
+      1639 +  140 200 GET /api/agents?session=c139e3c6
+- tab:settings: 왕복 5(api 5, 스트림 0) 실패 0 재시도 0 첫그리기 43 마지막요청 1217 마지막그리기 1231
+        38 +  820 200 GET /api/users
+        38 + 1179 200 GET /api/catalog?window=all
+        38 +  824 200 GET /api/projects?
+       862 +  268 200 GET /api/git/state?
+       862 +  137 200 GET /api/jira/state
+
+## run 3
+- load(#board): 왕복 19(api 12, 스트림 0) 실패 5 재시도 5 첫그리기 88 마지막요청 12207 마지막그리기 2695
+    실패: / net::ERR_CONNECTION_RESET
+    실패: / net::ERR_CONNECTION_RESET
+    실패: / net::ERR_CONNECTION_RESET
+    실패: / net::ERR_CONNECTION_RESET
+    실패: /api/docindex? net::ERR_CONNECTION_RESET
+         4 +   10 net::ERR_CONNECTION_RESET GET /
+       529 +    4 net::ERR_CONNECTION_RESET GET /
+      1042 +    3 net::ERR_CONNECTION_RESET GET /
+      1553 + 2788 net::ERR_CONNECTION_RESET GET /
+      4853 +  866 200 GET /
+      5717 + 1141 200 GET /css/all.css
+      5717 + 4409 200 GET /app/all.js
+     10142 +   92 200 GET /api/whoami
+     10142 +  106 200 GET /api/users
+     10142 +   37 net::ERR_CONNECTION_RESET GET /api/docindex?
+     10142 +  590 200 GET /api/catalog?
+     10236 +  147 200 GET /api/projects?
+     10249 +   93 200 GET /api/transitions
+     10383 +  429 200 GET /api/docindex?
+     10834 +  177 200 GET /api/claude/usage
+     10834 +  180 200 GET /api/serveinfo
+     10834 +  136 200 GET /api/serveguard
+     11352 +  855 200 GET /api/catalog?archived=1&window=all
+     11352 +  619 200 GET /api/trash?
+- tab:board: 왕복 0(api 0, 스트림 0) 실패 0 재시도 0 첫그리기 67 마지막요청 0 마지막그리기 1083
+- tab:docs: 왕복 1(api 1, 스트림 0) 실패 0 재시도 0 첫그리기 83 마지막요청 1271 마지막그리기 1320
+        84 + 1187 200 GET /api/catalog?window=all
+- docs:open: 왕복 3(api 3, 스트림 0) 실패 0 재시도 0 첫그리기 124 마지막요청 836 마지막그리기 861
+       123 +   96 200 GET /api/doc?id=REQ-20260909-089-62x6&
+       313 +  523 200 GET /api/graph?
+       326 +   68 200 GET /api/asset?doc=REQ-20260909-089-62x6&f=20260909T161428-image.png
+- tab:graph: 왕복 1(api 1, 스트림 0) 실패 0 재시도 0 첫그리기 240 마지막요청 785 마지막그리기 1282
+       194 +  591 200 GET /api/graph?
+- tab:audit: 왕복 1(api 1, 스트림 0) 실패 0 재시도 0 첫그리기 181 마지막요청 2441 마지막그리기 2473
+       180 + 2261 200 GET /api/audit?
+- tab:terminal: 왕복 48(api 48, 스트림 2) 실패 4 재시도 2 첫그리기 67 마지막요청 14718 마지막그리기 14724 시한초과
+    실패: /api/chat/log?sid=c139e3c6 net::ERR_CONNECTION_RESET
+    실패: /api/agents?session=c139e3c6 net::ERR_CONNECTION_RESET
+    실패: /api/agentstream?session=c139e3c6&agent=a511429c95384c3e1&after=0 net::ERR_CONNECTION_RESET
+    실패: /api/serveinfo net::ERR_CONNECTION_RESET
+        67 +  131 200 GET /api/chat/target
+       207 +   65 200 GET /api/chat/log?sid=c139e3c6
+       207 +   56 200 GET /api/agents?session=c139e3c6
+       816 + 1638 200 GET /api/catalog?window=all
+      2723 + 3493 200 GET /api/agentstream?session=c139e3c6&agent=a511429c95384c3e1&after=0
+      3215 +   85 200 GET /api/chat/log?sid=c139e3c6
+      5210 + 3566 200 GET /api/chat/target?sid=c139e3c6
+      5210 + 3547 net::ERR_CONNECTION_RESET GET /api/agentstream?session=c139e3c6&agent=a511429c95384c3e1&after=0
+      5823 + 2934 net::ERR_CONNECTION_RESET GET /api/serveinfo
+      5824 + 2954 200 GET /api/serveguard
+      6208 + 2568 200 GET /api/chat/log?sid=c139e3c6
+      6219 + 2558 200 GET /api/agentstream?session=c139e3c6&agent=aab5ca29d4d8a9d98&after=0
+      7714 + 1066 200 GET /api/agentstream?session=c139e3c6&agent=a511429c95384c3e1&after=3805375
+      8719 +  137 200 GET /api/agents?session=c139e3c6
+      8757 +  861 200 GET /api/agentstream?session=c139e3c6&agent=aab5ca29d4d8a9d98&after=0
+      8785 +  832 200 GET /api/agentstream?session=c139e3c6&agent=a705e2de65ed78f70&after=0
+      8788 + 3040 200 GET /api/agentstream?session=c139e3c6&agent=aab5ca29d4d8a9d98&after=0
+      8925 +  371 200 GET /api/serveinfo
+      8973 +  304 200 GET /api/agents?session=c139e3c6
+      9213 +  122 net::ERR_CONNECTION_RESET GET /api/chat/log?sid=c139e3c6
+      9627 + 2299 200 GET /api/agentstream?session=c139e3c6&agent=a88f72a51427fa248&after=0
+      9633 + 2203 200 GET /api/agentstream?session=c139e3c6&agent=a705e2de65ed78f70&after=0
+     10214 + 1373 200 GET /api/chat/target?sid=c139e3c6
+     10214 +   23 net::ERR_CONNECTION_RESET GET /api/agents?session=c139e3c6
+     10214 +  398 200 GET /api/agentstream?session=c139e3c6&agent=a511429c95384c3e1&after=3809097
+     10617 +  611 200 GET /api/agentstream?session=c139e3c6&agent=aab5ca29d4d8a9d98&after=880854
+     11232 +  420 200 GET /api/agentstream?session=c139e3c6&agent=a705e2de65ed78f70&after=514255
+     11654 + 1305 200 GET /api/agentstream?session=c139e3c6&agent=a88f72a51427fa248&after=0
+     11832 + 1047 200 GET /api/agentstream?session=c139e3c6&agent=a705e2de65ed78f70&after=0
+     11840 + 1806 200 GET /api/agentstream?session=c139e3c6&agent=a88f72a51427fa248&after=0
+     11929 +  981 200 GET /api/agentstream?session=c139e3c6&agent=a1dad1184a3440e68&after=0
+     12211 +   54 200 GET /api/chat/log?sid=c139e3c6
+     12709 +  157 200 GET /api/agentstream?session=c139e3c6&agent=a511429c95384c3e1&after=3809097
+     12868 +  185 200 GET /api/agentstream?session=c139e3c6&agent=aab5ca29d4d8a9d98&after=880854
+     12881 + 1519 200 GET /api/agentstream?session=c139e3c6&agent=a88f72a51427fa248&after=0
+     12913 +  583 200 GET /api/agentstream?session=c139e3c6&agent=ac77f69d03a8074a4&after=0
+     12961 +  653 200 GET /api/agentstream?session=c139e3c6&agent=a1dad1184a3440e68&after=0
+     13056 +  210 200 GET /api/agentstream?session=c139e3c6&agent=a705e2de65ed78f70&after=514255
+     13268 +  168 200 GET /api/agentstream?session=c139e3c6&agent=a88f72a51427fa248&after=680511
+     13438 +  905 200 GET /api/agentstream?session=c139e3c6&agent=a1dad1184a3440e68&after=0
+     13499 +  116 200 GET /api/agentstream?session=c139e3c6&agent=aafeba8e17e052ccd&after=0
+     13617 +  435 200 GET /api/agentstream?session=c139e3c6&agent=ac77f69d03a8074a4&after=0
+     13648 + 1070 200 GET /api/agentstream?session=c139e3c6&agent=a1dad1184a3440e68&after=0
+     14055 +  386 200 GET /api/agentstream?session=c139e3c6&agent=aafeba8e17e052ccd&after=0
+     14346 +  339 200 GET /api/agentstream?session=c139e3c6&agent=ac77f69d03a8074a4&after=0
+     14402 +    - … GET /api/agentstream?session=c139e3c6&agent=a1dad1184a3440e68&after=0
+     14688 +    - … GET /api/agentstream?session=c139e3c6&agent=aafeba8e17e052ccd&after=0
+     14720 +    - … GET /api/agentstream?session=c139e3c6&agent=ac77f69d03a8074a4&after=0
+- tab:settings: 왕복 5(api 5, 스트림 0) 실패 0 재시도 0 첫그리기 40 마지막요청 950 마지막그리기 970
+        33 +  320 200 GET /api/agentstream?session=c139e3c6&agent=aafeba8e17e052ccd&after=0
+       129 +    9 200 GET /api/users
+       129 +  821 200 GET /api/catalog?window=all
+       170 +  228 200 GET /api/git/state?
+       170 +  133 200 GET /api/jira/state
+exit=0
