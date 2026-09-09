@@ -222,3 +222,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-09T15:58:50+09:00 config jira_enabled=off (by nicehugepark)
 - 2026-09-09T15:59:04+09:00 config jira_enabled=(삭제) (by nicehugepark)
 - 2026-09-09T16:10:54+09:00 config jira_enabled=off (by nicehugepark)
+- 2026-09-09T16:11:28+09:00 config jira_enabled=(삭제) (by nicehugepark)
