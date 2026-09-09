@@ -84,13 +84,17 @@ class NoteAttach(unittest.TestCase):
         self.cli("note", self.id, f"보라 [Image: {p}]")
         self.assertIn(f"[Image: assets/{self.id}/inline.png]", self.body())
 
-    # B2. 같은 이름을 두 번 붙여도 덮어쓰지 않는다
+    # B2. 같은 이름에 다른 내용을 두 번 붙여도 덮어쓰지 않는다 — `-2` 가 선다.
+    # 내용까지 같으면 한 벌만 둔다(REQ-20260909-045, tests/test_attach_dedupe.py).
     def test_b2_same_name_not_overwritten(self):
         self.cli("note", self.id, "하나", "--attach", self.mk("dup.png"))
-        self.cli("note", self.id, "둘", "--attach", self.mk("dup.png"))
+        self.cli("note", self.id, "둘", "--attach",
+                 self.mk("dup.png", PNG + b"\x01"))
         self.assertTrue(os.path.exists(self.asset("dup.png")))
         self.assertTrue(os.path.exists(self.asset("dup-2.png")),
                         os.listdir(os.path.dirname(self.asset("dup.png"))))
+        with open(self.asset("dup.png"), "rb") as f:
+            self.assertEqual(f.read(), PNG, "먼저 붙인 것이 덮였다")
 
     # B3. 첨부만 있고 글이 없어도 노트가 선다 — 캡처 한 장만 남기는 것이 정상이다
     def test_b3_attach_only(self):

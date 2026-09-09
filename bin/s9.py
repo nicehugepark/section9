@@ -14544,6 +14544,27 @@ def reindex_asset_text(doc_id=None):
     return docs, files
 
 
+def _same_content(a, b):
+    """두 파일이 같은 내용인가 — 같은 파일(경로·링크)이거나 크기+sha256 이 같다.
+    읽기 실패는 「다르다」로 — 확신 없이 기존 파일을 가리키면 첨부가 사라진다."""
+    try:
+        if os.path.samefile(a, b):
+            return True
+        if os.path.getsize(a) != os.path.getsize(b):
+            return False
+        import hashlib
+        digests = []
+        for p in (a, b):
+            h = hashlib.sha256()
+            with open(p, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+            digests.append(h.digest())
+        return digests[0] == digests[1]
+    except OSError:
+        return False
+
+
 def ingest_assets(doc_id):
     """본문의 절대경로 첨부를 문서 옆 assets/로 이전하고 상대경로로 재작성.
     업로드 임시본(state/)은 이동, 남의 파일(CC 이미지 캐시 등)은 복사.
@@ -14581,11 +14602,28 @@ def ingest_assets(doc_id):
         name = safe_name(os.path.basename(src))
         dst, i = os.path.join(dst_dir, name), 2
         stem, ext = os.path.splitext(name)
+        # 이름이 겹치면 `-2` — 단, **같은 내용이 이미 그 자리에 있으면 그것을
+        # 가리킨다** (REQ-20260909-045). 실측: 맥 세션이 캡처를 assets/<id>/ 에
+        # 바로 저장한 뒤 그 절대경로로 --attach 했고, 여기서 원본이 제 자리에서
+        # 제 이름과 겹쳐 `-2` 사본이 섰다(REQ-031 1장, REQ-040 4장, 크기 동일).
+        # 같은 파일을 두 번 붙이는 재시도도 같은 자리에서 두 벌이 된다.
+        # 판정은 크기+sha256 — 이름만 같고 내용이 다른 것은 여전히 `-2` 다.
+        reused = False
         while os.path.exists(dst):
+            if _same_content(src, dst):
+                reused = True
+                break
             dst = os.path.join(dst_dir, f"{stem}-{i}{ext}")
             i += 1
         try:
-            if os.path.commonpath([os.path.realpath(src), state_dir]) == state_dir:
+            in_state = os.path.commonpath(
+                [os.path.realpath(src), state_dir]) == state_dir
+            if reused:
+                # 복사할 것이 없다. 업로드 임시본이면 이동과 같은 결과가 되게
+                # 원본을 걷는다 — 남의 파일은 그대로 둔다.
+                if in_state and not os.path.samefile(src, dst):
+                    os.remove(src)
+            elif in_state:
                 shutil.move(src, dst)          # 우리 업로드 임시본
             else:
                 shutil.copyfile(src, dst)      # CC 캐시 등 — 원본 보존
