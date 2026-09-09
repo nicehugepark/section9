@@ -228,3 +228,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-09T16:34:29+09:00 config ui_skin=calm (by nicehugepark via dashboard)
 - 2026-09-09T16:37:18+09:00 config jira_enabled=off (by nicehugepark via dashboard)
 - 2026-09-09T16:37:22+09:00 config jira_enabled=on (by nicehugepark via dashboard)
+- 2026-09-09T17:00:49+09:00 config ui_skin=ledger (by nicehugepark via dashboard)
