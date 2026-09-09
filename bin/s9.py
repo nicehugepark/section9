@@ -28017,29 +28017,92 @@ def search_data(query):
     return {"results": results}
 
 # 모든 SES 문서의 History 라인 → 이벤트 타임라인
-def audit_data():
-    events = []
-    for p in walk_docs():
-        meta, body = read_doc(p)
-        if meta.get("type") != "session":
+JSON_GZIP_MIN = 4096   # 이보다 작은 본문은 압축하지 않는다 — 헤더가 본문보다 커진다
+
+
+def json_response_bytes(obj, accept_encoding):
+    """JSON 응답 본문과 Content-Encoding (REQ-20260909-062).
+
+    이 환경의 루프백은 바이트가 곧 시간이다 — 맨살 stdlib 서버로도 2.7MB 에
+    2.8~8.5초, 60KB 에 0.25초(2026-09-09 실측). /api/audit 2.7MB 가 5~7초
+    걸린 몫의 전부가 전송이었고 계산은 0.12초였다. gzip 을 받는 클라이언트
+    (브라우저 fetch 는 언제나 받고 스스로 푼다)에는 압축본을 보낸다:
+    2.7MB → 177KB, 압축 14ms. 압축을 받지 않는 클라이언트(urllib 기본·시험)는
+    그대로 원문을 받으므로 기존 계약은 바뀌지 않는다.
+    """
+    body = json.dumps(obj, ensure_ascii=False).encode()
+    if len(body) < JSON_GZIP_MIN or "gzip" not in (accept_encoding or ""):
+        return body, None
+    z = zlib.compressobj(6, zlib.DEFLATED, 31)   # 31 = gzip 컨테이너
+    return z.compress(body) + z.flush(), "gzip"
+
+
+# audit 사건 캐시 (REQ-20260909-062). 요청마다 문서 전량(1,618건)을 읽어
+# History 를 다시 파싱했다 — 0.12~0.2초의 CPU 이고 폴링이 겹치면 GIL 을 나눠
+# 먹는다(load_catalog 의 나선과 같은 갈래). 키는 파일 stat(mtime_ns·size):
+# 안 바뀐 파일은 stat 한 번이고 바뀐 파일만 다시 읽는다. 세션이 아닌 문서는
+# 빈 목록으로 기억해 두 번째부터는 열지 않는다. lock 은 한-번-계산 공유다.
+_AUDIT_CACHE = {"files": {}, "events": [], "key": None, "gen": 0}
+_AUDIT_LOCK = threading.Lock()
+_AUDIT_LINE = re.compile(r"- (\S+) (.*?)(?:\s*\(by ([^)]+)\))?$")
+
+
+def _audit_events_of(path):
+    """문서 하나의 History 사건 — 세션 문서가 아니면 빈 목록."""
+    try:
+        meta, body = read_doc(path)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(meta, dict) or meta.get("type") != "session":
+        return []
+    out = []
+    in_hist = False
+    for line in body.splitlines():
+        if line.startswith("## "):
+            in_hist = line.strip() == "## History"
             continue
-        in_hist = False
-        for line in body.splitlines():
-            if line.startswith("## "):
-                in_hist = line.strip() == "## History"
+        if in_hist and line.startswith("- "):
+            m = _AUDIT_LINE.match(line)
+            if m:
+                out.append({
+                    "ts": m.group(1), "text": m.group(2),
+                    "by": m.group(3) or "",
+                    "session": meta.get("session", ""),
+                    "machine": meta.get("machine", ""),
+                    "doc": meta.get("id", ""),
+                })
+    return out
+
+
+def audit_data(limit=None):
+    """모든 세션 문서의 History 사건, 최신순. limit 은 최신 N건(양의 정수만
+    유효 — 그 밖은 전량), total 은 자르기 전의 전체 수다."""
+    with _AUDIT_LOCK:
+        files = _AUDIT_CACHE["files"]
+        seen = {}
+        changed = False
+        for p in walk_docs():
+            try:
+                st = os.stat(p)
+            except OSError:
                 continue
-            if in_hist and line.startswith("- "):
-                m = re.match(r"- (\S+) (.*?)(?:\s*\(by ([^)]+)\))?$", line)
-                if m:
-                    events.append({
-                        "ts": m.group(1), "text": m.group(2),
-                        "by": m.group(3) or "",
-                        "session": meta.get("session", ""),
-                        "machine": meta.get("machine", ""),
-                        "doc": meta.get("id", ""),
-                    })
-    events.sort(key=lambda e: e["ts"], reverse=True)
-    return {"events": events}
+            key = (st.st_mtime_ns, st.st_size)
+            old = files.get(p)
+            if old is not None and old[0] == key:
+                seen[p] = old
+                continue
+            seen[p] = (key, _audit_events_of(p))
+            changed = True
+        if changed or len(seen) != len(files):
+            events = [e for _, evs in seen.values() for e in evs]
+            events.sort(key=lambda e: e["ts"], reverse=True)
+            _AUDIT_CACHE.update(files=seen, events=events)
+            _AUDIT_CACHE["gen"] += 1
+        events = _AUDIT_CACHE["events"]
+        total = len(events)
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
+            events = events[:limit]
+        return {"events": list(events), "total": total}
 
 def projects_data():
     """모든 프로젝트 + 멤버(활성/만료) — 대시보드 셀렉터·정보패널용.
@@ -29009,8 +29072,18 @@ def cmd_serve(args):
                     left -= len(chunk)
 
         def _json(self, obj, code=200):
-            self._send(code, "application/json; charset=utf-8",
-                       json.dumps(obj, ensure_ascii=False).encode())
+            # 바이트가 곧 시간인 루프백 — json_response_bytes 의 주석 참조
+            data, enc = json_response_bytes(
+                obj, self.headers.get("Accept-Encoding"))
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Vary", "Accept-Encoding")
+            if enc:
+                self.send_header("Content-Encoding", enc)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
 
         def log_message(self, fmt, *a):
             pass  # 조용히
@@ -29292,11 +29365,22 @@ def cmd_serve(args):
                 self._json(d)
             elif parsed.path == "/api/audit":
                 me = viewer_of(qs)
-                d = audit_data()
+                # limit 은 **가시성 판정 뒤에** 자른다 — 먼저 자르면 남에게
+                # 안 보이는 사건이 N건을 채우고 보이는 것이 빠진다. total 은
+                # 뷰어에게 보이는 전체 수다.
+                try:
+                    limit = int(qs.get("limit", ["0"])[0])
+                except ValueError:
+                    limit = 0
                 if user_role(me) not in ("admin", ""):  # ""=미등록 뷰어 비강제
+                    d = audit_data()
                     vis = {r["id"] for r in load_catalog()
                            if doc_visible(r, me)}
-                    d["events"] = [e for e in d["events"] if e["doc"] in vis]
+                    evs = [e for e in d["events"] if e["doc"] in vis]
+                    d = {"events": evs[:limit] if limit > 0 else evs,
+                         "total": len(evs)}
+                else:
+                    d = audit_data(limit=limit)
                 self._json(d)
             elif parsed.path == "/api/streams":
                 me = viewer_of(qs)
