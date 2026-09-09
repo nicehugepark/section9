@@ -944,7 +944,16 @@ def state_gate(staged):
     """state/ 는 기계 살림이다 — index 에 넣지 마라 (REQ-20260909-024). `.gitignore` 는
     `git add -f` 와 옛 추적을 못 막는다; 두 기계가 각자 고치는 같은 이름의 파일이
     추적되면 pull 이 「would be overwritten」로 멈춘다(맥미니 12시간 실측)."""
-    hits = [f for f in (staged or []) if f == "state" or f.startswith("state/")]
+    # 삭제(D)는 index 에서 **빼는** 것이라 막지 않는다 — untrack 커밋(REQ-20260909-024
+    # B단계)이 바로 그 모양이다(맥 실측 2026-09-09 10:51: 첫 판이 D 까지 세어 untrack 을
+    # 거부했다). 더하거나 고치는 것(A·C·M·R)만 본다.
+    try:
+        added = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+            capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT).stdout.splitlines()
+    except Exception:
+        added = list(staged or [])
+    hits = [f for f in added if f == "state" or f.startswith("state/")]
     if not hits:
         return
     print("[s9-guard] state/ 는 이 기계의 살림이다 — index 에 넣지 마라 (REQ-20260909-024): "

@@ -135,7 +135,9 @@ function jiraRowHTML(r, s){
              PRJ_TEXT.jiraDirs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
            <button type="button" class="more wmore" id="j-link">연동</button></div>`
       : "";
-    ctl = linked + form;
+    // .wctl 은 가로 flex 라 줄과 폼이 옆으로 늘어선다(주인 캡처 2026-09-09 10:50) —
+    // 세로 상자 하나로 감싸 줄들 아래 폼이 선다 (REQ-20260909-027).
+    ctl = `<div class="jlinkbox">${linked}${form}</div>`;
     if (s.registered && !can.length && !rows.length)
       fact = "관리(maintainer 이상)하는 프로젝트가 없어 여기서 이을 수 없습니다.";
     if (s.registered && !s.ready.site) fact = "먼저 Jira 주소를 적으십시오 — 프로젝트는 그 주소의 것입니다.";

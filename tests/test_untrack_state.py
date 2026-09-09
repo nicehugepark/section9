@@ -112,12 +112,21 @@ class UntrackState(unittest.TestCase):
         with open(os.path.join(self.b, "state", "sessions", "approvals_seen.json")) as f:
             self.assertEqual(f.read(), '{"b": 2}')
 
-    def test_u5_guard_refuses_staged_state(self):
+    def test_u5_guard_refuses_added_state_but_not_deletions(self):
+        """더하는 것(A/M)은 막고, untrack 의 삭제(D)는 지나간다 — 맥 실측 2026-09-09."""
         spec = importlib.util.spec_from_loader("s9guard_t", importlib.machinery.SourceFileLoader("s9guard_t", GUARD))
         g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+        g.ROOT = self.a
+        os.makedirs(os.path.join(self.a, "state", "x"), exist_ok=True)
+        with open(os.path.join(self.a, "state", "x", "new.json"), "w") as f:
+            f.write("{}")
+        git(self.a, "add", "-f", "state/x/new.json")
         with self.assertRaises(SystemExit):
-            g.state_gate(["bin/s9.py", "state/sessions/x.json"])
-        g.state_gate(["bin/s9.py", "vault/x.md"])      # 지나간다
+            g.state_gate(["state/x/new.json"])
+        git(self.a, "reset", "-q", "state/x/new.json")
+        git(self.a, "rm", "-r", "-q", "--cached", "state/sessions")        # untrack 의 모양(D)
+        g.state_gate(["state/sessions/approvals_seen.json", "state/sessions/M__1.json"])   # 지나간다
+        g.state_gate(["bin/s9.py", "vault/x.md"])
 
 
 if __name__ == "__main__":
