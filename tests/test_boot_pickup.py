@@ -121,7 +121,7 @@ class NextPickup(unittest.TestCase):
     def test_b2_human_output_says_how_to_take_it(self):
         out = self.cli(None, "next")
         self.assertIn(self.HIGH, out)
-        self.assertIn(f"s9 claim {self.HIGH}", out,
+        self.assertIn(f"s9 last {self.HIGH} --add", out,
                       "이어받는 방법이 출력에 없다")
 
 
