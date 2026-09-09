@@ -2749,8 +2749,9 @@ def cmd_new(args):
     finally:
         release_lock()
     # Jira 로 내보낼 요청이면 outbox 에 싣는다 (REQ-20260908-073) — 네트워크 없이.
+    # 제목이 원문 그대로(훅이 만든 카드)면 정리될 때까지 미룬다 (REQ-20260909-032).
     if args.doc_type == "request":
-        jira_after_new_request(doc_id, meta)
+        jira_after_new_request(doc_id, meta, body=body)
     ft = (getattr(args, "from_chat", "") or "").strip()
     if ft:
         sid8 = (os.environ.get("S9_SESSION") or "")[:8]
@@ -13233,6 +13234,8 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
         rebuild_index(quiet=True)
     finally:
         release_lock()
+    # Jira: 제목이 정리됐으면 미뤄 둔 생성을 싣고, 이슈가 있으면 제목을 맞춘다 (REQ-20260909-032)
+    jira_after_set(cid, meta, body, changed)
     try:
         maybe_sync(f"set {cid}")
     except Exception:
@@ -26663,14 +26666,18 @@ def jira_label(doc_id):
     return JIRA_LABEL_PREFIX + doc_id
 
 
-def jira_export_wanted(meta, manual=False):
+def jira_export_wanted(meta, manual=False, body=None, late=False):
     """이 요청을 Jira 로 내보내나 — (연동 설정 또는 None, 까닭). 까닭이 비면 내보낸다.
-    manual(s9 jira create)은 사람이 시킨 것이라 export·export_origin 규칙을 지나간다."""
+    manual(s9 jira create)은 사람이 시킨 것이라 export·export_origin 규칙을 지나간다.
+    body 를 주면 제목이 원문 그대로인 동안은 미룬다(REQ-20260909-032, 주인: 「제목이
+    정리된 후에 등록되면 좋겠다」) — late=True(in-progress 전이)면 미루지 않는다."""
     if meta.get("type") != "request":
         return None, "요청 문서가 아니다"
     j = project_jira(meta.get("project") or "")
     if not j:
         return None, "프로젝트에 Jira 연동이 없다 (s9 project jira <slug> set …)"
+    if not manual and not late and body is not None and _title_is_raw(meta.get("title", ""), body):
+        return j, "제목이 원문 그대로다 — s9 set --title 로 정리되면(늦어도 in-progress 때) 만든다"
     if not manual:
         if j.get("export_origin", "human") == "human" and meta.get("origin") != "human":
             return j, ("사람이 직접 만든 요청만 내보낸다 (origin: "
@@ -26697,10 +26704,12 @@ def jira_issue_fields(meta, j):
             "issuetype": {"name": j.get("issue_type") or "Task"},
             "summary": f"[{doc_id}] {meta.get('title') or ''}"[:250],
             "labels": [jira_label(doc_id)],
+            # 첫 문단이 완료 기준이다 — Jira 의 접힌 미리보기에서도 보인다(주인 캡처 MP1-4
+            # 는 description 이 접혀 비어 보였다, REQ-20260909-032).
             "description": _jira_adf([
-                f"section9 요청 {doc_id}",
-                f"요약: {meta.get('summary')}" if meta.get("summary") else "",
                 f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
+                f"요약: {meta.get('summary')}" if meta.get("summary") else "",
+                f"section9 요청 {doc_id}",
                 f"담당: {meta.get('user') or ''} · 크기: {meta.get('size') or ''} · "
                 f"상태: {meta.get('status') or ''}"])}
 
@@ -26831,11 +26840,15 @@ def _jira_create_failed(doc_id, err, cur):
     return {"ok": False, "error": err, "skipped": False, "attempts": attempts}
 
 
-def jira_after_new_request(doc_id, meta):
+def jira_after_new_request(doc_id, meta, body=None, late=False):
     """요청 생성 훅 — 네트워크 없이 outbox 에만 싣는다(요청 생성을 늦추지 않는다).
-    워처(serve)가 30초 안에 만든다. 내보낼 요청이 아니면 아무것도 안 남긴다."""
+    워처(serve)가 30초 안에 만든다. 내보낼 요청이 아니면 아무것도 안 남긴다.
+    제목이 원문 그대로면 미룬다 — do_set 의 제목 정리와 in-progress 전이가 다시 부른다."""
     try:
-        j, why = jira_export_wanted(meta)
+        cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+        if cur.get("key") or cur.get("pending") == "create":
+            return False
+        j, why = jira_export_wanted(meta, body=body, late=late)
         if why:
             return False
         _jira_write(doc_id, {"pending": "create"}, "")
@@ -26860,6 +26873,7 @@ def jira_outbox_tick(now=None, limit=5, **kw):
             continue
         n += 1
         res = (jira_status_push(r["id"], actor="watcher", **kw) if r.get("kind") == "push"
+               else jira_title_push(r["id"], actor="watcher", **kw) if r.get("kind") == "title"
                else jira_issue_create(r["id"], actor="watcher", **kw))
         if res.get("ok") or res.get("skipped"):
             done.append((r["id"], bool(res.get("ok"))))
@@ -26899,9 +26913,49 @@ def jira_push_wanted(meta, note="", auto=False):
     return j, ""
 
 
-def jira_after_transition(doc_id, meta, note="", auto=False):
-    """do_transition 의 끝 — outbox 에만 싣는다(네트워크 없음)."""
+def jira_title_push(doc_id, actor="", **kw):
+    """제목이 바뀌면 이슈 summary 를 맞춘다 — PUT /issue/{key} fields.summary (REQ-20260909-032).
+    description 은 건드리지 않는다(사람이 Jira 에서 고친 것을 지우지 않는다)."""
+    path = find_path(doc_id)
+    if not path:
+        return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
+    meta, _body = read_doc(path)
+    cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+    if not cur.get("key"):
+        return {"ok": False, "error": "이슈가 없다", "skipped": True}
+    user = meta.get("user") or actor
+    if jira_auth_header(user)[0] is None:
+        return {"ok": False, "error": f"@{user} 의 준비물이 없다", "skipped": True}
+    summary = f"[{meta.get('id') or doc_id}] {meta.get('title') or ''}"[:250]
+    st, _d, err = jira_http(user, "PUT", f"/rest/api/3/issue/{cur['key']}",
+                            body={"fields": {"summary": summary}}, **kw)
+    if st in (200, 204):
+        _jira_write(doc_id, {"synced_at": now_iso(), "synced_by": "s9", "pending": "",
+                             "last_error": ""}, f"{cur['key']} 제목 맞춤 — {summary}")
+        return {"ok": True, "skipped": False, "error": ""}
+    return {"ok": False, "error": err or f"summary 갱신이 {st} 로 거절됐다", "skipped": False}
+
+
+def jira_after_set(doc_id, meta, body, changed):
+    """do_set 의 끝 — 제목이 정리됐으면 미뤄 둔 생성을 싣고, 이슈가 있으면 제목을 맞춘다."""
     try:
+        if "title" not in (changed or []):
+            return False
+        cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+        if cur.get("key"):
+            jira_outbox_add(doc_id, "title")
+            return True
+        return jira_after_new_request(doc_id, meta, body=body)
+    except Exception:
+        return False
+
+
+def jira_after_transition(doc_id, meta, note="", auto=False):
+    """do_transition 의 끝 — outbox 에만 싣는다(네트워크 없음). in-progress 로 들어오는
+    전이는 미뤄 둔 생성(원문 제목)도 그때 싣는다 — 늦어도 착수 때는 이슈가 선다."""
+    try:
+        if meta.get("status") == "in-progress":
+            jira_after_new_request(doc_id, meta, late=True)
         j, why = jira_push_wanted(meta, note=note, auto=auto)
         if why:
             return False
