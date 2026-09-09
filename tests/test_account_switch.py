@@ -26,12 +26,14 @@
 
 실행: python3 tests/ account_switch
 """
+import glob
 import importlib.machinery
 import importlib.util
 import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from webasset import index_path   # 화면은 조각이다 — 계약은 이어 붙인 한 장을 본다 (REQ-20260829-027)
@@ -223,6 +225,147 @@ class TheScreen(unittest.TestCase):
                           "대시보드에서 계정을 더할 길이 없다")
             self.assertIn("/api/account/add", self.src,
                           "더하기 손잡이가 서버로 이어지지 않는다")
+
+
+# ---- 다섯 — 고른 계정이 화면 맨 위에는 1분 뒤에야 선다 (REQ-20260910-001) ----
+# 우상단 계정·사용량 칩은 부트와 60초 안전 폴(evSweep) 두 곳에서만 다시 받았다.
+# 그래서 이 창에서 계정을 바꾼 사람이 최대 1분 동안 옛 계정을 읽었다 — 같은
+# 화면의 이 창은 이미 새 계정을 「지금 이것」으로 찍고 있는데 맨 위는 옛 것이라,
+# 어느 쪽이 참인지 물을 수밖에 없다(2026-09-10 07:54 실측: 창 claude04, 칩
+# claude01). 아래는 그 마감 자리를 node 로 **실행**해 잰다.
+
+RESTART_SRC = open(os.path.join(HERE, "..", "web", "app", "restart.js"),
+                   encoding="utf-8").read()
+EVENTS_SRC = open(os.path.join(HERE, "..", "web", "app", "events_ch.js"),
+                  encoding="utf-8").read()
+
+def find_node():
+    n = shutil.which("node") or shutil.which("nodejs")
+    if n:
+        return n
+    for pat in ("/home/*/.vscode-server/bin/*/node",
+                "/root/.vscode-server/bin/*/node",
+                "/mnt/c/Temp/s9-webkit/node-*/node.exe"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
+
+
+NODE = find_node()
+
+
+def _fn(src, name):
+    i = src.index(f"function {name}(")
+    depth = 0
+    for j in range(i, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i:j + 1]
+    raise AssertionError(name)
+
+
+STUBS = r"""
+let calls = [];
+let TERM = null;
+function svWatchStop(){ calls.push("stop"); }
+function termRestartDone(){ calls.push("done-line"); }
+function restartChip(k){ calls.push("chip:" + k); }
+"""
+
+
+def run_js(body, with_refresh=True):
+    src = STUBS
+    if with_refresh:
+        src += "\nfunction refreshUsage(){ calls.push('usage'); }\n"
+    src += _fn(RESTART_SRC, "usageAgain") + "\n"
+    src += _fn(RESTART_SRC, "restartSettle") + "\n"
+    src += body
+    out = subprocess.run([NODE, "-e", src], capture_output=True,
+                         encoding="utf-8", errors="replace", timeout=60)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip()
+
+
+TRUTH_STUBS = r"""
+let NOW = [{key: "claude04@example.invalid", current: true}];
+let svAsked = null, svWatch = null, tick = null;
+const RESTART_TRUTH_MAX_MS = 1800000, RESTART_TRUTH_MS = 4000;
+const document = {hidden: false};
+function setInterval(fn){ tick = fn; return 1; }
+function svRestartSet(){ calls.push("chip-clear"); }
+function svModelSeen(){ }
+function modelAlias(s){ return String(s || ""); }
+function restartLimit(){ return null; }
+async function ccFetch(){ return {sid: "abc", accounts: NOW}; }
+"""
+
+
+def run_truth_js(body):
+    """svTruthWatch 를 세워 그 한 틱을 손으로 돌린다 — 타이머는 붙잡아 둔다."""
+    src = (STUBS + TRUTH_STUBS
+           + _fn(RESTART_SRC, "usageAgain") + "\n"
+           + "function refreshUsage(){ calls.push('usage'); }\n"
+           + _fn(RESTART_SRC, "svTruthGone") + "\n"
+           + _fn(RESTART_SRC, "svTruthWatch") + "\n" + body)
+    out = subprocess.run([NODE, "-e", src], capture_output=True,
+                         encoding="utf-8", errors="replace", timeout=60)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip()
+
+
+@unittest.skipUnless(NODE, "node 없음")
+class TheChipAtTheTopFollowsTheSwitch(unittest.TestCase):
+    def test_done_refetches_chip(self):
+        """성공 마감이면 칩을 그 자리에서 다시 받는다."""
+        got = run_js('restartSettle("done", "opus-5");'
+                     'console.log(calls.join(","));')
+        self.assertIn("usage", got.split(","), got)
+
+    def test_lost_does_not_refetch(self):
+        """실패 마감은 계정이 그대로다 — 다시 받을 것이 없다."""
+        got = run_js('restartSettle("lost");console.log(calls.join(","));')
+        self.assertNotIn("usage", got.split(","), got)
+
+    def test_no_refresh_fn_is_safe(self):
+        """그 함수가 없는 판에서도 마감이 예외 없이 끝난다."""
+        got = run_js('restartSettle("done");console.log("ok:" + calls.length);',
+                     with_refresh=False)
+        self.assertTrue(got.startswith("ok:"), got)
+
+    def test_truth_watch_refetches(self):
+        """실패 칩을 물리는 자리(청한 계정이 지금 계정)도 칩을 다시 받는다."""
+        got = run_truth_js(
+            'svAsked = {req: {account: "claude04@example.invalid"}};'
+            'svTruthWatch();'
+            'tick().then(() => console.log(calls.join(",")));')
+        self.assertIn("usage", got.split(","), got)
+
+    def test_truth_watch_quiet_while_untrue(self):
+        """아직 그 계정이 아니면 아무것도 다시 받지 않는다."""
+        got = run_truth_js(
+            'svAsked = {req: {account: "claude04@example.invalid"}};'
+            'NOW = [{key: "claude01@example.invalid", current: true}];'
+            'svTruthWatch();'
+            'tick().then(() => console.log("end:" + calls.join(",")));')
+        self.assertNotIn("usage", got.split(","), got)
+
+    def test_safe_poll_kept(self):
+        """60초 안전 폴의 호출은 남는다 — 대시보드 밖 전환의 폴백이다."""
+        src = (STUBS + "\nfunction refreshUsage(){ calls.push('usage'); }\n"
+               + "let evFails = 0; const EV_FAILS_DOWN = 3;\n"
+               + "function evPull(k){ calls.push('pull:' + k); }\n"
+               + _fn(EVENTS_SRC, "evSweep")
+               + "\nevSweep();console.log(calls.join(','));")
+        out = subprocess.run([NODE, "-e", src], capture_output=True,
+                             encoding="utf-8", errors="replace", timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("usage", out.stdout.strip().split(","), out.stdout)
+
+
 
 if __name__ == "__main__":
     unittest.main()

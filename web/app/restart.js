@@ -55,6 +55,22 @@ function restartSettle(kind, model){
   svWatchStop();
   termRestartDone(TERM, kind === "done" ? "ok" : "timeout", model);
   restartChip(kind === "done" ? "done" : "lost");
+  if (kind === "done") usageAgain();
+}
+/* 계정이 바뀐 것이 확인된 자리에서 헤더 칩을 다시 받는다 (REQ-20260910-001).
+
+   여태 이 칩(우상단 계정·사용량)은 부트와 60초 안전 폴(evSweep) 두 곳에서만
+   다시 받았다. 그래서 계정 창에서 계정을 바꾼 사람이 **최대 1분 동안 옛 계정을
+   읽었다** — 같은 화면의 계정 창은 이미 새 계정을 「지금 이것」으로 찍고 있는데
+   화면 맨 위는 옛 것이라, 어느 쪽이 참인지 사람이 물을 수밖에 없다
+   (2026-09-10 07:54 실측: 창은 claude04, 칩은 claude01).
+
+   서버 쪽 캐시는 이미 `(설정 디렉토리, 자격증명 mtime)` 로 갈라져 있어 계정이
+   바뀌면 그 자리에서 새로 받는다 — 남은 것은 **화면이 언제 묻느냐** 하나였다.
+   60초 폴은 그대로 둔다: 대시보드 밖(터미널의 `s9 account use`)에서 바뀐
+   계정은 여기를 지나지 않으므로, 그 길을 메우는 것은 여전히 그 폴이다. */
+function usageAgain(){
+  if (typeof refreshUsage === "function") refreshUsage();
 }
 /* 못 바꾼 사실이 **아직도 참인지** 되묻는다 (REQ-20260901-014 D7).
 
@@ -76,7 +92,7 @@ function svTruthWatch(){
     const nt = await ccFetch("/api/chat/target", 4000);
     if (svWatch !== w) return;
     svModelSeen(nt);
-    if (svTruthGone(w.want, nt)){ svWatchStop(); svRestartSet(null); }
+    if (svTruthGone(w.want, nt)){ svWatchStop(); svRestartSet(null); usageAgain(); }
   }, RESTART_TRUTH_MS);
 }
 /* 무엇이 「사실이 아니게 됨」인가 — **화면이 증명할 수 있는 것만** 센다.
