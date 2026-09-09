@@ -64,6 +64,22 @@ class DashboardQuestionIngest(unittest.TestCase):
         self.assertTrue(os.path.exists(
             os.path.join(os.path.dirname(self.mod.locate(qst)), "assets", qst, "1.png")))
 
+    def test_a_dashboard_question_is_marked_human_even_inside_a_session(self):
+        """사람 입구는 셋뿐이고 이 갈래는 그중 하나다 (REQ-20260909-109).
+
+        2026-09-09 21:19 주인의 채팅이 물음으로 갈리며 origin=agent·lead 로 적혔다 —
+        cmd_new 는 세션 안(S9_SESSION)에서 명시가 없으면 agent 로 판정한다. 요청
+        갈래는 `--origin human` 을 넘기고 이 갈래만 안 넘겼다. 그 물음을 요청으로
+        세우니 「만든 사람 리드」가 됐고 Jira 내보내기 검사(origin=human 만)에 걸렸다."""
+        self.mod._chat_durable = lambda t: True   # 분류는 이 시험의 주제가 아니다
+        env = dict(self.env, S9_SESSION="deadbeef")   # 사고의 조건 — 세션 안
+        qst = self.mod._chat_question(S9, env, "이거 왜 이러지?", "이거 왜 이러지?", "tester")
+        self.assertTrue(qst and qst.startswith("QST-"), f"질문이 안 만들어졌다: {qst!r}")
+        meta = self.mod.read_doc(self.mod.find_path(qst))[0]
+        self.assertEqual(meta.get("origin"), "human",
+                         f"사람의 채팅이 {meta.get('origin')!r} 로 적혔다")
+        self.assertFalse(meta.get("origin_actor"), "human 인데 origin_actor 가 남았다")
+
     def test_a_dashboard_question_without_an_image_is_unchanged(self):
         self.mod._chat_durable = lambda t: True
         qst = self.mod._chat_question(S9, self.env, "그냥 질문인가?", "그냥 질문인가?", "tester")

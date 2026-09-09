@@ -7042,8 +7042,12 @@ def _chat_question(s9bin, env, text, first_line, sender):
         title = first_line[:_chat_qtitle_max] + (
             "…" if len(first_line) > _chat_qtitle_max else "")
         out = subprocess.run(
+            # 사람 입구다 — 요청 갈래와 같이 `--origin human` 을 붙인다 (REQ-20260909-109).
+            # 없으면 cmd_new 가 세션 안(S9_SESSION)이라는 이유로 agent·lead 로 적고,
+            # 리드가 그 물음을 요청으로 세우면 「만든 사람 리드」가 되어 Jira 내보내기
+            # 검사(origin=human 만 내보낸다)에 걸린다 — 주인 지적 2026-09-09 21:26.
             [s9bin, "new", "question", "--title", title, "--tag", "auto-audit",
-             "--user", sender or "dashboard"],
+             "--user", sender or "dashboard", "--origin", "human"],
             input=text, capture_output=True,
                 encoding="utf-8", errors="replace", env=env, timeout=15)
         if out.returncode != 0 or not out.stdout.split():
@@ -13884,6 +13888,25 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
         if fields.get(key) is not None:
             meta[key] = fields[key]
             changed.append(key)
+    if fields.get("origin") is not None:
+        # 출처를 바로잡는 손잡이 (REQ-20260909-109). 출처는 지어내지 않는 값이라
+        # 여태 set 에 없었는데, 분류기가 사람의 채팅을 물음으로 갈라 agent 로 적는
+        # 사고가 나자 뒤늦게 고칠 길이 frontmatter 손편집뿐이었다. human 이면
+        # origin_actor 는 빈 값이 규격이라 함께 걷는다. History 에 한 줄 남는다.
+        new_o = str(fields["origin"]).strip()
+        if new_o not in ("human", "agent"):
+            raise ValueError("origin 은 human 또는 agent 다")
+        old_o = str(meta.get("origin") or "")
+        if new_o != old_o or (new_o == "human" and meta.get("origin_actor")):
+            meta["origin"] = new_o
+            if new_o == "human":
+                meta.pop("origin_actor", None)
+            who = actor or resolve_user(None)
+            line = (f"- {now_iso()} origin: {old_o or '(없음)'} -> {new_o} (by {who}"
+                    + (f" via {via}" if via else "") + ")\n")
+            body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
+                else (body.rstrip("\n") + "\n\n## History\n" + line)
+            changed.append("origin")
     if fields.get("project") is not None:
         new = str(fields["project"]).strip()
         old = str(meta.get("project") or "").strip()
@@ -13997,7 +14020,7 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
 
 
 def cmd_set(args):
-    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os", "jira_key", "root")}
+    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os", "jira_key", "root", "origin")}
     try:
         res = do_set(args.id, fields, actor=resolve_user(None),
                      priority=getattr(args, "priority", None))
@@ -33214,6 +33237,8 @@ def main():
     se2.add_argument("--priority", help="우선순위 가중치 1~99 또는 "
                      "low/normal/high/urgent")
     se2.add_argument("--project")
+    se2.add_argument("--origin", dest="origin", choices=["human", "agent"],
+                     help="출처를 바로잡는다 — human 이면 origin_actor 를 걷는다 (REQ-20260909-109)")
     se2.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL", ""],
                      help="이 요청을 해야 하는 판 — 그 판의 세션이 s9 next 로 먼저 본다 (REQ-20260906-080)")
     se2.add_argument("--jira-key", dest="jira_key",
