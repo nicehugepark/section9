@@ -256,17 +256,9 @@ class JiraMark(unittest.TestCase):
                 action="jira", slug="pay", member_action="show", user="hong"))
         self.assertRegex(out.getvalue(), r"mark\s+off")
 
-    def test_s7_screen_has_the_select_and_the_words_live_in_the_table(self):
-        jira_js = open(os.path.join(HERE, "..", "web", "app", "jira.js"), encoding="utf-8").read()
-        prj_js = open(os.path.join(HERE, "..", "web", "app", "project.js"), encoding="utf-8").read()
-        self.assertIn('id="j-link-mark"', jira_js)
-        self.assertIn("PRJ_TEXT.jiraMarks", jira_js)
-        self.assertIn("data-pjjiramark", prj_js)
-        self.assertIn("kJiraMark:", prj_js)
-        self.assertIn("jiraMarks:", prj_js)
-        self.assertIn("section9 표시", prj_js)
-        guide = open(os.path.join(HERE, "..", "web", "guide.html"), encoding="utf-8").read()
-        self.assertIn("section9 표시", guide.split('<section id="jira">', 1)[1])
+    # S7(화면 글자 검사)은 뺐다 — 소스 글자 계약은 시험 예산이 막는다(REQ-20260909-051);
+    # 화면 사전은 test_project_screen 이, select 의 동작은 맥 Safari 검증이 잰다.
+
 
 
 if __name__ == "__main__":

@@ -102,7 +102,7 @@ class JiraContent(unittest.TestCase):
         self.assertIn('{content: jcSel.value}', prj)       # 저장은 /api/project/jira 한 길
         self.assertIn('id="j-link-content"', jira)         # Settings › 외부 서비스 폼 select
         self.assertIn("PRJ_TEXT.jiraContents", jira)       # 글자는 표 한 곳
-        self.assertIn("{slug, key, direction, content}", jira)
+        self.assertIn("{slug, key, direction, content, mark}", jira)   # mark 는 REQ-20260909-049
 
 
 if __name__ == "__main__":
