@@ -211,3 +211,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-09T09:22:07+09:00 config ui_skin=calm (by nicehugepark via dashboard)
 - 2026-09-09T09:27:03+09:00 config ui_skin=grid (by nicehugepark via dashboard)
 - 2026-09-09T09:27:17+09:00 config ui_skin=calm (by nicehugepark via dashboard)
+- 2026-09-09T13:04:42+09:00 config pref_review=리드가 스스로 판정할 수 있는 review(설계 권고 채택·기계 검증 끝난 구현·정책 기본값)는 사람에게 넘기지 말고 리드가 직접 done/반려로 닫는다 — 사람에게 남기는 것은 취향·방향·외부 사실뿐 (주인 지시 2026-09-09 13:03) (by nicehugepark)
