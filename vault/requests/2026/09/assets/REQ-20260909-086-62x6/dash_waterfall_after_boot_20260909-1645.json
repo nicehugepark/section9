@@ -1,0 +1,1528 @@
+{
+ "url": "http://127.0.0.1:9909",
+ "runs": 3,
+ "tabs": "board,docs,graph,audit,terminal,settings",
+ "idle_ms": 1200,
+ "max_ms": 15000,
+ "taken_s": 79.4,
+ "at": "2026-09-09T16:45:45+0900",
+ "data": [
+  {
+   "run": 1,
+   "steps": [
+    {
+     "step": "load(#board)",
+     "timeout": false,
+     "requests": 16,
+     "api": 10,
+     "streams": 0,
+     "failed": 7,
+     "retries": 6,
+     "retry_path_ms": 2838,
+     "first_draw_ms": 63,
+     "last_draw_ms": 3327,
+     "mutations": 16,
+     "last_done_ms": 6149,
+     "api_ok_ms_median": 165,
+     "api_ok_ms_sum": 1027,
+     "failed_urls": [
+      "/ net::ERR_CONNECTION_RESET",
+      "/ net::ERR_CONNECTION_RESET",
+      "/app/all.js net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/catalog? net::ERR_CONNECTION_RESET",
+      "/api/catalog? net::ERR_CONNECTION_RESET"
+     ],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 5,
+       "end": 11,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 532,
+       "end": 2331,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 2843,
+       "end": 2954,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/css/all.css",
+       "type": "stylesheet",
+       "start": 2952,
+       "end": 3337,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/app/all.js",
+       "type": "script",
+       "start": 2953,
+       "end": 2972,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/app/all.js?r=1",
+       "type": "script",
+       "start": 3497,
+       "end": 4789,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/boot?",
+       "type": "fetch",
+       "start": 4800,
+       "end": 5019,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 4800,
+       "end": 4816,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?",
+       "type": "fetch",
+       "start": 4801,
+       "end": 4825,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 4998,
+       "end": 5034,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?",
+       "type": "fetch",
+       "start": 5013,
+       "end": 5043,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/transitions",
+       "type": "fetch",
+       "start": 5022,
+       "end": 5069,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 5466,
+       "end": 5488,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?",
+       "type": "fetch",
+       "start": 5503,
+       "end": 5725,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/claude/usage",
+       "type": "fetch",
+       "start": 5743,
+       "end": 6149,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/serveinfo",
+       "type": "fetch",
+       "start": 5743,
+       "end": 5854,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:board",
+     "timeout": false,
+     "requests": 0,
+     "api": 0,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 94,
+     "last_draw_ms": 1116,
+     "mutations": 5,
+     "last_done_ms": 0,
+     "api_ok_ms_median": null,
+     "api_ok_ms_sum": 0,
+     "failed_urls": [],
+     "rows": []
+    },
+    {
+     "step": "tab:docs",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 79,
+     "last_draw_ms": 800,
+     "mutations": 9,
+     "last_done_ms": 761,
+     "api_ok_ms_median": 682,
+     "api_ok_ms_sum": 682,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/catalog?window=all",
+       "type": "fetch",
+       "start": 79,
+       "end": 761,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "docs:open",
+     "timeout": false,
+     "requests": 2,
+     "api": 2,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 60,
+     "last_draw_ms": 289,
+     "mutations": 14,
+     "last_done_ms": 282,
+     "api_ok_ms_median": 83,
+     "api_ok_ms_sum": 166,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/doc?id=REQ-20260909-093-62x6&",
+       "type": "fetch",
+       "start": 61,
+       "end": 83,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/graph?",
+       "type": "fetch",
+       "start": 138,
+       "end": 282,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:graph",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 167,
+     "last_draw_ms": 1499,
+     "mutations": 52,
+     "last_done_ms": 274,
+     "api_ok_ms_median": 142,
+     "api_ok_ms_sum": 142,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/graph?",
+       "type": "fetch",
+       "start": 132,
+       "end": 274,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:audit",
+     "timeout": false,
+     "requests": 3,
+     "api": 3,
+     "streams": 0,
+     "failed": 3,
+     "retries": 2,
+     "retry_path_ms": 682,
+     "first_draw_ms": 12,
+     "last_draw_ms": 221,
+     "mutations": 12,
+     "last_done_ms": 983,
+     "api_ok_ms_median": null,
+     "api_ok_ms_sum": 0,
+     "failed_urls": [
+      "/api/audit? net::ERR_CONNECTION_RESET",
+      "/api/audit? net::ERR_CONNECTION_RESET",
+      "/api/audit? net::ERR_CONNECTION_RESET"
+     ],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/audit?",
+       "type": "fetch",
+       "start": 222,
+       "end": 231,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/audit?",
+       "type": "fetch",
+       "start": 447,
+       "end": 451,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/audit?",
+       "type": "fetch",
+       "start": 904,
+       "end": 983,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:terminal",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 1,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 50,
+     "last_draw_ms": 65,
+     "mutations": 5,
+     "last_done_ms": 54,
+     "api_ok_ms_median": null,
+     "api_ok_ms_sum": 0,
+     "failed_urls": [
+      "/api/chat/target net::ERR_CONNECTION_RESET"
+     ],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/chat/target",
+       "type": "fetch",
+       "start": 51,
+       "end": 54,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:settings",
+     "timeout": true,
+     "requests": 12,
+     "api": 12,
+     "streams": 0,
+     "failed": 9,
+     "retries": 9,
+     "retry_path_ms": 5767,
+     "first_draw_ms": 32,
+     "last_draw_ms": 32,
+     "mutations": 3,
+     "last_done_ms": 5344,
+     "api_ok_ms_median": null,
+     "api_ok_ms_sum": 0,
+     "failed_urls": [
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/catalog?window=all net::ERR_CONNECTION_RESET"
+     ],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 25,
+       "end": 34,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 219,
+       "end": 404,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 849,
+       "end": 853,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 1255,
+       "end": 1258,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 1426,
+       "end": 1542,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 1990,
+       "end": 1994,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 2812,
+       "end": 5151,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?window=all",
+       "type": "fetch",
+       "start": 3575,
+       "end": 5158,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 5340,
+       "end": 5344,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?window=all",
+       "type": "fetch",
+       "start": 5369,
+       "end": null,
+       "status": 0,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 5792,
+       "end": null,
+       "status": 0,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/serveinfo",
+       "type": "fetch",
+       "start": 8572,
+       "end": null,
+       "status": 0,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    }
+   ],
+   "page_errors": [
+    "Failed to fetch"
+   ],
+   "nav_resets": 2
+  },
+  {
+   "run": 2,
+   "steps": [
+    {
+     "step": "load(#board)",
+     "timeout": false,
+     "requests": 17,
+     "api": 8,
+     "streams": 0,
+     "failed": 8,
+     "retries": 7,
+     "retry_path_ms": 8235,
+     "first_draw_ms": 132,
+     "last_draw_ms": 2979,
+     "mutations": 17,
+     "last_done_ms": 11830,
+     "api_ok_ms_median": 138,
+     "api_ok_ms_sum": 940,
+     "failed_urls": [
+      "/ net::ERR_CONNECTION_RESET",
+      "/ net::ERR_CONNECTION_RESET",
+      "/ net::ERR_CONNECTION_RESET",
+      "/ net::ERR_CONNECTION_RESET",
+      "/ net::ERR_CONNECTION_RESET",
+      "/app/all.js net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/transitions net::ERR_CONNECTION_RESET"
+     ],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 3,
+       "end": 1230,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 1746,
+       "end": 5510,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 6026,
+       "end": 6550,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 7065,
+       "end": 7068,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 7573,
+       "end": 7724,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 8238,
+       "end": 9352,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/css/all.css",
+       "type": "stylesheet",
+       "start": 9351,
+       "end": 9716,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/app/all.js",
+       "type": "script",
+       "start": 9351,
+       "end": 9367,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/app/all.js?r=1",
+       "type": "script",
+       "start": 9904,
+       "end": 11165,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/boot?",
+       "type": "fetch",
+       "start": 11176,
+       "end": 11368,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 11176,
+       "end": 11201,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?",
+       "type": "fetch",
+       "start": 11176,
+       "end": 11521,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 11368,
+       "end": 11543,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/transitions",
+       "type": "fetch",
+       "start": 11372,
+       "end": 11506,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/transitions",
+       "type": "fetch",
+       "start": 11682,
+       "end": 11708,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/claude/usage",
+       "type": "fetch",
+       "start": 11728,
+       "end": 11829,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/serveinfo",
+       "type": "fetch",
+       "start": 11729,
+       "end": 11830,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:board",
+     "timeout": false,
+     "requests": 0,
+     "api": 0,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 85,
+     "last_draw_ms": 1108,
+     "mutations": 5,
+     "last_done_ms": 0,
+     "api_ok_ms_median": null,
+     "api_ok_ms_sum": 0,
+     "failed_urls": [],
+     "rows": []
+    },
+    {
+     "step": "tab:docs",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 78,
+     "last_draw_ms": 768,
+     "mutations": 9,
+     "last_done_ms": 718,
+     "api_ok_ms_median": 639,
+     "api_ok_ms_sum": 639,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/catalog?window=all",
+       "type": "fetch",
+       "start": 79,
+       "end": 718,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "docs:open",
+     "timeout": false,
+     "requests": 3,
+     "api": 3,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 71,
+     "last_draw_ms": 509,
+     "mutations": 14,
+     "last_done_ms": 502,
+     "api_ok_ms_median": 45,
+     "api_ok_ms_sum": 337,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/doc?id=REQ-20260909-094-62x6&",
+       "type": "fetch",
+       "start": 71,
+       "end": 95,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/asset?doc=REQ-20260909-094-62x6&f=20260909T163730-image.png",
+       "type": "image",
+       "start": 233,
+       "end": 278,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/graph?",
+       "type": "fetch",
+       "start": 234,
+       "end": 502,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:graph",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 170,
+     "last_draw_ms": 1486,
+     "mutations": 51,
+     "last_done_ms": 258,
+     "api_ok_ms_median": 123,
+     "api_ok_ms_sum": 123,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/graph?",
+       "type": "fetch",
+       "start": 135,
+       "end": 258,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:audit",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 10,
+     "last_draw_ms": 928,
+     "mutations": 13,
+     "last_done_ms": 905,
+     "api_ok_ms_median": 677,
+     "api_ok_ms_sum": 677,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/audit?",
+       "type": "fetch",
+       "start": 228,
+       "end": 905,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:terminal",
+     "timeout": false,
+     "requests": 3,
+     "api": 3,
+     "streams": 1,
+     "failed": 1,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 39,
+     "last_draw_ms": 180,
+     "mutations": 4,
+     "last_done_ms": 226,
+     "api_ok_ms_median": 87,
+     "api_ok_ms_sum": 174,
+     "failed_urls": [
+      "/api/agents?session=c139e3c6 net::ERR_CONNECTION_RESET"
+     ],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/chat/target",
+       "type": "fetch",
+       "start": 40,
+       "end": 169,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/chat/log?sid=c139e3c6",
+       "type": "fetch",
+       "start": 181,
+       "end": 226,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/stream?session=c139e3c6",
+       "type": "fetch",
+       "start": 181,
+       "end": null,
+       "status": 0,
+       "failed": false,
+       "err": "",
+       "stream": true
+      },
+      {
+       "method": "GET",
+       "url": "/api/agents?session=c139e3c6",
+       "type": "fetch",
+       "start": 181,
+       "end": 198,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:settings",
+     "timeout": false,
+     "requests": 3,
+     "api": 3,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 31,
+     "last_draw_ms": 1266,
+     "mutations": 7,
+     "last_done_ms": 1258,
+     "api_ok_ms_median": 83,
+     "api_ok_ms_sum": 1297,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 29,
+       "end": 1173,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/git/state?",
+       "type": "fetch",
+       "start": 1175,
+       "end": 1258,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/jira/state",
+       "type": "fetch",
+       "start": 1175,
+       "end": 1245,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    }
+   ],
+   "page_errors": [],
+   "nav_resets": 5
+  },
+  {
+   "run": 3,
+   "steps": [
+    {
+     "step": "load(#board)",
+     "timeout": false,
+     "requests": 13,
+     "api": 8,
+     "streams": 0,
+     "failed": 4,
+     "retries": 3,
+     "retry_path_ms": 525,
+     "first_draw_ms": 43,
+     "last_draw_ms": 2810,
+     "mutations": 17,
+     "last_done_ms": 6600,
+     "api_ok_ms_median": 166,
+     "api_ok_ms_sum": 1121,
+     "failed_urls": [
+      "/ net::ERR_CONNECTION_RESET",
+      "/app/all.js net::ERR_CONNECTION_RESET",
+      "/api/users net::ERR_CONNECTION_RESET",
+      "/api/catalog? net::ERR_CONNECTION_RESET"
+     ],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 3,
+       "end": 9,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/",
+       "type": "document",
+       "start": 528,
+       "end": 4219,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/css/all.css",
+       "type": "stylesheet",
+       "start": 4217,
+       "end": 4599,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/app/all.js",
+       "type": "script",
+       "start": 4217,
+       "end": 4225,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/app/all.js?r=1",
+       "type": "script",
+       "start": 4725,
+       "end": 5922,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/boot?",
+       "type": "fetch",
+       "start": 5938,
+       "end": 6157,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 5938,
+       "end": 5953,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?",
+       "type": "fetch",
+       "start": 5938,
+       "end": 5965,
+       "status": 0,
+       "failed": true,
+       "err": "net::ERR_CONNECTION_RESET",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/catalog?",
+       "type": "fetch",
+       "start": 6149,
+       "end": 6453,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 6149,
+       "end": 6215,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/transitions",
+       "type": "fetch",
+       "start": 6161,
+       "end": 6467,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/claude/usage",
+       "type": "fetch",
+       "start": 6487,
+       "end": 6600,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/serveinfo",
+       "type": "fetch",
+       "start": 6487,
+       "end": 6600,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:board",
+     "timeout": false,
+     "requests": 0,
+     "api": 0,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 85,
+     "last_draw_ms": 1085,
+     "mutations": 5,
+     "last_done_ms": 0,
+     "api_ok_ms_median": null,
+     "api_ok_ms_sum": 0,
+     "failed_urls": [],
+     "rows": []
+    },
+    {
+     "step": "tab:docs",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 79,
+     "last_draw_ms": 867,
+     "mutations": 9,
+     "last_done_ms": 825,
+     "api_ok_ms_median": 745,
+     "api_ok_ms_sum": 745,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/catalog?window=all",
+       "type": "fetch",
+       "start": 80,
+       "end": 825,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "docs:open",
+     "timeout": false,
+     "requests": 2,
+     "api": 2,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 61,
+     "last_draw_ms": 372,
+     "mutations": 14,
+     "last_done_ms": 347,
+     "api_ok_ms_median": 101,
+     "api_ok_ms_sum": 202,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/doc?id=REQ-20260909-092-62x6&",
+       "type": "fetch",
+       "start": 62,
+       "end": 87,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/graph?",
+       "type": "fetch",
+       "start": 170,
+       "end": 347,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:graph",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 176,
+     "last_draw_ms": 1505,
+     "mutations": 55,
+     "last_done_ms": 270,
+     "api_ok_ms_median": 126,
+     "api_ok_ms_sum": 126,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/graph?",
+       "type": "fetch",
+       "start": 144,
+       "end": 270,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:audit",
+     "timeout": false,
+     "requests": 1,
+     "api": 1,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 10,
+     "last_draw_ms": 879,
+     "mutations": 13,
+     "last_done_ms": 856,
+     "api_ok_ms_median": 577,
+     "api_ok_ms_sum": 577,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/audit?",
+       "type": "fetch",
+       "start": 279,
+       "end": 856,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:terminal",
+     "timeout": false,
+     "requests": 3,
+     "api": 3,
+     "streams": 1,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 49,
+     "last_draw_ms": 1591,
+     "mutations": 7,
+     "last_done_ms": 460,
+     "api_ok_ms_median": 63,
+     "api_ok_ms_sum": 464,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/chat/target",
+       "type": "fetch",
+       "start": 50,
+       "end": 75,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/chat/log?sid=c139e3c6",
+       "type": "fetch",
+       "start": 84,
+       "end": 147,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/stream?session=c139e3c6",
+       "type": "fetch",
+       "start": 84,
+       "end": null,
+       "status": 0,
+       "failed": false,
+       "err": "",
+       "stream": true
+      },
+      {
+       "method": "GET",
+       "url": "/api/agents?session=c139e3c6",
+       "type": "fetch",
+       "start": 84,
+       "end": 460,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    },
+    {
+     "step": "tab:settings",
+     "timeout": false,
+     "requests": 3,
+     "api": 3,
+     "streams": 0,
+     "failed": 0,
+     "retries": 0,
+     "retry_path_ms": 0,
+     "first_draw_ms": 38,
+     "last_draw_ms": 1330,
+     "mutations": 8,
+     "last_done_ms": 1329,
+     "api_ok_ms_median": 69,
+     "api_ok_ms_sum": 1345,
+     "failed_urls": [],
+     "rows": [
+      {
+       "method": "GET",
+       "url": "/api/users",
+       "type": "fetch",
+       "start": 35,
+       "end": 1257,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/git/state?",
+       "type": "fetch",
+       "start": 1260,
+       "end": 1329,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      },
+      {
+       "method": "GET",
+       "url": "/api/jira/state",
+       "type": "fetch",
+       "start": 1260,
+       "end": 1314,
+       "status": 200,
+       "failed": false,
+       "err": "",
+       "stream": false
+      }
+     ]
+    }
+   ],
+   "page_errors": [],
+   "nav_resets": 1
+  }
+ ]
+}
