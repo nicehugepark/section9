@@ -102,6 +102,27 @@ class PickStateLook(unittest.TestCase):
                 for part in sel.split(","):
                     if ".picked" in part:
                         self.fail("집힌 카드가 경과시각을 지운다: " + part.strip())
+        with self.subTest("the_word_steps_aside_while_the_pointer_is_there"):
+            # 손잡이는 이 칸 안에 떠 있어 칸을 넓히지 않는다(REQ-20260909-084) —
+            # 대신 제 낱말이 칸의 최소폭보다 넓으면 왼쪽으로 넘쳐 바로 옆의 집힘
+            # 낱말을 덮는다. 넘침 폭은 글꼴이 정한다(실측: 이 판 3.9px · 주인
+            # Chrome 에서는 「대상」의 절반, REQ-20260910-004). 칸을 넓히는 것은
+            # 084 를 되돌리는 길이라, 시각이 쓰는 그 교대를 낱말도 쓴다.
+            hit = [part for sel, css in rules_for(self.src, ".pkst")
+                   if "visibility:hidden" in css.replace(" ", "")
+                   for part in sel.split(",") if ":hover" in part]
+            self.assertTrue(hit, "얹었을 때 집힘 낱말이 손잡이에게 자리를 "
+                                 "비키는 규칙이 없다 — 손잡이가 그 글자를 덮는다")
+        with self.subTest("the_word_comes_back_when_the_hand_leaves"):
+            # 지속 상태의 점유가 아니어야 한다 — `.picked` 만으로 지우면 집어 둔
+            # 내내 무엇을 집었는지 화면에서 사라진다.
+            for sel, css in rules_for(self.src, ".pkst"):
+                if "visibility:hidden" not in css.replace(" ", ""):
+                    continue
+                for part in sel.split(","):
+                    self.assertTrue(":hover" in part or ":focus" in part,
+                                    "집힘 낱말이 찰나가 아닌 자리에서 지워진다: "
+                                    + part.strip())
         with self.subTest("the_clock_still_steps_aside_while_the_pointer_is_there"):
                 hit = [part for sel, css in rules_for(self.src, ".elapsed")
                        if "visibility:hidden" in css.replace(" ", "")

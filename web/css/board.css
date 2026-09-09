@@ -192,6 +192,20 @@ html.boardfit #view>.board{flex:1 1 auto;min-height:0}
 .card .pkst{display:none;margin-left:8px;color:var(--text);font-weight:700;
   font-size:11.5px;letter-spacing:.06em}
 .card.picked .pkst{display:inline}
+/* 얹은 동안에는 **낱말도 자리를 비킨다** (REQ-20260910-004).
+
+   손잡이는 이 칸(.idnow) 안에 떠 있어서 칸의 폭을 넓히지 않는다 — 그것이
+   REQ-20260909-084 의 결론이다. 대신 제 낱말이 칸의 최소폭(52px)보다 넓으면
+   **왼쪽으로 넘친다**. 얼마나 넘치는지는 글꼴이 정한다: 이 판의 mono 에서는
+   3.9px 이라 눈에 안 띄었지만, 주인의 Chrome 에서는 「대상」의 절반을 덮었다
+   (캡처 2026-09-10 08:08 「레이아웃이 깨진다. 글자가 겹쳐」).
+
+   칸을 손잡이만큼 넓히면 벨트와 시각 사이가 그만큼 벌어져 084 가 고친 것이
+   되돌아간다(실측 틈 27.8px, test_id_clearance 가 막는다). 그래서 이 줄이
+   이미 쓰고 있는 규칙을 낱말에도 그대로 적용한다 — **찰나의 교대**다. 경과
+   시각이 비키는 그 규칙이고(위 `.card:hover .elapsed`), 지속 상태의 점유가
+   아니므로 손을 치우면 낱말은 제자리로 돌아온다. */
+.card:hover .pkst,.card:focus-within .pkst{visibility:hidden}
 /* id 줄은 **경과시각의 칸을 침범하지 않는다** (REQ-20260829-011). 시각은
    모서리에 절대 위치로 서 있어서 흐름을 밀어내지 못한다 — 자리를 비워 두지
    않으면 집힘 낱말이 시각 위로 올라탄다(좁은 열에서 실측 여유 17px, 낱말 28px).
