@@ -8,8 +8,9 @@ slug: section9
 customer: 내부(자체)
 members: [{"user": "nicehugepark", "role": "owner", "since": "2026-08-23", "until": "", "position": "PM/오너"}]
 created: 2026-08-23T19:12:42+09:00
-updated: 2026-09-09T10:49:46+09:00
+updated: 2026-09-09T10:50:06+09:00
 jira: {"issue_type": "Task", "direction": "push", "create_on": "open", "export": "all", "export_origin": "human", "site": "https://nicehugepark.atlassian.net", "project_key": "MP1"}
+is_default: True
 ---
 
 ## Notes
@@ -20,3 +21,4 @@ jira: {"issue_type": "Task", "direction": "push", "create_on": "open", "export":
 - 2026-08-23T19:19:33+09:00 member remove demo_user (by nicehugepark)
 - 2026-08-23T20:33:09+09:00 member update nicehugepark role=owner position=PM/오너 (by nicehugepark)
 - 2026-09-09T10:49:46+09:00 Jira 연동 설정 https://nicehugepark.atlassian.net MP1 (direction=push export_origin=human) by nicehugepark via dashboard
+- 2026-09-09T10:50:06+09:00 기본 프로젝트로 지정 by nicehugepark
