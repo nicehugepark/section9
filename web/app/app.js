@@ -443,7 +443,7 @@ function filtered(skipQ, skipType, skip){
   // 뒤에도 헤더의 타입 필터는 탭을 가로질러 걸려 있었고, Docs에서 knowledge를
   // 고른 채 Board로 넘어오면 전 컬럼이 0건인 빈 판이 됐다. 값을 지우지 않고
   // 적용만 건너뛴다 — Docs로 돌아가면 사용자가 고른 타입이 그대로 살아 있다.
-  const typeOff = skipType || off("type") || tab === "board";
+  const typeOff = skipType || off("type") || typeAxisOff();
   // mine 가드(앞단): '내 것만' ON이면 내 active 프로젝트 문서만 — Board/Docs/Graph 공통
   const mine = (mineActive() && !off("mine")) ? new Set(mineProjects().map(x => x.slug)) : null;
   return workOrder(catalog).filter(r => {
@@ -460,12 +460,26 @@ function filtered(skipQ, skipType, skip){
   });
 }
 
-// 타입 필터는 타입 축이 있는 화면에서만 보인다. Board는 request 상태 흐름
-// 전용이라 이 컨트롤이 할 일이 없다 — 남겨 두면 조작할 수 없는 조건이 결과를
-// 0건으로 만든다(REQ-20260826-006). 값은 보존 → Docs 복귀 시 선택 그대로.
+/* 종류 고르개가 할 일이 없는 화면 (REQ-20260826-006 · REQ-20260910-003).
+
+   **Board** 는 request 상태 흐름 전용이라 종류를 고를 것이 없다 — 남겨 두면
+   조작할 수 없는 조건이 결과를 0건으로 만든다.
+
+   **관계도** 는 제 범례가 그 축을 이미 쥐고 있다. 한 축에 손잡이가 둘이면
+   보이는 쪽(범례)을 켜도 안 보이는 쪽(헤더)이 이긴다 — 주인이 본 것이
+   그것이다: 범례의 request 가 켜져 있는데 화면에는 question 만 있었다
+   (캡처 2026-09-10 08:06). 어제 REQ-20260909-066 은 이 겹침을 그대로 두고
+   「지금 종류 조건이 걸려 있다」는 안내 줄만 세웠는데, 주인의 판정은
+   반대였다: 「docs탭과 연동하지 마라. 서로 다른 탭이잖아.」 — 말해 주는 것과
+   안 걸리게 하는 것 중 뒤가 옳다. 조건을 설명해야 하는 화면은 이미 진 화면이다.
+
+   값은 지우지 않고 **적용만 건너뛴다** — Docs 로 돌아가면 고른 종류가
+   그대로 살아 있다. */
+const TYPE_AXIS_ELSEWHERE = new Set(["board", "graph"]);
+const typeAxisOff = () => TYPE_AXIS_ELSEWHERE.has(tab);
 function syncTypeFilter(){
   const el = $("#f-type");
-  if (el) el.hidden = (tab === "board");
+  if (el) el.hidden = typeAxisOff();
 }
 
 /* 이번 그리기가 아직 유효한가 — 기다리는 사이 다른 화면이 그려졌으면 거짓이다.

@@ -52,7 +52,11 @@ const HCOND = [
    btn:"종류 조건 지우기", val: () => $("#f-type").value,
    clear: () => { $("#f-type").value = ""; }},
 ];
-const hdrConds = () => HCOND.filter(c => c.val());
+/* 지금 **이 화면에** 걸려 있는 조건만 센다 (REQ-20260910-003). 종류는 관계도
+   에서 적용되지 않으므로(app.js 의 typeAxisOff) 여기서도 조건이 아니다 —
+   안 걸리는 조건을 범인으로 지목하면 사람은 없는 손잡이를 찾으러 간다. */
+const hdrConds = () => HCOND.filter(
+  c => c.val() && !(c.k === "type" && typeAxisOff()));
 // 조건 이름은 값까지 함께 말한다 — 화면에 찍힌 그 글자여야 되돌릴 자리를 찾는다.
 // ('내 것만'은 값이 곧 이름이라 괄호를 달지 않는다)
 const condName = c => `<b>${c.ko}</b>`
@@ -74,7 +78,8 @@ const GCOND_SAY = ["type"];
 function graphCondSaid(gEmpty){
   // 빈 화면 안내가 이미 그 조건을 범인으로 지목했으면 같은 말을 두 번 하지 않는다.
   const already = (gEmpty && gEmpty.fix && gEmpty.fix.cond) ? gEmpty.fix.cond.k : null;
-  return HCOND.find(c => GCOND_SAY.includes(c.k) && c.val() && c.k !== already) || null;
+  // 고르는 자리는 hdrConds 하나다 — 걸리지 않게 된 조건은 여기서도 스스로 빠진다.
+  return hdrConds().find(c => GCOND_SAY.includes(c.k) && c.k !== already) || null;
 }
 function graphCondHTML(gEmpty){
   const c = graphCondSaid(gEmpty);

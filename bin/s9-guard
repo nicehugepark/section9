@@ -713,9 +713,15 @@ def staged_tests_gate(staged, diff_text=None):
     담긴 시험은 정확한 파일명으로 넘긴다(러너가 정확명은 넓히지 않는다) —
     조각으로 넘기면 이웃 파일까지 끌려와 검사가 뚱뚱해진다.
     """
+    # 지운 시험은 러너에 넘기지 않는다 (REQ-20260910-012). 담긴 목록에는 삭제도
+    # 들어 있어서, 시험 파일 하나를 지우거나 이름을 바꾸면 러너가 없는 패턴을
+    # 찾다 「고르지 못한 패턴」으로 실패하고 커밋이 통째로 막혔다 — 지운 시험은
+    # 돌릴 것이 없다는 뜻이지 실패가 아니다 (실측 2026-09-10: 옛 계약 시험을
+    # 새 계약으로 다시 쓰는 커밋이 이 자리에서 막혔다).
     names = [os.path.basename(f)
              for f in staged
-             if f.startswith("tests/test_") and f.endswith(".py")]
+             if f.startswith("tests/test_") and f.endswith(".py")
+             and os.path.exists(os.path.join(ROOT, f))]
     if not names and not any(f.startswith(("bin/", "web/", "tests/"))
                              for f in staged):
         return   # 코드가 안 담겼으면(문서·상태 커밋) 검사 생략 — 종전과 같다

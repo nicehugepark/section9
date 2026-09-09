@@ -262,11 +262,18 @@ class TestBoardScope(unittest.TestCase):
         gate = ty.group(1)
         # 검사가 board 탭에서도 열려야 한다 — 보드는 request 전용이라
         # 타입 조건이 걸리면 결과가 통째로 0건이 된다.
+        # 판정자는 이제 이름 하나다(typeAxisOff) — 관계도가 같은 이유로 그 목록에
+        # 들어오면서 셋을 한 자리로 모았다 (REQ-20260910-003). 여기서 고정할
+        # 성질은 「보드가 그 목록에 있다」이지 조건문의 글자가 아니다.
         self.assertTrue(
-            re.search(r"(?:const|let|var) " + gate + r'\s*=[^\n;]*tab === "board"', body),
+            re.search(r"(?:const|let|var) " + gate + r"\s*=[^\n;]*typeAxisOff\(\)", body),
             "Board에서 타입 필터가 결과를 0건으로 만들 수 있다")
+        axis = re.search(r"TYPE_AXIS_ELSEWHERE = new Set\(\[([^\]]*)\]\)", self.html)
+        self.assertIsNotNone(axis, "타입 축이 없는 화면 목록을 찾지 못했다")
+        self.assertIn('"board"', axis.group(1),
+                      "보드가 타입 축 없는 화면 목록에서 빠졌다: " + axis.group(1))
         # 화면에서도 사라져야 한다 — 적용되지 않는 컨트롤을 남기지 않는다.
-        self.assertRegex(self.html, r'#f-type"\);\s*\n?\s*if \(el\) el\.hidden = \(tab === "board"\)')
+        self.assertRegex(self.html, r'#f-type"\);\s*\n?\s*if \(el\) el\.hidden = typeAxisOff\(\)')
         self.assertIn(".hrow2 select[hidden]{display:none}", self.html)
 
     # B4. session은 숨기지 않되 기본 노출을 낮춘다 (사용성 판단)
