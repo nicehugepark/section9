@@ -72,7 +72,13 @@ class DoclinkKeyboard(unittest.TestCase):
         body = m.group(1)
         self.assertIn('class="doclink"', body)
         self.assertIn("href=", body, "href 없는 앵커에는 Tab 이 닿지 않는다")
-        self.assertIn('#docs/', body, "해시 라우트와 같은 주소여야 한다")
+        # 주소는 해시 라우트여야 한다. 다만 **어느 탭인지는 문서 종류가 정한다** —
+        # 프로젝트 문서의 자리는 Projects 탭이라(REQ-20260831-026 G0') 주소를 짓는
+        # 한 곳이 docHash 다. 링크가 `#docs/` 를 박아 두던 동안, 왼쪽 클릭은 옳은
+        # 자리로 가는데 새 탭으로 연 주소만 엉뚱한 탭을 열었다 (REQ-20260909-094).
+        self.assertRegex(
+            body, r"#docs/|docHash\(",
+            "해시 라우트와 같은 주소여야 한다 — 직접 적거나 docHash 로 짓는다")
         self.assertIn("data-doc=", body,
                       "클릭 위임이 읽는 자리는 그대로 남아야 한다")
 

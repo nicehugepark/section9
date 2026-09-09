@@ -137,7 +137,7 @@ function depSummaryHTML(rows){
     <div class="dshead"><span>선행 대기 현황</span>
       <span class="dscount">${d.groups.length}건이 막혀 있습니다</span>${scope}</div>
     ${lead}
-    <div class="dslegend">막힌 요청 <i>↳ 기다리는 선행 작업</i></div>
+    <div class="dslegend">막힌 요청 <i>↳ 끝나야 할 선행 작업</i></div>
     <div class="dsbody" tabindex="0" role="group" aria-label="선행 대기 목록">${body}</div>
     ${hidden > 0 ? `<button class="more" data-depmore>${hidden}개 더 보기</button>`
       : (open && d.groups.length > DEP_ROWS ? `<button class="more" data-depmore>접기</button>` : "")}

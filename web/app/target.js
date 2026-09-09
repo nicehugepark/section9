@@ -155,7 +155,7 @@ let docFresh = false;
 function docOpen(id){
   selectedDoc = id;
   docFresh = true;
-  const to = (projects || []).some(p => p.id === id) ? "projects" : "docs";
+  const to = docTab(id);   // 주소를 만드는 곳(docHash)과 같은 판정 (REQ-20260909-094)
   if (tab !== to){ tab = to; tabSync(); }
   pushRoute();
   render();

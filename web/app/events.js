@@ -55,6 +55,58 @@ document.addEventListener("auxclick", e => {
   e.preventDefault();
   tabOpenNew(b.dataset.tab);
 });
+
+/* ---- 주소가 있는 손잡이는 전부 새 탭으로 열린다 (REQ-20260909-094) ----
+
+   주인: 「대시보드의 모든 http 링크 문구들은 마우스 가운데 버튼으로 새 탭 열기가
+   되길 바란다.」 손잡이는 두 갈래다. **앵커**(문서 링크·Jira 키·가이드·프로젝트
+   링크)는 href 가 있어 브라우저가 스스로 연다 — 여기서 손대면 두 탭이 열린다.
+   나머지(카드·목록 행·세션 줄·설정 항목처럼 div 로 선 손잡이)는 브라우저가 주소를
+   모르니 이 자리가 대신 연다.
+
+   주소는 **화면을 여는 손(docOpen·pushRoute)과 같은 규칙**으로 짓는다: 문서는
+   종류가 자리를 정하고(docHash), 세션·설정은 제 탭의 두 번째 조각이다. 손으로
+   한 벌 더 적으면 언젠가 새 탭만 다른 화면을 연다. */
+const NAV_SEL = "[data-doc],[data-stream],[data-sset],[data-popen],[data-goto]";
+function navHashFor(el){
+  if (!el || !el.closest) return null;
+  const h = el.closest(NAV_SEL);
+  if (!h) return null;
+  /* 손잡이 **안의** 다른 손잡이는 제 일을 한다 — 카드의 「이어 말하기」·승인·반려는
+     주소가 아니라 행동이고, 그 안의 앵커는 제 href 를 갖는다. */
+  const inner = el.closest("a[href],button");
+  if (inner && inner !== h && h.contains(inner)) return null;
+  if (h.tagName === "A" && h.getAttribute("href")) return null;   // 브라우저 몫
+  const d = h.dataset;
+  if (d.doc) return docHash(d.doc);
+  if (d.popen) return docHash(d.popen);            // 터미널 미리보기의 「문서 열기」
+  if (d.stream) return "#stream/" + d.stream;
+  if (d.sset !== undefined) return "#settings/" + d.sset;
+  // data-goto 는 두 뜻이다 — 탭 이름과 문서 본문의 상태 전이("REQ-…|to|from").
+  // 전이는 주소가 아니다.
+  if (d.goto && !d.goto.includes("|")) return "#" + d.goto;
+  return null;
+}
+const hashOpenNew = hash => tabOpenNew(hash.replace(/^#/, ""));
+// 가운데 버튼 — 위 헤더 탭 갈래가 이미 받았으면(defaultPrevented) 두 번 열지 않는다
+document.addEventListener("auxclick", e => {
+  if (e.button !== 1 || e.defaultPrevented) return;
+  const h = navHashFor(evEl(e.target));
+  if (!h) return;
+  e.preventDefault();
+  hashOpenNew(h);
+});
+/* Ctrl/⌘/Shift + 왼쪽 클릭도 같은 새 탭이다. **캡처 단계**에서 먼저 받는 이유는,
+   아래 click 위임이 카드·행·세션 줄을 이 탭 안에서 열어 버리기 때문이다 — 새 탭으로
+   여는 중에 이 탭의 화면까지 바꾸면 「새 탭에서 열기」가 아니라 「두 군데서 열기」다.
+   헤더 탭과 앵커는 navHashFor 가 돌려보내므로 제 갈래가 그대로 맡는다. */
+document.addEventListener("click", e => {
+  if (e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+  const h = navHashFor(evEl(e.target));
+  if (!h) return;
+  e.preventDefault(); e.stopPropagation();
+  hashOpenNew(h);
+}, true);
 document.addEventListener("click", e => {
   /* 코드 블록 복사 (REQ-20260828-023). 터미널·스트림은 통째로 다시 그려지므로
      리스너는 손잡이마다가 아니라 여기 위임 하나로 둔다 — 붙이면 재렌더마다

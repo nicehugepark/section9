@@ -180,8 +180,17 @@ function shortId(id){
 // inner 는 이미 escape 된 HTML(짧은 id·세션 이름 등)이다.
 const cssq = v => window.CSS && CSS.escape ? CSS.escape(String(v))
   : String(v).replace(/["\\]/g, "\\$&");
+/* 목적지는 문서의 종류가 정한다 — 프로젝트 문서의 자리는 Projects 탭이다
+   (REQ-20260831-026 G0'). 판정이 `docOpen` 한 곳에만 있던 동안 링크의 href 는
+   무조건 `#docs/` 였다: 왼쪽 클릭은 옳은 자리로 갔지만 새 탭으로 연 주소만
+   엉뚱한 탭을 열었다 (REQ-20260909-094). 그래서 판정을 여기 한 곳에 두고
+   `docOpen` 도 이것을 부른다 — 주소와 손이 갈리면 새 탭만 다른 화면이 된다. */
+function docTab(id){
+  return (projects || []).some(p => p.id === id) ? "projects" : "docs";
+}
+const docHash = id => "#" + docTab(id) + "/" + id;
 const dlink = (id, inner) =>
-  `<a class="doclink" href="#docs/${esc(id)}" data-doc="${esc(id)}">${inner}</a>`;
+  `<a class="doclink" href="${esc(docHash(id))}" data-doc="${esc(id)}">${inner}</a>`;
 function catFind(id){         // 정확 일치 우선, 아니면 유일 prefix (resolve와 동형)
   const r = catalog.find(x => x.id === id);
   if (r) return r;
