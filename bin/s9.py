@@ -22834,7 +22834,10 @@ def untrack_state(root=None, out=print, git_fn=None):
         return res
     # ③ pull --rebase — 같은 untrack 이 먼저 올라와 있으면 이 commit 은 drop 된다.
     #    수정 vs 삭제(DU) 충돌은 그 파일을 index 에서 빼고 계속한다.
-    r = run("pull", "--rebase", "--autostash", timeout=60)
+    #    autostash 는 쓰지 않는다(맥 실측 2026-09-09 10:54: stash 를 되돌리며 옛 index
+    #    스냅샷 160개가 A 로 다시 올라왔다) — ② 뒤에는 state/ 가 추적 밖이라 stash 가
+    #    필요 없다. 그래도 남는 A 항목은 ④ 에서 걷는다.
+    r = run("pull", "--rebase", timeout=60)
     if r.returncode != 0:
         du = [ln.split()[-1] for ln in run("status", "--porcelain").stdout.splitlines()
               if ln[:2] in ("DU", "UD", "AU", "UA")]
@@ -22845,9 +22848,12 @@ def untrack_state(root=None, out=print, git_fn=None):
             out("pull --rebase 가 막혔다 — 손으로 보라: " + (r.stderr or r.stdout or "").strip()[:300])
             res["note"] = "rebase stuck"
             return res
+    # ④ 안전망 — 어떤 경로로든 state/ 가 index 에 다시 올라왔으면(A) 걷는다. working tree 는 그대로.
+    run("reset", "-q", "--", "state")
     r = run("push", timeout=60)
     res["pushed"] = r.returncode == 0
     left = [ln for ln in run("ls-files", "-ci", "--exclude-standard").stdout.splitlines() if ln.strip()]
+    left += [ln for ln in run("ls-files", "state").stdout.splitlines() if ln.strip()]
     res["note"] = (f"index 에서 {len(state_only)}개를 뺐다 · 백업 {res['backup'] or '없음(이미 있었다)'} · "
                    f"push {'됨' if res['pushed'] else '안 됨 — 다음 동기화가 민다'} · 남은 추적됨∩무시됨 {len(left)}")
     out(res["note"])
