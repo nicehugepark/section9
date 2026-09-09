@@ -87,8 +87,10 @@ class UnnamedRedDoesNotBlock(unittest.TestCase):
         self.assertEqual(files, [])
 
     def test_it_still_blocks_when_it_can(self):
+        # green_age 를 비우면 guard 가 실제 저장소의 마지막 통과 기록을 읽어, 그것이 이
+        # 시험의 red(at=2000)보다 새로우면 막지 않는다 — 시험은 제 값을 명시한다
         stop, files = self.g.red_ratchet(["bin/s9.py"], red=self._red(["test_x.py"]),
-                                         green_age=None, now=3000.0, fix_env="")
+                                         green_age=5000.0, now=3000.0, fix_env="")
         self.assertTrue(stop, "이름이 있는데 안 막았다")
         self.assertEqual(files, ["test_x.py"])
 

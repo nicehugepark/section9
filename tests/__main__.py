@@ -43,11 +43,15 @@ def _reap(label):
 REPO = os.path.dirname(HERE)
 # 스모크 계층 (REQ-20260830-029, quality-assurance 선정): 핵심 계약 12파일,
 # 20초대 목표. --smoke 로 부른다. 목록을 고칠 때는 그 REQ 의 근거 노트를 함께.
+# 검사형 시험 다섯(REQ-20260909-056): 서버 없이 파일만 읽고 합 3초 — 나흘간
+# 실패 34건 중 8건이 이 다섯이었고 스모크가 안 보니 commit 뒤에야 드러났다.
 SMOKE = ("test_state_truth.py", "test_catalog_atomic.py",
          "test_commit_gate.py", "test_note_guard.py", "test_relates_why.py",
          "test_review_point_len.py", "test_changed_select.py",
          "test_jobs_shard.py", "test_stall_trust.py", "test_wake.py",
-         "test_closed_no_worker.py", "test_stdlib_only.py")
+         "test_closed_no_worker.py", "test_stdlib_only.py",
+         "test_test_budget.py", "test_no_metaphors.py", "test_dialog_safe.py",
+         "test_button_word.py", "test_screen_lexicon.py")
 GREEN_STAMP = os.path.join(REPO, "state", "tests-last-green")
 # 이 파일들이 바뀌면 어느 시험이 닿는지 셀 수 없다 — 전체로 물러난다.
 COMMON = ("bin/s9", "bin/s9.py", "tests/__main__.py", "tests/portpool.py",

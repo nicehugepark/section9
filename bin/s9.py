@@ -2807,19 +2807,27 @@ def update_active_reqs(doc_id, new_status):
     """세션 바인딩의 active_reqs 유지 (REQ-20260823-080) — 대시보드 live 판정의
     직접 증거. in-progress 전이면 현 세션(S9_SESSION) 바인딩에 등록하고,
     다른 상태로 떠나면 모든 바인딩에서 제거한다. do_transition 락 밖에서 호출할 것.
-    실패해도 전이를 막지 않는다 — 호출부에서 예외를 삼켜라."""
+    실패해도 전이를 막지 않는다 — 호출부에서 예외를 삼켜라.
+
+    반환은 **말한다** (REQ-20260909-010): 종전엔 리스 거부(busy-elsewhere)를
+    여기서 조용히 버려, 옛 세션이 리스를 잃었다는 첫 신호가 아무 데도 나오지
+    않았다. in-progress 등록 경로는 {"registered", "lease", "why"} 를 돌려주고
+    거부는 stderr 에도 한 줄 낸다; 그 밖의 경로는 None."""
     import glob as _glob
     if new_status == "in-progress":
         sess = os.environ.get("S9_SESSION", "")
         if not sess:
-            return  # 실행 세션을 모름(대시보드/외부) — 등록하지 않는다
+            # 실행 세션을 모름(대시보드/외부) — 등록하지 않는다
+            return {"registered": False, "lease": "no-session", "why": ""}
         # 남의 문서를 전이했다고 내 세션이 그 실행자가 되지는 않는다
         # (REQ-20260902-016) — 검토자의 반려가 검토자 세션의 클레임이 되면
         # 담당자의 자리가 "이미 누가 잡았다"로 물러선다.
         try:
             _p = locate(doc_id)
-            if _p and not exec_verdict(read_doc(_p)[0], want="claim")[0]:
-                return
+            if _p:
+                _ok, _code, _why = exec_verdict(read_doc(_p)[0], want="claim")
+                if not _ok:
+                    return {"registered": False, "lease": _code, "why": _why}
         except Exception:
             pass
         acquire_lock()
@@ -2846,11 +2854,15 @@ def update_active_reqs(doc_id, new_status):
                 write_binding(b)
         finally:
             release_lock()
+        res = {"registered": True, "lease": "", "why": ""}
         try:
-            doc_lease_acquire(doc_id, "claim", session=sess)   # REQ-20260902-020
-        except Exception:
-            pass
-        return
+            _ok, _code, _why = doc_lease_acquire(doc_id, "claim", session=sess)   # REQ-20260902-020
+            res["lease"], res["why"] = _code, _why
+            if not _ok:
+                print(f"◌ 리스 {_code}: {_why}", file=sys.stderr)
+        except Exception as _e:
+            res["lease"], res["why"] = "error", str(_e)
+        return res
     alias = id_alias()          # 루프 밖에서 1회 — 바인딩마다 카탈로그를 다시 읽지 않는다
     target = canon_id(doc_id, alias)
     acquire_lock()
@@ -5261,6 +5273,23 @@ def doc_lease_verdict(meta, local, want="list"):
     return (True, "takeover-local", "")
 
 
+def doc_lease_working(lease, now=None):
+    """저쪽이 **아직 일하는 중인가** — 리스의 마지막 진전(renewed)이 STALLED_WIN
+    안이면 참 (REQ-20260909-010). 신선(DOC_LEASE_TTL)과 다른 물음이다: 신선은
+    「아무도 안 쥐고 있나」, 이것은 「쥔 쪽이 움직이나」. 화면의 `SLOW_WIN` 과
+    같은 초 — 시계는 하나다. 다른 머신은 벽시계만 보므로 이 이상 정밀할 수 없다."""
+    import time as _time
+    t = max(_iso_epoch((lease or {}).get("since")),
+            _iso_epoch((lease or {}).get("renewed")))
+    return bool(t) and ((now or _time.time()) - t) < STALLED_WIN
+
+
+def lease_working_why(lease):
+    """저쪽이 실행 중이라 못 옮길 때의 문장 — 화면 카드·409 사유가 같은 글자."""
+    return (f"{(lease or {}).get('machine') or '다른 컴퓨터'} 에서 진행 중 — "
+            f"저쪽이 멈춘 뒤 가져올 수 있습니다")
+
+
 def doc_lease_touch(meta, local=None):
     """진전 쓰기(전이·노트)가 곧 하트비트다 — 내 리스면 renewed 를 올린다.
     새 시계를 만들지 않는다. 반환: 바뀌었는가."""
@@ -5313,7 +5342,7 @@ def _sync_pull_stamp():
 
 
 def doc_lease_acquire(doc_id, want="claim", session=None, takeover=False,
-                      local=None, actor=""):
+                      local=None, actor="", via=""):
     """리스 획득 — 허용/거부가 실제 효력을 갖는 유일한 자리 (REQ-20260902-020).
 
     pull(낡았으면) → exec_verdict(리스 단계 포함) → 문서에 기록 → remote 면 push
@@ -5336,7 +5365,13 @@ def doc_lease_acquire(doc_id, want="claim", session=None, takeover=False,
         if takeover and code in ("busy-elsewhere", "busy-user") and (
                 local.get("user") == doc_owner(meta)
                 or user_role(local.get("user") or "") == "admin"):
-            pass                                   # 명시 이관 — 아래서 적는다
+            # 명시 이관 — 단, **저쪽이 아직 실행 중이면 옮기지 않는다**
+            # (REQ-20260909-010). 이 예외가 저쪽 세션이 일하는 동안에도
+            # 리스를 옮겼고, 저쪽의 다음 진전이 도로 가져가 버튼이 다시 나타났다
+            # (2026-09-09 12:46~12:50 실측). 판정은 여기 한 곳 — 화면·API·CLI
+            # 가 다 이 자리를 지난다.
+            if code == "busy-elsewhere" and doc_lease_working(old):
+                return (False, code, lease_working_why(old))
         else:
             return (False, code, why)
     ts = now_iso()
@@ -5344,9 +5379,17 @@ def doc_lease_acquire(doc_id, want="claim", session=None, takeover=False,
              "session": local.get("session") or "",
              "since": old.get("since") if code == "renew" and old else ts,
              "renewed": ts}
+    moved = bool(takeover and old and (old.get("machine") != lease["machine"]
+                                       or old.get("user") != lease["user"]))
+    # `via` 는 **화면의 이관**만 적는다 (REQ-20260909-010): 「옮겨졌는데 아직 아무
+    # 세션도 안 집었다」는 표다. 이 머신의 세션이 실제로 집으면(claim 의 acquire
+    # 는 via 없이 리스를 새로 짓는다) 사라진다 — 화면의 「옮겼습니다 · 아직
+    # 시작하지 않음」과 `s9 handoff` 가 이 표 하나를 읽는다. CLI 의
+    # `s9 claim --takeover` 는 그 세션이 곧 집는 것이라 표를 남기지 않는다.
+    if via and (moved or (takeover and code == "renew" and old.get("via") == via)):
+        lease["via"] = via
     meta["lease"] = lease                      # `updated` 는 건드리지 않는다
-    if takeover and old and (old.get("machine") != lease["machine"]
-                             or old.get("user") != lease["user"]):
+    if moved:
         line = (f"- {ts} lease: takeover {old.get('user')}@{old.get('machine')} -> "
                 f"{lease['user']}@{lease['machine']} (by {actor or local.get('user')})\n")
         body = body.rstrip("\n") + "\n" + line
@@ -15839,6 +15882,11 @@ def next_pickup(user=None, all_users=False):
     # 워처가 무인 스폰 전에 보는 그 함수를 그대로 본다. 다르게 보면 워처와
     # 기동 세션이 같은 문서를 동시에 집는다.
     rows = [r for r in stalled_requests(win=0) if not rework_claimed(r["id"])]
+    # 방금 이 컴퓨터로 옮겨진 것(리스는 내 것인데 아무 세션도 안 집음)은
+    # 진전이 있어 stalled 에 없다 — 그 한 줄을 여기서 더한다 (REQ-20260909-010).
+    seen = {r["id"] for r in rows}
+    rows += [r for r in handoff_rows(local_facts(user))["incoming"]
+             if r["id"] not in seen]
     if not all_users:
         # 담당자·머신 판정은 한 함수 (REQ-20260902-016) — 종전 user 비교는
         # 남의 머신에서 만든 내 문서까지 권했고, 워처와 다른 답을 냈다.
@@ -15860,6 +15908,94 @@ def next_pickup(user=None, all_users=False):
     return {"id": top["id"], "title": top.get("title", ""),
             "user": top.get("user", ""), "priority": doc_priority(top),
             "mins": st["mins"], "reason": st.get("reason", ""), "note": note}
+
+
+def handoff_rows(local=None, session=None):
+    """이관의 양쪽 (REQ-20260909-010) — 한 함수가 `s9 next`·훅 주입·`s9 handoff` 에 답한다.
+
+      incoming  리스가 내 머신·내 사용자이고 이관으로 생긴 것(lease.via=takeover)인데
+                이 머신의 어느 세션도 안 집은 in-progress — 「이 컴퓨터가 이어받는다」
+      outgoing  내 세션(active_reqs)이 쥔 것 중 리스 머신이 남의 것 —
+                「<머신> 이 이어받았다, 마무리하고 release 하라」
+
+    두 목록 다 stalled 와 별개다: incoming 은 방금 옮겨져 진전이 있고, outgoing 은
+    이 세션이 아직 일하는 중일 수 있다. 문장은 여기서 짓는다 — 훅·CLI 가 같은 글자."""
+    local = local or local_facts()
+    me_m, me_u = str(local.get("machine") or ""), str(local.get("user") or "")
+    incoming, outgoing = [], []
+    cat = load_catalog()
+    for r in cat:
+        if r.get("type") != "request" or r.get("status") != "in-progress":
+            continue
+        lease = r.get("lease") if isinstance(r.get("lease"), dict) else {}
+        if not lease:
+            continue
+        if (lease.get("via") == "takeover" and lease.get("machine") == me_m
+                and lease.get("user") == me_u and not rework_claimed(r["id"])):
+            incoming.append({
+                "id": r["id"], "title": r.get("title", ""),
+                "user": r.get("user", ""), "machine": r.get("machine", ""),
+                "assignee": r.get("assignee", ""), "lease": lease,
+                "mins": 0, "state": "handoff", "why": "",
+                "reason": "이 컴퓨터로 옮겨짐 — 아직 시작하지 않음",
+                "text": (f"[이관] {r['id']} 를 이 컴퓨터가 이어받는다 — "
+                         f"`s9 last {r['id']} --add` 로 집어라")})
+    sid = (session or os.environ.get("S9_SESSION") or "")[:8]
+    b = read_binding(current_machine(), sid) if sid else None
+    if b:
+        alias = id_alias()
+        by_id = {c["id"]: c for c in cat}
+        for rid in binding_req_ids(b, alias):
+            c = by_id.get(canon_id(rid, alias)) or {}
+            lease = c.get("lease") if isinstance(c.get("lease"), dict) else {}
+            if not lease or c.get("status") != "in-progress":
+                continue
+            if lease.get("machine") and lease.get("machine") != me_m:
+                who = f"{lease.get('user') or '?'}@{lease.get('machine')}"
+                outgoing.append({
+                    "id": c["id"], "title": c.get("title", ""), "lease": lease,
+                    "text": (f"이 요청은 {who} 이 이어받았다 — 하던 것을 노트로 "
+                             f"마무리하고 `s9 claim {c['id']} --release` 하라")})
+    return {"incoming": incoming, "outgoing": outgoing}
+
+
+def takeover_handoff(doc_id, actor, local=None, session=None):
+    """화면의 「이 컴퓨터에서 이어서 하기」가 지나는 한 경로 (REQ-20260909-010).
+
+    판정·기록은 리스 획득의 takeover 갈래 그대로다. 여기가 더하는 것은
+    **옮긴 뒤**뿐이다: 이 머신의 실행 중인 세션(chat 자동 대상 선택과 같은 규칙,
+    담당자의 자리)에 kind=event 한 줄 — 그 세션의 Monitor 가 깨어 집는다.
+    세션이 없으면 조용히 넘어간다: `s9 next`·훅 주입·워처 폴백이 같은 표
+    (lease.via=takeover)를 읽는다. 반환 (ok, code, why, notified_sid)."""
+    b = chat_target(None, user=actor or None) if session is None else \
+        (read_binding(current_machine(), session[:8]) or {})
+    sid = (b or {}).get("session", "")
+    ok, code, why = doc_lease_acquire(str(doc_id), "claim", session=sid,
+                                      takeover=True, actor=actor, via="takeover",
+                                      local=local or local_facts(actor))
+    if not ok or not sid:
+        return (ok, code, why, "")
+    rid = canon_id(doc_id)
+    line = {"ts": now_iso(), "from": "dashboard", "kind": "event",
+            "text": (f"[이관] {rid} 를 이 컴퓨터가 이어받는다 — "
+                     f"`s9 last {rid} --add` 로 집어라 (by {actor})")}
+    try:
+        with open(chat_inbox_path(sid, make=True), "a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    except OSError:
+        return (ok, code, why, "")
+    return (ok, code, why, sid)
+
+
+def cmd_handoff(args):
+    """`s9 handoff` — 이관의 양쪽을 한 번에. 훅은 --quiet 로 매 턴 부른다."""
+    rows = handoff_rows(session=getattr(args, "session", None) or None)
+    for r in rows["incoming"]:
+        print(f"- {r['text']}")
+    for r in rows["outgoing"]:
+        print(f"- {r['id']} {_safe_title(r)}: {r['text']}")
+    if not rows["incoming"] and not rows["outgoing"] and not getattr(args, "quiet", False):
+        print("(이관 중인 요청 없음)")
 
 
 def here_requests(platform=None, rows=None):
@@ -27546,6 +27682,27 @@ def jira_worker_actor(user):
     return "", f"worker:{(os.environ.get('S9_SESSION') or '')[:8] or 'auto-resume'}"
 
 
+def red_request_tick(now=None):
+    """워처 한 틱의 실패 요청 몫 (REQ-20260909-060) — 전체 테스트 실패 뒤 30분이
+    지나도록 통과 회차가 없으면 그때 요청을 세운다. 규칙과 기록은 tests/async_notify.py
+    한 곳(pending_red_tick)에 있고 여기는 부르기만 한다. 묶음 파일이 없으면 모듈도
+    안 읽는다 — 30초마다 도는 자리라 비용을 0 에 둔다. 반환: 세운 id 또는 ''."""
+    if not os.path.exists(os.path.join(ROOT, "state", "tests-pending-red.json")):
+        return ""
+    try:
+        import importlib.machinery
+        import importlib.util
+        src = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+                           "tests", "async_notify.py")
+        spec = importlib.util.spec_from_loader(
+            "s9_red_tick", importlib.machinery.SourceFileLoader("s9_red_tick", src))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.pending_red_tick(ROOT, now=now)
+    except Exception:
+        return ""
+
+
 def jira_watch_tick():
     """워처 한 틱의 Jira 몫 — outbox(생성·push)와 pull. 한 줄로 부른다: 워처 루프의
     글자를 늘리면 그 루프를 읽는 계약 시험(test_snapshot s6)이 스냅샷 호출을 못 본다.
@@ -29796,12 +29953,12 @@ def cmd_serve(args):
                     # 판정·기록·History 는 CLI(`s9 claim --takeover`)와 같은 경로
                     # (doc_lease_acquire)이 한다 — 화면은 부르기만 한다. 여기에
                     # 판정을 한 줄이라도 더 쓰면 두 입구가 다른 답을 내는 날이 온다.
-                    _ok, _code, _why = doc_lease_acquire(
-                        str(req.get("id") or ""), "claim",
-                        session=(chat_target(user=actor) or {}).get("session", ""),
-                        takeover=True, actor=actor, local=local_facts(actor))
-                    self._json({"ok": _ok, "code": _code, "error": _why},
-                               200 if _ok else 409)
+                    # 옮긴 뒤 이 컴퓨터의 세션 수신함에 알리는 것까지가 한 경로다
+                    # (REQ-20260909-010, takeover_handoff).
+                    _ok, _code, _why, _sid = takeover_handoff(
+                        str(req.get("id") or ""), actor)
+                    self._json({"ok": _ok, "code": _code, "error": _why,
+                                "notified": _sid}, 200 if _ok else 409)
                 elif parsed.path == "/api/priority":
                     # 화면에서 순서를 바꾸는 자리 (REQ-20260829-029). 해석·검증·
                     # 근거 기록은 CLI 와 같은 경로(set_doc_priority)을 지난다 —
@@ -30167,6 +30324,7 @@ def cmd_serve(args):
                 try:
                     rework_watch_tick()
                     jira_watch_tick()           # Jira 오가기 (REQ-20260908-073·076)
+                    red_request_tick()          # 실패 요청 30분 규칙 (REQ-20260909-060)
                 except Exception:
                     pass
                 # 10분(20틱)마다 유실 감사 (REQ-20260901-009) — 스냅샷이 이미
@@ -31930,6 +32088,13 @@ def main():
     sl.add_argument("--quiet", action="store_true")
     sl.add_argument("--all", action="store_true", help="담당·머신 무관 전부")
     sl.set_defaults(fn=cmd_stalled)
+
+    ho = sub.add_parser("handoff",
+                        help="다른 컴퓨터와 오간 이관 — 이 컴퓨터가 이어받을 것과 "
+                             "이 세션이 놓아야 할 것 (REQ-20260909-010)")
+    ho.add_argument("--quiet", action="store_true")
+    ho.add_argument("--session")
+    ho.set_defaults(fn=cmd_handoff)
 
     wt = sub.add_parser("worktree",
                         help="코드만 갈라 작업할 자리 (데이터는 본 저장소 하나)")

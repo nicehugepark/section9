@@ -2,8 +2,8 @@
 
 post-commit 이 띄운 전체 실행의 결과는 로그에만 남았고, 리드는 Monitor 로 기다리다
 세 번 놓쳤다(2026-09-06). 여기서 못박는 것: 전체 판정 직후 ① 그 커밋 REQ 에 노트
-② 클레임 세션 수신함에 kind=event 한 줄 ③ 실패면 후속 요청 자동 등록(같은 sha 는
-한 번) — 그리고 손 실행(S9_TESTS_ASYNC 없음)에서는 아무것도 하지 않는다.
+② 클레임 세션 수신함에 kind=event 한 줄 ③ 실패면 후속 요청 — 같은 파일이 두 회차 연속 실패할 때(REQ-20260909-060,
+30분 규칙은 test_red_request_delay) — 그리고 손 실행(S9_TESTS_ASYNC 없음)에서는 아무것도 하지 않는다.
 
 실행: python3 tests/ async_result_notify
 """
@@ -160,37 +160,48 @@ class AsyncResultNotify(unittest.TestCase):
         self.assertEqual(r["new_req"], "")
 
     def test_s2_fail_notifies_and_registers_child_request(self):
-        """S2. 실패 → 실패 파일이 든 줄 + parent=REQ 인 후속 요청 + 표식."""
+        """S2. 실패 → 실패 파일이 든 줄 + 부모 노트는 즉시; 요청은 **같은 파일이 두 회차
+        연속 실패할 때** parent=REQ 로 하나(sha 둘) + 두 sha 의 표식 (REQ-20260909-060)."""
+        an.clear_pending(ROOT)
         r = an.notify_full_result(False, ["test_x.py", "test_y.py"], 210.2, 297,
                                   where="로컬", root=ROOT, env=self.on,
-                                  sha="def5678", req=self.req)
+                                  sha="def5678", req=self.req, now=1_000_000.0)
         rows = [l for l in inbox("sess1234") if "def5678" in l["text"]]
         self.assertEqual(len(rows), 1)
         self.assertIn("[전체 테스트] def5678 실패 · test_x.py, test_y.py — 커밋 차단이 걸렸다",
                       rows[0]["text"])
-        self.assertTrue(r["new_req"].startswith("REQ-"), r)
-        self.assertIn(r["new_req"], rows[0]["text"])
-        marker = os.path.join(ROOT, "state", "tests-async", "def5678.req")
-        with open(marker, encoding="utf-8") as f:
-            self.assertEqual(f.read().strip(), r["new_req"])
-        child = self.doc(r["new_req"])
-        self.assertIn('title: "전체 테스트 실패: def5678"', child)
-        self.assertIn(f"parent: {self.req}", child)
-        self.assertIn("test_x.py", child)
-        self.assertIn("size: S", child)
+        self.assertEqual(r["new_req"], "")          # 첫 실패는 적기만 한다
+        self.assertFalse(os.path.exists(os.path.join(ROOT, "state", "tests-async", "def5678.req")))
         d = self.doc()
         self.assertIn("전체 테스트 실패(로컬 210초)", d)
         self.assertIn("test_x.py, test_y.py", d)
+        # 다음 회차도 test_y.py 가 실패 → 그 자리에서 요청
+        r2 = an.notify_full_result(False, ["test_y.py"], 200, 297, where="로컬", root=ROOT,
+                                   env=self.on, sha="def9999", req=self.req, now=1_000_300.0)
+        self.assertTrue(r2["new_req"].startswith("REQ-"), r2)
+        rows = [l for l in inbox("sess1234") if "def9999" in l["text"]]
+        self.assertIn(r2["new_req"], rows[0]["text"])
+        for sha in ("def5678", "def9999"):
+            marker = os.path.join(ROOT, "state", "tests-async", f"{sha}.req")
+            with open(marker, encoding="utf-8") as f:
+                self.assertEqual(f.read().strip(), r2["new_req"])
+        child = self.doc(r2["new_req"])
+        self.assertIn('title: "전체 테스트 실패: def5678 · def9999"', child)
+        self.assertIn(f"parent: {self.req}", child)
+        self.assertIn("test_x.py", child)
+        self.assertIn("size: S", child)
 
     def test_s3_same_sha_registers_only_once(self):
-        """S3. 같은 sha 로 두 번 → 요청은 1건(표식), 수신함 줄은 2건."""
+        """S3. 같은 sha 로 두 번 → 새 회차가 아니다: 요청은 더 서지 않고 수신함 줄은 2건."""
+        an.clear_pending(ROOT)
         a = an.notify_full_result(False, ["test_z.py"], 1, 3, root=ROOT, env=self.on,
-                                  sha="0000dup", req=self.req)
+                                  sha="0000dup", req=self.req, now=2_000_000.0)
         n = len(req_docs())
         b = an.notify_full_result(False, ["test_z.py"], 1, 3, root=ROOT, env=self.on,
-                                  sha="0000dup", req=self.req)
-        self.assertEqual(a["new_req"], b["new_req"])
+                                  sha="0000dup", req=self.req, now=2_000_100.0)
+        self.assertEqual((a["new_req"], b["new_req"]), ("", ""))
         self.assertEqual(len(req_docs()), n)
+        self.assertEqual(an.read_pending(ROOT)["shas"], ["0000dup"])
         self.assertEqual(len([l for l in inbox("sess1234") if "0000dup" in l["text"]]), 2)
 
     def test_s4_manual_run_is_silent(self):
@@ -208,6 +219,7 @@ class AsyncResultNotify(unittest.TestCase):
 
     def test_s5_no_claim_goes_to_all_fresh_sessions_and_no_req_skips_note(self):
         """S5. 클레임이 없으면 활성 세션 전부에, REQ 가 없으면 노트·요청 없이 수신함만."""
+        an.clear_pending(ROOT)
         nbefore = len(req_docs())
         r = an.notify_full_result(False, ["test_w.py"], 2, 4, root=ROOT, env=self.on,
                                   sha="noreq00", req="")

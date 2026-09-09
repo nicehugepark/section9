@@ -480,7 +480,8 @@ def staged_tests_gate(staged):
 
     21:42 커밋은 같은 커밋에 들어 있던 테스트조차 통과 못 했다. 전체 스위트는
     분 단위라 매 커밋에 물리면 규율이 먼저 죽는다 — 그래서 담긴 시험에
-    **핵심 계약 12파일(--smoke)** 만 합친다: 병렬(--jobs 4)로 30~40초에 유계다.
+    **핵심 계약 12파일 + 검사형 시험 5파일(--smoke, tests/__main__.py SMOKE)** 만
+    합친다: 병렬(--jobs 4)로 30~40초에 유계다(REQ-20260909-056).
     --changed 를 여기 쓰지 않는 이유: bin/s9 는 미커밋 변경이 잦아 매번 전체
     폴백(4분대)으로 밀린다 — 전체 확인은 review/done 전 수동 실행의 몫이다.
     담긴 시험은 정확한 파일명으로 넘긴다(러너가 정확명은 넓히지 않는다) —
@@ -500,7 +501,7 @@ def staged_tests_gate(staged):
         return
     print("s9-guard: 커밋 검사(담긴 테스트 ∪ 스모크 테스트)가 실패합니다 — 커밋을 멈춥니다.",
           file=sys.stderr)
-    print(f"  대상: 스모크 테스트 12파일 ∪ {' '.join(names) or '(담긴 테스트 없음)'}",
+    print(f"  대상: 스모크 테스트(tests/__main__.py SMOKE) ∪ {' '.join(names) or '(담긴 테스트 없음)'}",
           file=sys.stderr)
     _show_gate_failure(r)
     sys.exit(1)
@@ -881,6 +882,51 @@ def commit_msg_terms(path):
     return 0
 
 
+RED_CAUSE_LINE = "원인:"
+
+
+def red_cause_warning(msg, red, green_age=None, now=None):
+    """실패 기록이 남아 있는 채로 commit 하는데 메시지에 「원인:」 줄이 없으면 경고 문장,
+    아니면 '' (REQ-20260909-060). 막지 않는다.
+
+    실패 요청 문서는 30분 안에 못 고칠 때만 서므로, 그 전에 고치는 커밋이 원인 한 줄을
+    남길 자리는 commit 메시지뿐이다 — 나흘 34건의 원인 분류(REQ-20260909-053)가
+    그 한 줄로 가능했다. 판정은 red_ratchet 과 같은 재료(기록 시각 vs 마지막 통과)로
+    하되 S9_FIX_RED·담긴 시험 예외는 보지 않는다 — 어느 길로 지나가든 원인은 적는다."""
+    if not red or not red.get("at") or _red_unnamed(red):
+        return ""
+    now = time.time() if now is None else now
+    green_at = None if green_age is None else now - green_age
+    if green_at is not None and green_at >= float(red["at"]):
+        return ""
+    for ln in (msg or "").splitlines():
+        t = ln.strip()
+        if t.startswith("#"):
+            continue
+        if t.startswith(RED_CAUSE_LINE) and t[len(RED_CAUSE_LINE):].strip():
+            return ""
+    files = ", ".join(str(f) for f in (red.get("files") or []))
+    return (f"s9-guard: 전체 테스트 실패 기록이 있는 채로 commit 합니다({files}) — "
+            f"메시지에 「{RED_CAUSE_LINE} <실패의 원인 한 줄>」 을 적어 주세요. "
+            "막지 않습니다 (REQ-20260909-060).")
+
+
+def commit_msg_red_cause(path):
+    """commit-msg 훅 — red_cause_warning 을 stderr 로. 경고만, 종료 코드 0."""
+    red = _read_json(LAST_RED)
+    if not red:
+        return 0
+    try:
+        with open(path, encoding="utf-8") as f:
+            msg = f.read()
+    except OSError:
+        return 0
+    warn = red_cause_warning(msg, red, green_age=full_green_age())
+    if warn:
+        print(warn, file=sys.stderr)
+    return 0
+
+
 def commit_msg_swept(path):
     """작업자가 붙은 채 지나간 커밋에는 **쓸려 담긴 파일이 적힌다**
     (REQ-20260907-062).
@@ -915,6 +961,82 @@ def commit_msg_swept(path):
         pass
 
 
+REQ_ID_RE = re.compile(r"REQ-\d{8}-\d{3}(?:-[0-9a-z]{4})?")
+# 문서에는 남의 요청 id 가 당연히 있다 — vault·docs 와 .md 는 대조하지 않는다.
+HUNK_ID_SKIP_PREFIX = ("vault/", "docs/")
+
+
+def _req_base(rid):
+    """접미(-62x6)가 있든 없든 같은 요청이다 — 앞 16자로 견준다."""
+    return rid[:16]
+
+
+def foreign_req_ids(diff_text, msg):
+    """담긴 + 줄의 요청 id 중 커밋 메시지에 없는 것 → {id: 줄 수} (REQ-20260909-058).
+
+    `git diff --cached -U0` 의 본을 받는다. 파일 머리(`--- a/…` 다음의 `+++ b/…`)로
+    지금 어느 파일인지 좇고, 문서 경로는 건너뛴다. 한 줄에 같은 id 가 두 번이어도
+    한 줄로 센다 — 사람이 볼 것은 「어느 hunk 몇 줄」이다."""
+    known = {_req_base(m) for m in REQ_ID_RE.findall(msg)}
+    counts = {}
+    shown = {}
+    path = None
+    after_minus_header = False
+    for ln in diff_text.splitlines():
+        if ln.startswith("--- "):
+            after_minus_header = True
+            continue
+        if after_minus_header and ln.startswith("+++ "):
+            after_minus_header = False
+            path = ln[4:].split("\t", 1)[0]
+            if path.startswith("b/"):
+                path = path[2:]
+            continue
+        after_minus_header = False
+        if not ln.startswith("+") or path is None or path == "/dev/null":
+            continue
+        if path.startswith(HUNK_ID_SKIP_PREFIX) or path.endswith(".md"):
+            continue
+        seen = {}
+        for m in REQ_ID_RE.findall(ln[1:]):
+            b = _req_base(m)
+            if b not in known:
+                seen[b] = m if len(m) >= len(seen.get(b, "")) else seen[b]
+        for b, full in seen.items():
+            counts[b] = counts.get(b, 0) + 1
+            if len(full) > len(shown.get(b, "")):
+                shown[b] = full
+    return {shown[b]: n for b, n in counts.items()}
+
+
+def commit_msg_hunk_ids(path, cwd=None):
+    """commit-msg 훅: 담긴 + 줄의 다른 요청 id 를 경고한다 — 막지 않는다
+    (REQ-20260909-058).
+
+    ff6fba57 은 036 작업자가 `git add bin/s9.py` 로 파일의 지금 상태를 담아
+    033/034 의 hunk(주석에 그 id 가 적혀 있었다)가 딸려갔다. pre-commit 에는
+    메시지가 아직 없고, commit-msg 시점에도 index 는 그대로 있으니 자리는 여기다."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            msg = "".join(ln for ln in f if not ln.startswith("#"))
+    except OSError:
+        return {}
+    try:
+        diff = subprocess.run(["git", "diff", "--cached", "-U0"],
+                              capture_output=True, encoding="utf-8", errors="replace",
+                              cwd=cwd or ROOT, timeout=60).stdout
+    except Exception:
+        return {}
+    found = foreign_req_ids(diff, msg)
+    if found:
+        for rid, n in sorted(found.items()):
+            print(f"[s9-guard] 담긴 + 줄에 커밋 메시지에 없는 요청 id: {rid} ({n}줄)",
+                  file=sys.stderr)
+        print("  남의 hunk 가 딸려온 것이면 `git add -p <파일>` 로 내 hunk 만 담거나 "
+              "메시지에 그 id 를 적으세요 (REQ-20260909-058).", file=sys.stderr)
+    return found
+
+
 def main():
     if "--concurrent" in sys.argv[1:]:
         # 조회다 — 커밋 표식도 남기지 않고 어느 검사도 돌리지 않는다.
@@ -922,6 +1044,8 @@ def main():
         return concurrent_report(paths or staged_now())
     if sys.argv[1:2] == ["commit-msg"] and len(sys.argv) > 2:
         commit_msg_swept(sys.argv[2])
+        commit_msg_hunk_ids(sys.argv[2])
+        commit_msg_red_cause(sys.argv[2])
         return commit_msg_terms(sys.argv[2])
     if "--after-commit" in sys.argv[1:]:
         k = sys.argv.index("--after-commit")

@@ -257,6 +257,31 @@ class HooksDirIsAskedOfGit(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.base, ignore_errors=True)
 
+    def test_smoke_list_carries_check_tests(self):
+        """G12. 검사형 시험 다섯이 스모크에 있다 (REQ-20260909-056).
+
+        나흘간 실패 34건 중 8건이 서버 없이 파일만 읽는 검사형 시험(합 3초)이었고,
+        스모크가 그 다섯을 안 보니 commit 뒤 원격 회차에서야 드러났다. 목록은
+        러너(tests/__main__.py SMOKE)가 유일한 원천이라 그 값을 읽고, guard 가
+        그 목록을 실제로 부르는지는 러너 호출 인자로 잰다."""
+        five = {"test_test_budget.py", "test_no_metaphors.py", "test_dialog_safe.py",
+                "test_button_word.py", "test_screen_lexicon.py"}
+        with self.subTest("runner_smoke_has_the_five"):
+            runner = _load("s9runner_smoke", os.path.join(HERE, "__main__.py"))
+            self.assertTrue(five <= set(runner.SMOKE),
+                            f"빠짐: {sorted(five - set(runner.SMOKE))}")
+        with self.subTest("guard_calls_runner_with_smoke"):
+            calls = []
+
+            def fake_run(argv, **kw):
+                calls.append(list(argv))
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            g = _load("s9guard_g12", GUARD)
+            with mock.patch.object(g.subprocess, "run", fake_run):
+                g.staged_tests_gate(["bin/s9"])
+            self.assertEqual(len(calls), 1, calls)
+            self.assertIn("--smoke", calls[0])
+
     def test_hooks_dir_is_asked_of_git(self):
         """G11. 훅 자리는 경로를 지어내지 말고 git 에게 묻는다."""
         with self.subTest("worktree_dot_git_is_a_file"):

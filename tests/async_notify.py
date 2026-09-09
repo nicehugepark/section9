@@ -6,8 +6,14 @@ post-commit 이 띄운 전체 실행은 로그(state/tests-async/<sha7>.log)에�
 
 ① 그 커밋의 REQ 문서에 노트(`s9 note … --label response --agent test-runner`)
 ② 그 REQ 를 클레임한 세션(없으면 최근 활성 세션 전부)의 수신함에 kind=event 한 줄
-③ 실패면 후속 요청(`s9 new request --parent <REQ>`) 자동 등록 — 같은 sha 로는 한 번만
-   (state/tests-async/<sha7>.req 표식)
+③ 실패면 후속 요청(`s9 new request --parent <REQ>`) — **30분 안에 못 고칠 때만**
+   (REQ-20260909-060). 실패마다 세우던 나흘(9/6~9/9)의 34건 중 28건이 7분 안에 닫혀
+   기록으로만 남았다(quality-assurance 실측, REQ-20260909-053). 그래서 실패는 먼저
+   state/tests-pending-red.json 에 {shas, files, at, req} 로 적어 두고, 요청은
+   (a) 다음 회차도 같은 파일이 실패할 때 즉시(note_failure) 또는 (b) 30분이 지나도록
+   통과 회차가 없을 때 serve 워처 틱(pending_red_tick)이 세운다. 통과가 오면 지운다.
+   세운 요청은 그 사이의 sha 를 모두 적고, 각 sha 의 state/tests-async/<sha7>.req
+   표식에 id 를 남긴다(같은 묶음에 요청은 하나).
 
 post-commit(백그라운드) 이 넘긴 `S9_TESTS_ASYNC=1` 이 있을 때만 움직인다 — 사람이 터미널에서 손으로
 돌린 실행은 이미 눈앞에서 결과를 보고 있으니 조용하다. sha 는 `S9_TESTS_ASYNC_SHA`
@@ -34,6 +40,8 @@ ENV_SHA = "S9_TESTS_ASYNC_SHA"
 REQ_RE = re.compile(r"REQ-\d{8}-\d{3}(?:-[a-z0-9]+)?")
 RED_MARK = "__S9_FULL_RED="       # 러너가 마지막에 찍는 실패한 파일 목록 — 원격 출력에서 걷는다
 FRESH_SEC = 3600
+PENDING_NAME = "tests-pending-red.json"   # state/ 아래 — 요청을 아직 세우지 않은 실패 묶음
+GRACE_SEC = 30 * 60                     # 이 안에 통과 회차가 오면 요청 없이 끝난다 (REQ-20260909-060)
 
 
 def active(env=None):
@@ -147,39 +155,123 @@ def _marker(root, sha):
     return os.path.join(root, "state", "tests-async", f"{sha}.req")
 
 
-def _register_failure(root, sha, req, red, env):
-    """실패 후속 요청 — 같은 sha 로는 한 번만. 만든 id 또는 표식에 적힌 id, 없으면 ''."""
+def _mark(root, sha, new_id):
+    """sha 의 .req 표식에 요청 id 를 적는다 — 이미 있으면 그대로 둔다."""
     path = _marker(root, sha)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-    except FileExistsError:
-        try:
-            with open(path, encoding="utf-8") as f:
-                return f.read().strip()
-        except OSError:
-            return ""
     except OSError:
-        return ""
-    body = "실패 파일:\n" + "\n".join(f"- {f}" for f in red) + \
-        f"\n\n로그: state/tests-async/{sha}.log"
-    r = _s9(root, "new", "request", "--title", f"전체 테스트 실패: {sha}",
-            "--parent", req, "--size", "S",
-            "--goal", "실패한 파일이 통과하고 통과 기록이 남는다",
-            "--summary", f"{sha} 의 백그라운드 전체 테스트가 실패했다 — {', '.join(red)[:120]}",
-            "--body", body, env=env)
-    m = REQ_RE.search(r.stdout or "")
-    new_id = m.group(0) if (r.returncode == 0 and m) else ""
+        return
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(new_id + "\n")
+
+
+def pending_path(root):
+    return os.path.join(root, "state", PENDING_NAME)
+
+
+def read_pending(root):
+    """요청을 아직 세우지 않은(또는 세운 뒤 통과를 기다리는) 실패 묶음 — 없으면 None."""
+    try:
+        with open(pending_path(root), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) and d.get("shas") else None
+
+
+def _write_pending(root, pend):
+    path = pending_path(root)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(pend, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"[알림] 실패 묶음을 못 적었다: {e}", file=sys.stderr)
+
+
+def clear_pending(root):
+    """통과 회차가 왔다 — 묶음을 지운다(30분을 넘겼든 아니든 통과가 왔으니 세우지 않는다)."""
+    try:
+        os.unlink(pending_path(root))
+        return True
+    except OSError:
+        return False
+
+
+def _create_red_request(root, pend, env):
+    """묶음의 sha 를 **모두** 적은 요청 하나. 만든 id 또는 ''."""
+    shas = list(pend.get("shas") or [])
+    files = list(pend.get("files") or [])
+    req = pend.get("req") or ""
+    label = " · ".join(shas)
+    body = "실패 파일:\n" + "\n".join(f"- {f}" for f in files) + \
+        "\n\n실패한 회차(commit):\n" + "\n".join(f"- {x} — 로그 state/tests-async/{x}.log" for x in shas) + \
+        "\n\n원인 한 줄은 고치는 commit 메시지의 「원인:」 줄에 적는다 (REQ-20260909-060)."
+    args = ["new", "request", "--title", f"전체 테스트 실패: {label}"[:80], "--size", "S",
+            "--goal", "실패한 파일이 통과하고 통과 기록이 남는다",
+            "--summary", f"{label} 의 백그라운드 전체 테스트가 실패했고 "
+                         f"{GRACE_SEC // 60}분 안에 고쳐지지 않았다 — {', '.join(files)[:120]}",
+            "--body", body]
+    if req:
+        args += ["--parent", req]
+    r = _s9(root, *args, env=env)
+    m = REQ_RE.search(r.stdout or "")
+    new_id = m.group(0) if (r.returncode == 0 and m) else ""
     if not new_id:
-        # 못 만들었으면 표식을 남기지 않는다 — 다음 실행이 다시 시도한다
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
         print(f"[알림] 후속 요청을 못 만들었다: {(r.stderr or r.stdout).strip()[:200]}",
               file=sys.stderr)
+        return ""
+    for x in shas:
+        _mark(root, x, new_id)
+    return new_id
+
+
+def note_failure(root, sha, req, red, env=None, now=None):
+    """실패 한 회차를 묶음에 적고, 세울 때가 됐으면 요청을 세운다. 반환: 요청 id 또는 ''.
+
+    규칙(REQ-20260909-060): 첫 실패는 적기만 한다. 다음 회차가 **같은 파일**로 또
+    실패하면 그 자리에서 세운다(두 회차 연속 실패). 같은 sha 를 다시 돌린 것은
+    새 회차가 아니다. 이미 세운 묶음이면 sha 만 더하고 그 id 를 돌려준다."""
+    env = env if env is not None else os.environ
+    now = time.time() if now is None else now
+    red = [f for f in red if f]
+    pend = read_pending(root)
+    if pend is None:
+        _write_pending(root, {"shas": [sha], "files": red, "at": now, "req": req or "",
+                              "new_req": ""})
+        return ""
+    overlap = []
+    if sha not in pend["shas"]:
+        overlap = [f for f in red if f in (pend.get("files") or [])]
+        pend["shas"].append(sha)
+        pend["files"] = list(pend.get("files") or []) + [f for f in red if f not in (pend.get("files") or [])]
+        if not pend.get("req"):
+            pend["req"] = req or ""
+    if pend.get("new_req"):
+        _mark(root, sha, pend["new_req"])
+    elif overlap:
+        pend["new_req"] = _create_red_request(root, pend, env)
+    _write_pending(root, pend)
+    return pend.get("new_req") or ""
+
+
+def pending_red_tick(root, now=None, env=None, grace=GRACE_SEC):
+    """serve 워처 한 틱(30초) — 묶음이 유예(30분)를 넘기도록 회차가 없으면 요청을 세운다.
+    반환: 이번에 세운 id 또는 ''."""
+    pend = read_pending(root)
+    if pend is None or pend.get("new_req"):
+        return ""
+    now = time.time() if now is None else now
+    if now - float(pend.get("at") or 0) < grace:
+        return ""
+    new_id = _create_red_request(root, pend, env if env is not None else os.environ)
+    if new_id:
+        pend["new_req"] = new_id
+        _write_pending(root, pend)
     return new_id
 
 
@@ -205,7 +297,7 @@ def ran_label(started, ran):
 
 
 def notify_full_result(ok, red=(), took=0.0, n_files=0, where="로컬", root=None,
-                       env=None, sha=None, req=None, ran_sha=None):
+                       env=None, sha=None, req=None, ran_sha=None, now=None):
     """전체 실행의 판정 직후 한 번. 반환: {"sha","req","sessions","new_req"} 또는
     비활성(S9_TESTS_ASYNC 없음)이면 None. 어느 한 갈래가 실패해도 나머지는 간다 —
     알림이 러너의 종료 코드를 바꾸지 않는다.
@@ -232,11 +324,16 @@ def notify_full_result(ok, red=(), took=0.0, n_files=0, where="로컬", root=Non
                 f"커밋 차단이 걸렸다(state/tests-last-red.json), "
                 f"로그 state/tests-async/{sha}.log")
     new_req = ""
-    if req and not ok:
-        new_req = _register_failure(root, sha, req, red, env)
+    if ok:
+        clear_pending(root)
+    else:
+        # 요청은 30분 안에 못 고칠 때만 (REQ-20260909-060) — 통지·차단·노트는 즉시
+        new_req = note_failure(root, sha, req, red, env, now=now)
         if new_req:
             inbox += f" · 후속 요청 {new_req}"
             note += f" · 후속 요청 {new_req}"
+        else:
+            inbox += f" · 요청은 {GRACE_SEC // 60}분 안에 통과가 없거나 같은 파일이 또 실패할 때 선다"
     # 노트를 못 남긴 **까닭을 돌려준다** (REQ-20260908-060). 예전엔 stderr 로만
     # 말했는데, 전체 실행에서 이 시험이 가끔 질 때 사람이 보는 것은 「문서에서 그
     # 글자를 못 찾았다」뿐이었다 — 까닭은 샤드 로그 어딘가에 묻혔다. 부르는 쪽이
