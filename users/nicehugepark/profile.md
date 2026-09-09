@@ -240,3 +240,5 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-09T21:07:58+09:00 config ui_skin=calm (by nicehugepark via dashboard)
 - 2026-09-09T21:08:41+09:00 config ui_skin=ledger (by nicehugepark via dashboard)
 - 2026-09-09T21:08:55+09:00 config ui_skin=calm (by nicehugepark via dashboard)
+- 2026-09-09T21:10:28+09:00 config ui_density=compact (by nicehugepark via dashboard)
+- 2026-09-09T21:10:43+09:00 config ui_density=(삭제) (by nicehugepark via dashboard)
