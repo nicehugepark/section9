@@ -384,7 +384,7 @@ async function gitLoad(ask){
   const d = gitDemo();
   if (d) q.set("git", d);
   try{
-    const r = await fetch("/api/git/state?" + q.toString());
+    const r = await s9Fetch("/api/git/state?" + q.toString());
     const d2 = await r.json();
     // **판정이 없는 응답은 상태가 아니다.** 서버가 뜻밖의 실패를 만나면
     // `can` 없이 사유만 온다 — 그것을 상태로 받으면 화면이 「저장소가 아니다」로
@@ -476,7 +476,7 @@ async function gitDo(what){
   gitBusyTick();
   let res;
   try{
-    const r = await fetch("/api/git/" + what, {method: "POST",
+    const r = await s9Fetch("/api/git/" + what, {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(asUser ? {as: asUser} : {})});
     res = await r.json();

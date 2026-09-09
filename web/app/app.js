@@ -65,7 +65,7 @@ function pushRoute(){
    시도한다; 부트의 첫 요청은 세 번까지 물러서며 받는다. */
 async function refreshProjects(rerender){
   const d = await loadSupply("projects", async () => {
-    const r = await fetch("/api/projects?" + meQ());
+    const r = await s9Fetch("/api/projects?" + meQ());
     const j = r.ok ? await r.json() : null;
     return (j && Array.isArray(j.projects)) ? j : null;
   }, {tries: rerender ? 2 : 3});
@@ -160,7 +160,7 @@ async function loadDocIdx(){
   if (Date.now() - docIdxAt < 5000) return docIdx;   // 겹쳐 부르지 않는다
   docIdxAt = Date.now();
   try {
-    const r = await fetch("/api/docindex?" + meQ());
+    const r = await s9Fetch("/api/docindex?" + meQ());
     if (!r.ok) return docIdx;
     const j = await r.json();
     if (!Array.isArray(j)) return docIdx;
@@ -205,7 +205,7 @@ async function refreshCatalog(rerender){
   const got = await loadSupply("catalog", async () => {
     const all = catalogWantsAll();
     const q = [meQ(), all ? "window=all" : ""].filter(Boolean);
-    const r = await fetch("/api/catalog?" + q.join("&"));
+    const r = await s9Fetch("/api/catalog?" + q.join("&"));
     const j = r.ok ? await r.json() : null;
     return Array.isArray(j) ? {all, rows: j} : null;
   }, {tries: rerender ? 2 : 3});

@@ -129,7 +129,7 @@ function tzClock(off){
 }
 async function tzLoad(){
   if (tzData && Date.now() - tzFetchAt < 3600000) return tzData;
-  const d = await (await fetch("/api/timezones")).json();
+  const d = await (await s9Fetch("/api/timezones")).json();
   if (!d || !Array.isArray(d.zones)) throw new Error("목록이 비어 있습니다");
   tzData = d; tzFetchAt = Date.now();
   return tzData;

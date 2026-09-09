@@ -48,7 +48,9 @@ class SecretUI(unittest.TestCase):
         """SecretUI 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("the_list_shows_names_not_values"):
                 fn = self._fn("loadSecrets")
-                self.assertIn('fetch("/api/secrets")', fn, "목록을 서버에서 받지 않는다")
+                # 왕복은 공통 래퍼 s9Fetch 를 지난다 (REQ-20260909-076-62x6).
+                self.assertRegex(fn, r'(?:s9F|f)etch\("/api/secrets"\)',
+                                 "목록을 서버에서 받지 않는다")
                 self.assertIn("k.key", fn, "키 이름을 안 그린다")
                 self.assertIn("저장소 밖", fn, "어느 쪽에 있는지 말하지 않는다")
                 # 서버 응답에 value 가 없지만, 화면이 그걸 그리려 든 흔적도 없어야 한다

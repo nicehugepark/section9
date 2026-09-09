@@ -86,7 +86,7 @@ async function prioSet(id){
    새로고침까지 아무도 모른다. 성공한 뒤에 목록을 다시 받는다. */
 async function postPriority(id, value){
   try{
-    const r = await fetch("/api/priority", {method: "POST",
+    const r = await s9Fetch("/api/priority", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs({id, priority: value}))});
     const d = await r.json();
@@ -477,7 +477,7 @@ function s9dlg(o){
             fr.onerror = () => rej(new Error("파일 읽기 실패"));
             fr.readAsDataURL(file);
           });
-          const r = await fetch("/api/chat/upload", {method: "POST",
+          const r = await s9Fetch("/api/chat/upload", {method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({name: a.name, data})});
           const d = await r.json();

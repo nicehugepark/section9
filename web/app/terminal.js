@@ -1,5 +1,10 @@
 /* terminal.js — Terminal 탭 — 붙기·SSE·폴백·스크롤·스피너·에이전트 띠 */
 "use strict";
+/* 여기만 s9Fetch 를 지나지 않는다 — 이 자리의 abort 는 **시한**이지 취소가 아니다
+   (REQ-20260909-076-62x6). 8초를 넘긴 요청은 사람이 이미 기다리기를 그만둔 것이고,
+   놓아 두면 폴 간격마다 연결이 쌓인다. 재시도는 아래 ccFetchTry 가 이미 하므로
+   s9Fetch 의 재시도가 겹치면 한 번의 실패가 6초를 먹는다. 탭 전환·재폴링으로는
+   여기서 끊지 않는다(취소를 내면 이 환경의 중계가 다른 연결을 RST 한다). */
 function ccFetch(url, ms){
   return new Promise(res => {
     const ac = new AbortController();
@@ -454,6 +459,29 @@ function termClearOut(T){
 function termCloseSSE(T){
   if (T.es){ try{ T.es.close(); }catch(e){} T.es = null; }
   if (T.esRetryT){ clearTimeout(T.esRetryT); T.esRetryT = null; }
+  if (T.esIdleT){ clearTimeout(T.esIdleT); T.esIdleT = null; }
+}
+/* 탭이 안 보이게 됐다고 곧바로 끊지 않는다 (REQ-20260909-076-62x6).
+
+   예전에는 visibilitychange 에서 바로 termCloseSSE 를 불렀다. 다른 창을 잠깐
+   봤다 오는 것만으로 연결을 끊었다 다시 여는 셈인데, 이 환경(WSL 루프백 중계)은
+   윈도우 쪽의 그 취소를 처리하면서 **같은 포트의 다른 연결**을 RST 한다 —
+   돌아온 순간 화면의 다른 요청들이 실패한다. 그래서 유예를 둔다: 오래 떠나 있으면
+   연결을 반납하고(서버의 SSE 슬롯을 오래 물지 않는다), 그 안에 돌아오면 쓰던
+   연결을 그대로 쓴다. 돌아왔을 때 다시 잇는 것은 이미 끊긴 때뿐이다. */
+const TERM_SSE_IDLE_MS = 60000;
+function termVisibility(T, hidden){
+  if (!T) return;
+  if (hidden){
+    if (T.esIdleT || !(T.es || T.poll)) return;
+    T.esIdleT = setTimeout(() => {
+      T.esIdleT = null;
+      if (document.hidden) termCloseSSE(T);
+    }, TERM_SSE_IDLE_MS);
+    return;
+  }
+  if (T.esIdleT){ clearTimeout(T.esIdleT); T.esIdleT = null; }
+  if (!T.es && !T.poll){ T.esFails = 0; termConnectSSE(T); }
 }
 function termConnectSSE(T){
   termCloseSSE(T);

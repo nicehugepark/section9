@@ -138,7 +138,7 @@ async function refreshUsage(){
   if (!el) return;
   try{
     const d = await loadSupply("usage", async () => {
-      const r = await fetch("/api/claude/usage");
+      const r = await s9Fetch("/api/claude/usage");
       return r.ok ? await r.json() : null;
     }, {prio: 1, tries: 1, quiet: true});
     if (!d || (!d.ok && !d.stale)){

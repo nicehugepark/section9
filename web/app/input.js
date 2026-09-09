@@ -332,13 +332,14 @@ document.addEventListener("keydown", e => {
   if (window.getSelection && String(getSelection())) return;  // 선택/복사 중 방해 금지
   ta.focus();   // preventDefault 없음 — 문자는 그대로 입력줄에 꽂힌다
 });
-// 백그라운드 탭은 SSE 연결 반납, 복귀 시 마지막 offset으로 재접속 (live follow 규약)
+// 오래 안 보이면 SSE 연결 반납, 복귀 시 마지막 offset으로 재접속 (live follow 규약).
+// 잠깐 떠난 것으로는 끊지 않는다 — 끊고 다시 여는 취소가 이 환경에서 다른 연결을
+// RST 한다(termVisibility 머리말, REQ-20260909-076-62x6).
 document.addEventListener("visibilitychange", () => {
   const T = TERM;
   if (!T || tab !== "terminal" || !T.sid) return;
-  if (document.hidden) termCloseSSE(T);
-  else {
-    if (!T.es && !T.poll){ T.esFails = 0; termConnectSSE(T); }
+  termVisibility(T, document.hidden);
+  if (!document.hidden){
     // 에이전트 스트립은 터미널 탭이 보일 때만 폴링한다 — 떠나 있는 동안
     // 목록이 마지막 상태로 얼어붙어, 보드는 "진행 중 없음"인데 스트립에는
     // 끝난 에이전트가 남아 있는 어긋남이 생겼다 (REQ-20260826-016).
@@ -429,7 +430,7 @@ async function termUpload(T, file){
       fr.onerror = () => rej(new Error("파일 읽기 실패"));
       fr.readAsDataURL(file);
     });
-    const r = await fetch("/api/chat/upload", {method: "POST",
+    const r = await s9Fetch("/api/chat/upload", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({name: a.name, data})});
     const d = await r.json();
@@ -461,7 +462,7 @@ async function termWake(T){
   if (btn){ btn.disabled = true; btn.textContent = "세션 시작 중…"; }
   let d = null;
   try{
-    const r = await fetch("/api/session/wake", {method: "POST",
+    const r = await s9Fetch("/api/session/wake", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: "{}"});
     d = await r.json();
   }catch(ex){ d = {ok: false, reason: "서버 연결 실패"}; }

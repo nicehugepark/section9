@@ -390,7 +390,7 @@ async function acctRemove(name, rows){
   if (!go){ claudeAccountSwitch(); return; }
   let d = null, reached = false;
   try{
-    const r = await fetch("/api/account/remove", {method: "POST",
+    const r = await s9Fetch("/api/account/remove", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({name})});
     reached = true;
@@ -457,7 +457,7 @@ function acctItems(rows, live, wake){
 async function sessionWake(account, rows, cap){
   let d = null;
   try{
-    const r = await fetch("/api/session/wake", {method: "POST",
+    const r = await s9Fetch("/api/session/wake", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(account ? {account} : {})});
     d = await r.json();
@@ -500,7 +500,7 @@ function wakeResultShape(d, who, cap){
 async function claudeAccountAdd(){
   let d = null;
   try{
-    const r = await fetch("/api/account/add", {method: "POST",
+    const r = await s9Fetch("/api/account/add", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: "{}"});
     d = r.status === 404
       ? {ok: false, reason: "대시보드 서버가 구버전입니다 — 세션 터미널에서 serve 를 다시 띄운 뒤 시도해 주세요"}
@@ -686,7 +686,7 @@ function restartLine(d, what){
 const RESTART_STOP_TRIES = 25;      // 0.6초 간격 — 약 15초
 async function restartPost(sid, req){
   try{
-    const r = await fetch("/api/session/restart", {method: "POST",
+    const r = await s9Fetch("/api/session/restart", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({sid, model: req.model || "", effort: req.effort || "",
                             account: req.account || "",

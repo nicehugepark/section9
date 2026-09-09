@@ -101,7 +101,7 @@ async function anchorAsk(docId, anchor){
    실패 문구에서도 세션 이야기를 지운다 — 이제 세션은 이 일과 무관하다. */
 async function anchorSend(docId, anchor, text, r){
   try{
-    const res = await fetch("/api/note", {method: "POST",
+    const res = await s9Fetch("/api/note", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({doc: docId, text, anchor})});
     const d = await res.json();
@@ -434,7 +434,7 @@ async function attachTexts(root, docId){
     let j = null;
     for (let n = 0; n < 2 && !j; n++){
       try{
-        const r = await fetch(url);
+        const r = await s9Fetch(url);
         if (!r.ok) break;               // 뽑아 둔 글자가 없는 첨부 — 정상
         j = await r.json();
       }catch(ex){

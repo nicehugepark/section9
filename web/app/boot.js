@@ -90,7 +90,7 @@ const SUPPLY_JOBS = {
 
 async function loadWhoami(){
   const d = await loadSupply("whoami", async () => {
-    const r = await fetch("/api/whoami");
+    const r = await s9Fetch("/api/whoami");
     const j = r.ok ? await r.json() : null;
     return (j && j.user) ? j : null;
   });
@@ -101,7 +101,7 @@ async function loadWhoami(){
 
 async function loadUsers(){
   const d = await loadSupply("users", async () => {
-    const r = await fetch("/api/users");
+    const r = await s9Fetch("/api/users");
     const j = r.ok ? await r.json() : null;
     return (j && Array.isArray(j.users)) ? j : null;
   });
@@ -173,7 +173,7 @@ async function loadTrans(force){
   if (transReady() && !force) return TRANS;
   if (transWait) return transWait.then(() => TRANS);
   transWait = loadSupply("trans", async () => {
-    const r = await fetch("/api/transitions");
+    const r = await s9Fetch("/api/transitions");
     if (!r.ok) return null;
     const d = await r.json();
     // 빈 객체는 받은 것이 아니다 — 그걸 성공으로 치면 다시 받을 길이 닫힌다.

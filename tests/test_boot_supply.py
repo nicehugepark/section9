@@ -63,11 +63,14 @@ class BootSupply(unittest.TestCase):
     def test_boot_supply(self):
         """BootSupply 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("b1_one_path"):
-            self.assertNotIn("fetch(", self.boot, "부트가 API 를 직접 받는다")
+            # 왕복은 공통 래퍼 s9Fetch 를 지난다 (REQ-20260909-076-62x6) — 이름이
+            # 갈려도 계약(받는 자리가 하나)은 같으므로 두 이름을 함께 센다.
+            self.assertNotRegex(self.boot, r"(?:s9F|f)etch\(", "부트가 API 를 직접 받는다")
             for url in BOOT_ENDPOINTS + LATER_ENDPOINTS:
-                self.assertEqual(self.src.count('fetch("%s' % url), 1,
+                got = re.findall(r'(?:s9F|f)etch\("%s' % re.escape(url), self.src)
+                self.assertEqual(len(got), 1,
                                  "%s 를 받는 자리가 하나가 아니다" % url)
-                m = re.search(r'loadSupply\([\s\S]{0,400}?fetch\("%s' % re.escape(url),
+                m = re.search(r'loadSupply\([\s\S]{0,400}?(?:s9F|f)etch\("%s' % re.escape(url),
                               self.src)
                 self.assertTrue(m, "%s 가 공통 경로를 안 지난다" % url)
         with self.subTest("b2_concurrency_is_capped"):
@@ -79,7 +82,8 @@ class BootSupply(unittest.TestCase):
                           "펌프가 상한을 안 본다")
         with self.subTest("b3_later_waits_for_the_first_paint"):
                 for url in LATER_ENDPOINTS:
-                    seg = self.src[self.src.index('fetch("%s' % url):][:400]
+                    seg = self.src[re.search(
+                        r'(?:s9F|f)etch\("%s' % re.escape(url), self.src).start():][:400]
                     self.assertIn("prio: 1", seg, "%s 가 첫 묶음에 섞여 있다" % url)
                 self.assertIn("supplyRelease", self.boot)
                 self.assertLess(self.boot.index("render()"), self.boot.index("supplyRelease()"),

@@ -61,7 +61,8 @@ class TransLate(unittest.TestCase):
     def test_trans_late(self):
         """TransLate 의 계약을 한 항목으로 — 검사는 그대로다."""
         with self.subTest("t1_retries"):
-                self.assertIn("fetch", self.load)
+                # 왕복은 공통 래퍼 s9Fetch 를 지난다 (REQ-20260909-076-62x6).
+                self.assertRegex(self.load, r"(?:s9F|f)etch\(")
                 self.assertIn("loadSupply", self.load, "전이표가 공통 경로를 안 지난다")
                 path = grab(self.src, "loadSupply")
                 self.assertTrue(re.search(r"for\s*\(", path) or "retry" in path,
@@ -71,12 +72,13 @@ class TransLate(unittest.TestCase):
             # T2. 부트가 표를 직접 받지 않는다 — 받는 자리는 하나다
         with self.subTest("t2_boot_uses_one_path"):
                 self.assertIn("loadTrans", self.boot)
-                self.assertNotIn('fetch("/api/transitions")', self.boot,
-                                 "부트가 전이표를 직접 받는다 — 재시도를 못 탄다")
-                # 표를 받는 fetch 는 온 파일에서 loadTrans 안의 한 줄뿐이어야 한다
-                self.assertEqual(self.src.count('fetch("/api/transitions")'), 1,
+                TRANS_GET = r'(?:s9F|f)etch\("/api/transitions"'
+                self.assertNotRegex(self.boot, TRANS_GET,
+                                    "부트가 전이표를 직접 받는다 — 재시도를 못 탄다")
+                # 표를 받는 왕복은 온 파일에서 loadTrans 안의 한 줄뿐이어야 한다
+                self.assertEqual(len(re.findall(TRANS_GET, self.src)), 1,
                                  "전이표를 받는 자리가 둘 이상이다")
-                self.assertIn('fetch("/api/transitions")', self.load)
+                self.assertRegex(self.load, TRANS_GET)
 
             # T3. 빈 표와 '갈 곳 없음'을 가른다
         with self.subTest("t3_missing_is_not_empty"):

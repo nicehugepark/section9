@@ -121,7 +121,8 @@ class JudgeAttach(unittest.TestCase):
         with self.subTest("it_knocks_once"):
             fn = self._code("postStatus")
             self.assertNotIn("/api/note", fn, "아직 두 번 두드린다")
-            self.assertEqual(fn.count("await fetch("), 1,
+            # 왕복은 공통 래퍼 s9Fetch 를 지난다 (REQ-20260909-076-62x6).
+            self.assertEqual(len(re.findall(r"await (?:s9F|f)etch\(", fn)), 1,
                              "왕복이 하나가 아니다")
         with self.subTest("the_screen_no_longer_writes_the_mark"):
             fn = self._code("postStatus")

@@ -26912,6 +26912,28 @@ def jira_token_expiry(user, today=None):
     return raw, left, "ok", ""
 
 
+def jira_enabled_for(user="", projects=None):
+    """이 사용자가 Jira 연동을 쓰나 — 판정은 여기 한 곳이다 (REQ-20260909-080).
+    사용자 config 의 `jira_enabled` 가 'on'/'off' 로 명시돼 있으면 그것이 이기고, 없으면
+    파생 기본값이다: 내 Jira 주소(jira_site)가 있거나 Jira 를 이은 프로젝트가 하나라도
+    있으면 켜진 것으로 본다 — 스위치가 생겼다고 이미 쓰던 사람이 꺼지면 안 된다.
+    projects 는 부르는 쪽이 이미 센 「이은 프로젝트」 목록을 넘겨 all_projects() 를 두 번
+    훑지 않게 하는 자리다(규칙 자체는 여기 하나뿐이다)."""
+    cfg = (user_config(user) or {}) if user else {}
+    raw = str(cfg.get("jira_enabled") or "").strip().lower()
+    if raw in ("on", "off"):
+        return raw == "on"
+    if str(cfg.get("jira_site") or "").strip():
+        return True
+    if projects is None:
+        projects = []
+        for m in all_projects():
+            j = m.get("jira")
+            if isinstance(j, dict) and str(j.get("project_key") or "").strip():
+                projects.append(j)
+    return bool(projects)
+
+
 def jira_state(user=""):
     """준비 항목 넷의 지금 — 토큰은 **있는지만** 말한다(값은 어디에도 실리지 않는다)."""
     cfg = (user_config(user) or {}) if user else {}
@@ -26941,6 +26963,8 @@ def jira_state(user=""):
              "project": bool(projects)}
     exp, left, level, line = jira_token_expiry(user) if user else ("", None, "", "")
     return {"registered": bool(user), "user": user or "",
+            # 사람이 끌 수 있는 스위치 (REQ-20260909-080) — 화면이 이 값으로 그린다
+            "enabled": jira_enabled_for(user, projects),
             "site": site, "email": email,
             "token_expires": exp, "expiry_days": left, "expiry_level": level,
             "expiry_line": line,
@@ -27098,6 +27122,11 @@ def jira_export_wanted(meta, manual=False, body=None, late=False):
     j = project_jira(meta.get("project") or "")
     if not j:
         return None, "프로젝트에 Jira 연동이 없다 (s9 project jira <slug> set …)"
+    # 스위치가 꺼져 있으면 내보내지 않는다 — 보는 것은 **요청 문서의 담당(user)** 설정이다.
+    # manual(s9 jira create)은 사람이 그 자리에서 시킨 것이라 스위치가 막지 않는다.
+    owner = str(meta.get("user") or "")
+    if not manual and owner and not jira_enabled_for(owner, [j]):
+        return None, "Jira 연동이 꺼져 있다 (Settings › 외부 서비스)"
     if not manual and not late and body is not None and _title_is_raw(meta.get("title", ""), body):
         return j, "제목이 원문 그대로다 — s9 set --title 로 정리되면(늦어도 in-progress 때) 만든다"
     if not manual:
@@ -27760,8 +27789,15 @@ def jira_pull_targets():
     if not dirs:
         return {}
     out = {sl: {} for sl in dirs}
+    linked = list(dirs.values())
+    enabled = {}            # 사용자마다 config 를 한 번만 읽는다
     for row in load_catalog():
         if row.get("type") != "request" or row.get("project") not in dirs:
+            continue
+        # 스위치가 꺼진 사람의 요청은 되받지 않는다 (REQ-20260909-080). 담당(user)이 빈
+        # 문서는 누구 설정을 볼지 알 수 없으니 종전대로 둔다.
+        owner = str(row.get("user") or "")
+        if owner and not enabled.setdefault(owner, jira_enabled_for(owner, linked)):
             continue
         key = str((row.get("jira") or {}).get("key") or "")
         if key:

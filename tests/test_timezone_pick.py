@@ -144,7 +144,9 @@ class TimezoneCombo(unittest.TestCase):
     def test_timezone_combo(self):
         """화면 — 검색과 선택이 같은 자리에서 일어난다."""
         with self.subTest("the_list_comes_from_the_server_not_from_the_browser"):
-                self.assertIn('fetch("/api/timezones")', self.code, "서버에 묻지 않는다")
+                # 왕복은 공통 래퍼 s9Fetch 를 지난다 (REQ-20260909-076-62x6).
+                self.assertRegex(self.code, r'(?:s9F|f)etch\("/api/timezones"\)',
+                                 "서버에 묻지 않는다")
                 self.assertNotIn("supportedValuesOf", self.code,
                                  "브라우저 목록을 쓴다 — 저장 검증과 출처가 갈린다")
 

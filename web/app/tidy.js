@@ -36,7 +36,7 @@ const tidyWhen = s => String(s || "").slice(0, 16).replace("T", " ");
 async function tidyFetch(){
   const get = async (url, pick) => {
     try{
-      const r = await fetch(url);
+      const r = await s9Fetch(url);
       if (!r.ok) return null;
       return pick(await r.json());
     }catch(e){ return null; }

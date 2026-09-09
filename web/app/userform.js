@@ -347,7 +347,7 @@ function showUserForm(u, host, isAdminEdit){
     secList.textContent = "불러오는 중…";
     extSay(null);
     let d = null;
-    try{ d = await (await fetch("/api/secrets")).json(); }catch(e){}
+    try{ d = await (await s9Fetch("/api/secrets")).json(); }catch(e){}
     if (!d || !Array.isArray(d.keys)){
       secList.className = "secempty";
       secList.innerHTML = `시크릿 목록을 받아오지 못했습니다.

@@ -3,7 +3,7 @@
 async function renderAudit(){
   const gen = renderGen;
   if (!auditCache){
-    auditCache = (await (await fetch("/api/audit?" + meQ())).json()).events;
+    auditCache = (await (await s9Fetch("/api/audit?" + meQ())).json()).events;
   if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
   }
   const q = $("#q").value.trim().toLowerCase();
@@ -246,15 +246,24 @@ async function loadStream(s){
   if (!d.live) return;
   // 증분 tail: 서버는 offset 이후의 새 라인만 파싱해 반환 — 폴링 부하 최소화.
   // 폴링 조건: follow 체크 + 브라우저 탭 가시 + 요소가 화면에 존재.
+  /* 세대 하나 · 한 번에 한 발 (REQ-20260909-076-62x6). 앞의 요청이 아직 안 왔는데
+     2.5초마다 또 걸면 연결이 쌓이고, 다른 세션을 고른 뒤 늦게 온 응답이 새 화면에
+     줄을 붙인다. 진행 중인 것을 끊지 않고(취소는 이 환경에서 다른 연결을 RST 한다)
+     기다렸다 세대가 지난 응답만 버린다. */
+  const sgen = s9Gen("audit-stream");
+  let inflight = false;
   streamTimer = setInterval(async () => {
-    if (document.hidden) return;
+    if (document.hidden || inflight) return;
     if (!document.contains(term)){ clearInterval(streamTimer); streamTimer = null; return; }
     const fl = $("#follow");
     if (!fl || !fl.checked) return;
     try{
-      const r = await fetch(`/api/stream?session=${encodeURIComponent(s)}&after=${offset}`);
+      inflight = true;
+      const r = await s9Fetch(`/api/stream?session=${encodeURIComponent(s)}&after=${offset}`);
+      if (s9GenStale("audit-stream", sgen)) return;   // 그 사이 다른 세션을 골랐다
       if (!r.ok) return;
       const nd = await r.json();
+      if (s9GenStale("audit-stream", sgen)) return;
       offset = nd.offset;
       if (nd.events.length){
         const nearBottom = term.scrollHeight - term.scrollTop - term.clientHeight < 140;
@@ -265,6 +274,7 @@ async function loadStream(s){
         if (nearBottom) term.scrollTop = term.scrollHeight;  // 위로 스크롤해 읽는 중이면 방해 안 함
       }
     }catch(e){ /* 서버 재시작 등 — 다음 tick */ }
+    finally{ inflight = false; }
   }, 2500);
 }
 

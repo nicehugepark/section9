@@ -10,7 +10,7 @@ const withAs = body => asUser ? {...body, as: asUser} : body;
 // 쓰기 공통 — 결과 객체 반환 (팝업 없음). 인라인 표시가 필요한 폼은 이걸 직접 쓴다.
 async function postJSONRaw(url, body){
   try{
-    const r = await fetch(url, {method: "POST",
+    const r = await s9Fetch(url, {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs(body))});
     const d = await r.json();
@@ -330,7 +330,7 @@ async function showRoster(v){
   const me = getMe();
   let rows = [];
   try{
-    const r = await fetch("/api/roster?" + meQ());
+    const r = await s9Fetch("/api/roster?" + meQ());
     rows = (await r.json()).rows || [];
   }catch(e){
     v.innerHTML = `<h1 style="margin:0 0 10px">에이전트·스킬</h1>
@@ -499,7 +499,7 @@ async function rosterEditor(slot, r, v){
       <p class="rload">본문을 불러오는 중…</p></div>`;
     try{
       const q = new URLSearchParams({scope: r.scope, kind: r.kind, owner: r.owner, name: r.name});
-      const d = await (await fetch("/api/roster/doc?" + q.toString())).json();
+      const d = await (await s9Fetch("/api/roster/doc?" + q.toString())).json();
       if (d.error) throw new Error(d.error);
       content = d.content || "";
     }catch(e){

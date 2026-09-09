@@ -186,7 +186,7 @@ function graphEmptyHTML(st){
    못 받은 것을 빈 그래프로 그리면 "관계가 없다"는 거짓말이 된다. */
 async function graphFetch(){
   try{
-    const r = await fetch("/api/graph?" + meQ());
+    const r = await s9Fetch("/api/graph?" + meQ());
     if (!r.ok) return null;
     const g = await r.json();
     if (!g || !Array.isArray(g.nodes)) return null;

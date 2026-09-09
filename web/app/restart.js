@@ -157,7 +157,7 @@ async function restartTell(T, sid, req, d, what, cap){
 async function restartAfterStop(T, sid, req, what, cap){
   restartChip("stopping", what, null);
   try{
-    const r = await fetch("/api/chat", {method: "POST",
+    const r = await s9Fetch("/api/chat", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({kind: "interrupt", sid})});
     const di = await r.json();
@@ -280,7 +280,7 @@ async function termInterrupt(T){
   T.intBusy = true;
   const out = $("#ccout"), w = $("#cc-wait");
   try{
-    const r = await fetch("/api/chat", {method: "POST",
+    const r = await s9Fetch("/api/chat", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({kind: "interrupt", sid: T.sid})});
     const d = await r.json();
@@ -346,7 +346,7 @@ async function sendChat(){
   T.lastRole = "user"; T.waitBase = Date.now();
   termSpinnerEval(T);
   try{
-    const r = await fetch("/api/chat", {method: "POST",
+    const r = await s9Fetch("/api/chat", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({text, sid: T.sid,
                             ...(tgt ? {agent: tgt.id} : {}),

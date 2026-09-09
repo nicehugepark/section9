@@ -249,7 +249,7 @@ async function ccPeek(a){
   const pb = box.querySelector("[data-pbody]");
   if (!r){ pb.remove(); return; }
   try{
-    const res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
+    const res = await s9Fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
     const d = await res.json();
     if (ccPeekEl !== box) return;              // 그 사이 닫혔거나 다른 것을 열었다
     if (!res.ok || d.error){
@@ -379,7 +379,7 @@ function ccCodeDraw(box, d, ctx){
 async function ccCodeLoad(box, rel, line, ctx){
   box.dataset.cctx = String(ctx);   // `다시 받기` 는 **방금 시도한 것**을 다시 한다
   try{
-    const res = await fetch("/api/code?path=" + encodeURIComponent(rel)
+    const res = await s9Fetch("/api/code?path=" + encodeURIComponent(rel)
       + "&line=" + encodeURIComponent(line) + "&ctx=" + ctx);
     if (ccPeekEl !== box) return;        // 그 사이 닫혔거나 다른 것을 열었다
     if (!res.ok){ ccCodeFail(box, rel); return; }

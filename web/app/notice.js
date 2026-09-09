@@ -97,7 +97,7 @@ async function checkOldCode(){
   // 나중 것(prio 1) — 판이 그려진 뒤에 줄을 선다. 못 받아도 안 알린다:
   // 20초 폴이 스스로 메우고, 무응답은 "코드 낡음" 이 아니다 (아래 판정 참조).
   d = await loadSupply("serveinfo", async () => {
-    const r = await fetch("/api/serveinfo", {cache: "no-store"});
+    const r = await s9Fetch("/api/serveinfo", {cache: "no-store"});
     return r.ok ? await r.json() : null;
   }, {prio: 1, tries: 1, quiet: true});
   // 강제 표시는 **가장 긴 경우**를 보여준다 — 두 파일이 다 바뀐 줄이 헤더를
@@ -228,7 +228,7 @@ const gwSetAck = v => { try{
 async function checkGuard(){
   let d = null;
   d = await loadSupply("serveguard", async () => {
-    const r = await fetch("/api/serveguard", {cache: "no-store"});
+    const r = await s9Fetch("/api/serveguard", {cache: "no-store"});
     return r.ok ? await r.json() : null;
   }, {prio: 1, tries: 1, quiet: true});
   if (GW_FORCE) d = gwDemo(GW_FORCE);
