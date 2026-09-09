@@ -15854,6 +15854,25 @@ def review_requests():
     return rows
 
 
+# 이 머신의 살림 중 **기계마다 같은 이름**으로 쓰는 파일은 추적 폴더(state/sessions —
+# 옛 커밋에 160 파일이 남아 있다) 밖에 둔다 (REQ-20260909-024). 맥 실측: 같은 이름의
+# approvals_seen.json 을 두 기계가 각자 고쳐, pull --ff-only 가 「would be overwritten」
+# 으로 12시간 막혔다. 옛 자리에 파일이 있고 새 자리에 없으면 처음 한 번 옮겨 적는다.
+STATE_LOCAL = os.path.join(ROOT, "state", "local")
+
+
+def local_state_path(name):
+    new = os.path.join(STATE_LOCAL, name)
+    old = os.path.join(STATE, name)
+    if not os.path.exists(new) and os.path.exists(old):
+        try:
+            os.makedirs(STATE_LOCAL, exist_ok=True)
+            shutil.copyfile(old, new)
+        except OSError:
+            pass
+    return new
+
+
 def approvals_unseen(consume=False, days=2, mine=False):
     """승인(review→done) 전이의 메모 중 미확인 목록 (REQ-20260824-028).
     승인 메모에 질문·후속 지시가 담겨도 리드에게 전달되지 않던 유실(025 실측)을
@@ -15861,7 +15880,7 @@ def approvals_unseen(consume=False, days=2, mine=False):
     창(days)은 짧게 유지: 배포/seen 초기화 시 과거 승인 메모를 소급 소비해
     낡은 후속 작업자를 띄우는 부작용 방지 (2026-08-24 실측)."""
     import time as _time
-    sf = os.path.join(STATE, "approvals_seen.json")
+    sf = local_state_path("approvals_seen.json")
     try:
         with open(sf, encoding="utf-8") as f:
             seen = json.load(f)
