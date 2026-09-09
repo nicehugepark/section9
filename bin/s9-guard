@@ -475,13 +475,204 @@ def staged_compile_gate(staged):
         sys.exit(1)
 
 
-def staged_tests_gate(staged):
-    """커밋 검사 = 담긴 시험 ∪ 스모크 (REQ-20260830-029, 필수 계층 배선).
+# 관련 시험 선택 (REQ-20260909-059). 나흘 전체 테스트 실패 34건 중 14건은 계약을
+# 바꾼 커밋이 그 계약을 재는 시험을 안 담은 것이었다(quality-assurance 실측,
+# REQ-20260909-053) — 8ce0dcc5 가 s9 next 의 문구 한 줄을 바꿨는데 그 문구를 재는
+# test_boot_pickup 은 담기지 않았고, 검사는 담긴 시험∪스모크만 보니 볼 길이 없었다.
+# 그래서 담긴 diff 의 -/+ 줄에서 **바뀐 식별자와 따옴표 문자열**을 뽑아 그것을
+# 참조하는 시험을 찾고, 담긴 소스 파일의 이름을 글자로 담은 시험(대장·조각 목록
+# 류)도 고른다. 상한 15파일·90초 — 넘으면 짧은 것부터 담고 나머지는 이름만 말한다
+# (전체는 commit 뒤 배경에서 돈다, 아래 ③).
+RELATED_CAP = 15
+RELATED_BUDGET_SEC = 90.0
+RELATED_MIN_STR = 6
+RELATED_MIN_IDENT = 4
+RELATED_COMMON = 25           # 이보다 많은 시험 파일에 있는 조각은 계약이 아니라 상용구다
+RELATED_UNKNOWN_SEC = 3.0     # 잰 시간이 없는 시험의 무게 — 중앙값(0.36초)보다 무겁게
+RELATED_STRONG_STR = 12       # 띄어쓰기도 한글도 없는 한 낱말은 이 길이부터만 (option·--quiet 는 상용구)
+# 시험의 관례 이름 — 어느 시험에나 있어 계약을 가리키지 않는다
+RELATED_STOP_IDENTS = frozenset(("HERE", "ROOT", "REPO", "main", "setUp", "setUpClass",
+                                 "tearDown", "tearDownClass", "self", "None", "True", "False"))
+_DEF_RE = re.compile(
+    r"^\s*(?:async\s+)?(?:def|class|function)\s+([A-Za-z_]\w*)"          # py · js (메서드 포함)
+    r"|^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_]\w*)\s*="            # js 모듈 상수 (들여쓰기 없음)
+    r"|^([A-Z][A-Z0-9_]{2,})\s*=")                                        # 대문자 상수 (들여쓰기 없음)
+_STR_RE = re.compile(r"\"((?:[^\"\\\n]|\\.)*)\"|'((?:[^'\\\n]|\\.)*)'")
+_PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}|%[sdrf]|%\([^)]*\)[sdrf]|\$\{[^}]*\}")
+_STR_SPLIT_RE = re.compile(r"[:：—·()\[\]|,]")
+_TEST_FILE_RE = re.compile(r"^tests/test_[^/]+\.py$")
+
+
+def _string_fragments(raw):
+    """따옴표 안 글자에서 **시험이 assert 할 만한 조각**을 낸다.
+
+    자리표시(`{p['id']}`·`%s`·`${x}`)를 경계로 가르고, 그 조각을 다시 문장 부호
+    (`:`·`—`·`(`…)로 갈라 6자 이상만 남긴다 — 띄어쓰기도 한글도 없는 한 낱말
+    (`option`·`--quiet`)은 12자부터. f-string 의 글자 부분이 이렇게 살아남는다 — 8ce0dcc5 의 `f"  이어받기: s9 last {p['id']} --add"` 에서
+    시험이 재는 것은 `s9 last` 였다."""
+    out = []
+    for piece in _PLACEHOLDER_RE.split(raw):
+        for frag in [piece] + _STR_SPLIT_RE.split(piece):
+            frag = frag.strip()
+            if len(frag) < RELATED_MIN_STR or frag in out:
+                continue
+            weak = (" " not in frag and frag.isascii() and len(frag) < RELATED_STRONG_STR)
+            if not weak:
+                out.append(frag)
+    return out
+
+
+def diff_evidence(diff_text, skip=lambda path: False):
+    """담긴 diff 의 -/+ 줄에서 (식별자 목록, 문자열 조각 목록) — 순수 함수.
+
+    `skip(path)` 가 참인 파일의 hunk 는 읽지 않는다 — 담긴 시험 파일의 diff 는
+    증거가 아니다(그 시험은 어차피 돌고, 그 안의 `HERE`·`setUp` 같은 이름은
+    모든 시험에 있다). hunk 머리(`@@ … @@ def cmd_next(args):`)의 둘러싼 함수
+    이름도 식별자로 센다 — 본문만 바뀐 함수를 재는 시험이 그것으로 잡힌다."""
+    idents, strings, skipping = [], [], False
+
+    def add_ident(name):
+        if (len(name) >= RELATED_MIN_IDENT and name not in idents
+                and name not in RELATED_STOP_IDENTS):
+            idents.append(name)
+
+    for line in (diff_text or "").splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            path = path[2:] if path.startswith("b/") else path
+            skipping = bool(skip(path))
+            continue
+        if skipping or not line or line.startswith("--- "):
+            continue
+        if line.startswith("@@"):
+            ctx = line.split("@@", 2)[-1].strip() if line.count("@@") >= 2 else ""
+            m = _DEF_RE.match(ctx)
+            if m:
+                add_ident(next(g for g in m.groups() if g))
+            continue
+        if line[0] not in "+-":
+            continue
+        body = line[1:]
+        m = _DEF_RE.match(body)
+        if m:
+            add_ident(next(g for g in m.groups() if g))
+        for m in _STR_RE.finditer(body):
+            raw = m.group(1) if m.group(1) is not None else m.group(2)
+            for frag in _string_fragments(raw):
+                if frag not in strings:
+                    strings.append(frag)
+    return idents, strings
+
+
+def _related_times(times):
+    if times is not None:
+        return times
+    d = _read_json(os.path.join(ROOT, "state", "test-times.json")) or {}
+    return {k: float(v) for k, v in d.items() if isinstance(v, (int, float))}
+
+
+def select_related_tests(staged, diff_text, tests_dir=None, times=None,
+                         cap=RELATED_CAP, budget=RELATED_BUDGET_SEC,
+                         common=RELATED_COMMON):
+    """담긴 변경이 닿는 시험 파일을 고른다 — 순수 함수 (REQ-20260909-059).
+
+    반환: {"picked": [(파일, 이유)], "dropped": [(파일, 초)], "idents": [...],
+           "strings": [...], "names": [...], "common": [...], "seconds": 초}
+    고르는 규칙 셋 — ① diff 의 -/+ 줄(과 hunk 머리)에서 바뀐 def/class/const
+    이름을 **단어 경계**로 담은 시험, ② 그 줄의 따옴표 문자열 조각(6자 이상)을
+    **그대로** 담은 시험, ③ 담긴 소스 파일의 이름(`card.js`)을 글자로 담은
+    시험(tests/ 의 보조 모듈은 그 모듈 이름 `async_notify` 를 단어로). 넓은 파일
+    (WIDE: bin/s9.py 등)의 이름은 ③에서 뺀다 — 그 이름은 어디에나 있다.
+    담긴 시험 파일의 diff 는 증거로 읽지 않고 그 파일은 후보에서도 뺀다.
+    `common` 파일보다 많은 시험에 있는 조각은 계약이 아니라 상용구라 버린다.
+    상한 `cap` 파일·`budget` 초(state/test-times.json 의 파일별 실측 합)를 넘으면
+    짧은 것부터 담고 나머지는 dropped 로 돌려 준다."""
+    tests_dir = tests_dir or os.path.join(ROOT, "tests")
+    staged = [f.replace("\\", "/") for f in staged]
+    staged_tests = {os.path.basename(f) for f in staged if _TEST_FILE_RE.match(f)}
+    idents, strings = diff_evidence(
+        diff_text, skip=lambda p: _TEST_FILE_RE.match(p.replace("\\", "/")) is not None)
+    names = [os.path.basename(f) for f in staged
+             if f.startswith(("bin/", "web/", "harness/")) and f not in WIDE
+             and not f.endswith((".md", ".txt"))]
+    for f in staged:            # tests/ 의 보조 모듈 — 시험은 그 이름을 import 한다
+        if (f.startswith("tests/") and f.endswith(".py") and f not in WIDE
+                and not _TEST_FILE_RE.match(f)):
+            n = os.path.basename(f)[:-3]
+            if len(n) >= RELATED_MIN_IDENT and n not in idents:
+                idents.append(n)
+    probes = ([(f"식별자 {i}", re.compile(r"(?<!\w)" + re.escape(i) + r"(?!\w)").search)
+               for i in idents]
+              + [(f"문자열 「{s}」", (lambda s: lambda src: s in src)(s)) for s in strings]
+              + [(f"파일 이름 {n}", (lambda n: lambda src: n in src)(n)) for n in names])
+    try:
+        files = sorted(fn for fn in os.listdir(tests_dir)
+                       if fn.startswith("test_") and fn.endswith(".py"))
+    except OSError:
+        files = []
+    hits = {}                   # 증거 → 그 증거를 담은 시험 파일들
+    for fn in files:
+        if fn in staged_tests:
+            continue
+        try:
+            with open(os.path.join(tests_dir, fn), encoding="utf-8", errors="replace") as f:
+                src = f.read()
+        except OSError:
+            continue
+        for label, test in probes:
+            if test(src):
+                hits.setdefault(label, []).append(fn)
+    too_common = [label for label, fns in hits.items() if len(fns) > common]
+    why_of = {}
+    for label, _ in probes:     # probes 순서 = 식별자 → 문자열 → 파일 이름
+        if label in too_common:
+            continue
+        for fn in hits.get(label, ()):
+            why_of.setdefault(fn, []).append(label)
+    times = _related_times(times)
+    secs = lambda fn: times.get(fn, RELATED_UNKNOWN_SEC)
+    found = sorted(((fn, " / ".join(w[:3]) + (" …" if len(w) > 3 else ""))
+                    for fn, w in why_of.items()),
+                   key=lambda p: (secs(p[0]), p[0]))
+    picked, dropped, total = [], [], 0.0
+    for fn, why in found:
+        if len(picked) < cap and total + secs(fn) <= budget:
+            picked.append((fn, why))
+            total += secs(fn)
+        else:
+            dropped.append((fn, secs(fn)))
+    picked.sort(key=lambda p: p[0])
+    return {"picked": picked, "dropped": dropped, "idents": idents,
+            "strings": strings, "names": names, "common": too_common,
+            "seconds": total}
+
+
+def related_tests(staged, diff_text, **kw):
+    """`select_related_tests` 의 이름만 — 검사가 러너에 넘길 목록."""
+    return [fn for fn, _ in select_related_tests(staged, diff_text, **kw)["picked"]]
+
+
+def staged_diff_text(staged=None):
+    """담긴 변경의 diff (`git diff --cached -U0`). 못 읽으면 빈 글자."""
+    try:
+        return subprocess.run(["git", "diff", "--cached", "-U0", "--",
+                               *(staged or [])],
+                              capture_output=True, encoding="utf-8", errors="replace",
+                              cwd=ROOT, timeout=60, env=clean_git_env()).stdout or ""
+    except Exception:
+        return ""
+
+
+def staged_tests_gate(staged, diff_text=None):
+    """커밋 검사 = 담긴 시험 ∪ 관련 시험 ∪ 스모크 (REQ-20260830-029, 필수 계층 배선).
 
     21:42 커밋은 같은 커밋에 들어 있던 테스트조차 통과 못 했다. 전체 스위트는
     분 단위라 매 커밋에 물리면 규율이 먼저 죽는다 — 그래서 담긴 시험에
     **핵심 계약 12파일 + 검사형 시험 5파일(--smoke, tests/__main__.py SMOKE)** 만
     합친다: 병렬(--jobs 4)로 30~40초에 유계다(REQ-20260909-056).
+    여기에 담긴 diff 가 닿는 **관련 시험**(select_related_tests, 상한 15파일·90초)을
+    더한다(REQ-20260909-059) — `diff_text` 를 받았을 때만 고르고, 왜 골랐는지
+    파일마다 한 줄씩 stderr 에 말한다.
     --changed 를 여기 쓰지 않는 이유: bin/s9 는 미커밋 변경이 잦아 매번 전체
     폴백(4분대)으로 밀린다 — 전체 확인은 review/done 전 수동 실행의 몫이다.
     담긴 시험은 정확한 파일명으로 넘긴다(러너가 정확명은 넓히지 않는다) —
@@ -493,15 +684,29 @@ def staged_tests_gate(staged):
     if not names and not any(f.startswith(("bin/", "web/", "tests/"))
                              for f in staged):
         return   # 코드가 안 담겼으면(문서·상태 커밋) 검사 생략 — 종전과 같다
-    r = subprocess.run(["python3", "tests/", "--smoke", "--jobs", "4", *names],
+    related = []
+    if diff_text is not None:
+        sel = select_related_tests(staged, diff_text)
+        related = [fn for fn, _ in sel["picked"] if fn not in names]
+        if related:
+            print(f"s9-guard: 관련 시험 {len(related)}개를 함께 돕니다 "
+                  f"(약 {sel['seconds']:.0f}초, REQ-20260909-059):", file=sys.stderr)
+            for fn, why in sel["picked"]:
+                if fn in related:
+                    print(f"  {fn} ← {why}", file=sys.stderr)
+        if sel["dropped"]:
+            print(f"  상한({RELATED_CAP}파일·{RELATED_BUDGET_SEC:.0f}초) 밖 — 전체가 뒤에서: "
+                  + " ".join(fn for fn, _ in sel["dropped"]), file=sys.stderr)
+    r = subprocess.run(["python3", "tests/", "--smoke", "--jobs", "4", *names, *related],
                        capture_output=True,
                        encoding="utf-8", errors="replace", cwd=ROOT, timeout=600,
                        env=clean_git_env())
     if r.returncode == 0:
         return
-    print("s9-guard: 커밋 검사(담긴 테스트 ∪ 스모크 테스트)가 실패합니다 — 커밋을 멈춥니다.",
+    print("s9-guard: 커밋 검사(담긴 테스트 ∪ 관련 테스트 ∪ 스모크 테스트)가 실패합니다 — 커밋을 멈춥니다.",
           file=sys.stderr)
-    print(f"  대상: 스모크 테스트(tests/__main__.py SMOKE) ∪ {' '.join(names) or '(담긴 테스트 없음)'}",
+    print(f"  대상: 스모크 테스트(tests/__main__.py SMOKE) ∪ {' '.join(names) or '(담긴 테스트 없음)'}"
+          + (f" ∪ 관련 {' '.join(related)}" if related else ""),
           file=sys.stderr)
     _show_gate_failure(r)
     sys.exit(1)
@@ -1101,18 +1306,13 @@ def _pre_commit_gates():
     # 막을지는 시험 검사 뒤에 정한다 — 순서가 바뀌어도 사람이 보는 차례
     # (시험 실패가 먼저)는 그대로다.
     wide_verdict = wide_change_verdict(staged)
-    staged_tests_gate(staged)
+    # 담긴 diff 는 한 번만 뜬다 — 관련 시험 선택(REQ-20260909-059)과 역할 변경
+    # 검사(REQ-20260902-032, 프로필 파일 전체가 아니라 `role:` 줄만)가 같이 읽는다.
+    diff_text = staged_diff_text(staged)
+    staged_tests_gate(staged, diff_text)
     wide_change_gate(staged, wide_verdict)
     secret_gate(staged)
     hits = protected_hits(staged)
-    # 역할 변경은 프로필 파일 전체가 아니라 그 줄만 본다 (REQ-20260902-032)
-    try:
-        diff_text = subprocess.run(["git", "diff", "--cached", "-U0", "--",
-                                    *[f for f in staged if f.endswith("profile.md")]],
-                                   capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT).stdout \
-            if any(f.endswith("profile.md") for f in staged) else ""
-    except Exception:
-        diff_text = ""
     role_hits = role_change_hits(staged, diff_text)
     if not hits and not role_hits:
         sys.exit(0)
