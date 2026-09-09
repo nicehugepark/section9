@@ -35,7 +35,11 @@
 [data-skin="soft"] .stat{border:1px solid var(--border);border-radius:9px;background:var(--panel)}
 [data-skin="soft"] .stat.on{box-shadow:none;border-color:var(--text)}
 [data-skin="soft"] .board{border:0;background:none;gap:14px}
-[data-skin="soft"] .col{background:var(--accent-soft);border-right:0;border-radius:12px;padding:6px}
+[data-skin="soft"] .col{background:var(--accent-soft);border-right:0;border-radius:12px;padding:6px;
+  --col-head-bg:var(--accent-soft)}
+/* 붙은 머리는 열의 위 여백까지 올라선다 — sticky 의 한계는 열의 padding box 라
+   여백 안쪽이 아니라 그 위까지다(실측). 모서리만 열의 둥근 값에 맞춘다. */
+[data-skin="soft"] .col h2{border-radius:12px 12px 0 0}
 [data-skin="soft"] .col h2{border-bottom:0}
 [data-skin="soft"] .cards{gap:8px;padding:2px}
 /* 좌측 컬러 띠는 사용자 반려로 확정된 금지 패턴 — 제거한다. 띠가 하던 일
@@ -79,7 +83,6 @@
    을 넘어 **1440px에서 보드에 가로 스크롤**이 생긴다 — 한 화면에 다섯 열이
    보이는 것을 27px 손잡이와 맞바꾸는 셈이다. 게다가 폭은 창이 좁아지면 다시
    잃는 값이라, 예약을 걷어내는 쪽만이 최소폭(210px)에서도 성립한다. */
-[data-skin="soft"] .card .id,[data-skin="soft"] .card .t{padding-right:0}
 /* 경과의 자리 규칙 — **예외는 없어졌다** (REQ-20260909-084이 REQ-20260907-022
    검수 중-5 를 닫는다). 경과와 「이어 말하기」는 벨트와 함께 식별자 줄의 「지금」
    덩이 안에 흐름으로 서므로, 어느 스킨에서도 식별자와 같은 줄에 있고 좁아지면
@@ -229,7 +232,9 @@
 [data-skin="glass"] .stat.on{background:var(--gl-tint);box-shadow:none}
 /* Board: 레저 행 대신 유리 칩 카드 */
 [data-skin="glass"] .col{border-right-color:var(--gl-hairline)}
-[data-skin="glass"] .col h2{border-bottom-color:var(--gl-hairline)}
+[data-skin="glass"] .col h2{border-bottom-color:var(--gl-hairline);
+  --col-head-bg:var(--gl-solid);
+  -webkit-backdrop-filter:blur(18px) saturate(1.25);backdrop-filter:blur(18px) saturate(1.25)}
 [data-skin="glass"] .cards{gap:8px;padding:8px}
 [data-skin="glass"] .card{background:var(--gl-card);border:1px solid var(--gl-hairline);
   border-radius:11px;box-shadow:0 4px 16px -10px color-mix(in srgb, var(--text) 30%, transparent)}
@@ -445,7 +450,7 @@
 [data-skin="grid"] .audit .cap{border-bottom-color:var(--hairline)}
 /* 지브라 + 조밀 행 */
 [data-skin="grid"] .card{--card-pt:7px;--card-px:12px}
-[data-skin="grid"] .card .t{font-size:12.5px;margin:2px 0 4px;padding-right:52px}
+[data-skin="grid"] .card .t{font-size:12.5px;margin:2px 0 4px}
 /* 줄무늬와 헤어라인 중 하나만 (s9-design 표 절 5) — 둘이 겹치면 한 행이 두 겹
    상자로 읽힌다. 이 스킨은 줄무늬를 쓰므로 아래 경계를 내린다. */
 [data-skin="grid"] .audit td{border-bottom:0}
@@ -599,8 +604,10 @@
 /* Board = 주인공: 프레임 상자를 버리고 웰 컬럼이 캔버스 위에 뜬다 */
 [data-skin="cork"] .board{background:transparent;border:0;gap:12px;padding-bottom:6px}
 [data-skin="cork"] .col,[data-skin="cork"] .col:last-child{
-  background:var(--ck-well);border:0;border-radius:12px;padding:4px 6px 8px}
-[data-skin="cork"] .col h2{border-bottom:0;padding:9px 10px 5px}
+  background:var(--ck-well);border:0;border-radius:12px;padding:4px 6px 8px;
+  --col-head-bg:var(--ck-well)}
+[data-skin="cork"] .col h2{border-bottom:0;padding:9px 10px 5px;
+  border-radius:12px 12px 0 0}
 [data-skin="cork"] .cards{gap:7px;padding:2px 4px}
 [data-skin="cork"] .card{background:var(--panel);border-bottom:0;border-radius:8px;
   box-shadow:var(--ck-shadow);--card-pt:9px;--card-px:12px;

@@ -737,7 +737,7 @@ async function prjPost(path, payload, o){
      무시된다. 화면이 실을 수 있는 신원은 admin 의 대리 조작(`as`) 하나뿐이고,
      그것도 서버가 admin 인지 다시 본다. */
   const send = o.post || (async (pth, body) => {
-    const r = await fetch(pth, {method: "POST",
+    const r = await s9Fetch(pth, {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(o.as ? {as: o.as, ...body} : body)});
     return r.json();

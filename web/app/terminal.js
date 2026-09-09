@@ -69,7 +69,7 @@ async function ccFetchTry(url, ms, key){
    그래서 상수를 없앤다. 재는 값은 둘뿐이고 CSS 변수로 한 곳에 둔다:
    `--cc-head-h` = 창 위쪽부터 판의 윗변까지, `--cc-foot-h` = 판 아래에 남아야 할
    여백(조상들의 padding·border·margin 합). 높이 식은 terminal.css 한 줄이다. */
-function termGapBelow(root){
+function gapBelowPanel(root){
   // 판과 문서 사이에 낀 조상들의 아래 여백 — 값을 적지 말고 계산된 스타일에서 읽는다.
   let gap = 0;
   for (let el = root.parentElement; el && el !== document.documentElement; el = el.parentElement){
@@ -85,7 +85,7 @@ function fitTerm(){
   if (!root) return;
   const st = document.documentElement.style;
   st.setProperty("--cc-head-h", Math.round(root.getBoundingClientRect().top + window.scrollY) + "px");
-  st.setProperty("--cc-foot-h", Math.round(termGapBelow(root)) + "px");
+  st.setProperty("--cc-foot-h", Math.round(gapBelowPanel(root)) + "px");
 }
 function unfitTerm(){
   const st = document.documentElement.style;

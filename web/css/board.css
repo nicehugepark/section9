@@ -11,18 +11,45 @@
 .stat.on{box-shadow:inset 0 -2px 0 var(--text);color:var(--text)}
 
 /* ------- board: hairline 레저 ------- */
-.board{display:flex;gap:0;align-items:flex-start;overflow-x:auto;padding-bottom:10px;
-  border:1px solid var(--border);background:var(--panel)}
+/* 판은 **제 스크롤 상자**다 (REQ-20260909-093). 상태 머리를 스크롤에 붙이려면
+   그 머리가 사는 스크롤 상자가 실제로 세로로 움직여야 한다 — 종전에는 판이
+   `overflow-x:auto` 만 걸고 높이는 내용대로였고, 그러면 세로는 문서가 스크롤하는데
+   `position:sticky` 의 기준은 판이라 머리가 카드와 함께 위로 떠났다(가로 스크롤을
+   켠 상자는 세로도 함께 스크롤 상자가 된다 — s9-design 표 절 6 이 적어 둔 함정).
+   그래서 판에 높이를 준다: 창 아래까지, 위쪽 머리(헤더·필터 줄·「서버가 옛 코드」
+   띠·병목 줄)가 차지한 만큼을 뺀 나머지. 그 값은 상수가 아니라 실측이다 —
+   card.js 의 fitBoard 가 `--board-top`(창 위쪽부터 판의 윗변까지)과
+   `--board-foot`(판 아래에 남아야 할 여백)을 재서 :root 에 둔다. 어림값은 JS 가
+   아직 안 돌았을 때만 쓰인다. 터미널 판(REQ-20260909-079)이 같은 자를 쓴다. */
+/* 열은 판 높이만큼 늘어난다 (REQ-20260909-093) — `flex-start` 로 두면 열이 제
+   내용만큼만 서고, 그러면 **빈 열의 머리가 제일 먼저 사라진다**: REVIEW 0 건인
+   열은 머리 한 줄이 전부라 조금만 스크롤해도 이름 없는 빈 칸이 된다(실측
+   2026-09-09, ledger). 늘려 두면 어느 열의 머리든 그 열을 다 지나갈 때까지
+   남는다 — 열 구분선도 판 끝까지 그어져 칸이 칸으로 읽힌다. */
+.board{display:flex;gap:0;align-items:stretch;overflow:auto;padding-bottom:10px;
+  border:1px solid var(--border);background:var(--panel);
+  max-height:calc(100vh - var(--board-top, 190px) - var(--board-foot, 0px));
+  max-height:calc(100dvh - var(--board-top, 190px) - var(--board-foot, 0px));
+  min-height:320px}
 /* 컬럼은 252px를 최소로 두고 남는 폭을 나눠 갖는다 — knowledge/session 컬럼을
    걷어낸 뒤(REQ-20260825-084) 고정폭이 오른쪽에 죽은 여백을 남겼다. 컬럼 수가
    늘어 최소폭 합이 화면을 넘으면 .board의 overflow-x가 그대로 가로 스크롤. */
 .col{flex:1 1 252px;min-width:210px;width:auto;border-right:1px solid var(--hairline);
   padding:0 0 10px}
 .col:last-child{border-right:0}
+/* 열 머리는 판 위쪽에 붙는다 (REQ-20260909-093) — 스크롤하다 보면 아래 카드가
+   어느 상태인지 알 수 없었다(주인 캡처 2026-09-09 16:36). 붙는 자리는 판의 위쪽
+   `top:0` 이라, 헤더·띠의 높이를 머리마다 다시 셈할 필요가 없다 — 판 자체가 그
+   아래에서 시작하기 때문이다. 카드가 밑으로 지나가며 비쳐 보이지 않게 **그 열의
+   판 색**을 깐다: 색면 하이라이트가 아니라 원래 그 자리에 있던 면의 색이다.
+   기본은 판 색이고, 열이 제 면을 가진 스킨(soft·cork·calm·glass)만 `--col-head-bg`
+   를 제 값으로 바꾼다. 머리는 제 열(.col) 안에서만 붙으므로 열이 끝나면 함께
+   떠난다 — 열마다 길이가 다른 것이 그대로 읽힌다. */
 .col h2{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin:0;
   padding:11px 14px;display:flex;align-items:center;gap:8px;font-weight:600;
   color:var(--muted);border-bottom:1px solid var(--hairline);font-family:var(--mono);
-  word-break:keep-all;overflow-wrap:break-word}
+  word-break:keep-all;overflow-wrap:break-word;
+  position:sticky;top:0;z-index:2;background:var(--col-head-bg, var(--panel))}
 .col h2 .cdot{width:7px;height:7px;background:var(--sc)}
 .col h2 .n{margin-left:auto;font-weight:400;color:var(--faint)}
 /* 열 머리의 멈춤 수 (REQ-20260828-036) — 총량 오른쪽에 붙는 단서다.
@@ -137,12 +164,11 @@
    그냥 밀고 들어간다(cork compact @1000px 실측 -1.19px). 폭 0 스트럿을 줄
    첫머리에 세워 식별자를 늘 '둘째 이후'로 만든다 — 높이만 줄 상자를 따라가
    (--card-edge), 내려간 식별자가 시각 **아래** 줄에 서게 한다.
-   예약폭도 상수 px 을 걷었다: 62px 는 경과시각의 실폭(⏱ 공백 "999d 23h")보다
-   작아질 수 있고 스킨의 글자 크기도 못 따라간다. 그 내용 모델이 11자라
-   11ch 로 묶는다 — ch 는 이 줄의 글꼴을 읽으므로 calm 이 11px 로 키우면
-   예약도 함께 큰다. +8px 는 ⏱ 가 ch 밖(이모지 글꼴)이라 두는 여유다.
-   soft 는 시각을 제 줄로 내려 예약 자체를 0 으로 덮는다 — 그 덮어쓰기는
-   padding-right 그대로라 이 변경과 무관하게 산다. */
+   **예약폭은 없어졌다** (REQ-20260909-084). 종전에는 경과 시각이 카드 모서리에
+   절대 위치로 떠 있어 이 줄이 그 자리를 padding-right(11ch+8px)로 비워 줬는데,
+   비운 자리와 실제로 뜬 자리가 어긋나면 그만큼 식별자가 시각을 덮었다. 이제
+   시각과 「이어 말하기」가 벨트와 한 흐름(.idr)으로 이 줄에 서므로 자리는
+   레이아웃이 정한다 — 비워 둘 것도, 스킨마다 다시 덮어쓸 것도 없다. */
 .card .id{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.02em;
   line-height:var(--card-edge);
   display:flex;flex-wrap:wrap;align-items:center}

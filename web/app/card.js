@@ -2635,8 +2635,44 @@ function renderBoard(rows){
   markPicked();   // 집어 둔 카드 표시 복원 (REQ-20260827-064)
   // 세 줄에서 잘린 카드에만 "전문 보기"를 연다 — 잘림은 재서 안다 (REQ-20260829-009).
   // 그림이 붙은 다음 프레임에 잰다: innerHTML 직후에는 아직 레이아웃이 없다.
-  requestAnimationFrame(() => markClamped($("#view")));
+  requestAnimationFrame(() => { markClamped($("#view")); fitBoard(); });
+  watchBoardFit();
   elapsedTimer = setInterval(tickElapsed, 1000);  // 카드 경과시간 실시간 갱신
+}
+
+/* 판의 높이는 상수가 아니라 실측이다 (REQ-20260909-093 — 터미널 판이 같은 자를
+   쓴다, REQ-20260909-079).
+
+   상태 머리를 스크롤에 붙이려면 판이 제 세로 스크롤 상자여야 하고, 그러려면
+   높이가 있어야 한다. 그 높이를 CSS 에 숫자로 적으면 반드시 어느 화면에서
+   틀린다 — 위에 서는 것이 셋이나 되고(헤더 두 줄 · 「서버가 옛 코드」 띠 ·
+   병목 줄) 셋 다 섰다 사라진다. 그래서 재는 값은 둘이다:
+   `--board-top` = 창 위쪽부터 판의 윗변까지, `--board-foot` = 판 아래에 남아야
+   할 여백(조상들의 padding·border·margin 합). 식은 board.css 한 줄이다. */
+function fitBoard(){
+  const board = document.querySelector("#view .board");
+  if (!board) return;
+  const st = document.documentElement.style;
+  st.setProperty("--board-top",
+    Math.round(board.getBoundingClientRect().top + window.scrollY) + "px");
+  st.setProperty("--board-foot", Math.round(gapBelowPanel(board)) + "px");
+}
+let boardFitBound = false, boardRO = null;
+function watchBoardFit(){
+  if (!boardFitBound){ boardFitBound = true; window.addEventListener("resize", fitBoard); }
+  if (typeof ResizeObserver !== "function") return;
+  // 판 위에 서는 것만 본다 — 판 자신을 보면 재기의 결과가 다시 재기를 부른다.
+  // 볼 것은 그릴 때마다 바뀐다(병목 줄이 섰다 사라지고, 「서버가 옛 코드」 띠도
+  // 그렇다). 그래서 그릴 때마다 다시 건다 — 터미널 판이 쓰는 그 걸음이다.
+  if (boardRO) boardRO.disconnect();
+  boardRO = new ResizeObserver(() => fitBoard());
+  const board = document.querySelector("#view .board");
+  if (!board) return;
+  for (let el = board; el && el !== document.body; el = el.parentElement){
+    for (let sib = el.previousElementSibling; sib; sib = sib.previousElementSibling){
+      boardRO.observe(sib);
+    }
+  }
 }
 
 /* 잘렸는지는 **재서** 안다 (REQ-20260829-009). 글자 수로 짐작하면 스킨마다

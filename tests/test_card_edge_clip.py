@@ -55,11 +55,16 @@ class CardEdgeClip(unittest.TestCase):
             self.src = f.read()
 
     def test_board_is_a_clipping_scroll_container(self):
-        """전제 ①: 판은 가로 스크롤 컨테이너라 제 안에서 자른다."""
+        """전제 ①: 판은 스크롤 컨테이너라 제 안에서 자른다.
+
+        REQ-20260909-093 이 판을 세로로도 스크롤하게 만들면서 선언이
+        `overflow-x:auto` 에서 `overflow:auto` 로 바뀌었다 — 자르는 성질은
+        그대로이고 오히려 두 축 모두에 선다. 전제는 「가로만」이 아니라
+        「스크롤 컨테이너인가」이므로 그 둘을 다 받는다."""
         m = re.search(r"\.board\{([^}]*)\}", self.src)
         self.assertIsNotNone(m, ".board 규칙을 찾지 못했다")
-        self.assertIn("overflow-x:auto", m.group(1),
-                      "이 계약의 전제가 사라졌다면 테스트도 다시 써야 한다")
+        self.assertRegex(m.group(1), r"overflow(-x)?\s*:\s*auto",
+                         "이 계약의 전제가 사라졌다면 테스트도 다시 써야 한다")
 
     def test_dark_calm_draws_the_card_outline_outside_the_box(self):
         """전제 ②: 어두운 톤 calm 의 카드 윤곽은 박스 밖 1px 링이다."""

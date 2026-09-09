@@ -55,7 +55,8 @@
 [data-skin="calm"] .stat.on b{color:var(--bg)}  /* 잉크 필 위 카운트 — 미복원 시 숫자가 안 보인다 */
 [data-skin="calm"] .stat.on .cdot{background:var(--bg)}
 [data-skin="calm"] .board{gap:14px}
-[data-skin="calm"] .col{border-right:0;background:none;min-width:288px;width:288px;padding:0 2px}
+[data-skin="calm"] .col{border-right:0;background:none;min-width:288px;width:288px;padding:0 2px;
+  --col-head-bg:var(--bg)}
 [data-skin="calm"] .col h2{font-size:12.5px;letter-spacing:0;text-transform:none;
   font-weight:600;color:var(--text);padding:0 6px 10px;border-bottom:0}
 [data-skin="calm"] .col .n{color:var(--faint);font-weight:500}
@@ -161,7 +162,8 @@
 /* 최소폭 262는 5개 컬럼(요청 상태 전부)이 1400px 이하에서 마지막 컬럼을 잘라
    먹는다 (REQ-20260825-081 실측). 여유 폭이 있으면 262로 벌고, 좁아지면 224까지
    양보한 뒤에야 가로 스크롤로 넘긴다. */
-[data-skin="calm"] .col{flex:1 1 262px;min-width:224px;max-width:340px;width:auto;padding:0}
+[data-skin="calm"] .col{flex:1 1 262px;min-width:224px;max-width:340px;width:auto;padding:0;
+  --col-head-bg:var(--bg)}
 /* 컬럼 헤더 = 타이포 앵커: 상태명(잉크) + 오른쪽 끝 큰 상태색 숫자.
    숫자가 컬럼마다 같은 x에 서서 보드 상단에 눈금 리듬을 만든다. */
 [data-skin="calm"] .col h2{display:flex;align-items:baseline;gap:8px;margin:0;

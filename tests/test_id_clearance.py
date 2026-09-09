@@ -1,28 +1,28 @@
-"""식별자는 경과시각을 덮지 않는다 (REQ-20260831-021-62x6).
+"""식별자는 경과시각과 같은 칸을 쓰지 않는다 (REQ-20260831-021 · 084 개정).
 
-사용자가 본 것: 창 1000px·cork compact 처럼 열이 좁아지면 카드 식별자가
-경과시각 밑으로 1.19px 파고들었다.
+**옛 계약(예약폭)** — 경과시각과 「이어 말하기」가 카드 모서리에 절대 위치로
+떠 있던 시절, id 줄은 그 자리를 `padding-right:calc(11ch + 8px)` 로 비워 두어야
+했다. 상수 px(62px)이던 것을 글자 단위(ch)로 묶은 것이 그 계약이었다.
 
-뿌리는 둘이었다.
+**새 계약(한 흐름)** — REQ-20260909-084 이 셋을 id 줄 안의 한 묶음(`.idr`)으로
+옮겼다. 시각·손잡이가 흐름 안에 서니 자리는 레이아웃이 정하고, 비워 둘 자리도
+스킨마다 다시 정할 자리도 없어졌다. 그래서 이 시험이 지키는 것도 바뀐다:
+**예약이 있는가**가 아니라 **묶음이 흐름 안에 있는가**다.
 
-① **예약이 상수였다.** `.card .id{padding-right:62px}` 는 경과시각의 실폭
-   (⏱ 공백 "999d 23h" ≈ 11자)보다 작아질 수 있고, 스킨이 글자를 키워도
-   (calm 11px) 따라오지 못한다. 예약은 그 내용 모델에 **글자 단위(ch)** 로
-   묶는다 — ch 는 그 줄의 글꼴을 읽으므로 크기가 변하면 예약이 함께 변한다.
+  · 묶음(`.idr`)은 흐름 항목이고 늘 줄의 오른끝에 선다(`margin-left:auto`) —
+    한 줄에 서든 아랫줄로 내려가든 벨트가 시각 곁을 떠나지 않는다.
+  · 시각과 손잡이는 `.idnow` 의 **한 칸을 겹쳐** 쓴다 — 손이 얹혀 손잡이가
+    시각을 대신해도 칸 폭이 변하지 않아 줄이 흔들리지 않는다.
+  · 둘 중 어느 것도 절대 위치로 뜨지 않는다 — 뜨는 순간 흐름 밖이 되어
+    좁은 카드에서 묶음이 다시 갈라진다(주인 캡처 2026-09-09 15:54).
+  · 그러므로 id 줄과 제목에는 **예약폭이 없다** — 어느 스킨에서도.
 
-② **첫 항목은 줄바꿈이 안 된다.** id 줄은 flex-wrap 인데, flex 는 줄의 첫
-   항목을 아랫줄로 못 내린다. 점(livedot)이 있는 카드는 식별자가 둘째
-   항목이라 좁아지면 얌전히 내려가는데, 점 없는 카드는 식별자가 첫 항목이
-   되어 예약을 뚫고 시각을 덮었다 — 같은 폭에서 카드마다 결이 갈렸다.
-   폭 0 스트럿(::before)이 줄 첫머리에 서서 식별자를 늘 '둘째 이후'로
-   만든다. 높이는 줄 상자(--card-edge)를 따라가, 내려간 식별자가 시각
-   **아래** 줄에 선다.
+폭 0 스트럿(`::before`)은 그대로 산다: flex 는 줄의 첫 항목을 아랫줄로 못
+내리므로, 점(livedot)이 없는 카드에서 식별자가 첫 항목이 되어 밀고 들어가던
+결함(cork compact @1000px 실측 -1.19px)을 그 스트럿이 막는다.
 
-곁: `.card .t` 의 56px 예약은 죽은 것이었다 — 제목은 시각이 선 첫 줄
-아래에서 시작하므로 덮을 수 없는데, 제목만 일찍 접고 있었다.
-
-soft 는 시각을 제 줄로 내려 예약을 0 으로 덮는 스킨이다 — 그 덮어쓰기
-(padding-right:0)는 그대로 산다. 0 은 예약이 아니므로 이 시험도 허용한다.
+실제로 겹치지 않는지는 브라우저가 그린 상자만 안다 — 그쪽은 test_id_realscale
+이 잰다. 여기는 규칙의 모양만 본다.
 
 실행: python3 tests/ id_clearance
 """
@@ -59,27 +59,46 @@ class TheIdNeverCoversTheClock(unittest.TestCase):
 
     def test_the_id_never_covers_the_clock(self):
         """TheIdNeverCoversTheClock 의 계약을 한 항목으로 — 검사는 그대로다."""
-        with self.subTest("the_reservation_is_letters_not_pixels"):
-            seen = []
+        with self.subTest("the_group_stays_in_the_flow"):
+            idr = [d for s2, d in self.rules if s2.endswith(".card .id .idr")]
+            self.assertTrue(idr, "`.card .id .idr` 묶음이 없다 — 벨트와 시각이 "
+                                 "낱개로 서면 좁은 카드에서 갈라진다")
+            self.assertEqual("auto", _decl(idr[0], "margin-left"),
+                             "묶음이 줄의 오른끝을 안 잡는다 — 아랫줄로 내려갈 "
+                             "때 시각이 서는 쪽을 떠난다")
+            self.assertIsNotNone(_decl(idr[0], "flex"),
+                                 "묶음에 flex 가 없다 — 눌리면 안쪽이 접혀 "
+                                 "벨트와 시각이 다시 갈라진다")
             for sel, dec in self.rules:
-                if ".card .id" not in sel or "::" in sel or ".id ." in sel:
+                if not (sel.endswith(".card .id") or ".card .id," in sel + ","):
+                    continue
+                if "::" in sel or ".id ." in sel:
                     continue
                 val = _decl(dec, "padding-right")
                 if val is None:
                     continue
-                seen.append((sel, val))
-                if re.fullmatch(r"0(px)?", val):
+                self.assertRegex(
+                    val, r"^\s*0(px)?\s*$",
+                    "%s 에 예약폭이 되살아났다(%s) — 시각은 흐름 안에 서므로 "
+                    "비워 둘 자리가 없다" % (sel, val))
+        with self.subTest("the_clock_and_the_handle_share_one_cell"):
+            cell = [d for s2, d in self.rules if s2.endswith(".card .id .idnow")]
+            self.assertTrue(cell, "`.card .id .idnow` 칸이 없다")
+            self.assertEqual("grid", _decl(cell[0], "display"),
+                             "칸이 격자가 아니다 — 시각과 손잡이가 나란히 서면 "
+                             "손이 얹힐 때 칸 폭이 변해 줄이 흔들린다")
+            kids = [d for s2, d in self.rules if s2.endswith(".card .id .idnow>*")]
+            self.assertTrue(kids, "`.card .id .idnow>*` 규칙이 없다")
+            self.assertEqual("1/1", (_decl(kids[0], "grid-area") or "").replace(" ", ""),
+                             "칸 안의 둘이 같은 자리를 안 쓴다 — 겹쳐야 폭이 "
+                             "변하지 않는다")
+            for sel, dec in self.rules:
+                if ".elapsed" not in sel and ".pickdoc" not in sel:
                     continue
-                self.assertNotRegex(
-                    val, r"^\s*-?\d+(\.\d+)?px\s*$",
-                    "%s 의 예약폭이 상수 px 이다(%s) — ch 로 경과시각의 "
-                    "내용 모델을 읽어라" % (sel, val))
-                self.assertIn("ch", val,
-                              "%s 의 예약폭이 글자 단위를 안 읽는다: %s"
-                              % (sel, val))
-            self.assertTrue(any(s == ".card .id" for s, _ in seen),
-                            "`.card .id` 의 예약폭 선언이 사라졌다 — 예약이 "
-                            "없으면 식별자가 시각과 같은 칸을 쓴다")
+                self.assertNotEqual(
+                    "absolute", (_decl(dec, "position") or ""),
+                    "%s 가 흐름 밖으로 떴다 — 벨트만 흐름에 남아 좁은 카드에서 "
+                    "묶음이 갈라진다" % sel)
         with self.subTest("the_strut_keeps_the_id_wrappable"):
             strut = [d for s, d in self.rules if s == ".card .id::before"]
             self.assertTrue(strut, "`.card .id::before` 스트럿이 없다")
@@ -95,15 +114,19 @@ class TheIdNeverCoversTheClock(unittest.TestCase):
                               "스트럿에 폭이 생겼다 — 폭 0 이어야 예약과 "
                               "이중으로 자리를 먹지 않는다")
         with self.subTest("the_title_carries_no_dead_reservation"):
-            base = [d for s, d in self.rules if s == ".card .t"]
-            self.assertTrue(base, "`.card .t` 기본 규칙이 없다")
-            for d in base:
-                val = _decl(d, "padding-right")
+            seen = False
+            for sel, dec in self.rules:
+                if ".card .t" not in sel:
+                    continue
+                seen = True
+                val = _decl(dec, "padding-right")
                 if val is None:
                     continue
                 self.assertNotRegex(
-                    val, r"\d+(\.\d+)?px",
-                    "`.card .t` 에 죽은 예약이 되돌아왔다: %s" % val)
+                    val, r"[1-9]",
+                    "%s 에 죽은 예약이 되돌아왔다(%s) — 제목 위 모서리에 뜨는 "
+                    "것이 없으니 제목은 카드 폭을 다 쓴다" % (sel, val))
+            self.assertTrue(seen, "`.card .t` 규칙이 없다")
 
 if __name__ == "__main__":
     unittest.main()
