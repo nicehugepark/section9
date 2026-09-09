@@ -3122,6 +3122,13 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
         note = (note + f" [via {via}]").strip()
     suffix = f" — {note}" if note else ""
     entry = f"- {ts} status: {old} -> {new_status} (by {user}){suffix}\n"
+    # done 인데 토큰이 어디에도 없으면 그 사실을 남긴다 (REQ-20260909-082) — 막지
+    # 않는다. 원인은 대개 이 세션 밖에서 닫힌 것이다(다른 머신·CLI 전이만·자동
+    # 생성 후속). 적어 두지 않으면 나중에 「왜 없나」를 문서에서 알 길이 없다.
+    if new_status == "done" and meta.get("type") == "request" \
+            and not _has_tokens(meta):
+        entry += f"- {ts} 경고: tokens 없음 — 이 세션 밖에서 닫힘(기여 " \
+                 f"{len(meta.get('contributions') or [])}건에 usage 창 없음)\n"
     if "## History" in body:
         body = body.rstrip("\n") + "\n" + entry
     else:
@@ -3363,6 +3370,14 @@ def stamp_doc_session(doc_id, session):
     finally:
         release_lock()
     return True
+
+
+def _has_tokens(meta):
+    """문서 머리나 기여 항목 어디든 토큰이 적혀 있는가."""
+    if isinstance(meta.get("tokens"), dict) and meta["tokens"]:
+        return True
+    return any(isinstance(c, dict) and isinstance(c.get("tokens"), dict)
+               and c["tokens"] for c in (meta.get("contributions") or []))
 
 
 def _session_owns(doc_id, session):
@@ -16970,7 +16985,7 @@ def _fill_lead_window(rows, entry, actor):
 
 
 def record_contribution(meta, actor, item="", result="done", transcript="",
-                        ts=None, started=None):
+                        ts=None, started=None, tokens=None):
     """문서 meta 의 contributions 에 항목별 처리 이력을 누적 (단일 쓰기 경로).
 
     규칙 세 가지 — 전부 '기록 과잉'과 '거짓 진행'을 막기 위한 것이다:
@@ -16980,7 +16995,9 @@ def record_contribution(meta, actor, item="", result="done", transcript="",
        않으면 헬스체크가 영원히 '진행 중'을 본다.
     3. CONTRIB_MAX 초과분은 오래된 것부터 버린다. 원본(노트 본문)은 남아 있으므로
        잘려도 복구 가능한 파생물이다.
-    actor 가 비면 아무것도 하지 않는다 — 사람이 남긴 메모는 기여가 아니다."""
+    actor 가 비면 아무것도 하지 않는다 — 사람이 남긴 메모는 기여가 아니다.
+    tokens 를 주면 그 값이 이 항목의 토큰이다(창 계산을 건너뛴다) — 한 턴의
+    usage 를 여러 요청에 나눠 붙일 때 쓴다 (REQ-20260909-082)."""
     actor = normalize_actor(actor)
     if not actor:
         return None
@@ -17005,6 +17022,13 @@ def record_contribution(meta, actor, item="", result="done", transcript="",
             if r.get("actor") == actor and r.get("result") == "running":
                 r["result"] = "done" if result != "failed" else "failed"
                 r["ended"] = ts
+                if transcript and not r.get("transcript"):
+                    r["transcript"] = transcript
+                # 닫히는 항목의 창에 그 일의 usage 가 다 들어 있다 (REQ-20260909-082).
+                # 여기서 세지 않으면 아래 새 항목은 앞이 이 끝(=지금)으로 밀려
+                # 창이 [지금, 지금] 이 되고 — 서브에이전트 기여 587건에 토큰이
+                # 없던 이유가 이것이다.
+                _settle_tokens(meta, r)
         entry = {"actor": actor, "item": item,
                  "started": _window_floor(rows, actor, started or ts),
                  "ended": ts, "result": result, "transcript": transcript}
@@ -17017,14 +17041,133 @@ def record_contribution(meta, actor, item="", result="done", transcript="",
     # 다시 합산되므로 차이만 더해야 이중 계산이 없고, CONTRIB_MAX 로 오래된
     # 항목이 잘려도 머리의 합계는 남는다. 창·파일·이벤트가 없으면 아무것도
     # 적지 않는다(0 은 「썼는데 0」이고, 없음은 「모른다」다).
-    used = transcript_usage(entry.get("transcript"), entry.get("started"),
-                            entry.get("ended"))
-    if used is not None:
-        delta = _tokens_add(used, entry.get("tokens"), sign=-1)
-        entry["tokens"] = used
-        meta["tokens"] = _tokens_add(meta.get("tokens"), delta)
+    _settle_tokens(meta, entry, tokens)
     meta["contributions"] = rows[-CONTRIB_MAX:]
     return entry
+
+
+def _settle_tokens(meta, entry, tokens=None):
+    """항목의 토큰을 정하고 문서 머리 합계에 차이만 더한다 — 쓰는 자리는 여기
+    하나다(record_contribution 의 새 항목·닫히는 running 항목·헬스체크의 마감).
+    tokens 가 없으면 항목의 transcript 창에서 센다; 그것도 없으면 아무것도 적지
+    않는다(0 은 「썼는데 0」이고, 없음은 「모른다」다)."""
+    used = None
+    if isinstance(tokens, dict) and tokens:
+        used = _tokens_add(None, tokens)
+    else:
+        used = transcript_usage(entry.get("transcript"), entry.get("started"),
+                                entry.get("ended"))
+    if used is None:
+        return None
+    delta = _tokens_add(used, entry.get("tokens"), sign=-1)
+    entry["tokens"] = used
+    meta["tokens"] = _tokens_add(meta.get("tokens"), delta)
+    return used
+
+
+def parse_tokens_arg(raw):
+    """`--tokens` 의 JSON 한 줄 → 토큰 dict. 비거나 못 읽으면 None(창 계산으로)."""
+    if not raw:
+        return None
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return None
+    return _tokens_add(None, d) if isinstance(d, dict) and d else None
+
+
+def split_tokens(total, n):
+    """total 을 n 몫으로 — 정수 등분, 잔여는 마지막 몫에. 합은 보존된다
+    (REQ-20260909-082: 정확도보다 「비지 않는 것」이 목적이다)."""
+    n = max(1, int(n or 1))
+    total = _tokens_add(None, total)
+    shares = [dict.fromkeys(TOKEN_KEYS, 0) for _ in range(n)]
+    for k in TOKEN_KEYS:
+        q, r = divmod(total[k], n)
+        for sh in shares:
+            sh[k] = q
+        shares[-1][k] += r
+    return shares
+
+
+_TOUCH_RE = re.compile(
+    r"\bs9(?:\.py)?\s+(?:note|status|set|link)\s+"
+    r"(REQ-\d{8}-\d{3,}(?:-[0-9a-z]{4})?)\b")
+
+
+def turn_touched_reqs(path, started, ended=None):
+    """이 턴의 s9 호출(note/status/set/link)이 손댄 요청 id 들 — 리드 transcript 의
+    Bash 도구 호출에서 읽는다(순서 보존, 중복 제거). 창 밖·못 읽음이면 []."""
+    lo = iso_epoch(started)
+    hi = iso_epoch(ended) if ended else None
+    if not path or not lo:
+        return []
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return []
+    out = []
+    for raw in data.splitlines():
+        if b'"tool_use"' not in raw:
+            continue
+        try:
+            ev = json.loads(raw.decode("utf-8", "ignore"))
+        except ValueError:
+            continue
+        if ev.get("type") != "assistant":
+            continue
+        t = iso_epoch(ev.get("timestamp"))
+        if not t or t < lo or (hi and t > hi):
+            continue
+        content = (ev.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for c in content:
+            if not isinstance(c, dict) or c.get("type") != "tool_use":
+                continue
+            cmd = (c.get("input") or {}).get("command")
+            if not isinstance(cmd, str):
+                continue
+            for rid in _TOUCH_RE.findall(cmd):
+                if rid not in out:
+                    out.append(rid)
+    return out
+
+
+def plan_turn_tokens(path, started, ended, session="", primary=""):
+    """리드 한 턴의 usage 를 **그 턴이 손댄 요청들**에 나눈다 (REQ-20260909-082).
+
+    손댄 요청 = primary(last_req) ∪ 그 턴의 s9 호출이 note/status/set/link 한 요청
+    ∪ active_reqs 중 그 턴에 문서가 갱신된 것. 손댄 것이 primary 뿐이면 종전대로
+    하나가 전부를 받는다. 반환 {"reqs": [...], "total": tok|None, "shares": {id: tok}}
+    — usage 가 없는 턴은 shares 가 비고(0 을 적지 않는다) reqs 만 남는다."""
+    reqs = [primary] if primary else []
+    for rid in turn_touched_reqs(path, started, ended):
+        if rid not in reqs:
+            reqs.append(rid)
+    lo = iso_epoch(started) or 0
+    sid = (session or os.environ.get("S9_SESSION") or "")[:8]
+    b = read_binding(current_machine(), sid) if sid else None
+    for rid in (b or {}).get("active_reqs") or []:
+        rid = str(rid or "")
+        if not rid or rid in reqs:
+            continue
+        p = locate(rid)
+        if not p:
+            continue
+        try:
+            m, _ = read_doc(p)
+        except (OSError, ValueError):
+            continue
+        if (iso_epoch(m.get("updated")) or 0) >= lo:
+            reqs.append(rid)
+    total = transcript_usage(path, started, ended)
+    shares = {}
+    if total is not None and reqs:
+        for rid, sh in zip(reqs, split_tokens(total, len(reqs))):
+            shares[rid] = sh
+    return {"reqs": reqs, "total": total, "shares": shares}
 
 
 # ------------------------------------- 에이전트 헬스체크 (REQ-20260825-089)
@@ -17625,6 +17768,7 @@ def health_apply(report=None):
                         c["result"] = a["state"]
                         c["reason"] = a["reason"]
                         c["ended"] = now_iso()
+                        _settle_tokens(meta, c)   # 마감도 토큰을 센다 (REQ-20260909-082)
                         hit = True
             if hit:
                 meta["contributions"] = rows
@@ -17971,7 +18115,8 @@ def cmd_note(args):
             item=(getattr(args, "item", "") or "").strip() or item_from_text(text),
             result=(getattr(args, "result", "") or "done"),
             transcript=(getattr(args, "transcript", "") or ""), ts=ts,
-            started=(getattr(args, "started", "") or None))
+            started=(getattr(args, "started", "") or None),
+            tokens=parse_tokens_arg(getattr(args, "tokens", "")))
     # 문서의 어느 구간에 붙은 말인지 (REQ-20260827-072). 줄 번호로 매지 않는다 —
     # 문서가 한 줄만 바뀌어도 전부 어긋난다. **선택한 글 자체**를 인용으로 남기면
     # 문서가 바뀌어도 사람은 어디였는지 읽을 수 있고, 화면은 그 글을 찾아 짚는다.
@@ -18363,7 +18508,9 @@ def cmd_contrib(args):
                                     result=args.result,
                                     transcript=args.transcript or "",
                                     ts=(args.ended or None),
-                                    started=(args.started or None))
+                                    started=(args.started or None),
+                                    tokens=parse_tokens_arg(
+                                        getattr(args, "tokens", "")))
         ags = meta.get("agents") or []
         if not isinstance(ags, list):
             ags = [ags]
@@ -18375,6 +18522,19 @@ def cmd_contrib(args):
         release_lock()
     print(f"{args.id}: contribution {entry['actor']} / "
           f"{entry['item'] or '(무제)'} = {entry['result']}")
+
+
+def cmd_tokens(args):
+    """`s9 tokens plan` — 리드 턴의 usage 를 손댄 요청들에 나눈 계획을 JSON 으로
+    (읽기 전용). Stop 훅이 이것을 받아 note/contrib 에 `--tokens` 로 넘긴다 —
+    나누는 규칙은 plan_turn_tokens 한 곳에만 있다."""
+    if args.action != "plan":
+        die("usage: s9 tokens plan --transcript PATH --started ISO [--primary REQ]")
+    plan = plan_turn_tokens(args.transcript or "", args.started or "",
+                            args.ended or now_iso(),
+                            session=args.session or os.environ.get("S9_SESSION", ""),
+                            primary=args.primary or "")
+    print(json.dumps(plan, ensure_ascii=False))
 
 
 def cmd_last(args):
@@ -32064,6 +32224,9 @@ def main():
     nt.add_argument("--started", metavar="ISO",
                     help="이 항목이 시작된 시각 — transcript 의 usage 를 이 시각부터 "
                          "노트 시각까지 합쳐 tokens 로 적는다 (없으면 적지 않는다)")
+    nt.add_argument("--tokens", metavar="JSON",
+                    help="이 항목의 토큰을 직접 준다({in,out,cache_read,cache_create}) — "
+                         "한 턴의 usage 를 여러 요청에 나눌 때(창 계산 대신)")
     nt.set_defaults(fn=cmd_note)
 
     la = sub.add_parser("last", help="get/set this session's active REQ pointer")
@@ -32115,7 +32278,17 @@ def main():
     ct.add_argument("--transcript", metavar="PATH")
     ct.add_argument("--started", metavar="ISO", help="항목 시작 시각 (tokens 창의 앞)")
     ct.add_argument("--ended", metavar="ISO", help="항목 종료 시각 (기본 지금)")
+    ct.add_argument("--tokens", metavar="JSON", help="이 항목의 토큰(창 계산 대신)")
     ct.set_defaults(fn=cmd_contrib)
+
+    tk = sub.add_parser("tokens", help="턴의 토큰을 손댄 요청들에 나누는 계획 (JSON)")
+    tk.add_argument("action", choices=["plan"])
+    tk.add_argument("--transcript", metavar="PATH", required=True)
+    tk.add_argument("--started", metavar="ISO", required=True, help="턴의 시작 시각")
+    tk.add_argument("--ended", metavar="ISO", help="창의 끝 (기본 지금)")
+    tk.add_argument("--primary", metavar="REQ", help="응답이 붙는 요청(last_req)")
+    tk.add_argument("--session")
+    tk.set_defaults(fn=cmd_tokens)
 
     ag = sub.add_parser("agents", help="처리 주체 헬스체크 (생존·정지·실패 판정)")
     ag.add_argument("action", choices=["health"])

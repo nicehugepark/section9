@@ -306,6 +306,37 @@ def turn_started(transcript_path):
     return ts
 
 
+def turn_token_plan(env, tp, started, primary):
+    """이 턴의 usage 를 손댄 요청들에 나눈 계획 — `s9 tokens plan` (REQ-20260909-082).
+    규칙은 s9 한 곳에 있고 여기서는 받아 쓰기만 한다. 못 받으면 {} — 종전대로
+    primary 하나에 창 계산으로 붙는다."""
+    if not started:
+        return {}
+    try:
+        out = run(env, "tokens", "plan", "--transcript", tp, "--started", started,
+                  "--primary", primary)
+        plan = json.loads(out.stdout or "") if out.returncode == 0 else {}
+    except (ValueError, Exception):
+        return {}
+    return plan if isinstance(plan, dict) and plan.get("shares") else {}
+
+
+def share_turn_tokens(env, agent, plan, primary):
+    """primary 밖의 손댄 요청들에 그 몫을 기여로 적는다(노트 본문 없이)."""
+    shares = plan.get("shares") or {}
+    n = len(plan.get("reqs") or [])
+    done = 0
+    for rid in plan.get("reqs") or []:
+        if rid == primary or rid not in shares:
+            continue
+        r = run(env, "contrib", rid, "--actor", agent, "--result", "done",
+                "--item", f"이 턴에 손댄 요청 (토큰 몫 1/{n})",
+                "--tokens", json.dumps(shares[rid]))
+        if r.returncode == 0:
+            done += 1
+    return done
+
+
 def main():
     if os.environ.get("S9_AUDIT", "").lower() == "off":
         return
@@ -383,10 +414,19 @@ def main():
         if not active:
             return
         req, label = active, "response"
+    # 한 턴이 여러 요청을 손댔으면 토큰을 나눠 붙인다 (REQ-20260909-082) — 응답
+    # 본문은 종전대로 primary 하나에 붙고, 나머지는 기여 항목만 받는다.
+    plan = turn_token_plan(env, tp, started, req)
+    if req in (plan.get("shares") or {}):
+        tok = ["--tokens", json.dumps(plan["shares"][req])]
     out = run(env, "note", req, "--label", label, "--agent", agent, *tok,
               inp=text)
     if out.returncode == 0:
         run(env, "log", f"{label} → {req} by {agent} ({len(text)}자)")
+    shared = share_turn_tokens(env, agent, plan, req) if plan else 0
+    if shared:
+        run(env, "log", f"토큰 몫 → {shared}건에 나눠 적음 "
+                        f"({len(plan.get('reqs') or [])}등분)")
 
 
 if __name__ == "__main__":
