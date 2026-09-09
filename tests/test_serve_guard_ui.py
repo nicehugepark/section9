@@ -32,9 +32,26 @@
 
 실행: python3 tests/ guard_ui
 """
+import glob
+import json
 import os
 import re
+import shutil
+import subprocess
 import unittest
+
+
+def _find_node():
+    n = shutil.which("node") or shutil.which("nodejs")
+    if n:
+        return n
+    for pat in ("/home/*/.vscode-server/bin/*/node",
+                "/root/.vscode-server/bin/*/node",
+                "/mnt/c/Temp/s9-webkit/node-*/node.exe"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
 
 import websrc  # 공용 원문 도우미 (REQ-20260830-029)
 from webasset import index_path   # 화면은 조각이다 — 계약은 이어 붙인 한 장을 본다 (REQ-20260829-027)
@@ -114,10 +131,44 @@ class ServeGuardUI(unittest.TestCase):
         self.assertNotIn("POST", body, "읽기 전용이어야 한다")
 
     def test_polls_only_when_visible(self):
-        """보이지 않는 탭에서 계속 두드리지 않는다."""
-        m = re.search(r"checkGuard\(\);[\s\S]{0,300}?setInterval\([^;]+;", self.src)
-        self.assertIsNotNone(m, "주기 확인이 걸려 있지 않다")
-        self.assertIn("document.hidden", m.group(0))
+        """보이지 않는 탭에서 계속 두드리지 않는다.
+
+        한때는 `setInterval` 안에 `document.hidden` 이 적혀 있는지를 봤다. 그 검사를
+        주기 폴마다 손으로 적다 보니 빠뜨린 자리가 생겼고(카탈로그 벨트가 그랬다,
+        REQ-20260909-086), 이제 멈춤 판정은 공통 벨트 `s9Every`(web/app/net.js)
+        한 곳에 있다. 그래서 여기서 재는 것도 둘이다 — ① 감시자 폴이 그 벨트를
+        타는가 ② 그 벨트가 안 보이는 화면에서 정말 멈추는가(node 로 실행해 센다)."""
+        m = re.search(r"checkGuard\(\);[\s\S]{0,300}?s9Every\([^;]+;", self.src)
+        self.assertIsNotNone(m, "주기 확인이 공통 벨트(s9Every)를 타지 않는다")
+        self.assertIn("checkGuard", m.group(0))
+        node = _find_node()
+        if not node:
+            self.skipTest("node 가 없다 — 벨트의 동작은 재지 못한다")
+        net = open(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "web", "app", "net.js"),
+            encoding="utf-8").read()
+        js = """
+const H = {};
+globalThis.document = {hidden: true, addEventListener(n, f){ H[n] = f; }};
+%s
+let n = 0;
+s9Every("guard", 10, () => { n++; });
+setTimeout(() => {
+  const hidden = n;
+  document.hidden = false;
+  H["visibilitychange"]();
+  console.log(JSON.stringify({hidden, resumed: n}));
+  process.exit(0);
+}, 80);
+""" % net
+        out = subprocess.run([node, "-e", js], capture_output=True, text=True,
+                             timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        got = json.loads(out.stdout.strip().splitlines()[-1])
+        self.assertEqual(got["hidden"], 0,
+                         "안 보이는 화면에서 %d번 두드렸다" % got["hidden"])
+        self.assertEqual(got["resumed"], 1,
+                         "돌아온 순간 %d번 몰아 두드렸다" % got["resumed"])
 
     # ---------- ⑤ 복구됨 ≠ 복구가 멈춤 ----------
 
