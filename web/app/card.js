@@ -2007,10 +2007,18 @@ function cardHTML(r){
     + (r.tdd ? `<span class="tdd${r.tdd.passed === r.tdd.total ? " full" : ""}"`
         + ` title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">`
         + `TDD ${r.tdd.passed}/${r.tdd.total}</span>` : "")
-    + utags.slice(0, tagShow).map(t =>
-        `<span class="tag" style="--th:${tagHue(t)}">#${esc(t)}</span>`).join("")
-    + (tagOver > 0
-        ? `<span class="tagmore" title="${esc(utags.join(" · "))}">+${tagOver}</span>` : "");
+    /* 태그와 접힌 수는 **한 묶음**이다 (REQ-20260909-064). 둘을 낱개 항목으로 두면
+       폭이 모자랄 때 `+2` 만 아랫줄에 혼자 서서, 무엇이 접혔는지 모를 숫자 하나가
+       빈 줄을 차지한다(실측 2026-09-09, calm·blocked 열). 묶으면 줄이 바뀌어도
+       태그와 그 꼬리가 함께 움직인다. */
+    + (utags.length
+        ? `<span class="tagset">`
+          + utags.slice(0, tagShow).map(t =>
+              `<span class="tag" style="--th:${tagHue(t)}">#${esc(t)}</span>`).join("")
+          + (tagOver > 0
+              ? `<span class="tagmore" title="${esc(utags.join(" · "))}">+${tagOver}</span>` : "")
+          + `</span>`
+        : "");
   /* 토큰 사용량은 카드에 서지 않는다 (REQ-20260908-004, 주인 지적 2026-09-08).
      보드에서 내리는 판단은 셋이다 — 다음에 무엇을 집을까 · 무엇이 막혔나 ·
      무엇을 승인·반려할까. 이미 쓴 값은 그 셋 중 무엇도 바꾸지 않는다.
@@ -2025,7 +2033,7 @@ function cardHTML(r){
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">
     <button type="button" class="pickdoc" data-pick="${esc(r.id)}"
       aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button>
-    <div class="id">${liveDot}<span class="idg"><span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${jiraKeyHTML(r)}</span>${vh}<span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</div>
+    <div class="id">${liveDot}<span class="idg"><span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${jiraKeyHTML(r)}</span>${vh}<span class="idr"><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</span></div>
     <div class="t">${esc(r.title)}</div>
     ${mwho}${mwhat}${acts}${dep}${stall}
     ${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}</div>`;

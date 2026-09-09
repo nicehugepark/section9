@@ -30,8 +30,8 @@ const JIRA_ROWS = [
    mean: "Atlassian 계정 설정 › 보안 › API tokens 에서 만듭니다. 값은 만들 때 한 번만 "
        + "보이니 바로 여기에 넣으십시오. 넣은 값은 내 계정 › 시크릿에 "
        + "JIRA_API_TOKEN 으로 남고, 다시 보이지 않습니다."},
-  {key: "jira_token_expires", name: "token 만료일", kind: "config", w: "160px",
-   ph: "YYYY-MM-DD",
+  {key: "jira_token_expires", name: "token 만료일", kind: "config", w: "170px",
+   type: "date", ph: "YYYY-MM-DD",
    mean: "API token 을 만들 때 정한 만료일입니다. 적어 두면 7일 전부터 여기와 「연동 확인」이 "
        + "미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다(반복하면 계정이 잠깁니다)."},
   {key: "ping", name: "연동 확인", kind: "ping",
@@ -90,7 +90,9 @@ function jiraRowHTML(r, s){
   let ctl = "", fact = "";
   if (r.kind === "config"){
     const v = s.registered ? String(s[r.key.replace("jira_", "")] || "") : "";
-    ctl = `<input class="uf" id="j-${r.key}" style="width:${r.w}"
+    // 날짜는 손으로 치는 값이 아니라 고르는 값이다 — 브라우저의 달력을 그대로 쓴다
+    // (Chrome·Safari 둘 다 제 달력을 연다). 저장 경로와 값의 꼴(YYYY-MM-DD)은 그대로다.
+    ctl = `<input class="uf" id="j-${r.key}" type="${r.type || "text"}" style="width:${r.w}"
              value="${esc(v)}" placeholder="${esc(r.ph)}"
              aria-label="${esc(r.name)}"${s.registered ? "" : " disabled"}>`;
     // 만료 경고는 사실 줄 — 문장은 서버가 짓는다(7일 전 · 만료됨). 색은 글자뿐이다.
@@ -109,8 +111,12 @@ function jiraRowHTML(r, s){
         + `id.atlassian.com › API tokens</a> 에서 만들어 붙여 넣으십시오.`;
   } else if (r.kind === "ping"){
     const can = s.registered && s.ready && s.ready.site && s.ready.email && s.ready.token;
-    ctl = `<button type="button" id="j-ping" aria-describedby="j-ping-why"
-             aria-disabled="${!can}">연동 확인</button>`;
+    // 밖으로 나가는 손잡이는 「저장소」 판의 pull·push 와 같은 부품이다(`.acts.gacts`) —
+    // 못 누르는 얼굴(aria-disabled)까지 그 자리에 이미 그려져 있다. 판 안의 값을
+    // 저장하는 손잡이(넣기·연동)는 그대로 글자 손잡이다: 나가는 것과 적는 것이 갈린다.
+    ctl = `<div class="acts gacts"><button type="button" id="j-ping"
+             aria-describedby="j-ping-why"
+             aria-disabled="${!can}">연동 확인</button></div>`;
     fact = can ? "" : "주소·이메일·API token 셋이 있어야 물어볼 수 있습니다.";
   } else {
     // 프로젝트 연동 — 이어진 것은 줄마다 「slug ↔ KEY · 방향 · 연동 해제」, 아래에 잇는 폼
@@ -129,17 +135,23 @@ function jiraRowHTML(r, s){
          }</div>`).join("")
       : `<span class="wlab">아직 없습니다</span>`;
     const opts = can.filter(m => !rows.some(p => p.slug === m.slug));
+    // 잇기 폼 — 다섯 칸이 라벨 없이 한 줄에 늘어서 있었다(주인 캡처 2026-09-09 13:10:
+    // 「레이아웃이 좀 이상한데」). 접히는 자리를 브라우저에 맡기지 않고 **두 줄로 나눈다**:
+    // 1행 = 무엇을 잇나(프로젝트 · key · 방향), 2행 = 어떻게 보내나(내보내는 것 ·
+    // section9 표시) + 손잡이. 칸마다 앞말을 얹어 select 의 값만 보고 뜻을 짐작하지
+    // 않게 한다 — 낱말은 PRJ_TEXT 의 것 그대로다(Projects 정보 패널과 같은 글자).
+    const fld = (lab, ctlHTML) =>
+      `<label class="jfield"><span class="jfl">${esc(lab)}</span>${ctlHTML}</label>`;
+    const sel = (id, pairs) => `<select class="uf" id="${id}">${
+      pairs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>`;
     const form = (s.registered && opts.length)
       ? `<div class="jlinkform">
-           <select class="uf" id="j-link-slug" aria-label="프로젝트">${
-             opts.map(m => `<option value="${esc(m.slug)}">${esc(m.title)} (${esc(m.slug)})</option>`).join("")}</select>
-           <input class="uf" id="j-link-key" style="width:110px" placeholder="MP1" aria-label="Jira project key">
-           <select class="uf" id="j-link-dir" aria-label="연동 방향">${
-             PRJ_TEXT.jiraDirs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
-           <select class="uf" id="j-link-content" aria-label="${esc(PRJ_TEXT.kJiraContent)}">${
-             PRJ_TEXT.jiraContents.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
-           <select class="uf" id="j-link-mark" aria-label="${esc(PRJ_TEXT.kJiraMark)}">${
-             PRJ_TEXT.jiraMarks.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
+           ${fld(PRJ_TEXT.kJiraProject, `<select class="uf" id="j-link-slug">${
+             opts.map(m => `<option value="${esc(m.slug)}">${esc(m.title)} (${esc(m.slug)})</option>`).join("")}</select>`)}
+           ${fld(PRJ_TEXT.kJiraKey, `<input class="uf" id="j-link-key" placeholder="${esc(PRJ_TEXT.phJiraKey)}">`)}
+           ${fld(PRJ_TEXT.kJiraDir, sel("j-link-dir", PRJ_TEXT.jiraDirs))}
+           ${fld(PRJ_TEXT.kJiraContent, sel("j-link-content", PRJ_TEXT.jiraContents))}
+           ${fld(PRJ_TEXT.kJiraMark, sel("j-link-mark", PRJ_TEXT.jiraMarks))}
            <button type="button" class="more wmore" id="j-link">연동</button></div>`
       : "";
     // .wctl 은 가로 flex 라 줄과 폼이 옆으로 늘어선다(주인 캡처 2026-09-09 10:50) —

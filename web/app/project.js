@@ -131,6 +131,7 @@ const PRJ_TEXT = {
   emptyVal: "—",
   // Jira 연동 (REQ-20260908-074) — 라벨은 Settings 의 Jira 절과 같은 글자다
   kJiraSite: "Jira 주소", kJiraKey: "Jira project key", kJiraDir: "연동 방향",
+  kJiraProject: "프로젝트",
   phJiraSite: "https://<site>.atlassian.net", phJiraKey: "MP1",
   jiraEmpty: "연동된 Jira 가 없습니다 — 주소와 project key 를 넣으면 이 프로젝트의 사람이 만든 요청이 이슈로 올라갑니다.",
   jiraDirs: [["push", "push · 여기 → Jira"], ["pull", "pull · Jira → 여기"], ["both", "both · 양쪽"]],

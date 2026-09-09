@@ -159,7 +159,25 @@
    지금 서던 자리에 그대로 선다. 좁아질 때 줄어드는 것은 키뿐이다: 덩이의
    자동 최소폭이 식별자의 폭(nowrap·안 줄어듦)이라 이름은 한 글자도 깎이지
    않고, 키는 제 안에서 말줄임으로 접힌다. */
-.card .id .idg{display:flex;align-items:baseline;flex:1 1 0;max-width:max-content}
+/* 기준폭은 0 이 아니라 **내용**이다 (REQ-20260909-064). 0 이면 이 덩이가 같은 줄에
+   선 벨트·시각 자리만큼을 뺀 나머지(84px)까지만 자라고, 그보다 긴 식별자 줄은 제
+   상자 밖으로 흘러 좁은 창(1100·열 178px)에서 카드 경계에 잘렸다(「MP1-17 다」에서
+   끊김). 기준폭이 내용이면 순서가 바로 선다: 식별자 덩이가 먼저 제 줄을 차지하고,
+   자리가 모자란 벨트·시각 묶음이 아랫줄로 내려간다. 더 좁아지면 그때 비로소 이
+   덩이가 줄어드는데, 줄어드는 것은 키뿐이다(아래 `.jkey` 의 말줄임) — 식별자와
+   「다름」은 한 글자도 깎이지 않는다. */
+.card .id .idg{display:flex;align-items:baseline;flex:0 1 auto;max-width:max-content;
+  min-width:0}
+/* 「지금」 덩이 (REQ-20260909-064) — 누르는 것(벨트)과 세는 것(경과 시각)을 한
+   묶음으로 묶는다. 이 줄은 성격이 다른 둘을 담는 wrap 줄이라, 묶지 않으면 폭이
+   모자라는 순간 벨트만 홀로 아랫줄 왼끝에 서고 시각은 오른끝에 남아 한 줄이
+   두 섬으로 갈렸다(주인 캡처 2026-09-09 13:28: 「레이아웃이 깨진다」). 전 스킨
+   검수 규칙 2 의 처방 그대로다 — **섞어야 하면 묶음으로 싸고, 접히면 묶음째 제
+   줄을 갖게 한다.** `margin-left:auto` 는 이 묶음을 늘 오른끝(시각이 서는 쪽)에
+   세워, 한 줄에 서든 아랫줄로 내려가든 벨트가 시각 곁을 떠나지 않게 한다.
+   식별자 덩이는 왼끝을 지키므로 카드끼리 id 의 왼끝이 어긋나지 않는다. */
+.card .id .idr{display:inline-flex;align-items:center;gap:2px;
+  flex:0 0 auto;margin-left:auto}
 /* 우선순위 표기 (REQ-20260827-029 재작업 — REQ-20260826-005의 계약은 유지).
    지켜야 하는 것: 기본값 50도 반드시 그린다. 값이 기본과 다를 때만 찍었더니
    전 문서가 50이라 화면 어디에도 아무 값이 없었고 "숨겨져 있는 건가"로
@@ -257,8 +275,14 @@ span.proj{cursor:default}
    길면 `.proj` 가 통째로 아랫줄로 내려가 카드마다 키가 달라졌다 — id 줄의 키와
    같은 성질이라 처방도 같다: 기준폭 0 · 내용폭에서 멈추는 자람. 이름은 제자리에서
    말줄임으로 접히고(전체 이름은 title 툴팁), 담당·만든 사람은 밀리지 않는다.
-   `.proj` 는 이 줄의 마지막 항목이라 자람이 뒤를 밀 일도 없다. */
-.card .m.mwho .proj{min-width:0;overflow:hidden;flex:1 1 0;max-width:max-content}
+   `.proj` 는 이 줄의 마지막 항목이라 자람이 뒤를 밀 일도 없다.
+
+   **다만 줄지 않는 바닥을 준다** (REQ-20260909-064): 최소폭이 0 이면 담당과 만든
+   사람이 함께 선 카드에서 이름이 두 글자(`s.`)까지 깎여, 줄 수는 지켰는데 사실이
+   사라졌다(실측 2026-09-09, ledger·in-progress 열). 9ch 아래로는 줄지 않으므로
+   그보다 좁으면 이름이 깎이는 대신 줄을 바꾼다 — 같은 자리에서 calm 이 이미
+   줄을 바꾸고 있었으니, 이 값은 스킨 사이의 어긋남도 함께 지운다. */
+.card .m.mwho .proj{min-width:9ch;overflow:hidden;flex:1 1 0;max-width:max-content}
 .card .m.mwho .pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   display:inline-block;max-width:100%;vertical-align:bottom}
 /* 2행 「무엇 · 얼마」만 접힌다. 줄 사이는 카드의 작은 눈금(4px) */
@@ -266,6 +290,10 @@ span.proj{cursor:default}
 .card .m+.m{margin-top:4px}
 /* 접어 둔 태그 수 — 열 머리의 `+ N개 더 보기` 와 같은 어휘(+N), 색면 없이 잉크다 */
 .card .tagmore{color:var(--muted)}
+/* 태그와 그 꼬리(+N)는 한 묶음으로 움직인다 (REQ-20260909-064) — 안쪽 틈은 이 줄의
+   틈(10px)과 같아서, 묶어도 눈에 보이는 자리는 달라지지 않는다. */
+.card .m .tagset{display:inline-flex;align-items:baseline;gap:10px;
+  flex:0 1 auto;min-width:0}
 /* 사실 줄은 `.rvpt`(actions.css)의 것이다 — 걸어야 하는 것은 줄바꿈 하나뿐이라
    그 파일을 열지 않고 여기서 `.card` 를 앞세워 특이도(0,2,0)로 맞춘다. */
 .card .rvpt,.card .deedrow,.card .judge{word-break:keep-all;overflow-wrap:break-word}

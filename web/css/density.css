@@ -25,6 +25,22 @@
 .uform input,.uform select,.uform textarea,.uf{border:1px solid var(--border);padding:5px 9px;
   font-size:12.5px;background:var(--panel);color:var(--text);font-family:inherit}
 .uf{width:min(300px,100%)}
+/* 날짜 칸 (REQ-20260909-061) — 날짜는 손으로 치는 값이 아니라 고르는 값이라
+   브라우저의 달력을 그대로 쓴다. 새 부품을 만들지 않고 `.uf` 를 그대로 입되 둘만
+   얹는다: ① 값이 기계 꼴(YYYY-MM-DD)이라 자릿수가 흔들리지 않게 mono, ② 달력
+   버튼와 펼쳐지는 달력의 밝기를 정하는 `color-scheme` — 어두운 tone 에서 이것이
+   없으면 어두운 바탕에 어두운 버튼가 얹혀 버튼가 보이지 않는다. 테두리·바탕·여백은
+   `.uf` 의 것이라 스킨이 갈아 끼운 값(calm 의 라운드 10px 등)이 그대로 따라온다. */
+.uf[type="date"]{font-family:var(--mono);font-size:12px;letter-spacing:.02em;
+  color-scheme:light}
+.uf[type="date"]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.55}
+.uf[type="date"]:hover::-webkit-calendar-picker-indicator{opacity:1}
+:root[data-theme="carbon"] .uf[type="date"],
+:root[data-theme="graphite"] .uf[type="date"],
+:root[data-theme="phosphor"] .uf[type="date"]{color-scheme:dark}
+@media (prefers-color-scheme:dark){
+  :root[data-theme="system"] .uf[type="date"]{color-scheme:dark}
+}
 .uform button{border:1px solid var(--border);background:var(--panel);color:var(--text);
   font-family:var(--mono);font-size:11px;padding:6px;cursor:pointer;letter-spacing:.03em}
 .uform button:hover{background:var(--text);color:var(--bg)}
