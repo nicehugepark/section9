@@ -118,12 +118,28 @@
   --hu-s:58%; --hu-l:31%;                /* 태그 글자 — 전 hue 4.8:1 이상의 주얼톤 */
   --av-s:54%; --av-l:32%; --av-bl:64%;   /* 이니셜 글자 / 링 */
 }
-/* 캔버스: 파랑–청록 계열의 아주 옅은 공기. 연보라/연주황 틴트 인상을 피한다 */
+/* 캔버스: 파랑–청록 계열의 아주 옅은 공기. 연보라/연주황 틴트 인상을 피한다.
+
+   **필드는 토큰 하나다** (REQ-20260909-107). 몸통은 창에 붙은
+   (`background-attachment:fixed`) 그러데이션 두 겹인데 붙은 열 머리만 평평한
+   한 색을 칠해, 머리 띠가 주변과 미묘하게 다른 사각형으로 늘 보였다 — 주인
+   캡처 2026-09-09 21:19 「계속 거슬린다」, 실측 머리 250,250,248 · 같은 높이의
+   주변 245,246,247(위아래로 갈수록 차이가 벌어진다). 몸통과 머리가 같은 토큰을
+   읽게 한다: 두 벌로 적으면 한 벌만 고쳐진다.
+
+   창에 붙어 있으므로 판을 스크롤해도 두 면이 어긋나지 않고, 그러데이션이
+   불투명한 `--bg` 위에 얹히므로 카드가 머리 밑을 지나도 비치지 않는다.
+   field 스킨의 헤더가 지면과 이음새 없이 이어지는 그 수법이다(skins.css). */
 [data-skin="calm"] body{
-  background:
+  --calm-field:
     radial-gradient(1150px 470px at 6% -12%, color-mix(in srgb,var(--c-open) 12%,transparent) 0, transparent 68%),
     radial-gradient(950px 420px at 97% -8%, color-mix(in srgb,var(--c-published) 10%,transparent) 0, transparent 66%),
     var(--bg);
+  background:var(--calm-field);
+  background-attachment:fixed;
+}
+[data-skin="calm"] .col h2{
+  background:var(--calm-field);
   background-attachment:fixed;
 }
 
@@ -365,13 +381,15 @@
   --hu-s:62%; --hu-l:72%;
   --av-s:55%; --av-l:76%; --av-bl:44%;
 }
+/* 어두운 tone 은 필드의 농도만 다르다 — 머리는 같은 토큰을 읽으므로 따라온다. */
 [data-skin="calm"][data-theme="graphite"] body,
 [data-skin="calm"][data-theme="carbon"] body,
 [data-skin="calm"][data-theme="phosphor"] body{
-  background:
+  --calm-field:
     radial-gradient(1150px 470px at 6% -12%, color-mix(in srgb,var(--c-open) 9%,transparent) 0, transparent 68%),
     radial-gradient(950px 420px at 97% -8%, color-mix(in srgb,var(--c-published) 8%,transparent) 0, transparent 66%),
     var(--bg);
+  background:var(--calm-field);
   background-attachment:fixed;
 }
 [data-skin="calm"][data-theme="graphite"] .card,
