@@ -10,7 +10,7 @@
   ① **화면은 내부어를 모른다.** `lease`·`claim`·`takeover`·`assignee` 는 사람이
      치는 낱말이 아니라 코드가 자기끼리 쓰는 말이다 — 사용자에게 보이는 글자
      (본문·title)에 한 번도 서지 않는다. 화면에 서는 것은 「담당」·「만든이」·
-     「이 컴퓨터로 가져오기」다.
+     「이 컴퓨터에서 이어서 하기」다.
   ② **모르는 것을 지어내지 않는다.** origin 이 빈 값인 옛 문서는 「기록 없음」이
      아니라 **아무것도 안 그린다** (D6 — 파일을 고치지 않고 읽을 때 맞춘다).
   ③ **시계는 하나다.** 화면의 리스 만료 초는 bin/s9 의 `DOC_LEASE_TTL` 과 같은
@@ -43,7 +43,7 @@ INNER = ("lease", "claim", "takeover", "assignee", "리스", "클레임")
 
 # 화면에 **서야 하는** 낱말 (ux-writer·tech-writer·translator 판정본).
 WORDS = ("만든 사람", "맡은 사람", "사람이 직접", "에이전트",
-         "다른 컴퓨터", "에서 진행 중", "이 컴퓨터로 가져오기", "담당 바꾸기",
+         "다른 컴퓨터", "에서 진행 중", "이 컴퓨터에서 이어서 하기", "담당 바꾸기",
          "백그라운드 작업", "리드")
 
 
@@ -202,12 +202,19 @@ class Screen(unittest.TestCase):
         with self.subTest("e5_one_path_on_the_server"):
                 self.assertIn('parsed.path == "/api/assign"', self.s9)
                 self.assertIn('parsed.path == "/api/claim_takeover"', self.s9)
+                # 이관 API 는 takeover_handoff 한 경로를 부르고(REQ-20260909-010),
+                # 그 함수가 리스 획득(doc_lease_acquire)을 한 번만 부른다.
                 i = self.s9.index('parsed.path == "/api/claim_takeover"')
                 seg = self.s9[i:i + 900]
-                self.assertEqual(seg.count("doc_lease_acquire("), 1,
-                                 "이관 API 는 리스 획득 한 경로만 부른다")
-                self.assertIn("takeover=True", seg)
-                self.assertIn("actor=actor", seg)
+                self.assertEqual(seg.count("takeover_handoff("), 1,
+                                 "이관 API 는 이관 한 경로만 부른다")
+                self.assertNotIn("doc_lease_acquire(", seg)
+                j = self.s9.index("def takeover_handoff(")
+                fn = self.s9[j:self.s9.index("\ndef ", j + 10)]
+                self.assertEqual(fn.count("doc_lease_acquire("), 1,
+                                 "이관은 리스 획득 한 경로만 부른다")
+                self.assertIn("takeover=True", fn)
+                self.assertIn("actor=actor", fn)
 
             # ---- ⑥ 새 층을 만들지 않는다 -------------------------------------------
         with self.subTest("f1_no_colour_field_no_left_bar"):

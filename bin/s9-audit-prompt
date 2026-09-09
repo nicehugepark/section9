@@ -714,6 +714,20 @@ def terms_feedback():
         return ""
 
 
+def handoff_context(env):
+    """다른 컴퓨터와 오간 이관 (REQ-20260909-010) — 이 컴퓨터가 이어받을 것과
+    이 세션이 놓아야 할 것. 판정·문장은 `s9 handoff` 가 짓고 여기는 싣기만 한다.
+    바인딩과 수신함은 이 머신의 파일이라, 옛 세션이 리스를 잃었다는 사실은
+    문서를 읽는 이 자리에서만 닿는다."""
+    ho = run(env, "handoff", "--quiet")
+    if ho.returncode != 0 or not ho.stdout.strip():
+        return ""
+    return (f" ⇄ 다른 컴퓨터와 오간 이관:\n{ho.stdout.strip()}\n"
+            f"「이어받는다」 줄은 지금 `s9 last <id> --add` 로 집고 착수하라. "
+            f"「이어받았다」 줄은 이 세션이 더 진행하지 않는다 — 위임 결과를 노트로 "
+            f"마무리하고 `s9 claim <id> --release` 로 놓아라. ")
+
+
 def emit(context):
     print(json.dumps({
         "suppressOutput": True,
@@ -890,6 +904,7 @@ def main():
                 f"지금 `s9 set <id> --title '20자 이내 명사구' --summary ...` 로 "
                 f"정리하라 — 착수 여부와 무관하게 접수 즉시 정리가 규약이다. ")
         wkwarn = workers_context(env)
+        handoff = handoff_context(env)
         rv = run(env, "review", "--quiet")
         rvwarn = ("" if rv.returncode != 0 or not rv.stdout.strip() else
                   f" ⏳ 확인 대기(review):\n{rv.stdout.strip()}\n"
@@ -910,7 +925,7 @@ def main():
             f"`S9_SESSION={session} s9 new question --title '질문 원문' --body '원문'` "
             f"으로 남기고 답을 `s9 note <QST> --label answer` 로 붙여라. ")
         emit(pend +
-            f"[section9 audit] {qmsg}현재 요청 주체: {who}.{untitled}{rewarn}{rvwarn}{wkwarn} "
+            f"[section9 audit] {qmsg}현재 요청 주체: {who}.{untitled}{rewarn}{handoff}{rvwarn}{wkwarn} "
             f"오분류라면 — 실제 작업 요청이면 — `S9_SESSION={session} s9 new request "
             f"--title '20자 이내 명사구' --summary '...' --size S|M|L --body '원문'` "
             f"으로 직접 등록하고 규약대로 상태를 관리하라. s9 = ~/section9/bin/s9")
@@ -1007,6 +1022,7 @@ def main():
               f"review 상태로 방치하거나 새 REQ로 우회해 상태를 흐리지 마라 (재작업은 원 REQ에서). ")
 
     wkwarn = workers_context(env)
+    handoff = handoff_context(env)
 
     warn = ""
     if "os-account" in who:  # 바인딩/env 없이 OS 계정 fallback으로 잡힌 경우
@@ -1021,7 +1037,7 @@ def main():
     attnote = (f"첨부 {len(atts)}건이 body에 기록되었다. " if atts else "")
     emit(pend +
         f"[section9 audit] 이 프롬프트는 {doc_id} 로 자동 기록되었다 (Request 분류). {attnote}{projhint}"
-        f"현재 요청 주체: {who}.{warn}{untitled}{approvals}{reopened}{loose}{stalled}{stale_serve}{sync_late}{blocked}{review}{wkwarn} "
+        f"현재 요청 주체: {who}.{warn}{untitled}{approvals}{reopened}{handoff}{loose}{stalled}{stale_serve}{sync_late}{blocked}{review}{wkwarn} "
         f"이 세션에서 s9 를 호출할 때는 반드시 `S9_SESSION={session}` 을 앞에 붙여라. 규약: "
         f"(1) 제목은 원문 복사가 아니라 20자 이내의 이해하기 쉬운 명사구로 교체하라 — "
         f"`s9 set {doc_id} --title '...' --summary '...' --size S|M|L "

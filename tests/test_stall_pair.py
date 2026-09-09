@@ -344,6 +344,7 @@ class StallRendersTheSame(unittest.TestCase):
             # 프로젝트 자리 (REQ-20260906-053) — 메타 줄의 조각, 없으면 render 가 멎는다
             g("projBtnHTML"),
             g("leaseElsewhere"), g("canTakeover"), g("elsewhereRowHTML"),
+            g("handoffPendingHTML"),   # REQ-20260909-010 — elsewhereRowHTML 이 부른다
             g("slowRowHTML"), g("stoppedRowHTML"),
             g("stopBtnHTML"), g("holdTell"), g("holdTellHTML"),
             g("wakeBtnHTML"), g("driftBtnHTML"),

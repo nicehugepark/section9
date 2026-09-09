@@ -172,6 +172,10 @@ class TestS2TwoMachinesOnePerson(unittest.TestCase):
         """`--takeover` 뒤 리스가 beta 로 오고 History 에 이관 한 줄이 남는다.
         A 로 sync 하면 A 의 워처는 그 문서를 더 띄우지 않는다."""
         fx, Y = self.fx, self.Y
+        # 저쪽(alpha)이 아직 진전을 내는 중이면 이관이 막힌다 (REQ-20260909-010) —
+        # 절차서의 자리는 「A 가 꺼진 뒤」이므로 리스를 그만큼 묵혀 재현한다.
+        mod = fx.load_mod("beta")
+        fx.age_lease("beta", Y, mod.STALLED_WIN + 60)
         fx.cli("beta", "claim", Y, "--takeover", sess=B_SESS, user=ALICE)
         meta, body = fx.doc("beta", Y)
         self.assertEqual(meta["lease"]["machine"], "beta")

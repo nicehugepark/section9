@@ -290,7 +290,7 @@ function stallState(r){
    `assignee` 는 사람이 터미널에 치는 낱말이 아니라 이 코드가 자기끼리 쓰는
    말이다 — 화면을 닫고 그 일을 하려면 사람이 치는 것은 `s9 assign` 하나뿐이고,
    그것마저 이 제품이 스스로 지은 이름이라 원어 보존 조항(pull·push)이 걸리지
-   않는다. 그래서 화면에는 「담당」·「만든이」·「이 컴퓨터로 가져오기」가 선다.
+   않는다. 그래서 화면에는 「담당」·「만든이」·「이 컴퓨터에서 이어서 하기」가 선다.
 
    **역할 이름은 그대로 둔다** — `designer`·`ux-writer` 는 이 저장소의 문서
    앞머리(`agents:`)와 위임 지시문에 같은 글자로 박힌 이름이라, 화면에서만
@@ -413,9 +413,25 @@ function leaseElsewhere(r){
   if (isNaN(t)) return null;
   const age = Math.floor((Date.now() - t) / 1000);
   if (age >= LEASE_TTL) return null;              // 만료 — 아무도 안 쥐고 있다
-  return {machine: l.machine, user: l.user || "", mins: Math.floor(age / 60)};
+  // `working` 은 저쪽이 아직 진전을 내는 중인가 — 서버의 doc_lease_working 과
+  // 같은 초(SLOW_WIN ↔ STALLED_WIN). 이 안이면 이어받기가 서지 않는다
+  // (REQ-20260909-010): 실행 중인 저쪽을 이 화면이 끊을 수단은 없다.
+  return {machine: l.machine, user: l.user || "", mins: Math.floor(age / 60),
+          working: age < SLOW_WIN};
 }
-/* 「이 컴퓨터로 가져오기」는 **담당자 본인과 admin** 에게만 선다 (D1 (b)).
+/* 이 컴퓨터로 옮겨졌는데 아직 아무 세션도 집지 않은 요청 (REQ-20260909-010).
+   서버가 이관으로 지은 리스에만 `via: "takeover"` 를 적고, 이 컴퓨터의 세션이
+   실제로 집으면(리스를 새로 짓는다) 그 표가 사라진다 — 그래서 이 줄은 약속이
+   아니라 사실이고, 사라지는 것으로 「시작했다」를 말한다. */
+function handoffPendingHTML(r){
+  if (!r || r.type !== "request" || r.status !== "in-progress") return "";
+  const l = r.lease || null;
+  const mine = (window.__whoami || {}).machine || "";
+  if (!l || l.via !== "takeover" || !mine || l.machine !== mine) return "";
+  return `<div class="rvpt elsew" title="담당 표시는 이 컴퓨터로 왔고, 이 컴퓨터의 세션이 집으면 이 줄이 사라집니다">`
+    + `<span class="rvcap">이관</span>이 컴퓨터로 옮겼습니다 · 아직 시작하지 않음</div>`;
+}
+/* 「이 컴퓨터에서 이어서 하기」는 **담당자 본인과 admin** 에게만 선다 (D1 (b)).
    남에게는 손잡이가 없다 — 여기서 숨기는 것은 권한이 아니라 **뜻**이다:
    남의 일을 내 컴퓨터로 끌어오는 것은 담당을 바꾸는 일이고, 그 길은 옆에
    따로 있다(담당 바꾸기). 두 손잡이가 같은 일을 하면 사람은 어느 쪽이
@@ -426,21 +442,28 @@ function canTakeover(r){
 }
 function elsewhereRowHTML(r){
   const e = leaseElsewhere(r);
-  if (!e) return "";
+  if (!e) return handoffPendingHTML(r);
   const when = e.mins < 1 ? "방금" : `${e.mins}분 전`;
   const row = `<div class="rvpt elsew" title="이 요청은 ${esc(e.machine)} 에서`
     + ` ${esc(when)}까지 움직였습니다 — 이 컴퓨터에서는 진행을 볼 수 없습니다">`
     + `<span class="rvcap">다른 컴퓨터</span>${esc(e.machine)} 에서 진행 중`
     + ` · ${esc(when)}</div>`;
   if (!canTakeover(r)) return row;
+  /* 저쪽이 아직 진전을 내는 중이면 손잡이 대신 사실 한 줄 (REQ-20260909-010).
+     서버(/api/claim_takeover)도 같은 초로 409 를 낸다 — 화면이 숨기는 것이
+     아니라 규칙이 막는 것이고, 문장은 서버의 lease_working_why 와 같은 글자다. */
+  if (e.working)
+    return `<div class="rvpt elsew" title="실행 중인 작업을 이 화면이 끊을 수는 없습니다 — 저쪽의 진전이 ${SLOW_WIN / 60}분 넘게 없으면 이어받기가 섭니다">`
+      + `<span class="rvcap">다른 컴퓨터</span>${esc(e.machine)} 에서 진행 중`
+      + ` — 저쪽이 멈춘 뒤 가져올 수 있습니다</div>`;
   /* 낱말 손잡이는 제 줄을 갖는다 — 「끝났는지 확인」이 세운 그 실측 규칙
      (.deedrow.wordy): 좁은 칸에서 같은 줄에 세우면 문장이 잘려 버튼이 무엇에
      대한 것인지 말하는 근거가 사라진다. */
   return `<div class="deedrow wordy">` + row
     + `<div class="acts"><button type="button" class="deed"`
     + ` data-takeover="${esc(r.id)}"`
-    + ` title="이 요청의 진행을 이 컴퓨터로 옮깁니다 — ${esc(e.machine)} 는`
-    + ` 다음 차례에 손을 뗍니다">이 컴퓨터로 가져오기</button></div></div>`;
+    + ` title="저쪽이 멈춘 요청을 이 컴퓨터의 다음 작업으로 올립니다"`
+    + `>이 컴퓨터에서 이어서 하기</button></div></div>`;
 }
 /* 담당 바꾸기 손잡이. **권한 없는 사람에게도 선다** — 숨기면 화면이 권한 판정을
    한 벌 더 갖게 되고(서버와 갈라질 자리), 사람은 "왜 나는 못 하나"를 물을 데가
@@ -2366,11 +2389,13 @@ async function projectDoc(id){
       ok: "닫기"});
   }
 }
-/* ---- 진행을 이 컴퓨터로 (REQ-20260902-021 · D1 이관 경로 (b)) --------------
+/* ---- 이 컴퓨터에서 이어서 하기 (REQ-20260902-021 · D1 이관 경로 (b)) -------
 
-   **성공에는 창을 세우지 않는다** (REQ-20260830-049 가 세운 규칙): 줄이 사라지고
-   카드가 이 컴퓨터의 것이 되는 것이 곧 답이다. 그 위에 판을 하나 더 세우면
-   창이 자기가 가리키는 카드를 가린다. 거절될 때만 서버의 사유를 그대로 옮긴다. */
+   **성공에는 창을 세우지 않는다** (REQ-20260830-049 가 세운 규칙): 「진행 중」
+   줄이 「이 컴퓨터로 옮겼습니다 · 아직 시작하지 않음」으로 바뀌는 것이 곧 답이고,
+   이 컴퓨터의 세션이 집으면 그 줄도 사라진다(REQ-20260909-010). 그 위에 판을
+   하나 더 세우면 창이 자기가 가리키는 카드를 가린다. 거절될 때만 서버의 사유를
+   그대로 옮긴다 — 저쪽이 실행 중이면 서버가 409 로 그 문장을 준다. */
 async function takeoverDoc(id){
   try{
     const res = await fetch("/api/claim_takeover", {method: "POST",
@@ -2378,8 +2403,8 @@ async function takeoverDoc(id){
       body: JSON.stringify(withAs({id}))});
     const d = await res.json();
     if (!d.ok){
-      s9dlg({kind: "alert", cap: "가져오지 않음", stop: false, doc: shortId(id),
-        title: "이 컴퓨터로 가져오지 못했습니다",
+      s9dlg({kind: "alert", cap: "이어서 하지 않음", stop: false, doc: shortId(id),
+        title: "이어서 하지 못했습니다",
         desc: String(d.error || ""), ok: "닫기"});
       return;
     }

@@ -207,7 +207,7 @@ document.addEventListener("click", e => {
   const wa = evEl(e.target)?.closest("[data-wsat]");
   if (wa){ e.stopPropagation(); wsOpen(wa.dataset.wsat); return; }
   /* 담당 손잡이 둘 (REQ-20260902-021) — 카드보다 **먼저** 잡는다. 담당 배지는
-     카드 안에 있고 「이 컴퓨터로 가져오기」는 사실 줄에 붙어 있어, 먼저 잡지
+     카드 안에 있고 「이 컴퓨터에서 이어서 하기」는 사실 줄에 붙어 있어, 먼저 잡지
      않으면 누르는 순간 문서가 열려 창이 그 뒤에서 뜬다. 카드 안의 손잡이는
      카드가 아니라는 이 화면의 규칙 그대로다. 보드 카드와 문서 화면이 같은
      길로 들어온다 — 두 자리가 각자 길을 가지면 한쪽만 고쳐진다. */

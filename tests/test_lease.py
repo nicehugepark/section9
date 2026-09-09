@@ -100,7 +100,18 @@ class Lease(unittest.TestCase):
                 ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local("other"),
                                                        takeover=True)
                 self.assertFalse(ok)
-                # 담당자 본인은 옮긴다 — History 에 남는다
+                # 저쪽이 아직 진전을 내는 중(renewed 가 STALLED_WIN 안)이면 담당자
+                # 본인도 못 옮긴다 (REQ-20260909-010) — 실행 중인 저쪽을 끊을 수단이 없다
+                ok, code, why = self.m.doc_lease_acquire(rid, "claim", local=self.local(),
+                                                         takeover=True)
+                self.assertEqual((ok, code), (False, "busy-elsewhere"))
+                self.assertIn("저쪽이 멈춘 뒤", why)
+                self.assertEqual(self.lease(rid)["machine"], "there")
+                # 저쪽이 멈춘 뒤(STALLED_WIN 밖·TTL 안) 담당자 본인은 옮긴다 — History 에 남는다
+                stopped = (datetime.datetime.now().astimezone()
+                           - datetime.timedelta(seconds=self.m.STALLED_WIN + 60)
+                           ).isoformat(timespec="seconds")
+                self.set_lease(rid, renewed=stopped, since=stopped)
                 ok, code, _ = self.m.doc_lease_acquire(rid, "claim", local=self.local(),
                                                        takeover=True)
                 self.assertEqual((ok, code), (True, "takeover"))
@@ -109,7 +120,7 @@ class Lease(unittest.TestCase):
                 self.assertIn("lease: takeover me@there -> me@here", body)
                 # CLI 도 같은 경로
                 rid2 = self.new()
-                self.set_lease(rid2)
+                self.set_lease(rid2, renewed=stopped, since=stopped)
                 r = subprocess.run([S9, "claim", rid2, "--takeover"], capture_output=True,
                                    text=True, env={**self.base, "S9_USER": "me",
                                                    "S9_SESSION": "s-me2"},

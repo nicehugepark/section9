@@ -117,8 +117,11 @@ class TestReworkWatcherAcrossMachines(unittest.TestCase):
         fx, X = self.fx, self.X
         fx.pull("beta")
         fx.cli("beta", "user", "switch", "alice", sess=B_SESS)
-        # alpha 세션 A 의 리스가 아직 신선하다 — 다른 컴퓨터에서 이어가는 길은
-        # 명시 이관(--takeover)이다 (D1 조건, REQ-20260902-020)
+        # alpha 세션 A 의 리스가 아직 신선하다(TTL 안) — 다른 컴퓨터에서 이어가는
+        # 길은 명시 이관(--takeover)이다 (D1 조건, REQ-20260902-020). 단 저쪽이
+        # 아직 진전을 내는 중(STALLED_WIN 안)이면 이관도 막히므로(REQ-20260909-010)
+        # 「alpha 가 멈춘 지 15분 넘음」을 리스 시각으로 재현한다.
+        fx.age_lease("beta", X, fx.load_mod("beta").STALLED_WIN + 60)
         fx.cli("beta", "claim", X, "--takeover", sess=B_SESS)
         b = fx.read_binding_file("beta", "beta", B_SESS)
         self.assertIn(X, b.get("active_reqs") or [])

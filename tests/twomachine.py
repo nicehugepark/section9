@@ -315,6 +315,24 @@ class TwoMachine:
             raise AssertionError(f"{doc_id} 가 {machine} 에 없다")
         return mod.read_doc(path)
 
+    def age_lease(self, machine, doc_id, sec):
+        """그 머신 디스크의 문서 리스를 `sec` 초 전 것으로 — 「저쪽이 멈췄다」를
+        재현한다 (REQ-20260909-010: 저쪽의 진전이 STALLED_WIN 안이면 이관이 막힌다).
+        문서만 고친다; 세션·바인딩은 건드리지 않는다."""
+        import datetime as _dt
+        mod = self.load_mod(machine)
+        path = mod.locate(doc_id)
+        meta, body = mod.read_doc(path)
+        lease = dict(meta.get("lease") or {})
+        ts = (_dt.datetime.now().astimezone()
+              - _dt.timedelta(seconds=sec)).isoformat(timespec="seconds")
+        lease["renewed"] = ts
+        lease["since"] = min(str(lease.get("since") or ts), ts)
+        meta["lease"] = lease
+        mod.write_doc(path, meta, body)
+        mod.rebuild_index(quiet=True)
+        return lease
+
     def binding_file(self, machine_root, binding_machine, sess):
         """<machine_root> 의 state/sessions 에 있는 <binding_machine>__<sess>.json 경로."""
         mod = self.load_mod(machine_root)
