@@ -272,8 +272,26 @@
 @media (prefers-reduced-motion:reduce){.ccstatus .ccconn.ccwarn{animation:none}}
 .ccstatus .ag{display:flex;gap:9px}
 .ccstatus .ag .g{flex:none;width:14px}
-.ccstatus .ag .r{margin-left:auto;color:var(--cc-dim)}
+.ccstatus .ag .r{margin-left:auto;color:var(--cc-dim);flex:none;white-space:nowrap}
 .ccstatus .ag.sub{color:var(--cc-dim)}
+/* 에이전트 목록은 상자 안에서 스크롤한다 (REQ-20260909-075).
+
+   사람이 보는 것은 출력이고 이 목록은 보조인데, 항목이 늘면 그만큼 줄을 가져가
+   출력 판이 그대로 줄어들었다. 이제 상자의 높이가 상한이라 항목이 열둘이어도
+   판은 그대로다. 세 줄 반이 보인다 — 반 줄로 잘린 행이 "더 있다"를 말하는
+   손잡이이고, 셋 이하일 때는 상한에 닿지 않아 예전과 같은 높이로 선다.
+   좁은 창에서는 창 높이의 12%로 함께 줄어든다. 최신 항목은 맨 아래이고
+   상자는 바닥에 붙어 있다(termAgBoxWrite). */
+#cc-agents{max-height:min(calc(1.85em * 3.5), 12vh);overflow-y:auto;
+  overscroll-behavior:contain;scrollbar-width:thin}
+#cc-agents::-webkit-scrollbar{width:6px}
+#cc-agents::-webkit-scrollbar-thumb{background:var(--cc-border)}
+#cc-agents::-webkit-scrollbar-track{background:transparent}
+/* 한 항목은 한 줄이다 — 라벨이 길다고 행이 두 줄로 접히면 상한 안에서도
+   목록이 두 배로 자란다. 끝을 잘라(말줄임) 줄 수를 항목 수와 같게 맞춘다. */
+.ccstatus .ag > b{flex:none}
+.ccstatus .ag .aglab{flex:0 1 auto;min-width:0;color:var(--cc-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 [data-density="compact"] .ccterm{font-size:11.5px;line-height:1.55}
 /* REQ-040: 팔레트·첨부 칩·웨이팅 스피너·에이전트 dim — 라운드/그림자 0 유지 */
 .ccpal{border-top:1px solid var(--cc-border);max-height:230px;overflow-y:auto;padding:5px 0}
@@ -318,7 +336,7 @@
 .cctarget button:hover,.cctarget button:focus-visible,
 .ccatt .chip button:hover,.ccatt .chip button:focus-visible{color:var(--cc-red)}
 .ccstatus .agtgt{margin-left:8px;background:none;border:0;color:var(--cc-faint);
-  cursor:pointer;font:inherit;padding:0 3px}
+  cursor:pointer;font:inherit;padding:0 3px;flex:none}
 .ccstatus .agtgt:hover,.ccstatus .agtgt.on{color:var(--cc-green)}
 .ccclip{flex:none;background:none;border:0;color:var(--cc-dim);cursor:pointer;font:inherit;line-height:1.7;padding:0 2px}
 .ccclip:hover{color:var(--cc-text)}

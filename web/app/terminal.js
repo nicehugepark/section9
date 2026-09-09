@@ -789,9 +789,36 @@ const fmtTok = n => n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n | 0);
 // 지우는 잣대(600초)는 서버가 `show` 로 준다 — 화면이 자기 숫자를 들면
 // 헬스체크와 언제든 갈린다.
 const AGENT_QUIET_MARK = "조용함";
+// 상자가 높이를 막으므로 목록은 길어도 된다 — 이 수는 화면의 한계가 아니라
+// 한 세션이 거느릴 만한 에이전트의 상한이다 (REQ-20260909-075).
+const AGENT_ROWS_MAX = 40;
+// ?agdemo=N — 진단·캡처용(?agview 선례). 에이전트가 N개일 때의 배치를 사람 손
+// 없이 찍는다. 데이터를 만들지 않고 그리기만 하며, 질의가 없으면 null 이라
+// 보통 화면은 이 함수를 지나간다.
+function termDemoAgents(){
+  const m = /[?&]agdemo=(\d+)/.exec(location.search);
+  if (!m) return null;
+  const n = Math.min(+m[1] || 0, AGENT_ROWS_MAX);
+  return Array.from({length: n}, (_, i) => ({
+    id: "demo" + i, type: "s9-agnt-designer", active: true, show: true,
+    label: "Bash 열두 개가 서 있을 때의 배치를 재는 줄 " + (i + 1),
+    elapsed: 60 * (i + 1), tokens: 1200 * (i + 1), quiet: 0,
+  }));
+}
 // 이벤트가 안 와도 초는 흐른다 — 10초 폴 사이에 멈춰 있는 숫자는 멈춘 작업으로
 // 읽힌다. 행을 다시 짓지 않고 숫자 자리만 바꾼다(다시 지으면 누르고 있던
 // 손잡이가 1초마다 사라진다).
+// 상자 안의 목록은 아래가 최신이다 — 다시 그릴 때마다 맨 위로 튀면 새로 붙은
+// 에이전트가 상자 밖에 숨는다. 사람이 위로 올려 읽는 중이면 그 자리를 지키고,
+// 아니면 바닥에 붙인다 (출력 판의 near-bottom 규칙과 같은 자).
+function termAgBoxWrite(box, html){
+  const pinned = box.scrollHeight - box.scrollTop - box.clientHeight < 6;
+  const keep = box.scrollTop;
+  box.innerHTML = html;
+  box.scrollTop = pinned ? box.scrollHeight : keep;
+}
+
+
 function termAgentsTick(){
   if (document.hidden) return;
   document.querySelectorAll("#cc-agents [data-base]").forEach(el => {
@@ -800,7 +827,6 @@ function termAgentsTick(){
   });
 }
 setInterval(termAgentsTick, 1000);
-
 function termAgentsRender(T){
   const box = $("#cc-agents");
   if (!box) return;
@@ -808,7 +834,12 @@ function termAgentsRender(T){
   // transcript 근사(T.agents)를 그린다 (REQ-20260824-044)
   // 화면에서 지우는 잣대는 `show` 다(죽음의 잣대 `active` 와 다르다) — 구버전
   // serve 는 show 를 주지 않으므로 그때는 예전처럼 active 로 떨어진다.
-  const srv = (T.srvAgents || []).filter(a => a.show ?? a.active).slice(-5);
+  // 목록의 길이는 이제 상자가 막는다 — 다섯을 넘는 것을 화면에서 버리지 않고
+  // 상자 안에서 스크롤한다 (REQ-20260909-075). 예전에는 높이를 지키려고 데이터를
+  // 버렸고, 여섯째 에이전트는 아무 표 없이 사라졌다.
+  const demo = termDemoAgents();
+  const srv = (T.srvAgents || []).filter(a => a.show ?? a.active).slice(-AGENT_ROWS_MAX);
+  const rows = demo || srv;
   // 지목한 대상이 목록에서 사라졌으면(종료·정지) 칩을 자동 해제한다 —
   // 죽은 에이전트를 대상으로 남겨두면 다음 전송이 통째로 반려된다.
   // 화면에 서 있는 행과 같은 잣대를 쓴다 — 갈리면 조용해진 순간마다 지목이
@@ -817,9 +848,9 @@ function termAgentsRender(T){
       && !(T.srvAgents || []).some(a => (a.show ?? a.active)
                                         && a.id === T.target.id))
     termTargetClear(T, "대상이 종료돼 지목을 해제했다");
-  if (srv.length){
+  if (rows.length){
     const selId = T.agv ? T.agv.id : null;   // 열람 중 에이전트 = 활성 표시 (REQ-057)
-    box.innerHTML = srv.map(a => {
+    termAgBoxWrite(box, rows.map(a => {
       const sel = a.id === selId;
       const tgt = T.target && T.target.id === a.id;
       const quiet = !a.active;   // 서 있되 조용한 행
@@ -833,23 +864,23 @@ function termAgentsRender(T){
         : "";
       return `<div class="ag sub ccagrow${sel ? " sel" : ""}${quiet ? " agquiet" : ""}" data-agent="${esc(a.id)}" title="${quiet ? "마지막 기록에서 시간이 지났다 — 긴 도구 하나를 붙잡고 있는 중일 수 있다. " : ""}클릭 또는 ← 키로 이 에이전트의 작업 내용을 터미널에서 본다">` +
         `<span class="g"${sel ? ' style="color:var(--cc-green)"' : ""}>${dot}</span> <b>${esc(a.type)}</b> ` +
-        `<span style="color:var(--cc-faint)">${esc(a.label || a.desc)}</span>` +
+        `<span class="aglab">${esc(a.label || a.desc)}</span>` +
         `<button class="agtgt${tgt ? " on" : ""}" data-target="${esc(a.id)}" title="이 에이전트를 전송 대상으로 지목 — 다음 메시지를 리드가 중계합니다">→</button>` +
         `<span class="r">${nmark ? `<span style="color:var(--cc-green)">${nmark}</span> · ` : ""}` +
         `${sel ? "viewing · " : ""}${qs}<span data-base="${now - (a.elapsed || 0) * 1000}">${fmtDur(a.elapsed)}</span> · ↓ ${fmtTok(a.tokens)} tokens</span></div>`;
-    }).join("");
+    }).join(""));
     termMainRow(T);
     return;
   }
   termMainRow(T);
   // 정상 경로(서버 목록)를 한 번이라도 받았으면 활성 0건 = 빈 스트립이 정답.
-  if (T.srvAgentsOk){ box.innerHTML = ""; return; }
+  if (T.srvAgentsOk){ termAgBoxWrite(box, ""); return; }
   // 구버전 serve 폴백: transcript로 추정한 목록이라 열람 대상이 아니다. 정확한
   // 상태도 알 수 없으므로 "running"이라 단언하지 않고, 열 수 없음을 행에 쓴다.
-  box.innerHTML = T.agents.map(a =>
+  termAgBoxWrite(box, T.agents.map(a =>
     `<div class="ag sub agapx" title="이 서버에는 에이전트 목록 기능이 없어 화면 기록으로 추정한 행입니다. 작업 내용은 열어볼 수 없습니다.">` +
-    `<span class="g">○</span> ${esc(a.type)} <span style="color:var(--cc-faint)">${esc(a.desc)}</span>` +
-    `<span class="r">추정 · 열람 불가</span></div>`).join("");
+    `<span class="g">○</span> ${esc(a.type)} <span class="aglab">${esc(a.desc)}</span>` +
+    `<span class="r">추정 · 열람 불가</span></div>`).join(""));
 }
 
 /* ---- 에이전트 뷰어 (REQ-044): 스트립 행 클릭/← 키 → 해당 에이전트 transcript
