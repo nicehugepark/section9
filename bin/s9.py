@@ -9453,6 +9453,13 @@ def chat_documented_set(sid8):
     return out
 
 
+# 채팅이 요청을 세울 때 앞에 접어 넣는 묶음의 머리말 (REQ-20260910-010).
+# **쓰는 쪽과 걷어내는 쪽이 이 한 글자를 함께 본다** — Jira 로 나가는 원문에서
+# 이 묶음을 빼야 하는데, 머리말이 두 곳에 따로 적혀 있으면 한쪽만 바뀌는 날
+# 조용히 다시 실린다.
+CHAT_LEAD_IN_HEAD = "[선행 대화 — 직전 미문서화 메시지]"
+
+
 def _chat_context(sid8, sender, window_sec=900, limit=5):
     """직전 미문서화 채팅(req 미동봉 kind=chat, 같은 발신자)을 원안 문맥으로 수집
     (REQ-20260825-007) — 질문→요청 연속 대화에서 Question 분류로 문서화되지
@@ -9674,7 +9681,7 @@ def chat_audit(text, sender, sid8, doc="", anchor="", as_type=""):
         ctx = _chat_context(sid8, sender)
         quoted = [l for l in ctx if not l.get("req")]
         if quoted:
-            body = ("[선행 대화 — 직전 미문서화 메시지]\n" + "\n".join(
+            body = (CHAT_LEAD_IN_HEAD + "\n" + "\n".join(
                 f"- ({(l.get('ts') or '')[11:16]}) "
                 + " ".join((l.get("text") or "").split())
                 for l in quoted) + "\n\n" + t)
@@ -28117,7 +28124,29 @@ def jira_original_of(body):
         if JIRA_ATTACH_LINE_RE.match(ln.strip()):   # 첨부 줄은 코멘트와 같은 규칙으로 뺀다
             continue
         out.append(ln)
-    return "\n".join(out).strip()
+    return jira_drop_lead_in("\n".join(out).strip())
+
+
+def jira_drop_lead_in(text):
+    """앞에 접혀 있는 「선행 대화」 묶음을 걷어낸다 (주인 지시 2026-09-10 08:37).
+
+    채팅으로 온 말이 요청이 될 때, 아직 문서가 없는 **직전 메시지들**이 원문
+    앞에 목록으로 접혀 들어간다(`CHAT_LEAD_IN_HEAD`). 그것은 이 저장소 안에서
+    맥락을 잇는 장치이지 티켓을 읽는 사람에게 줄 말이 아니다 — 남의 화면에는
+    사람이 실제로 한 그 말만 나가야 한다.
+
+    걷어내는 범위는 **머리말부터 첫 빈 줄까지**다(쓰는 쪽이 `\n\n` 로 잇는다).
+    빈 줄이 없으면 원문이 그 묶음뿐이라는 뜻이라 아무것도 걷지 않는다 — 티켓
+    본문을 통째로 비우느니 그대로 싣는 편이 낫다.
+    """
+    t = text or ""
+    if not t.startswith(CHAT_LEAD_IN_HEAD):
+        return t
+    lines = t.splitlines()
+    for i, ln in enumerate(lines[1:], 1):
+        if not ln.strip():
+            return "\n".join(lines[i + 1:]).strip()
+    return t
 
 
 def jira_original_lines(body):

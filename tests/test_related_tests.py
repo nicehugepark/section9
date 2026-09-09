@@ -248,7 +248,10 @@ class GateWiring(unittest.TestCase):
         ends = [i for i in (body.find("\ndef "), body.find("\nif __name__")) if i > 0]
         body = body[:min(ends)] if ends else body
         self.assertIn("diff_text = staged_diff_text(staged)", body)
-        self.assertIn("staged_tests_gate(staged, diff_text)", body)
+        # 인자 목록은 계약이 아니다 — 고정할 성질은 「읽은 diff 를 그대로
+        # 넘긴다」이지 인자의 수가 아니다 (REQ-20260910-012 가 지운 시험 목록을
+        # 셋째 인자로 더했다).
+        self.assertIn("staged_tests_gate(staged, diff_text", body)
         self.assertIn("role_change_hits(staged, diff_text)", body)
         self.assertEqual(body.count("git\", \"diff"), 0, "diff 는 staged_diff_text 한 곳에서")
 

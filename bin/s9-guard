@@ -433,6 +433,14 @@ def staged_now():
     return [l for l in out.stdout.splitlines() if l.strip()]
 
 
+def deleted_now():
+    """지금 담겨 있는 **삭제** 목록 (`--diff-filter=D`). 돌릴 시험이 없는 자리다."""
+    out = subprocess.run(
+        ["git", "diff", "--cached", "--diff-filter=D", "--name-only"],
+        capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT)
+    return [l for l in out.stdout.splitlines() if l.strip()]
+
+
 # git 이 훅에게 물려주는 환경변수. 훅이 부르는 자식은 이걸 물려받으면 안 된다.
 GIT_ENV_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
                 "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -698,7 +706,7 @@ def staged_diff_text(staged=None):
         return ""
 
 
-def staged_tests_gate(staged, diff_text=None):
+def staged_tests_gate(staged, diff_text=None, deleted=()):
     """커밋 검사 = 담긴 시험 ∪ 관련 시험 ∪ 스모크 (REQ-20260830-029, 필수 계층 배선).
 
     21:42 커밋은 같은 커밋에 들어 있던 테스트조차 통과 못 했다. 전체 스위트는
@@ -718,10 +726,14 @@ def staged_tests_gate(staged, diff_text=None):
     # 찾다 「고르지 못한 패턴」으로 실패하고 커밋이 통째로 막혔다 — 지운 시험은
     # 돌릴 것이 없다는 뜻이지 실패가 아니다 (실측 2026-09-10: 옛 계약 시험을
     # 새 계약으로 다시 쓰는 커밋이 이 자리에서 막혔다).
+    # 무엇이 지워졌는지는 **부르는 쪽이 준다** — 이 함수는 파일시스템을 보지
+    # 않는다. 인자로 받은 목록을 「지금 없는 파일」로 다시 판정하면, 목록을
+    # 손으로 넘기는 자리(시험·다른 검사)가 통째로 빈손이 된다.
+    gone = set(deleted or ())
     names = [os.path.basename(f)
              for f in staged
              if f.startswith("tests/test_") and f.endswith(".py")
-             and os.path.exists(os.path.join(ROOT, f))]
+             and f not in gone]
     if not names and not any(f.startswith(("bin/", "web/", "tests/"))
                              for f in staged):
         return   # 코드가 안 담겼으면(문서·상태 커밋) 검사 생략 — 종전과 같다
@@ -1350,7 +1362,7 @@ def _pre_commit_gates():
     # 담긴 diff 는 한 번만 뜬다 — 관련 시험 선택(REQ-20260909-059)과 역할 변경
     # 검사(REQ-20260902-032, 프로필 파일 전체가 아니라 `role:` 줄만)가 같이 읽는다.
     diff_text = staged_diff_text(staged)
-    staged_tests_gate(staged, diff_text)
+    staged_tests_gate(staged, diff_text, deleted_now())
     wide_change_gate(staged, wide_verdict)
     secret_gate(staged)
     hits = protected_hits(staged)

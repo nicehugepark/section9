@@ -104,6 +104,44 @@ class JiraContent(unittest.TestCase):
         self.assertIn("PRJ_TEXT.jiraContents", jira)       # 글자는 표 한 곳
         self.assertIn("{slug, key, direction, content, mark}", jira)   # mark 는 REQ-20260909-049
 
+    # ---- 원문에서 「선행 대화」를 뺀다 (REQ-20260910-010) -------------------
+    # 채팅으로 온 말이 요청이 될 때, 아직 문서가 없는 직전 메시지들이 원문 앞에
+    # 목록으로 접혀 들어간다. 그것은 이 저장소 안에서 맥락을 잇는 장치이지 티켓을
+    # 읽는 사람에게 줄 말이 아니다 — 주인 지시 2026-09-10 08:37.
+    def _doc(self, original):
+        return "---\nid: REQ-1\n---\n\n## Original\n\n" + original + "\n\n## Notes\n"
+
+    def test_s6_the_lead_in_never_reaches_the_ticket(self):
+        """앞에 접힌 선행 대화 묶음은 원문에서 걷힌다 — 사람이 한 말만 남는다."""
+        head = self.m.CHAT_LEAD_IN_HEAD
+        body = self._doc(head + "\n- (08:12) 앞에 한 말\n- (08:13) 또 한 말\n\n"
+                         "지라 티켓 본문에 원문을 넣을 때 선행대화는 제외해라.")
+        got = self.m.jira_original_of(body)
+        self.assertEqual(got, "지라 티켓 본문에 원문을 넣을 때 선행대화는 제외해라.")
+        self.assertNotIn("앞에 한 말", got)
+        self.assertNotIn(head, got)
+        # description 문단에도 실리지 않는다
+        lines = self.m.jira_original_lines(body)
+        self.assertEqual(lines[0], "원문:")
+        self.assertNotIn(head, "\n".join(lines))
+
+    def test_s6b_plain_original_is_untouched(self):
+        """묶음이 없으면 원문은 한 글자도 바뀌지 않는다."""
+        body = self._doc("그냥 한 말\n\n둘째 문단")
+        self.assertEqual(self.m.jira_original_of(body), "그냥 한 말\n\n둘째 문단")
+
+    def test_s6c_a_body_that_is_only_the_lead_in_stays(self):
+        """묶음뿐이면 걷지 않는다 — 티켓 본문을 통째로 비우느니 그대로 싣는다."""
+        only = self.m.CHAT_LEAD_IN_HEAD + "\n- (08:12) 앞에 한 말"
+        self.assertEqual(self.m.jira_original_of(self._doc(only)), only)
+
+    def test_s6d_the_head_line_lives_in_one_place(self):
+        """쓰는 쪽과 걷어내는 쪽이 같은 글자를 본다 — 두 벌이면 한쪽만 바뀐다."""
+        src = open(os.path.join(HERE, "..", "bin", "s9.py"),
+                   encoding="utf-8").read()
+        self.assertEqual(src.count('"[선행 대화 — 직전 미문서화 메시지]"'), 1,
+                         "머리말 글자가 두 곳 이상에 적혀 있다")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
