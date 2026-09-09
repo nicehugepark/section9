@@ -2136,9 +2136,13 @@ def index_upsert(*paths):
             # 그 자리에 문서가 없다(지웠거나 옮겼다) — 묘비를 세운다.
             # 파일명이 곧 id 인 것이 이 저장소의 약속이다.
             gone.append(os.path.basename(p)[:-3])
+    # 같은 id 가 새 자리(A)와 옛 자리(D)에 함께 오면(문서 이동) 문서는 살아
+    # 있다 — 묘비가 새 행을 지우지 않게 옛 자리의 묘비는 세우지 않는다.
+    live = {r["id"] for r in rows}
+    gone = [i for i in gone if i not in live]
     if not rows and not gone:
         return
-    ids = {r["id"] for r in rows} | set(gone)
+    ids = live | set(gone)
     with _INDEX_LOCK:
         # 색인 md 는 **옛 키와 새 키의 합집합**을 다시 쓴다 — 상태가 open 에서
         # in-progress 로 가면 두 파일이 함께 바뀐다. 옛 키는 덧붙이기 전에만
@@ -2256,8 +2260,13 @@ def index_sync_range(before, after="HEAD", quiet=True):
         rebuild_index(quiet=quiet)
         return -1
     try:
-        r = _sync_git("diff", "--name-only", before, after or "HEAD",
-                      "--", "vault", timeout=10)
+        # --no-renames (REQ-20260909-038, 실측 2026-09-09 10:56): 맥의 rm 은
+        # 원본 삭제 + .trash 추가로 오는데, git 은 그 둘을 rename 하나로 접어
+        # --name-only 에 **새 경로만** 낸다. 새 경로는 .trash 라 걸러지고 옛
+        # 경로는 오지 않아 묘비가 서지 않았다 — 목록에 없는 문서의 카드가 남았다.
+        # 둘로 풀어 받아야 옛 자리(D)에 묘비가 서고 새 자리(A)가 오른다.
+        r = _sync_git("diff", "--name-only", "--no-renames", before,
+                      after or "HEAD", "--", "vault", timeout=10)
     except Exception:
         r = None
     if r is None or r.returncode != 0:
