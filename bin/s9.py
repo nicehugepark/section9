@@ -10723,6 +10723,46 @@ def dead_turn_tick(bindings=None, now=None, send=None, state_path=None, live=Non
     return resumed
 
 
+def here_watch_tick(now=None, grace=None, platform=None, _spawn=None):
+    """이 판(needs_os)의 open 요청을 워처가 집는다 (REQ-20260909-012). 반환: 집은 id."""
+    import time as _time
+    nowt = now or _time.time()
+    out = []
+    for r in here_requests(platform=platform):
+        if r.get("status") != "open":
+            continue
+        path = locate(r["id"])
+        if not path:
+            continue
+        meta, _body = read_doc(path)
+        cfg = user_config(meta.get("user", "")) or {}
+        if str(cfg.get("auto_resume") or "off").lower() != "on":
+            continue                       # 담당자가 맡기기를 안 켰다
+        try:
+            created = datetime.datetime.fromisoformat(str(meta.get("created"))).timestamp()
+        except (TypeError, ValueError):
+            created = 0.0
+        g = grace if grace is not None else rework_grace(meta)
+        if nowt - created < g:
+            continue                       # 유예: 라이브 세션이 s9 next 로 집을 기회
+        if rework_claimed(r["id"]):
+            continue
+        try:
+            do_transition(r["id"], "in-progress",
+                          note=f"이 판({platform or os_platform()})의 워처가 집었다 — 다른 기계가 여기서 재 달라고 남긴 요청",
+                          user=meta.get("user"), auto=True, via="watcher")
+        except Exception as _e:
+            _auto_log(f"HERE-TRANSITION-FAIL {r['id']}: {_e}")
+            continue
+        meta, _body = read_doc(path)
+        spawn = _spawn or (lambda did, m: _spawn_wake(
+            did, m, mins=0, kind="resume",
+            why=f"다른 기계가 이 판({platform or os_platform()})에서 재 달라고 남긴 요청 — 워처가 집어 띄웠다."))
+        if spawn(r["id"], meta):
+            out.append(r["id"])
+    return out
+
+
 def rework_watch_tick(grace=None, now=None):
     """반려 재작업 워처 1틱 (REQ-20260823-083) — serve의 데몬 스레드가 30초마다 호출.
     반려된(마지막 전이 review→in-progress) in-progress REQ 중 유예를 넘기고도
@@ -10825,6 +10865,15 @@ def rework_watch_tick(grace=None, now=None):
                 why="맡고 있던 작업자가 사라졌다 — 워처가 이어받게 띄웠다.")
         if done_it:
             spawned.append(r["id"])
+    # 다른 기계가 이 판에서 재 달라고 남긴 open 요청을 집는다 (REQ-20260909-012).
+    # 실측 2026-09-09 08:53: 맥 대시보드는 켜져 있었지만 needs_os=macOS 요청은
+    # 사람이 `s9 code` 를 열어 `s9 next` 를 볼 때까지 아무도 집지 않았다. 규율은
+    # 그대로다 — 담당자의 auto_resume 이 켜져 있고, 생성 뒤 유예가 지났고, 아무도
+    # 클레임하지 않았을 때만. 캡·쿨다운은 _spawn_worker 가 건다.
+    try:
+        spawned += here_watch_tick(now=nowt, grace=grace)
+    except Exception as _e:
+        _auto_log(f"HERE-TICK-FAIL: {_e}")
     # 승인 메모 후속은 **무인 스폰으로 하지 않는다** (REQ-20260830-002).
     #
     # 있던 것: 유예 안에 리드(훅 주입 fast-path)가 소비하지 않은 승인 메모를
@@ -11941,6 +11990,10 @@ def _sync_poll_record(result, now=None, ms=0, path=None):
                "count": count, "since": since}
         if result not in ("ok", "none"):
             rec["kind"] = result
+            if _SYNC_POLL_LAST.get("error"):
+                rec["error"] = _SYNC_POLL_LAST["error"]     # git 의 문장 — 까닭을 버리지 않는다
+            if _SYNC_POLL_LAST.get("paths"):
+                rec["paths"] = _SYNC_POLL_LAST["paths"][:5]
         _sync_event_write(rec)
         logged = now
     try:
@@ -11971,15 +12024,38 @@ def sync_poll(timeout=8):
     return result
 
 
+_SYNC_POLL_LAST = {"error": "", "paths": []}   # 마지막 폴 실패의 git 문장·경로 — 기록이 싣는다
+
+
+def sync_poll_classify(text):
+    """폴 실패의 git 출력 → (종류, 걸린 경로들) (REQ-20260909-017).
+
+    맥미니 실측 2026-09-08 21:05 ~ 09-09 09:08: 142회 연속 실패가 전부 「net」으로
+    적혔는데 fetch 는 됐다 — 네트워크가 아니라 git 의 거부였고, 문장은 버려져
+    12시간 동안 아무도 까닭을 몰랐다. 종류 셋: dirty(추적 파일의 로컬 변경이 덮이려
+    한다 — 경로를 함께) · diverged(ff 불가) · net(그 밖)."""
+    t = text or ""
+    if re.search(r"local changes to the following files would be overwritten|"
+                 r"would be overwritten by merge", t):
+        paths = [ln.strip() for ln in t.splitlines()
+                 if ln.startswith("\t") or ln.startswith("    ")]
+        return "dirty", [p for p in paths if p and not p.startswith("Please")]
+    if re.search(r"Not possible to fast-forward|diverg|cannot fast-forward", t):
+        return "diverged", []
+    return "net", []
+
+
 def _sync_poll_once(timeout=8):
     """폴 한 번의 알맹이 — 기록은 sync_poll 이 한다."""
     import time as _time
     if sync_mode() != "remote":
         return "none"
+    _SYNC_POLL_LAST["error"], _SYNC_POLL_LAST["paths"] = "", []
     try:
         before = _sync_git("rev-parse", "HEAD").stdout.strip()
         r = git_run(["pull", "--ff-only"], timeout=timeout)
-    except Exception:
+    except Exception as e:
+        _SYNC_POLL_LAST["error"] = str(e)[:200]
         return "net"
     finally:
         try:
@@ -11990,9 +12066,20 @@ def _sync_poll_once(timeout=8):
             pass
     if r.returncode != 0:
         t = (r.stderr or "") + (r.stdout or "")
-        if re.search(r"Not possible to fast-forward|diverg|cannot fast-forward", t):
-            return "diverged"
-        return "net"
+        kind, paths = sync_poll_classify(t)
+        # fetch 의 「From …」 줄이 먼저 오므로 git 의 error/fatal 줄을 우선 잡는다
+        lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+        first = next((ln for ln in lines if re.match(r"(error|fatal):", ln)), lines[0] if lines else "")
+        _SYNC_POLL_LAST["error"], _SYNC_POLL_LAST["paths"] = first[:200], paths
+        # 이 머신의 살림(state/)만 걸렸으면 전송 루프가 푼다 — commit→rebase→push.
+        # 맥이 09:12 훅 commit 으로 풀린 그 길을 스스로 간다. state/ 밖(사람이
+        # 고치던 코드)이 섞였으면 손대지 않는다: 남의 편집을 commit 하지 않는다.
+        if kind == "dirty" and paths and all(p.startswith("state/") for p in paths):
+            try:
+                sync_run("poll-dirty")
+            except Exception:
+                pass
+        return kind
     after = _sync_git("rev-parse", "HEAD").stdout.strip()
     _sync_pull_stamp()
     if after != before:
