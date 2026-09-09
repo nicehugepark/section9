@@ -9526,6 +9526,13 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     if os.environ.get("S9_AUTO_RESUME_DISABLE"):
         return block("disabled", "백그라운드 작업이 꺼져 있습니다 "
                                  "(S9_AUTO_RESUME_DISABLE)")
+    # 이 판에서 할 수 없는 요청은 **어떤 경로로도** 띄우지 않는다 (REQ-20260909-071,
+    # 실측 2026-09-09 14:34: 맥용 검증 요청(needs_os macOS)의 정체 후속 작업자가 WSL 에
+    # 떠서 「할 수 없다」며 blocked 로 바꿔 놓았다 — 맥 세션이 재던 중이었다).
+    need = str((meta or {}).get("needs_os") or "").strip()
+    if need and not needs_os_matches(need):
+        return block("needs_os", f"이 요청은 {need} 에서 해야 합니다 — 이 판({os_platform()})"
+                                 f"에서는 띄우지 않습니다")
     # 끝난 문서에는 **어떤 경로로도** 뜨지 않는다 (REQ-20260830-002).
     #
     # 실사고 2026-08-30 00:30: 18:56 에 done 으로 닫힌 REQ 에 무인 작업자가
@@ -16020,6 +16027,17 @@ def here_requests(platform=None, rows=None):
         if need and need in ok:
             out.append(r)
     return work_order(out) if out else []
+
+
+def needs_os_matches(need, platform=None):
+    """needs_os 가 이 판에서 되는가 — Linux 요구는 WSL 도 만족한다. here_requests(집기)와
+    _spawn_worker(띄우기)가 같은 규칙을 쓴다 (REQ-20260909-071)."""
+    need = str(need or "").strip()
+    if not need:
+        return True
+    here = platform or os_platform()
+    ok = {here} | ({"Linux"} if here == "WSL" else set())
+    return need in ok
 
 
 def cmd_next(args):

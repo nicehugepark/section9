@@ -74,6 +74,30 @@ class NeedsOs(unittest.TestCase):
         self.assertEqual(ids(self.m.here_requests("Windows")) & mine, set())
 
     # N3. s9 next 가 이 기계의 것을 먼저 보이고 --json 에 here 가 든다
+    def test_n4_the_watcher_does_not_spawn_on_the_wrong_platform(self):
+        """워처는 needs_os 가 이 판과 다른 요청의 작업자를 띄우지 않는다 (REQ-20260909-071,
+        실측 2026-09-09 14:34: 맥용 검증 요청의 정체 후속 작업자가 WSL 에 떴다)."""
+        rid = self.new("맥에서 볼 것", "--needs-os", "macOS")
+        meta = self.m.read_doc(self.m.locate(rid))[0]
+        real = subprocess.Popen
+
+        def no_popen(*a, **kw):
+            raise AssertionError("무인 워커를 실제로 띄웠다")
+        subprocess.Popen = no_popen
+        out = {}
+        try:
+            with mock.patch.object(self.m, "os_platform", return_value="WSL"):
+                ok = self.m._spawn_worker(rid, meta, "p", "stalled", out=out)
+        finally:
+            subprocess.Popen = real
+        self.assertFalse(ok)
+        self.assertEqual(out.get("blocked"), "needs_os", out)
+        self.assertIn("macOS", out.get("why", ""))
+        # 판이 맞으면 이 검사는 지나간다(뒤의 다른 검사에 걸리더라도 needs_os 는 아니다)
+        self.assertTrue(self.m.needs_os_matches("macOS", platform="macOS"))
+        self.assertTrue(self.m.needs_os_matches("Linux", platform="WSL"))
+        self.assertFalse(self.m.needs_os_matches("Windows", platform="WSL"))
+
     def test_n3_next_lists_requests_for_this_machine(self):
         rid = self.new("윈도우에서 잴 것", "--needs-os", "Windows")
         with mock.patch.object(self.m, "os_platform", lambda: "Windows"), \
