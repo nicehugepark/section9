@@ -516,6 +516,13 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .metatbl .jkey{font-family:var(--mono);color:var(--text);text-decoration:underline dotted;text-underline-offset:2px}
 .metatbl .jdiff{color:var(--muted)}
 .metatbl .jerr{color:var(--warn,#b45309)}
+/* 잇기·끊기 글자 손잡이 (REQ-20260909-036) — `.ansjump` 와 같은 어휘: 면도
+   테두리도 없이 잉크와 밑줄만으로 「누를 수 있다」를 말한다. */
+.metatbl .jlink{display:inline;font-family:inherit;font-size:inherit;font-weight:600;
+  color:var(--muted);background:none;border:0;padding:0 0 1px;cursor:pointer;
+  white-space:nowrap;border-bottom:1px solid transparent}
+.metatbl .jlink:hover{color:var(--text);border-bottom-color:var(--text)}
+.metatbl .jlink:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 
 /* Settings 외부 서비스 › 프로젝트 연동 (REQ-20260909-015) — 줄마다 한 연동, 아래에 잇는 폼 */
 .jlinkbox{display:flex;flex-direction:column;gap:4px;flex:1 1 100%;min-width:0}

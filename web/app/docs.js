@@ -1240,9 +1240,27 @@ function answerLand(id){
 /* 문서의 「Jira」 행 (REQ-20260908-074, ux-writer·tech-writer): 「MP1-7 · In Progress ·
    마지막 연동 3분 전」. 만드는 중/보내는 중/실패는 그 문장이고, 서버 문장은 원문 그대로
    뒤에 붙는다. 「동기화」는 저장소 작업(s9 sync)의 말이라 여기서는 「연동」이다. */
+/* 이미 있는 Jira 이슈를 **만들지 않고 잇는** 손잡이 (REQ-20260909-036, 주인 요구
+   2026-09-09 11:11: 「수동으로 JIRA 티켓 번호를 카드나 문서에서 추가를 한 후에」).
+   키가 없으면 「이슈 잇기」, 있으면 「끊기」 — 둘 다 카드가 프로젝트를 바꿀 때 쓰는
+   그 길(/api/doc/set → do_set)이라 검사(연동·접두·Jira 에 있는지)와 History 는 서버가
+   한다. 카드에는 두지 않는다 — 카드는 좁다. 손잡이가 서는 조건은 프로젝트 손잡이
+   (projBtnHTML)와 같고, 거기에 「이 프로젝트에 Jira 연동이 있다」만 더한다 — 연동
+   없는 프로젝트의 문서에 잇기를 세우면 눌러 봐야 거절만 돌아온다. */
+function docJiraLive(m){
+  if (!m || m.type !== "request" || TERMINAL.has(m.status)) return false;
+  if ((window.__whoami || {}).role === "viewer") return false;
+  const pr = (window.__projects || []).find(p => p.slug === m.project);
+  return !!(pr && pr.jira && pr.jira.project_key);
+}
 function docJiraRowHTML(m, rec){   // 이름은 Settings 의 jiraRowHTML(jira.js)과 겹치지 않게 — 번들이 한 이름 공간이다
   const j = (rec && rec.jira) || (m && typeof m.jira === "object" && m.jira) || {};
-  if (!j.key && !j.pending && !j.last_error) return "";
+  const live = docJiraLive(m);
+  if (!j.key && !j.pending && !j.last_error){
+    if (!live) return "";
+    return `<button type="button" class="jlink" data-jiralink="${esc(m.id)}"
+      title="이미 있는 Jira 이슈의 키(예: MP1-7)를 적어 이 요청과 잇습니다 — 이슈를 만들지 않습니다">이슈 잇기</button>`;
+  }
   const bits = [];
   if (j.key)
     bits.push(`<a class="jkey" href="${esc(j.url || "#")}" target="_blank" rel="noopener"
@@ -1254,5 +1272,60 @@ function docJiraRowHTML(m, rec){   // 이름은 Settings 의 jiraRowHTML(jira.js
   if (j.last_error)
     bits.push(`<span class="jerr">${j.key ? "보내지 못했습니다" : "이슈를 만들지 못했습니다"} — ${esc(j.last_error)}${j.pending ? " · 30초 뒤 다시 시도합니다" : ""}</span>`);
   else if (j.key && j.synced_at) bits.push(`마지막 연동 ${esc(prjAgo(j.synced_at, Date.now()))}`);
+  if (j.key && live)
+    bits.push(`<button type="button" class="jlink" data-jiraunlink="${esc(m.id)}"
+      title="이 요청과 ${esc(j.key)} 의 연결을 끊습니다 — Jira 의 이슈는 그대로 남습니다">끊기</button>`);
   return bits.join(" · ");
+}
+async function jiraLinkPost(id, key){
+  const res = await fetch("/api/doc/set", {method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(withAs({id, jira_key: key}))});
+  return res.json();
+}
+async function jiraLinkDoc(id){
+  const key = await s9dlg({kind: "prompt", cap: "Jira", doc: shortId(id),
+    title: "이미 있는 Jira 이슈를 잇습니다",
+    desc: "이슈 키를 적어 주세요(예: MP1-7). 이슈를 새로 만들지 않고 잇습니다 — "
+        + "이은 뒤에는 그 이슈의 상태가 60초마다 여기로 따라옵니다.",
+    required: true, ok: "잇기", cancel: "그만두기"});
+  if (key === null || !String(key).trim()) return;
+  try{
+    const d = await jiraLinkPost(id, String(key).trim());
+    // 서버의 거부 문장을 **그대로** 옮긴다 — 문구를 두 벌로 만들지 않는다.
+    if (!d.ok){
+      s9dlg({kind: "alert", cap: "Jira", doc: shortId(id),
+        title: "이슈를 잇지 못했습니다", desc: String(d.error || ""), ok: "닫기"});
+      return;
+    }
+    refreshCatalog(true);
+    reloadShowing(id);
+  }catch(e){
+    s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
+      ok: "닫기"});
+  }
+}
+async function jiraUnlinkDoc(id){
+  const r = catFind(id) || {};
+  const key = (r.jira && r.jira.key) || "";
+  const yes = await s9dlg({kind: "confirm", cap: "Jira", doc: shortId(id),
+    title: `${key || "이슈"} 와의 연결을 끊습니다`,
+    desc: "이 문서에서만 끊습니다 — Jira 의 이슈는 그대로 남고, 상태도 더는 따라오지 않습니다.",
+    ok: "끊기", cancel: "그만두기"});
+  if (!yes) return;
+  try{
+    const d = await jiraLinkPost(id, "");
+    if (!d.ok){
+      s9dlg({kind: "alert", cap: "Jira", doc: shortId(id),
+        title: "연결을 끊지 못했습니다", desc: String(d.error || ""), ok: "닫기"});
+      return;
+    }
+    refreshCatalog(true);
+    reloadShowing(id);
+  }catch(e){
+    s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
+      desc: "잠시 뒤 다시 시도해 주세요. 서버가 재시작 중일 수 있습니다.",
+      ok: "닫기"});
+  }
 }

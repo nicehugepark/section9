@@ -217,6 +217,11 @@ document.addEventListener("click", e => {
   // 손잡이는 카드가 아니라는 이 화면의 규칙 그대로다.
   const prj = evEl(e.target)?.closest("[data-projset]");
   if (prj){ e.stopPropagation(); projectDoc(prj.dataset.projset); return; }
+  // Jira 이슈 잇기·끊기 (REQ-20260909-036) — 문서 화면의 Jira 행에만 선다
+  const jl = evEl(e.target)?.closest("[data-jiralink]");
+  if (jl){ e.stopPropagation(); jiraLinkDoc(jl.dataset.jiralink); return; }
+  const ju = evEl(e.target)?.closest("[data-jiraunlink]");
+  if (ju){ e.stopPropagation(); jiraUnlinkDoc(ju.dataset.jiraunlink); return; }
   const tko = evEl(e.target)?.closest("[data-takeover]");
   if (tko){ e.stopPropagation(); takeoverDoc(tko.dataset.takeover); return; }
   /* 열려 있는 문서를 놓는 손잡이 — 문서를 여는 길보다 **먼저** 잡는다

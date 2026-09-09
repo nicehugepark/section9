@@ -13170,10 +13170,15 @@ def cmd_link(args):
         pass
 
 
-def do_set(doc_id, fields, actor="", via="", priority=None):
+def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
     """제목·요약·goal·size·project 를 바꾸는 **한 경로** — CLI(`s9 set`)와 대시보드
     (POST /api/doc/set)가 여기를 부른다 (REQ-20260906-053). 반환 {"ok","changed",…};
     거절은 ValueError.
+
+    `jira_key` (REQ-20260909-036): 이미 있는 Jira 이슈를 **만들지 않고 잇는다** —
+    검사 셋(연동·접두·GET 200)은 jira_link_prepare 가, 라벨 붙이기는 jira_link_label
+    이 한다. '' 는 끊기 — 문서의 jira 블록만 비우고 Jira 쪽은 손대지 않는다.
+    jira_kw 는 시험이 jira_http 에 넘기는 것(_sleep 등)이다.
 
     project 를 바꾸는 규칙: 새 프로젝트가 등록돼 있으면 **바꾸는 사람이 그 프로젝트에
     contribute 할 수 있어야** 한다(cmd_new 의 명시 --project 와 같은 경로). 미등록 slug 는
@@ -13235,6 +13240,27 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
         # 값 해석도 근거 기록도 화면과 **같은 경로**을 지난다 (REQ-20260829-029).
         _old, _new, body = apply_priority(meta, body, priority)
         changed.append("priority")
+    jira_linked = ""
+    if fields.get("jira_key") is not None:
+        actor = actor or resolve_user(None)
+        cur_j = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+        want = str(fields["jira_key"]).strip()
+        ts = now_iso()
+        if want:
+            new_j = jira_link_prepare(meta, want, actor=actor, **(jira_kw or {}))
+            if new_j["key"] != cur_j.get("key"):
+                meta["jira"] = new_j
+                line = f"- {ts} jira: {new_j['key']} 연결 (by {actor}" + (f" via {via}" if via else "") + ")\n"
+                body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
+                    else (body.rstrip("\n") + "\n\n## History\n" + line)
+                changed.append("jira_key")
+                jira_linked = new_j["key"]
+        elif cur_j.get("key"):
+            meta["jira"] = {}
+            line = f"- {ts} jira: {cur_j['key']} 연결 끊음 (by {actor}" + (f" via {via}" if via else "") + ")\n"
+            body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
+                else (body.rstrip("\n") + "\n\n## History\n" + line)
+            changed.append("jira_key")
     if not changed:
         return {"ok": True, "id": cid, "changed": [], "message": f"{cid}: 바뀐 것 없음"}
     # 순서만 바꾼 것은 진전이 아니다 — 갱신 시각은 멈춤 판정의 시계라
@@ -13248,6 +13274,9 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
         rebuild_index(quiet=True)
     finally:
         release_lock()
+    # Jira: 이은 이슈에 라벨을 붙인다 — 문서는 이미 썼으니 실패해도 연결은 남는다 (REQ-20260909-036)
+    if jira_linked:
+        jira_link_label(cid, jira_linked, actor, **(jira_kw or {}))
     # Jira: 제목이 정리됐으면 미뤄 둔 생성을 싣고, 이슈가 있으면 제목을 맞춘다 (REQ-20260909-032)
     jira_after_set(cid, meta, body, changed)
     try:
@@ -13259,7 +13288,7 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
 
 
 def cmd_set(args):
-    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os")}
+    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os", "jira_key")}
     try:
         res = do_set(args.id, fields, actor=resolve_user(None),
                      priority=getattr(args, "priority", None))
@@ -13274,7 +13303,7 @@ def cmd_set(args):
                 print(guide)
             return
         die("nothing to set (use --title/--summary/--goal/--size/--project"
-            "/--priority)")
+            "/--priority/--jira-key)")
     print(res["message"])
     # 프롬프트가 특정 프로젝트로 확정된 순간 — 컨텍스트 진입점을 안내 (1단계 경로 안내)
     if "project" in res["changed"] and res.get("project"):
@@ -17641,6 +17670,9 @@ def cmd_note(args):
     # 방법이 경로를 글자로 붙여넣는 것이었고, 사용자는 판정하라고 불려 와서
     # 증거는 직접 열어야 했다. `--attach` 든 본문에 손으로 쓴 절대경로든 같은
     # 규칙으로 이전된다 — 입구가 둘이어도 규칙은 하나다.
+    # content=notes 프로젝트면 코멘트로 (REQ-20260909-034) — outbox 에만 싣고 네트워크는
+    # 워처가 탄다. 실패해도 노트는 이미 문서에 있다.
+    jira_after_note(args.id, meta, args.label or "")
     moved = ingest_assets(args.id) if ("[Image: /" in text or
                                        "[File: /" in text) else 0
     print(f"{args.id}: note appended ({len(text)} chars)"
@@ -20188,12 +20220,18 @@ def do_project_default(slug, actor=None, via=""):
 # 두고(비밀은 사람의 것이라 s9 secret 에), 설계 결정 DOC-20260908-002 의 열쇠 넷이
 # 여기 산다: direction(push 기본) · create_on(open) · export(all) ·
 # export_origin(human — 주인 지시 2026-09-08 21:43: 「사람이 직접 만든 요청만」).
+# content(card 기본, REQ-20260909-033): 무엇을 싣나 — card 는 제목·요약·완료 기준·상태,
+# notes 는 card + 노트(response·사람 노트)를 코멘트로. direction·export 와 직교.
+# body(원문) 수준은 **없다** — 주인 규칙 「Original/본문은 Jira 로 나가지 않는다」
+# (REQ-20260909-030); 선택지에 없으니 누가 켜려 해도 do_project_jira_set 이 거절한다.
 JIRA_PROJECT_DEFAULTS = {"issue_type": "Task", "direction": "push",
-                         "create_on": "open", "export": "all", "export_origin": "human"}
+                         "create_on": "open", "export": "all", "export_origin": "human",
+                         "content": "card"}
 JIRA_PROJECT_CHOICES = {"direction": ("push", "pull", "both"),
                         "create_on": ("open", "in-progress"),
                         "export": ("all", "size:M+", "manual"),
-                        "export_origin": ("human", "all")}
+                        "export_origin": ("human", "all"),
+                        "content": ("card", "notes")}
 JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,9}$")
 
 
@@ -20672,7 +20710,7 @@ def cmd_project(args):
                       f"--site https://<site>.atlassian.net --key <KEY>")
                 return
             for k in ("site", "project_key", "issue_type", "direction", "create_on",
-                      "export", "export_origin"):
+                      "export", "export_origin", "content"):
                 print(f"  {k:14s} {j.get(k, '')}")
             return
         actor = resolve_user(args.user)
@@ -20688,14 +20726,14 @@ def cmd_project(args):
                 args.slug, actor=actor, site=args.site, project_key=args.key,
                 issue_type=args.issue_type, direction=args.direction,
                 create_on=args.create_on, export=args.export,
-                export_origin=args.export_origin)
+                export_origin=args.export_origin, content=args.content)
         except ValueError as e:
             die(str(e))
         j = res["jira"]
         print(f"{res['slug']} ↔ {j['site']} {j['project_key']}  "
               f"(direction={j['direction']} create_on={j['create_on']} "
               f"export={j['export']} export_origin={j['export_origin']} "
-              f"issue_type={j['issue_type']})")
+              f"content={j['content']} issue_type={j['issue_type']})")
         return
 
     if action == "rename":
@@ -26543,7 +26581,8 @@ def jira_state(user=""):
         if key:
             projects.append({"slug": sl, "key": key,
                              "site": str((j or {}).get("site") or ""),
-                             "direction": str((j or {}).get("direction") or "push")})
+                             "direction": str((j or {}).get("direction") or "push"),
+                             "content": str((j or {}).get("content") or "card")})
         # 화면에서 이을 수 있는 프로젝트 — manage(maintainer 이상)인 것만 (REQ-20260909-015)
         if user and str(m.get("status") or "active") != "archived" and project_can(sl, user, "manage"):
             manageable.append({"slug": sl, "title": str(m.get("title") or sl)})
@@ -26898,6 +26937,7 @@ def jira_outbox_tick(now=None, limit=5, **kw):
         n += 1
         res = (jira_status_push(r["id"], actor="watcher", **kw) if r.get("kind") == "push"
                else jira_title_push(r["id"], actor="watcher", **kw) if r.get("kind") == "title"
+               else jira_comment_push(r["id"], actor="watcher", **kw) if r.get("kind") == "comment"
                else jira_issue_create(r["id"], actor="watcher", **kw))
         if res.get("ok") or res.get("skipped"):
             done.append((r["id"], bool(res.get("ok"))))
@@ -26960,6 +27000,60 @@ def jira_title_push(doc_id, actor="", **kw):
     return {"ok": False, "error": err or f"summary 갱신이 {st} 로 거절됐다", "skipped": False}
 
 
+# ── 이미 있는 이슈를 잇는다 (REQ-20260909-036) ────────────────────────────
+# 주인 요구 2026-09-09 11:11: 「수동으로 JIRA 티켓 번호를 카드나 문서에서 추가를 한
+# 후에 작동을 하게 되는거면 모를까」 — 만들지 않고 잇는다. 길은 do_set 하나
+# (`s9 set --jira-key` · /api/doc/set jira_key). 이으면 그 뒤로는 pull 폴링·상태
+# push·제목 갱신이 그 키를 따라간다 — 이 셋은 문서의 jira.key 만 본다.
+JIRA_ISSUE_KEY_RE = re.compile(r"^([A-Z][A-Z0-9_]*)-(\d+)$")
+JIRA_NO_LINK_MSG = "이 프로젝트에 Jira 연동이 없습니다 — Settings › 외부 서비스"
+
+
+def jira_key_normalize(value):
+    """사람이 적은 키 → 'MP1-7' 꼴. 꼴이 아니면 ValueError."""
+    key = str(value or "").strip().upper()
+    if not JIRA_ISSUE_KEY_RE.match(key):
+        raise ValueError(f"Jira 이슈 키가 아닙니다: {value!r} — 예: MP1-7")
+    return key
+
+
+def jira_link_prepare(meta, key, actor="", **kw):
+    """잇기 검사 셋 — ① 프로젝트에 연동이 있고 ② 키의 접두가 project_key 와 같고
+    ③ 그 사람의 토큰으로 GET /issue/{key} 가 200. 통과하면 문서에 적을 jira 덩이를
+    돌려준다(쓰지는 않는다 — do_set 이 한 번에 쓴다). 거절은 ValueError."""
+    j = project_jira(str(meta.get("project") or ""))
+    if not j:
+        raise ValueError(JIRA_NO_LINK_MSG)
+    key = jira_key_normalize(key)
+    want = str(j.get("project_key") or "").upper()
+    if JIRA_ISSUE_KEY_RE.match(key).group(1) != want:
+        raise ValueError(f"{key} 는 이 프로젝트에 연동된 Jira 프로젝트({want})의 이슈가 아닙니다 "
+                         f"— {want}-<번호> 만 이을 수 있습니다")
+    user = actor or str(meta.get("user") or "")
+    st, d, err = jira_http(user, "GET", f"/rest/api/3/issue/{key}?fields=summary,status", **kw)
+    if st != 200 or not isinstance(d, dict):
+        raise ValueError(err or f"Jira 가 {key} 에 {st} 로 답했습니다")
+    stf = (d.get("fields") or {}).get("status") or {}
+    site = str(j.get("site") or "").rstrip("/")
+    return {"site": site, "key": key, "url": f"{site}/browse/{key}",
+            "status": str(stf.get("name") or ""),
+            "status_category": str(((stf.get("statusCategory") or {}).get("key")) or ""),
+            "synced_at": now_iso(), "synced_by": user, "pending": "", "last_error": "",
+            "actor": user, "via": "link"}
+
+
+def jira_link_label(doc_id, key, user, **kw):
+    """이은 이슈에 라벨 s9-<id> 를 붙인다 — 멱등 검색(jira_find_issue)이 이 라벨을
+    본다. 실패해도 연결은 유지하고 last_error 에만 남긴다."""
+    st, _d, err = jira_http(user, "PUT", f"/rest/api/3/issue/{key}",
+                            body={"update": {"labels": [{"add": jira_label(doc_id)}]}}, **kw)
+    if st in (200, 204):
+        return True
+    _jira_write(doc_id, {"last_error": f"라벨 {jira_label(doc_id)} 을 붙이지 못했습니다 — "
+                                       + (err or f"Jira 가 {st} 로 답했습니다")}, "")
+    return False
+
+
 def jira_after_set(doc_id, meta, body, changed):
     """do_set 의 끝 — 제목이 정리됐으면 미뤄 둔 생성을 싣고, 이슈가 있으면 제목을 맞춘다."""
     try:
@@ -26972,6 +27066,146 @@ def jira_after_set(doc_id, meta, body, changed):
         return jira_after_new_request(doc_id, meta, body=body)
     except Exception:
         return False
+
+
+# ── notes → Jira 코멘트 (REQ-20260909-034, content=notes 일 때만) ──────────────
+# 노트 1건 = 코멘트 1건(POST /issue/{key}/comment). description 은 다시 쓰지 않는다 —
+# Jira 쪽에서 사람이 고친 것을 지우지 않는다(security·architect, REQ-20260909-030).
+# 멱등 키는 노트 ts: 문서 jira.commented_ts(마지막으로 처리한 노트 ts) 앞의 노트는
+# 다시 보지 않는다. 비밀 모양이 있는 노트는 보내지 않고 last_error 에 사유만 남긴다
+# (기본 거부 — redact 는 아는 패턴만 잡는다). 첨부·원문(Original)은 어느 경우에도
+# 나가지 않는다. 자취는 둘: 문서 History 한 줄 + state/jira/outbound.jsonl(내용 없이 식별자만).
+JIRA_COMMENT_LABELS = {"response", ""}     # 보내는 label — 빈 label 은 사람이 그냥 적은 노트.
+#                                            tdd·subagent·audit·patch 같은 기계 기록은 소음이다.
+JIRA_COMMENT_MAX = 4000                    # Jira 코멘트 상한(32,767)의 1/8 — 읽히는 길이
+JIRA_COMMENT_MARK = "— section9"           # 우리가 쓴 코멘트의 표 — 나중의 pull 이 제 것을 건너뛴다
+JIRA_OUTBOUND = os.path.join(ROOT, "state", "jira", "outbound.jsonl")
+JIRA_NOTE_HDR_RE = re.compile(r"^### (\d{4}-\S+)(?: ([^()\s]+))? \((.*)\)\s*$")
+JIRA_ATTACH_LINE_RE = re.compile(r"^\[(?:Image|File): .*\]$")
+
+
+def jira_notes_of(body):
+    """문서 본문의 노트들 — [(ts, label, text)], Notes 절만(History 앞)."""
+    out = []
+    cur = None
+    for ln in body.split("\n## History", 1)[0].splitlines():
+        m = JIRA_NOTE_HDR_RE.match(ln)
+        if m:
+            cur = [m.group(1), m.group(2) or "", []]
+            out.append(cur)
+        elif cur is not None:
+            cur[2].append(ln)
+    return [(ts, label, "\n".join(lines).strip()) for ts, label, lines in out]
+
+
+def jira_comment_text(text):
+    """코멘트에 실을 글 — 첨부 줄은 뺀다(그림 안의 비밀은 검사가 못 거른다), 상한 안으로."""
+    lines = [ln for ln in text.splitlines() if not JIRA_ATTACH_LINE_RE.match(ln.strip())]
+    out = "\n".join(lines).strip()
+    if len(out) > JIRA_COMMENT_MAX:
+        cut = len(out) - JIRA_COMMENT_MAX
+        out = out[:JIRA_COMMENT_MAX] + f"\n… ({cut}자 생략)"
+    return out
+
+
+def jira_note_key(ts, text):
+    """노트의 멱등 키 — ts 만으로는 같은 초의 두 노트가 갈리지 않아 본문 지문을 붙인다."""
+    import hashlib
+    return f"{ts}#{hashlib.sha1((text or '').encode('utf-8')).hexdigest()[:8]}"
+
+
+def jira_comment_secret(text):
+    """비밀 모양이 있으면 그 이름, 없으면 ''. 표는 secret_leak 과 같은 TOKEN_PATTERNS 한 곳."""
+    for pat, what in TOKEN_PATTERNS:
+        if pat.search(text or ""):
+            return what
+    return ""
+
+
+def _jira_outbound_log(row):
+    """state/jira/outbound.jsonl 한 줄 — 무엇이 나갔는지의 **식별자**만(원문은 적지 않는다:
+    감사 기록이 두 번째 유출 통로가 된다)."""
+    try:
+        os.makedirs(os.path.dirname(JIRA_OUTBOUND), exist_ok=True)
+        with open(JIRA_OUTBOUND, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def jira_after_note(doc_id, meta, label=""):
+    """cmd_note 의 끝 — 네트워크 없이 outbox 에만 싣는다. content=notes 인 프로젝트의
+    요청에 보낼 label 의 노트가 붙었을 때만. 이슈가 아직 없어도 싣는다 — 생성이
+    outbox 에 앞서 있으니 같은 틱에서 뒤따르고, 없으면 tick 이 미룬다."""
+    try:
+        if meta.get("type", "request") != "request":
+            return False
+        if (label or "").strip() not in JIRA_COMMENT_LABELS:
+            return False
+        j = project_jira(meta.get("project") or "")
+        if not j or j.get("content", "card") != "notes" or j.get("direction") == "pull":
+            return False
+        cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+        if not cur.get("key") and cur.get("pending") != "create":
+            if jira_export_wanted(meta)[1]:
+                return False            # 내보내지 않는 요청 — 코멘트도 없다
+        return jira_outbox_add(doc_id, "comment")
+    except Exception:
+        return False
+
+
+def jira_comment_push(doc_id, actor="", **kw):
+    """commented_ts 뒤의 보낼 노트를 차례로 코멘트로 — {ok, sent, skipped, error}.
+    한 건이 실패하면 거기서 멈추고 커서는 마지막 성공에 남는다(다음 틱이 이어 보낸다)."""
+    path = find_path(doc_id)
+    if not path:
+        return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
+    meta, body = read_doc(path)
+    doc_id = meta.get("id") or doc_id
+    cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+    j = project_jira(meta.get("project") or "")
+    if not j or j.get("content", "card") != "notes":
+        return {"ok": False, "error": "이 프로젝트는 노트를 내보내지 않는다 (content=card)", "skipped": True}
+    key = cur.get("key")
+    if not key:
+        if cur.get("pending") == "create":
+            return {"ok": False, "error": "이슈가 아직 없다 — 생성 뒤에 보낸다", "skipped": False}
+        return {"ok": False, "error": "이슈가 없다", "skipped": True}
+    user = meta.get("user") or actor
+    auth, missing = jira_auth_header(user)
+    if auth is None:
+        msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
+        _jira_write(doc_id, {"last_error": msg}, "")
+        return {"ok": False, "error": msg, "skipped": True}
+    cursor = str(cur.get("commented_ts") or "")
+    done = set(cur.get("commented") or [])       # 최근 처리한 노트 키(멱등, 100개까지)
+    todo = [(ts, label, text) for ts, label, text in jira_notes_of(body)
+            if ts >= cursor and label in JIRA_COMMENT_LABELS and text
+            and jira_note_key(ts, text) not in done]
+    sent = 0
+    for ts, _label, text in todo:
+        done.add(jira_note_key(ts, text))
+        mark = {"commented_ts": ts, "commented": sorted(done)[-100:]}
+        what = jira_comment_secret(text)
+        if what:
+            _jira_write(doc_id, {**mark,
+                                 "last_error": f"비밀 모양이 있어 보내지 않았다 ({what}, 노트 {ts})"},
+                        f"{key} 코멘트 안 보냄 — 비밀 모양 ({what}, ts {ts})")
+            continue
+        lines = jira_comment_text(text).splitlines() + [f"{JIRA_COMMENT_MARK} · {ts}"]
+        st, d, err = jira_http(user, "POST", f"/rest/api/3/issue/{key}/comment",
+                               body={"body": _jira_adf(lines)}, **kw)
+        if st not in (200, 201):
+            msg = err or f"코멘트가 {st} 로 거절됐다 (노트 {ts})"
+            _jira_write(doc_id, {"last_error": msg}, "")
+            return {"ok": False, "error": msg, "skipped": False, "sent": sent}
+        cid = str((d or {}).get("id") or "") if isinstance(d, dict) else ""
+        _jira_write(doc_id, {**mark, "synced_at": now_iso(), "synced_by": "s9",
+                             "last_error": ""}, f"{key} 코멘트 (ts {ts})")
+        _jira_outbound_log({"ts": now_iso(), "doc": doc_id, "key": key, "kind": "comment",
+                            "note_ts": ts, "comment_id": cid, "by": actor or user})
+        sent += 1
+    return {"ok": True, "sent": sent, "skipped": not todo, "error": ""}
 
 
 def jira_after_transition(doc_id, meta, note="", auto=False):
@@ -29445,9 +29679,11 @@ def cmd_serve(args):
                                 "auto_resume": spawned, "notified": notified})
                 elif parsed.path == "/api/doc/set":
                     # 카드에서 프로젝트 바꾸기 — CLI(`s9 set`)와 같은 경로(do_set) (REQ-20260906-053)
+                    # 문서 화면에서 Jira 이슈 잇기/끊기도 같은 길이다 (REQ-20260909-036)
                     try:
                         res = do_set(str(req.get("id") or ""),
-                                     {"project": req.get("project")},
+                                     {"project": req.get("project"),
+                                      "jira_key": req.get("jira_key")},
                                      actor=actor, via="dashboard")
                     except ValueError as e:
                         res = {"ok": False, "error": str(e)}
@@ -29575,7 +29811,7 @@ def cmd_serve(args):
                         res = do_project_jira_set(
                             slug, actor=actor, via=" via dashboard",
                             site=site, project_key=req.get("key"),
-                            direction=req.get("direction"))
+                            direction=req.get("direction"), content=req.get("content"))
                     self._json({"ok": True, **res})
                 elif parsed.path == "/api/user/config":
                     name = str(req.get("name") or "")
@@ -31071,6 +31307,8 @@ def main():
     se2.add_argument("--project")
     se2.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL", ""],
                      help="이 요청을 해야 하는 판 — 그 판의 세션이 s9 next 로 먼저 본다 (REQ-20260906-080)")
+    se2.add_argument("--jira-key", dest="jira_key",
+                     help="이미 있는 Jira 이슈를 잇는다(예: MP1-7) — 만들지 않는다. '' 는 끊기 (REQ-20260909-036)")
     se2.set_defaults(fn=cmd_set)
 
     lp = sub.add_parser("ls", help="list documents (from catalog)")
@@ -31419,6 +31657,8 @@ def main():
     pj.add_argument("--export", help="jira set: all(기본)|size:M+|manual")
     pj.add_argument("--export-origin", dest="export_origin",
                     help="jira set: human(기본 — 사람이 직접 만든 요청만)|all")
+    pj.add_argument("--content", help="jira set: card(기본 — 제목·요약·완료 기준·상태)|"
+                    "notes(card + 노트를 코멘트로). 원문(body)은 어느 값에서도 나가지 않는다")
     pj.add_argument("--user", help="행위 주체 (기본: 세션/OS 사용자)")
     pj.set_defaults(fn=cmd_project)
 
