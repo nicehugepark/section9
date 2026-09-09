@@ -528,3 +528,9 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .jlinkbox{display:flex;flex-direction:column;gap:4px;flex:1 1 100%;min-width:0}
 .jlink{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
 .jlinkform{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+/* 맥 Safari 1440 실측(REQ-20260909-031): 「연동 해제」·「연동」 이 제 줄로 내려갔다 —
+   .more 가 width:100% 인 block 이라 flex 줄을 통째로 차지했고, select 는 .uf 의
+   width:min(300px,100%) 로 셋이 늘어져 폭을 다 썼다. 손잡이는 제 폭만, select 는
+   내용 폭만 — 그래야 한 줄이 되고 좁아지면 줄이 접혀도 손잡이가 마지막 항목 옆에 선다. */
+.jlink .wmore,.jlinkform .wmore{display:inline-block;width:auto;flex:0 0 auto;padding:0;margin:0}
+.jlinkform select.uf{width:auto;flex:0 1 auto;max-width:240px;min-width:0}

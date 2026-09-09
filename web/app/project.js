@@ -134,6 +134,10 @@ const PRJ_TEXT = {
   phJiraSite: "https://<site>.atlassian.net", phJiraKey: "MP1",
   jiraEmpty: "연동된 Jira 가 없습니다 — 주소와 project key 를 넣으면 이 프로젝트의 사람이 만든 요청이 이슈로 올라갑니다.",
   jiraDirs: [["push", "push · 여기 → Jira"], ["pull", "pull · Jira → 여기"], ["both", "both · 양쪽"]],
+  // 내보내는 것 (REQ-20260909-033): 값 글자(card·notes)는 --content 에 치는 것이라 원어.
+  // 원문(body)은 어느 값에서도 나가지 않는다 — 그런 선택지는 화면에도 서버에도 없다.
+  kJiraContent: "내보내는 것",
+  jiraContents: [["card", "카드 (제목·요약·완료 기준·상태)"], ["notes", "카드 + 노트 (노트를 코멘트로)"]],
   // 만료가 없으면 「만료 0」을 세우지 않는다 — 없는 문제를 보고하는 꼴이 된다
   memCap: n => `멤버 ${n}명`,
   memCapMix: (n, act, exp) => `멤버 ${n}명 — 활성 ${act} · 만료 ${exp}`,
@@ -522,6 +526,13 @@ function prjSetRowsHTML(p, c){
    한 경로(do_project_jira_set — manage 인가·비밀 거부). 연동이 없고 고칠 수 없는
    사람에게는 행이 서지 않는다(빈 칸은 채울 수 있는 사람에게만 자리다). */
 const PRJ_JIRA_DIRS = PRJ_TEXT.jiraDirs;     // 글자는 표(PRJ_TEXT) 한 곳에 산다
+const PRJ_JIRA_CONTENTS = PRJ_TEXT.jiraContents;
+/* select 하나 — 방향과 「내보내는 것」이 같은 꼴이다(값 원어 · 뜻은 옵션 글자 뒤). */
+function prjJiraSelectHTML(attr, pairs, cur, editable){
+  if (editable) return `<select class="pjc" ${attr}>` + pairs.map(([v, t]) =>
+    `<option value="${v}"${v === cur ? " selected" : ""}>${esc(t)}</option>`).join("") + `</select>`;
+  return esc((pairs.find(([v]) => v === cur) || [cur, cur])[1]);
+}
 function prjJiraRowsHTML(p, c){
   const j = p.jira || null;
   if (!j && !c.canManage) return "";
@@ -533,15 +544,16 @@ function prjJiraRowsHTML(p, c){
            data-val="${esc(text || "")}">${shown}</button>` : shown;
   };
   const dir = j ? (j.direction || "push") : "push";
-  const dirCell = (c.canManage && j)
-    ? `<select class="pjc" data-pjjiradir>` + PRJ_JIRA_DIRS.map(([v, t]) =>
-        `<option value="${v}"${v === dir ? " selected" : ""}>${esc(t)}</option>`).join("") + `</select>`
-    : (j ? esc((PRJ_JIRA_DIRS.find(([v]) => v === dir) || [dir, dir])[1]) : "");
+  const content = j ? (j.content || "card") : "card";
+  const dirCell = j ? prjJiraSelectHTML("data-pjjiradir", PRJ_JIRA_DIRS, dir, c.canManage) : "";
+  const contentCell = j ? prjJiraSelectHTML("data-pjjiracontent", PRJ_JIRA_CONTENTS, content, c.canManage) : "";
   const empty = (!j && c.canManage)
     ? `<div class="pjhint">${esc(PRJ_TEXT.jiraEmpty)}</div>` : "";
+  const none = `<span class="none">${esc(PRJ_TEXT.emptyVal)}</span>`;
   return row(PRJ_TEXT.kJiraSite, val("site", j ? j.site : "", PRJ_TEXT.phJiraSite) + empty)
     + row(PRJ_TEXT.kJiraKey, val("key", j ? j.project_key : "", PRJ_TEXT.phJiraKey))
-    + (j || c.canManage ? row(PRJ_TEXT.kJiraDir, dirCell || `<span class="none">${esc(PRJ_TEXT.emptyVal)}</span>`) : "");
+    + (j || c.canManage ? row(PRJ_TEXT.kJiraDir, dirCell || none) : "")
+    + (j || c.canManage ? row(PRJ_TEXT.kJiraContent, contentCell || none) : "");
 }
 function prjMemberRowHTML(m, p, c){
   const kind = prjUntilKind(m, c.now);
@@ -824,6 +836,9 @@ function prjWire(root, p, o){
   const jdSel = root.querySelector("[data-pjjiradir]");
   if (jdSel) jdSel.addEventListener("change", () =>
     post("/api/project/jira", {direction: jdSel.value}, m => PRJ_TEXT.errSet("jira", m)));
+  const jcSel = root.querySelector("[data-pjjiracontent]");
+  if (jcSel) jcSel.addEventListener("change", () =>
+    post("/api/project/jira", {content: jcSel.value}, m => PRJ_TEXT.errSet("jira", m)));
   /* status 도 그 자리에서 저장한다 — 확인 창을 세우지 않는다(리드 중재 1).
      보관의 실효과는 「목록에서 접힘」 하나이고, 되돌리는 길(보관 해제)이 같은
      셀렉트에 있다. 되돌릴 수 있는 일에 확인을 걸면 다음번 진짜 경고를 안 읽는다. */

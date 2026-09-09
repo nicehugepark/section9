@@ -28,7 +28,7 @@ def git(cwd, *a):
     return r
 
 
-def doc_text(did, title="시험 문서"):
+def doc_md(did, title="시험 문서"):
     return (f"---\nid: {did}\ntype: request\ntitle: {title}\nstatus: open\n"
             f"user: t\ncreated: 2026-09-09T10:00:00+09:00\n"
             f"updated: 2026-09-09T10:00:00+09:00\n---\n\n## Original\n\n본문\n")
@@ -100,7 +100,7 @@ class ReceiveDropsDeleted(unittest.TestCase):
         os.makedirs(os.path.join(self.other, REL), exist_ok=True)
         with open(os.path.join(self.other, REL, DOC_ID + ".md"), "w",
                   encoding="utf-8") as f:
-            f.write(doc_text(DOC_ID))
+            f.write(doc_md(DOC_ID))
         self.other_push("new " + DOC_ID)
 
     def other_trashes(self):
@@ -144,7 +144,7 @@ class ReceiveDropsDeleted(unittest.TestCase):
     def test_s4_range_folded_as_rename_still_tombstones_old_path(self):
         src = os.path.join(self.root, REL, DOC_ID + ".md")
         with open(src, "w", encoding="utf-8") as f:
-            f.write(doc_text(DOC_ID))
+            f.write(doc_md(DOC_ID))
         git(self.root, "add", "-A"); git(self.root, "commit", "-q", "-m", "new")
         before = git(self.root, "rev-parse", "HEAD").stdout.strip()
         self.m.index_upsert(src)
@@ -164,7 +164,7 @@ class ReceiveDropsDeleted(unittest.TestCase):
     def test_s5_moved_doc_keeps_row_at_new_path(self):
         src = os.path.join(self.root, REL, DOC_ID + ".md")
         with open(src, "w", encoding="utf-8") as f:
-            f.write(doc_text(DOC_ID))
+            f.write(doc_md(DOC_ID))
         git(self.root, "add", "-A"); git(self.root, "commit", "-q", "-m", "new")
         before = git(self.root, "rev-parse", "HEAD").stdout.strip()
         self.m.index_upsert(src)
