@@ -269,9 +269,14 @@ class Screen(unittest.TestCase):
         # 화면을 세우는 자리에서 실제로 불려야 한다 — 정의만 있으면 죽은 코드다.
         # REQ-20260828-039 에서 그 자리가 boot() 에서 loadWhoami() 로 옮겨졌다:
         # 신원이 **늦게 도착해도** 탭이 따라오려면, 부르는 자리가 신원을 받는
-        # 자리여야 한다. 부트는 그 함수를 부른다.
-        self.assertIn("applyStreamVisibility();", self.fn("loadWhoami"))
-        self.assertIn("loadWhoami()", self.fn("boot"))
+        # 자리여야 한다. REQ-20260909-086 에서 신원이 들어오는 길이 둘이 됐고
+        # (단독 `/api/whoami` · 부트 묶음 `/api/boot`), 그래서 **신원을 자리에
+        # 놓는 함수**(applyWhoami)가 그 한 자리다 — 두 길이 각자 탭을 갱신하면
+        # 한쪽만 고쳐지는 날이 온다. 그 함수를 두 길이 모두 지나는지까지 잰다.
+        self.assertIn("applyStreamVisibility();", self.fn("applyWhoami"))
+        self.assertIn("applyWhoami(", self.fn("loadWhoami"))
+        self.assertIn("applyWhoami(", self.fn("loadBoot"))
+        self.assertRegex(self.fn("boot"), r"loadWhoami\(\)|loadBoot\(\)")
 
     # 북마크·뒤로가기로 #stream 에 들어와도 빈 탭에 앉히지 않는다
     def test_hash_falls_back_to_board(self):
