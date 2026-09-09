@@ -68,7 +68,7 @@
 [data-skin="calm"] .card .t{font-size:15px;font-weight:650;line-height:1.4;margin:6px 0 10px}
 [data-skin="calm"] .card .id{font-size:11px;letter-spacing:.01em}
 [data-skin="calm"] .card .m{font-size:11.5px;gap:8px}
-[data-skin="calm"] .card .tag,[data-skin="calm"] .card .size,[data-skin="calm"] .card .badge{
+[data-skin="calm"] .card .tag,[data-skin="calm"] .card .badge{
   border-radius:999px;padding:2px 9px;background:color-mix(in srgb,var(--text) 5%,transparent);border:0}
 [data-skin="calm"] .card .elapsed{color:var(--faint);font-size:11px}
 [data-skin="calm"] .rvpt{border-radius:0;margin-top:10px;border-left:0}
@@ -255,14 +255,13 @@
 [data-skin="calm"] .card .tag{background:none;border:0;padding:0;white-space:nowrap;
   font-size:11px;font-weight:500;color:hsl(var(--th) var(--hu-s) var(--hu-l))}
 [data-skin="calm"] .card .tag::before{content:none}
-/* 규모(S/M/L)는 담당자 이니셜과 같은 낱글자라 혼동된다 — 중립 윤곽 칩으로 분리 */
-[data-skin="calm"] .card .size{background:none;color:var(--calm-quiet);font-size:9.5px;
-  letter-spacing:.06em;border-radius:4px;padding:1px 5px;line-height:1.4;
-  border:1px solid color-mix(in srgb,var(--text) 14%,transparent)}
+/* 크기(S/M/L) 칩은 없다 — 카드에서 내렸다 (REQ-20260909-074). 담당자 이니셜과
+   같은 낱글자라 혼동되어 윤곽 칩으로 갈라 두었던 자리인데, 갈라도 축 이름이
+   없어 뜻이 서지 않았다. 읽는 자리는 문서 메타 표 하나다. */
 [data-skin="calm"] .card .tdd{border-radius:999px;padding:1px 7px;font-size:9.5px}
-/* 우선순위 = 등급 낱말과 잉크. calm도 색면·pill은 쓰지 않는다(위 .size 칩과
-   달리 윤곽조차 두지 않는다 — 테두리를 주면 눈이 그 상자에 먼저 걸린다).
-   low/normal은 참조 잉크(--calm-quiet: id·size와 같은 층)로 물러나고,
+/* 우선순위 = 등급 낱말과 잉크. calm도 색면·pill·윤곽은 쓰지 않는다 —
+   테두리를 주면 눈이 그 상자에 먼저 걸린다.
+   low/normal은 참조 잉크(--calm-quiet: id와 같은 층)로 물러나고,
    high/urgent만 상태 잉크로 나온다. 이니셜 링·태그 글자와 색이 겹치지 않게
    카드 한 장에 뜨는 강조는 최대 하나로 유지된다. */
 [data-skin="calm"] .card .prio{font-size:11px}
@@ -498,11 +497,10 @@
 [data-skin="calm"][data-density="compact"] .card .t{font-size:12.5px;line-height:1.25}
 [data-skin="calm"][data-density="compact"] .card .m{margin-top:4px;font-size:9.5px;
   gap:6px;row-gap:2px;line-height:1.35}
-/* 알약(태그·크기·담당자·우선순위)은 자기 font-size 를 따로 들고 있어 `.m` 을
+/* 알약(태그·담당자·우선순위)은 자기 font-size 를 따로 들고 있어 `.m` 을
    줄여도 따라오지 않는다 — 여기서 함께 눌러야 줄 높이가 실제로 준다.
    9.5px 는 density.css 가 이미 쓰는 compact 값이다(새 눈금을 만들지 않는다). */
 [data-skin="calm"][data-density="compact"] .card .tag,
-[data-skin="calm"][data-density="compact"] .card .size,
 [data-skin="calm"][data-density="compact"] .card .badge,
 [data-skin="calm"][data-density="compact"] .card .prio{font-size:9.5px;padding:0 5px}
 [data-skin="calm"][data-density="compact"] .card .prio{padding:0}

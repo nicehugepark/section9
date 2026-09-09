@@ -151,7 +151,7 @@ async function renderDocs(rows){
   const q = $("#q").value.trim();
   let matchMap = null;
   if ($("#q-body").checked && q){
-    const data = await (await fetch("/api/search?q=" + encodeURIComponent(q) + "&" + meQ())).json();
+    const data = await (await s9Fetch("/api/search?q=" + encodeURIComponent(q) + "&" + meQ())).json();
     if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
     matchMap = Object.fromEntries(data.results.map(r => [r.id, r.matches]));
     rows = rows.filter(r => matchMap[r.id]);
@@ -455,13 +455,13 @@ async function loadDoc(id, bg, force){
   // 1회 자동 재시도 후에도 실패면 오류 안내 + 다시 시도 버튼을 표면화한다.
   let res;
   try{
-    res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
+    res = await s9Fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
   }catch(e){
     await new Promise(r => setTimeout(r, 800));
     viewer = docLive(viewer);
     if (docLoadStale(gen, id, viewer)) return;   // 기다리는 사이 다른 문서를 열었다
     try{
-      res = await fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
+      res = await s9Fetch("/api/doc?id=" + encodeURIComponent(id) + "&" + meQ());
     }catch(e2){
       docWaitClear();
       viewer.innerHTML = docFailHTML(id);
@@ -561,9 +561,15 @@ async function loadDoc(id, bg, force){
     // 반려된 축이다 (REQ-20260826-005). 다만 그 답을 설명문으로 하지는 않는다
     // (REQ-20260827-029): `보통 50/99` 두 낱말이 등급·값·척도를 한 번에 말하고,
     // 척도표와 바꾸는 법은 낱말에 손을 얹거나 Tab으로 닿을 때 카드로 열린다.
-    // 카드와 같은 순서로 size보다 앞에 둔다(우선순위 → 크기).
+    // size 보다 앞에 둔다(우선순위 → 크기).
     ["priority", m.type === "request" ? prioHTML(m, true) : null],
-    ["size", esc(m.size) || null],
+    /* 크기는 **여기서만** 읽는다 (REQ-20260909-074) — 카드에서는 내렸다.
+       라벨은 `size` 글자 그대로이고(프론트매터 키이자 `--size` 로 치는 이름),
+       값에 뜻을 붙인다: 「S — 리드가 직접, 예산 15분」. 문구는 const.js 한 곳에
+       있다. 값이 비어도 행은 선다 — 규약 18조가 「없으면 S 로 본다」고 정했으니
+       빈 칸은 모르는 것이 아니라 아는 사실이다. 요청이 아닌 문서에는 이 축이
+       없으므로 행도 서지 않는다(우선순위와 같다). */
+    ["size", m.type === "request" ? esc(sizeText(m.size)) : null],
     // Jira 이슈 한 행 (REQ-20260908-074) — 값은 서버가 실은 덩이(카탈로그 jira)뿐이다.
     ["Jira", docJiraRowHTML(m, catFind(m.id)) || null],
     /* 이 요청에 쓰인 토큰 한 줄 (REQ-20260907-014) — 카드와 **같은 함수**가
@@ -880,7 +886,7 @@ async function loadDoc(id, bg, force){
     const t = det.querySelector(".term");
     let lastCount = -1, firstLoad = true;
     const load = async () => {
-      const r = await (await fetch("/api/reqstream?id=" + encodeURIComponent(det.dataset.req) + "&" + meQ())).json();
+      const r = await (await s9Fetch("/api/reqstream?id=" + encodeURIComponent(det.dataset.req) + "&" + meQ())).json();
       if (r.count !== lastCount){  // 변화 있을 때만 재렌더 (flicker/부하 방지)
         lastCount = r.count;
         const nearBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 140;
@@ -936,7 +942,7 @@ async function renderBacklinks(id){
   const el = $("#backlinks");
   if (!el) return;
   try{
-    if (!graph) graph = await (await fetch("/api/graph?" + meQ())).json();
+    if (!graph) graph = await (await s9Fetch("/api/graph?" + meQ())).json();
   }catch(e){ return; }
   const back = [...new Set(graph.edges.filter(e => e.to === id).map(e => e.from))];
   if (!back.length){ el.remove(); return; }
@@ -1179,7 +1185,7 @@ async function answerDoc(id){
   answerClock();
   let d = null, reached = false, known = true;
   try{
-    const r = await fetch("/api/answer", {method: "POST",
+    const r = await s9Fetch("/api/answer", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs({id}))});
     reached = true; known = r.status !== 404;
@@ -1282,7 +1288,7 @@ function docJiraRowHTML(m, rec){   // 이름은 Settings 의 jiraRowHTML(jira.js
   return bits.join(" · ");
 }
 async function jiraLinkPost(id, key){
-  const res = await fetch("/api/doc/set", {method: "POST",
+  const res = await s9Fetch("/api/doc/set", {method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(withAs({id, jira_key: key}))});
   return res.json();

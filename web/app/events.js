@@ -407,12 +407,21 @@ document.addEventListener("click", e => {
     docOpen(doc.dataset.doc);
   }
 });
+// input 과 change 둘 다 듣는다 — Safari 는 <select> 에 input 을 내지 않는 판이 있어
+// 프로젝트를 바꿔도 다음 폴링(≈10초)까지 그대로였다(맥 실측 2026-09-09 15:42, 주인이
+// 아침에 본 「2.5~4초 뒤 그대로」와 같은 것). render 는 멱등이라 둘 다 와도 해가 없다.
+function headerFilterChanged(){
+  auditLimit = AUDIT_PAGE;
+  gLastOn = null;   // 조건이 바뀌면 직전 클릭에 대한 인정은 무효다
+  render();
+}
 ["#q","#q-body","#f-user","#f-project","#f-tag","#f-type"].forEach(s =>
   $(s).addEventListener("input", () => {
-    auditLimit = AUDIT_PAGE;
-    gLastOn = null;   // 조건이 바뀌면 직전 클릭에 대한 인정은 무효다
-    render();
+    gLastOn = null;
+    headerFilterChanged();
   }));
+["#f-user","#f-project","#f-tag","#f-type"].forEach(s =>
+  $(s).addEventListener("change", headerFilterChanged));
 /* ?qdbg=<검색어> · ?qdbg-on — 머리 띠의 질문 칸을 **다른 상태로 세워 본다**
    (REQ-20260828-018). 눈으로 봐야 할 상태가 셋인데 지금 저장소 데이터로 나오는
    것은 하나뿐이다: 답이 다 찬 칸(46/46)은 표본을 좁혀야 나오고, 판을 잉크로

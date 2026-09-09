@@ -83,13 +83,15 @@ class CardShowsPriority(unittest.TestCase):
                 guard,
                 "카드의 우선순위 표기가 기본값 비교로 감춰진다: "
                 + (guard.group(0) if guard else ""))
-            # 조건부 표기가 어떻게 생겼는지 아는 상태로 위를 단언한다는 근거
-            self.assertIn("r.size ?", self.card,
-                          "전제 확인 실패: .size 의 조건부 표기가 사라졌다")
-        with self.subTest("prio_precedes_size_on_meta_row"):
+            # 조건부 표기가 어떻게 생겼는지 아는 상태로 위를 단언한다는 근거 —
+            # 같은 줄의 이웃(TDD 칩)은 값이 있을 때만 서는 조건부 표기다.
+            # (크기 조각은 카드에서 내려갔다, REQ-20260909-074)
+            self.assertIn("r.tdd ?", self.card,
+                          "전제 확인 실패: 조건부 표기의 본보기가 사라졌다")
+        with self.subTest("prio_leads_the_what_row"):
             self.assertLess(self.card.index("prioHTML(r)"),
-                            self.card.index("r.size ?"),
-                            "우선순위가 크기 뒤에 온다")
+                            self.card.index("r.tdd ?"),
+                            "우선순위가 「무엇」 줄의 첫 칸이 아니다")
 
 class TierDerivation(unittest.TestCase):
     """등급은 값 하나에서 파생된다 — 저장은 수치, 표기는 등급."""

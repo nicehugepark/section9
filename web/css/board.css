@@ -295,10 +295,10 @@ span.proj{cursor:default}
 .badge{color:var(--text);font-family:var(--mono);font-size:11px}
 .badge::before{content:"@"}
 /* 읽어야 하는 보조 글자는 `--muted` 다 (REQ-20260907-022 · 검수 중-4).
-   `--faint` 는 어두운 tone 의 배경 위에서 3:1 아래로 떨어져, 크기(S/M/L)와
-   태그가 「있는지 없는지」만 보이고 읽히지 않았다. `--faint` 는 구분선·자리
-   표시처럼 **읽지 않아도 되는 것**에 남긴다. */
-.size{color:var(--muted)}
+   `--faint` 는 어두운 tone 의 배경 위에서 3:1 아래로 떨어져 태그가 「있는지
+   없는지」만 보이고 읽히지 않았다. `--faint` 는 구분선·자리 표시처럼 **읽지
+   않아도 되는 것**에 남긴다.
+   `.size` 규칙은 여기 없다 — 크기는 카드에서 내렸다 (REQ-20260909-074). */
 .tag{color:var(--muted)}
 /* 작업 자리 (REQ-20260829-030) — 백그라운드 작업이 worktree 에 앉았나 본 저장소에
    앉았나. **새 줄을 주지 않는다**: 이 화면의 규칙은 "줄은 사람의 손을 요구하는

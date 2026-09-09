@@ -147,11 +147,17 @@ class PriorityDoesNotLeadTheCard(_Src):
             self.card.index("ownerBadgeHTML(r)"), self.card.index("prioHTML(r)"),
             "우선순위가 여전히 카드 메타 줄의 첫 칸이다")
 
-    def test_still_ahead_of_size(self):
-        """뒤로 밀되 크기보다는 앞이다 — 무엇부터 집을지가 먼저다."""
-        self.assertLess(self.card.index("prioHTML(r)"),
-                        self.card.index("r.size ?"),
-                        "우선순위가 크기 뒤로 밀렸다")
+    def test_still_leads_the_what_row(self):
+        """뒤로 밀되 「무엇」 줄의 첫 칸이다 — 무엇부터 집을지가 먼저다.
+
+        크기(size)가 이 줄에서 내려간 뒤(REQ-20260909-074) 우선순위의 이웃은
+        TDD 칩과 태그다. 계약은 자리 이름이 아니라 순서다: 우선순위 → TDD →
+        태그. 여기서 고정하는 것은 '크기보다 앞'이 아니라 '이 줄의 맨 앞'이다.
+        """
+        for later in ("r.tdd ?", "tagset"):
+            self.assertLess(self.card.index("prioHTML(r)"),
+                            self.card.index(later),
+                            "우선순위가 %s 뒤로 밀렸다" % later)
 
     def test_doclist_row_leads_with_the_id(self):
         """Docs 목록 행도 마찬가지 — 문서 ID 가 먼저 읽힌다."""

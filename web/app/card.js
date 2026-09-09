@@ -1569,7 +1569,7 @@ async function wakeDoc(id){
   paintWake(id);
   let d = null, reached = false;
   try{
-    const r = await fetch("/api/wake", {method: "POST",
+    const r = await s9Fetch("/api/wake", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs({id}))});  // actor는 서버 whoami 파생
     reached = true;
@@ -1680,7 +1680,7 @@ async function stopDoc(id){
   paintStop(id);
   let d = null, reached = false;
   try{
-    const r = await fetch("/api/stop", {method: "POST",
+    const r = await s9Fetch("/api/stop", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs({id}))});  // actor는 서버 whoami 파생
     reached = true;
@@ -2030,8 +2030,13 @@ function cardHTML(r){
   const utags = (r.tags || []).filter(t => !SYS_TAGS.has(t));
   const tagShow = utags.length > 2 ? 1 : 2;
   const tagOver = utags.length - tagShow;
+  /* 크기(size)는 카드에 서지 않는다 (REQ-20260909-074, 주인 지적 2026-09-09:
+     「기준을 모르겠고 인사이트가 없으며 자리만 차지한다」). 축 이름 없는 값 한
+     글자라 옆의 `보통`(우선순위)과 같은 척도로 읽혔고, S 가 최상급으로 오독됐다.
+     실측으로도 이 값은 예산으로 작동하지 않았다 — 9/9 done 59건에서 절차를 바꾼
+     사례 0 · 초과 기록 0 · 값으로 분기하는 코드 0. 읽는 자리는 문서 메타 표
+     하나이고, 거기서는 값에 뜻이 붙는다(const.js `sizeText`). */
   const mwhatBits = prioHTML(r)
-    + (r.size ? `<span class="size">${esc(r.size)}</span>` : "")
     + (r.tdd ? `<span class="tdd${r.tdd.passed === r.tdd.total ? " full" : ""}"`
         + ` title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">`
         + `TDD ${r.tdd.passed}/${r.tdd.total}</span>` : "")
@@ -2208,7 +2213,7 @@ async function postStatus(id, to, note, atts){
      문서에 질문으로 적혔다** — 나중에 읽는 사람이 답해야 할 질문과 판정의
      근거를 구별할 수 없었다. */
   try{
-    const r = await fetch("/api/status", {method: "POST",
+    const r = await s9Fetch("/api/status", {method: "POST",
       headers: {"Content-Type": "application/json"},
       // actor 는 서버 whoami 파생 — 화면이 실어 보내지 않는다
       body: JSON.stringify(withAs({id, to, note, atts: atts || [],
@@ -2331,7 +2336,7 @@ async function assignDoc(id){
     cancel: "그만두기"});
   if (!picked || !picked.key || picked.key === cur) return;
   try{
-    const res = await fetch("/api/assign", {method: "POST",
+    const res = await s9Fetch("/api/assign", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs({id, user: picked.key, why: picked.why || ""}))});
     const d = await res.json();
@@ -2404,7 +2409,7 @@ async function projectDoc(id){
   const next = picked.key;
   if (next === cur) return;
   try{
-    const res = await fetch("/api/doc/set", {method: "POST",
+    const res = await s9Fetch("/api/doc/set", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs({id, project: next}))});
     const d = await res.json();
@@ -2434,7 +2439,7 @@ async function projectDoc(id){
    그대로 옮긴다 — 저쪽이 실행 중이면 서버가 409 로 그 문장을 준다. */
 async function takeoverDoc(id){
   try{
-    const res = await fetch("/api/claim_takeover", {method: "POST",
+    const res = await s9Fetch("/api/claim_takeover", {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(withAs({id}))});
     const d = await res.json();
