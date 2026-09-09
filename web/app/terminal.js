@@ -234,7 +234,10 @@ async function termTargetLoop(T){
   };
   T.agTick = agTick;          // 탭 복귀 즉시 맞추기 위해 노출 (REQ-20260826-016)
   agTick();
-  T.timers.push(setInterval(agTick, 10000));
+  // 10초 폴은 알림 채널이 대신한다 (REQ-20260909-088) — 세션 기록이
+  // 자라면 서버가 알리고 evPull('agents') 가 이 함수를 부른다.
+  // 남은 것은 알림을 놓쳤을 때를 메우는 안전 폴 하나다.
+  T.timers.push(setInterval(agTick, 60000));
   /* 에이전트가 말하고 있다는 신호 2.5s (REQ-20260829-014 2차) — 말 자체는
      그 에이전트의 판에서 읽는다(스트립 행 클릭 · ← 키). 여기서는 **몇 줄이
      쌓였는지만** 센다: 에이전트마다 자기 offset 으로 증분을 받아 줄 수를

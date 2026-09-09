@@ -278,7 +278,6 @@ async function boot(){
      칩, serveinfo·serveguard 는 알림 줄이라 첫 그림을 붙잡을 이유가 없다. */
   supplyRelease();
   refreshUsage();
-  s9Every("usage", 60000, refreshUsage);
   setTimeout(docPickDiag, 900);   // ?pick=<문서id> — 진단·헤드리스 캡처용 (셸이 선 뒤)
   shortRefDiag();  // ?shortref — 축약 풀기 계약을 이 화면에서 실제로 재 본다
   codePeekDiag();  // ?codepeek — 코드 경로 손잡이 세 상태를 진짜 렌더러로 세운다
@@ -287,17 +286,17 @@ async function boot(){
   /* 창으로 돌아온 손은 목록을 다시 보고 싶어 한다 — 다만 방금 받았으면 왕복을
      내지 않는다(soft). 15초 벨트가 그 사이를 이미 메우고 있다. */
   window.addEventListener("focus", () => refreshCatalog(true, true));
-  s9Every("catalog", 15000, () => refreshCatalog(true));
-  // 코드 낡음 감시: 20s 폴은 가시일 때만, 그리고 포커스 복귀 즉시 한 번 —
-  // 터미널에서 재기동하고 돌아온 순간 알림이 사라지는 것이 곧 성공 확인이다.
+  /* 주기 폴 다섯(문서 목록 15초·서버 사실 20초·감시자 20초·사용량 60초·
+     에이전트 목록 10초)을 **알림 채널 하나**로 바꾼다 (REQ-20260909-088).
+     서버가 바뀐 것을 말해 주면 그때 그 자료만 받고, 남는 주기 폴은 채널이
+     놓친 것을 메우는 60초 하나다. 채널 자체는 events_ch.js 에 있다. */
   checkOldCode();
-  s9Every("serveinfo", 20000, checkOldCode);
   window.addEventListener("focus", checkOldCode);
   // 자동 복구 기록 (REQ-20260826-018). focus 확인이 특히 중요하다 — 서버가 죽어
   // 있는 동안 폴은 실패하고, 사람이 화면으로 돌아오는 순간이 대개 복구 직후다.
   checkGuard();
-  s9Every("serveguard", 20000, checkGuard);
   window.addEventListener("focus", checkGuard);
+  evStart();
   window.addEventListener("popstate", () => applyRoute(location.hash, true));
 }
 

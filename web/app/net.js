@@ -128,6 +128,14 @@ function s9Every(name, ms, fn){
   S9_POLLS.push(p);
   return p;
 }
+/* 벨트 하나를 걷는다 — 주기를 바꾸려면 걷고 다시 건다 (REQ-20260909-088:
+   알림 채널이 살아 있으면 60초, 3회 연속 실패하면 30초). */
+function s9EveryStop(p){
+  if (!p) return;
+  clearInterval(p.timer);
+  const i = S9_POLLS.indexOf(p);
+  if (i >= 0) S9_POLLS.splice(i, 1);
+}
 /* 다시 보이게 되면 건너뛴 폴만 한 번씩 돌린다. */
 function s9PollsResume(){
   for (const p of S9_POLLS){
