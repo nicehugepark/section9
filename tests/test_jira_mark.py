@@ -190,8 +190,7 @@ class JiraMark(unittest.TestCase):
         self.assertFalse(any(rid in t for t in texts), texts)
         # 원문 문단은 REQ-20260909-054 부터 실린다 — section9 표시와는 무관하게
         self.assertEqual(texts, ["완료 기준: 환불이 된다", "요약: 환불을 돕는다",
-                                 "원문:", "원문은 나가지 않는다",
-                                 "담당: hong · 크기: S · 상태: open"])
+                                 "원문:", "원문은 나가지 않는다"])   # 담당·크기·상태 줄은 없다(REQ-20260909-085)
         self.assertEqual(f["summary"], "환불 API")
         meta, _ = self.doc(rid)
         self.assertEqual(meta["jira"]["key"], "MP1-1", "문서의 jira.key 가 곧 기록이다")

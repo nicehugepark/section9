@@ -27367,9 +27367,9 @@ def jira_issue_fields(meta, j, body="", assignee_id=""):
                   f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
                   f"요약: {meta.get('summary')}" if meta.get("summary") else "",
                   *jira_original_lines(body),
-                  f"section9 요청 {doc_id}" if mark else "",
-                  f"담당: {meta.get('user') or ''} · 크기: {meta.get('size') or ''} · "
-                  f"상태: {meta.get('status') or ''}"])}
+                  # 담당·크기·상태 줄은 붙이지 않는다(주인 2026-09-09 15:58, REQ-20260909-085) —
+                  # 담당은 assignee, 상태는 Jira 상태가 이미 말하고 크기는 리드의 예산이다
+                  f"section9 요청 {doc_id}" if mark else ""])}
     if mark:
         fields["labels"] = [jira_label(doc_id)]
     if assignee_id:
