@@ -26327,13 +26327,18 @@ def jira_state(user=""):
     if tok:
         where = ("internal" if os.path.dirname(tok) == secret_dir(user)
                  else "external")
-    projects = []
+    projects, manageable = [], []
     for m in all_projects():
         j = m.get("jira")
         key = str((j or {}).get("project_key") or "").strip() if isinstance(j, dict) else ""
+        sl = m.get("slug", "")
         if key:
-            projects.append({"slug": m.get("slug", ""), "key": key,
-                             "site": str((j or {}).get("site") or "")})
+            projects.append({"slug": sl, "key": key,
+                             "site": str((j or {}).get("site") or ""),
+                             "direction": str((j or {}).get("direction") or "push")})
+        # 화면에서 이을 수 있는 프로젝트 — manage(maintainer 이상)인 것만 (REQ-20260909-015)
+        if user and str(m.get("status") or "active") != "archived" and project_can(sl, user, "manage"):
+            manageable.append({"slug": sl, "title": str(m.get("title") or sl)})
     ready = {"site": bool(site), "email": bool(email), "token": bool(tok),
              "project": bool(projects)}
     exp, left, level, line = jira_token_expiry(user) if user else ("", None, "", "")
@@ -26343,7 +26348,7 @@ def jira_state(user=""):
             "expiry_line": line,
             "token": bool(tok), "token_where": where, "token_key": JIRA_SECRET_KEY,
             "token_url": JIRA_TOKEN_URL,
-            "projects": projects, "ready": ready,
+            "projects": projects, "manageable": manageable, "ready": ready,
             "ready_n": sum(1 for v in ready.values() if v), "ready_total": len(ready)}
 
 
@@ -29298,9 +29303,12 @@ def cmd_serve(args):
                     if req.get("unset"):
                         res = do_project_jira_unset(slug, actor=actor, via=" via dashboard")
                     else:
+                        # site 를 안 주면 내 Jira 주소(Settings 의 jira_site)다 —
+                        # Settings 판의 「프로젝트 연동」 폼이 그 길을 쓴다 (REQ-20260909-015)
+                        site = req.get("site") or (user_config(actor) or {}).get("jira_site")
                         res = do_project_jira_set(
                             slug, actor=actor, via=" via dashboard",
-                            site=req.get("site"), project_key=req.get("key"),
+                            site=site, project_key=req.get("key"),
                             direction=req.get("direction"))
                     self._json({"ok": True, **res})
                 elif parsed.path == "/api/user/config":

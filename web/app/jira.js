@@ -38,10 +38,10 @@ const JIRA_ROWS = [
    mean: "위의 셋으로 Jira 에 한 번 물어봅니다(GET /rest/api/3/myself). 계정 이름이 "
        + "돌아오면 준비가 맞은 것입니다. 틀린 토큰으로는 한 번만 묻습니다 — 반복하면 "
        + "계정이 잠깁니다."},
-  {key: "project", name: "프로젝트 연동", kind: "fact",
-   mean: "우리 프로젝트 하나에 Jira 프로젝트 하나(project key, 예: ABC)를 짝짓습니다. "
-       + "지금은 터미널에서: s9 project jira <slug> set --site <위 주소> --key <KEY> "
-       + "(maintainer 이상). 화면의 손잡이는 Projects 정보 패널에 다음 단계로 섭니다."},
+  {key: "project", name: "프로젝트 연동", kind: "link",
+   mean: "우리 프로젝트 하나에 Jira 프로젝트 하나(project key, 예: ABC)를 짝짓습니다 — "
+       + "위 Jira 주소의 프로젝트입니다. 내가 관리(maintainer 이상)하는 프로젝트만 고를 수 "
+       + "있고, 같은 값은 Projects 정보 패널에도 보입니다. 터미널: s9 project jira <slug> set --key <KEY>."},
 ];
 
 /* 부제 = 들어 있는 서비스 이름(원어). 서비스가 하나뿐인 동안만 준비 정도를 뒤에
@@ -78,7 +78,7 @@ function jiraSummary(s){
   // 만료일은 준비 항목이 아니다(선택) — 남은 것에 세지 않는다
   const left = JIRA_ROWS.filter(r => r.kind !== "ping" && r.key !== "jira_token_expires")
                         .filter(r => !s.ready[r.kind === "secret" ? "token"
-                                              : r.kind === "fact" ? "project"
+                                              : r.kind === "link" ? "project"
                                               : r.key.replace("jira_", "")])
                         .map(r => r.name);
   if (!left.length)
@@ -113,10 +113,32 @@ function jiraRowHTML(r, s){
              aria-disabled="${!can}">연동 확인</button>`;
     fact = can ? "" : "주소·이메일·API token 셋이 있어야 물어볼 수 있습니다.";
   } else {
+    // 프로젝트 연동 — 이어진 것은 줄마다 「slug ↔ KEY · 방향 · 연동 해제」, 아래에 잇는 폼
+    // (REQ-20260909-015, 주인: 「지라 프로젝트 연동도 설정에서 변경할 수 있게」).
     const rows = (s.projects || []);
-    ctl = rows.length
-      ? `<span class="wlab gcmd">${rows.map(p => `${esc(p.slug)} ↔ ${esc(p.key)}`).join(" · ")}</span>`
+    const can = (s.manageable || []);
+    const dirName = d => (PRJ_TEXT.jiraDirs.find(([v]) => v === d) || [d, d])[1];
+    const linked = rows.length
+      ? rows.map(p => `<div class="jlink"><span class="wlab gcmd">${esc(p.slug)} ↔ ${esc(p.key)}</span>
+           <span class="path">· ${esc(dirName(p.direction || "push"))}</span>${
+           can.some(m => m.slug === p.slug)
+             ? ` <button type="button" class="more wmore j-unlink" data-slug="${esc(p.slug)}">연동 해제</button>` : ""
+         }</div>`).join("")
       : `<span class="wlab">아직 없습니다</span>`;
+    const opts = can.filter(m => !rows.some(p => p.slug === m.slug));
+    const form = (s.registered && opts.length)
+      ? `<div class="jlinkform">
+           <select class="uf" id="j-link-slug" aria-label="프로젝트">${
+             opts.map(m => `<option value="${esc(m.slug)}">${esc(m.title)} (${esc(m.slug)})</option>`).join("")}</select>
+           <input class="uf" id="j-link-key" style="width:110px" placeholder="MP1" aria-label="Jira project key">
+           <select class="uf" id="j-link-dir" aria-label="연동 방향">${
+             PRJ_TEXT.jiraDirs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
+           <button type="button" class="more wmore" id="j-link">연동</button></div>`
+      : "";
+    ctl = linked + form;
+    if (s.registered && !can.length && !rows.length)
+      fact = "관리(maintainer 이상)하는 프로젝트가 없어 여기서 이을 수 없습니다.";
+    if (s.registered && !s.ready.site) fact = "먼저 Jira 주소를 적으십시오 — 프로젝트는 그 주소의 것입니다.";
   }
   return `<tr class="wrow grow" data-jk="${esc(r.key)}">
     <td><span class="wlab">${esc(r.name)}</span>
@@ -185,6 +207,30 @@ function showJiraPanel(host, me){
     if (sum && jiraState) sum.textContent = jiraSummary(jiraState);
   });
   host.addEventListener("click", async ev => {
+    const link = evEl(ev.target)?.closest("#j-link");
+    if (link && me){
+      const slug = host.querySelector("#j-link-slug")?.value || "";
+      const key = (host.querySelector("#j-link-key")?.value || "").trim();
+      const direction = host.querySelector("#j-link-dir")?.value || "push";
+      if (!key){ jiraSay("project", "Jira project key 를 적어 주세요 — 예: MP1", "bad"); return; }
+      jiraSay("project", "잇는 중…");
+      const res = await postJSONRaw("/api/project/jira", {slug, key, direction});
+      if (!res.ok){ jiraSay("project", "✕ " + res.error, "bad"); return; }
+      await jiraLoad(); paint();
+      jiraSay("project", `이었습니다 — ${slug} ↔ ${(res.jira || {}).project_key || key}`);
+      return;
+    }
+    const unlink = evEl(ev.target)?.closest(".j-unlink");
+    if (unlink && me){
+      const slug = unlink.dataset.slug;
+      // 되돌릴 수 있는 일(다시 이으면 된다)이라 확인 창을 세우지 않는다
+      jiraSay("project", "푸는 중…");
+      const res = await postJSONRaw("/api/project/jira", {slug, unset: true});
+      if (!res.ok){ jiraSay("project", "✕ " + res.error, "bad"); return; }
+      await jiraLoad(); paint();
+      jiraSay("project", `풀었습니다 — ${slug}`);
+      return;
+    }
     const ping = evEl(ev.target)?.closest("#j-ping");
     if (ping){
       if (ping.getAttribute("aria-disabled") === "true" || !me) return;

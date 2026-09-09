@@ -516,3 +516,7 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .metatbl .jkey{font-family:var(--mono);color:var(--text);text-decoration:underline dotted;text-underline-offset:2px}
 .metatbl .jdiff{color:var(--muted)}
 .metatbl .jerr{color:var(--warn,#b45309)}
+
+/* Settings 외부 서비스 › 프로젝트 연동 (REQ-20260909-015) — 줄마다 한 연동, 아래에 잇는 폼 */
+.jlink{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+.jlinkform{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}

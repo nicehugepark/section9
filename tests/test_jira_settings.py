@@ -73,7 +73,8 @@ class JiraSettings(unittest.TestCase):
         st = m.jira_state("hong")
         self.assertTrue(st["ready"]["project"])
         self.assertEqual(st["projects"], [{"slug": "pay", "key": "MP1",
-                                           "site": "https://ex.atlassian.net"}])
+                                           "site": "https://ex.atlassian.net",
+                                           "direction": "push"}])
 
     def test_j4_a_board_url_is_trimmed_to_the_site(self):
         m = self.m
@@ -90,3 +91,36 @@ class JiraSettings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class JiraSettingsLink(unittest.TestCase):
+    """Settings 에서 프로젝트를 잇는다 (REQ-20260909-015) — 서버가 고를 수 있는 프로젝트를 준다."""
+
+    def setUp(self):
+        self._root = os.environ.get("S9_ROOT")
+        self.root = tempfile.mkdtemp(prefix="s9jira-l-")
+        os.environ["S9_ROOT"] = self.root
+        name = "s9jiral_" + os.path.basename(self.root)
+        spec = importlib.util.spec_from_loader(
+            name, importlib.machinery.SourceFileLoader(name, S9))
+        self.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.m)
+        self.m.cmd_init(type("A", (), {})())
+        self.m.do_user_add("hong", role="admin")
+        self.m.do_user_add("vera")
+        self.m.do_project_add("pay", name="결제", summary="", actor="hong")
+
+    def tearDown(self):
+        if self._root is None:
+            os.environ.pop("S9_ROOT", None)
+        else:
+            os.environ["S9_ROOT"] = self._root
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_s1_manageable_projects_are_listed_for_the_manager_only(self):
+        self.assertEqual([m["slug"] for m in self.m.jira_state("hong")["manageable"]], ["pay"])
+        self.assertEqual(self.m.jira_state("vera")["manageable"], [])
+        self.m.do_project_jira_set("pay", actor="hong", site="https://ex.atlassian.net",
+                                   project_key="MP1", direction="both")
+        st = self.m.jira_state("hong")
+        self.assertEqual(st["projects"][0]["direction"], "both")
