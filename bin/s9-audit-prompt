@@ -287,6 +287,32 @@ def _account_registered():
     except Exception:
         return True
 
+CROSS_SESSION_MARK = "<cross-session-message"
+# 프롬프트 머리에 이것이 서면 사람이 친 말이 아니다 — 카드를 만들지 않는다(main 참조).
+NOT_HUMAN_MARKS = ("<task-notification>", "<system-reminder>",
+                   "[SYSTEM NOTIFICATION", CROSS_SESSION_MARK)
+_CROSS_ATTR_RE = re.compile(r'([A-Za-z][\w-]*)="([^"]*)"')
+
+
+def cross_session_turn(env, prompt):
+    """다른 자리의 세션이 보낸 프롬프트 (REQ-20260909-037 · REQ-20260908-019).
+
+    머리에 하네스가 붙인 표식에서 그 세션을 **부르는 이름**을 얻어 그 세션의
+    vault 문서에 적고(vault 는 git 으로 머신 사이를 따라다니므로 이름도 따라다닌다),
+    이 세션의 문서에는 받았다는 한 줄만 남긴다. 응답 캡처는 question 턴과 같이
+    멈춘다 — 에이전트가 보낸 말에 대한 답은 마지막 REQ 의 응답이 아니다.
+    """
+    head = prompt[:400]
+    at = dict(_CROSS_ATTR_RE.findall(head.split(">", 1)[0]))
+    who = (at.get("from-name") or at.get("from") or "?").strip()
+    try:
+        run(env, "callname", "learn", "--head", head)
+    except Exception:
+        pass
+    run(env, "log", f"cross-session 메시지 수신 (from {who[:60]})")
+    run(env, "last", "--pause")
+
+
 def is_command(text):
     """슬래시 커맨드 판별 (REQ-20260825-014) — startswith('/')는 절대경로
     메시지("/home/… 이 경로도 문제가 있다")까지 커맨드로 오인해 audit이
@@ -718,18 +744,24 @@ def main():
     if not prompt or prompt.startswith("!") or is_command(prompt):
         emit("")
         return
-    # 시스템 통지 턴(백그라운드 태스크 완료 등)은 사용자 요청이 아니다 — 카드 금지
-    # (REQ-20260823-084: task-notification이 REQ로 오생성되던 결함)
-    if prompt.startswith(("<task-notification>", "<system-reminder>",
-                          "[SYSTEM NOTIFICATION")):
-        emit("")
-        return
-
     session = (data.get("session_id") or "unknown")[:8]
     env = dict(os.environ)
     env["S9_SESSION"] = session
     global _EMIT_ENV
     _EMIT_ENV = env
+
+    # 사람이 친 말이 아닌 턴은 사용자 요청이 아니다 — 카드 금지. 검사는 이 한 자리다.
+    #   · 시스템 통지(백그라운드 태스크 완료 등, REQ-20260823-084: task-notification이
+    #     REQ로 오생성되던 결함)
+    #   · 다른 세션이 SendMessage 로 보낸 프롬프트(<cross-session-message …>,
+    #     REQ-20260909-037: 「<cross-session-message f…」 제목의 REQ 가 여섯 번 섰다) —
+    #     세션 문서에 한 줄만 남기고, 부르는 이름은 그대로 배운다(REQ-20260908-019).
+    if prompt.startswith(NOT_HUMAN_MARKS):
+        if prompt.startswith(CROSS_SESSION_MARK):
+            cross_session_turn(env, prompt)
+        emit("")
+        return
+
     first_line = prompt.splitlines()[0].strip()
 
     # attach 생존 신호 갱신 (REQ-20260824-041): SessionStart 시점의 attach_pid가
@@ -743,15 +775,6 @@ def main():
             run(env, "bind", "transcript_path", tp)  # 신생 세션 자가 치유
     except Exception:
         pass
-
-    # 다른 자리의 세션이 보낸 프롬프트 — 머리에 하네스가 붙인 표식에서 그 세션을
-    # **부르는 이름**을 얻어 그 세션의 vault 문서에 적는다 (REQ-20260908-019).
-    # vault 는 git 으로 머신 사이를 따라다니므로 이름도 따라다닌다.
-    if prompt.startswith("<cross-session-message"):
-        try:
-            run(env, "callname", "learn", "--head", prompt[:400])
-        except Exception:
-            pass
 
     # auto-resume 스폰 턴 — 대상 REQ가 이미 존재한다. 새 카드를 만들면 안 되지만,
     # 세션 id와 클레임 지시는 반드시 주입해야 한다: 이게 없으면 스폰된 작업자가
