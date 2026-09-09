@@ -305,6 +305,18 @@
      캡처해 고친 것이 사람이 보는 화면이 아니게 된다. `wakespawn`(main 갈래)은
      그래서 **아무 창도 세우지 않는 것이 정답**이고, 창이 서는 성공은
      `wakespawnws`(worktree 갈래) 하나다. stallProbe 가 낸 선례와 같은 자리. */
+  /* ?dlg=wakeblock — **거절**의 얼굴 (REQ-20260909-099). 이 답은 리스를 밖으로
+     못 보냈을 때만 나오므로 겨냥해 만나기가 사실상 불가능한데, 사람이 실제로
+     받은 창이 바로 이것이다(주인 캡처 18:03). 답본은 서버 실문장
+     (bin/s9 `_SPAWN_BLOCK_KO["net-down"]`)의 사본이다. */
+  if (m[1] === "wakeblock"){
+    setTimeout(() => wakeAnswer("REQ-20260909-099-62x6",
+      {ok: false, action: "net-down",
+       message: "다른 컴퓨터와 아직 맞추지 못했습니다 — 맞추기 전에 시작하면 "
+              + "같은 요청을 두 곳에서 함께 붙잡게 됩니다. 맞춰지는 대로 "
+              + "저절로 시작하니 그대로 두셔도 됩니다."}), 900);
+    return;
+  }
   if (m[1] === "wakewait" || m[1] === "wakespawn" || m[1] === "wakespawnws"){
     // 서버 실문장(bin/s9 WAKE_SPAWNED_KO · WS_MEANS_KO.worktree)의 사본 —
     // 어긋나면 진단으로 캡처해 고친 창이 사람이 보는 창이 아니게 된다.

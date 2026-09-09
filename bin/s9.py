@@ -1251,6 +1251,124 @@ def sse_close(tok):
     with _SSE_LOCK:
         _SSE_LIVE.pop(tok, None)
         _SSE_STOP.discard(tok)
+
+
+# ── 변경 알림 채널 (REQ-20260909-088) ─────────────────────────────────────
+# 화면은 catalog 15초·serveinfo 20초·serveguard 20초·usage 60초·agents 10초를
+# 제각각 폴했다 — 탭 하나가 분당 20~40개의 새 연결이다. 이 환경에서 비용은
+# 바이트가 아니라 연결 수라(REQ-20260909-067), 「무엇이 바뀌었나」만 한 채널로
+# 알리고 화면은 바뀐 것만 받아 간다.
+#
+# **파일을 보는 것은 스레드 하나다.** 연결마다 제 폴을 돌리면 버려진 스트림이
+# CPU 를 태우던 REQ-20260901-020 이 그대로 재현된다. producer 하나가 1.5초마다
+# 벡터를 재고 **바뀐 때만** Condition 으로 모든 연결을 깨운다 — 연결의 몫은
+# 깨어나 한 줄 쓰는 것뿐이다. 좀비 방지는 기존 sse_open 의 세대 은퇴와
+# _peer_gone 을 그대로 쓴다.
+EVENTS_TICK = _envnum("S9_EVENTS_TICK", 1.5)
+EVENTS_TTL = _envnum("S9_EVENTS_TTL", 300.0)       # 만기 — 클라이언트가 다시 붙는다
+EVENTS_RETRY_MS = int(_envnum("S9_EVENTS_RETRY", 3000, int))
+EVENTS_WATCH_MAX = 32          # 지켜보는 문서·세션의 상한 (한 바퀴 = stat 몇 번)
+EVENTS_WATCH_TTL = 600.0       # 그동안 아무도 안 물은 것은 지켜보지 않는다
+_EV_COND = threading.Condition()
+_EV = {"seq": 0, "vec": {}, "conns": 0, "producer": 0}
+_EV_WATCH = {}                 # 종류 → {키: {"path": 경로, "at": 마지막 물음}}
+_EV_WATCH_LOCK = threading.Lock()
+
+
+def events_watch(kind, key, path):
+    """화면이 방금 받아 간 것을 producer 가 지켜볼 목록에 올린다.
+
+    EventSource 로는 클라이언트가 말을 걸 수 없다 — 그래서 「무엇을 보고 있나」는
+    그 자료를 받아 간 GET(/api/doc·/api/agents)이 대신 말한다. 목록에 상한과
+    수명이 있어 producer 한 바퀴의 stat 수가 유계다."""
+    if not key or not path:
+        return
+    now = time.time()
+    with _EV_WATCH_LOCK:
+        d = _EV_WATCH.setdefault(kind, {})
+        d[key] = {"path": path, "at": now}
+        if len(d) > EVENTS_WATCH_MAX:
+            old = sorted(d.items(), key=lambda kv: kv[1]["at"])
+            for k, _v in old[:len(d) - EVENTS_WATCH_MAX]:
+                d.pop(k, None)
+
+
+def _events_sig(path):
+    """파일 하나의 지문 — 내용을 읽지 않는다(stat 한 번)."""
+    try:
+        st = os.stat(path)
+        return "%d:%d" % (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return ""
+
+
+def _events_watch_sigs(kind):
+    now = time.time()
+    with _EV_WATCH_LOCK:
+        rows = [(k, v["path"]) for k, v in (_EV_WATCH.get(kind) or {}).items()
+                if now - v["at"] < EVENTS_WATCH_TTL]
+    return {k: _events_sig(p) for k, p in rows}
+
+
+def events_vector(port=None):
+    """지금의 버전 벡터 — 조각마다 「바뀌었나」에만 답하면 되는 값이다.
+
+    비싼 계산은 없다: 이미 도는 카운터 하나와 stat 몇 번. catalog 조각은
+    catalog_response 가 신선도를 판정할 때 쓰는 그 지문(_poll_fingerprint)이라,
+    화면이 받는 답과 알림이 갈리지 않는다."""
+    return {
+        "catalog": str(_poll_fingerprint()),
+        "code": json.dumps(running_code_stamp(), sort_keys=True),
+        "guard": _events_sig(_guard_paths(port or s9_port())["log"]),
+        "agents": _events_watch_sigs("agents"),
+        "doc": _events_watch_sigs("doc"),
+    }
+
+
+def events_publish(port=None):
+    """한 번 재고, 바뀌었으면 모두를 깨운다. 바뀐 세대 번호를 돌려준다."""
+    vec = events_vector(port)
+    with _EV_COND:
+        if vec != _EV["vec"]:
+            _EV["vec"] = vec
+            _EV["seq"] += 1
+            _EV_COND.notify_all()
+        return _EV["seq"]
+
+
+def _events_producer(port):
+    try:
+        while True:
+            with _EV_COND:
+                if _EV["conns"] <= 0:
+                    _EV["producer"] = 0
+                    return
+            events_publish(port)
+            time.sleep(EVENTS_TICK)
+    finally:
+        with _EV_COND:
+            _EV["producer"] = 0
+
+
+def events_conn_open(port=None):
+    """연결 하나가 붙었다 — 처음이면 producer 를 세운다(스레드는 언제나 하나)."""
+    with _EV_COND:
+        _EV["conns"] += 1
+        first = _EV["seq"] == 0
+        start = not _EV["producer"]
+        if start:
+            _EV["producer"] = 1
+    if first:
+        events_publish(port)   # 첫 이벤트를 1.5초 기다리게 두지 않는다
+    if start:
+        threading.Thread(target=_events_producer, args=(port,),
+                         name="s9-events", daemon=True).start()
+
+
+def events_conn_close():
+    with _EV_COND:
+        _EV["conns"] = max(0, _EV["conns"] - 1)
+        _EV_COND.notify_all()
 # /api/catalog 응답 바이트 캐시 — 키는 (검사 세대 seq, 뷰어, archived).
 # 항상 검사 **뒤에서만** 조회된다(신선도 판정은 검사 한 곳) — 핸들러 참조.
 # etag/zbody (REQ-20260831-004): 이 기계의 TCP 루프백은 virtioproxy 프록시를
@@ -1274,6 +1392,18 @@ _AUDIT_RESP_LOCK = threading.Lock()
 # 1.23MB 가 gzip 없이 no-store 로 매 로드 4.2초 내려왔다(QA 기준선 2026-09-09).
 _BUNDLE_RESP = {}
 _BUNDLE_RESP_LOCK = threading.Lock()
+# 마지막으로 내준 묶음 — 조각을 쓰는 중일 때 이것을 그대로 돌려준다
+# (REQ-20260909-095). 키는 (sub, 조각 디렉터리, 껍데기 경로).
+_BUNDLE_LAST = {}
+# 조각의 마지막 온전본 — (조각 디렉터리, 이름) → {"stamp", "raw"}. 구문이
+# 깨진 조각이 오면 이 자리의 것을 대신 싣는다.
+_BUNDLE_PART = {}
+# 조각이 이만큼 조용해야 새 묶음을 짓는다(초). 작업자가 파일을 쓰는 중이면
+# 반쯤 쓰인 조각이 실려 화면 껍데기가 안 선다(실측 2026-09-09: events.js 의
+# $(s) null, "'usageLast' has already been declared").
+BUNDLE_DWELL_SEC = 1.0
+# 직전 묶음이 없는 첫 요청에서 조용해지기를 기다리는 상한(초).
+BUNDLE_WAIT_SEC = 2.0
 # 계기 — 이 캐시들의 빌드 횟수. 재발은 스택 덤프가 아니라 숫자로 잡는다.
 _RESP_STAT = {"builds": 0}
 
@@ -9944,6 +10074,48 @@ WORKTREE_GIT_TOOLS = ["Bash(git add:*)", "Bash(git commit:*)",
                       "Bash(git log:*)"]
 
 
+# 리스가 막았을 때 **사람 앞에 나가는 문장** (REQ-20260909-099).
+#
+# 리스 판정이 돌려주는 `why` 는 터미널의 말이다 — "…가 쥐고 있다" ·
+# "push 미확인(busy) — 다음 틱에 다시". 그것이 손질 없이 창에 실려 나갔다
+# (주인 캡처 2026-09-09 18:03: ▶ 를 눌렀더니 「push 미확인(busy) — 다음 틱에
+# 다시 — 여기서는 띄우지 않습니다」). 사람이 무엇을 해야 하는지가 한 글자도
+# 없고, 꼬리의 「여기서는 띄우지 않습니다」는 지금 떠 있는 그 창과 스스로
+# 어긋난다(그 말은 워처의 로그에서 참이지 창에서는 거짓이다).
+#
+# 그래서 **판정과 문장을 나눈다**: 코드는 기계가 읽고(로그·API 의 `action`),
+# 문장은 이 표 한 곳에서 나온다. 갈래마다 「왜 지금 안 되는지 · 다음에 무엇이
+# 저절로 되는지(또는 사람이 무엇을 누르면 되는지)」 둘을 말한다 —
+# `_wake_refusal` 이 세운 그 목소리이고, 여기만 그 목소리 밖에 있었다.
+_SPAWN_BLOCK_KO = {
+    "net-down": "다른 컴퓨터와 아직 맞추지 못했습니다 — 맞추기 전에 시작하면 "
+                "같은 요청을 두 곳에서 함께 붙잡게 됩니다. 맞춰지는 대로 "
+                "저절로 시작하니 그대로 두셔도 됩니다.",
+    "lost-race": "다른 곳이 이 요청을 먼저 잡았습니다 — 그쪽에서 이어갑니다.",
+    "busy-elsewhere": "{machine} 에서 진행 중입니다 — 저쪽이 멈춘 뒤에 "
+                      "이어갈 수 있습니다.",
+    "busy-local": "이 컴퓨터의 다른 창이 이 요청을 맡고 있습니다 — 그 창에서 "
+                  "이어집니다.",
+    "busy-user": "{user} 가 맡고 있습니다 — 이어받으려면 담당 배지를 눌러 "
+                 "담당을 먼저 바꾸세요.",
+    "closed": "이미 끝난 요청이라 이어가지 않습니다.",
+    "not-mine": "다른 사람이 맡은 요청입니다 — 이어받으려면 담당 배지를 눌러 "
+                "담당을 먼저 바꾸세요.",
+    "observer": "보기만 할 수 있는 계정이라 작업을 시작할 수 없습니다.",
+}
+
+
+def _spawn_block_ko(code, lease=None):
+    """리스 거절 코드 → 창에 세울 한 문장. 표에 없는 코드도 내부 문자열을
+    새게 하지 않는다 — 모르는 갈래에 기계 말을 흘리느니 짧게 말한다."""
+    t = _SPAWN_BLOCK_KO.get(str(code or ""))
+    if not t:
+        return "지금은 이어갈 수 없습니다."
+    lease = lease or {}
+    return t.format(machine=str(lease.get("machine") or "") or "다른 컴퓨터",
+                    user=str(lease.get("user") or "") or "다른 사람")
+
+
 def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     """무인 워커 스폰의 **유일한** 경로 (REQ-20260825-090에서 추출).
 
@@ -10235,8 +10407,9 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
         local={"user": owner, "machine": current_machine(),
                "role": user_role(owner), "session": sid[:8] if sid else ""})
     if not _lk and _lc != "missing":
+        # 로그에는 판정의 말(`_lw`)이 그대로 남고, 창에는 사람의 말이 간다.
         _auto_log(f"SKIP({_lc}) {doc_id} {reason} {_lw}")
-        return block(_lc, f"{_lw} — 여기서는 띄우지 않습니다")
+        return block(_lc, _spawn_block_ko(_lc, doc_lease(meta)))
     try:
         lf = open(os.path.join(_auto_dir(), safe_name(doc_id) + ".log"), "a", encoding="utf-8")
         argv = ["claude", "-p", prompt, *_spawn_model_args(owner), *perm]
@@ -26992,8 +27165,181 @@ def _part_bytes(home, name):
         return None
 
 
-def web_bundle(sub, shell_path, root=None):
+_BAL_OPEN = {"(": ")", "[": "]", "{": "}"}
+_BAL_CLOSE = {")": "(", "]": "[", "}": "{"}
+# `/` 앞에 이것이 오면 나눗셈이 아니라 정규식이다. 앞의 낱말도 함께 본다.
+_BAL_RE_PREV = set("(,=:[!&|?+-*%~^<>;{}\n")
+_BAL_RE_WORD = {"return", "typeof", "case", "in", "of", "do", "else", "delete",
+                "instanceof", "new", "void", "yield", "await"}
+
+
+def _balance_error(raw, sub="app"):
+    """반쯤 쓰인 조각인지 값싸게 본다 — 문제면 사유 한 줄, 없으면 None.
+
+    괄호·따옴표·주석의 균형만 본다. 문법을 아는 검사가 아니라 **잘린 파일**을
+    잡는 검사다: 쓰다 만 파일은 거의 언제나 닫히지 않은 괄호나 따옴표로 끝난다.
+    정상 조각을 떨어뜨리는 것이 곧 사고이므로 애매하면 통과시킨다 — 실측
+    2026-09-09: 지금 저장소의 web/app/*.js·web/css/*.css 전부가 통과하고, 앞의
+    2/3 만 남긴 잘린 사본은 전부 걸렸다(tests/test_bundle_snapshot.py S8).
+    """
+    try:
+        src = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return "utf-8 로 못 읽는다 (쓰는 중일 수 있다)"
+    stack = []          # (여는 글자, 줄)
+    tmpl = []           # 템플릿 문자열 안에서 열린 ${ 의 깊이
+    i, n, line = 0, len(src), 1
+    prev, prevword = "", ""
+    js = (sub != "css")
+    while i < n:
+        c = src[i]
+        if c == "\n":
+            line += 1
+            i += 1
+            prev = "\n"
+            continue
+        if c in " \t\r":
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and src[i + 1] == "*":
+            end = src.find("*/", i + 2)
+            if end < 0:
+                return "닫히지 않은 주석 (줄 %d)" % line
+            line += src.count("\n", i, end)
+            i = end + 2
+            continue
+        if js and c == "/" and i + 1 < n and src[i + 1] == "/":
+            end = src.find("\n", i)
+            i = n if end < 0 else end
+            continue
+        if c in "'\"" or (js and c == "`"):
+            q, j = c, i + 1
+            while j < n:
+                if src[j] == "\\":
+                    j += 2
+                    continue
+                if q == "`" and src[j] == "$" and j + 1 < n and src[j + 1] == "{":
+                    break
+                if src[j] == q:
+                    break
+                if src[j] == "\n" and q != "`":
+                    return "닫히지 않은 따옴표 %s (줄 %d)" % (q, line)
+                j += 1
+            if j >= n:
+                return "닫히지 않은 따옴표 %s (줄 %d)" % (q, line)
+            line += src.count("\n", i, j)
+            if src[j] == "$":
+                tmpl.append(len(stack))
+                stack.append(("{", line))
+                i, prev = j + 2, "{"
+                continue
+            i, prev = j + 1, q
+            continue
+        if js and c == "/":
+            if prev == "" or prev in _BAL_RE_PREV or prevword in _BAL_RE_WORD:
+                j, cls, ok = i + 1, False, False
+                while j < n:
+                    d = src[j]
+                    if d == "\\":
+                        j += 2
+                        continue
+                    if d == "\n":
+                        break        # 정규식은 줄을 넘지 않는다 — 나눗셈이었다
+                    if d == "[":
+                        cls = True
+                    elif d == "]":
+                        cls = False
+                    elif d == "/" and not cls:
+                        ok = True
+                        break
+                    j += 1
+                if ok:
+                    i, prev, prevword = j + 1, "/", ""
+                    continue
+            i, prev, prevword = i + 1, "/", ""
+            continue
+        if c in _BAL_OPEN:
+            stack.append((c, line))
+        elif c in _BAL_CLOSE:
+            if c == "}" and tmpl and tmpl[-1] == len(stack) - 1:
+                tmpl.pop()
+                stack.pop()
+                j = i + 1
+                while j < n:
+                    if src[j] == "\\":
+                        j += 2
+                        continue
+                    if src[j] == "$" and j + 1 < n and src[j + 1] == "{":
+                        tmpl.append(len(stack))
+                        stack.append(("{", line))
+                        break
+                    if src[j] == "`":
+                        break
+                    j += 1
+                if j >= n:
+                    return "닫히지 않은 따옴표 ` (줄 %d)" % line
+                line += src.count("\n", i, j)
+                i = j + (2 if src[j] == "$" else 1)
+                prev = "`"
+                continue
+            if not stack:
+                return "짝 없는 %s (줄 %d)" % (c, line)
+            if stack[-1][0] != _BAL_CLOSE[c]:
+                return "짝이 어긋난 %s (줄 %d)" % (c, line)
+            stack.pop()
+        if c.isalnum() or c in "_$":
+            j = i
+            while j < n and (src[j].isalnum() or src[j] in "_$"):
+                j += 1
+            prevword, prev, i = src[i:j], src[j - 1], j
+            continue
+        prevword, prev = "", c
+        i += 1
+    if stack:
+        ch, ln = stack[0]
+        return "닫히지 않은 %s (줄 %d)" % (ch, ln)
+    return None
+
+
+_NODE = {}
+
+
+def _node_bin():
+    """`node --check` 를 쓸 수 있으면 그 경로, 없으면 None (한 번만 찾는다)."""
+    if "bin" not in _NODE:
+        _NODE["bin"] = shutil.which("node") or shutil.which("nodejs")
+    return _NODE["bin"]
+
+
+def _part_syntax_error(sub, fp, raw):
+    """조각이 반쯤 쓰인 것인지 값싸게 본다 — 문제면 사유, 없으면 None.
+
+    node 가 있으면 `node --check` 가 판정하고(정확하다), 없으면 괄호·따옴표
+    균형 검사다. 어느 쪽이든 **읽는 값이지 고치는 값이 아니다** — 판정이
+    실패로 나온 조각은 묶음에서 빠지고 직전 온전본이 그 자리에 선다.
+    """
+    if sub == "app":
+        node = _node_bin()
+        if node:
+            try:
+                r = subprocess.run([node, "--check", fp], capture_output=True,
+                                   timeout=10)
+                if r.returncode != 0:
+                    why = (r.stderr or b"").decode("utf-8", "replace").strip()
+                    return (why.splitlines() or ["node --check 실패"])[-1][:200]
+                return None
+            except Exception:
+                pass       # node 를 못 부르면 균형 검사로 내려간다
+    return _balance_error(raw, sub)
+
+
+def web_bundle(sub, shell_path, root=None, parts=None):
     """조각을 껍데기의 순서 그대로 이어 붙인 한 장 (bytes).
+
+    `parts` 가 있으면 조각을 파일에서 읽지 않고 그 표에서 받는다 —
+    {이름: (원문 bytes 또는 None, 이름 옆에 붙일 한 마디)}. 묶음을 짓기 전에
+    조각을 검사한 자리(web_bundle_response)가 그 결과를 그대로 넘긴다
+    (REQ-20260909-095).
 
     `sub` 는 "css" 또는 "app". 껍데기에서 조각이 하나도 안 잡히면 None —
     그때 빈 묶음을 200 으로 내주면 "다 왔는데 화면이 빈" 거짓이 된다.
@@ -27017,9 +27363,12 @@ def web_bundle(sub, shell_path, root=None):
     home = os.path.realpath(os.path.join(root, "web", sub))
     out, table, line = [], [], 1
     for name in names:
-        raw = _part_bytes(home, name)
-        mark = "/* --- %s/%s%s --- */\n" % (
-            sub, name, "" if raw is not None else "  (없다 — 서버가 못 읽었다)")
+        if parts is not None:
+            raw, note = parts.get(name, (None, "  (없다 — 서버가 못 읽었다)"))
+        else:
+            raw = _part_bytes(home, name)
+            note = "" if raw is not None else "  (없다 — 서버가 못 읽었다)"
+        mark = "/* --- %s/%s%s --- */\n" % (sub, name, note)
         chunk = mark.encode() + (raw or b"")
         if not chunk.endswith(b"\n"):
             chunk += b"\n"
@@ -29147,12 +29496,76 @@ def web_bundle_response(sub, shell_path, root=None):
         except OSError:
             return None
 
-    key = (sub, stamp(shell_path),
-           tuple((n, stamp(os.path.join(home, os.path.basename(n))))
-                 for n in names))
-    return _cached_bytes(_BUNDLE_RESP, _BUNDLE_RESP_LOCK, key,
-                         lambda: (web_bundle(sub, shell_path, root) or b"", {}),
-                         keep=4)
+    paths = {n: os.path.realpath(os.path.join(home, os.path.basename(n)))
+             for n in names}
+    ident = (sub, home, os.path.realpath(shell_path))
+    files = [shell_path] + [paths[n] for n in names]
+
+    def unquiet():
+        """가장 최근에 손댄 조각이 조용해질 때까지 남은 초 (0 이면 조용하다)."""
+        now, left = time.time(), 0.0
+        for fp in files:
+            try:
+                m = os.stat(fp).st_mtime
+            except OSError:
+                continue
+            left = max(left, BUNDLE_DWELL_SEC - (now - m))
+        return left
+
+    # ① 쓰는 중이면 짓지 않는다. 직전 묶음이 있으면 그것이 답이고, 없으면
+    #    (첫 요청) 조용해질 때까지 상한 안에서 기다렸다 다시 본다.
+    left = unquiet()
+    if left > 0:
+        last = _BUNDLE_LAST.get(ident)
+        if last is not None:
+            return last
+        end = time.time() + BUNDLE_WAIT_SEC
+        while left > 0:
+            nap = min(left, end - time.time())
+            if nap <= 0:
+                break
+            time.sleep(nap)
+            left = unquiet()
+
+    # ② 조각마다 값싼 구문 검사. 통과한 것만 온전본으로 기억하고, 깨진 것은
+    #    직전 온전본으로 대신 싣는다(없으면 빼고 그 자리를 주석으로 말한다).
+    parts, used = {}, []
+    for n in names:
+        fp, st = paths[n], stamp(paths[n])
+        keep = _BUNDLE_PART.get((home, n))
+        if keep is not None and st is not None and keep["stamp"] == st:
+            parts[n] = (keep["raw"], "")
+            used.append((n, st, "ok"))
+            continue
+        raw = _part_bytes(home, n)
+        if raw is None:
+            parts[n] = (None, "  (없다 — 서버가 못 읽었다)")
+            used.append((n, st, "none"))
+            continue
+        why = _part_syntax_error(sub, fp, raw)
+        if why is None:
+            _BUNDLE_PART[(home, n)] = {"stamp": st, "raw": raw}
+            parts[n] = (raw, "")
+            used.append((n, st, "ok"))
+            continue
+        print("묶음: %s/%s 는 구문이 깨져 싣지 않는다 — %s" % (sub, n, why),
+              file=sys.stderr)
+        perf_mark("bundle", "skip", 0.0, part="%s/%s" % (sub, n), why=why[:120])
+        if keep is not None:
+            parts[n] = (keep["raw"], "  (구문 오류 — 직전 온전본을 싣는다)")
+            used.append((n, keep["stamp"], "prev"))
+        else:
+            parts[n] = (None, "  (구문 오류 — 이 조각은 빼고 낸다)")
+            used.append((n, st, "skip"))
+
+    # ③ 지문은 **실제로 실린 것**을 센다 — 빠지거나 대체된 조각이 있으면
+    #    온전할 때와 다른 ETag 다(_cached_bytes 가 본문 md5 로 굽는다).
+    key = (sub, stamp(shell_path), tuple(used))
+    ent = _cached_bytes(
+        _BUNDLE_RESP, _BUNDLE_RESP_LOCK, key,
+        lambda: (web_bundle(sub, shell_path, root, parts) or b"", {}), keep=4)
+    _BUNDLE_LAST[ident] = ent
+    return ent
 
 
 def cmd_serve(args):
@@ -30297,6 +30710,12 @@ def cmd_serve(args):
                                 "live": getattr(self.server, "_live", -1),
                                 "max": getattr(self.server, "max_conns", -1),
                                 "sse": len(_SSE_LIVE),
+                                # 변경 알림 채널 (REQ-20260909-088) — 연결이
+                                # 몇이든 파일을 보는 스레드는 하나여야 한다.
+                                "events": _EV["conns"],
+                                "events_producer": sum(
+                                    1 for t in threading.enumerate()
+                                    if t.name == "s9-events"),
                                 "threads": threading.active_count(),
                                 "idle_timeout": KEEPALIVE_IDLE,
                                 "backlog": SERVE_BACKLOG},
@@ -30431,6 +30850,71 @@ def cmd_serve(args):
                     if stream_visible(sid, me) else None
                 self._json(data if data else {"error": "stream not found"},
                            200 if data else 404)
+            elif parsed.path == "/api/events":
+                # 변경 알림 채널 (REQ-20260909-088) — 「무엇이 바뀌었나」만
+                # 내려보내고 자료는 화면이 바뀐 것만 받아 간다. 이 연결은
+                # 파일을 보지 않는다: producer 스레드 하나가 재고 여기서는
+                # 깨어나 한 줄 쓴다.
+                self.close_connection = True
+                # 서버가 끝내는 연결이다 — 상대의 FIN 을 기다리면 만기마다
+                # 스레드 하나가 그냥 태워진다 (stream/sse 와 같은 판단).
+                self._server_closes_first = True
+                try:
+                    last = int(self.headers.get("Last-Event-ID")
+                               or qs.get("last", ["0"])[0] or 0)
+                except (TypeError, ValueError):
+                    last = 0
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                port = s9_port()
+                tok = sse_open("events:" + (qs.get("session", [""])[0]
+                                            or str(self.client_address)))
+                events_conn_open(port)
+                t_open = time.time()
+                deadline = t_open + EVENTS_TTL
+                # 재연결이든 첫 연결이든 **첫 이벤트는 지금 벡터**다. 끊긴
+                # 사이에 무엇이 바뀌었는지는 화면이 손에 든 벡터와 견주어
+                # 알고, 그래서 복구가 받기 한 번으로 끝난다 (Last-Event-ID 는
+                # 「어디까지 봤나」로 로그에만 남긴다 — 세대는 서버가 센다).
+                sent = -1
+                beat = time.time()
+                try:
+                    self.wfile.write(
+                        ("retry: %d\n\n" % EVENTS_RETRY_MS).encode())
+                    self.wfile.flush()
+                    while time.time() < deadline:
+                        with _EV_COND:
+                            if _EV["seq"] == sent:
+                                _EV_COND.wait(timeout=1.0)
+                            seq, vec = _EV["seq"], _EV["vec"]
+                        # 상대가 갔거나(FIN) 같은 세션에 새 채널이 열렸으면
+                        # 여기서 끝난다 (REQ-20260901-020 의 두 신호 그대로).
+                        if sse_retired(tok) or self._peer_gone():
+                            break
+                        if seq != sent:
+                            sent = seq
+                            payload = json.dumps(
+                                {"seq": seq, "vec": vec, "after": last},
+                                ensure_ascii=False)
+                            self.wfile.write(
+                                ("id: %d\ndata: %s\n\n" % (seq, payload))
+                                .encode())
+                            self.wfile.flush()
+                            beat = time.time()
+                        elif time.time() - beat > 15:
+                            self.wfile.write(b": beat\n\n")
+                            self.wfile.flush()
+                            beat = time.time()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+                finally:
+                    sse_close(tok)
+                    events_conn_close()
+                    perf_mark("sse", "events",
+                              (time.time() - t_open) * 1000.0, seq=sent)
             elif parsed.path == "/api/stream/sse":
                 # SSE 푸시 (REQ-20260824-040): 폴링 왕복 없이 증분 이벤트를
                 # 준실시간(서버측 250ms 감시)으로 내려보낸다. keep-alive와
@@ -30499,6 +30983,9 @@ def cmd_serve(args):
                 if not stream_visible(sid, viewer_of(qs)):
                     self._json({"error": "not found"}, 404)
                     return
+                # 이 세션의 스트립을 보고 있다는 사실을 채널에 알린다
+                # (REQ-20260909-088) — 10초 폴을 알림으로 바꾸는 근거다.
+                events_watch("agents", sid, (resolve_stream_path(sid) or (None,))[0])
                 import datetime as _dt
                 out = []
                 for aid, meta in session_agents_map(sid).items():
@@ -30943,6 +31430,10 @@ def cmd_serve(args):
                     # 비가시 = 미존재와 같은 응답 — 존재 여부 누설 방지
                     self._json({"error": f"not found: {doc_id}"}, 404)
                     return
+                # 이 문서를 보고 있다는 사실을 채널에 알린다 —
+                # EventSource 는 클라이언트가 말을 걸 수 없으므로 받아 간
+                # GET 이 대신 말한다 (REQ-20260909-088).
+                events_watch("doc", doc_id, path)
                 resp = {"meta": meta, "body": body,
                         "path": os.path.relpath(path, ROOT)}
                 if via == "creator-outside":

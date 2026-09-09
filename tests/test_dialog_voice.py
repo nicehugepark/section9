@@ -232,7 +232,10 @@ def web_dialog_strings():
 # 문장을 짓는 곳은 전부 서버다).
 SERVER_FNS = ["wake_request", "_wake_refusal", "stop_request",
               "stop_all_workers", "worker_stop", "_spawn_worker",
-              "_auto_cap_block", "stall_verdict"]
+              "_auto_cap_block", "stall_verdict", "_spawn_block_ko"]
+# 창에 뜨는 문장인데 함수 밖에 사는 것 — 표로 옮겨진 거절 문구
+# (REQ-20260909-099). 표로 빼는 순간 이 시험의 눈에서 사라지므로 함께 읽는다.
+SERVER_CONSTS = ["_SPAWN_BLOCK_KO"]
 
 
 def _texts(node):
@@ -295,6 +298,13 @@ def server_dialog_strings(tree):
                 if isinstance(node.target, ast.Name) \
                         and node.target.id == "msg":
                     out += [(name, s) for s in _texts(node.value)]
+    for name in SERVER_CONSTS:
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == name
+                    for t in n.targets):
+                for v in ast.literal_eval(n.value).values():
+                    out.append((name, v))
     return out
 
 
@@ -405,6 +415,50 @@ class DialogVoice(unittest.TestCase):
                      'const STOP_LABEL = "중단하기"'):
             self.assertIn(pair, self.card,
                           f"손잡이의 낱말이 한 곳에 있지 않다: {pair}")
+
+
+    # ---- V5. 거절도 사람의 말이다 (REQ-20260909-099) ---------------------
+    def test_v5_the_refusal_speaks_to_the_person(self):
+        """주인이 ▶ 를 눌러 받은 창(2026-09-09 18:03):
+
+            이어가지 않음  REQ-20260909-095
+            push 미확인(busy) — 다음 틱에 다시 — 여기서는 띄우지 않습니다
+
+        「이 팝업 메시지가 뭘 말하는지 모르겠따. play 버튼만 눌렀을뿐인데」
+
+        리스 판정이 터미널에 적으려고 지은 말이 손질 없이 창으로 나갔다.
+        꼬리의 「여기서는 띄우지 않습니다」는 워처의 로그에서만 참이고, 지금
+        떠 있는 그 창에서는 제 존재와 어긋난다. 판정(코드)과 문장(표)을 나눈
+        자리를 여기서 지킨다."""
+        srv = None
+        for n in ast.walk(self.tree):
+            if isinstance(n, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "_SPAWN_BLOCK_KO"
+                    for t in n.targets):
+                srv = ast.literal_eval(n.value)
+        self.assertIsNotNone(srv, "bin/s9 에 _SPAWN_BLOCK_KO 가 없다")
+        # 리스가 낼 수 있는 갈래는 전부 제 문장을 갖는다 — 빠진 갈래는
+        # 마지막 한 문장으로 떨어져 왜 안 되는지를 말하지 못한다.
+        for code in ("net-down", "lost-race", "busy-elsewhere", "busy-local",
+                     "busy-user", "closed", "not-mine", "observer"):
+            self.assertIn(code, srv, f"거절 갈래 {code!r} 의 문장이 없다")
+        # 내부 낱말 — 사람이 이 화면에서 하려는 일과 아무 관계가 없다.
+        for code, txt in srv.items():
+            for w in ("push", "틱", "리스", "CAS", "spawn", "세션"):
+                self.assertNotIn(w, txt,
+                                 f"{code}: 거절 문장이 내부 낱말 {w!r} 로 "
+                                 f"말한다 — {txt!r}")
+        # 스스로 어긋나는 꼬리는 창에 붙지 않는다.
+        self.assertNotIn('— 여기서는 띄우지 않습니다"', self.s9src,
+                         "창에 뜨는 문장에 「여기서는 띄우지 않습니다」가 다시 "
+                         "붙었다 — 그 말은 로그에서만 참이다")
+        # 진단 답본은 서버 실문장이다 (V3b 와 같은 계약, 거절 쪽).
+        flat = re.sub(r"\s+", " ", read(os.path.join(APP, "diag.js")))
+        want = re.sub(r"\s+", " ", srv["net-down"])
+        self.assertIn(want.replace('" + "', ""),
+                      flat.replace('" + "', ""),
+                      "거절 답본이 서버 실문장과 다르다 — 캡처가 사람이 보는 "
+                      "창을 비추지 못한다")
 
 
 if __name__ == "__main__":
