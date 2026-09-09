@@ -89,8 +89,11 @@ class EndToEnd(unittest.TestCase):
 
     def test_end_to_end(self):
         """R1·R3·R6. 진짜로 돌려서 본다 — 계약은 프로세스 경계에서 지켜져야 한다."""
+        # 정확한 파일명으로 부른다 — 조각 "uid" 는 test_g**uid**e_repo 까지
+        # 끌어와, 남의 파일이 실패하면 러너 시험 셋이 함께 실패한다
+        # (실측 2026-09-09, ab04a137). 조각 넓히기는 Patterns 가 잰다.
         with self.subTest("two_names_both_actually_run"):
-            r = self._run("uid", "tags")
+            r = self._run("test_uid.py", "test_tags.py")
             out = r.stdout + r.stderr
             self.assertIn("test_uid", out)
             self.assertIn("test_tags", out)
@@ -102,7 +105,7 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(r.returncode, 1,
                              "못 고른 패턴이 있는데 성공으로 끝났다")
         with self.subTest("single_name_still_works"):
-            r = self._run("uid")
+            r = self._run("test_uid.py")
             self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-1500:])
 
 class GateHandsOffEveryName(unittest.TestCase):

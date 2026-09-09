@@ -208,13 +208,33 @@ class StallJudgmentServer(unittest.TestCase):
                 self.assertNotIn("fromisoformat", seg,
                                  "stalled 가 나이를 다시 재고 있다 — 판정이 두 벌이다")
 
-            # S6. 화면으로 나가는 통로에 실린다
+            # S6. 화면으로 나가는 통로에 실린다 — /api/catalog 와 /api/boot 는
+            # catalog_response() 한 곳에서 본문을 받는다 (REQ-20260909-086).
+            # 그래서 통로가 그 함수인지(경로 검사)와 그 함수의 응답 바이트에
+            # 판정이 실리는지(동작 검사)를 함께 잰다 — 호출 문자열만 찾으면
+            # 함수가 옮겨질 때마다 시험이 갈린다.
         with self.subTest("s6_reaches_the_screen"):
             src = open(S9_SRC, encoding="utf-8").read()
             i = src.index('elif parsed.path == "/api/catalog"')
             j = src.index('elif parsed.path ==', i + 10)   # 다음 갈래 직전까지
-            self.assertIn("catalog_with_live()", src[i:j],
-                          "/api/catalog 가 live 판정을 거치지 않는다")
+            self.assertIn("catalog_response(", src[i:j],
+                          "/api/catalog 가 catalog_response 를 거치지 않는다")
+            code = (
+                "import importlib.machinery as m, importlib.util as u, sys\n"
+                "s=u.spec_from_loader('s9m', m.SourceFileLoader('s9m', sys.argv[1]))\n"
+                "mod=u.module_from_spec(s); s.loader.exec_module(mod)\n"
+                "me=mod.whoami_info()['user']\n"
+                "body=mod.catalog_response(me, False, 'all')[0]\n"
+                "sys.stdout.write(body.decode('utf-8'))\n")
+            r = subprocess.run(["python3", "-c", code, os.path.abspath(S9)],
+                               capture_output=True, text=True, env=self.env,
+                               timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            sent = {x["id"]: x for x in json.loads(r.stdout)}
+            self.assertIn(self.STALE, sent, "응답에 멈춘 요청이 없다")
+            self.assertIsNotNone(sent[self.STALE].get("stalled_mins"),
+                                 "/api/catalog 응답 본문에 멈춤 판정이 실리지 않는다")
+            self.assertIsNone(sent[self.FRESH].get("stalled_mins"))
 
 # ------------------------------------------------------------------- 화면
 

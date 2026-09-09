@@ -1,9 +1,13 @@
 /* audit.js — Audit 탭과 Stream 탭 — 사건 목록·응답 도장 */
 "use strict";
+/* 사건 목록을 다시 받을 만큼 시간이 지났나 (REQ-20260909-086). 카탈로그가 바뀌면
+   손에 든 것을 비우므로(app.js) 이 선은 「바뀐 것이 없는 동안 오간 탭」만 막는다. */
+const AUDIT_TTL = 10000;
 async function renderAudit(){
   const gen = renderGen;
   if (!auditCache){
     auditCache = (await (await s9Fetch("/api/audit?" + meQ())).json()).events;
+    s9Keep("audit", 1);   // 받은 시각 — 곧바로 다시 들어온 탭이 이 줄을 본다
   if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
   }
   const q = $("#q").value.trim().toLowerCase();

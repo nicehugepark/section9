@@ -85,6 +85,10 @@ const OC_ACK = "s9oldcode_ack";   // 접어둔 서버 기동 시각 — 그 서�
 // 서버가 낡아야만 보이는데 그 상황은 캡처로 만들 수 없다 — 두 알림이 같이 떴을 때
 // 헤더가 얼마나 먹는지를 눈으로 재려면 훅이 필요하다 (REQ-20260827-017-62x6).
 const OC_FORCE = /[?&]oldcode=1/.test(location.search);
+/* 창으로 돌아올 때마다 이 둘을 다시 묻던 자리(boot.js 의 focus)가 20초 폴과 겹쳤다 —
+   짧게 오가면 왕복만 늘고 답은 같다. 8초 안의 물음은 방금 받은 답으로 답한다;
+   20초 폴은 이 선 밖이라 제 주기대로 돈다 (REQ-20260909-086). */
+const OC_FRESH = 8000;
 let ocInfo = null, ocSig = "", ocCopyT = null;
 
 const ocAck = () => { try{ return localStorage.getItem(OC_ACK); }catch(e){ return null; } };
@@ -99,7 +103,7 @@ async function checkOldCode(){
   d = await loadSupply("serveinfo", async () => {
     const r = await s9Fetch("/api/serveinfo", {cache: "no-store"});
     return r.ok ? await r.json() : null;
-  }, {prio: 1, tries: 1, quiet: true});
+  }, {prio: 1, tries: 1, quiet: true, fresh: OC_FRESH});
   // 강제 표시는 **가장 긴 경우**를 보여준다 — 두 파일이 다 바뀐 줄이 헤더를
   // 얼마나 먹는지가 이 훅으로 재려던 것이다 (REQ-20260828-025).
   if (OC_FORCE) d = {started: new Date(Date.now() - 4.2e6).toISOString(),
@@ -230,7 +234,7 @@ async function checkGuard(){
   d = await loadSupply("serveguard", async () => {
     const r = await s9Fetch("/api/serveguard", {cache: "no-store"});
     return r.ok ? await r.json() : null;
-  }, {prio: 1, tries: 1, quiet: true});
+  }, {prio: 1, tries: 1, quiet: true, fresh: OC_FRESH});
   if (GW_FORCE) d = gwDemo(GW_FORCE);
   // 서버가 죽어 있는 동안 이 폴은 실패한다 — 그 실패를 사건 없음으로 읽으면
   // 알림은 정확히 필요한 순간에 침묵한다. 직전 판정을 두고 다음 폴을 기다린다.
@@ -654,7 +658,7 @@ function gwDemo(kind){
 // admin 미리보기(as) 전환 — 서버 가시성 범위가 바뀐다: 캐시 무효화 후 전면 재조회
 function onViewerChanged(){
   renderWhoami();
-  graph = null; auditCache = null;
+  graph = null; graphWait = null; auditCache = null;   // 관계도를 다시 받게 한다
   refreshProjects().then(refreshCatalog).then(() => {
     fillProjects();   // mine 집합 재스코핑 (범위 밖 선택은 리셋)
     render();

@@ -63,13 +63,25 @@ function pushRoute(){
    물러나 **아무 일 없었던 것처럼** 보였다 — 목록이 끊긴 판은 "할 일이 없는 판"
    과 화면에서 구별되지 않았다. 주기 폴(rerender)은 다음 주기가 곧 오므로 두 번만
    시도한다; 부트의 첫 요청은 세 번까지 물러서며 받는다. */
+/* 탭에 들어올 때 다시 받는 목록의 신선도 (REQ-20260909-086). 프로젝트는 수명에
+   몇 번 바뀌는 값인데 탭을 옮길 때마다 왕복이 하나 났다 — 실측(2026-09-09): 탭
+   여섯 번 옮기는 동안 /api/projects 가 여섯 번 갔다. 목록을 바꾸는 손(만들기·
+   멤버 바꾸기)은 rerender 없이 부르므로 이 선 밖이고, 곧바로 서버로 간다. */
+const PROJECTS_TTL = 60000;
 async function refreshProjects(rerender){
   const d = await loadSupply("projects", async () => {
     const r = await s9Fetch("/api/projects?" + meQ());
     const j = r.ok ? await r.json() : null;
     return (j && Array.isArray(j.projects)) ? j : null;
-  }, {tries: rerender ? 2 : 3});
+  }, {tries: rerender ? 2 : 3, fresh: rerender ? PROJECTS_TTL : 0});
   if (!d) return;   // 구버전 서버·끊긴 연결 — SUPPLY 가 그 사실을 들고 있다
+  return applyProjects(d);
+}
+
+/* 받은 목록을 자리에 놓는다 — 단독 요청(/api/projects)이든 부트 묶음(/api/boot)이든
+   **같은 함수**를 지난다 (REQ-20260909-086). 두 벌이면 묶음으로 들어온 판만 고쳐지지
+   않는 자리가 생긴다. */
+function applyProjects(d){
   const was = JSON.stringify(projects);
   projects = d.projects || [];
   window.__projects = projects;
@@ -157,14 +169,30 @@ let docIdx = null;          // [{id, created}] — 링크 판정에 필요한 �
 let docIdxIds = null;       // 신선도 확인용 집합
 let docIdxAt = 0;
 async function loadDocIdx(){
+  /* 부트 묶음(/api/boot)이 색인을 싣고 온다 (REQ-20260909-086) — 그것이 도는 중이면
+     기다렸다가 그 조각을 쓴다. 안 기다리면 첫 판에서만 같은 것을 두 번 받는다. */
+  if (typeof bootWait !== "undefined" && bootWait && !docIdx){
+    await bootWait;
+    if (docIdx) return docIdx;
+  }
   if (Date.now() - docIdxAt < 5000) return docIdx;   // 겹쳐 부르지 않는다
   docIdxAt = Date.now();
   try {
     const r = await s9Fetch("/api/docindex?" + meQ());
     if (!r.ok) return docIdx;
     const j = await r.json();
+    return applyDocIdx(j);
+  } catch (e) {
+    /* 못 받으면 색인 없이 간다 — 화면은 색인이 없던 때와 똑같이 동작한다.
+       (카탈로그가 아는 문서만 링크가 된다: 죽은 링크보다 그 편이 낫다.) */
+  }
+  return docIdx;
+}
+/* 색인을 자리에 놓는다 — 단독 요청이든 부트 묶음이든 같은 함수를 지난다. */
+function applyDocIdx(j){
     if (!Array.isArray(j)) return docIdx;
     const first = !docIdx;
+    docIdxAt = Date.now();
     docIdx = j.map(([id, created]) => ({id, created}));
     docIdxIds = new Set(docIdx.map(r2 => r2.id));
     /* 색인이 카탈로그보다 늦게 오면 이미 그려진 판에는 링크가 빠져 있다 —
@@ -172,11 +200,7 @@ async function loadDocIdx(){
        (폴링 재렌더와 같은 규칙). */
     if (!first || !catalog.length) return docIdx;
     if (typeof tab !== "undefined" && tab !== "settings") render();
-  } catch (e) {
-    /* 못 받으면 색인 없이 간다 — 화면은 색인이 없던 때와 똑같이 동작한다.
-       (카탈로그가 아는 문서만 링크가 된다: 죽은 링크보다 그 편이 낫다.) */
-  }
-  return docIdx;
+    return docIdx;
 }
 /* 색인을 끼운 채 판정 함수를 부른다. 색인이 아직 없으면 그냥 부른다. */
 function withDocIdx(fn){
@@ -193,7 +217,29 @@ function anyShortRef(kind, num, atMs){
   return withDocIdx(() => resolveShortRef(kind, num, atMs));
 }
 
-async function refreshCatalog(rerender){
+/* 목록을 다시 받을 만큼 시간이 지났나 (REQ-20260909-086).
+
+   15초 벨트가 이미 목록을 그 간격으로 새로 받는다. 그래서 탭을 옮길 때마다 또
+   받는 왕복은 화면에 새 사실을 하나도 보태지 않으면서, 이 환경에서 30~50% 확률로
+   끊기는 연결을 하나 더 여는 일이다(REQ-20260909-067 실측). 벨트 주기보다 짧은
+   선을 두어 **벨트는 늘 제 일을 하고**, 그 사이에 낀 탭 전환·창 복귀만 손에 든
+   것으로 답한다.
+
+   창(window)이 갈리는 것은 신선도로 넘길 수 없다 — 보드 창은 열린 일 전부 + 최근
+   닫힌 것이라 전량의 부분집합이다(mergeNarrow 머리말). 좁은 판을 「신선하다」는
+   이유로 Docs 에 쓰면 문서 수가 405장으로 서고 사람은 문서가 줄었다고 읽는다.
+   그래서 **전량을 원하는데 전량을 받아 본 적이 없으면** 신선도와 무관하게 받는다. */
+const CATALOG_TTL = 12000;   // 벨트(15초)보다 짧다 — 벨트를 굶기지 않는다
+function catalogFresh(){
+  if (!catalog.length) return false;
+  if (catalogWantsAll() && !catalogAll) return false;
+  return !!s9Fresh("catalog:got", CATALOG_TTL);
+}
+
+async function refreshCatalog(rerender, soft){
+  /* `soft` 는 「없으면 없는 대로 좋다」는 물음이다 — 탭 전환·창 복귀가 그것이다.
+     전이·저장 직후처럼 **바뀐 것을 반드시 봐야 하는** 자리는 soft 없이 부른다. */
+  if (soft && catalogFresh()) return catalog;
   /* 색인은 카탈로그와 **함께** 출발한다 (REQ-20260908-034). 카탈로그를 받은
      뒤에 부르면 첫 판이 색인 없이 그려져, 화면에 처음 뜬 답변에서만 옛 문서
      링크가 빠진다 — 그 한 판이 사람이 실제로 읽는 판이다. 색인은 gzip 11KB 라
@@ -229,6 +275,7 @@ async function refreshCatalog(rerender){
     new Promise(r => setTimeout(r, 1500))]);
   if (!fresh) return fresh;   // 못 받았다 — 빈 판으로 덮지 않는다. 화면이 그렇게 말한다.
   if (got.all) catalogAll = true;
+  s9Keep("catalog:got", got.all);   // 받은 시각 — 다음 탭 전환이 이 줄을 본다
   const before = JSON.stringify(projects);
   /* **프로젝트 목록은 폴링 벨트 밖이다** (REQ-20260831-026 G0 폴링 계약).
      한때 여기서 catalog 와 함께 15초마다 끌고 다녔다 — 프로젝트는 수명에 몇 번

@@ -95,9 +95,11 @@ class TheSaveHasOneGate(unittest.TestCase):
     def test_the_save_has_one_gate(self):
         """설정 인라인이든 멤버 표든 한 경로를 지난다 — 두 벌이면 한 벌만 고쳐진다."""
         with self.subTest("only_one_fetch"):
+            # 왕복은 공통 래퍼 `s9Fetch` 를 지난다 (REQ-20260909-076) — 세는 것은
+            # 이름이 아니라 **요청을 보내는 자리의 수**이므로 두 이름을 함께 센다.
             src = strip_comments(read(JS))
             self.assertEqual(
-                len(re.findall(r"\bfetch\(", src)), 1,
+                len(re.findall(r"\b(?:s9F|f)etch\(", src)), 1,
                 "요청을 보내는 자리가 둘 이상이다 — 저장 규칙이 갈라진다")
         with self.subTest("every_write_goes_through_prjpost"):
             src = strip_comments(read(JS))

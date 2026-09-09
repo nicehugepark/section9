@@ -88,3 +88,55 @@ function s9Gen(name){
   return n;
 }
 function s9GenStale(name, gen){ return (S9_GENS.get(name) || 0) !== gen; }
+
+/* ---- 신선도 장부 — 「이 자료를 언제 받았나」를 한 곳에 둔다 (REQ-20260909-086) ----
+
+   탭을 옮길 때마다 화면은 문서 목록과 프로젝트 목록을 다시 받았다. 이 환경에서는
+   왕복 하나가 30~50% 확률로 끊기고 재시도가 그것을 메우므로(위 머리말), 방금 받은
+   것을 또 받는 왕복은 그대로 사람이 기다리는 시간이 된다. 「받은 시각」을 자료마다
+   적어 두면 그 시간 안의 요청은 손에 든 것으로 답할 수 있다.
+
+   장부는 여기 하나다 — 자료마다 제 타이머를 들면 어느 것이 낡았는지 세는 자가
+   여러 벌이 되고, 그러면 반드시 갈린다. 자료가 바뀐 것을 아는 자리(전이·저장)는
+   s9Stale 로 그 줄을 지운다: 다음 물음이 곧바로 서버로 간다. */
+const S9_FRESH = new Map();          // 이름 → {at, data}
+function s9Keep(name, data){ S9_FRESH.set(name, {at: Date.now(), data}); return data; }
+/* 신선하면 그 줄, 아니면 null. 부르는 쪽이 `.data` 를 쓴다 — null 과 「값이 null」을
+   가르기 위해 줄 자체를 돌려준다. */
+function s9Fresh(name, ttl){
+  const e = S9_FRESH.get(name);
+  if (!e || !(ttl > 0)) return null;
+  return (Date.now() - e.at < ttl) ? e : null;
+}
+function s9Stale(name){ S9_FRESH.delete(name); }
+
+/* ---- 보이지 않는 화면은 서버에 묻지 않는다 (REQ-20260909-086) ----
+
+   폴링 주기마다 `if (document.hidden) return;` 를 손으로 적던 것을 한 자리로 모은다.
+   손으로 적으면 빠뜨린다 — 실측(2026-09-09): 다른 탭으로 옮겨 둔 대시보드가 20초
+   동안 문서 목록·문서 색인·문서 본문 넷을 받아 갔다. 사람이 안 보는 판이다.
+
+   돌아왔을 때는 **한 번만** 돈다. 밀린 횟수를 몰아 돌면 돌아온 순간이 곧 왕복
+   폭주가 되고, 이 환경에서 그 폭주가 서로의 연결을 끊는다. */
+const S9_POLLS = [];
+function s9Every(name, ms, fn){
+  const p = {name, ms, fn, skipped: false};
+  p.timer = setInterval(() => {
+    if (typeof document !== "undefined" && document.hidden){ p.skipped = true; return; }
+    fn();
+  }, ms);
+  S9_POLLS.push(p);
+  return p;
+}
+/* 다시 보이게 되면 건너뛴 폴만 한 번씩 돌린다. */
+function s9PollsResume(){
+  for (const p of S9_POLLS){
+    if (!p.skipped) continue;
+    p.skipped = false;
+    try{ p.fn(); }catch(e){}
+  }
+}
+if (typeof document !== "undefined" && document.addEventListener)
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) s9PollsResume();
+  });

@@ -938,11 +938,38 @@ async function loadDoc(id, bg, force){
   if (det && keep && keep.stream){ det.__restore = keep.stream; det.open = true; }
 }
 
+/* 관계도를 **문서가 선 다음에** 받는다 (REQ-20260909-086).
+
+   백링크는 이 판에서 가장 무거운 단건(/api/graph 445ms 실측, QA 기준선)을 쓰는데,
+   그것을 문서 본문(82ms)과 같은 순간에 걸면 둘이 한 줄로 서서 문서 열기가 681ms 가
+   된다 — 사람이 기다리는 것은 본문이지 아래쪽 「이 문서를 참조하는 문서」가 아니다.
+   판이 한가해질 때까지 미루면 본문은 제 시간에 서고, 백링크는 그 뒤에 붙는다.
+   한 번 받은 관계도는 손에 남으므로 이 미룸은 문서를 처음 여는 판에만 든다. */
+function docIdle(){
+  /* **그린 다음**에 이어 간다. `requestIdleCallback` 은 쓰지 않는다 — 사파리가
+     오랫동안 없었고(test_safari_syntax 가 막는 자리다), 여기 필요한 것은 「한가할
+     때」가 아니라 「한 번 그리고 나서」다. 다음 프레임 뒤의 setTimeout 이 그 자리다. */
+  return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+}
 async function renderBacklinks(id){
-  const el = $("#backlinks");
+  let el = $("#backlinks");
   if (!el) return;
   try{
-    if (!graph) graph = await (await s9Fetch("/api/graph?" + meQ())).json();
+    if (!graph){
+      await docIdle();
+      // 기다리는 사이 다른 문서를 열었으면 그 판의 백링크를 그릴 일이 아니다
+      if (selectedDoc && selectedDoc !== id) return;
+      el = $("#backlinks");
+      if (!el) return;
+      /* 같은 관계도를 두 곳이 동시에 부르지 않는다 — 미루는 사이 문서를 두 번
+         열면 둘 다 `graph` 가 비어 있는 것을 보고 각자 왕복을 낸다. */
+      if (!graphWait)
+        graphWait = s9Fetch("/api/graph?" + meQ()).then(r => r.json());
+      try{ graph = await graphWait; }
+      finally{ if (!graph) graphWait = null; }   // 못 받았으면 다음 문서가 다시 건다
+      el = $("#backlinks");
+      if (!el || (selectedDoc && selectedDoc !== id)) return;
+    }
   }catch(e){ return; }
   const back = [...new Set(graph.edges.filter(e => e.to === id).map(e => e.from))];
   if (!back.length){ el.remove(); return; }

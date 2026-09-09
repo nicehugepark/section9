@@ -27968,6 +27968,7 @@ def jira_outbox_tick(now=None, limit=5, **kw):
         res = (jira_status_push(r["id"], actor="watcher", **kw) if r.get("kind") == "push"
                else jira_title_push(r["id"], actor="watcher", **kw) if r.get("kind") == "title"
                else jira_comment_push(r["id"], actor="watcher", **kw) if r.get("kind") == "comment"
+               else jira_result_push(r["id"], actor="watcher", **kw) if r.get("kind") == "result"
                else jira_issue_create(r["id"], actor="watcher", **kw))
         if res.get("ok") or res.get("skipped"):
             done.append((r["id"], bool(res.get("ok"))))
@@ -28249,11 +28250,96 @@ def jira_after_transition(doc_id, meta, note="", auto=False):
         j, why = jira_push_wanted(meta, note=note, auto=auto)
         if why:
             return False
-        _jira_write(doc_id, {"pending": "push"}, "")
-        jira_outbox_add(doc_id, "push")
+        patch = {"pending": "push"}
+        if meta.get("status") in JIRA_RESULT_VERB:
+            # 닫는 전이의 시각이 처리 결과 코멘트의 멱등 키다 (REQ-20260909-092) —
+            # 본문은 History 의 그 줄에서 읽는다(두 곳에 적지 않는다).
+            patch["result_ts"] = str(meta.get("updated") or now_iso())
+        _jira_write(doc_id, patch, "")
+        jira_outbox_add(doc_id, "push")       # 상태가 먼저, 처리 결과가 다음 — outbox 순서
+        if "result_ts" in patch:
+            jira_outbox_add(doc_id, "result")
         return True
     except Exception:
         return False
+
+
+# ── 닫는 전이의 처리 결과 → Jira 코멘트 (REQ-20260909-092) ─────────────────────
+# 주인(2026-09-09): 「Jira 의 상태가 done 으로 변경될 때는 처리 결과 역시 Jira 에
+# 업데이트되어야 한다.」 상태 동기화의 일부라 content(card/notes)와 무관하다 — notes
+# 코멘트(jira_comment_push)와 갈라 둔 까닭. 본문은 done(--note, goal 대비 근거)·
+# cancelled 의 전이 노트 한 줄, 멱등 키는 그 전이의 시각(jira.result_ts →
+# result_sent_ts). 비밀 모양·첨부 줄·상한·서명은 notes 코멘트와 같은 함수를 쓴다.
+JIRA_RESULT_VERB = {"done": "완료", "cancelled": "취소"}
+JIRA_HISTORY_STATUS_RE = re.compile(r"^- (\S+) status: \S+ -> (\S+) \(by [^)]*\)(?: — (.*))?$")
+
+
+def jira_result_note(body, ts):
+    """History 에서 시각 ts 의 상태 전이 — (도착 상태, 노트) 또는 (None, ''). 같은 초에
+    전이가 둘이면 **마지막** 줄이다(시각은 초 단위라 착수와 완료가 한 초에 들 수 있다).
+    [auto]·[via …] 표식은 우리 안의 것이라 뺀다."""
+    hist = body.split("\n## History", 1)
+    found = (None, "")
+    for ln in (hist[1] if len(hist) > 1 else body).splitlines():
+        m = JIRA_HISTORY_STATUS_RE.match(ln.strip())
+        if not m or m.group(1) != ts:
+            continue
+        note = re.sub(r"\s*\[via [^\]]*\]", "", m.group(3) or "")
+        note = re.sub(r"^\s*\[auto\]\s*", "", note).strip()
+        found = (m.group(2), note)
+    return found
+
+
+def jira_result_push(doc_id, actor="", **kw):
+    """jira.result_ts 의 닫는 전이를 코멘트 한 건으로 — {ok, skipped, error}."""
+    path = find_path(doc_id)
+    if not path:
+        return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
+    meta, body = read_doc(path)
+    doc_id = meta.get("id") or doc_id
+    cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
+    ts = str(cur.get("result_ts") or "")
+    if not ts or ts == str(cur.get("result_sent_ts") or ""):
+        return {"ok": True, "skipped": True, "error": ""}
+    if cur.get("pending") == "create" and not cur.get("key"):
+        return {"ok": False, "error": "이슈가 아직 없다 — 생성 뒤에 보낸다", "skipped": False}
+    j, why = jira_push_wanted(meta)
+    if why:
+        return {"ok": False, "error": why, "skipped": True}
+    status, note = jira_result_note(body, ts)
+    verb = JIRA_RESULT_VERB.get(status or "")
+    if not verb:
+        _jira_write(doc_id, {"result_sent_ts": ts}, "")
+        return {"ok": True, "skipped": True, "error": ""}
+    user = meta.get("user") or actor
+    auth, missing = jira_auth_header(user)
+    if auth is None:
+        msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
+        _jira_write(doc_id, {"last_error": msg}, "")
+        return {"ok": False, "error": msg, "skipped": True}
+    key = cur["key"]
+    what = jira_comment_secret(note)
+    if what:
+        _jira_write(doc_id, {"result_sent_ts": ts,
+                             "last_error": f"비밀 모양이 있어 보내지 않았다 ({what}, {verb} 전이 {ts})"},
+                    f"{key} 처리 결과 안 보냄 — 비밀 모양 ({what}, ts {ts})")
+        return {"ok": True, "skipped": True, "error": ""}
+    text = f"{verb}: {note}" if note else verb
+    lines = jira_comment_text(text).splitlines()
+    if jira_mark_on(j):
+        lines.append(f"{JIRA_COMMENT_MARK} · {ts}")
+    st, d, err = jira_http(user, "POST", f"/rest/api/3/issue/{key}/comment",
+                           body={"body": _jira_adf(lines)}, **kw)
+    if st not in (200, 201):
+        msg = err or f"처리 결과 코멘트가 {st} 로 거절됐다 ({verb} 전이 {ts})"
+        _jira_write(doc_id, {"last_error": msg}, "")
+        return {"ok": False, "error": msg, "skipped": False}
+    cid = str((d or {}).get("id") or "") if isinstance(d, dict) else ""
+    _jira_write(doc_id, {"result_sent_ts": ts, "synced_at": now_iso(), "synced_by": "s9",
+                         "last_error": ""}, f"{key} 처리 결과 코멘트 ({verb}, ts {ts})")
+    _jira_outbound_log({"ts": now_iso(), "doc": doc_id, "key": key, "kind": "result",
+                        "note_ts": ts, "comment_id": cid, "by": actor or user})
+    return {"ok": True, "skipped": False, "error": ""}
 
 
 def jira_pick_transition(transitions, our_status, j):

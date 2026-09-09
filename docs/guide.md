@@ -690,10 +690,10 @@ Jira Cloud(`https://<site>.atlassian.net`) 기준입니다. 회사 안에 설치
   - **Jira 주소** — 보드 주소를 통째로 붙여 넣어도 됩니다. 손을 떼면 `https://<site>.atlassian.net` 만 남아 저장됩니다. 
   - **Atlassian 이메일** — Jira 에 로그인하는 이메일. 
   - **API token** — 1 의 값을 붙여 넣고 **넣기**. 내 계정 › 시크릿에 `JIRA_API_TOKEN` 으로 남고 다시 보이지 않습니다. 
-  - **token 만료일** — 1 에서 정한 날짜(YYYY-MM-DD). 7일 전부터 여기와 「연동 확인」이 미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다. 
+  - **token 만료일** — 1 에서 정한 날짜(YYYY-MM-DD). 7일 전부터 여기와 「연결 확인」이 미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다. 
 
  왼쪽 부제가 **Jira · 준비 3/4** 가 됩니다. 
-- **연동 확인** 을 누릅니다 — `연동됐습니다 — <이름>` 이 뜨면 준비가 맞은 것입니다. 터미널로는 `s9 jira ping`. 
+- **연결 확인** 을 누릅니다 — `연결됐습니다 — <이름>` 이 뜨면 준비가 맞은 것입니다. 터미널로는 `s9 jira ping`. 
 - **프로젝트 연동** — 우리 프로젝트 하나에 Jira 프로젝트 하나(project key)를 짝짓습니다. 터미널 한 줄, 또는 Projects 정보 패널의 세 행(Jira 주소 · Jira project key · 연동 방향)에서 채웁니다. 
 
 ```
@@ -729,6 +729,6 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
 
 - token 을 채팅·문서·프롬프트에 붙여 넣지 마십시오 — 그 자리는 기록에 남습니다. 넣는 자리는 Settings 의 API token 칸(또는 `s9 secret set JIRA_API_TOKEN`)뿐입니다. 
 - section9 자체 저장소를 연동하지 마십시오 — 하루 수십 건이 그대로 티켓이 됩니다. 시험은 별도 프로젝트(예: `s9 project add mp1`)로. 
-- 401 이 났다고 여러 번 다시 누르지 마십시오 — 새 token 을 만들어 넣은 뒤 「연동 확인」 한 번. 
+- 401 이 났다고 여러 번 다시 누르지 마십시오 — 새 token 을 만들어 넣은 뒤 「연결 확인」 한 번. 
 
  section9 user guide · verified 2026-09-06 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측, 맥은 실측 전) · 캡처: 실제 화면(개발 인스턴스, 현재 코드로 재기동한 뒤 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md)

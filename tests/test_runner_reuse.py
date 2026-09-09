@@ -241,12 +241,14 @@ class EndToEnd(unittest.TestCase):
     def test_the_second_run_of_an_unchanged_tree_is_instant(self):
         env = {**os.environ}
         env.pop("S9_TESTS_NESTED", None)
-        first = subprocess.run([sys.executable, _here, "uid", "--no-reuse"],
+        # 정확한 파일명으로 부른다 — 조각 "uid" 는 test_guide_repo 까지 끌어와
+        # 남의 실패에 이 시험이 묶인다 (실측 2026-09-09, ab04a137).
+        first = subprocess.run([sys.executable, _here, "test_uid.py", "--no-reuse"],
                                capture_output=True, text=True, timeout=300,
                                env=env)
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         t0 = time.time()
-        second = subprocess.run([sys.executable, _here, "uid"],
+        second = subprocess.run([sys.executable, _here, "test_uid.py"],
                                 capture_output=True, text=True, timeout=300,
                                 env=env)
         took = time.time() - t0
@@ -259,7 +261,7 @@ class EndToEnd(unittest.TestCase):
         """`--no-reuse` 는 기록을 믿지 말라는 뜻이다 — 안 도는 길이 아니다."""
         env = {**os.environ}
         env.pop("S9_TESTS_NESTED", None)
-        r = subprocess.run([sys.executable, _here, "uid", "--no-reuse"],
+        r = subprocess.run([sys.executable, _here, "test_uid.py", "--no-reuse"],
                            capture_output=True, text=True, timeout=300,
                            env=env)
         said = r.stdout + r.stderr

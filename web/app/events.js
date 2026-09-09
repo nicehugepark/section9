@@ -97,11 +97,16 @@ document.addEventListener("click", e => {
       return;
     }
     tab = tabBtn.dataset.tab;
-    if (tab === "audit") auditCache = null;
+    /* 사건 목록은 탭에 들어올 때 새로 받는다 — 다만 방금 받았으면 손에 든 것으로
+       그린다 (REQ-20260909-086). 목록이 바뀌면 카탈로그 벨트가 이 손을 비운다. */
+    if (tab === "audit" && !s9Fresh("audit", AUDIT_TTL)) auditCache = null;
     tabSync();
     pushRoute();
     render();
-    refreshCatalog(true);
+    /* 방금 받은 목록은 다시 받지 않는다 (REQ-20260909-086) — 탭을 옮기는 것은
+       새 사실을 청하는 손이 아니라 같은 사실을 다른 각도로 보는 손이다.
+       15초 벨트가 그 사이를 메우므로 화면이 낡을 일도 없다. */
+    refreshCatalog(true, true);
     /* 프로젝트 목록은 **탭에 들어올 때** 한 번 받는다 (REQ-20260831-026 G0 폴링
        계약) — 15초 벨트에서 내렸으므로 여기가 그 자리다. 값이 그대로면 다시
        그리지 않는다: 탭을 옮길 때마다 판을 흔들 이유가 없다.

@@ -50,6 +50,13 @@ async function loadSupply(key, fetcher, opts){
   const o = opts || {};
   const s = SUPPLY[key] || (SUPPLY[key] = {state: "wait", tries: 0, at: 0});
   if (s.wait) return s.wait;   // 같은 값을 두 곳에서 부르면 한 번만 나간다
+  /* 방금 받은 것은 다시 받지 않는다 (REQ-20260909-086). `fresh` 를 준 자리만
+     이 길을 탄다 — 부트와 변이 직후는 주지 않으므로 늘 서버로 간다. 장부는
+     net.js 한 곳이고, 자료가 바뀐 것을 아는 자리는 s9Stale 로 줄을 지운다. */
+  if (o.fresh){
+    const f = s9Fresh(key, o.fresh);
+    if (f) return f.data;
+  }
   s.state = "wait"; s.quiet = !!o.quiet;
   s.wait = new Promise(res => {
     supplyQ.push({prio: o.prio || 0, run: async () => {
@@ -64,7 +71,8 @@ async function loadSupply(key, fetcher, opts){
           const d = await fetcher();
           // 못 받은 것을 성공으로 치면 다시 받을 길이 닫힌다 — fetcher 는
           // 쓸 수 없는 답(비었거나 모양이 다른 것)을 null 로 돌려준다.
-          if (d != null){ s.state = "ok"; s.at = Date.now(); s.tries = 0; res(d); return; }
+          if (d != null){ s.state = "ok"; s.at = Date.now(); s.tries = 0;
+            s9Keep(key, d); res(d); return; }
         }catch(e){ /* 다음 시도로 */ }
         s.tries++;
         if (i < n - 1) await new Promise(r => setTimeout(r, SUPPLY_BACKOFF[i] || 1200));
@@ -94,8 +102,46 @@ async function loadWhoami(){
     const j = r.ok ? await r.json() : null;
     return (j && j.user) ? j : null;
   });
+  return applyWhoami(d);
+}
+/* 신원을 자리에 놓는다 — 단독 요청이든 부트 묶음이든 같은 함수를 지난다. */
+function applyWhoami(d){
   if (d){ window.__whoami = d; updateTitle(); applyStreamVisibility(); }
   renderWhoami();
+  return d;
+}
+
+/* ---- 부트는 한 왕복이다 (REQ-20260909-086) ----
+
+   화면이 뜰 때 신원·프로젝트·문서 색인·감시자를 따로 물었다 — 네 왕복이다. 이
+   환경의 루프백 중계는 요청 하나에 고정 비용이 있고(아무 일도 안 하는 서버도
+   140~200ms) 30~50% 를 끊는다. 그래서 서버가 그 넷을 한 응답으로 싣는다
+   (`/api/boot`, bin/s9.py). 조각은 단독 API 와 **같은 함수**가 만들므로 묶음으로
+   들어온 판과 따로 받은 판이 갈리지 않는다.
+
+   묶음을 못 받으면(옛 서버·끊긴 연결) 예전처럼 넷을 따로 받는다 — 화면이 서지
+   않는 것보다 왕복이 넷인 편이 낫다. 그 갈림은 boot() 한 곳에 있다. */
+let bootWait = null;
+function supplyGot(key, data){
+  const s = SUPPLY[key] || (SUPPLY[key] = {state: "wait", tries: 0, at: 0});
+  s.state = "ok"; s.at = Date.now(); s.tries = 0;
+  s9Keep(key, data);   // 뒤에 오는 개별 요청이 TTL 안에서 이 조각을 다시 쓴다
+  return data;
+}
+async function loadBoot(){
+  const d = await loadSupply("boot", async () => {
+    const r = await s9Fetch("/api/boot?" + meQ());
+    const j = r.ok ? await r.json() : null;
+    // 옛 서버는 이 자리가 404 다 — 못 받은 것으로 치고 넷을 따로 받는다.
+    return (j && j.whoami) ? j : null;
+  }, {tries: 2, quiet: true});
+  if (!d) return null;
+  applyWhoami(supplyGot("whoami", d.whoami));
+  if (d.projects && Array.isArray(d.projects.projects))
+    applyProjects(supplyGot("projects", d.projects));
+  if (Array.isArray(d.docindex)) applyDocIdx(d.docindex);
+  // 감시자 알림은 판이 선 뒤에 그린다 — checkGuard 가 이 조각을 장부에서 집는다.
+  if (d.serveguard) supplyGot("serveguard", d.serveguard);
   return d;
 }
 
@@ -145,6 +191,7 @@ async function supplyAgain(key){
   if (!j) return;
   const s = SUPPLY[key] || (SUPPLY[key] = {state: "wait", tries: 0, at: 0});
   s.tries = 0; s.state = "wait";
+  s9Stale(key);   // 손으로 누른 다시 받기는 **정말** 다시 받는다 (REQ-20260909-086)
   supplyRender();
   if (!catalog.length && tab !== "settings") render();   // "불러오는 중…" 으로 바뀐다
   await j.run();
@@ -202,10 +249,13 @@ async function boot(){
      된다(열람 격리는 서버가 한다). 다섯을 같이 던지되 통로가 동시 3개로 묶고,
      첫 그림은 그중 늦는 것을 FIRST_PAINT_GRACE 까지만 봐 준다. */
   const grace = p => Promise.race([p, new Promise(r => setTimeout(r, FIRST_PAINT_GRACE))]);
-  const pWho = loadWhoami();       // 신원 — 제목 · 스트림 탭 가시성
+  /* 신원·프로젝트·문서 색인·감시자는 **한 왕복**이다 (REQ-20260909-086).
+     못 받으면 그 넷을 예전처럼 따로 받는다 — 갈림은 여기 한 곳이다. */
+  bootWait = loadBoot();
+  const pWho = bootWait.then(d => d || loadWhoami());
+  const pPrj = bootWait.then(d => d || refreshProjects());
   const pUsr = loadUsers();        // 내 화면 설정 — 그리기 전에 필요하다
-  const pCat = refreshCatalog();   // 판을 채울 것
-  const pPrj = refreshProjects();  // 프로젝트 필터
+  const pCat = refreshCatalog();   // 판을 채울 것 — 묶음을 기다리지 않는다
   const pTr  = loadTrans();        // 상태 옮기기 목록 · 드롭 대상
   // 늦게 온 값은 도착한 자리에서 스스로 화면을 고친다 — 사람이 새로고침하게
   // 두지 않는다. (whoami·users 는 loadWhoami/applyMyUI 가, 전이표는 027 이.)
@@ -228,23 +278,25 @@ async function boot(){
      칩, serveinfo·serveguard 는 알림 줄이라 첫 그림을 붙잡을 이유가 없다. */
   supplyRelease();
   refreshUsage();
-  setInterval(() => { if (!document.hidden) refreshUsage(); }, 60000);
+  s9Every("usage", 60000, refreshUsage);
   setTimeout(docPickDiag, 900);   // ?pick=<문서id> — 진단·헤드리스 캡처용 (셸이 선 뒤)
   shortRefDiag();  // ?shortref — 축약 풀기 계약을 이 화면에서 실제로 재 본다
   codePeekDiag();  // ?codepeek — 코드 경로 손잡이 세 상태를 진짜 렌더러로 세운다
   anchorBind();    // 구간 메모 팝업 (REQ-20260827-072)
   anchorDiag();    // ?anchor — 진단·헤드리스 캡처용
-  window.addEventListener("focus", () => refreshCatalog(true));
-  setInterval(() => refreshCatalog(true), 15000);
+  /* 창으로 돌아온 손은 목록을 다시 보고 싶어 한다 — 다만 방금 받았으면 왕복을
+     내지 않는다(soft). 15초 벨트가 그 사이를 이미 메우고 있다. */
+  window.addEventListener("focus", () => refreshCatalog(true, true));
+  s9Every("catalog", 15000, () => refreshCatalog(true));
   // 코드 낡음 감시: 20s 폴은 가시일 때만, 그리고 포커스 복귀 즉시 한 번 —
   // 터미널에서 재기동하고 돌아온 순간 알림이 사라지는 것이 곧 성공 확인이다.
   checkOldCode();
-  setInterval(() => { if (!document.hidden) checkOldCode(); }, 20000);
+  s9Every("serveinfo", 20000, checkOldCode);
   window.addEventListener("focus", checkOldCode);
   // 자동 복구 기록 (REQ-20260826-018). focus 확인이 특히 중요하다 — 서버가 죽어
   // 있는 동안 폴은 실패하고, 사람이 화면으로 돌아오는 순간이 대개 복구 직후다.
   checkGuard();
-  setInterval(() => { if (!document.hidden) checkGuard(); }, 20000);
+  s9Every("serveguard", 20000, checkGuard);
   window.addEventListener("focus", checkGuard);
   window.addEventListener("popstate", () => applyRoute(location.hash, true));
 }
