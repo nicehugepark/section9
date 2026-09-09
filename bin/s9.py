@@ -16047,7 +16047,7 @@ def cmd_next(args):
     print(f"{p['id']} {p['title']} — {p['mins']}분째 진전 없음{extra}")
     if p["note"]:
         print(f"  마지막 전이 메모: {p['note']}")
-    print(f"  이어받기: s9 claim {p['id']}")
+    print(f"  이어받기: s9 last {p['id']} --add")
 
 
 def cmd_reopened(args):
