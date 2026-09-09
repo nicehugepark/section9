@@ -55,35 +55,59 @@ async function ccFetchTry(url, ms, key){
   }
   return null;
 }
-/* 터미널 판은 **남은 화면을 정확히** 차지한다 (REQ-20260906-089). 예전엔 CSS 가
-   calc(100vh - 168px) 로 위쪽 높이를 어림잡았는데, 「서버가 옛 코드」 같은 띠가 하나
-   더 서면 그만큼 아래가 잘리고 body 에 세로 스크롤이 생겼다(주인 지적 2026-09-06 18:39).
-   자리는 재서 정한다: 판의 윗변에서 창 바닥까지. 위쪽 형제(헤더·필터·띠)의 크기가
-   바뀌면 다시 잰다. */
+/* 터미널 판은 **남은 화면을 정확히** 차지한다 (REQ-20260906-089 · -20260909-079).
+
+   높이를 상수로 적으면 반드시 어느 스킨에서 틀린다. 처음엔 CSS 가
+   `calc(100vh - 168px)` 로 위쪽을 어림잡았고(띠가 하나 더 서면 아래가 잘렸다),
+   그다음엔 JS 가 재되 판 아래 여백을 12px 로 어림잡았다 — 그 12px 도 상수라
+   `main` 의 아래 여백이 스킨마다 다른 것(grid 0 · ledger 18 · calm 22 · field 26)을
+   맞히지 못했다. 게다가 다시 재는 신호가 `#view` 의 손위 형제(.count·#my-strip)뿐이라
+   **머리(헤더·필터 줄·띠)가 자라거나 줄어드는 것을 아예 못 봤다** — 「서버가 옛 코드」
+   띠가 사라진 뒤 판이 43px 짧은 채로 남았고, 띠가 설 때 다시 맞은 것은 세로
+   스크롤 막대가 나타나며 resize 가 터진 덕이었다(2026-09-09 실측).
+
+   그래서 상수를 없앤다. 재는 값은 둘뿐이고 CSS 변수로 한 곳에 둔다:
+   `--cc-head-h` = 창 위쪽부터 판의 윗변까지, `--cc-foot-h` = 판 아래에 남아야 할
+   여백(조상들의 padding·border·margin 합). 높이 식은 terminal.css 한 줄이다. */
+function termGapBelow(root){
+  // 판과 문서 사이에 낀 조상들의 아래 여백 — 값을 적지 말고 계산된 스타일에서 읽는다.
+  let gap = 0;
+  for (let el = root.parentElement; el && el !== document.documentElement; el = el.parentElement){
+    const cs = getComputedStyle(el);
+    gap += (parseFloat(cs.paddingBottom) || 0)
+         + (parseFloat(cs.borderBottomWidth) || 0)
+         + (parseFloat(cs.marginBottom) || 0);
+  }
+  return gap;
+}
 function fitTerm(){
   const root = document.getElementById("cc-root");
   if (!root) return;
-  const top = root.getBoundingClientRect().top + window.scrollY;
-  let h = Math.max(240, Math.floor(window.innerHeight - top - 12));
-  root.style.height = h + "px";
-  // 판 아래에 남는 여백(#view 의 안쪽 여백·body 여백)은 어림잡지 않고 잰다 — 한 번 세운 뒤
-  // 문서가 창보다 길면 그만큼 더 줄인다.
-  const over = document.documentElement.scrollHeight - window.innerHeight;
-  if (over > 0){
-    h = Math.max(240, h - over);
-    root.style.height = h + "px";
-  }
+  const st = document.documentElement.style;
+  st.setProperty("--cc-head-h", Math.round(root.getBoundingClientRect().top + window.scrollY) + "px");
+  st.setProperty("--cc-foot-h", Math.round(termGapBelow(root)) + "px");
+}
+function unfitTerm(){
+  const st = document.documentElement.style;
+  st.removeProperty("--cc-head-h");
+  st.removeProperty("--cc-foot-h");
 }
 function watchTermFit(T){
   fitTerm();
   const onResize = () => fitTerm();
   window.addEventListener("resize", onResize);
-  T.unfit = [() => window.removeEventListener("resize", onResize)];
+  T.unfit = [() => window.removeEventListener("resize", onResize), unfitTerm];
   if (typeof ResizeObserver === "function"){
     const ro = new ResizeObserver(() => fitTerm());
+    // 머리 전체(헤더·필터 줄·띠)와 판 위의 형제 — 하나라도 자라거나 줄면 다시 잰다.
+    // 판 자신과 그 부모는 보지 않는다: 재기의 결과가 다시 재기를 부르면 그치지 않는다.
     const view = document.getElementById("view");
-    let el = view ? view.previousElementSibling : null;
-    while (el){ ro.observe(el); el = el.previousElementSibling; }
+    const seen = new Set();
+    for (let el = view; el && el !== document.body; el = el.parentElement){
+      for (let s = el.previousElementSibling; s; s = s.previousElementSibling){
+        if (!seen.has(s)){ seen.add(s); ro.observe(s); }
+      }
+    }
     T.unfit.push(() => ro.disconnect());
   }
 }

@@ -30,7 +30,14 @@
   --cc-green:#4ec97a;--cc-cyan:#56c8d8;--cc-yellow:#e5c07b;--cc-red:#e06c75;
   --cc-border:#3a3d44;--cc-hair:rgba(255,255,255,.07);
   background:var(--cc-bg);color:var(--cc-text);border:1px solid var(--border);
-  display:flex;flex-direction:column;height:calc(100vh - 168px);
+  display:flex;flex-direction:column;
+  /* 높이는 상수가 아니라 실측이다 (REQ-20260909-079) — 머리 높이(--cc-head-h)와
+     판 아래 여백(--cc-foot-h)은 terminal.js 의 fitTerm 이 재서 :root 에 둔다.
+     JS 가 아직 안 돌았을 때만 괄호 안의 어림값이 쓰인다. dvh 를 아는 브라우저는
+     아래 줄로 덮어쓴다 — 모바일 사파리의 주소 줄이 접힐 때 vh 는 안 따라온다. */
+  height:calc(100vh - var(--cc-head-h, 168px) - var(--cc-foot-h, 0px));
+  height:calc(100dvh - var(--cc-head-h, 168px) - var(--cc-foot-h, 0px));
+  min-height:240px;
   font-family:var(--mono),"Segoe UI Emoji","Noto Color Emoji";font-size:12.5px;
   line-height:1.7;font-variant-ligatures:none;letter-spacing:0}
 .ccterm .ccwake{background:none;border:1px solid var(--cc-green);color:var(--cc-green);

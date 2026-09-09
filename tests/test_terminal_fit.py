@@ -118,6 +118,60 @@ class TerminalFit(unittest.TestCase):
         c = self.fit()
         self.assertLessEqual(c["bottom"], c["inner"] + 2, c)
 
+    def skinfit(self, skin):
+        """그 스킨으로 열고 판의 자리를 잰다 — 창 바닥까지가 판의 몫이고, 그 아래
+           남아야 할 여백은 스킨이 정한다(main 의 아래 여백)."""
+        self.ws.eval("location.href = 'http://127.0.0.1:%d/index.html?skin=%s&nosse#terminal'; true"
+                     % (self.port, skin))
+        time.sleep(0.5)
+        wait_ready(self.ws, needs=("whoami", "users"), sels="#cc-root")
+        time.sleep(1.0)
+        return self.ws.eval(
+            "(function(){const r=document.getElementById('cc-root').getBoundingClientRect();"
+            "return {skin:document.documentElement.dataset.skin,"
+            " bottom:Math.round(r.bottom), inner:window.innerHeight,"
+            " scroll:document.documentElement.scrollHeight,"
+            " pad:Math.round(parseFloat(getComputedStyle(document.querySelector('main')).paddingBottom))};})()")
+
+    # F3. 머리 높이가 다른 스킨에서도 판의 바닥이 창 안이다 (REQ-20260909-079).
+    #     grid 는 풀블리드(머리가 낮고 아래 여백 0), soft 는 왼쪽 메뉴 셸이다 —
+    #     168px 같은 상수로는 둘 다 맞힐 수 없다.
+    def test_f3_the_pane_fits_in_skins_with_a_different_head(self):
+        for skin in ("grid", "soft"):
+            m = self.skinfit(skin)
+            self.assertEqual(m["skin"], skin, "스킨이 안 입혀졌다: %r" % m)
+            self.assertLessEqual(m["bottom"], m["inner"] + 2,
+                                 "%s: 판이 창 밖으로 밀렸다: %r" % (skin, m))
+            self.assertLessEqual(m["scroll"], m["inner"] + 2,
+                                 "%s: 문서가 창보다 길다: %r" % (skin, m))
+            # 창 바닥까지 쓰되 스킨이 둔 아래 여백만 남긴다 — 상수로 잘라 낸 자리가 없다
+            self.assertGreaterEqual(m["bottom"], m["inner"] - m["pad"] - 2,
+                                    "%s: 판이 그만큼 짧다 — 아래가 비었다: %r" % (skin, m))
+
+    # F4. 띠가 섰다가 사라져도 스킨 grid 에서 판은 창을 그대로 채운다.
+    #     예전엔 다시 재는 신호가 머리에 닿지 않아, 띠가 사라진 뒤 판이 43px 짧은
+    #     채로 남았다 (REQ-20260909-079).
+    def test_f4_the_pane_refits_when_the_banner_comes_and_goes(self):
+        self.skinfit("grid")
+        show = ("(function(){const el=document.getElementById('oldcode'); el.hidden=false;"
+                " el.innerHTML='<b>시험용 띠 — 서버가 옛 코드로 실행 중입니다</b>'; return true;})()")
+        hide = ("(function(){const el=document.getElementById('oldcode'); el.hidden=true;"
+                " el.innerHTML=''; return true;})()")
+        meas = ("(function(){const r=document.getElementById('cc-root').getBoundingClientRect();"
+                "return {bottom:Math.round(r.bottom), inner:window.innerHeight,"
+                " scroll:document.documentElement.scrollHeight};})()")
+        self.ws.eval(show)
+        time.sleep(0.9)
+        b = self.ws.eval(meas)
+        self.assertLessEqual(b["bottom"], b["inner"] + 2, "띠가 서자 판이 창 밖으로 밀렸다: %r" % b)
+        self.assertLessEqual(b["scroll"], b["inner"] + 2, b)
+        self.ws.eval(hide)
+        time.sleep(0.9)
+        c = self.ws.eval(meas)
+        self.assertLessEqual(c["bottom"], c["inner"] + 2, c)
+        self.assertGreaterEqual(c["bottom"], c["inner"] - 2,
+                                "띠가 사라졌는데 판이 그 자리를 되찾지 못했다: %r" % c)
+
     # F2. Docs 의 question 무리는 미답이 맨 앞이다
     def test_f2_unanswered_questions_come_first(self):
         want = [ln.split()[0] for ln in subprocess.run(
