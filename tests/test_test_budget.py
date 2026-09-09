@@ -53,11 +53,66 @@ BUDGET = os.path.join(HERE, "BUDGET.json")
 # (`_` 또는 이름의 시작)를 요구하면 대문자 상수를 받는 `_src`·`read` 자리는 그대로
 # 세면서 「context」·「pretext」 류만 빠진다. **이 주석에 그 호출 꼴을 그대로 적지
 # 마라** — 이 파일 자신이 제 검사에 걸린다(실제로 한 번 걸렸다).
+# **이름이 아니라 인자로 판정한다** (REQ-20260909-057). 마디 경계로 좁혀도 하루에
+# 두 번 더 걸렸다 — 문서 본문을 돌려주는 헬퍼가 문서 id 상수를 받는 자리, 세션 id
+# 상수를 받는 자리. 이름 조각(open·read·text)은 「무엇을 읽는가」를 말하지 않는다.
+# 그래서 대문자 인자를 **그 파일 안의 정의로 되짚어**, 그 값이 tests/ 밖 경로일 때만
+# 센다(`".."`·`"bin"`·`"web"`·`"harness"`·`dirname(HERE)`, 다른 대문자 상수를 거치면
+# 그 정의를 따라간다). 시험 자신의 fixtures/·임시 경로·문서 id 는 여기서 빠진다.
+# 정의가 파일 안에 없는 상수(가져온 것)는 판정할 근거가 없으니 종전대로 센다.
+# 통째로 읽는 메서드 호출과 tests 밖 경로를 그 자리에서 짜서 여는 꼴은 인자를 볼 것
+# 없이 센다(_DIRECT). 이 주석에 그 호출 꼴을 그대로 적지 마라 — 이 파일이 제 검사에 걸린다.
 _VERB = r'_?(?:[A-Za-z0-9]+_)*(?:open|read|src|slurp|text)'
-READS_SOURCE = re.compile(
-    r'\b' + _VERB + r'\(\s*(?:S9|DOCTOR|SRC|RUNNER|APP|WEB|[A-Z][A-Z0-9_]{1,})\s*[,)]'
-    r'|\.read_text\(\)'
+_CALL_CONST = re.compile(r'\b' + _VERB + r'\(\s*([A-Z][A-Z0-9_]+)\s*[,)]')
+_DIRECT = re.compile(
+    r'\.read_text\(\)'
     r'|\b' + _VERB + r'\(\s*os\.path\.join\(\s*HERE\s*,\s*"\.\."')
+# tests/ 밖을 가리키는 표지. `__main__.py` 는 tests/ 안이지만 러너의 소스다 — 그 줄
+# 형식을 글자로 대조하는 시험(test_async_result_notify, 기준선 61)은 이 종류가 맞다.
+# `index_path()` 는 webasset 의 헬퍼로 web/index.html 을 돌려준다.
+_OUTSIDE = re.compile(
+    r'"\.\."|\'\.\.\'|os\.pardir|"(?:bin|web|harness)"'
+    r'|dirname\(\s*HERE\s*\)|index_path\(|"__main__\.py"')
+_UPPER = re.compile(r'\b([A-Z][A-Z0-9_]+)\b')
+
+
+def const_value(body, name):
+    """파일 안 `NAME = …` 의 오른쪽. 괄호가 닫힐 때까지 이어진 줄을 붙인다. 없으면 None."""
+    m = re.search(r'^[ \t]*' + re.escape(name) + r'[ \t]*=[ \t]*(.*)$', body, re.M)
+    if not m:
+        return None
+    val, pos = m.group(1), m.end()
+    for _ in range(6):
+        if val.count("(") <= val.count(")"):
+            break
+        nl = body.find("\n", pos + 1)
+        val += body[pos:nl if nl >= 0 else None]
+        pos = nl if nl >= 0 else len(body)
+    return val
+
+
+def points_outside_tests(body, name, _seen=None):
+    """대문자 상수가 tests/ 밖 경로인가. 정의가 없으면 None."""
+    seen = _seen or set()
+    seen.add(name)
+    val = const_value(body, name)
+    if val is None:
+        return None
+    if _OUTSIDE.search(val):
+        return True
+    for other in _UPPER.findall(val):
+        if other not in seen and points_outside_tests(body, other, seen):
+            return True
+    return False
+
+
+def source_reads(body):
+    """소스를 읽는 자리의 수 — 파일 하나의 본문을 받는다."""
+    n = len(_DIRECT.findall(body))
+    for name in _CALL_CONST.findall(body):
+        if points_outside_tests(body, name) is not False:
+            n += 1
+    return n
 
 
 def scan(here=None):
@@ -78,7 +133,7 @@ def scan(here=None):
         # 우리가 막으려는 것은 **소스를 몇 번이고 열어 글자만 대조하는 파일**이라,
         # 두 번 이상일 때만 그 종류로 센다. 실제로 이 문턱이 REQ-20260903-005 의
         # 윈도우 시험(대부분 동작인데 소스를 한 번 본다)을 오탐에서 건졌다.
-        if len(READS_SOURCE.findall(body)) >= 2:
+        if source_reads(body) >= 2:
             srcish.append(name)
     return items, srcish
 
@@ -135,6 +190,81 @@ class TheReadySignalIsMadeInOnePlace(unittest.TestCase):
             self.assertIn(name, hand,
                           "허용 목록의 %s 는 이제 손으로 안 짓는다 — 줄에서 빼라"
                           % name)
+
+
+class TheJudgeLooksAtTheArgumentNotTheName(unittest.TestCase):
+    """소스 읽기는 인자로 판정한다 (REQ-20260909-057) — 이름 조각은 근거가 아니다.
+
+    본문은 조각으로 이어 붙인다: 호출 꼴을 이 파일에 그대로 적으면 이 파일이 제
+    검사에 걸린다.
+    """
+
+    @staticmethod
+    def _body(*lines):
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _call(verb, arg):
+        return verb + "(" + arg + ")"
+
+    def test_a_document_id_or_session_id_is_not_a_source(self):
+        """회귀 043/044·009: 문서 id·세션 id 상수를 받는 헬퍼는 세지 않는다."""
+        _c = self._call
+        body = self._body(
+            'DOC_ID = "DOC-20260909-001"',
+            'SID = "abcd1234"',
+            'a = ' + _c('doc_text', 'DOC_ID'),
+            'b = ' + _c('doc_text', 'DOC_ID'),
+            'c = ' + _c('_chat_context', 'SID'),
+            'd = ' + _c('_read', 'SID'),
+        )
+        self.assertFalse(points_outside_tests(body, "DOC_ID"))
+        self.assertFalse(points_outside_tests(body, "SID"))
+        self.assertEqual(source_reads(body), 0)
+
+    def test_a_path_out_of_tests_counts_even_through_other_constants(self):
+        """S9 직접 정의·ROOT→WEB→CSS 간접 정의·index_path() 헬퍼는 전부 센다."""
+        _c = self._call
+        body = self._body(
+            'S9 = os.path.join(HERE, "..", "bin", "s9.py")',
+            'ROOT = os.path.dirname(HERE)',
+            'WEB = os.path.join(ROOT, "web")',
+            'CSS = os.path.join(WEB, "css",',
+            '                   "project.css")',
+            'INDEX = index_path()',
+            'a = ' + _c('open', 'S9'),
+            'b = ' + _c('read', 'CSS'),
+            'c = ' + _c('_read', 'INDEX, "utf-8"'),
+        )
+        for name in ("S9", "ROOT", "WEB", "CSS", "INDEX"):
+            self.assertTrue(points_outside_tests(body, name), name)
+        self.assertEqual(source_reads(body), 3)
+
+    def test_a_path_inside_tests_is_not_a_source(self):
+        """fixtures/·임시 디렉토리·절대 경로 상수는 세지 않는다 (test_pdf_text 의 오탐)."""
+        _c = self._call
+        body = self._body(
+            'PDF = os.path.join(HERE, "fixtures", "x.pdf")',
+            'TMP = tempfile.mkdtemp(prefix="s9-")',
+            'REAL = "/mnt/c/User_guide/x.pdf"',
+            'a = ' + _c('open', 'PDF, "rb"'),
+            'b = ' + _c('attach_text', 'REAL'),
+            'c = ' + _c('read', 'TMP'),
+        )
+        for name in ("PDF", "TMP", "REAL"):
+            self.assertFalse(points_outside_tests(body, name), name)
+        self.assertEqual(source_reads(body), 0)
+
+    def test_direct_reads_and_unknown_constants_still_count(self):
+        """정의 없는 상수(가져온 것)와 직접 호출 꼴은 종전대로 센다."""
+        _c = self._call
+        body = self._body(
+            'a = ' + _c('open', 'IMPORTED_SRC'),
+            'b = p' + _c('.read_text', ''),
+            'c = ' + _c('open', 'os.path.join(HERE, "..", "bin", "s9")'),
+        )
+        self.assertIsNone(points_outside_tests(body, "IMPORTED_SRC"))
+        self.assertEqual(source_reads(body), 3)
 
 
 class TestBudget(unittest.TestCase):
