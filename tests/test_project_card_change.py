@@ -87,15 +87,17 @@ class ProjectCardChange(unittest.TestCase):
             self.m.do_set(rid, {"project": "zzz"}, actor="alice")
         self.assertIn("zzz", str(cm.exception))
 
-    # P4. 빈 값으로 되돌릴 수 있다 — 같은 값이면 바뀐 것 없음
+    # P4. 같은 값이면 바뀐 것 없음 — 빈 값으로 되돌리는 길은 없다 (REQ-20260909-026:
+    #     프로젝트 없는 문서는 두지 않는다. 종전에는 ''  가 허용됐다)
     def test_p4_clear_and_same_value(self):
         rid = self.new()
         self.m.do_set(rid, {"project": "pa"}, actor="alice")
         res = self.m.do_set(rid, {"project": "pa"}, actor="alice")
         self.assertEqual(res["changed"], [])
-        res = self.m.do_set(rid, {"project": ""}, actor="alice")
-        self.assertEqual(res["changed"], ["project"])
-        self.assertEqual(self.meta(rid)[0].get("project", ""), "")
+        with self.assertRaises(ValueError) as cm:
+            self.m.do_set(rid, {"project": ""}, actor="alice")
+        self.assertIn("비울 수 없", str(cm.exception))
+        self.assertEqual(self.meta(rid)[0].get("project", ""), "pa")
 
     # P5. CLI 도 같은 경로 — s9 set --project 가 거절하고 종료 코드로 말한다
     def test_p5_cli_uses_the_same_path(self):
