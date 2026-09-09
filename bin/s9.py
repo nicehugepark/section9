@@ -26891,6 +26891,14 @@ def jira_ping(user, **kw):
     st, d, err = jira_http(user, "GET", "/rest/api/3/myself", **kw)
     if st == 200 and isinstance(d, dict):
         _exp, _left, level, line = jira_token_expiry(user)
+        # 담당자 지정에 쓸 계정 id — 연동 확인이 곧 그 값을 배우는 자리 (REQ-20260909-068:
+        # 주인 캡처의 이슈에 담당자가 비어 「아무 값도 저장되지 않는다」로 보였다)
+        acc = str(d.get("accountId") or "").strip()
+        if acc and acc != str((user_config(user) or {}).get("jira_account_id") or ""):
+            try:
+                do_user_config_set(user, "jira_account_id", acc, actor=user)
+            except Exception:
+                pass
         return {"ok": True, "missing": [], "name": str(d.get("displayName") or ""),
                 "email": str(d.get("emailAddress") or ""), "status": st, "error": "",
                 "warning": line if level == "soon" else ""}
@@ -26962,6 +26970,8 @@ def jira_original_of(body):
     for ln in rest.splitlines():
         if ln.startswith("## "):
             break
+        if JIRA_ATTACH_LINE_RE.match(ln.strip()):   # 첨부 줄은 코멘트와 같은 규칙으로 뺀다
+            continue
         out.append(ln)
     return "\n".join(out).strip()
 
@@ -26982,7 +26992,15 @@ def jira_original_lines(body):
     return ["원문:"] + paras
 
 
-def jira_issue_fields(meta, j, body=""):
+def jira_assignee_for(meta, user):
+    """담당자 — 문서의 담당(user)이 곧 token 주인이면 그 계정, 아니면 지정하지 않는다
+    (남의 이름으로 남을 담당자로 세우지 않는다). 계정 id 는 연동 확인이 저장한다."""
+    if not user or str(meta.get("user") or "") != str(user):
+        return ""
+    return str((user_config(user) or {}).get("jira_account_id") or "").strip()
+
+
+def jira_issue_fields(meta, j, body="", assignee_id=""):
     """이슈에 실을 것 — title·summary·goal·원문(Original)·요청 id. 노트는 나가지 않는다
     (코멘트는 content=notes 일 때만, REQ-20260909-034)."""
     doc_id = meta.get("id", "")
@@ -27003,6 +27021,8 @@ def jira_issue_fields(meta, j, body=""):
                   f"상태: {meta.get('status') or ''}"])}
     if mark:
         fields["labels"] = [jira_label(doc_id)]
+    if assignee_id:
+        fields["assignee"] = {"accountId": assignee_id}
     return fields
 
 
@@ -27113,7 +27133,8 @@ def jira_issue_create(doc_id, actor="", manual=False, **kw):
     if st not in (200, 404):
         return _jira_create_failed(doc_id, f"검색 실패({st})", cur)
     st, d, err = jira_http(user, "POST", "/rest/api/3/issue",
-                           body={"fields": jira_issue_fields(meta, j, _body)}, **kw)
+                           body={"fields": jira_issue_fields(meta, j, _body,
+                                                              jira_assignee_for(meta, user))}, **kw)
     if st in (200, 201) and isinstance(d, dict) and d.get("key"):
         key = d["key"]
         status, cat = "", ""

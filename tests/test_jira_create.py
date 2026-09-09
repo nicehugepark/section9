@@ -254,6 +254,30 @@ class JiraCreate(unittest.TestCase):
         self.assertIn("이하 생략", joined)
         self.assertLess(len(joined), 3400)
 
+    def test_c6e_attachment_lines_stay_out_of_the_original(self):
+        """경계 — 원문의 첨부 줄([Image: …])은 코멘트와 같은 규칙으로 뺀다 (REQ-20260909-068)."""
+        rid = self.new_request(body_text="첫 줄\n[Image: assets/REQ-1/shot.png]\n둘째 줄")
+        self.create(rid)
+        texts = self._desc_texts(Stub.posts[0])
+        joined = "\n".join(texts)
+        self.assertNotIn("[Image:", joined)
+        self.assertIn("첫 줄", joined)
+        self.assertIn("둘째 줄", joined)
+
+    def test_c8_the_issue_is_assigned_to_the_token_owner(self):
+        """정상 — 문서의 담당이 token 주인이면 담당자로 지정한다(계정 id 는 연동 확인이 저장).
+        (REQ-20260909-068: 이슈의 담당자가 비어 「아무 값도 저장되지 않는다」로 보였다)"""
+        self.m.do_user_config_set("hong", "jira_account_id", "acc-hong-1", actor="hong")
+        rid = self.new_request()
+        self.create(rid)
+        self.assertEqual(Stub.posts[0]["fields"].get("assignee"), {"accountId": "acc-hong-1"})
+
+    def test_c8b_no_assignee_without_an_account_id(self):
+        """경계 — 계정 id 를 모르면 지정하지 않는다(잘못된 지정보다 빈 것이 낫다)."""
+        rid = self.new_request()
+        self.create(rid)
+        self.assertNotIn("assignee", Stub.posts[0]["fields"])
+
     def test_c6d_without_an_original_there_is_no_original_paragraph(self):
         """회귀 — 함수 단위: 원문이 없는 본문이면 원문 문단이 없다."""
         j = {"project_key": "MP1", "mark": "on"}
