@@ -533,4 +533,6 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
    width:min(300px,100%) 로 셋이 늘어져 폭을 다 썼다. 손잡이는 제 폭만, select 는
    내용 폭만 — 그래야 한 줄이 되고 좁아지면 줄이 접혀도 손잡이가 마지막 항목 옆에 선다. */
 .jlink .wmore,.jlinkform .wmore{display:inline-block;width:auto;flex:0 0 auto;padding:0;margin:0}
+/* .wlab 은 density 에서 block 이라(줄 라벨용) 이어진 줄에서는 제 줄을 차지했다 — 여기서는 글줄이다 */
+.jlink>.wlab,.jlink>.path{display:inline;width:auto;flex:0 1 auto;margin:0}
 .jlinkform select.uf{width:auto;flex:0 1 auto;max-width:240px;min-width:0}
