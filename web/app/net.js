@@ -28,7 +28,8 @@ function s9Sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 /* 본문을 이미 읽어 둔 응답. Response 와 쓰는 자리가 같아야 하므로 이름을 맞춘다. */
 function s9Resp(res, body){
   return {
-    ok: res.ok, status: res.status, statusText: res.statusText,
+    ok: res.ok, status: (typeof res.status === "number") ? res.status : (res.ok ? 200 : 0),
+    statusText: res.statusText || "",
     headers: res.headers, url: res.url, redirected: res.redirected,
     raw: res,
     text(){ return Promise.resolve(body); },
@@ -54,8 +55,12 @@ async function s9Fetch(url, opts){
     let res = null, body = null, again = false;
     try{
       res = await fetch(url, o);
-      body = await res.text();
-      if (idem && s9Again(res.status, body)) again = true;
+      // 시험은 window.fetch 를 json() 만 가진 객체로 바꿔 끼운다(test_project_card_screen ·
+      // test_doc_head_handles) — text() 가 없으면 json() 을 읽어 본문으로 삼는다.
+      body = (typeof res.text === "function") ? await res.text()
+           : JSON.stringify(await res.json());
+      const st = (typeof res.status === "number") ? res.status : (res.ok ? 200 : 0);
+      if (idem && s9Again(st, body)) again = true;
     }catch(e){
       err = e; again = true;
       // 응답이 오다 끊긴 POST 는 서버가 이미 받아 실행한 것이다 — 여기서 멈춘다.
