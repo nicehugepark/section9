@@ -28,9 +28,31 @@
    남는다 — 열 구분선도 판 끝까지 그어져 칸이 칸으로 읽힌다. */
 .board{display:flex;gap:0;align-items:stretch;overflow:auto;padding-bottom:10px;
   border:1px solid var(--border);background:var(--panel);
-  max-height:calc(100vh - var(--board-top, 190px) - var(--board-foot, 0px));
-  max-height:calc(100dvh - var(--board-top, 190px) - var(--board-foot, 0px));
   min-height:320px}
+
+/* 판의 높이는 **재는 값이 아니라 배치**에서 온다 (REQ-20260909-100).
+
+   093 은 높이를 JS 로 쟀다: `--board-top` = `rect.top + scrollY`(문서 오프셋)를
+   `max-height:calc(100dvh - --board-top …)` 에 넣었다. 그 식은 문서 스크롤이 0 일
+   때만 참이다 — 한 번이라도 문서가 넘쳐 스크롤되면 판이 창보다 커지고, 문서가
+   판째 위로 밀려나면 그 안의 sticky 머리도 함께 화면 밖으로 나간다. 주인 캡처
+   2026-09-09 18:19 이 그 순간이다(열 머리가 하나도 없다). 재는 값과 쓰는 자리의
+   기준계가 다르면 어느 화면에서든 어긋난다.
+
+   그래서 수를 없앤다. 판 탭이면 `<html>` 에 `boardfit` 이 붙고, 몸통부터 판까지가
+   세로 flex 사슬이 되어 판이 **남는 높이를 그대로 받는다**. 창이 얼마든·위에 띠가
+   섰다 사라지든 판은 정확히 남는 만큼이라 문서가 넘칠 일이 없고, 넘치지 않으니
+   문서 스크롤도 없고, 머리가 판과 함께 떠날 일도 없다. 셈이 아니라 구조다.
+   (`min-height:320px` 는 창이 너무 낮을 때만 이긴다 — 그때는 판이 0 으로 눌리는
+   대신 문서가 스크롤된다. 눌린 판보다 스크롤이 낫다.)
+
+   `min-height:0` 이 사슬마다 붙는 이유: flex 항목의 기본 최소 높이는 **내용**이라,
+   그것을 0 으로 내리지 않으면 항목이 내용만큼 부풀어 사슬이 끊긴다. */
+html.boardfit,html.boardfit body{height:100%}
+html.boardfit body{display:flex;flex-direction:column;min-height:0}
+html.boardfit body>main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+html.boardfit main>#view{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+html.boardfit #view>.board{flex:1 1 auto;min-height:0}
 /* 컬럼은 252px를 최소로 두고 남는 폭을 나눠 갖는다 — knowledge/session 컬럼을
    걷어낸 뒤(REQ-20260825-084) 고정폭이 오른쪽에 죽은 여백을 남겼다. 컬럼 수가
    늘어 최소폭 합이 화면을 넘으면 .board의 overflow-x가 그대로 가로 스크롤. */
@@ -45,7 +67,18 @@
    기본은 판 색이고, 열이 제 면을 가진 스킨(soft·cork·calm·glass)만 `--col-head-bg`
    를 제 값으로 바꾼다. 머리는 제 열(.col) 안에서만 붙으므로 열이 끝나면 함께
    떠난다 — 열마다 길이가 다른 것이 그대로 읽힌다. */
-.col h2{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin:0;
+/* 머리 아래의 숨통은 머리 **상자 밖**에 둔다 (REQ-20260909-100 — 주인 반려
+   2026-09-09 18:13). 머리가 붙은 뒤로 그 상자는 불투명한 레일이 되었다: 손을
+   얹어 뜨는 카드(calm -2px · cork 0px · soft 1px, 실측)의 윗변이 그 안으로
+   들어가 **통째로 사라진다** — 둥근 모서리가 위로 말리다 평평하게 잘린다.
+   먼저 판례(REQ-20260827-058, 첫 카드의 왼쪽 획)가 정한 원칙 그대로 **자르는
+   쪽이 양보한다**: 카드를 줄이거나 머리 뒤로 올리지 않고(그러면 스크롤해
+   지나가는 카드가 머리를 덮는다), 머리가 제 아래에 여유를 남긴다.
+   여유는 새로 더하는 것이 아니라 **옮기는 것**이다 — 머리가 안여백으로 갖고
+   있던 아래 숨통을 margin 으로 내보내, 쉼 상태의 그림은 그대로 두고 잘림만
+   없앤다. 값은 스킨이 `--head-clear` 로 말한다(뜨지 않는 장부 계열은 0). */
+.col h2{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  margin:0 0 var(--head-clear, 0);
   padding:11px 14px;display:flex;align-items:center;gap:8px;font-weight:600;
   color:var(--muted);border-bottom:1px solid var(--hairline);font-family:var(--mono);
   word-break:keep-all;overflow-wrap:break-word;
@@ -94,7 +127,18 @@
        크기도 옆 칸(경과 시각 10px)과 같은 눈금에 맞춘다.
    (3) 집힌 표시: 카드의 잉크 테두리와 칠한 알약이 같은 말을 두 번 했다.
        테두리 하나면 족하고, 손잡이는 잉크 글자로만 남는다. */
-.card .pickdoc{visibility:hidden;
+/* 손잡이는 **칸의 폭을 정하지 않는다** (REQ-20260909-084 재작업). 종전에는 시각과
+   나란히 흐름에 서서 칸을 `max(시각, 손잡이)` 로 넓혔는데, 「이어 말하기」는 54px 이고
+   경과 시각은 33~62px 이라 짧은 시각을 단 카드마다 칸 안에 20px 남짓의 빈 자리가
+   생겼다 — 그 빈 자리가 벨트와 시각 **사이**에 놓여, 주인 눈에는 한 묶음이 아니라
+   「⏸ 만 남고 시각은 저쪽」으로 읽혔다(캡처 2026-09-09 15:54 · 리드 재확인 17:15).
+   칸 안에서 떠 있게 하면 폭을 정하는 것은 시각 하나뿐이라 빈 자리가 사라지고,
+   묶음도 그만큼 좁아져 흔한 카드가 식별자와 같은 줄에 선다.
+   **뜨는 자리는 칸 안이다** — 카드 모서리가 아니다. 모서리에 띄우면 흐름 밖이 되어
+   좁은 카드에서 묶음이 다시 갈라진다(084 가 고친 그 결함). 칸을 따라다니므로
+   묶음이 아랫줄로 내려가면 손잡이도 함께 내려간다. */
+.card .pickdoc{visibility:hidden;position:absolute;right:0;top:50%;
+  transform:translateY(-50%);
   font-family:var(--mono);font-size:10px;letter-spacing:0;padding:0;line-height:var(--card-edge);
   background:none;border:0;color:var(--muted);cursor:pointer;white-space:nowrap}
 .card:hover .pickdoc,.card:focus-within .pickdoc{visibility:visible}
@@ -197,10 +241,25 @@
    남아 좁은 카드에서 묶음이 갈라졌다(주인 캡처 2026-09-09 15:54). 이제 셋이
    한 흐름이라 한 줄에 못 서면 **묶음째** 아랫줄 오른끝으로 내려간다.
    자리를 스킨마다 다시 정하지 않는다 — 전 스킨 검수 규칙 1(같은 원소는 같은
-   자리)이 이 자리에도 적용된다. */
-.card .id .idnow{display:grid;align-items:center;justify-items:end}
+   자리)이 이 자리에도 적용된다.
+   **칸의 폭은 시각이 정한다** (084 재작업): 손잡이는 이 칸 안에 떠 있으므로(위
+   `.pickdoc`) 폭에 관여하지 않는다. `min-width` 는 두 가지를 맡는다 — 경과 시각이
+   없는 카드에도 손잡이가 설 자리를 주고, 시각이 아주 짧을 때(「12s」) 손잡이가
+   왼쪽으로 넘쳐 벨트의 잉크까지 파고드는 것을 막는다. 27px 과녁 안의 그림(과 손이
+   얹혔을 때의 원)은 13px 이라 양쪽에 7px 씩 흰 자리가 있고, 52px 이면 넘침이 그
+   안에서 끝난다(실측 넘침: 배율 1 에서 0 · 1.25 에서 3.9 · 1.5 에서 5.2px).
+   **단위가 `ch` 가 아니라 px 인 까닭**은 이 최소폭이 재는 것이 시각의 글자가 아니라
+   **손잡이의 낱말**이기 때문이다 — 「이어 말하기」는 스킨·밀도와 무관하게 10px 로
+   고정이므로(위 `.pickdoc`), id 줄의 글자 크기를 따라가는 `ch` 로 적으면 밀도가
+   촘촘해질 때 최소폭만 줄어 넘침이 커진다(compact 실측 17~20px).
+   **상한이자 하한이다**: 종전에는 손잡이가 흐름에 서서 칸이 손잡이만큼 **무한정**
+   넓어졌는데(실화면에서는 픽스처보다 훨씬 넓었다), 이제 칸은 `max(시각, 52px)` 을
+   넘지 않는다. 시각이 52px 보다 긴 카드(1분 넘게 지난 카드 대부분)에는 빈 자리가
+   아예 없고, 그보다 짧은 카드에만 그 차만큼 남는다 — 그 자리는 곧 손잡이가 설
+   자리이므로 비워 두는 것이 맞다. */
+.card .id .idnow{position:relative;display:grid;align-items:center;justify-items:end;
+  min-width:52px}
 .card .id .idnow>*{grid-area:1/1}
-.card .id .idnow:empty{display:none}
 /* 우선순위 표기 (REQ-20260827-029 재작업 — REQ-20260826-005의 계약은 유지).
    지켜야 하는 것: 기본값 50도 반드시 그린다. 값이 기본과 다를 때만 찍었더니
    전 문서가 50이라 화면 어디에도 아무 값이 없었고 "숨겨져 있는 건가"로

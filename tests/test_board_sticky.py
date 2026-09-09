@@ -41,9 +41,11 @@ STATUSES = (("open", "OPEN"), ("in-progress", "IN-PROGRESS"),
 
 
 def fixture_html():
-    """실제 화면과 같은 캐스케이드 · 같은 판 구조. 판의 높이는 화면에서 card.js 의
-    fitBoard 가 재서 `--board-top` 에 두는데, 여기서는 JS 가 없으므로 그 값을
-    직접 박아 판을 창보다 낮게 만든다 — 재는 것은 높이가 아니라 붙는가다."""
+    """실제 화면과 같은 캐스케이드 · 같은 판 구조.
+
+    판의 높이는 이제 재지 않는다 — `<html class="boardfit">` 이 붙으면 몸통부터
+    판까지가 세로 flex 사슬이 되어 판이 남는 높이를 받는다(REQ-20260909-100).
+    그래서 픽스처도 화면과 같은 상자 사슬(body > main > #view > .board)을 세운다."""
     css_files, _ = parts()
     css = "\n".join(open(os.path.join(WEB, "css", f), encoding="utf-8").read()
                     for f in css_files)
@@ -60,14 +62,13 @@ def fixture_html():
             '<h2><span class="cdot"></span>%s<span class="n">14</span></h2>'
             '<div class="cards">%s</div></div>'
             % (st.replace("-", ""), st, label, cards))
-    return ('<!doctype html><html lang="ko" data-theme="light"'
+    return ('<!doctype html><html lang="ko" class="boardfit" data-theme="light"'
             ' data-skin="ledger" data-density="normal"><head>'
             '<meta charset="utf-8"><style>%s</style>'
-            '<style>:root{--board-top:120px;--board-foot:0px}'
-            'body{margin:0;background:var(--bg)}'
-            '.top{height:120px;background:var(--panel)}</style></head>'
+            '<style>body{margin:0;background:var(--bg)}'
+            '.top{height:120px;background:var(--panel);flex:none}</style></head>'
             '<body><div class="top">머리 자리(헤더·필터 줄·띠)</div>'
-            '<div id="view"><div class="board">%s</div></div>'
+            '<main><div id="view"><div class="board">%s</div></div></main>'
             "</body></html>" % (css, "".join(cols)))
 
 
@@ -90,6 +91,35 @@ MEASURE_JS = """
 """
 
 TRANSPARENT = ("rgba(0, 0, 0, 0)", "transparent")
+
+# 손을 얹을 자리 — 첫 열 첫 카드의 한가운데. 판을 맨 위로 되돌린 뒤 잰다.
+POINT_JS = """
+(() => {
+  const board = document.querySelector('.board');
+  board.scrollTop = 0;
+  const c = board.querySelector('.col .card');
+  const r = c.getBoundingClientRect();
+  return {x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2)};
+})()
+"""
+
+# 붙은 머리가 손 얹은 첫 카드의 윗변을 덮는가. 재는 것은 **뜬 뒤의** 좌표다 —
+# 카드가 translateY 로 떠오르면 윗변이 머리 상자 안으로 들어갈 수 있다.
+HOVER_JS = """
+(() => {
+  const board = document.querySelector('.board');
+  const col = board.querySelector('.col');
+  const h2 = col.querySelector('h2'), card = col.querySelector('.card');
+  const hr = h2.getBoundingClientRect(), cr = card.getBoundingClientRect();
+  const cs = getComputedStyle(card);
+  return {hovered: card.matches(':hover'),
+          gap: +(cr.top - hr.bottom).toFixed(2),
+          lift: cs.transform,
+          borderTop: cs.borderTopWidth,
+          headZ: getComputedStyle(h2).zIndex,
+          cardZ: cs.zIndex};
+})()
+"""
 
 
 class TheColumnHeadStaysOnTop(unittest.TestCase):
@@ -154,6 +184,17 @@ class TheColumnHeadStaysOnTop(unittest.TestCase):
                 ws.eval("document.documentElement.dataset.skin=%r" % skin)
                 time.sleep(0.12)
                 out[skin] = ws.eval(MEASURE_JS)
+                # 손 얹은 얼굴은 **실포인터**로만 나온다 (REQ-20260909-100 반려의
+                # 교훈 — 정지 화면만 찍고 통과시킨 것이 그 반려를 불렀다).
+                # CSS 를 복제해 흉내 내면 실제 캐스케이드와 갈릴 수 있다.
+                pt = ws.eval(POINT_JS)
+                ws.call("Input.dispatchMouseEvent", type="mouseMoved",
+                        x=pt["x"], y=pt["y"], button="none", buttons=0)
+                time.sleep(0.35)
+                out[skin]["hover"] = ws.eval(HOVER_JS)
+                ws.call("Input.dispatchMouseEvent", type="mouseMoved",
+                        x=2, y=2, button="none", buttons=0)
+                time.sleep(0.1)
             return out
         finally:
             if ws is not None:
@@ -194,6 +235,65 @@ class TheColumnHeadStaysOnTop(unittest.TestCase):
                         h["bg"], TRANSPARENT,
                         "%s / %s 머리가 투명하다 — 밑으로 지나가는 카드가 "
                         "비쳐 읽힌다" % (skin, h["label"]))
+
+    def test_the_head_does_not_cover_the_lifted_card(self):
+        """손을 얹어 떠오른 첫 카드의 윗변이 붙은 머리 뒤로 들어가지 않는다.
+
+        주인 반려 2026-09-09 18:13 (REQ-20260909-100): calm 에서 카드가
+        translateY(-2px) 로 뜨자 윗변의 1px 테두리가 머리(불투명·z-index 2) 안으로
+        2px 들어가 **통째로 사라졌다** — 둥근 모서리가 위로 말리다 평평하게 잘렸다.
+        먼저 판례(REQ-20260827-058, 첫 카드의 왼쪽 획)와 같은 원칙이다:
+        **자르는 쪽이 양보한다.** 카드를 줄이지도, 머리 위로 올리지도 않는다.
+        """
+        for skin, d in self.data.items():
+            h = d["hover"]
+            self.assertTrue(h["hovered"],
+                            "%s 에서 실포인터가 카드에 얹히지 않았다 — 잰 값이 "
+                            "쉼 얼굴이면 이 계약은 아무것도 지키지 못한다" % skin)
+            self.assertGreaterEqual(
+                h["gap"], 0,
+                "%s 에서 손 얹은 첫 카드의 윗변이 머리 상자 안으로 %.1fpx "
+                "들어갔다 — 그만큼이 잘려 보인다 (lift=%s, border-top=%s)"
+                % (skin, -h["gap"], h["lift"], h["borderTop"]))
+
+    def test_a_card_passing_under_the_head_stays_behind_it(self):
+        """머리 밑을 지나가는 카드는 여전히 머리 뒤다 — z-index 를 뒤집어 고치지 않는다.
+
+        hover 카드를 머리 위로 올리면 잘림은 사라지지만, 스크롤해 지나가는 카드가
+        머리를 덮어 「지금 어느 상태의 카드인가」를 잃는다 (REQ-20260909-093 이
+        세운 것). 그래서 머리가 이기는 순서를 계약으로 못박는다.
+        """
+        for skin, d in self.data.items():
+            h = d["hover"]
+            self.assertEqual("2", h["headZ"],
+                             "%s 에서 머리의 z-index 가 2 가 아니다: %s"
+                             % (skin, h["headZ"]))
+            self.assertEqual("auto", h["cardZ"],
+                             "%s 에서 카드가 제 쌓임 순서를 갖는다(%s) — 머리 위로 "
+                             "올라올 수 있다" % (skin, h["cardZ"]))
+
+    def test_the_head_line_is_not_a_hand_written_colour(self):
+        """붙은 머리의 아래 선은 그 스킨의 선 토큰에서 온다.
+
+        주인: 「헤더 테두리 색상도 뭔가 안어울리고」. 머리가 레일이 된 뒤로 그 선은
+        판의 다른 선들과 같은 계열이어야 한다 — 손으로 적은 색이 하나라도 있으면
+        스킨·톤이 바뀌는 순간 그 선만 남의 색이 된다.
+        """
+        import re as _re
+        bad = []
+        for name in ("board.css", "skins.css", "calm.css"):
+            src = open(os.path.join(WEB, "css", name), encoding="utf-8").read()
+            for m in _re.finditer(r"\.col h2\{([^}]*)\}", src):
+                for decl in _re.finditer(r"border(?:-bottom)?(?:-color)?\s*:([^;}]*)",
+                                         m.group(1)):
+                    val = decl.group(1)
+                    if _re.search(r"#[0-9a-fA-F]{3,8}|\brgba?\(|\bhsla?\(", val):
+                        bad.append("%s: %s" % (name, val.strip()))
+        self.assertEqual([], bad,
+                         "머리의 선에 손으로 적은 색이 있다 — var(--hairline)/"
+                         "var(--border) 처럼 그 스킨의 선 토큰을 읽어야 한다: %s"
+                         % bad)
+
 
 if __name__ == "__main__":
     unittest.main()

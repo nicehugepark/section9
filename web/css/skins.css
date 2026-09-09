@@ -36,12 +36,14 @@
 [data-skin="soft"] .stat.on{box-shadow:none;border-color:var(--text)}
 [data-skin="soft"] .board{border:0;background:none;gap:14px}
 [data-skin="soft"] .col{background:var(--accent-soft);border-right:0;border-radius:12px;padding:6px;
-  --col-head-bg:var(--accent-soft)}
+  --col-head-bg:var(--accent-soft);--head-clear:8px}
 /* 붙은 머리는 열의 위 여백까지 올라선다 — sticky 의 한계는 열의 padding box 라
    여백 안쪽이 아니라 그 위까지다(실측). 모서리만 열의 둥근 값에 맞춘다. */
 [data-skin="soft"] .col h2{border-radius:12px 12px 0 0}
-[data-skin="soft"] .col h2{border-bottom:0}
-[data-skin="soft"] .cards{gap:8px;padding:2px}
+/* 아래 숨통을 상자 밖으로 옮긴다 — 쉼의 그림은 그대로, 손 얹은 카드의 윗변만
+   잘리지 않는다 (REQ-20260909-100). 안 11px = 안 3px + 밖 8px. */
+[data-skin="soft"] .col h2{border-bottom:0;padding-bottom:3px}
+[data-skin="soft"] .cards{gap:8px;padding:0 2px 2px}
 /* 좌측 컬러 띠는 사용자 반려로 확정된 금지 패턴 — 제거한다. 띠가 하던 일
    (이 카드의 상태를 즉시 안다)은 컬럼 헤더의 상태 점·이름이 이미 하고 있고,
    포인터를 올렸을 때는 테두리가 상태색으로 물들어 되짚어준다(면 아님·윤곽). */
@@ -608,7 +610,9 @@
   --col-head-bg:var(--ck-well)}
 [data-skin="cork"] .col h2{border-bottom:0;padding:9px 10px 5px;
   border-radius:12px 12px 0 0}
-[data-skin="cork"] .cards{gap:7px;padding:2px 4px}
+[data-skin="cork"] .col{--head-clear:8px}
+[data-skin="cork"] .col h2{padding-bottom:3px}
+[data-skin="cork"] .cards{gap:7px;padding:0 4px 2px}
 [data-skin="cork"] .card{background:var(--panel);border-bottom:0;border-radius:8px;
   box-shadow:var(--ck-shadow);--card-pt:9px;--card-px:12px;
   transition:transform .12s ease, box-shadow .12s ease}

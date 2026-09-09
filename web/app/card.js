@@ -2640,26 +2640,43 @@ function renderBoard(rows){
   elapsedTimer = setInterval(tickElapsed, 1000);  // 카드 경과시간 실시간 갱신
 }
 
-/* 판의 높이는 상수가 아니라 실측이다 (REQ-20260909-093 — 터미널 판이 같은 자를
-   쓴다, REQ-20260909-079).
+/* 판의 높이는 재지 않는다 — 배치가 준다 (REQ-20260909-100).
 
-   상태 머리를 스크롤에 붙이려면 판이 제 세로 스크롤 상자여야 하고, 그러려면
-   높이가 있어야 한다. 그 높이를 CSS 에 숫자로 적으면 반드시 어느 화면에서
-   틀린다 — 위에 서는 것이 셋이나 되고(헤더 두 줄 · 「서버가 옛 코드」 띠 ·
-   병목 줄) 셋 다 섰다 사라진다. 그래서 재는 값은 둘이다:
-   `--board-top` = 창 위쪽부터 판의 윗변까지, `--board-foot` = 판 아래에 남아야
-   할 여백(조상들의 padding·border·margin 합). 식은 board.css 한 줄이다. */
+   093 은 여기서 `--board-top`(창 위쪽부터 판의 윗변까지)과 `--board-foot` 를 재서
+   CSS 의 `max-height:calc(100dvh - …)` 에 넣었다. 그런데 잰 값은
+   `rect.top + scrollY`, 곧 **문서** 오프셋이고 CSS 는 그것을 **창** 기준 거리로
+   썼다 — 두 기준계가 같은 것은 문서 스크롤이 0 일 때뿐이다. 문서가 한 번 넘쳐
+   스크롤되면 판이 창 밖으로 밀리고, 판이 제 sticky 머리를 데리고 나간다
+   (주인 캡처 2026-09-09 18:19: 열 머리가 하나도 없다).
+
+   그래서 셈을 없애고 사슬을 만든다. 이 함수가 하는 일은 「지금 판 탭인가」를
+   `<html>.boardfit` 한 낱으로 말하는 것뿐이고, 높이는 board.css 의 flex 사슬이
+   준다 — 위에 뭐가 섰다 사라지든 판은 남는 만큼을 받는다. 판이 넘치지 않으니
+   문서도 스크롤되지 않고, 머리는 제자리에 남는다.
+   (`watchBoardFit` 은 탭 전환·창 크기에 이 낱을 다시 세우려 남는다.) */
 function fitBoard(){
   const board = document.querySelector("#view .board");
-  if (!board) return;
-  const st = document.documentElement.style;
-  st.setProperty("--board-top",
-    Math.round(board.getBoundingClientRect().top + window.scrollY) + "px");
-  st.setProperty("--board-foot", Math.round(gapBelowPanel(board)) + "px");
+  const root = document.documentElement;
+  root.classList.toggle("boardfit", !!board);
+  // 093 이 두던 잰 값은 이제 쓰이지 않는다 — 남아 있으면 다음 사람이 그 수를 믿는다.
+  root.style.removeProperty("--board-top");
+  root.style.removeProperty("--board-foot");
 }
-let boardFitBound = false, boardRO = null;
+let boardFitBound = false, boardRO = null, boardViewMO = null;
 function watchBoardFit(){
   if (!boardFitBound){ boardFitBound = true; window.addEventListener("resize", fitBoard); }
+  /* 판을 떠나면 사슬도 풀려야 한다 — 판 탭에서만 몸통 높이를 못박기 때문이다.
+     그런데 `fitBoard` 를 부르는 곳은 판을 그리는 자리 하나뿐이라, 다른 탭으로
+     간 뒤에는 아무도 풀어 주지 않는다(그러면 Docs·Graph 의 세로 스크롤이 막힌다).
+     그래서 화면 상자가 바뀔 때마다 다시 판정한다 — 탭이 무엇인지 묻지 않고
+     「지금 여기 판이 있는가」만 본다. */
+  if (!boardViewMO && typeof MutationObserver === "function"){
+    const view = document.getElementById("view");
+    if (view){
+      boardViewMO = new MutationObserver(() => fitBoard());
+      boardViewMO.observe(view, { childList: true });
+    }
+  }
   if (typeof ResizeObserver !== "function") return;
   // 판 위에 서는 것만 본다 — 판 자신을 보면 재기의 결과가 다시 재기를 부른다.
   // 볼 것은 그릴 때마다 바뀐다(병목 줄이 섰다 사라지고, 「서버가 옛 코드」 띠도
