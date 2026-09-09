@@ -138,6 +138,12 @@ const PRJ_TEXT = {
   // 원문(body)은 어느 값에서도 나가지 않는다 — 그런 선택지는 화면에도 서버에도 없다.
   kJiraContent: "내보내는 것",
   jiraContents: [["card", "카드 (제목·요약·완료 기준·상태)"], ["notes", "카드 + 노트 (노트를 코멘트로)"]],
+  // section9 표시 (REQ-20260909-049): Jira 쪽에 우리 표(라벨 s9-<id>·「section9 요청」 줄·
+  // 코멘트 서명)를 남기나. 값 글자(on·off)는 --mark 에 치는 것이라 원어. 기본 on —
+  // 「Jira 쪽이 section9 의 존재를 몰라야 하는」 프로젝트만 off 로 둔다.
+  kJiraMark: "section9 표시",
+  jiraMarks: [["on", "남김 (라벨·본문 줄·코멘트 서명)"], ["off", "남기지 않음"]],
+  jiraMarkOff: "section9 표시 없음",
   // 만료가 없으면 「만료 0」을 세우지 않는다 — 없는 문제를 보고하는 꼴이 된다
   memCap: n => `멤버 ${n}명`,
   memCapMix: (n, act, exp) => `멤버 ${n}명 — 활성 ${act} · 만료 ${exp}`,
@@ -527,6 +533,7 @@ function prjSetRowsHTML(p, c){
    사람에게는 행이 서지 않는다(빈 칸은 채울 수 있는 사람에게만 자리다). */
 const PRJ_JIRA_DIRS = PRJ_TEXT.jiraDirs;     // 글자는 표(PRJ_TEXT) 한 곳에 산다
 const PRJ_JIRA_CONTENTS = PRJ_TEXT.jiraContents;
+const PRJ_JIRA_MARKS = PRJ_TEXT.jiraMarks;
 /* select 하나 — 방향과 「내보내는 것」이 같은 꼴이다(값 원어 · 뜻은 옵션 글자 뒤). */
 function prjJiraSelectHTML(attr, pairs, cur, editable){
   if (editable) return `<select class="pjc" ${attr}>` + pairs.map(([v, t]) =>
@@ -545,15 +552,18 @@ function prjJiraRowsHTML(p, c){
   };
   const dir = j ? (j.direction || "push") : "push";
   const content = j ? (j.content || "card") : "card";
+  const mark = j ? (j.mark || "on") : "on";
   const dirCell = j ? prjJiraSelectHTML("data-pjjiradir", PRJ_JIRA_DIRS, dir, c.canManage) : "";
   const contentCell = j ? prjJiraSelectHTML("data-pjjiracontent", PRJ_JIRA_CONTENTS, content, c.canManage) : "";
+  const markCell = j ? prjJiraSelectHTML("data-pjjiramark", PRJ_JIRA_MARKS, mark, c.canManage) : "";
   const empty = (!j && c.canManage)
     ? `<div class="pjhint">${esc(PRJ_TEXT.jiraEmpty)}</div>` : "";
   const none = `<span class="none">${esc(PRJ_TEXT.emptyVal)}</span>`;
   return row(PRJ_TEXT.kJiraSite, val("site", j ? j.site : "", PRJ_TEXT.phJiraSite) + empty)
     + row(PRJ_TEXT.kJiraKey, val("key", j ? j.project_key : "", PRJ_TEXT.phJiraKey))
     + (j || c.canManage ? row(PRJ_TEXT.kJiraDir, dirCell || none) : "")
-    + (j || c.canManage ? row(PRJ_TEXT.kJiraContent, contentCell || none) : "");
+    + (j || c.canManage ? row(PRJ_TEXT.kJiraContent, contentCell || none) : "")
+    + (j || c.canManage ? row(PRJ_TEXT.kJiraMark, markCell || none) : "");
 }
 function prjMemberRowHTML(m, p, c){
   const kind = prjUntilKind(m, c.now);
@@ -839,6 +849,9 @@ function prjWire(root, p, o){
   const jcSel = root.querySelector("[data-pjjiracontent]");
   if (jcSel) jcSel.addEventListener("change", () =>
     post("/api/project/jira", {content: jcSel.value}, m => PRJ_TEXT.errSet("jira", m)));
+  const jmSel = root.querySelector("[data-pjjiramark]");
+  if (jmSel) jmSel.addEventListener("change", () =>
+    post("/api/project/jira", {mark: jmSel.value}, m => PRJ_TEXT.errSet("jira", m)));
   /* status 도 그 자리에서 저장한다 — 확인 창을 세우지 않는다(리드 중재 1).
      보관의 실효과는 「목록에서 접힘」 하나이고, 되돌리는 길(보관 해제)이 같은
      셀렉트에 있다. 되돌릴 수 있는 일에 확인을 걸면 다음번 진짜 경고를 안 읽는다. */

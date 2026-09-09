@@ -119,9 +119,11 @@ function jiraRowHTML(r, s){
     const can = (s.manageable || []);
     const dirName = d => (PRJ_TEXT.jiraDirs.find(([v]) => v === d) || [d, d])[1];
     const contentName = d => (PRJ_TEXT.jiraContents.find(([v]) => v === d) || [d, d])[1];
+    // section9 표시(REQ-20260909-049)는 on 이 기본이라 기본은 조용히 — off 일 때만 덧붙인다
+    const markOff = p => (p.mark || "on") === "off" ? ` · ${esc(PRJ_TEXT.jiraMarkOff)}` : "";
     const linked = rows.length
       ? rows.map(p => `<div class="jlink"><span class="wlab gcmd">${esc(p.slug)} ↔ ${esc(p.key)}</span>
-           <span class="path">· ${esc(dirName(p.direction || "push"))} · ${esc(contentName(p.content || "card"))}</span>${
+           <span class="path">· ${esc(dirName(p.direction || "push"))} · ${esc(contentName(p.content || "card"))}${markOff(p)}</span>${
            can.some(m => m.slug === p.slug)
              ? ` <button type="button" class="more wmore j-unlink" data-slug="${esc(p.slug)}">연동 해제</button>` : ""
          }</div>`).join("")
@@ -136,6 +138,8 @@ function jiraRowHTML(r, s){
              PRJ_TEXT.jiraDirs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
            <select class="uf" id="j-link-content" aria-label="${esc(PRJ_TEXT.kJiraContent)}">${
              PRJ_TEXT.jiraContents.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
+           <select class="uf" id="j-link-mark" aria-label="${esc(PRJ_TEXT.kJiraMark)}">${
+             PRJ_TEXT.jiraMarks.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>
            <button type="button" class="more wmore" id="j-link">연동</button></div>`
       : "";
     // .wctl 은 가로 flex 라 줄과 폼이 옆으로 늘어선다(주인 캡처 2026-09-09 10:50) —
@@ -218,9 +222,10 @@ function showJiraPanel(host, me){
       const key = (host.querySelector("#j-link-key")?.value || "").trim();
       const direction = host.querySelector("#j-link-dir")?.value || "push";
       const content = host.querySelector("#j-link-content")?.value || "card";
+      const mark = host.querySelector("#j-link-mark")?.value || "on";
       if (!key){ jiraSay("project", "Jira project key 를 적어 주세요 — 예: MP1", "bad"); return; }
       jiraSay("project", "잇는 중…");
-      const res = await postJSONRaw("/api/project/jira", {slug, key, direction, content});
+      const res = await postJSONRaw("/api/project/jira", {slug, key, direction, content, mark});
       if (!res.ok){ jiraSay("project", "✕ " + res.error, "bad"); return; }
       await jiraLoad(); paint();
       jiraSay("project", `이었습니다 — ${slug} ↔ ${(res.jira || {}).project_key || key}`);

@@ -13274,8 +13274,9 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
         rebuild_index(quiet=True)
     finally:
         release_lock()
-    # Jira: 이은 이슈에 라벨을 붙인다 — 문서는 이미 썼으니 실패해도 연결은 남는다 (REQ-20260909-036)
-    if jira_linked:
+    # Jira: 이은 이슈에 라벨을 붙인다 — 문서는 이미 썼으니 실패해도 연결은 남는다 (REQ-20260909-036).
+    # mark=off 프로젝트는 표를 남기지 않는다 (REQ-20260909-049).
+    if jira_linked and jira_mark_on(project_jira(str(meta.get("project") or ""))):
         jira_link_label(cid, jira_linked, actor, **(jira_kw or {}))
     # Jira: 제목이 정리됐으면 미뤄 둔 생성을 싣고, 이슈가 있으면 제목을 맞춘다 (REQ-20260909-032)
     jira_after_set(cid, meta, body, changed)
@@ -20262,14 +20263,19 @@ def do_project_default(slug, actor=None, via=""):
 # notes 는 card + 노트(response·사람 노트)를 코멘트로. direction·export 와 직교.
 # body(원문) 수준은 **없다** — 주인 규칙 「Original/본문은 Jira 로 나가지 않는다」
 # (REQ-20260909-030); 선택지에 없으니 누가 켜려 해도 do_project_jira_set 이 거절한다.
+# mark(on 기본, REQ-20260909-049): Jira 쪽에 section9 의 표를 남기나 — 라벨 s9-<id> ·
+# description 의 「section9 요청 <id>」 줄 · 코멘트 서명 「— section9」 · 잇기 때 붙이는 라벨.
+# off 는 「Jira 쪽이 section9 의 존재를 몰라야 하는」 자리를 위한 것(주인 2026-09-09 12:45);
+# 라벨이 없으니 기존 이슈 검색(jira_find_issue)도 하지 않고 문서의 jira.key 가 곧 기록이다.
 JIRA_PROJECT_DEFAULTS = {"issue_type": "Task", "direction": "push",
                          "create_on": "open", "export": "all", "export_origin": "human",
-                         "content": "card"}
+                         "content": "card", "mark": "on"}
 JIRA_PROJECT_CHOICES = {"direction": ("push", "pull", "both"),
                         "create_on": ("open", "in-progress"),
                         "export": ("all", "size:M+", "manual"),
                         "export_origin": ("human", "all"),
-                        "content": ("card", "notes")}
+                        "content": ("card", "notes"),
+                        "mark": ("on", "off")}
 JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,9}$")
 
 
@@ -20748,7 +20754,7 @@ def cmd_project(args):
                       f"--site https://<site>.atlassian.net --key <KEY>")
                 return
             for k in ("site", "project_key", "issue_type", "direction", "create_on",
-                      "export", "export_origin", "content"):
+                      "export", "export_origin", "content", "mark"):
                 print(f"  {k:14s} {j.get(k, '')}")
             return
         actor = resolve_user(args.user)
@@ -20764,14 +20770,15 @@ def cmd_project(args):
                 args.slug, actor=actor, site=args.site, project_key=args.key,
                 issue_type=args.issue_type, direction=args.direction,
                 create_on=args.create_on, export=args.export,
-                export_origin=args.export_origin, content=args.content)
+                export_origin=args.export_origin, content=args.content,
+                mark=args.mark)
         except ValueError as e:
             die(str(e))
         j = res["jira"]
         print(f"{res['slug']} ↔ {j['site']} {j['project_key']}  "
               f"(direction={j['direction']} create_on={j['create_on']} "
               f"export={j['export']} export_origin={j['export_origin']} "
-              f"content={j['content']} issue_type={j['issue_type']})")
+              f"content={j['content']} mark={j['mark']} issue_type={j['issue_type']})")
         return
 
     if action == "rename":
@@ -26620,7 +26627,8 @@ def jira_state(user=""):
             projects.append({"slug": sl, "key": key,
                              "site": str((j or {}).get("site") or ""),
                              "direction": str((j or {}).get("direction") or "push"),
-                             "content": str((j or {}).get("content") or "card")})
+                             "content": str((j or {}).get("content") or "card"),
+                             "mark": str((j or {}).get("mark") or "on")})
         # 화면에서 이을 수 있는 프로젝트 — manage(maintainer 이상)인 것만 (REQ-20260909-015)
         if user and str(m.get("status") or "active") != "archived" and project_can(sl, user, "manage"):
             manageable.append({"slug": sl, "title": str(m.get("title") or sl)})
@@ -26760,6 +26768,13 @@ def jira_label(doc_id):
     return JIRA_LABEL_PREFIX + doc_id
 
 
+def jira_mark_on(j):
+    """Jira 쪽에 section9 의 표를 남기나 — 판정은 여기 한 곳(REQ-20260909-049). 네 자리가
+    부른다: 생성 라벨·description 줄(jira_issue_fields) · 라벨 검색(jira_find_issue) ·
+    잇기 라벨(do_set → jira_link_label) · 코멘트 서명(jira_comment_push)."""
+    return str((j or {}).get("mark") or "on") != "off"
+
+
 def jira_export_wanted(meta, manual=False, body=None, late=False):
     """이 요청을 Jira 로 내보내나 — (연동 설정 또는 None, 까닭). 까닭이 비면 내보낸다.
     manual(s9 jira create)은 사람이 시킨 것이라 export·export_origin 규칙을 지나간다.
@@ -26794,20 +26809,23 @@ def _jira_adf(lines):
 def jira_issue_fields(meta, j):
     """이슈에 실을 것 — 허용 목록뿐(title·summary·goal·요청 id). 본문은 나가지 않는다."""
     doc_id = meta.get("id", "")
-    return {"project": {"key": j["project_key"]},
-            "issuetype": {"name": j.get("issue_type") or "Task"},
-            # 제목은 section9 제목 그대로 — [REQ-…] 접두는 붙이지 않는다(주인 지적 2026-09-09
-            # 11:28, REQ-20260909-039). 문서 번호는 description 의 「section9 요청 …」 줄에 있다.
-            "summary": jira_summary_of(meta),
-            "labels": [jira_label(doc_id)],
-            # 첫 문단이 완료 기준이다 — Jira 의 접힌 미리보기에서도 보인다(주인 캡처 MP1-4
-            # 는 description 이 접혀 비어 보였다, REQ-20260909-032).
-            "description": _jira_adf([
-                f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
-                f"요약: {meta.get('summary')}" if meta.get("summary") else "",
-                f"section9 요청 {doc_id}",
-                f"담당: {meta.get('user') or ''} · 크기: {meta.get('size') or ''} · "
-                f"상태: {meta.get('status') or ''}"])}
+    mark = jira_mark_on(j)
+    fields = {"project": {"key": j["project_key"]},
+              "issuetype": {"name": j.get("issue_type") or "Task"},
+              # 제목은 section9 제목 그대로 — [REQ-…] 접두는 붙이지 않는다(주인 지적 2026-09-09
+              # 11:28, REQ-20260909-039). 문서 번호는 description 의 「section9 요청 …」 줄에 있다.
+              "summary": jira_summary_of(meta),
+              # 첫 문단이 완료 기준이다 — Jira 의 접힌 미리보기에서도 보인다(주인 캡처 MP1-4
+              # 는 description 이 접혀 비어 보였다, REQ-20260909-032).
+              "description": _jira_adf([
+                  f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
+                  f"요약: {meta.get('summary')}" if meta.get("summary") else "",
+                  f"section9 요청 {doc_id}" if mark else "",
+                  f"담당: {meta.get('user') or ''} · 크기: {meta.get('size') or ''} · "
+                  f"상태: {meta.get('status') or ''}"])}
+    if mark:
+        fields["labels"] = [jira_label(doc_id)]
+    return fields
 
 
 def jira_summary_of(meta):
@@ -26816,7 +26834,10 @@ def jira_summary_of(meta):
 
 
 def jira_find_issue(user, j, doc_id, **kw):
-    """label 로 선검색 — (status, key|''). 새 검색 API 가 없으면 옛 것으로 한 번 더."""
+    """label 로 선검색 — (status, key|''). 새 검색 API 가 없으면 옛 것으로 한 번 더.
+    mark=off 프로젝트는 라벨을 붙인 적이 없으니 묻지 않는다 — (200, '') = 「없다」."""
+    if not jira_mark_on(j):
+        return 200, ""
     from urllib.parse import quote
     jql = f'project = {j["project_key"]} AND labels = "{jira_label(doc_id)}"'
     for path in ("/rest/api/3/search/jql", "/rest/api/3/search"):
@@ -27230,7 +27251,9 @@ def jira_comment_push(doc_id, actor="", **kw):
                                  "last_error": f"비밀 모양이 있어 보내지 않았다 ({what}, 노트 {ts})"},
                         f"{key} 코멘트 안 보냄 — 비밀 모양 ({what}, ts {ts})")
             continue
-        lines = jira_comment_text(text).splitlines() + [f"{JIRA_COMMENT_MARK} · {ts}"]
+        lines = jira_comment_text(text).splitlines()
+        if jira_mark_on(j):
+            lines.append(f"{JIRA_COMMENT_MARK} · {ts}")
         st, d, err = jira_http(user, "POST", f"/rest/api/3/issue/{key}/comment",
                                body={"body": _jira_adf(lines)}, **kw)
         if st not in (200, 201):
@@ -29849,7 +29872,8 @@ def cmd_serve(args):
                         res = do_project_jira_set(
                             slug, actor=actor, via=" via dashboard",
                             site=site, project_key=req.get("key"),
-                            direction=req.get("direction"), content=req.get("content"))
+                            direction=req.get("direction"), content=req.get("content"),
+                            mark=req.get("mark"))
                     self._json({"ok": True, **res})
                 elif parsed.path == "/api/user/config":
                     name = str(req.get("name") or "")
@@ -31697,6 +31721,8 @@ def main():
                     help="jira set: human(기본 — 사람이 직접 만든 요청만)|all")
     pj.add_argument("--content", help="jira set: card(기본 — 제목·요약·완료 기준·상태)|"
                     "notes(card + 노트를 코멘트로). 원문(body)은 어느 값에서도 나가지 않는다")
+    pj.add_argument("--mark", help="jira set: on(기본 — 라벨 s9-<id>·「section9 요청」 줄·코멘트 서명을 "
+                    "남긴다)|off(Jira 쪽에 section9 의 표를 하나도 남기지 않는다)")
     pj.add_argument("--user", help="행위 주체 (기본: 세션/OS 사용자)")
     pj.set_defaults(fn=cmd_project)
 

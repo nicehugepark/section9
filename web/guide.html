@@ -897,6 +897,14 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
   <li>손으로: <code>s9 jira create &lt;REQ&gt;</code>(지금 만들기) · <code>s9 jira push &lt;REQ&gt;</code>(지금 보내기) · <code>s9 jira pull</code>(지금 받기) · <code>s9 jira outbox --run</code>.</li>
 </ul>
 
+<h3>section9 표시 — Jira 쪽에 우리 흔적을 남길지</h3>
+<p>기본(<b>남김</b>)에서는 이슈에 section9 의 표가 셋 남습니다 — label <code>s9-REQ-…</code>, 본문의 <code>section9 요청 REQ-…</code> 줄,
+코멘트 끝의 <code>— section9 · 시각</code> 서명(이미 있는 이슈를 이을 때도 label 이 붙습니다). Jira 를 쓰는 쪽이 section9 의 존재를
+<b>몰라야 하는</b> 프로젝트라면 <b>남기지 않음</b>으로 두십시오 — 넷 다 나가지 않고, 제목·완료 기준·요약·담당 줄은 그대로 갑니다.
+자리는 Settings › 외부 서비스 › 프로젝트 연동 폼의 <b>section9 표시</b> 셀렉트, 또는 Projects 정보 패널의 같은 행, 터미널로는
+<code>s9 project jira &lt;slug&gt; set --mark off</code> 입니다. 남기지 않음에서는 label 이 없어 같은 요청의 이슈를 Jira 에서 찾아 붙이지
+않습니다 — 문서의 Jira 행(키)이 곧 기록이라, 키가 있는 요청은 어느 값에서도 다시 만들지 않습니다.</p>
+
 <h3>하지 말 것</h3>
 <ul>
   <li>token 을 채팅·문서·프롬프트에 붙여 넣지 마십시오 — 그 자리는 기록에 남습니다. 넣는 자리는 Settings 의 API token 칸(또는 <code>s9 secret set JIRA_API_TOKEN</code>)뿐입니다.</li>

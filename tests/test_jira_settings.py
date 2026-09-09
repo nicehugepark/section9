@@ -74,7 +74,7 @@ class JiraSettings(unittest.TestCase):
         self.assertTrue(st["ready"]["project"])
         self.assertEqual(st["projects"], [{"slug": "pay", "key": "MP1",
                                            "site": "https://ex.atlassian.net",
-                                           "direction": "push", "content": "card"}])
+                                           "direction": "push", "content": "card", "mark": "on"}])
 
     def test_j4_a_board_url_is_trimmed_to_the_site(self):
         m = self.m

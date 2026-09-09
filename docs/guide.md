@@ -721,6 +721,10 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
 - 백그라운드 작업자는 내 token 으로 Jira 를 만지지 않습니다. 허용하려면 Settings › 백그라운드 작업 › **Jira 쓰게 하기** — Jira 의 기록에는 내가 한 것으로 남습니다. 
 - 손으로: `s9 jira create <REQ>`(지금 만들기) · `s9 jira push <REQ>`(지금 보내기) · `s9 jira pull`(지금 받기) · `s9 jira outbox --run`. 
 
+### section9 표시 — Jira 쪽에 우리 흔적을 남길지
+
+기본(**남김**)에서는 이슈에 section9 의 표가 셋 남습니다 — label `s9-REQ-…`, 본문의 `section9 요청 REQ-…` 줄, 코멘트 끝의 `— section9 · 시각` 서명(이미 있는 이슈를 이을 때도 label 이 붙습니다). Jira 를 쓰는 쪽이 section9 의 존재를 **몰라야 하는** 프로젝트라면 **남기지 않음**으로 두십시오 — 넷 다 나가지 않고, 제목·완료 기준·요약·담당 줄은 그대로 갑니다. 자리는 Settings › 외부 서비스 › 프로젝트 연동 폼의 **section9 표시** 셀렉트, 또는 Projects 정보 패널의 같은 행, 터미널로는 `s9 project jira <slug> set --mark off` 입니다. 남기지 않음에서는 label 이 없어 같은 요청의 이슈를 Jira 에서 찾아 붙이지 않습니다 — 문서의 Jira 행(키)이 곧 기록이라, 키가 있는 요청은 어느 값에서도 다시 만들지 않습니다.
+
 ### 하지 말 것
 
 - token 을 채팅·문서·프롬프트에 붙여 넣지 마십시오 — 그 자리는 기록에 남습니다. 넣는 자리는 Settings 의 API token 칸(또는 `s9 secret set JIRA_API_TOKEN`)뿐입니다. 
