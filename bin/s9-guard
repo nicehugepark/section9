@@ -176,15 +176,49 @@ def live_workers():
         return []
 
 
-def concurrent_token(fresh):
-    """담긴 파일 **집합**에서 나오는 짧은 표. 순서가 달라도 같은 값이다.
+def staged_fingerprint(names):
+    """담긴 **내용**의 지문 (REQ-20260909-101).
 
-    이 표는 「목록을 봤다」의 증거다 (REQ-20260907-062). 첫 시도에서 가드가
-    목록과 함께 알려 주므로, 표를 손에 넣는 유일한 길이 목록을 보는 것이다.
-    목록이 바뀌면 표도 바뀐다 — 그 사이 남이 또 고쳤으면 다시 봐야 한다.
+    목록만으로는 부족하다는 것이 2026-09-09 18:15 에 드러났다. 리드가
+    `git apply --cached` 로 bin/s9.py 의 제 hunk 둘만 담고 표를 받아 두었는데,
+    첫 커밋이 다른 검사에 막혀 4분이 흐르는 사이 같은 작업 트리의 다른 작업자가
+    그 파일을 통째로 담았다. 파일 **목록**은 그대로여서 표도 그대로였고, 두
+    번째 커밋이 남의 hunk 아홉을 제 메시지로 실어 갔다.
+
+    표가 증언해야 하는 것은 「이 파일들을 봤다」가 아니라 **「지금 담겨 있는 이
+    내용을 봤다」**이다. 그래서 담긴 diff 를 지문으로 접어 넣는다 — 내용이
+    한 글자라도 달라지면 표가 죽고, 사람은 다시 읽어야 한다.
+
+    **「담긴 것이 없다」와 「못 읽었다」는 같은 값이다** — 저장소가 아닌 자리
+    (시험의 임시 뿌리)에서도 빈 diff 와 같은 지문이 나온다. 둘을 갈라 두면
+    조회와 검사가 서로 다른 자리에서 돌 때 표가 어긋나고, 사람은 제 표를 쓰고도
+    막힌다. 가르는 것이 사람에게 주는 정보도 없다.
     """
     import hashlib
-    key = "\n".join(sorted(f for f, _ in fresh))
+    if not names:
+        return ""
+    blob = b""
+    try:
+        r = subprocess.run(["git", "diff", "--cached", "--", *names],
+                           capture_output=True, cwd=ROOT, timeout=30)
+        if r.returncode == 0:
+            blob = r.stdout or b""
+    except (OSError, subprocess.SubprocessError):
+        blob = b""
+    return hashlib.sha1(blob).hexdigest()[:8]
+
+
+def concurrent_token(fresh):
+    """담긴 파일 **집합과 그 내용**에서 나오는 짧은 표. 순서는 값을 바꾸지 않는다.
+
+    이 표는 「담기는 것을 봤다」의 증거다 (REQ-20260907-062 · REQ-20260909-101).
+    첫 시도에서 가드가 목록과 함께 알려 주므로, 표를 손에 넣는 유일한 길이
+    목록을 보는 것이다. 목록이 바뀌어도, 목록은 그대로인데 **담긴 내용**이
+    바뀌어도 표는 죽는다 — 그 사이 남이 또 담았으면 다시 봐야 한다.
+    """
+    import hashlib
+    names = sorted(f for f, _ in fresh)
+    key = "\n".join(names) + "\n#" + staged_fingerprint(names)
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:6]
 
 
@@ -385,7 +419,8 @@ def concurrent_report(staged, out=None):
         m = age // 60
         print(f"  - {f}  ({m}분 전 바뀜)" if m else f"  - {f}  ({age}초 전 바뀜)", file=w)
     print("이대로 커밋하면 막힙니다. `git diff --cached` 로 담기는 내용을 읽고,", file=w)
-    print("네 것만 맞으면 아래 표로 지나가세요 — 위 목록이 바뀌면 표도 바뀝니다:", file=w)
+    print("네 것만 맞으면 아래 표로 지나가세요 — 목록이든 담긴 내용이든", file=w)
+    print("한 글자만 달라져도 표는 죽습니다:", file=w)
     print(f"  {OVERRIDE}={concurrent_token(fresh)} git commit ...", file=w)
     return 0
 

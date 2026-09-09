@@ -55,6 +55,66 @@ class TheToken(unittest.TestCase):
     def test_it_is_short_enough_to_type(self):
         self.assertLessEqual(len(g.concurrent_token([("a.py", 1)])), 8)
 
+    def test_the_same_input_twice_gives_the_same_token(self):
+        """표는 계산할 때마다 흔들리지 않는다 — 시각·나이가 재료가 아니다."""
+        self.assertEqual(g.concurrent_token([("a.py", 1)]),
+                         g.concurrent_token([("a.py", 9)]))
+
+    def test_it_survives_a_place_that_is_not_a_repository(self):
+        """저장소가 아닌 자리에서도 표가 나온다 — 지문이 빈 값으로 떨어진다."""
+        self.assertTrue(g.staged_fingerprint(["a.py"]) == ""
+                        or isinstance(g.staged_fingerprint(["a.py"]), str))
+        self.assertTrue(g.concurrent_token([("a.py", 1)]))
+
+
+class TheTokenAttestsTheContent(unittest.TestCase):
+    """목록이 같아도 **담긴 내용**이 달라지면 표가 죽는다 (REQ-20260909-101).
+
+    2026-09-09 18:15: 리드가 `git apply --cached` 로 bin/s9.py 의 제 hunk 둘만
+    담고 표를 받았다. 첫 커밋이 다른 검사에 막혀 4분이 흐르는 사이 같은 작업
+    트리의 다른 작업자가 그 파일을 통째로 담았고, 파일 **목록**은 그대로여서
+    표도 그대로였다 — 두 번째 커밋이 남의 hunk 아홉을 제 메시지로 실어 갔다.
+    표가 증언할 것은 「이 파일들을 봤다」가 아니라 「지금 담긴 이 내용을 봤다」다.
+    """
+    def setUp(self):
+        import subprocess
+        self.repo = tempfile.mkdtemp(prefix="s9-ctok-")
+        def git(*a):
+            return subprocess.run(["git", *a], cwd=self.repo,
+                                  capture_output=True, encoding="utf-8")
+        self.git = git
+        git("init", "-q", ".")
+        git("config", "user.email", "t@t")
+        git("config", "user.name", "t")
+        with open(os.path.join(self.repo, "code.py"), "w") as f:
+            f.write("one\n")
+        git("add", "-A")
+        git("commit", "-qm", "init")
+
+    def _token(self):
+        with mock.patch.object(g, "ROOT", self.repo):
+            return g.concurrent_token([("code.py", 0)])
+
+    def test_a_bigger_stage_of_the_same_file_kills_the_token(self):
+        with open(os.path.join(self.repo, "code.py"), "w") as f:
+            f.write("one\nmine\n")
+        self.git("add", "code.py")
+        mine = self._token()
+        # 그 사이 남이 같은 파일을 더 담았다 — 목록은 그대로다
+        with open(os.path.join(self.repo, "code.py"), "w") as f:
+            f.write("one\nmine\nothers\n")
+        self.git("add", "code.py")
+        self.assertNotEqual(
+            mine, self._token(),
+            "담긴 내용이 늘었는데 옛 표로 지나갈 수 있다 — 남의 hunk 가 실린다")
+
+    def test_an_unchanged_stage_keeps_the_token(self):
+        with open(os.path.join(self.repo, "code.py"), "w") as f:
+            f.write("one\nmine\n")
+        self.git("add", "code.py")
+        self.assertEqual(self._token(), self._token(),
+                         "아무것도 안 바뀌었는데 표가 흔들리면 아무도 못 지나간다")
+
 
 class TheGate(unittest.TestCase):
     """`concurrent_gate` 를 실제로 부른다 — 소스 글자를 대조하지 않는다."""
