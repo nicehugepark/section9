@@ -555,6 +555,12 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 /* 손잡이는 2행의 마지막 칸에 선다 — 홀로 선 줄이 아니라 폼의 끝자리다.
    아래 여백은 옆 칸의 입력 높이 안에서 글자가 가운데에 오게 하는 값이다. */
 .jlinkform .wmore{align-self:end;justify-self:start;white-space:nowrap;padding:0 0 6px}
+/* 접힌 폼 — `.jlinkform{display:grid}` 이 UA 의 `[hidden]{display:none}` 보다
+   특이도가 높아, 접으려면 여기서 한 번 더 말해야 한다(`.attbox [hidden]` 과 같은 함정). */
+.jlinkform[hidden]{display:none}
+/* 연동된 프로젝트 행 안의 같은 격자 — 폼의 윗선·윗여백만 벗는다. 여기서는
+   표의 행 자체가 이미 구획이라 선을 한 겹 더 그으면 상자가 둘로 읽힌다. */
+.jedit{margin-top:0;padding-top:0;border-top:0}
 @media (max-width:900px){
   .jlinkform{grid-template-columns:minmax(0,1fr) minmax(0,1fr);max-width:none}
 }

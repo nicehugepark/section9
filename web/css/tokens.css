@@ -47,10 +47,41 @@
 }
 *{box-sizing:border-box}
 ::selection{background:var(--text);color:var(--bg)}
-*::-webkit-scrollbar{width:8px;height:8px}
-*::-webkit-scrollbar-thumb{background:var(--border)}
-*::-webkit-scrollbar-thumb:hover{background:var(--faint)}
+/* 스크롤바 — 규칙은 여기 한 곳이다 (REQ-20260909-089, 주인 지적 2026-09-09:
+   「스크롤바가 상당히 디자인적으로 거슬린다」). 어두운 터미널 판 위에 브라우저
+   기본 스크롤바(화살표 달린 밝은 회색 막대)가 서 있었다 — 그 막대는 이 화면이
+   그린 것이 아니라 브라우저가 그린 것이고, 라운드·면·화살표까지 이 제품의 금지
+   목록을 한 번에 어긴다.
+
+   **표준 속성이 먼저다.** `scrollbar-width`·`scrollbar-color` 를 적으면 요즘
+   Chrome 은 `::-webkit-scrollbar` 규칙을 **무시하고** 표준 쪽을 그린다 — 그래서
+   둘을 나란히 두되 그림이 같도록 값을 맞춘다(얇게 · 트랙 투명 · 화살표 없음).
+   webkit 규칙은 표준 속성을 아직 안 읽는 옛 Safari 를 위한 같은 그림이다.
+
+   색은 신호가 아니라 자리 표시라 쉴 때 `--hairline`(선의 색)이고, 손이 얹힌
+   동안만 `--muted` 로 한 급 진해진다. `*:hover` 는 포인터 아래의 조상 전부에
+   걸리므로 지금 가리키고 있는 스크롤 상자가 그 값을 받는다. */
+*{scrollbar-width:thin;scrollbar-color:var(--hairline) transparent}
+*:hover{scrollbar-color:var(--muted) transparent}
+*::-webkit-scrollbar{width:6px;height:6px}
+*::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:0}
+*::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 *::-webkit-scrollbar-track{background:transparent}
+/* 화살표는 그리지 않는다 — 이 화면에는 누를 수 있는 작은 삼각형이 없다. */
+*::-webkit-scrollbar-button{display:none;width:0;height:0}
+*::-webkit-scrollbar-corner{background:transparent}
+/* 터미널 판은 테마와 무관하게 늘 어둡고 제 팔레트를 쓴다 — 같은 규칙을 그 안의
+   색으로 한 번 더 적는다(`.term *` 는 특이도가 높아 위의 `*` 를 이긴다).
+   terminal.css 를 건드리지 않는 것은 지금 그 파일을 다른 작업이 고치고 있어서다. */
+.ccterm,.ccterm *{scrollbar-color:var(--cc-border) transparent}
+.ccterm:hover,.ccterm *:hover{scrollbar-color:var(--cc-faint) transparent}
+.ccterm ::-webkit-scrollbar-thumb{background:var(--cc-border)}
+.ccterm ::-webkit-scrollbar-thumb:hover{background:var(--cc-faint)}
+/* 대화 기록 뷰(`.term`)도 테마와 무관하게 늘 어둡다 — 제 색이 상수라 값도 상수다. */
+.term,.term *{scrollbar-color:#3a4655 transparent}
+.term:hover,.term *:hover{scrollbar-color:#5c6878 transparent}
+.term ::-webkit-scrollbar-thumb{background:#3a4655}
+.term ::-webkit-scrollbar-thumb:hover{background:#5c6878}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
   outline:1px solid var(--text);outline-offset:1px}
 body{margin:0;font-family:var(--sans);

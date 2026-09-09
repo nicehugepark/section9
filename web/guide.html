@@ -868,10 +868,10 @@ Jira 이슈로 나가고, 카드·문서에 그 이슈가 보이며, 상태가 �
       <li><b>Jira 주소</b> — 보드 주소를 통째로 붙여 넣어도 됩니다. 손을 떼면 <code>https://&lt;site&gt;.atlassian.net</code> 만 남아 저장됩니다.</li>
       <li><b>Atlassian 이메일</b> — Jira 에 로그인하는 이메일.</li>
       <li><b>API token</b> — 1 의 값을 붙여 넣고 <b>넣기</b>. 내 계정 › 시크릿에 <code>JIRA_API_TOKEN</code> 으로 남고 다시 보이지 않습니다.</li>
-      <li><b>token 만료일</b> — 1 에서 정한 날짜(YYYY-MM-DD). 7일 전부터 여기와 「연동 확인」이 미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다.</li>
+      <li><b>token 만료일</b> — 1 에서 정한 날짜(YYYY-MM-DD). 7일 전부터 여기와 「연결 확인」이 미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다.</li>
     </ul>
     왼쪽 부제가 <b>Jira · 준비 3/4</b> 가 됩니다.</li>
-  <li><b>연동 확인</b> 을 누릅니다 — <code>연동됐습니다 — &lt;이름&gt;</code> 이 뜨면 준비가 맞은 것입니다. 터미널로는 <code>s9 jira ping</code>.</li>
+  <li><b>연결 확인</b> 을 누릅니다 — <code>연결됐습니다 — &lt;이름&gt;</code> 이 뜨면 준비가 맞은 것입니다. 터미널로는 <code>s9 jira ping</code>.</li>
   <li><b>프로젝트 연동</b> — 우리 프로젝트 하나에 Jira 프로젝트 하나(project key)를 짝짓습니다. 터미널 한 줄, 또는 Projects 정보 패널의 세 행(Jira 주소 · Jira project key · 연동 방향)에서 채웁니다.
 <pre>~/section9/bin/s9 project jira &lt;slug&gt; set --site https://&lt;site&gt;.atlassian.net --key &lt;KEY&gt;
 # 예) s9 project jira pay set --site https://acme.atlassian.net --key PAY
@@ -909,7 +909,7 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
 <ul>
   <li>token 을 채팅·문서·프롬프트에 붙여 넣지 마십시오 — 그 자리는 기록에 남습니다. 넣는 자리는 Settings 의 API token 칸(또는 <code>s9 secret set JIRA_API_TOKEN</code>)뿐입니다.</li>
   <li>section9 자체 저장소를 연동하지 마십시오 — 하루 수십 건이 그대로 티켓이 됩니다. 시험은 별도 프로젝트(예: <code>s9 project add mp1</code>)로.</li>
-  <li>401 이 났다고 여러 번 다시 누르지 마십시오 — 새 token 을 만들어 넣은 뒤 「연동 확인」 한 번.</li>
+  <li>401 이 났다고 여러 번 다시 누르지 마십시오 — 새 token 을 만들어 넣은 뒤 「연결 확인」 한 번.</li>
 </ul>
 </section>
 

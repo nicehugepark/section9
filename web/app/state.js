@@ -1,6 +1,7 @@
 /* state.js — 화면 상태와 정렬 — catalog/tab/펼침, workOrder·recentOrder·stableOrder, esc·shortId·evEl */
 "use strict";
 let catalog = [], graph = null, auditCache = null, TRANS = {}, projects = [];
+let graphWait = null;   // 진행 중인 관계도 요청 — 두 곳이 겹쳐 부르지 않게 (REQ-20260909-086)
 /* 손에 든 관계도가 낡았다는 사실 — **없다**와는 다르다 (REQ-20260908-056).
    없으면 받아 와야 그리지만, 낡은 것은 지금 그려 두고 새것이 오면 갈아 끼운다. */
 let graphStale = false;

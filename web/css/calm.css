@@ -226,21 +226,12 @@
    실측해 정한 것이라 한 곳(actions.css)에만 있어야 하고, 사본이 있으면 다음에
    그 자리를 다시 재는 사람이 한쪽만 고친다. */
 [data-skin="calm"] .acts.deedbelt{margin-top:0;margin-bottom:0;gap:2px}
-/* calm 은 식별자 줄이 카드의 **마지막** 줄이라, 시각도 아래 모서리에 선다.
-   위 모서리와 같은 규칙이다 (REQ-20260831-010): 좌표는 안여백을 그대로 읽는다 —
-   `bottom:12px` 처럼 손으로 적어 두면 안여백 13px 과 1px 어긋난 채로 굳는다. */
-[data-skin="calm"] .card .elapsed{position:absolute;right:var(--card-px);
-  bottom:var(--card-pb);top:auto;
-  font-size:10px;color:var(--calm-quiet);letter-spacing:.01em}
-/* 집는 손잡이는 경과 시각이 선 칸을 빌려 쓴다 — calm 은 그 칸이 아래쪽이다 */
-[data-skin="calm"] .card .pickdoc{right:var(--card-px);bottom:var(--card-pb);top:auto}
-/* 시각이 아래 모서리라 예약도 마지막 줄 몫이다 (REQ-20260831-021-62x6):
-   위 모서리용 첫머리 스트럿은 여기선 일을 못 한다 — 내려간 식별자가
-   시각의 줄로 들어간다. 끝자리 스페이서가 마지막 줄의 오른쪽을 비운다:
-   식별자와 한 줄에 못 서면 스페이서만 아랫줄로 내려가 그 줄이 시각의
-   줄이 된다. base 의 ch 예약(padding)은 위 모서리 문법이라 끈다. */
-[data-skin="calm"] .card .id{padding-right:0}
-[data-skin="calm"] .card .id::after{content:"";flex:0 0 auto;width:calc(11ch + 8px);height:var(--card-edge)}
+/* 시각과 「이어 말하기」는 이제 식별자 줄의 「지금」 덩이 안에 산다
+   (REQ-20260909-084) — 자리를 여기서 다시 정하지 않는다. calm 은 그 줄이
+   카드의 마지막 줄이므로 덩이도 마지막 줄 오른끝에 서고, 좁아지면 덩이째
+   내려간다. 종전의 절대 위치·끝자리 스페이서·ch 예약은 그 셋이 흐름 밖에
+   있었기 때문에 필요했던 버팀목이라 함께 걷는다. 남기는 것은 색과 자간뿐이다. */
+[data-skin="calm"] .card .elapsed{font-size:10px;color:var(--calm-quiet);letter-spacing:.01em}
 
 /* 담당자 = 이니셜 링(면이 아니라 윤곽) + 이름. base의 "@" 접두는 링이 대신한다 */
 [data-skin="calm"] .card .badge{display:inline-flex;align-items:center;gap:6px;
@@ -355,11 +346,9 @@
 [data-skin="calm"] .col .more{padding-left:12px}
 [data-skin="calm"] .more:hover{background:color-mix(in srgb,var(--text) 6%,transparent);
   color:var(--text);border-color:var(--border);text-decoration:none}
-/* 가로 스크롤바는 얇게 — 보드가 화면을 덜 잡아먹는다 */
-[data-skin="calm"] .board::-webkit-scrollbar{height:9px}
-[data-skin="calm"] .board::-webkit-scrollbar-thumb{
-  background:color-mix(in srgb,var(--text) 14%,transparent);border-radius:999px}
-[data-skin="calm"] .board::-webkit-scrollbar-track{background:none}
+/* 스크롤바는 이 스킨이 따로 짓지 않는다 (REQ-20260909-089) — 규칙은 tokens.css
+   한 곳이고, 거기서 이미 얇고(6px) 트랙이 투명하며 화살표가 없다. 여기 있던
+   알약 썸(border-radius:999px)은 이 화면의 금지 목록에 걸리기도 한다. */
 
 /* ---- 다크 톤: 같은 설계를 다른 수단으로 성립시킨다 ----
    면 대비가 낮아 그림자가 안 보이므로 깊이는 링+면 밝기로, hue 색은 명도를

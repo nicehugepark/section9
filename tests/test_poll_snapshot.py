@@ -180,9 +180,11 @@ class PollSnapshot(unittest.TestCase):
 
     # ---- T9. 응답 캐시는 검사 **뒤**에 선다 — 두 번째 판정 금지 -------
     def test_t9_response_cache_sits_behind_the_gate(self):
+        # 검사 대상은 catalog_response() 다 — /api/catalog 와 /api/boot 가
+        # 같은 자리를 부르도록 핸들러 갈래에서 옮겨 갔다 (REQ-20260909-086).
         src = open(S9_SRC, encoding="utf-8").read()
-        i = src.index('elif parsed.path == "/api/catalog"')
-        blk = src[i:src.index("elif parsed.path", i + 10)]
+        i = src.index("def catalog_response(")
+        blk = src[i:src.index("\ndef ", i + 10)]
         g = blk.index("catalog_with_live()")
         c = blk.index("_CATALOG_RESP")
         self.assertLess(g, c,

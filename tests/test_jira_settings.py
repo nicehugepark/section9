@@ -89,10 +89,6 @@ class JiraSettings(unittest.TestCase):
             m.do_user_config_set("hong", "jira_site", "not a url")
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class JiraSettingsLink(unittest.TestCase):
     """Settings 에서 프로젝트를 잇는다 (REQ-20260909-015) — 서버가 고를 수 있는 프로젝트를 준다."""
 
@@ -124,3 +120,108 @@ class JiraSettingsLink(unittest.TestCase):
                                    project_key="MP1", direction="both")
         st = self.m.jira_state("hong")
         self.assertEqual(st["projects"][0]["direction"], "both")
+
+
+class JiraEnabledSwitch(unittest.TestCase):
+    """사람이 Jira 를 끌 수 있다 (REQ-20260909-080) — 판정은 jira_enabled_for 한 곳이고
+    화면(enabled)·내보내기(jira_export_wanted)·되받기(jira_pull_targets) 셋이 그것을 본다."""
+
+    SITE = "https://ex.atlassian.net"
+
+    def setUp(self):
+        self._env = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_USER", "S9_SESSION")}
+        self.root = tempfile.mkdtemp(prefix="s9jira-e-")
+        os.environ["S9_ROOT"] = self.root
+        os.environ.pop("S9_USER", None)
+        os.environ.pop("S9_SESSION", None)
+        name = "s9jirae_" + os.path.basename(self.root)
+        spec = importlib.util.spec_from_loader(
+            name, importlib.machinery.SourceFileLoader(name, S9))
+        self.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.m)
+        self.m.cmd_init(type("A", (), {})())
+        self.m.do_user_add("hong", role="admin")
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def link_project(self, direction="push"):
+        self.m.do_project_add("pay", name="결제", summary="", actor="hong")
+        self.m.do_project_jira_set("pay", actor="hong", site=self.SITE,
+                                   project_key="MP1", direction=direction)
+
+    def new_request(self, user="hong", title="환불 API"):
+        import contextlib
+        import io as _io
+        import types
+        args = types.SimpleNamespace(
+            doc_type="request", title=title, summary="환불을 돕는다", goal="환불이 된다",
+            status="open", size="M", priority=None, user=user, assignee=None,
+            tag_list=[], parent=None, derived_from=None, relates=None, why="",
+            ref_doc=None, ref_link=None, ref_file=None, needs_os="", from_chat="",
+            project="pay", project_tag=None, body="환불이 안 된다", body_file=None,
+            origin="human", agent="")
+        out = _io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.m.cmd_new(args)
+        return out.getvalue().split()[0]
+
+    def test_e1_an_explicit_switch_wins_over_everything(self):
+        m = self.m
+        self.assertIs(m.jira_state("hong")["enabled"], False)   # S3 아무것도 없으면 꺼짐
+        self.assertIs(m.jira_state("")["enabled"], False)
+        m.do_user_config_set("hong", "jira_enabled", "on")      # S1 명시가 이긴다
+        self.assertIs(m.jira_state("hong")["enabled"], True)
+        m.do_user_config_set("hong", "jira_enabled", "off")
+        m.do_user_config_set("hong", "jira_site", self.SITE)
+        self.link_project()
+        self.assertIs(m.jira_state("hong")["enabled"], False,
+                      "파생 조건이 다 갖춰져도 명시한 off 가 이겨야 한다")
+
+    def test_e2_users_who_already_use_jira_stay_on(self):
+        m = self.m                                             # S2 회귀
+        m.do_user_config_set("hong", "jira_site", self.SITE)
+        self.assertIs(m.jira_state("hong")["enabled"], True)
+        m.do_user_config_set("hong", "jira_site", "")           # 주소를 지워도
+        self.assertIs(m.jira_state("hong")["enabled"], False)
+        self.link_project()                                    # 이은 프로젝트가 있으면 켜짐
+        self.assertIs(m.jira_state("hong")["enabled"], True)
+
+    def test_e3_off_stops_the_export_but_never_the_hand(self):
+        m = self.m
+        self.link_project()
+        rid = self.new_request()
+        meta, _ = m.read_doc(m.find_path(rid))
+        self.assertEqual(m.jira_export_wanted(meta)[1], "", "켜진 동안은 종전대로 나간다")
+        m.do_user_config_set("hong", "jira_enabled", "off")
+        j, why = m.jira_export_wanted(meta)                    # S4
+        self.assertIsNone(j)
+        self.assertIn("꺼져 있다", why)
+        self.assertEqual(m.jira_export_wanted(meta, manual=True)[1], "",
+                         "s9 jira create 는 사람이 그 자리에서 시킨 것이라 막지 않는다")  # S5
+        meta_nouser = dict(meta, user="")                      # S6
+        self.assertEqual(m.jira_export_wanted(meta_nouser)[1], "")
+
+    def test_e4_pull_skips_the_requests_of_a_disabled_owner(self):
+        m = self.m                                             # S7
+        self.link_project(direction="both")
+        rid = self.new_request()
+        path = m.find_path(rid)
+        meta, body = m.read_doc(path)
+        meta["jira"] = {"key": "MP1-1", "site": self.SITE}
+        m.write_doc(path, meta, body)
+        m.rebuild_index(quiet=True)
+        self.assertEqual(m.jira_pull_targets(), {"pay": {"MP1-1": rid}})
+        m.do_user_config_set("hong", "jira_enabled", "off")
+        self.assertEqual(m.jira_pull_targets(), {})
+        m.do_user_config_set("hong", "jira_enabled", "on")
+        self.assertEqual(m.jira_pull_targets(), {"pay": {"MP1-1": rid}})
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

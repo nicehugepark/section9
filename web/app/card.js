@@ -2064,12 +2064,9 @@ function cardHTML(r){
   const mwho = mwhoBits ? `<div class="m mwho">${mwhoBits}</div>` : "";
   const mwhat = mwhatBits ? `<div class="m mwhat">${mwhatBits}</div>` : "";
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">
-    <button type="button" class="pickdoc" data-pick="${esc(r.id)}"
-      aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button>
-    <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${vh}<span class="idr"><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</span></div>
+    <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${vh}<span class="idr"><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}<span class="idnow">${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}<button type="button" class="pickdoc" data-pick="${esc(r.id)}" aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button></span></span></div>
     <div class="t">${esc(r.title)}</div>
-    ${xrefRowHTML(r)}${mwho}${mwhat}${acts}${dep}${stall}
-    ${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}</div>`;
+    ${xrefRowHTML(r)}${mwho}${mwhat}${acts}${dep}${stall}</div>`;
 }
 
 // 반려: 사유 필수. Board·문서 뷰어 공용 (REQ-20260827-071 로 제품 대화상자 사용).

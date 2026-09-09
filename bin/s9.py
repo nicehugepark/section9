@@ -12,6 +12,7 @@ import datetime
 import getpass
 import json
 import os
+import queue
 import re
 import select
 import contextlib
@@ -629,13 +630,386 @@ def derived_ids(meta):
 
 
 def read_doc(path):
+    t0 = time.perf_counter()
     with open(path, encoding="utf-8") as f:
-        return fm_parse(f.read())
+        doc = fm_parse(f.read())
+    ms = (time.perf_counter() - t0) * 1000.0
+    if ms >= PERF_DOC_MIN_MS:          # 큰 것만 — 카탈로그 한 번이 수백 번 부른다
+        perf_mark("doc", os.path.basename(path), ms)
+    return doc
 
 
 class WriteDenied(ValueError):
     """문서 쓰기 인가 거부 — ValueError 의 한 갈래라 기존 except 가 그대로 받고,
     CLI 진입(main)과 대시보드 POST 는 이 갈래만 따로 잡아 사람 말로 낸다."""
+
+
+# ------------------------------------------- 성능 로그·메트릭 (REQ-20260909-087)
+# 기능 요소마다 타임스탬프 한 줄을 state/local/log/ 에 남긴다 — 이 머신의
+# 살림이라 git 밖이다(.gitignore 의 state/*). 쓰기는 **프로세스 안 큐 하나와
+# 데몬 스레드 하나**가 모아서 하고 fsync 는 없다: 계측이 요청을 막으면 계측이
+# 곧 병목이라, 큐가 차면 줄을 버리고 버린 수만 센다. 서버가 아닌 짧은
+# 프로세스(CLI·훅)는 큐 없이 한 줄을 append 한다 — 스레드를 띄울 시간이 곧
+# 프로세스 수명이다. 메트릭(1분 요약)은 로그를 다시 읽어 계산하지 않고 쓰는
+# 스레드가 누적한 값에서 낸다. 보존은 로그·메트릭 같은 시간(perf_log_keep_min,
+# 기본 60분)이고 지우기는 서버 워처 틱이 1분에 한 번 perf_tick 으로 한다.
+PERF_QUEUE_MAX = 10000          # 넘치면 버린다 — 막지 않는다
+PERF_METRICS_SEC = 60           # 요약 한 줄의 주기
+PERF_KEEP_MIN = 60              # 기본 보존(분) — 설정 perf_log_keep_min 이 이긴다
+PERF_DOC_MIN_MS = 20.0          # 문서 읽기는 이보다 느린 것만 적는다
+PERF_SYNC_MIN_MS = 50.0         # 2초 주기 전송 틱은 한 일이 있거나 이보다 느릴 때만
+PERF_RESET_ERRS = ("ConnectionResetError", "BrokenPipeError")
+PERF_CLI_SKIP = ("serve", "code")   # 수명이 긴 명령은 CLI 한 줄의 대상이 아니다
+_PERF = {"q": None, "thread": None, "dropped": 0, "stats": {}, "resets": 0,
+         "lock": threading.Lock(), "since": 0.0, "prune_t": 0.0,
+         "off": os.environ.get("S9_PERF", "").lower() == "off", "root": None}
+
+
+def perf_dir(root=None):
+    if root:
+        return os.path.join(root, "state", "local", "log")
+    return os.path.join(STATE_LOCAL, "log")
+
+
+def perf_keep_min(user=None):
+    try:
+        v = (user_config(user or resolve_user(None)) or {}).get("perf_log_keep_min")
+        return int(v) if v not in (None, "") else PERF_KEEP_MIN
+    except Exception:
+        return PERF_KEEP_MIN
+
+
+def _perf_file(prefix, ts, root=None):
+    stamp = datetime.datetime.fromtimestamp(ts).strftime("%Y%m%d-%H")
+    return os.path.join(perf_dir(root), f"{prefix}-{stamp}.jsonl")
+
+
+def _perf_line(ts, kind, name, ms, extra):
+    rec = {"ts": datetime.datetime.fromtimestamp(ts).isoformat(timespec="milliseconds"),
+           "kind": kind, "name": name, "ms": round(float(ms), 3)}
+    if extra:
+        rec.update(extra)
+    return json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+def _perf_append(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(text)
+
+
+def perf_mark(kind, name, ms, **extra):
+    """계측 한 줄 — 다른 자리가 부르는 함수는 이것 하나다. 절대 예외를 내지 않고 막지 않는다.
+
+    서버(perf_start 뒤)에서는 큐에 넣고 끝난다(실측 수 µs). 큐가 차면 버리고
+    버린 수를 센다. 큐가 없는 프로세스(CLI·훅)는 한 줄을 그 자리에서 append
+    한다 — 실패해도 조용하다. 반환: 기록됐으면 True."""
+    if _PERF["off"]:
+        return False
+    q = _PERF["q"]
+    if q is not None:
+        try:
+            q.put_nowait((time.time(), kind, name, ms, extra))
+            return True
+        except queue.Full:
+            with _PERF["lock"]:
+                _PERF["dropped"] += 1
+            return False
+    try:
+        _perf_append(_perf_file("perf", time.time(), _PERF["root"]),
+                     _perf_line(time.time(), kind, name, ms, extra))
+        return True
+    except Exception:
+        return False
+
+
+def perf_timed_fn(kind, name):
+    """`@perf_timed_fn("tick", "rework")` — 함수 전체를 perf_timed 로 감싼다.
+    워처 루프의 단계들은 여기로 잰다: 루프 본문에 글자를 보태지 않아야
+    구조 시험(test_snapshot s6)의 창이 그대로 선다."""
+    import functools
+
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrap(*a, **k):
+            with perf_timed(kind, name):
+                return fn(*a, **k)
+        return wrap
+    return deco
+
+
+class perf_timed:
+    """`with perf_timed("tick", "rework"):` — 블록의 소요를 perf_mark 로 남긴다.
+    예외는 err 로 적고 그대로 올린다."""
+    __slots__ = ("kind", "name", "extra", "t0")
+
+    def __init__(self, kind, name, **extra):
+        self.kind, self.name, self.extra = kind, name, extra
+
+    def __enter__(self):
+        self.t0 = time.perf_counter()
+        return self
+
+    def __exit__(self, et, ev, tb):
+        ms = (time.perf_counter() - self.t0) * 1000.0
+        if et is not None:
+            self.extra["err"] = et.__name__
+        perf_mark(self.kind, self.name, ms, **self.extra)
+        return False
+
+
+def _perf_account(items):
+    """쓰는 스레드가 배치마다 누적한다 — 메트릭은 여기서 난다, 로그에서가 아니라."""
+    st = _PERF["stats"]
+    resets = 0
+    for ts, kind, name, ms, extra in items:
+        s = st.get((kind, name))
+        if s is None:
+            s = st[(kind, name)] = {"ms": [], "bytes": 0}
+        s["ms"].append(float(ms))
+        b = extra.get("bytes") if extra else None
+        if b:
+            s["bytes"] += int(b)
+        if kind == "api" and extra and extra.get("err") in PERF_RESET_ERRS:
+            resets += 1
+    return resets
+
+
+def _perf_write_batch(items, root=None):
+    by_file = {}
+    for ts, kind, name, ms, extra in items:
+        by_file.setdefault(_perf_file("perf", ts, root), []).append(
+            _perf_line(ts, kind, name, ms, extra))
+    for path, lines in by_file.items():
+        try:
+            _perf_append(path, "".join(lines))
+        except OSError:
+            pass
+
+
+def _perf_writer(q, root):
+    last_flush = time.time()
+    while _PERF["q"] is q:
+        try:
+            first = q.get(timeout=1.0)
+        except queue.Empty:
+            first = None
+        if first is not None:
+            batch = [first]
+            while True:
+                try:
+                    batch.append(q.get_nowait())
+                except queue.Empty:
+                    break
+            _perf_write_batch(batch, root)
+            with _PERF["lock"]:
+                _PERF["resets"] += _perf_account(batch)
+            for _ in batch:
+                q.task_done()
+        if time.time() - last_flush >= PERF_METRICS_SEC:
+            last_flush = time.time()
+            try:
+                perf_metrics_flush(root=root)
+            except Exception:
+                pass
+
+
+def perf_start(root=None, maxsize=None, writer=True):
+    """큐와 쓰는 스레드를 띄운다(멱등). writer=False 는 시험용 — 큐만 두고 스레드는
+    띄우지 않아 넘침을 재현한다."""
+    if _PERF["off"] or _PERF["q"] is not None:
+        return _PERF["q"]
+    q = queue.Queue(maxsize=maxsize or PERF_QUEUE_MAX)
+    _PERF["q"], _PERF["root"] = q, root
+    _PERF["since"] = time.time()
+    if writer:
+        t = threading.Thread(target=_perf_writer, args=(q, root), daemon=True,
+                             name="s9-perf")
+        _PERF["thread"] = t
+        t.start()
+    return q
+
+
+def perf_stop():
+    _PERF["q"], _PERF["thread"] = None, None
+
+
+def perf_flush(timeout=5.0):
+    """큐가 파일까지 다 내려갈 때까지 기다린다(시험·종료용). 반환: 비었으면 True."""
+    q = _PERF["q"]
+    if q is None:
+        return True
+    deadline = time.monotonic() + timeout
+    with q.all_tasks_done:
+        while q.unfinished_tasks:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return False
+            q.all_tasks_done.wait(left)
+    return True
+
+
+def perf_percentile(values, q):
+    """nearest-rank: 정렬한 표본의 ceil(q·n) 번째. 빈 표본은 0."""
+    if not values:
+        return 0.0
+    s = sorted(values)
+    import math as _math
+    return s[max(0, min(len(s) - 1, _math.ceil(q * len(s)) - 1))]
+
+
+def perf_summary(stats):
+    out = {}
+    for (kind, name), s in stats.items():
+        ms = s["ms"]
+        out.setdefault(kind, {})[name] = {
+            "count": len(ms), "p50": round(perf_percentile(ms, 0.5), 2),
+            "p95": round(perf_percentile(ms, 0.95), 2),
+            "max": round(max(ms), 2) if ms else 0.0, "bytes": s["bytes"]}
+    return out
+
+
+def perf_metrics_flush(now=None, root=None):
+    """누적을 요약 한 줄로 metrics-YYYYMMDD-HH.jsonl 에 쓰고 누적을 비운다."""
+    if _PERF["off"]:
+        return None
+    now = now or time.time()
+    with _PERF["lock"]:
+        stats, _PERF["stats"] = _PERF["stats"], {}
+        dropped, _PERF["dropped"] = _PERF["dropped"], 0
+        resets, _PERF["resets"] = _PERF["resets"], 0
+        since, _PERF["since"] = _PERF["since"], now
+    q = _PERF["q"]
+    rec = {"ts": datetime.datetime.fromtimestamp(now).isoformat(timespec="seconds"),
+           "window_s": round(now - since, 1) if since else 0,
+           "pid": os.getpid(), "dropped": dropped, "resets": resets,
+           "queued": q.qsize() if q is not None else 0,
+           "by": perf_summary(stats)}
+    try:
+        _perf_append(_perf_file("metrics", now, root or _PERF["root"]),
+                     json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
+    return rec
+
+
+def perf_prune(now=None, keep_min=None, root=None):
+    """보존 시간(분)을 넘긴 perf-*/metrics-* 파일을 지운다. 반환: 지운 경로."""
+    import glob as _glob
+    now = now or time.time()
+    keep = perf_keep_min() if keep_min is None else int(keep_min)
+    d = perf_dir(root or _PERF["root"])
+    gone = []
+    for p in _glob.glob(os.path.join(d, "perf-*.jsonl")) + \
+            _glob.glob(os.path.join(d, "metrics-*.jsonl")):
+        try:
+            if now - os.path.getmtime(p) > keep * 60:
+                os.remove(p)
+                gone.append(p)
+        except OSError:
+            pass
+    return gone
+
+
+def perf_tick(now=None, root=None):
+    """서버 워처 틱이 부른다 — 1분에 한 번만 지운다. 반환: 지운 수."""
+    now = now or time.time()
+    if now - _PERF["prune_t"] < PERF_METRICS_SEC:
+        return 0
+    _PERF["prune_t"] = now
+    with perf_timed("tick", "perf_prune"):
+        return len(perf_prune(now=now, root=root))
+
+
+def perf_since_sec(text):
+    m = re.fullmatch(r"\s*(\d+)\s*([smhd]?)\s*", str(text or "10m"))
+    if not m:
+        raise ValueError(f"--since 는 10m·2h 꼴이어야 한다: {text!r}")
+    return int(m.group(1)) * {"": 60, "s": 1, "m": 60, "h": 3600, "d": 86400}[m.group(2)]
+
+
+def perf_read_metrics(since_sec=600, now=None, root=None):
+    """metrics-*.jsonl 을 읽어 창 안의 요약을 종류→이름으로 합친다.
+    count·bytes 는 합, max 는 최대, p50·p95 는 분 단위 값의 count 가중 평균(근사)."""
+    import glob as _glob
+    now = now or time.time()
+    cutoff = now - since_sec
+    merged, dropped, resets, n = {}, 0, 0, 0
+    for p in sorted(_glob.glob(os.path.join(perf_dir(root), "metrics-*.jsonl"))):
+        try:
+            with open(p, encoding="utf-8") as f:
+                lines = f.readlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                rec = json.loads(line)
+                ts = datetime.datetime.fromisoformat(rec["ts"]).timestamp()
+            except (ValueError, KeyError, TypeError):
+                continue
+            if ts < cutoff:
+                continue
+            n += 1
+            dropped += int(rec.get("dropped") or 0)
+            resets += int(rec.get("resets") or 0)
+            for kind, names in (rec.get("by") or {}).items():
+                for name, s in names.items():
+                    m = merged.setdefault(kind, {}).setdefault(
+                        name, {"count": 0, "p50": 0.0, "p95": 0.0, "max": 0.0, "bytes": 0})
+                    c = int(s.get("count") or 0)
+                    if c:
+                        tot = m["count"] + c
+                        m["p50"] = (m["p50"] * m["count"] + float(s.get("p50") or 0) * c) / tot
+                        m["p95"] = (m["p95"] * m["count"] + float(s.get("p95") or 0) * c) / tot
+                        m["count"] = tot
+                    m["max"] = max(m["max"], float(s.get("max") or 0))
+                    m["bytes"] += int(s.get("bytes") or 0)
+    for names in merged.values():
+        for m in names.values():
+            m["p50"], m["p95"] = round(m["p50"], 2), round(m["p95"], 2)
+    return {"since_sec": since_sec, "records": n, "dropped": dropped,
+            "resets": resets, "by": merged}
+
+
+def perf_tail_lines(n=20, root=None):
+    import glob as _glob
+    files = sorted(_glob.glob(os.path.join(perf_dir(root), "perf-*.jsonl")))
+    out = []
+    for p in reversed(files):
+        try:
+            with open(p, encoding="utf-8") as f:
+                out = f.readlines()[-n:] + out
+        except OSError:
+            continue
+        if len(out) >= n:
+            break
+    return [l.rstrip("\n") for l in out[-n:]]
+
+
+def cmd_perf(args):
+    """s9 perf [--since 10m] [--by endpoint|tick] [--json] / s9 perf tail [-n 20]"""
+    if args.action == "tail":
+        for line in perf_tail_lines(args.n):
+            print(line)
+        return
+    rep = perf_read_metrics(perf_since_sec(args.since))
+    kinds = {"endpoint": ["api"], "tick": ["tick"]}.get(args.by)
+    if kinds:
+        rep["by"] = {k: v for k, v in rep["by"].items() if k in kinds}
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+        return
+    print(f"창 {args.since} · 요약 {rep['records']}줄 · 큐 버림 {rep['dropped']} · "
+          f"리셋 {rep['resets']} · 자리 {perf_dir()} · 보존 {perf_keep_min()}분")
+    if not rep["by"]:
+        print("  (그 창의 요약이 없다 — 서버가 1분마다 쓴다)")
+        return
+    print(f"  {'종류':<8} {'이름':<36} {'count':>6} {'p50':>8} {'p95':>8} {'max':>8} {'bytes':>10}")
+    for kind in sorted(rep["by"]):
+        rows = sorted(rep["by"][kind].items(), key=lambda kv: -kv[1]["count"])
+        for name, m in rows:
+            print(f"  {kind:<8} {name[:36]:<36} {m['count']:>6} {m['p50']:>8.1f} "
+                  f"{m['p95']:>8.1f} {m['max']:>8.1f} {m['bytes']:>10}")
 
 
 VIEWER_DENIED_MSG = "관찰 계정은 쓰지 못합니다"
@@ -884,11 +1258,49 @@ def sse_close(tok):
 # 폴링하면 ~70MB/s 수요로 회선이 12배 초과돼 p95 12s 가 됐다(실측). 계산·
 # 직렬화가 아니라 **바이트 수**가 병목이므로, 안 바뀐 본문은 안 보낸다(304)
 # 그리고 보낼 때는 gzip 이다. 해시·압축은 본문 세대당 한 번, 여기 캐시된다.
-_CATALOG_RESP = {"key": None, "body": b"", "etag": "", "zbody": b"", "win": ""}
+# 슬롯은 키마다다 (REQ-20260909-086). 하나뿐이던 때는 보드 폴(window=board)과
+# Docs 탭(window=all)이 서로를 밀어내 요청마다 다시 구웠다 — 2026-09-09 실측:
+# all 29ms·board 10ms 를 매번, 동시 2건이면 잠금에 줄을 서 각 1.19s.
+_CATALOG_RESP = {}
 _CATALOG_RESP_LOCK = threading.Lock()
 # 문서 색인 응답 (REQ-20260908-034) — 카탈로그와 같은 세대·같은 뷰어면 재사용.
-_DOCIDX_RESP = {"key": None, "body": b"", "etag": "", "zbody": b""}
+_DOCIDX_RESP = {}
 _DOCIDX_RESP_LOCK = threading.Lock()
+# /api/audit 응답 바이트 — 사건 세대·카탈로그 세대·뷰어·limit 키 (REQ-20260909-086).
+# 계산(audit_data)은 7ms 인데 직렬화·gzip(2.7MB) 이 요청마다 30ms 였다.
+_AUDIT_RESP = {}
+_AUDIT_RESP_LOCK = threading.Lock()
+# 묶음(/app/all.js·/css/all.css) 응답 — 껍데기·조각의 (mtime, 크기) 지문 키.
+# 1.23MB 가 gzip 없이 no-store 로 매 로드 4.2초 내려왔다(QA 기준선 2026-09-09).
+_BUNDLE_RESP = {}
+_BUNDLE_RESP_LOCK = threading.Lock()
+# 계기 — 이 캐시들의 빌드 횟수. 재발은 스택 덤프가 아니라 숫자로 잡는다.
+_RESP_STAT = {"builds": 0}
+
+
+def _cached_bytes(cache, lock, key, build, keep=8):
+    """세대 키 응답 바이트 캐시 (REQ-20260909-086) — catalog·docindex·audit·
+    묶음이 같은 자리를 쓴다.
+
+    `build()` 는 (본문 bytes, 덧붙일 dict) 를 돌려준다. 같은 키면 본문·gzip·
+    ETag 를 그대로 재사용하고, 빌드는 잠금 **안**에서 한 번이다(single-flight
+    — 확인과 빌드 사이가 열려 있으면 세대가 바뀌는 순간 모든 스레드가 같은
+    본문을 각자 굽는다, REQ-20260831-002 실측 p95 12s). 항목은 keep 개까지 —
+    넘치면 오래된 것부터 버린다(dict 는 넣은 순서를 지킨다).
+    """
+    import hashlib
+    with lock:
+        ent = cache.get(key)
+        if ent is None:
+            body, extra = build()
+            z = zlib.compressobj(6, zlib.DEFLATED, 31)   # 31 = gzip 컨테이너
+            ent = {"body": body, "zbody": z.compress(body) + z.flush(),
+                   "etag": '"' + hashlib.md5(body).hexdigest() + '"', **extra}
+            cache[key] = ent
+            _RESP_STAT["builds"] += 1
+            while len(cache) > keep:
+                cache.pop(next(iter(cache)))
+        return ent
 # 기본 창이 싣는 '닫힌 요청' 수 (REQ-20260902-035 §4). 보드는 이미 하루 지난
 # 완료를 화면에서 내리고 있어(REQ-20260827-057) 그 뒤의 행은 보내는 순간부터
 # 버려지는 바이트다. 400 은 하루치 완료가 그 안에 넉넉히 드는 자리다.
@@ -987,6 +1399,8 @@ def _share_default_pass(fn):
                     st["t"] = _time.monotonic()
                     st["dur"] = st["t"] - t0
                     st["seq"] += 1
+                    perf_mark("catalog", fn.__name__, st["dur"] * 1000.0,
+                              rows=len(rows))
                 cond.notify_all()
         return [dict(r) for r in rows]
     gate._compute = fn      # 시험이 계산부를 바꿔 끼우는 이음매
@@ -3493,6 +3907,7 @@ def _dirty_paths():
     return paths
 
 
+@perf_timed_fn("tick", "snapshot_dirty")
 def snapshot_dirty(quiet=True):
     """미커밋 변경을 내용 주소로 떠 둔다. 반환: 새로 뜬 경로 수.
 
@@ -3627,6 +4042,7 @@ def snapshot_audit():
 _AUDIT_TOLD = set()
 
 
+@perf_timed_fn("tick", "snapshot_audit")
 def snapshot_audit_alert(send=None):
     """감사 한 번 — 유실이 보이면 알린다 (REQ-20260901-009).
 
@@ -10758,6 +11174,7 @@ def transcript_last_turn(path, tail_bytes=65536):
     return last
 
 
+@perf_timed_fn("tick", "dead_turn")
 def dead_turn_tick(bindings=None, now=None, send=None, state_path=None, live=None):
     """끊긴 턴 1틱 — 이은 (session, 오류 시각) 목록을 돌려준다."""
     import glob as _glob
@@ -10859,6 +11276,7 @@ def here_watch_tick(now=None, grace=None, platform=None, _spawn=None):
     return out
 
 
+@perf_timed_fn("tick", "rework")
 def rework_watch_tick(grace=None, now=None):
     """반려 재작업 워처 1틱 (REQ-20260823-083) — serve의 데몬 스레드가 30초마다 호출.
     반려된(마지막 전이 review→in-progress) in-progress REQ 중 유예를 넘기고도
@@ -16278,6 +16696,8 @@ def local_state_path(name):
     return new
 
 
+
+
 def approvals_unseen(consume=False, days=2, mine=False):
     """승인(review→done) 전이의 메모 중 미확인 목록 (REQ-20260824-028).
     승인 메모에 질문·후속 지시가 담겨도 리드에게 전달되지 않던 유실(025 실측)을
@@ -17736,6 +18156,7 @@ def agent_health(now=None):
     return {"generated": now_iso(), "agents": out}
 
 
+@perf_timed_fn("tick", "health")
 def health_apply(report=None):
     """판정 결과를 문서 contributions 에 되쓴다 (running → stalled/failed).
 
@@ -28068,6 +28489,7 @@ def jira_worker_actor(user):
     return "", f"worker:{(os.environ.get('S9_SESSION') or '')[:8] or 'auto-resume'}"
 
 
+@perf_timed_fn("tick", "red")
 def red_request_tick(now=None):
     """워처 한 틱의 실패 요청 몫 (REQ-20260909-060) — 전체 테스트 실패 뒤 30분이
     지나도록 통과 회차가 없으면 그때 요청을 세운다. 규칙과 기록은 tests/async_notify.py
@@ -28089,6 +28511,7 @@ def red_request_tick(now=None):
         return ""
 
 
+@perf_timed_fn("tick", "jira")
 def jira_watch_tick():
     """워처 한 틱의 Jira 몫 — outbox(생성·push)와 pull. 한 줄로 부른다: 워처 루프의
     글자를 늘리면 그 루프를 읽는 계약 시험(test_snapshot s6)이 스냅샷 호출을 못 본다.
@@ -28330,30 +28753,67 @@ def _restart_under_guard(host, port, held):
 # 모양 하나로 죽었을 때(REQ-20260907-075) 그 자리를 잴 시험이 없어 사용자가
 # 화면으로 발견했다. 시험: tests/test_serve_data.py
 # 관계 필드까지 포함한 그래프 데이터 (본문 제외 — 토큰/전송량 최소)
+_GRAPH_CACHE = {"files": {}}     # 경로 -> (stat 키, 노드, 엣지들, dep 행)
+_GRAPH_LOCK = threading.Lock()
+
+
+def _graph_entry(path):
+    """문서 하나의 그래프 재료 (노드, 엣지들, dep 행) — id 없는 문서는 (None, [], None)."""
+    try:
+        meta, _body = read_doc(path)
+    except (OSError, ValueError):
+        return None, [], None
+    if not isinstance(meta, dict) or not meta.get("id"):
+        return None, [], None
+    src_id = meta["id"]
+    node = {k: meta.get(k, "") for k in
+            ("id", "type", "title", "status", "user", "project")} \
+        | {"tags": meta.get("tags", [])}
+    edges = []
+    if meta.get("parent"):
+        edges.append({"from": src_id, "to": meta["parent"], "rel": "parent"})
+    for t in derived_ids(meta):
+        edges.append({"from": src_id, "to": t, "rel": "derived_from"})
+    for t in meta.get("relates", []):
+        edges.append({"from": src_id, "to": t, "rel": "relates"})
+    for t in meta.get("refs_docs", []):
+        edges.append({"from": src_id, "to": t, "rel": "ref"})
+    # dep_edges 는 선행 후보를 type/status 로 거른다(끝난 선행은 유령
+    # 화살표가 된다) — 그 재료를 함께 실어 보낸다. 없이 보내면 후보
+    # 집합이 늘 비어 선행 화살표가 한 번도 그려지지 않는다.
+    dep = {"id": src_id, "type": meta.get("type", ""),
+           "status": meta.get("status", ""),
+           "blocked_by": meta.get("blocked_by", [])}
+    return node, edges, dep
+
+
 def graph_data():
+    """Graph 탭 자료. 문서별 stat(mtime_ns·크기) 캐시다 (REQ-20260909-086) —
+    요청마다 1,547건 전량 read_doc 이 78ms 였고(2026-09-09 실측), 안 바뀐 문서는
+    stat 만 하고 바뀐 것만 다시 읽는다(audit_data 와 같은 규율). 사라진 문서는
+    캐시에서도 빠진다. 호출자에게는 사본을 준다 — 핸들러가 뷰어 필터로 목록을
+    고치기 때문이다."""
     nodes, edges, dep_rows = [], [], []
-    for p in walk_docs():
-        meta, _body = read_doc(p)
-        if not meta.get("id"):
-            continue
-        nodes.append({k: meta.get(k, "") for k in
-                      ("id", "type", "title", "status", "user", "project")}
-                     | {"tags": meta.get("tags", [])})
-        src = meta["id"]
-        if meta.get("parent"):
-            edges.append({"from": src, "to": meta["parent"], "rel": "parent"})
-        for t in derived_ids(meta):
-            edges.append({"from": src, "to": t, "rel": "derived_from"})
-        for t in meta.get("relates", []):
-            edges.append({"from": src, "to": t, "rel": "relates"})
-        for t in meta.get("refs_docs", []):
-            edges.append({"from": src, "to": t, "rel": "ref"})
-        # dep_edges 는 선행 후보를 type/status 로 거른다(끝난 선행은 유령
-        # 화살표가 된다) — 그 재료를 함께 실어 보낸다. 없이 보내면 후보
-        # 집합이 늘 비어 선행 화살표가 한 번도 그려지지 않는다.
-        dep_rows.append({"id": src, "type": meta.get("type", ""),
-                         "status": meta.get("status", ""),
-                         "blocked_by": meta.get("blocked_by", [])})
+    with _GRAPH_LOCK:
+        files = _GRAPH_CACHE["files"]
+        seen = set()
+        for p in walk_docs():
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            k = (st.st_mtime_ns, st.st_size)
+            ent = files.get(p)
+            if ent is None or ent[0] != k:
+                ent = (k, *_graph_entry(p))
+                files[p] = ent
+            seen.add(p)
+            if ent[1] is not None:
+                nodes.append(dict(ent[1]))
+                edges.extend(dict(e) for e in ent[2])
+                dep_rows.append(ent[3])
+        for p in [p for p in files if p not in seen]:
+            del files[p]
     ids = {n["id"] for n in nodes}
     edges = [e for e in edges if e["to"] in ids]
     # 선행 의존 (REQ-20260825-097): 엣지 모양은 dep_edges 한 곳에서 정의.
@@ -28512,6 +28972,101 @@ def projects_data():
             "history_tail": project_history_tail(body),
         })
     return {"projects": out}
+
+
+def projects_for(me):
+    """뷰어 `me` 에게 보이는 프로젝트 목록 — /api/projects 와 /api/boot 가 같은
+    자리를 부른다 (REQ-20260909-086). admin 과 미등록 뷰어(""=정책 부재, 비강제)
+    는 전부, 그 밖은 자기가 역할을 가진 프로젝트만."""
+    d = projects_data()
+    if user_role(me) not in ("admin", ""):
+        d["projects"] = [p for p in d["projects"]
+                         if project_role(p["slug"], me)]
+    return d
+
+
+def catalog_response(me, want, window):
+    """/api/catalog 의 응답 조각 (body, etag, zbody, win) — /api/boot 도 같은
+    자리를 부른다 (REQ-20260909-086).
+
+    검사(catalog_with_live)가 신선도를 판정한 **뒤에** 같은 세대·뷰어·창의
+    바이트를 재사용한다 (REQ-20260831-002). 캐시가 검사보다 먼저 답하면 TTL·
+    지문 무효화를 우회하는 두 번째 신선도 판정이 생긴다 — 판정은 검사 한 곳.
+    ETag 는 본문 해시다(세대가 아니라): 세대가 바뀌어도 내용이 같으면 304 가
+    유효하고, 뷰어마다 본문이 다르므로 교차 뷰어 304 오염도 원천 차단된다.
+    """
+    rows = catalog_with_live()
+    key = (catalog_with_live._state["seq"], me, want, window)
+
+    def _coarse(r):
+        # 초 단위 나이(live_age·stopped.age·worker.age)는 화면 문구용이다 —
+        # 정밀값 그대로 실으면 스냅샷 세대마다 본문이 바뀌어 ETag 가 매번
+        # 죽고 304 는 없다. 10초 눈금으로 내림해 싣는다 — 서버 내부 판정
+        # (멈춤·워처)은 직렬화 전 정밀값으로 이미 끝났다. 중첩 dict 는 검사
+        # 스냅샷과 공유되므로 복사 후 고친다.
+        if isinstance(r.get("live_age"), int):
+            r["live_age"] -= r["live_age"] % 10
+        for k in ("stopped", "worker"):
+            d = r.get(k)
+            if isinstance(d, dict) and isinstance(d.get("age"), int):
+                r[k] = {**d, "age": d["age"] - d["age"] % 10}
+        return r
+
+    def build():
+        seen = [r for r in rows
+                if bool(r.get("archived")) == want and doc_visible(r, me)]
+        sent = catalog_window(seen, window)
+        body = json.dumps([_coarse(r) for r in sent],
+                          ensure_ascii=False).encode()
+        # 응답은 배열 그대로다 — 클라이언트의 Array.isArray 계약을 깨지
+        # 않는다. 창을 씌웠다는 사실은 헤더로 말한다(sent/total).
+        return body, {"win": f"{window} {len(sent)}/{len(seen)}"}
+
+    ent = _cached_bytes(_CATALOG_RESP, _CATALOG_RESP_LOCK, key, build)
+    return ent["body"], ent["etag"], ent["zbody"], ent["win"]
+
+
+def docindex_response(me):
+    """/api/docindex 의 응답 조각 (obj, body, etag, zbody) — 객체도 함께 둔다:
+    /api/boot 는 바이트가 아니라 값을 묶어 싣는다 (REQ-20260909-086), 76KB 를
+    다시 파싱하지 않기 위해서다. 같은 세대·같은 뷰어면 재사용."""
+    rows = catalog_with_live()
+    key = (catalog_with_live._state["seq"], me)
+
+    def build():
+        obj = [[r.get("id", ""), r.get("created", "")]
+               for r in rows if doc_visible(r, me)]
+        return json.dumps(obj, ensure_ascii=False).encode(), {"obj": obj}
+
+    ent = _cached_bytes(_DOCIDX_RESP, _DOCIDX_RESP_LOCK, key, build)
+    return ent["obj"], ent["body"], ent["etag"], ent["zbody"]
+
+
+def web_bundle_response(sub, shell_path, root=None):
+    """묶음 응답 조각 {body, zbody, etag} — 껍데기와 조각의 (mtime_ns, 크기)
+    지문이 키다 (REQ-20260909-086). 조각을 하나라도 고치면 지문이 바뀌어 다시
+    굽고 ETag 가 바뀐다 — no-store 를 두었던 까닭(「고쳤는데 F5 해도 옛 화면」)
+    을 ETag 가 대신 지킨다. 조각이 하나도 없으면 None (web_bundle 과 같다)."""
+    root = root or ROOT
+    css, app = web_parts(shell_path)
+    names = css if sub == "css" else app
+    if not names:
+        return None
+    home = os.path.realpath(os.path.join(root, "web", sub))
+
+    def stamp(fp):
+        try:
+            st = os.stat(fp)
+            return (st.st_mtime_ns, st.st_size)
+        except OSError:
+            return None
+
+    key = (sub, stamp(shell_path),
+           tuple((n, stamp(os.path.join(home, os.path.basename(n))))
+                 for n in names))
+    return _cached_bytes(_BUNDLE_RESP, _BUNDLE_RESP_LOCK, key,
+                         lambda: (web_bundle(sub, shell_path, root) or b"", {}),
+                         keep=4)
 
 
 def cmd_serve(args):
@@ -29199,8 +29754,42 @@ def cmd_serve(args):
                     self.connection.settimeout(self.idle_timeout)
                 except OSError:
                     pass
-            with proc_scope(), streams_scope():
-                super().handle_one_request()
+            # 요청 계측 (REQ-20260909-087): 시작은 parse_request 가 찍는다 —
+            # 여기서 찍으면 keep-alive 의 노는 시간까지 처리 시간이 된다.
+            self._perf_t0 = 0.0
+            self._perf_status, self._perf_bytes, self._perf_enc = 0, "0", ""
+            err = ""
+            try:
+                with proc_scope(), streams_scope():
+                    super().handle_one_request()
+            except Exception as e:
+                err = type(e).__name__
+                raise
+            finally:
+                if self._perf_t0:
+                    self._perf_request(err)
+
+        def _perf_request(self, err=""):
+            ms = (time.perf_counter() - self._perf_t0) * 1000.0
+            path = (getattr(self, "path", "") or "").split("?", 1)[0]
+            extra = {"status": self._perf_status, "method": getattr(self, "command", ""),
+                     "bytes": int(self._perf_bytes or 0)}
+            if self._perf_enc:
+                extra["gzip"] = self._perf_enc == "gzip"
+            if err:
+                extra["err"] = err
+            perf_mark("api", path, ms, **extra)
+
+        def send_response(self, code, message=None):
+            self._perf_status = code
+            super().send_response(code, message)
+
+        def send_header(self, keyword, value):
+            if keyword == "Content-Length":
+                self._perf_bytes = value
+            elif keyword == "Content-Encoding":
+                self._perf_enc = value
+            super().send_header(keyword, value)
 
         def parse_request(self):
             """요청이 다 왔으면 상한을 푼다 — 처리 시간은 재지 않는다.
@@ -29213,6 +29802,7 @@ def cmd_serve(args):
             ok = super().parse_request()
             if not ok:
                 return False
+            self._perf_t0 = time.perf_counter()
             try:
                 self.connection.settimeout(None)
             except OSError:
@@ -29293,6 +29883,38 @@ def cmd_serve(args):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _send_cached(self, ent, ctype, cache="no-cache", etag=True):
+            """캐시된 응답 조각(_cached_bytes)을 낸다 — ETag/304 · gzip 협상
+            (REQ-20260909-086). 묶음과 audit 이 쓴다.
+
+            `no-cache` 는 「쓰기 전에 물어봐라」다 — 브라우저는 매번
+            If-None-Match 로 재검증하므로 신선도는 no-store 와 같고, 안 바뀐
+            묶음은 1.23MB 대신 304 한 줄이 간다(_send_catalog 와 같은 규율).
+            gzip 은 _json 과 같은 문턱(JSON_GZIP_MIN)이다.
+            """
+            if etag and self.headers.get("If-None-Match") == ent["etag"]:
+                self.send_response(304)
+                self.send_header("ETag", ent["etag"])
+                self.send_header("Cache-Control", cache)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            data, enc = ent["body"], None
+            if len(data) >= JSON_GZIP_MIN \
+                    and "gzip" in (self.headers.get("Accept-Encoding") or ""):
+                data, enc = ent["zbody"], "gzip"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            if etag:
+                self.send_header("ETag", ent["etag"])
+            self.send_header("Cache-Control", cache)
+            self.send_header("Vary", "Accept-Encoding")
+            if enc:
+                self.send_header("Content-Encoding", enc)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -29516,8 +30138,11 @@ def cmd_serve(args):
                 # 상대 주소(url(...))가 조각 하나를 받았을 때와 **같은 곳**을
                 # 가리켜야 한다. 캐시는 `_send` 가 no-store 로 준다.
                 sub = "css" if parsed.path.startswith("/css/") else "app"
-                body = web_bundle(sub, web_index)
-                if body is None:
+                # 압축본·ETag 는 지문당 한 번 굽는다 (REQ-20260909-086): 1.23MB
+                # 가 gzip 없이 no-store 로 매 로드 4.2초 내려왔다. 이제 안
+                # 바뀐 재방문은 304 한 줄, 바뀌면 압축본이 간다.
+                ent = web_bundle_response(sub, web_index)
+                if ent is None:
                     # 껍데기를 못 읽었다. 빈 200 은 "다 왔는데 화면이 빈" 것으로
                     # 보이므로 내지 않는다 — 화면의 되찾기가 다시 걸고, 끝내
                     # 못 받으면 지킴이가 이 자리를 이름으로 말한다.
@@ -29525,8 +30150,8 @@ def cmd_serve(args):
                                "web/index.html 을 못 읽어 조각 목록을 "
                                "세울 수 없다".encode())
                 else:
-                    self._send(200, ("text/javascript" if sub == "app"
-                                     else "text/css") + "; charset=utf-8", body)
+                    self._send_cached(ent, ("text/javascript" if sub == "app"
+                                            else "text/css") + "; charset=utf-8")
             elif re.fullmatch(r"/(?:app|css)/[\w.-]+\.(?:js|css)",
                               parsed.path or ""):
                 # 화면 조각 (REQ-20260829-027). 위 html 길과 **같은 realpath
@@ -29630,57 +30255,7 @@ def cmd_serve(args):
                 # (~50ms×연결수 = GIL 직렬 수 초)다. 검사를 앞세우는 이유:
                 # 캐시가 검사보다 먼저 답하면 TTL·지문 무효화를 우회하는
                 # 두 번째 신선도 판정이 생긴다 — 판정은 검사 한 곳이다.
-                rows = catalog_with_live()
-                key = (catalog_with_live._state["seq"], me, want, window)
-                # 빌드는 single-flight 다 — 잠금을 빌드 **내내** 쥔다. 확인과
-                # 빌드 사이가 열려 있으면 세대가 바뀌는 순간 95스레드가 전부
-                # 미스를 보고 같은 본문을 각자 굽는다(faulthandler 실측:
-                # 95스레드 전원이 이 필터 안, GIL 직렬로 p95 12s). 빌드는
-                # ~수십 ms 라 뒤에 선 스레드는 그만큼 기다렸다 재사용한다.
-                def _coarse(r):
-                    # 초 단위 나이(live_age·stopped.age·worker.age)는 화면
-                    # 문구용이다 — 정밀값 그대로 실으면 스냅샷 세대마다
-                    # 본문이 바뀌어 ETag 가 매번 죽고 304 는 없다(실측:
-                    # 3초 간격 diff 에서 live_age 만 변함). 10초 눈금으로
-                    # 내림해 싣는다 — 서버 내부 판정(멈춤·워처)은 직렬화
-                    # 전 정밀값으로 이미 끝났다. 중첩 dict 는 검사
-                    # 스냅샷과 공유되므로 복사 후 고친다.
-                    if isinstance(r.get("live_age"), int):
-                        r["live_age"] -= r["live_age"] % 10
-                    for k in ("stopped", "worker"):
-                        d = r.get(k)
-                        if isinstance(d, dict) \
-                                and isinstance(d.get("age"), int):
-                            r[k] = {**d, "age": d["age"] - d["age"] % 10}
-                    return r
-                with _CATALOG_RESP_LOCK:
-                    if _CATALOG_RESP["key"] != key:
-                        import hashlib
-                        seen = [r for r in rows
-                                if bool(r.get("archived")) == want
-                                and doc_visible(r, me)]
-                        sent = catalog_window(seen, window)
-                        body = json.dumps(
-                            [_coarse(r) for r in sent],
-                            ensure_ascii=False).encode()
-                        # ETag 는 본문 해시다 — 검사 세대(seq)가 아니라.
-                        # 세대가 바뀌어도 내용이 같으면 304 가 유효해야 하고,
-                        # 뷰어마다 본문이 다르므로 교차 뷰어 304 오염도 원천
-                        # 차단된다.
-                        z = zlib.compressobj(6, zlib.DEFLATED, 31)  # 31=gzip
-                        _CATALOG_RESP.update(
-                            key=key, body=body,
-                            etag='"' + hashlib.md5(body).hexdigest() + '"',
-                            zbody=z.compress(body) + z.flush(),
-                            # 응답은 배열 그대로다 — 클라이언트의
-                            # Array.isArray 계약을 깨지 않는다. 창을 씌웠다는
-                            # 사실은 헤더로 말한다(sent/total).
-                            win=f"{window} {len(sent)}/{len(seen)}")
-                    body, etag, zbody, win = (_CATALOG_RESP["body"],
-                                              _CATALOG_RESP["etag"],
-                                              _CATALOG_RESP["zbody"],
-                                              _CATALOG_RESP.get("win", ""))
-                self._send_catalog(body, etag, zbody, win)
+                self._send_catalog(*catalog_response(me, want, window))
             elif parsed.path == "/api/docindex":
                 # "그 문서가 있는가"의 답만 주는 자리 (REQ-20260908-034).
                 #
@@ -29704,23 +30279,7 @@ def cmd_serve(args):
                 # (열면 보관함에 그대로 있다). 가리는 것은 공개 범위 하나,
                 # doc_visible 뿐이다.
                 me = viewer_of(qs)
-                rows = catalog_with_live()
-                key = (catalog_with_live._state["seq"], me)
-                with _DOCIDX_RESP_LOCK:
-                    if _DOCIDX_RESP["key"] != key:
-                        import hashlib
-                        body = json.dumps(
-                            [[r.get("id", ""), r.get("created", "")]
-                             for r in rows if doc_visible(r, me)],
-                            ensure_ascii=False).encode()
-                        z = zlib.compressobj(6, zlib.DEFLATED, 31)
-                        _DOCIDX_RESP.update(
-                            key=key, body=body,
-                            etag='"' + hashlib.md5(body).hexdigest() + '"',
-                            zbody=z.compress(body) + z.flush())
-                    body, etag, zbody = (_DOCIDX_RESP["body"],
-                                         _DOCIDX_RESP["etag"],
-                                         _DOCIDX_RESP["zbody"])
+                _obj, body, etag, zbody = docindex_response(me)
                 self._send_catalog(body, etag, zbody, "index")
             elif parsed.path == "/api/graph":
                 me = viewer_of(qs)
@@ -29731,12 +30290,7 @@ def cmd_serve(args):
                               if e["from"] in ids and e["to"] in ids]
                 self._json(g)
             elif parsed.path == "/api/projects":
-                me = viewer_of(qs)
-                d = projects_data()
-                if user_role(me) not in ("admin", ""):  # ""=미등록 뷰어 비강제
-                    d["projects"] = [p for p in d["projects"]
-                                     if project_role(p["slug"], me)]
-                self._json(d)
+                self._json(projects_for(viewer_of(qs)))
             elif parsed.path == "/api/search":
                 me = viewer_of(qs)
                 d = search_data(qs.get("q", [""])[0])
@@ -29760,7 +30314,18 @@ def cmd_serve(args):
                          "total": len(evs)}
                 else:
                     d = audit_data(limit=limit)
-                self._json(d)
+                # 계산(audit_data 7ms)은 그대로, 직렬화·gzip(전량 2.7MB →
+                # 30ms)은 사건 세대·카탈로그 세대·뷰어·limit 키로 한 번이다
+                # (REQ-20260909-086). 카탈로그 세대는 남의 가시성 판정이 바뀐
+                # 것을 잡는다. 캐시 계약은 no-store 그대로(ETag 없음).
+                _akey = (_AUDIT_CACHE["gen"], _CATALOG_CACHE["gen"],
+                         me if user_role(me) not in ("admin", "") else "",
+                         limit)
+                _aent = _cached_bytes(
+                    _AUDIT_RESP, _AUDIT_RESP_LOCK, _akey,
+                    lambda: (json.dumps(d, ensure_ascii=False).encode(), {}))
+                self._send_cached(_aent, "application/json; charset=utf-8",
+                                  cache="no-store", etag=False)
             elif parsed.path == "/api/streams":
                 me = viewer_of(qs)
                 d = streams_list()
@@ -29962,6 +30527,30 @@ def cmd_serve(args):
                 self._json(timezone_list())
             elif parsed.path == "/api/transitions":
                 self._json(screen_transitions())
+            elif parsed.path == "/api/boot":
+                # 부트 한 왕복 (REQ-20260909-086). 화면은 뜰 때 whoami·projects·
+                # docindex·serveguard·catalog 를 따로 불렀다 — 다섯 왕복. 이
+                # 환경의 루프백은 요청 하나에 고정 비용이 있다: 아무 일도 안
+                # 하는 stdlib 서버도 새 연결 한 요청에 140~200ms 다(실측
+                # 2026-09-09 · 계산은 whoami 0.2ms·projects 0.06ms·serveguard
+                # 0.8ms). 서버 쪽 지렛대는 계산이 아니라 **왕복 수**다.
+                #
+                # 조각마다 단독 API 와 **같은 함수**를 부른다 — 묶음이 단독과
+                # 다른 답을 하면 화면이 두 얼굴을 갖는다(tests/test_api_boot).
+                # catalog 는 본문이 아니라 머리(ETag·창)만 싣는다: 본문은
+                # 보드가 If-None-Match 로 받는 자리가 따로 있고, 이 ETag 로
+                # 첫 폴을 304 로 만들 수 있다. 다섯 조각이 같은 요청 스코프
+                # 안이라 /proc·streams 훑기는 요청당 최대 1회다.
+                me = viewer_of(qs)
+                with perf_timed("api", "boot"):     # s9 perf 에 전후 표가 선다
+                    _obj, _b, _e, _z = docindex_response(me)
+                    _cb, _ce, _cz, _cw = catalog_response(me, False, "board")
+                    payload = {"whoami": whoami_info(),
+                               "projects": projects_for(me),
+                               "docindex": _obj,
+                               "serveguard": guard_report(s9_port()),
+                               "catalog": {"etag": _ce, "window": _cw}}
+                self._json(payload)
             elif parsed.path == "/api/whoami":
                 # 서버 파생 신원 — 대시보드 라벨·admin 판정·개인화의 단일 출처
                 self._json(whoami_info())
@@ -30785,6 +31374,10 @@ def cmd_serve(args):
             except Exception as e:
                 self._json({"ok": False, "error": f"bad request: {e}"}, 400)
 
+    # 성능 로그의 큐·쓰는 스레드 (REQ-20260909-087) — 아래 루프들이 첫 틱부터
+    # 큐 경로를 타게 워처보다 먼저 띄운다.
+    perf_start()
+
     # 반려 재작업 워처 (REQ-20260823-083) — 반려는 대시보드 행위이므로 serve가
     # 반려 시점에 살아있다. 유예 후 미클레임 반려를 무인 스폰. 끄기: S9_REWORK_WATCH=off
     if os.environ.get("S9_REWORK_WATCH", "").lower() != "off":
@@ -30832,6 +31425,11 @@ def cmd_serve(args):
                     dead_turn_tick()
                 except Exception:
                     pass
+                # 성능 로그 보존 — 1분에 한 번 (REQ-20260909-087)
+                try:
+                    perf_tick()
+                except Exception:
+                    pass
                 time.sleep(30)
         threading.Thread(target=_rework_loop, daemon=True).start()
 
@@ -30846,10 +31444,16 @@ def cmd_serve(args):
             # 데몬 스레드를 조용히 끝내 버리기 때문이다 — 그 뒤로는 아무도
             # 받지 않는데 아무 자국도 없다.
             while True:
+                _t0, did = time.perf_counter(), None
                 try:
-                    sync_transport_tick()
+                    did = sync_transport_tick()
                 except BaseException as e:
                     _sync_log(f"⚠ 전송 루프 예외: {type(e).__name__}: {e}"[:300])
+                    did = ["error:" + type(e).__name__]
+                # 2초 주기라 한 일이 있거나 느린 틱만 적는다 (REQ-20260909-087)
+                _ms = (time.perf_counter() - _t0) * 1000.0
+                if did or _ms >= PERF_SYNC_MIN_MS:
+                    perf_mark("tick", "sync", _ms, did=",".join(did or []))
                 time.sleep(2)
         threading.Thread(target=_sync_loop, daemon=True).start()
 
@@ -31775,6 +32379,7 @@ def _worktree_raise(name, own, age):
         _auto_log(f"WT-RAISE-FAIL {name} doc={doc} {type(e).__name__}: {e}")
 
 
+@perf_timed_fn("tick", "worktree_sweep")
 def worktree_sweep(now=None):
     """주인이 떠난 빈 worktree를 거둔다 — **남길 것이 있으면 남긴다**.
 
@@ -32529,6 +33134,16 @@ def main():
     mt.add_argument("--json", action="store_true")
     mt.set_defaults(fn=cmd_metrics)
 
+    pf = sub.add_parser("perf",
+                        help="성능 로그·메트릭 요약 (state/local/log, 1시간 보존)")
+    pf.add_argument("action", nargs="?", choices=["show", "tail"], default="show")
+    pf.add_argument("--since", default="10m", help="요약 창 — 10m·2h (기본 10m)")
+    pf.add_argument("--by", choices=["endpoint", "tick"],
+                    help="끝점(api)만 / 워처 틱만")
+    pf.add_argument("-n", type=int, default=20, help="tail: 줄 수")
+    pf.add_argument("--json", action="store_true")
+    pf.set_defaults(fn=cmd_perf)
+
     sc = sub.add_parser("secret",
                         help="사용자별 시크릿 값 (보관·조회·명령에서 사용)")
     sc.add_argument("action", choices=["ls", "set", "get", "rm", "run"])
@@ -32713,10 +33328,16 @@ def main():
             if _i:
                 heartbeat_touch(_i, cmd=sys.argv[1],
                                 session=getattr(args, "session", "") or "")
+    _t0 = time.perf_counter()
     try:
         args.fn(args)
     except WriteDenied as e:
         die(str(e))         # 인가 거부는 사고가 아니라 판정 — 트레이스백 없이
+    finally:
+        # 훅이 부르는 명령의 처리 시간 한 줄 (REQ-20260909-087) — 큐 없이 append,
+        # 실패해도 조용하다(perf_mark 가 삼킨다).
+        if sys.argv[1:] and sys.argv[1] not in PERF_CLI_SKIP:
+            perf_mark("cli", sys.argv[1], (time.perf_counter() - _t0) * 1000.0)
 
 
 if __name__ == "__main__":

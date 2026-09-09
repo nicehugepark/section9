@@ -1,4 +1,31 @@
-/* jira.js — Settings 「Jira 연동」 판 (REQ-20260908-079)
+/* jira.js — Settings 「외부 서비스」 판 (REQ-20260908-079 · 구조는 -080 에서 다시)
+
+   주인 지적 2026-09-09 15:41: 「section9 표시를 이미 연동된 부분에서 빼려고 하는데
+   수정이 안 된다. 그리고 Jira 자체를 쓸지 말지 선택 사항인데 마치 기본적으로 쓰는
+   게 기본인 것 같은 UX 다.」 두 결함은 한 뿌리였다 — **판이 「Jira 를 쓴다」를
+   전제로 서 있었다.** 그래서 판을 두 층으로 다시 세운다.
+
+   ① **머리에 스위치 하나.** `jira_enabled` 가 끔이면 그 아래(준비 항목·프로젝트
+      연동)는 아예 서지 않고 한 줄 설명만 남는다. 흐리게(`.woff`)만 하지 않는 것은
+      흐린 여섯 행도 「기본으로 쓰는 것」으로 읽히기 때문이다 — 주인이 지적한
+      그 인상이 정확히 그것이다. 끄는 것은 **값을 지우는 것이 아니다**: 적어 둔
+      주소·token·이은 프로젝트는 그대로 있고 다시 켜면 이어서 쓴다.
+      켜짐/꺼짐의 판정은 서버(`/api/jira/state` 의 `enabled`)가 한 곳에서 한다 —
+      쓰던 사람이 이 변경으로 갑자기 꺼지지 않게 주소나 이은 프로젝트가 있으면
+      켜짐으로 시작한다.
+   ② **이은 프로젝트는 줄이 아니라 행이다.** 여태 `mp1 ↔ MP1 · push · 카드` 는
+      **보여만 주는 글자**였고, 방향·내보내는 것·section9 표시를 고치려면 연동을
+      풀고 다시 이어야 했다(주인 지적 ①). 이제 프로젝트마다 준비 항목과 같은 행이
+      서고 셋을 그 행의 select 로 바로 고친다 — 고르면 즉시 저장(POST
+      /api/project/jira, Projects 정보 패널이 이미 쓰는 그 한 경로).
+   ③ **잇기 폼은 접힌다.** 이미 이은 사람에게 늘 펼쳐진 칸 다섯은 「또 이어야
+      하나」로 읽힌다. 손잡이는 「한도 8개 보기」와 같은 부품·같은 어휘다.
+
+   낱말은 tech-writer 판정(REQ-20260909-080)을 따른다: 「연동」이 스위치·ping·
+   프로젝트 짝짓기 셋을 지고 있던 것을 갈라, 스위치는 「Jira 사용」, ping 은
+   「연결 확인」, 「연동」은 프로젝트 짝짓기 하나에만 남는다.
+
+   ---- 처음 판을 세울 때 적은 것 (REQ-20260908-079) ----
 
    주인 지시 2026-09-08 21:30: 시험을 위해 사람이 준비할 것을 알려 주고, 그 항목을
    Settings 의 한 자리에 세워 준비시켜라 — 「jira 연동은 선택사항이지 필수 사항이
@@ -16,6 +43,8 @@
 
 let jiraState = null;
 let jiraFail = "";
+// 잇는 폼을 폈나 — 판을 다시 그려도 손이 기억한다(「한도 8개 보기」와 같은 자리).
+let jiraFormOpen = false;
 
 const JIRA_ROWS = [
   {key: "jira_site", name: "Jira 주소", kind: "config", w: "330px",
@@ -32,23 +61,48 @@ const JIRA_ROWS = [
        + "JIRA_API_TOKEN 으로 남고, 다시 보이지 않습니다."},
   {key: "jira_token_expires", name: "token 만료일", kind: "config", w: "170px",
    type: "date", ph: "YYYY-MM-DD",
-   mean: "API token 을 만들 때 정한 만료일입니다. 적어 두면 7일 전부터 여기와 「연동 확인」이 "
+   mean: "API token 을 만들 때 정한 만료일입니다. 적어 두면 7일 전부터 여기와 「연결 확인」이 "
        + "미리 알리고, 지난 뒤에는 만료된 token 으로 묻지 않습니다(반복하면 계정이 잠깁니다)."},
-  {key: "ping", name: "연동 확인", kind: "ping",
+  {key: "ping", name: "연결 확인", kind: "ping",
    mean: "위의 셋으로 Jira 에 한 번 물어봅니다(GET /rest/api/3/myself). 계정 이름이 "
        + "돌아오면 준비가 맞은 것입니다. 틀린 토큰으로는 한 번만 묻습니다 — 반복하면 "
        + "계정이 잠깁니다."},
-  {key: "project", name: "프로젝트 연동", kind: "link",
-   mean: "우리 프로젝트 하나에 Jira 프로젝트 하나(project key, 예: ABC)를 짝짓습니다 — "
-       + "위 Jira 주소의 프로젝트입니다. 내가 관리(maintainer 이상)하는 프로젝트만 고를 수 "
-       + "있고, 같은 값은 Projects 정보 패널에도 보입니다. 터미널: s9 project jira <slug> set --key <KEY>."},
 ];
+
+/* 판 머리의 스위치 한 행 — 부품은 「백그라운드 작업」 판의 것 그대로다(`<select>` 에
+   켬/끔 두 옵션, 옵션 글자가 상태를 말한다). 알약 토글을 새로 그리지 않는 까닭은
+   그 판에 적힌 것과 같다: 스킨 열 벌의 override 가 이미 `.uf select` 에 걸려 있고,
+   켬/끔이 색으로만 읽히면 안 된다. */
+const JIRA_SWITCH = {
+  key: "jira_enabled", name: "Jira 사용", kind: "switch",
+  on: "켬 — 요청을 Jira 이슈로 내보내고 상태를 주고받습니다",
+  off: "끔 — Jira 와 아무것도 주고받지 않습니다",
+  mean: "켜면 아래 준비 항목과 프로젝트 연동이 열립니다. 끄면 적어 둔 값은 그대로 "
+      + "두고 주고받기만 멈춥니다.",
+  said: {on: "켰습니다 — 이제 요청을 Jira 이슈로 내보내고 상태를 주고받습니다.",
+         off: "껐습니다 — 이제 Jira 와 주고받지 않습니다. 적어 둔 값은 지우지 않습니다."},
+};
+
+/* 프로젝트 연동 절의 뜻 한 줄 — 행이 아니라 절이 되었으므로 뜻도 절의 머리에 선다. */
+const JIRA_LINK_MEAN =
+  "우리 프로젝트 하나에 Jira 프로젝트 하나(project key, 예: ABC)를 짝짓습니다. "
+  + "방향·내보내는 것·section9 표시는 그 줄에서 고르면 그때 저장되고, 같은 값이 "
+  + "Projects 정보 패널에도 보입니다. 내가 관리(maintainer 이상)하는 프로젝트만 고칠 수 있습니다.";
+
+/* 켜짐 판정은 서버가 한 곳에서 한다(`enabled`). 서버가 아직 그 값을 주지 않는
+   동안에만 같은 규칙으로 파생한다 — 두 벌이 남지 않게 여기 한 줄뿐이다. */
+const jiraIsOn = s => (s && s.enabled !== undefined)
+  ? !!s.enabled
+  : !!(s && (s.site || (s.projects || []).length));
 
 /* 부제 = 들어 있는 서비스 이름(원어). 서비스가 하나뿐인 동안만 준비 정도를 뒤에
    붙인다 — Notion 이 들어오면 `Jira · Notion` 이 된다 (tech-writer, REQ-20260908-080). */
 function jiraNavSub(){
   const s = jiraState;
   if (!s || !s.registered) return "Jira";
+  // 꺼져 있으면 준비 정도는 말할 것이 아니다 — 안 쓰는 서비스의 진도는 사실이
+  // 아니라 재촉이다. 스위치가 쓰는 그 낱말(끔)을 그대로 쓴다.
+  if (!jiraIsOn(s)) return "Jira · 끔";
   return `Jira · 준비 ${s.ready_n}/${s.ready_total}`;
 }
 
@@ -59,7 +113,7 @@ function jiraNavPaint(){
 
 async function jiraLoad(){
   try{
-    const r = await fetch("/api/jira/state");
+    const r = await s9Fetch("/api/jira/state");
     const d = await r.json();
     if (!d || typeof d !== "object" || !d.ready) throw new Error((d && d.error) || "bad");
     jiraState = d;
@@ -78,11 +132,13 @@ function jiraSummary(s){
   // 만료일은 준비 항목이 아니다(선택) — 남은 것에 세지 않는다
   const left = JIRA_ROWS.filter(r => r.kind !== "ping" && r.key !== "jira_token_expires")
                         .filter(r => !s.ready[r.kind === "secret" ? "token"
-                                              : r.kind === "link" ? "project"
                                               : r.key.replace("jira_", "")])
                         .map(r => r.name);
+  // 프로젝트 연동은 이제 행이 아니라 절이지만 서버가 세는 넷 중 하나다 —
+  // 남은 것에서 빠지면 「준비 3/4」의 나머지 하나를 화면이 말하지 못한다.
+  if (!s.ready.project) left.push("프로젝트 연동");
   if (!left.length)
-    return "준비가 끝났습니다 — 아래 「연동 확인」으로 한 번 물어보십시오.";
+    return "준비가 끝났습니다 — 아래 「연결 확인」으로 한 번 물어보십시오.";
   return `준비 ${s.ready_n}/${s.ready_total} — 남은 것: ${left.join(" · ")}`;
 }
 
@@ -116,50 +172,16 @@ function jiraRowHTML(r, s){
     // 저장하는 손잡이(넣기·연동)는 그대로 글자 손잡이다: 나가는 것과 적는 것이 갈린다.
     ctl = `<div class="acts gacts"><button type="button" id="j-ping"
              aria-describedby="j-ping-why"
-             aria-disabled="${!can}">연동 확인</button></div>`;
+             aria-disabled="${!can}">연결 확인</button></div>`;
     fact = can ? "" : "주소·이메일·API token 셋이 있어야 물어볼 수 있습니다.";
-  } else {
-    // 프로젝트 연동 — 이어진 것은 줄마다 「slug ↔ KEY · 방향 · 연동 해제」, 아래에 잇는 폼
-    // (REQ-20260909-015, 주인: 「지라 프로젝트 연동도 설정에서 변경할 수 있게」).
-    const rows = (s.projects || []);
-    const can = (s.manageable || []);
-    const dirName = d => (PRJ_TEXT.jiraDirs.find(([v]) => v === d) || [d, d])[1];
-    const contentName = d => (PRJ_TEXT.jiraContents.find(([v]) => v === d) || [d, d])[1];
-    // section9 표시(REQ-20260909-049)는 on 이 기본이라 기본은 조용히 — off 일 때만 덧붙인다
-    const markOff = p => (p.mark || "on") === "off" ? ` · ${esc(PRJ_TEXT.jiraMarkOff)}` : "";
-    const linked = rows.length
-      ? rows.map(p => `<div class="jlink"><span class="wlab gcmd">${esc(p.slug)} ↔ ${esc(p.key)}</span>
-           <span class="path">· ${esc(dirName(p.direction || "push"))} · ${esc(contentName(p.content || "card"))}${markOff(p)}</span>${
-           can.some(m => m.slug === p.slug)
-             ? ` <button type="button" class="more wmore j-unlink" data-slug="${esc(p.slug)}">연동 해제</button>` : ""
-         }</div>`).join("")
-      : `<span class="wlab">아직 없습니다</span>`;
-    const opts = can.filter(m => !rows.some(p => p.slug === m.slug));
-    // 잇기 폼 — 다섯 칸이 라벨 없이 한 줄에 늘어서 있었다(주인 캡처 2026-09-09 13:10:
-    // 「레이아웃이 좀 이상한데」). 접히는 자리를 브라우저에 맡기지 않고 **두 줄로 나눈다**:
-    // 1행 = 무엇을 잇나(프로젝트 · key · 방향), 2행 = 어떻게 보내나(내보내는 것 ·
-    // section9 표시) + 손잡이. 칸마다 앞말을 얹어 select 의 값만 보고 뜻을 짐작하지
-    // 않게 한다 — 낱말은 PRJ_TEXT 의 것 그대로다(Projects 정보 패널과 같은 글자).
-    const fld = (lab, ctlHTML) =>
-      `<label class="jfield"><span class="jfl">${esc(lab)}</span>${ctlHTML}</label>`;
-    const sel = (id, pairs) => `<select class="uf" id="${id}">${
-      pairs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>`;
-    const form = (s.registered && opts.length)
-      ? `<div class="jlinkform">
-           ${fld(PRJ_TEXT.kJiraProject, `<select class="uf" id="j-link-slug">${
-             opts.map(m => `<option value="${esc(m.slug)}">${esc(m.title)} (${esc(m.slug)})</option>`).join("")}</select>`)}
-           ${fld(PRJ_TEXT.kJiraKey, `<input class="uf" id="j-link-key" placeholder="${esc(PRJ_TEXT.phJiraKey)}">`)}
-           ${fld(PRJ_TEXT.kJiraDir, sel("j-link-dir", PRJ_TEXT.jiraDirs))}
-           ${fld(PRJ_TEXT.kJiraContent, sel("j-link-content", PRJ_TEXT.jiraContents))}
-           ${fld(PRJ_TEXT.kJiraMark, sel("j-link-mark", PRJ_TEXT.jiraMarks))}
-           <button type="button" class="more wmore" id="j-link">연동</button></div>`
-      : "";
-    // .wctl 은 가로 flex 라 줄과 폼이 옆으로 늘어선다(주인 캡처 2026-09-09 10:50) —
-    // 세로 상자 하나로 감싸 줄들 아래 폼이 선다 (REQ-20260909-027).
-    ctl = `<div class="jlinkbox">${linked}${form}</div>`;
-    if (s.registered && !can.length && !rows.length)
-      fact = "관리(maintainer 이상)하는 프로젝트가 없어 여기서 이을 수 없습니다.";
-    if (s.registered && !s.ready.site) fact = "먼저 Jira 주소를 적으십시오 — 프로젝트는 그 주소의 것입니다.";
+  } else if (r.kind === "switch"){
+    // 판 머리의 켬/끔. 부품은 「백그라운드 작업」 판의 스위치 그대로다.
+    const on = jiraIsOn(s);
+    ctl = `<select class="uf" id="j-${esc(r.key)}" style="width:auto" aria-label="${esc(r.name)}"${
+             s.registered ? "" : " disabled"}>
+             <option value="on"${on ? " selected" : ""}>${esc(r.on)}</option>
+             <option value="off"${on ? "" : " selected"}>${esc(r.off)}</option>
+           </select>`;
   }
   return `<tr class="wrow grow" data-jk="${esc(r.key)}">
     <td><span class="wlab">${esc(r.name)}</span>
@@ -170,15 +192,98 @@ function jiraRowHTML(r, s){
       <div class="wfact" id="j-${esc(r.key)}-fact">${fact}</div></td></tr>`;
 }
 
+/* 값 뒤에 붙는 조사 하나 — 「연동 방향은」·「section9 표시는」. 결과 문장의
+   틀이 하나(「바꿨습니다 — 이제 …입니다」)라 붙이는 자리도 하나다. */
+function jiraJosa(word, withJong, without){
+  const c = String(word || "").charCodeAt(String(word).length - 1);
+  const han = c >= 0xac00 && c <= 0xd7a3;
+  return (han && (c - 0xac00) % 28 !== 0) ? withJong : without;
+}
+
+/* 연동된 프로젝트 한 행. 첫 칸은 준비 항목과 같은 두 줄(우리 slug · Jira project
+   key), 둘째 칸은 연동 폼과 **같은 격자**다 — 같은 뜻의 칸이 같은 자리에 서야
+   새로 연동하는 것과 고치는 것이 한 화면의 같은 일로 읽힌다. 관리 권한이 없으면 값은
+   보이되 못 고친다(서버가 어차피 거절한다 — 눌러 본 뒤에 알게 하지 않는다). */
+function jiraLinkRowHTML(p, s){
+  const can = (s.manageable || []).some(m => m.slug === p.slug);
+  const lock = can ? "" : " disabled";
+  const fld = (lab, ctlHTML) =>
+    `<label class="jfield"><span class="jfl">${esc(lab)}</span>${ctlHTML}</label>`;
+  const sel = (field, pairs, cur) => `<select class="uf" data-jp="${field}"${lock}>${
+    pairs.map(([v, t]) => `<option value="${v}"${v === cur ? " selected" : ""}>${
+      esc(t)}</option>`).join("")}</select>`;
+  return `<tr class="wrow grow" data-jslug="${esc(p.slug)}">
+    <td><span class="wlab">${esc(p.slug)}</span>
+        <span class="wkey">${esc(p.key)}</span></td>
+    <td><div class="jlinkform jedit">
+      ${fld(PRJ_TEXT.kJiraDir, sel("direction", PRJ_TEXT.jiraDirs, p.direction || "push"))}
+      ${fld(PRJ_TEXT.kJiraContent, sel("content", PRJ_TEXT.jiraContents, p.content || "card"))}
+      ${fld(PRJ_TEXT.kJiraMark, sel("mark", PRJ_TEXT.jiraMarks, p.mark || "on"))}
+      ${can ? `<button type="button" class="more wmore j-unlink"
+                 data-slug="${esc(p.slug)}">연동 해제</button>` : ""}
+    </div></td></tr>`;
+}
+
+/* 연동 폼 — **기본 접힘**. 이미 연동한 사람에게 늘 펼쳐진 칸 다섯은 다음 할 일로
+   읽힌다. 칸의 배치(1행 무엇을 연동하나 / 2행 어떻게 보내나)는 REQ-20260909-061 의
+   결정 그대로이고, 그 폼을 손잡이 뒤로 옮긴 것만 이번 변경이다. */
+function jiraLinkFormHTML(s){
+  const opts = (s.manageable || []).filter(m => !(s.projects || []).some(p => p.slug === m.slug));
+  if (!s.registered || !opts.length) return "";
+  const fld = (lab, ctlHTML) =>
+    `<label class="jfield"><span class="jfl">${esc(lab)}</span>${ctlHTML}</label>`;
+  const sel = (id, pairs) => `<select class="uf" id="${id}">${
+    pairs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select>`;
+  return `<button type="button" class="more wmore" id="j-linkopen"
+      aria-expanded="${jiraFormOpen}" aria-controls="j-linkform">${
+      esc(jiraFormOpen ? "− 프로젝트 연동 접기" : "+ 프로젝트 연동하기")}</button>
+    <div class="jlinkform" id="j-linkform"${jiraFormOpen ? "" : " hidden"}>
+      ${fld(PRJ_TEXT.kJiraProject, `<select class="uf" id="j-link-slug">${
+        opts.map(m => `<option value="${esc(m.slug)}">${esc(m.title)} (${esc(m.slug)})</option>`).join("")}</select>`)}
+      ${fld(PRJ_TEXT.kJiraKey, `<input class="uf" id="j-link-key" placeholder="${esc(PRJ_TEXT.phJiraKey)}">`)}
+      ${fld(PRJ_TEXT.kJiraDir, sel("j-link-dir", PRJ_TEXT.jiraDirs))}
+      ${fld(PRJ_TEXT.kJiraContent, sel("j-link-content", PRJ_TEXT.jiraContents))}
+      ${fld(PRJ_TEXT.kJiraMark, sel("j-link-mark", PRJ_TEXT.jiraMarks))}
+      <button type="button" class="more wmore" id="j-link">연동</button></div>`;
+}
+
+/* 프로젝트 연동 절 — 뜻 · 사실 · 연동된 것들 · 새로 연동하는 손잡이 순. 뜻과 결과가 한 칸을
+   나눠 쓰는 `.wsay` 는 행에서 절로 자리만 옮겼고 부품은 그대로다(jiraSay 가 찾는
+   id 도 그대로 `j-project-*`). */
+function jiraProjectsHTML(s){
+  const rows = (s.projects || []);
+  let fact = "";
+  if (s.registered && !(s.manageable || []).length && !rows.length)
+    fact = "관리(maintainer 이상)하는 프로젝트가 없어 여기서 연동할 수 없습니다.";
+  if (s.registered && !s.ready.site)
+    fact = "먼저 Jira 주소를 적으십시오 — 프로젝트는 그 주소의 것입니다.";
+  // 빈 상태는 두 줄이다 — 무엇이 없는가 / 무엇을 하면 되는가(그 손잡이가 바로 아래 선다).
+  const body = rows.length
+    ? `<table class="metatbl wtbl grepo">${rows.map(p => jiraLinkRowHTML(p, s)).join("")}</table>`
+    : `<div class="path wnote">연동된 프로젝트가 없습니다.<br>`
+      + `아래 「+ 프로젝트 연동하기」로 우리 프로젝트와 Jira 프로젝트를 짝지으십시오.</div>`;
+  return `<div class="cfg-h">프로젝트 연동</div>
+    <div class="wsay"><div class="wmean" id="j-project-why">${esc(JIRA_LINK_MEAN)}</div>
+      <div class="wmsg hid" role="status" aria-live="polite" id="j-project-msg"></div></div>
+    <div class="wfact" id="j-project-fact">${fact}</div>
+    ${body}${jiraLinkFormHTML(s)}`;
+}
+
 function jiraPanelHTML(s){
-  return `<h1 style="margin:0 0 4px">외부 서비스</h1>
-    <div class="path secnote"><b>선택 사항입니다.</b> 연동하지 않으면 아무것도 달라지지 않습니다. `
+  const head = `<h1 style="margin:0 0 4px">외부 서비스</h1>
+    <div class="path secnote"><b>선택 사항입니다.</b> 켜지 않으면 아무것도 달라지지 않습니다. `
     + `바깥 서비스와 주고받는 자리이고, 지금은 Jira 하나입니다.</div>
     <div class="cfg-h gname">Jira</div>
-    <div class="path secnote">연동하면 사람이 직접 만든 요청이 Jira 이슈로 나가고 카드·문서에 그 이슈가 `
-    + `보입니다 — 그 동작은 다음 단계에서 오고, 이 절은 그때 쓸 것을 미리 준비하는 자리입니다.</div>
+    <table class="metatbl wtbl grepo">${jiraRowHTML(JIRA_SWITCH, s)}</table>`;
+  // 꺼져 있으면 여기서 끝난다 — 준비 항목도 프로젝트 연동도 서지 않는다.
+  // 한 줄은 「지금 무엇이 없다」가 아니라 **켜면 무엇이 되는지**를 말한다.
+  if (!jiraIsOn(s))
+    return head + `<div class="path secnote wnote">켜면 요청을 Jira 이슈로 내보내고 `
+      + `상태를 주고받습니다.</div>`;
+  return head + `<div class="cfg-h">준비</div>
     <div class="path wnote" id="j-summary">${esc(jiraSummary(s))}</div>
-    <table class="metatbl wtbl grepo">${JIRA_ROWS.map(r => jiraRowHTML(r, s)).join("")}</table>`;
+    <table class="metatbl wtbl grepo">${JIRA_ROWS.map(r => jiraRowHTML(r, s)).join("")}</table>
+    ${jiraProjectsHTML(s)}`;
 }
 
 function jiraSay(key, text, cls){
@@ -196,7 +301,8 @@ function showJiraPanel(host, me){
   if (!host) return;
   const paint = () => {
     const s = jiraState || {registered: !!me, ready: {}, ready_n: 0, ready_total: 4,
-                            projects: [], token: false, token_url: "#"};
+                            enabled: false, projects: [], manageable: [],
+                            token: false, token_url: "#"};
     host.innerHTML = jiraFail && !jiraState
       ? `<p class="empty">${esc(jiraFail)} <button class="gefix" type="button" id="j-retry">다시 받기</button></p>`
       : jiraPanelHTML(s);
@@ -211,9 +317,44 @@ function showJiraPanel(host, me){
   // 실패하면 값을 되돌린다 — 화면이 저장됐다고 보이는데 서버는 아니면 거짓말이다.
   host.addEventListener("change", async ev => {
     const el = evEl(ev.target);
-    const row = el && el.closest && el.closest("[data-jk]");
-    if (!row || !me) return;
+    if (!el || !el.closest || !me) return;
+    /* 이은 프로젝트 행의 셋 — 고른 그 자리에서 저장한다. **다시 그리지 않는다**:
+       방금 손댄 select 가 사라지면 포커스도 결과 문장도 함께 사라지고, 렌더
+       시점의 낡은 값이 방금 고른 값을 덮는 사고(workercfg.js 머리말)로 이어진다.
+       바뀐 것은 값 하나이므로 그 값만 기억에 반영한다. */
+    const prow = el.closest("[data-jslug]");
+    if (prow && el.dataset && el.dataset.jp){
+      const slug = prow.dataset.jslug, field = el.dataset.jp;
+      const p = ((jiraState || {}).projects || []).find(x => x.slug === slug) || {};
+      const was = p[field] || "";
+      const val = el.value;
+      const lab = {direction: PRJ_TEXT.kJiraDir, content: PRJ_TEXT.kJiraContent,
+                   mark: PRJ_TEXT.kJiraMark}[field] || field;
+      jiraSay("project", "바꾸는 중…");
+      const res = await postJSONRaw("/api/project/jira", {slug, [field]: val});
+      if (!res.ok){ el.value = was; jiraSay("project", "✕ " + res.error, "bad"); return; }
+      p[field] = val;
+      const txt = (el.options[el.selectedIndex] || {}).text || val;
+      jiraSay("project", `바꿨습니다 — 이제 ${lab}${
+        jiraJosa(lab, "은", "는")} 「${txt}」입니다.`);
+      return;
+    }
+    const row = el.closest("[data-jk]");
+    if (!row) return;
     const key = row.dataset.jk;
+    /* 판 머리의 켬/끔 — 저장한 뒤 **판을 다시 그린다**(아래 전부가 서거나 접힌다).
+       위의 행 편집과 갈리는 자리다: 저쪽은 값 하나, 이쪽은 판 전체다. */
+    if (key === JIRA_SWITCH.key){
+      const was = jiraIsOn(jiraState) ? "on" : "off";
+      const val = el.value === "on" ? "on" : "off";
+      jiraSay(key, "저장하는 중…");
+      const res = await postJSONRaw("/api/user/config", {name: me, key, value: val});
+      if (!res.ok){ el.value = was; jiraSay(key, "✕ " + res.error, "bad"); return; }
+      await jiraLoad();
+      paint();
+      jiraSay(key, JIRA_SWITCH.said[val]);
+      return;
+    }
     const r = JIRA_ROWS.find(x => x.key === key);
     if (!r || r.kind !== "config") return;
     const prev = (jiraState && jiraState[key.replace("jira_", "")]) || "";
@@ -228,6 +369,14 @@ function showJiraPanel(host, me){
     if (sum && jiraState) sum.textContent = jiraSummary(jiraState);
   });
   host.addEventListener("click", async ev => {
+    const open = evEl(ev.target)?.closest("#j-linkopen");
+    if (open){
+      jiraFormOpen = !jiraFormOpen;
+      paint();
+      // 편 사람은 곧 고를 사람이다 — 첫 칸에 손을 얹어 준다.
+      if (jiraFormOpen) host.querySelector("#j-link-slug")?.focus();
+      return;
+    }
     const link = evEl(ev.target)?.closest("#j-link");
     if (link && me){
       const slug = host.querySelector("#j-link-slug")?.value || "";
@@ -239,19 +388,20 @@ function showJiraPanel(host, me){
       jiraSay("project", "잇는 중…");
       const res = await postJSONRaw("/api/project/jira", {slug, key, direction, content, mark});
       if (!res.ok){ jiraSay("project", "✕ " + res.error, "bad"); return; }
+      jiraFormOpen = false;            // 이었으니 폼은 할 일을 마쳤다
       await jiraLoad(); paint();
-      jiraSay("project", `이었습니다 — ${slug} ↔ ${(res.jira || {}).project_key || key}`);
+      jiraSay("project", `연동했습니다 — ${slug} ↔ ${(res.jira || {}).project_key || key}`);
       return;
     }
     const unlink = evEl(ev.target)?.closest(".j-unlink");
     if (unlink && me){
       const slug = unlink.dataset.slug;
       // 되돌릴 수 있는 일(다시 이으면 된다)이라 확인 창을 세우지 않는다
-      jiraSay("project", "푸는 중…");
+      jiraSay("project", "해제하는 중…");
       const res = await postJSONRaw("/api/project/jira", {slug, unset: true});
       if (!res.ok){ jiraSay("project", "✕ " + res.error, "bad"); return; }
       await jiraLoad(); paint();
-      jiraSay("project", `풀었습니다 — ${slug}`);
+      jiraSay("project", `연동을 해제했습니다 — ${slug}`);
       return;
     }
     const ping = evEl(ev.target)?.closest("#j-ping");
@@ -263,8 +413,8 @@ function showJiraPanel(host, me){
       ping.setAttribute("aria-disabled", "false");
       const fact = host.querySelector("#j-ping-fact");
       if (!res.ok){ jiraSay("ping", "✕ " + res.error, "bad"); if (fact) fact.textContent = ""; return; }
-      jiraSay("ping", `연동됐습니다 — ${res.name || "(이름 없음)"}${res.email ? " <" + res.email + ">" : ""}`);
-      if (fact) fact.textContent = `마지막 확인: 연동됨 — ${res.name || ""}`;
+      jiraSay("ping", `연결됐습니다 — ${res.name || "(이름 없음)"}${res.email ? " <" + res.email + ">" : ""}`);
+      if (fact) fact.textContent = `마지막 확인: 연결됨 — ${res.name || ""}`;
       return;
     }
     const btn = evEl(ev.target)?.closest("#j-token-put");
