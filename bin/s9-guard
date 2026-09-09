@@ -940,9 +940,23 @@ def main():
     # 통과 — 표식은 남긴다. commit 이 실제로 HEAD 를 쓰고 post-commit 이 지운다.
 
 
+def state_gate(staged):
+    """state/ 는 기계 살림이다 — index 에 넣지 마라 (REQ-20260909-024). `.gitignore` 는
+    `git add -f` 와 옛 추적을 못 막는다; 두 기계가 각자 고치는 같은 이름의 파일이
+    추적되면 pull 이 「would be overwritten」로 멈춘다(맥미니 12시간 실측)."""
+    hits = [f for f in (staged or []) if f == "state" or f.startswith("state/")]
+    if not hits:
+        return
+    print("[s9-guard] state/ 는 이 기계의 살림이다 — index 에 넣지 마라 (REQ-20260909-024): "
+          + ", ".join(hits[:5]) + ("…" if len(hits) > 5 else ""), file=sys.stderr)
+    print("  담긴 것을 빼려면: git rm -r --cached " + " ".join(hits[:5]), file=sys.stderr)
+    sys.exit(1)
+
+
 def _pre_commit_gates():
     staged = staged_now()
     staged_compile_gate(staged)   # 가장 싸고, 깨진 본은 아래 어느 검사도 볼 필요가 없다
+    state_gate(staged)            # 기계 살림은 index 에 못 들어간다
     file_size_gate(staged)        # stat 만 본다 — 시험보다 앞이라 값이 거의 0이다
     concurrent_gate(staged)
     # **넓은 변경 판정을 먼저 묻는다** (REQ-20260904-003). 아래 검사가 시험을

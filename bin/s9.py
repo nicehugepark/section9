@@ -22783,10 +22783,86 @@ def shared_clone_reason(root=None, platform=None, serve_root=None):
     return ""
 
 
+def untrack_state(root=None, out=print, git_fn=None):
+    """`s9 doctor --untrack-state` — 추적된 채 남은 기계 살림(state/)을 index 에서 뺀다
+    (REQ-20260909-024, architect·devops 판정). 멱등이고 클론마다 한 번 돈다.
+
+    B(index 제거)를 그냥 push 하면 로컬 변경이 없는 클론은 pull 즉시 파일이 지워지고
+    (복구 경로 없음) 변경 있는 클론은 pull 이 멈춘다 — 격리 저장소 실측. 그래서 각
+    클론이 **같은 untrack 을 먼저 로컬 commit** 한다: 뒤에 오는 같은 commit 은 rebase 때
+    「already upstream」으로 떨어지고 파일은 그대로 남는다. 순서: 백업 → rm --cached →
+    commit → pull --rebase(수정 vs 삭제 충돌은 rm --cached + continue 로) → push.
+    반환: {"tracked": 전 개수, "backup": 경로|"", "committed": bool, "pushed": bool, "note": str}."""
+    import subprocess as _sp
+    root = root or ROOT
+    run = git_fn or (lambda *a, **kw: _sp.run(["git", "-C", root, *a], capture_output=True,
+                                              encoding="utf-8", errors="replace", **kw))
+    tracked = [ln for ln in run("ls-files", "-ci", "--exclude-standard").stdout.splitlines() if ln.strip()]
+    res = {"tracked": len(tracked), "backup": "", "committed": False, "pushed": False, "note": ""}
+    if not tracked:
+        res["note"] = "추적된 채 무시되는 파일이 없다 — 이미 빠져 있다"
+        out(res["note"])
+        return res
+    state_only = [t for t in tracked if t.startswith("state/")]
+    if len(state_only) != len(tracked):
+        res["note"] = "state/ 밖에도 추적됨∩무시됨 파일이 있다 — 손으로 보라: " + ", ".join(
+            t for t in tracked if not t.startswith("state/"))[:300]
+        out(res["note"])
+        return res
+    # ① 백업 — 옛 commit 에서 꺼낼 수 있는 것은 옛 값뿐이라 지금 값은 여기만 남는다
+    stamp = datetime.date.today().strftime("%Y%m%d")
+    bak = os.path.join(root, "state", f"sessions.bak-{stamp}")
+    src = os.path.join(root, "state", "sessions")
+    try:
+        if os.path.isdir(src) and not os.path.exists(bak):
+            shutil.copytree(src, bak)
+            res["backup"] = bak
+    except OSError as e:
+        out(f"백업 실패 — 멈춘다: {e}")
+        res["note"] = f"backup failed: {e}"
+        return res
+    # ② index 에서만 뺀다 — working tree 의 파일은 그대로다
+    r = run("rm", "-r", "-q", "--cached", *sorted({t.split("/")[0] + "/" + t.split("/")[1] for t in state_only}))
+    if r.returncode != 0:
+        out("git rm --cached 실패: " + (r.stderr or "").strip()[:300])
+        res["note"] = "rm --cached failed"
+        return res
+    r = run("commit", "-q", "-m", "untrack state/sessions (local) — 기계 살림은 index 에 두지 않는다 (REQ-20260909-024)")
+    res["committed"] = r.returncode == 0
+    if not res["committed"]:
+        out("commit 실패: " + (r.stderr or r.stdout or "").strip()[:300])
+        return res
+    # ③ pull --rebase — 같은 untrack 이 먼저 올라와 있으면 이 commit 은 drop 된다.
+    #    수정 vs 삭제(DU) 충돌은 그 파일을 index 에서 빼고 계속한다.
+    r = run("pull", "--rebase", "--autostash", timeout=60)
+    if r.returncode != 0:
+        du = [ln.split()[-1] for ln in run("status", "--porcelain").stdout.splitlines()
+              if ln[:2] in ("DU", "UD", "AU", "UA")]
+        if du:
+            run("rm", "-q", "--cached", *du)
+            r = run("-c", "core.editor=true", "rebase", "--continue")
+        if r.returncode != 0:
+            out("pull --rebase 가 막혔다 — 손으로 보라: " + (r.stderr or r.stdout or "").strip()[:300])
+            res["note"] = "rebase stuck"
+            return res
+    r = run("push", timeout=60)
+    res["pushed"] = r.returncode == 0
+    left = [ln for ln in run("ls-files", "-ci", "--exclude-standard").stdout.splitlines() if ln.strip()]
+    res["note"] = (f"index 에서 {len(state_only)}개를 뺐다 · 백업 {res['backup'] or '없음(이미 있었다)'} · "
+                   f"push {'됨' if res['pushed'] else '안 됨 — 다음 동기화가 민다'} · 남은 추적됨∩무시됨 {len(left)}")
+    out(res["note"])
+    return res
+
+
 def cmd_doctor(args):
     """`s9 doctor` — 진단 본체는 bin/s9-doctor (독립 실행 가능해야 한다:
     s9 자체가 못 뜨는 상황에서도 써야 하는 도구라 별도 파일로 둔다)."""
     import subprocess as _sp
+    if getattr(args, "untrack_state", False):
+        res = untrack_state()
+        if getattr(args, "json", False):
+            print(json.dumps(res, ensure_ascii=False))
+        return
     shared = shared_clone_reason()
     if getattr(args, "shared_clone", False):
         # s9-install 이 설치 전에 묻는 검사 (REQ-20260906-056) — 사유가 있으면 1
@@ -31289,6 +31365,9 @@ def main():
     dc.add_argument("--live", action="store_true",
                     help="세션이 실행 중인지 이 기계에서 어떻게 재는지 "
                          "(맥·윈도우·리눅스 진단 — REQ-20260829-037)")
+    dc.add_argument("--untrack-state", dest="untrack_state", action="store_true",
+                    help="추적된 채 남은 기계 살림(state/)을 index 에서 뺀다 — 백업·commit·"
+                         "pull --rebase·push 까지, 멱등 (REQ-20260909-024)")
     dc.add_argument("--json", action="store_true")
     dc.set_defaults(fn=cmd_doctor)
 
