@@ -38,52 +38,40 @@ S9 = os.path.join(ROOT, "bin", "s9")
 
 # ---- 브라우저 안에서 실제로 부르는 것들 ------------------------------------
 
-# ① 필터: 「프로젝트 없음」 옵션과 그 옵션이 실제로 거르는 것
+# ① 필터: 「프로젝트 없음」 옵션은 서지 않는다 — 프로젝트 없는 문서는 존재하지
+#    않아야 하니(REQ-20260909-026) 필터 축이 아니라 결함이다. 옵션은 전체 + slug 뿐이고,
+#    slug 를 고르면 그 프로젝트의 것만 남는다.
 FILTER = r"""
 (() => {
-  /* 세 건을 손에 쥐여 주고 화면이 무엇을 세고 무엇을 거르는지 본다 — vault 에
-     지금 마침 프로젝트 없는 문서가 있느냐에 시험이 매이면, 어느 날 그것이
-     채워지는 순간 이 계약은 조용히 안 지켜진다. */
+  /* 세 건을 손에 쥐여 주고 화면이 무엇을 세우고 무엇을 거르는지 본다 — vault 에
+     지금 마침 프로젝트 없는 문서가 있느냐에 시험이 매이면 계약이 조용히 흔들린다. */
   const el = document.querySelector('#f-project'), keep = el.value;
   const was = catalog;
   const row = (id, project) => ({id, project, type: 'request', status: 'open',
                                  user: 'x', title: id, tags: []});
   catalog = [row('REQ-A', 'demo'), row('REQ-B', ''), row('REQ-C', '')];
   const out = {};
+  const isNone = o => /프로젝트 없음/.test(o.textContent) || o.value === '__none__';
   try{
     fillProjects();
     const opts = [...el.options].map(o => ({v: o.value, t: o.textContent}));
     out.first = opts[0];
-    out.none = opts[1] || null;
-    if (out.none){
-      el.value = out.none.v;
-      const rows = filtered();
-      out.rows = rows.map(r => r.id).sort();
-      el.value = keep;
-    }
-    /* '내 것만' ON 에서는 이 옵션이 서지 않는다 — mine 가드가 먼저 걸러
-       프로젝트 없는 문서는 한 건도 안 보이므로, 남기면 조용한 빈 결과가 된다.
-
-       종전엔 이 확인이 `if (viewMe())` 안에 있었다. 신원이 빈 판에서는 통째로
-       건너뛰어 **실패가 아니라 미검증**이 됐다 — 건너뛴 검사는 없는 검사다
-       (REQ-20260907-057). 가드 자체가 `!!viewMe() && s9mine` 이라 신원이 비면
-       설 수 없으니, 신원을 여기서 고정해 언제나 잰다. 고정한 값을 화면이 실제로
-       그렇게 읽는지는 out.me 로 내보내 시험이 확인한다 — 전제가 깨지면
-       옵션 판정 대신 전제가 실패한다. */
+    out.none = [...el.options].some(isNone);
+    out.values = opts.map(o => o.v);
+    el.value = 'demo';
+    out.rows = filtered().map(r => r.id).sort();
+    el.value = keep;
+    /* '내 것만' ON 에서도 서지 않는다 — 신원을 고정해 언제나 잰다 (REQ-20260907-057). */
     const w1 = window.__whoami;
     window.__whoami = {user: '__s9mine__', registered: true, role: 'admin'};
     out.me = viewMe();
     const had = localStorage.getItem('s9mine');
     localStorage.setItem('s9mine', '1');
     fillProjects();
-    out.mine = [...el.options].some(o => /^프로젝트 없음/.test(o.textContent));
+    out.mine = [...el.options].some(isNone);
     if (had === null) localStorage.removeItem('s9mine');
     else localStorage.setItem('s9mine', had);
     window.__whoami = w1;
-    // 다 채워진 판에는 옵션이 서지 않는다 — 없는 더미를 가리키지 않는다.
-    catalog = [row('REQ-A', 'demo')];
-    fillProjects();
-    out.full = [...el.options].some(o => /^프로젝트 없음/.test(o.textContent));
   } finally {
     catalog = was;
     fillProjects();
@@ -285,29 +273,25 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
         if cls.prof_wsl:
             shutil.rmtree(cls.prof_wsl, ignore_errors=True)
 
-    # ---- ① 치울 더미가 보인다 ---------------------------------------------
-    def test_the_filter_shows_the_pile_that_is_left(self):
-        """「프로젝트 없음」이 전체 바로 다음에 선다 — 숫자는 걷었다 (REQ-20260909-021:
-        카탈로그 전체의 수라 요청만 그리는 Board 와 어긋났다)."""
+    # ---- ① 「프로젝트 없음」 옵션이 없다 ---------------------------------------
+    def test_the_filter_has_no_bare_option(self):
+        """옵션은 전체 + slug 뿐이다 — 프로젝트 없는 문서가 둘 있어도 그것을 고르는
+        축은 서지 않는다(REQ-20260909-026: 그런 문서는 있으면 안 되는 결함이다)."""
         f = self.filter
         self.assertEqual(f["first"]["v"], "", "첫 옵션은 여전히 전체다")
-        self.assertIsNotNone(f["none"], "치울 더미가 둘인데 옵션이 없다")
-        self.assertEqual(f["none"]["t"], "프로젝트 없음",
-                         "라벨에 숫자가 붙었다 — 탭마다 다른 수라 걷었다(REQ-20260909-021)")
-        self.assertNotEqual(f["none"]["v"], "",
-                            "빈 값은 전체가 이미 쓴다 — 별도 토큰이어야 한다")
-        self.assertFalse(f["full"], "다 채워진 판에 없는 더미를 가리켰다")
+        self.assertFalse(f["none"], "「프로젝트 없음」 옵션이 다시 섰다 (REQ-20260909-026)")
+        self.assertNotIn("__none__", f["values"])
+        self.assertIn("demo", f["values"], "slug 옵션이 서지 않았다")
 
-    def test_the_filter_keeps_only_the_bare_ones(self):
-        """그 옵션을 고르면 프로젝트가 빈 것만 남는다 — 라벨과 거름이 같다."""
+    def test_the_filter_keeps_only_that_project(self):
+        """slug 를 고르면 그 프로젝트의 것만 남는다 — 라벨과 거름이 같다."""
         f = self.filter
-        self.assertEqual(f["rows"], ["REQ-B", "REQ-C"],
+        self.assertEqual(f["rows"], ["REQ-A"],
                          "라벨이 말한 것과 실제로 걸러진 것이 다르다")
         self.assertEqual(f.get("me"), "__s9mine__",
                          "화면이 읽는 신원이 시험이 고정한 값이 아니다 — "
                          "'내 것만' 가드의 전제가 안 섰다")
-        self.assertFalse(f["mine"],
-                         "'내 것만' 에서는 고르는 즉시 빈 결과가 된다")
+        self.assertFalse(f["mine"], "'내 것만' 에서도 그 옵션은 서지 않는다")
 
     # ---- ② 보이는 글자가 곧 손잡이다 ---------------------------------------
     def test_the_words_on_the_card_are_the_handle(self):
@@ -337,15 +321,16 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
 
     # ---- ③ 판정도 문구도 서버 한 곳이다 ------------------------------------
     def test_the_window_offers_only_what_i_can_write(self):
-        """창에는 내가 contributor 이상인 프로젝트와 「없음」만 선다."""
+        """창에는 내가 contributor 이상인 프로젝트만 선다 — 「없음」(빼는 길)은
+        걷었다(REQ-20260909-026: 프로젝트 없는 문서는 두지 않는다)."""
         pick = self.faces["pick"]
         self.assertTrue(self.faces["me"],
                         "화면의 신원이 비었다 — 목록 판정의 전제가 안 섰다")
         keys = [it["key"] for it in pick["items"]]
-        self.assertEqual(keys[0:1], [k for k in keys[0:1] if k],
-                         "맨 위 항목의 key 가 비었다 — 취소와 구별되지 않는다")
-        self.assertEqual(pick["items"][0]["label"], "없음",
-                         "빼는 길이 맨 위에 없다")
+        self.assertTrue(all(keys), "key 가 빈 항목이 있다 — 취소와 구별되지 않는다")
+        self.assertNotIn("없음", [it["label"] for it in pick["items"]],
+                         "빼는 길이 다시 섰다 (REQ-20260909-026)")
+        self.assertNotIn("__none__", keys)
         self.assertIn("mine", keys)
         self.assertIn("own", keys)
         for out in ("watch", "gone", "other"):
@@ -357,8 +342,12 @@ class TheProjectIsChangedFromTheCard(unittest.TestCase):
         # 지금 속한 곳이 내 목록에 없어도 창이 거짓말하지 않는다
         self.assertIn("other",
                       [it["key"] for it in self.faces["pickStranger"]["items"]])
-        # 빈 자리에서는 「없음」이 곧 지금 값이다
-        self.assertTrue(self.faces["pickBare"]["items"][0]["cur"])
+        # 빈 자리(결함 문서)에서도 「없음」은 서지 않는다 — 어느 것도 「지금 이것」이
+        # 아니고, 옮길 곳만 선다 (REQ-20260909-026)
+        bare = self.faces["pickBare"]["items"]
+        self.assertTrue(bare, "빈 자리에 옮길 곳이 하나도 없다")
+        self.assertFalse(any(it["cur"] for it in bare))
+        self.assertNotIn("없음", [it["label"] for it in bare])
         # 못 받은 것과 없는 것은 다른 화면이다
         self.assertIn("받지 못했습니다", self.faces["pickLost"]["empty"])
         self.assertEqual(self.faces["pickLost"]["items"], [])

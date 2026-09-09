@@ -148,7 +148,12 @@ class JiraCreate(unittest.TestCase):
         f = Stub.posts[0]["fields"]
         self.assertEqual(f["project"]["key"], "MP1")
         self.assertEqual(f["labels"], ["s9-" + rid])
-        self.assertTrue(f["summary"].startswith(f"[{rid}] "))
+        # 제목에 문서 번호 접두를 달지 않는다(REQ-20260909-039) — 번호는 description 에 있다
+        self.assertFalse(f["summary"].startswith("["), f["summary"])
+        self.assertEqual(f["summary"], "환불 API")
+        texts = [c.get("text", "") for para in f["description"]["content"]
+                 for c in para.get("content", [])]
+        self.assertTrue(any(rid in t for t in texts), texts)
 
     def test_c2_idempotent_by_key_and_by_label(self):
         rid = self.new_request()
@@ -260,7 +265,7 @@ class JiraTitleHold(JiraCreate):
         self.assertEqual([r["kind"] for r in self.m.jira_outbox_read()], ["create"])
         done = self.m.jira_outbox_tick(_sleep=self.slept.append)
         self.assertEqual(done, [(rid, True)])
-        self.assertTrue(Stub.posts[-1]["fields"]["summary"].endswith("] 이슈 제목 정리"))
+        self.assertEqual(Stub.posts[-1]["fields"]["summary"], "이슈 제목 정리")
         # description 첫 문단은 완료 기준
         first = Stub.posts[-1]["fields"]["description"]["content"][0]["content"][0]["text"]
         self.assertTrue(first.startswith("완료 기준:"), first)
@@ -283,7 +288,7 @@ class JiraTitleHold(JiraCreate):
         self.assertEqual([r["kind"] for r in self.m.jira_outbox_read()], ["title"])
         done = self.m.jira_outbox_tick(_sleep=self.slept.append)
         self.assertEqual(done, [(rid, True)])
-        self.assertEqual(Stub.puts[-1][1]["fields"]["summary"], f"[{rid}] 환불 API (개정)")
+        self.assertEqual(Stub.puts[-1][1]["fields"]["summary"], "환불 API (개정)")
         self.assertIn("제목 맞춤", self.doc(rid)[1])
 
 

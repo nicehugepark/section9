@@ -290,29 +290,10 @@ function fillProjects(){
      '내 것만' ON 에서는 세우지 않는다: mine 가드가 `mine.has(r.project)` 로
      먼저 걸러 프로젝트 없는 문서는 한 건도 안 보이므로, 남겨 두면 고르는 순간
      조용한 빈 결과가 된다 (미등록 slug 를 숨기는 그 규칙과 같다). */
-  if (!mineActive()){
-    const none = catalog.filter(r => !r.project).length;
-    if (none){
-      const o = document.createElement("option");
-      o.value = NO_PROJECT;
-      /* 이 수는 저장소의 건수가 아니라 **지금 화면이 든 카탈로그**의 건수다
-         (REQ-20260907-074 → REQ-20260908-005). 한때 전량을 받기 전에는 숫자를
-         떼어 봤는데, 그러면 이 숫자가 원래 있던 자리 — 보드에서 카드의 프로젝트를
-         바꿀 때 7 → 6 으로 줄어 「어디로 갔나」에 답하던 자리(REQ-20260906-053) —
-         가 통째로 사라진다. 그래서 숫자는 늘 세운다.
-         한 화면 안에서 36 이 223 으로 뛰던 것은 좁은 응답이 넓은 판을 덮어쓰던
-         것이었고 그쪽을 고쳤다(REQ-20260907-066 mergeNarrow) — 한 번 전량을
-         받으면 그 뒤로는 줄지 않는다. */
-      /* 숫자는 걷었다 (REQ-20260909-021, 주인 실측 2026-09-09: 「프로젝트 없음이 235인데
-         하나도 보이지 않는다」). 이 수는 카탈로그 전체 — 세션·지식·프로젝트 문서까지 —
-         의 것이라 요청만 그리는 Board 와 어긋난다(235 중 요청은 2). 7 → 6 으로 「어디로
-         갔나」에 답하던 자리는 탭마다 다른 수를 대야 참인데, 그러면 같은 옵션이 탭을
-         바꿀 때마다 다른 말을 한다. 옵션은 「프로젝트 없음」 한 낱말이고, 몇 건인지는
-         걸러진 뒤 화면의 건수(열 머리의 수·목록 수)가 말한다. */
-      o.textContent = "프로젝트 없음";
-      el.appendChild(o);
-    }
-  }
+  /* 「프로젝트 없음」 옵션은 걷었다 (REQ-20260909-026, 주인: 「general 프로젝트가 생긴 뒤로
+     프로젝트 없음 문서는 존재하지 않아야 한다 — 새 설치에서도」). 기본 프로젝트가 서는
+     저장소에서는 빈 project 문서가 생기지 않고, 옛 문서는 한 번에 채웠다(233건). 남은
+     것이 있더라도 그것은 필터 축이 아니라 고칠 결함이다 — test_no_projectless 가 잡는다. */
   const known = new Set();
   scoped.forEach(p => {
     known.add(p.slug);
@@ -421,9 +402,7 @@ function filtered(skipQ, skipType, skip){
   return workOrder(catalog).filter(r => {
     if (mine && !mine.has(r.project)) return false;
     if (!off("user") && u && r.user !== u) return false;
-    // 「프로젝트 없음」은 slug 가 아니라 빈 값을 묻는 조건이다 (REQ-20260906-053)
-    if (!off("project") && p
-        && (p === NO_PROJECT ? !!r.project : r.project !== p)) return false;
+    if (!off("project") && p && r.project !== p) return false;
     if (!off("tag") && t && !(r.tags||[]).includes(t)) return false;
     if (!typeOff && ty && r.type !== ty) return false;
     if (q){

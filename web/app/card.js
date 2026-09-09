@@ -2322,9 +2322,8 @@ function projectPick(row){
      이것」을 두고 거짓말하면 어디에 속해 있는지 알 길이 없다. */
   if (cur && !items.some(it => it.cur))
     items.unshift({key: cur, label: cur, cur: true, note: "지금 이것"});
-  // 되돌릴 길은 맨 위에 — 프로젝트를 정하는 창이 빼는 길도 함께 든다.
-  items.unshift({key: NO_PROJECT, label: "없음", cur: !cur,
-                 note: cur ? "프로젝트에서 뺍니다" : "지금 이것"});
+  // 「없음」은 걷었다 (REQ-20260909-026) — 프로젝트 없는 문서는 존재하지 않아야 하니
+  // 빼는 길을 창에 두지 않는다. 옮기는 길만 남는다.
   return {items, empty: "고를 수 있는 프로젝트가 없습니다"
           + " — Projects 탭에서 멤버로 들어가면 여기에 뜹니다."};
 }
@@ -2340,12 +2339,10 @@ async function projectDoc(id){
     pickNote: "프로젝트",
     confirm: {ok: "프로젝트 바꾸기",
               idle: "지금 그 프로젝트 그대로입니다.",
-              say: it => it.key === NO_PROJECT
-                ? "어느 프로젝트에도 속하지 않게 합니다."
-                : `${it.key} 로 옮깁니다.`},
+              say: it => `${it.key} 로 옮깁니다.`},
     cancel: "그만두기"});
   if (!picked || !picked.key) return;
-  const next = picked.key === NO_PROJECT ? "" : picked.key;
+  const next = picked.key;
   if (next === cur) return;
   try{
     const res = await fetch("/api/doc/set", {method: "POST",

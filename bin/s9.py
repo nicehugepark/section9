@@ -13184,6 +13184,11 @@ def do_set(doc_id, fields, actor="", via="", priority=None):
     if fields.get("project") is not None:
         new = str(fields["project"]).strip()
         old = str(meta.get("project") or "").strip()
+        if not new:
+            # 프로젝트 없는 문서는 두지 않는다 (REQ-20260909-026) — 빼는 길은 없고
+            # 옮기는 길만 있다. 기본 프로젝트가 있으니 「없음」은 갈 곳이 아니다.
+            raise ValueError("프로젝트를 비울 수 없습니다 — 옮길 프로젝트를 고르세요 "
+                             "(터미널: s9 project ls)")
         if new and not load_project(new):
             raise ValueError(f"「{new}」이라는 프로젝트가 없습니다 — 목록을 새로 받아 다시 골라 주세요 "
                              f"(터미널: s9 project ls)")
@@ -18568,6 +18573,9 @@ def session_log_append(session, text, user=None):
                 "summary": f"세션 audit log ({machine}, {session})",
                 "status": "published", "user": user, "machine": machine,
                 "session": session, "tags": ["session-log"],
+                # 세션 문서도 프로젝트를 갖는다 (REQ-20260909-026) — 세션에 묶인 프로젝트가
+                # 있으면 그것, 없으면 기본 프로젝트. 프로젝트 없는 문서는 두지 않는다.
+                "project": (str((b.get("project") or "")).strip() or default_project_slug() or ""),
                 "created": ts, "updated": ts,
             }
             write_doc(path, meta, "\n## Notes\n\n## History\n")
@@ -26702,7 +26710,9 @@ def jira_issue_fields(meta, j):
     doc_id = meta.get("id", "")
     return {"project": {"key": j["project_key"]},
             "issuetype": {"name": j.get("issue_type") or "Task"},
-            "summary": f"[{doc_id}] {meta.get('title') or ''}"[:250],
+            # 제목은 section9 제목 그대로 — [REQ-…] 접두는 붙이지 않는다(주인 지적 2026-09-09
+            # 11:28, REQ-20260909-039). 문서 번호는 description 의 「section9 요청 …」 줄에 있다.
+            "summary": jira_summary_of(meta),
             "labels": [jira_label(doc_id)],
             # 첫 문단이 완료 기준이다 — Jira 의 접힌 미리보기에서도 보인다(주인 캡처 MP1-4
             # 는 description 이 접혀 비어 보였다, REQ-20260909-032).
@@ -26712,6 +26722,11 @@ def jira_issue_fields(meta, j):
                 f"section9 요청 {doc_id}",
                 f"담당: {meta.get('user') or ''} · 크기: {meta.get('size') or ''} · "
                 f"상태: {meta.get('status') or ''}"])}
+
+
+def jira_summary_of(meta):
+    """Jira 이슈 제목 = section9 제목 (접두 없음, 250자). 한 곳 — 생성과 갱신이 같이 쓴다."""
+    return (str(meta.get("title") or "").strip() or str(meta.get("id") or ""))[:250]
 
 
 def jira_find_issue(user, j, doc_id, **kw):
@@ -26926,7 +26941,7 @@ def jira_title_push(doc_id, actor="", **kw):
     user = meta.get("user") or actor
     if jira_auth_header(user)[0] is None:
         return {"ok": False, "error": f"@{user} 의 준비물이 없다", "skipped": True}
-    summary = f"[{meta.get('id') or doc_id}] {meta.get('title') or ''}"[:250]
+    summary = jira_summary_of(meta)
     st, _d, err = jira_http(user, "PUT", f"/rest/api/3/issue/{cur['key']}",
                             body={"fields": {"summary": summary}}, **kw)
     if st in (200, 204):

@@ -91,6 +91,9 @@ class ProjectAccessGate(unittest.TestCase):
             "--user", ALICE)
         cli("project", "member", "pa", "rm", ALICE, "--user", ROOT_U)
         cli("project", "member", "pa", "rm", VIC, "--user", ROOT_U)
+        # S4 의 갈 곳 — 프로젝트를 비우는 길은 없으니(REQ-20260909-026) alice 가
+        # contribute 할 수 있는 다른 프로젝트가 있어야 「옮긴다」를 잴 수 있다.
+        cli("project", "add", "pc", "--name", "PC", "--user", ALICE)
         cli("index", "rebuild", user=ROOT_U)
 
     @classmethod
@@ -180,9 +183,10 @@ class ProjectAccessGate(unittest.TestCase):
             self.assertIn("pa", r.stdout + r.stderr)
             self.assertEqual(self.project_of(self.d_attack), "pa")
 
-        with self.subTest("S6 공격: 프로젝트 없음으로 빼는 것도 옛 권한을 요구"):
+        with self.subTest("S6 공격: 프로젝트를 비우는 길 자체가 없다 (REQ-20260909-026)"):
             r = cli("set", self.d_attack, "--project", "", user=BOB, expect=None)
             self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("비울 수 없", r.stdout + r.stderr)
             self.assertEqual(self.project_of(self.d_attack), "pa")
 
         with self.subTest("S7 회귀: 새 프로젝트 권한 부족은 그대로 거절"):
@@ -208,8 +212,8 @@ class ProjectAccessGate(unittest.TestCase):
             self.assertEqual(self.project_of(self.d_admin), "pb")
 
         with self.subTest("S4 경계: 만든 사람은 비멤버여도 자기 문서를 옮긴다"):
-            cli("set", self.d_creator, "--project", "", user=ALICE)
-            self.assertEqual(self.project_of(self.d_creator), "")
+            cli("set", self.d_creator, "--project", "pc", user=ALICE)
+            self.assertEqual(self.project_of(self.d_creator), "pc")
 
 
     # ── 026. 가시성 ─────────────────────────────────────────────────────
