@@ -1254,7 +1254,11 @@ function docJiraLive(m){
   return !!(pr && pr.jira && pr.jira.project_key);
 }
 function docJiraRowHTML(m, rec){   // 이름은 Settings 의 jiraRowHTML(jira.js)과 겹치지 않게 — 번들이 한 이름 공간이다
-  const j = (rec && rec.jira) || (m && typeof m.jira === "object" && m.jira) || {};
+  // 문서 메타가 먼저다 — 방금 /api/doc 로 받은 것이 카탈로그 줄보다 새롭다. 잇기·끊기 뒤
+  // reloadShowing 이 카탈로그 갱신보다 먼저 그리므로 카탈로그를 앞세우면 옛 상태가 남았다
+  // (맥 Safari 실측 2026-09-09 11:55, REQ-20260909-047). 끊은 뒤의 jira 는 빈 객체라
+  // 그것도 「값」이다 — 빈 객체를 거짓으로 보고 카탈로그로 넘어가면 같은 결함이다.
+  const j = (m && typeof m.jira === "object" && m.jira) || (rec && rec.jira) || {};
   const live = docJiraLive(m);
   if (!j.key && !j.pending && !j.last_error){
     if (!live) return "";
@@ -1298,7 +1302,7 @@ async function jiraLinkDoc(id){
         title: "이슈를 잇지 못했습니다", desc: String(d.error || ""), ok: "닫기"});
       return;
     }
-    refreshCatalog(true);
+    await refreshCatalog(true);   // 카드·목록의 키 표가 판과 같은 순간에 바뀐다
     reloadShowing(id);
   }catch(e){
     s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
@@ -1321,7 +1325,7 @@ async function jiraUnlinkDoc(id){
         title: "연결을 끊지 못했습니다", desc: String(d.error || ""), ok: "닫기"});
       return;
     }
-    refreshCatalog(true);
+    await refreshCatalog(true);   // 카드·목록의 키 표가 판과 같은 순간에 바뀐다
     reloadShowing(id);
   }catch(e){
     s9dlg({kind: "alert", cap: "연결", title: "서버에 닿지 못했습니다",
