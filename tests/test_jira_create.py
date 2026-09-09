@@ -111,7 +111,7 @@ class JiraCreate(unittest.TestCase):
                 os.environ[k] = v
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def new_request(self, origin="human", size="S", title="환불 API"):
+    def new_request(self, origin="human", size="S", title="환불 API", body_text=None):
         """요청 문서 하나 — cmd_new 를 지나야 훅(outbox)까지 잰다."""
         import contextlib, io, types
         args = types.SimpleNamespace(
@@ -119,7 +119,8 @@ class JiraCreate(unittest.TestCase):
             status="open", size=size, priority=None, user="hong", assignee=None,
             tag_list=[], parent=None, derived_from=None, relates=None, why="",
             ref_doc=None, ref_link=None, ref_file=None, needs_os="", from_chat="",
-            project="pay", project_tag=None, body="비밀스러운 본문 SECRET-BODY-LINE",
+            project="pay", project_tag=None,
+            body=body_text if body_text is not None else "비밀스러운 본문 SECRET-BODY-LINE",
             body_file=None, origin=origin, agent="")
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -218,14 +219,47 @@ class JiraCreate(unittest.TestCase):
         self.assertEqual(Stub.log, [])
         self.assertEqual(self.doc(rid)[0]["jira"]["pending"], "create")
 
-    def test_c6_the_body_never_leaves(self):
+    def _desc_texts(self, post):
+        return [c.get("text", "") for para in post["fields"]["description"]["content"]
+                for c in para.get("content", [])]
+
+    def test_c6_the_original_goes_with_goal_and_summary(self):
+        """주인 결정 2026-09-09 13:02(REQ-20260909-054): 원문은 반드시 싣는다 — 완료 기준·요약
+        다음에. 노트·토큰은 여전히 나가지 않는다."""
         rid = self.new_request()
         self.create(rid)
         sent = json.dumps(Stub.posts[0], ensure_ascii=False)
-        self.assertNotIn("SECRET-BODY-LINE", sent)
         self.assertNotIn("fake-token", sent)
-        self.assertIn("환불을 돕는다", sent)
-        self.assertIn("환불이 된다", sent)
+        texts = self._desc_texts(Stub.posts[0])
+        self.assertTrue(texts[0].startswith("완료 기준: 환불이 된다"), texts)
+        self.assertTrue(texts[1].startswith("요약: 환불을 돕는다"), texts)
+        self.assertEqual(texts[2], "원문:")
+        self.assertIn("비밀스러운 본문 SECRET-BODY-LINE", texts[3])
+
+    def test_c6b_a_secret_shaped_original_is_replaced_by_a_notice(self):
+        """실패 — 원문에 비밀 모양이 있으면 원문 대신 「싣지 않음」 한 줄."""
+        tok = "AT" + "ATT3" + "x" * 30           # 실제 모양은 guard 가 막는다 — 조립한다
+        rid = self.new_request(body_text="토큰: " + tok)
+        self.create(rid)
+        sent = json.dumps(Stub.posts[0], ensure_ascii=False)
+        self.assertNotIn(tok, sent)
+        self.assertTrue(any("싣지 않음" in t for t in self._desc_texts(Stub.posts[0])))
+
+    def test_c6c_a_long_original_is_cut(self):
+        """경계 — 3,000자를 넘으면 자르고 「이하 생략」."""
+        rid = self.new_request(body_text="가" * 3500)
+        self.create(rid)
+        texts = self._desc_texts(Stub.posts[0])
+        joined = "".join(texts)
+        self.assertIn("이하 생략", joined)
+        self.assertLess(len(joined), 3400)
+
+    def test_c6d_without_an_original_there_is_no_original_paragraph(self):
+        """회귀 — 함수 단위: 원문이 없는 본문이면 원문 문단이 없다."""
+        j = {"project_key": "MP1", "mark": "on"}
+        f = self.m.jira_issue_fields({"id": "REQ-X", "title": "t", "summary": "s", "goal": "g"}, j, "## Notes\n")
+        texts = [c["text"] for p in f["description"]["content"] for c in p["content"]]
+        self.assertFalse(any(t.startswith("원문") for t in texts), texts)
 
     def test_c7_new_request_hook_queues_without_network(self):
         rid = self.new_request()

@@ -26806,8 +26806,42 @@ def _jira_adf(lines):
                          "content": [{"type": "text", "text": ln}]} for ln in lines if ln]}
 
 
-def jira_issue_fields(meta, j):
-    """이슈에 실을 것 — 허용 목록뿐(title·summary·goal·요청 id). 본문은 나가지 않는다."""
+JIRA_ORIGINAL_MAX = 3000   # description 에 싣는 원문의 상한(글자)
+
+
+def jira_original_of(body):
+    """요청 본문의 「## Original」 절 — 다음 절(## …) 앞까지. 없으면 ''."""
+    b = body or ""
+    if "## Original" not in b:
+        return ""
+    rest = b.split("## Original", 1)[1]
+    out = []
+    for ln in rest.splitlines():
+        if ln.startswith("## "):
+            break
+        out.append(ln)
+    return "\n".join(out).strip()
+
+
+def jira_original_lines(body):
+    """원문을 description 문단들로 — 주인 결정 2026-09-09 13:02(REQ-20260909-054): 완료 기준·
+    요약과 함께 **원문은 반드시** 싣는다. 비밀 모양이 있으면 원문 대신 그 사실 한 줄,
+    3,000자를 넘으면 자른다(첫 문단 「원문:」 뒤에 문단마다 하나)."""
+    text = jira_original_of(body)
+    if not text:
+        return []
+    what = jira_comment_secret(text)
+    if what:
+        return [f"원문: (비밀 모양 {what} 이 있어 싣지 않음 — 문서에서 보십시오)"]
+    if len(text) > JIRA_ORIGINAL_MAX:
+        text = text[:JIRA_ORIGINAL_MAX].rstrip() + " …(이하 생략)"
+    paras = [p.strip() for p in text.split("\n\n") if p.strip()]
+    return ["원문:"] + paras
+
+
+def jira_issue_fields(meta, j, body=""):
+    """이슈에 실을 것 — title·summary·goal·원문(Original)·요청 id. 노트는 나가지 않는다
+    (코멘트는 content=notes 일 때만, REQ-20260909-034)."""
     doc_id = meta.get("id", "")
     mark = jira_mark_on(j)
     fields = {"project": {"key": j["project_key"]},
@@ -26820,6 +26854,7 @@ def jira_issue_fields(meta, j):
               "description": _jira_adf([
                   f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
                   f"요약: {meta.get('summary')}" if meta.get("summary") else "",
+                  *jira_original_lines(body),
                   f"section9 요청 {doc_id}" if mark else "",
                   f"담당: {meta.get('user') or ''} · 크기: {meta.get('size') or ''} · "
                   f"상태: {meta.get('status') or ''}"])}
@@ -26935,7 +26970,7 @@ def jira_issue_create(doc_id, actor="", manual=False, **kw):
     if st not in (200, 404):
         return _jira_create_failed(doc_id, f"검색 실패({st})", cur)
     st, d, err = jira_http(user, "POST", "/rest/api/3/issue",
-                           body={"fields": jira_issue_fields(meta, j)}, **kw)
+                           body={"fields": jira_issue_fields(meta, j, _body)}, **kw)
     if st in (200, 201) and isinstance(d, dict) and d.get("key"):
         key = d["key"]
         status, cat = "", ""

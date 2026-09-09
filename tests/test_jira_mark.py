@@ -188,7 +188,9 @@ class JiraMark(unittest.TestCase):
         texts = adf_texts(f["description"])
         self.assertFalse(any("section9" in t for t in texts), texts)
         self.assertFalse(any(rid in t for t in texts), texts)
+        # 원문 문단은 REQ-20260909-054 부터 실린다 — section9 표시와는 무관하게
         self.assertEqual(texts, ["완료 기준: 환불이 된다", "요약: 환불을 돕는다",
+                                 "원문:", "원문은 나가지 않는다",
                                  "담당: hong · 크기: S · 상태: open"])
         self.assertEqual(f["summary"], "환불 API")
         meta, _ = self.doc(rid)
