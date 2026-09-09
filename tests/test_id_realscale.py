@@ -11,11 +11,15 @@
 안의 한 묶음(`.idr`)으로 흐름에 서므로, **못 서면 묶음째 다음 줄로 내려간다.**
 그래서 재는 것도 셋으로 갈린다:
 
-  · 묶음은 갈라지지 않는다 — 벨트와 시각은 어느 폭에서도 같은 줄에 있다.
+  · 묶음은 갈라지지 않는다 — 벨트와 시각은 어느 폭에서도 같은 줄에 있고,
+    **그 사이가 벌어지지도 않는다.** 세로로 붙어 있어도 사이가 20px 벌어지면
+    사람은 「⏸ 만 남고 시각은 저쪽」으로 읽는다(주인 반려 2026-09-09 17:09).
+    빈 자리는 손잡이가 칸의 폭을 정하던 데서 왔다 — 이제 칸의 폭은 시각이
+    정하고 손잡이는 그 칸 안에 떠 있다(web/css/board.css `.idnow`).
   · 흔한 폭(320px, 실제 Board 열은 최소 210px·보통 216~288px)에서는 묶음이
     식별자와 같은 첫 줄에 선다.
-  · 그보다 좁으면 묶음째 내려가되 식별자의 왼끝은 그대로다 — 카드끼리 id 의
-    왼끝이 어긋나지 않는다.
+  · 그보다 좁으면 묶음째 내려가되 식별자의 왼끝은 그대로고, 내려간 묶음은
+    줄의 오른끝에 선다 — 카드끼리 id 의 왼끝도 시각의 오른끝도 어긋나지 않는다.
 
 진짜 브라우저(WSL 이면 Windows Chrome)를 배율 1 · 1.25 · 1.5 로 띄우고
 (배율 불변 — 비정수 배율의 반올림 함정은 DOC-20260831-004), 스킨 열 개 ×
@@ -27,9 +31,11 @@
   plain   점 없음 · 16자 표준형 (같은 이름의 문서가 없으면 화면이 쓰는 형태)
   dotted  점 있음 · 21자 — 점이 식별자를 둘째 항목으로 만들어 주던 경우
   tiny    짧은 식별자 — 한 줄에 드는 카드가 공연히 내려가지 않는지
+  live    주인 화면의 그 카드 — 점 있음 · 16자 · 분초 경과. 극단만 재던 것이
+          084 를 통과시켰다.
 
-폭 두 벌: 170px 은 신고된 결함의 그 폭(cork compact @1000px), 320px 은 흔한
-Board 열이다.
+폭 세 벌: 170px 은 신고된 결함의 그 폭(cork compact @1000px), 220px 은 주인
+화면의 카드 폭(1440 창), 320px 은 넉넉한 Board 열이다.
 
 검증 환경이 없으면 조용히 지나가지 않고 skip 사유를 남긴다.
 캡처는 scratchpad/req021/ 에 남는다 — 수치는 눈의 보조다(browser-verify).
@@ -63,10 +69,19 @@ CARDS = (
     ("plain", False, "REQ-20260831-021", "999d 23h"),
     ("dotted", True, "REQ-20260831-021-62x6", "48m 25s"),
     ("tiny", False, "REQ-1", "12s"),
+    # 주인 화면에 실제로 서 있는 그 카드 (2026-09-09 캡처): 진행 중이라 점이
+    # 있고, 같은 이름의 문서가 없어 식별자는 16자, 경과는 분·초다. 앞의 넷은
+    # 극단을 재고 이것은 **흔한 것**을 잰다 — 084 가 통과했던 까닭이 흔한
+    # 카드를 아무도 재지 않았기 때문이다.
+    ("live", True, "REQ-20260909-099", "4m 55s"),
 )
-# 170px = 신고된 결함의 그 폭, 320px = 흔한 Board 열(기본 열은 최소 210 · 보통 216~288)
-NARROW, COMMON = 170, 320
-WIDTHS = (NARROW, COMMON)
+# 170px = 신고된 결함의 그 폭, 220px = 주인 화면의 카드 폭(1440 창 · Board 열
+# 240px 에서 안여백을 뺀 값 · `.col{flex:1 1 252px;min-width:210px}`), 320px = 넉넉한 열.
+# **REAL 을 재지 않았던 것이 084 를 통과시켰다** (주인 반려 2026-09-09 17:09):
+# 320px 만 재면 화면이 실제로 쓰는 폭이 검사 밖에 있어, 그 폭에서 묶음이 통째로
+# 아랫줄로 내려가는 것을 「계약대로」로 읽었다.
+NARROW, REAL, COMMON = 170, 220, 320
+WIDTHS = (NARROW, REAL, COMMON)
 
 # 벨트(⏸)도 카드가 실제로 쓰는 마크업 그대로 — 손잡이가 있는 카드라야 묶음이
 # 갈라지는지 잴 수 있다. 글리프는 화면과 같은 viewBox 를 쓴다.
@@ -255,6 +270,76 @@ class TheIdAndTheClockNeverShareInk(unittest.TestCase):
                     abs(r["belt"]["t"] - r["ela"]["t"]), 3.0,
                     "%s 에서 묶음이 갈라졌다: 벨트 t=%.1f · 시각 t=%.1f"
                     % (self._where(r), r["belt"]["t"], r["ela"]["t"]))
+        with self.subTest("the_group_holds_together_tightly"):
+            # 갈라짐은 세로로만 오지 않는다 — 벨트와 시각이 같은 줄에 있어도 그
+            # 사이가 벌어지면 사람은 「⏸ 만 남고 시각은 저쪽」으로 읽는다.
+            #
+            # 틈의 상한은 **칸의 최소폭(52px)**이다. 종전에는 손잡이가 흐름에 서서
+            # 칸이 손잡이만큼 넓어졌고 그 상한이 없었다 — 실화면에서 벌어진 것이
+            # 그것이다(주인 캡처 2026-09-09 15:54). 이제 시각이 52px 보다 길면
+            # (1분 넘게 지난 카드 대부분) 틈이 아예 없고, 짧으면 그 차만큼만 남는다.
+            self.maxDiff = None
+            self.assertEqual(
+                [], ["%s 틈=%.1f (벨트 %.1f · 칸 %.1f · 시각 %.1f)"
+                     % (self._where(r), r["ela"]["l"] - r["belt"]["r"],
+                        r["belt"]["r"] - r["belt"]["l"],
+                        r["idr"]["r"] - r["idr"]["l"],
+                        r["ela"]["r"] - r["ela"]["l"])
+                     for r in self.rows
+                     if r["ela"]["l"] - r["belt"]["r"] > 25.0],
+                "벨트와 시각 사이가 칸의 최소폭보다 더 벌어졌다 — 한 묶음으로 "
+                "안 읽힌다")   # 최악은 calm/compact 의 「12s」(시각 29.7px) = 24.3
+            self.assertEqual(
+                [], ["%s 틈=%.1f (시각 %.1f)"
+                     % (self._where(r), r["ela"]["l"] - r["belt"]["r"],
+                        r["ela"]["r"] - r["ela"]["l"])
+                     for r in self.rows
+                     if r["ela"]["r"] - r["ela"]["l"] >= 52.0
+                     and r["ela"]["l"] - r["belt"]["r"] >= 6.0],
+                "시각이 칸의 최소폭보다 긴데도 벨트와 사이가 벌어졌다 — 칸의 폭을 "
+                "시각 아닌 것이 정하고 있다")
+        with self.subTest("the_handle_never_reaches_the_belt_ink"):
+            # 손잡이는 칸 안에 떠 있으므로, 시각이 칸의 최소폭보다 짧으면 왼쪽으로
+            # 넘친다. 넘쳐도 벨트의 **잉크**에는 닿지 않아야 한다 — 27px 과녁 안의
+            # 그림(과 손이 얹혔을 때의 원)은 13px 이라 상자 양쪽에 7px 씩 흰 자리가
+            # 있고, 넘침은 그 안에서 끝나야 한다. 칸의 최소폭(7ch)이 그 자다.
+            self.maxDiff = None
+            bad = ["%s 손잡이 왼끝이 벨트 상자 안으로 %.1fpx 들어갔다 "
+                   "(그림까지 7.0)"
+                   % (self._where(r), r["belt"]["r"] - r["pick"]["l"])
+                   for r in self.rows if r["pick"]["l"] < r["belt"]["r"] - 6.5]
+            self.assertEqual([], bad, "손이 얹히면 손잡이가 벨트를 덮는다")
+        with self.subTest("the_group_drops_whole_at_real_columns"):
+            # 주인 화면이 실제로 쓰는 폭(220px)에서 재는 갈래. 여기서 못 서는
+            # 카드가 있다는 것 자체는 결함이 아니다 — 21자 식별자를 깎지 않는 한
+            # 넣을 수 없는 폭이 있고(REQ-20260831-021), 그때는 묶음째 내려가는
+            # 것이 계약이다. 결함은 **어떻게** 내려가느냐다: 내려간 묶음은 줄의
+            # 오른끝(넉넉한 폭에서 서던 그 자리)에 서야 하고, 식별자의 왼끝은
+            # 그대로여야 한다. 주인이 본 것은 이 자리이므로 여기서 잰다.
+            self.maxDiff = None
+            ref = {(r["scale"], r["skin"], r["den"], r["tag"]): r
+                   for r in self.rows if r["w"] == COMMON}
+            bad = []
+            for r in self.rows:
+                if r["w"] != REAL:
+                    continue
+                w = ref[(r["scale"], r["skin"], r["den"], r["tag"])]
+                off = r["idn"]["l"] - r["card"]["l"]
+                ref_off = w["idn"]["l"] - w["card"]["l"]
+                if not -0.5 <= off <= ref_off + 1.5:
+                    bad.append("%s 식별자의 왼끝이 밀렸다 (%.1f, 넉넉한 폭 %.1f)"
+                               % (self._where(r), off, ref_off))
+                if abs(r["idr"]["t"] - r["idn"]["t"]) < 3.0:
+                    continue                    # 한 줄에 섰다 — 더 볼 것 없다
+                if r["idr"]["t"] < r["idn"]["t"]:
+                    bad.append("%s 묶음이 식별자 **위**로 갔다" % self._where(r))
+                pad = r["card"]["r"] - r["idr"]["r"]
+                ref_pad = w["card"]["r"] - w["idr"]["r"]
+                if pad > ref_pad + 1.5:
+                    bad.append("%s 내려간 묶음이 줄의 오른끝을 놓쳤다 (오른쪽 "
+                               "여백 %.1f, 넉넉한 폭에서 %.1f)"
+                               % (self._where(r), pad, ref_pad))
+            self.assertEqual([], bad, "실제 열 폭에서 묶음이 제대로 안 내려갔다")
         with self.subTest("the_clock_shares_the_id_line_at_common_widths"):
             # 흔한 폭(320px)에서는 묶음이 식별자와 같은 첫 줄에 선다 — 스킨 예외
             # 없이. soft·calm 이 시각을 제 줄로 내리던 예외가 084 로 없어졌다.

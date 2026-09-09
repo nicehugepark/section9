@@ -13,8 +13,12 @@
     한 줄에 서든 아랫줄로 내려가든 벨트가 시각 곁을 떠나지 않는다.
   · 시각과 손잡이는 `.idnow` 의 **한 칸을 겹쳐** 쓴다 — 손이 얹혀 손잡이가
     시각을 대신해도 칸 폭이 변하지 않아 줄이 흔들리지 않는다.
-  · 둘 중 어느 것도 절대 위치로 뜨지 않는다 — 뜨는 순간 흐름 밖이 되어
-    좁은 카드에서 묶음이 다시 갈라진다(주인 캡처 2026-09-09 15:54).
+  · **칸의 폭은 시각이 정한다** — 손잡이는 그 칸 안에 떠 있다. 손잡이를 흐름에
+    세우면 칸이 「이어 말하기」의 폭(54px)으로 넓어져, 그보다 짧은 시각을 단
+    카드마다 벨트와 시각 사이에 빈 자리가 생긴다. 세로로는 안 갈라져도 사람은
+    그 빈 자리를 갈라짐으로 읽는다 (주인 반려 2026-09-09 17:09).
+  · 시각은 절대 위치로 뜨지 않는다 — 뜨는 순간 흐름 밖이 되어 좁은 카드에서
+    묶음이 다시 갈라진다(주인 캡처 2026-09-09 15:54).
   · 그러므로 id 줄과 제목에는 **예약폭이 없다** — 어느 스킨에서도.
 
 폭 0 스트럿(`::before`)은 그대로 산다: flex 는 줄의 첫 항목을 아랫줄로 못
@@ -92,13 +96,36 @@ class TheIdNeverCoversTheClock(unittest.TestCase):
             self.assertEqual("1/1", (_decl(kids[0], "grid-area") or "").replace(" ", ""),
                              "칸 안의 둘이 같은 자리를 안 쓴다 — 겹쳐야 폭이 "
                              "변하지 않는다")
+            # 흐름 밖으로 뜨면 안 되는 것은 **경과 시각**이다 — 그것이 벨트와
+            # 한 묶음으로 움직여야 하는 쪽이다. 손잡이는 반대로 떠 있어야 한다:
+            # 흐름에 서면 칸의 폭을 「이어 말하기」(54px)로 넓혀 짧은 시각을 단
+            # 카드마다 벨트와 시각 **사이**에 빈 자리를 만든다 (REQ-20260909-084
+            # 재작업 · 주인 반려 2026-09-09 17:09).
             for sel, dec in self.rules:
-                if ".elapsed" not in sel and ".pickdoc" not in sel:
+                if ".elapsed" not in sel:
                     continue
                 self.assertNotEqual(
                     "absolute", (_decl(dec, "position") or ""),
                     "%s 가 흐름 밖으로 떴다 — 벨트만 흐름에 남아 좁은 카드에서 "
                     "묶음이 갈라진다" % sel)
+            pick = [d for s2, d in self.rules if s2.endswith(".card .pickdoc")]
+            self.assertTrue(pick, "`.card .pickdoc` 규칙이 없다")
+            self.assertEqual(
+                "absolute", (_decl(pick[0], "position") or ""),
+                "손잡이가 흐름에 섰다 — 칸의 폭을 제 낱말로 넓혀 벨트와 시각 "
+                "사이를 벌린다")
+            self.assertEqual(
+                "0", (_decl(pick[0], "right") or "").replace("px", ""),
+                "손잡이가 칸의 오른끝에 안 맞는다 — 시각과 오른끝이 갈리면 손이 "
+                "얹힐 때 자리가 옮겨 보인다")
+            self.assertEqual(
+                "relative", (_decl(cell[0], "position") or ""),
+                "칸이 기준 상자가 아니다 — 떠 있는 손잡이가 칸이 아니라 카드 "
+                "모서리에 붙어, 묶음이 내려가도 따라오지 않는다")
+            self.assertIsNotNone(
+                _decl(cell[0], "min-width"),
+                "칸에 최소폭이 없다 — 경과 시각이 없는 카드에는 손잡이가 설 "
+                "자리가 없고, 시각이 아주 짧으면 손잡이가 벨트를 덮는다")
         with self.subTest("the_strut_keeps_the_id_wrappable"):
             strut = [d for s, d in self.rules if s == ".card .id::before"]
             self.assertTrue(strut, "`.card .id::before` 스트럿이 없다")

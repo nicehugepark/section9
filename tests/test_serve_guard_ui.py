@@ -136,11 +136,26 @@ class ServeGuardUI(unittest.TestCase):
         한때는 `setInterval` 안에 `document.hidden` 이 적혀 있는지를 봤다. 그 검사를
         주기 폴마다 손으로 적다 보니 빠뜨린 자리가 생겼고(카탈로그 벨트가 그랬다,
         REQ-20260909-086), 이제 멈춤 판정은 공통 벨트 `s9Every`(web/app/net.js)
-        한 곳에 있다. 그래서 여기서 재는 것도 둘이다 — ① 감시자 폴이 그 벨트를
-        타는가 ② 그 벨트가 안 보이는 화면에서 정말 멈추는가(node 로 실행해 센다)."""
-        m = re.search(r"checkGuard\(\);[\s\S]{0,300}?s9Every\([^;]+;", self.src)
-        self.assertIsNotNone(m, "주기 확인이 공통 벨트(s9Every)를 타지 않는다")
-        self.assertIn("checkGuard", m.group(0))
+        한 곳에 있다.
+
+        REQ-20260909-088 로 감시자 확인은 제 20초 폴을 잃었다 — 서버가 알림
+        채널(`/api/events`)로 `guard` 조각이 바뀐 것을 말해 주면 그때 부른다.
+        그래서 재는 것은 셋이다 — ① 알림의 `guard` 조각이 checkGuard 로
+        이어지는가 ② 채널이 실패했을 때 메우는 안전 폴이 공통 벨트를 타는가
+        ③ 그 벨트가 안 보이는 화면에서 정말 멈추는가(node 로 실행해 센다)."""
+        ev = open(os.path.join(os.path.dirname(HERE), "web", "app",
+                               "events_ch.js"), encoding="utf-8").read()
+        self.assertRegex(
+            ev, r'key\s*===\s*"guard"[\s\S]{0,200}?checkGuard\(\)',
+            "알림의 guard 조각이 checkGuard 로 이어지지 않는다")
+        self.assertRegex(
+            ev, r"function evSweep\(\)[\s\S]{0,400}?evPull\(\"guard\"\)",
+            "채널이 실패한 동안 감시자를 메우는 자리가 없다")
+        m = re.search(r"function evBeltSet\([\s\S]{0,400}?s9Every\([^;]+;", ev)
+        self.assertIsNotNone(m, "안전 폴이 공통 벨트(s9Every)를 타지 않는다")
+        # 그리고 boot.js 에 제 주기 폴이 되살아나 있지 않다
+        self.assertNotRegex(self.src, r's9Every\(\s*"serveguard"',
+                            "감시자 주기 폴이 되살아났다 — 알림 채널이 그 자리다")
         node = _find_node()
         if not node:
             self.skipTest("node 가 없다 — 벨트의 동작은 재지 못한다")
