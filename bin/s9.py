@@ -2626,6 +2626,13 @@ def resolve_project(args, user, session):
                 f"프로젝트 '{slug}'에 문서를 생성할 수 없다 (contributor 이상 필요)")
         return slug, "explicit", []
     if args.doc_type not in ("request", "question", "article"):
+        # 지식·세션 같은 나머지 종류도 프로젝트 없이 두지 않는다 (REQ-20260909-026: 「프로젝트
+        # 없음 문서는 존재하지 않아야 한다」). 자동 신호(태그·세션)는 요청 갈래의 것이라
+        # 여기서는 기본 프로젝트만 — 실측: 작업자가 s9 new knowledge 로 만든 DOC-20260909-001
+        # 이 project 없이 서서 test_no_projectless P4 가 실패했다.
+        dflt = default_project_slug()
+        if dflt and load_project(dflt) and project_can(dflt, user, "contribute"):
+            return dflt, "default", []
         return "", "", []
 
     def usable(ref):

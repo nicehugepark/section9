@@ -62,6 +62,14 @@ class NothingIsBornWithoutAProject(unittest.TestCase):
         proj = got[0] if isinstance(got, tuple) else got
         self.assertEqual(proj, self.slug)
 
+    def test_p2b_a_knowledge_doc_lands_in_the_default_too(self):
+        """정상 — 지식 문서도 명시 없이 만들면 기본 프로젝트다(실측: 작업자의 DOC-20260909-001)."""
+        args = type("A", (), {"project": None, "project_tag": None,
+                              "doc_type": "knowledge"})()
+        got = self.m.resolve_project(args, "hong", "")
+        proj = got[0] if isinstance(got, tuple) else got
+        self.assertEqual(proj, self.slug)
+
     def test_p3_emptying_the_project_is_refused(self):
         """실패 — 비우는 길이 없다: set --project '' 는 거절하고 문서는 그대로다."""
         args = type("A", (), {"project": None, "project_tag": None,
