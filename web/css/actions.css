@@ -672,7 +672,13 @@ button.asgnb:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 .av{display:none}
 .judge{margin-top:9px;padding-top:9px;border-top:1px solid var(--hairline)}
 .acts{display:flex;gap:6px;margin-top:8px}
-.acts button{border:1px solid var(--border);background:var(--panel);color:var(--text);
+/* 쉼 상태의 바탕은 **한 낱의 값**이다 (REQ-20260909-061, 맥 실측 2026-09-09).
+   스킨마다 쉼의 바탕이 다른데(ledger 는 판 색, calm 은 없음) 그 사실이 `background`
+   선언으로만 적혀 있었다. 그러면 다른 규칙이 바탕을 되돌려야 할 때(아래 잠긴 얼굴)
+   되돌릴 값을 몰라 `--panel` 을 손으로 적게 되고, 쉼이 투명한 스킨에서는 **못 누르는
+   버튼만 칠이 생긴다** — 못 누르는 것이 누를 수 있는 것보다 도드라지는 거꾸로 된
+   화면이다. 값에 이름을 주어 스킨이 그 이름만 바꾸게 한다. */
+.acts button{border:1px solid var(--border);background:var(--acts-rest,var(--panel));color:var(--text);
   font-family:var(--mono);font-size:10.5px;padding:3px 10px;cursor:pointer;letter-spacing:.03em}
 .acts button:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 /* **이름은 이름처럼, 행위는 행위처럼** (REQ-20260828-007 반려).

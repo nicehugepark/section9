@@ -1779,21 +1779,49 @@ function tokensLineHTML(r){
     + ` · 입력 ${fmtTokens(t.in | 0)} · 캐시 ${fmtTokens(cache)}</span>`;
 }
 
-/* 카드의 Jira 이슈 키 (REQ-20260908-074, designer 070 ①·③) — id 줄에 키만, 새 창
-   링크. 저쪽 상태는 카드에 쓰지 않는다(상태가 둘이면 어느 쪽이 참인지 눈이 결정을
+/* 밖의 서비스 참조 줄 (REQ-20260909-064 재설계, 주인 2026-09-09 14:07) —
+   **있을 때만 서는 줄**이다. 없으면 이 함수가 빈 글자를 돌려주고 줄 상자 자체가
+   만들어지지 않아, 기본 카드의 리듬(id / 제목 / 사람·프로젝트 / 상태 표·태그)이
+   한 화소도 달라지지 않는다.
+
+   주인: 「jira 같은 정보는 사실 옵션이기 때문에 항상 보이는 값이 아니잖아. 그러니까
+   기존 레이아웃을 흐트리지 말고, row 를 따로 보여주는 게 어때? 아니면 카드 제목의
+   바로 아래쪽이나.」
+
+   앞 라운드(REQ-20260908-074 · 이 요청 1차)는 키를 id 줄에 끼워 넣었다. 그 줄은
+   식별자·집힘 낱말·벨트·경과 시각이 이미 나눠 쓰던 가장 좁은 줄이라, 있고 없고가
+   갈리는 값이 하나 더 들어오자 폭이 모자라 키가 「MP1…」로 깎이고(번호가 사라진다)
+   벨트가 아랫줄로 밀렸다. **옵션 값을 붙박이 줄에 얹은 것이 병의 뿌리**였다.
+
+   자리는 **제목 바로 아래**다(주인이 말한 자리). id 줄 곁이 아닌 까닭 셋:
+   ① 제목의 세로 자리가 모든 카드에서 같다 — id 줄은 늘 한 줄이고 그다음이 늘
+      제목이다. 옵션 줄을 제목 위에 두면 Jira 가 있는 카드만 제목이 한 줄 내려가,
+      열을 훑는 눈이 제목을 카드마다 다른 높이에서 만난다.
+   ② 이 줄은 식별자가 아니라 **밖으로 나가는 손잡이**다(카드에서 유일한 링크).
+      우리 id 옆에 세우면 두 이름이 같은 무게로 읽혀 어느 것이 이 화면의 이름인지
+      흐려진다. 제목을 읽고 「이 일이 저쪽에서는 무엇으로 불리나」로 이어지는 순서다.
+   ③ 제 줄을 가지므로 키가 온전히 선다 — 깎을 일이 없다.
+
+   줄 안은 **서비스 이름이 앞말**이다(「Jira MP1-19」). Notion 이 오면 같은 줄에
+   `· Notion …` 으로 붙어, 줄이 늘지 않고 어휘도 늘지 않는다. 사이 부호는 문서
+   화면의 Jira 행과 같은 ` · ` 한 벌이다.
+
+   저쪽 상태는 카드에 쓰지 않는다(상태가 둘이면 어느 쪽이 참인지 눈이 결정을
    못 한다). 어긋남은 「다름」 글자(tech-writer: `≠` 는 부호 한 벌 밖) + 툴팁 한 문장.
    카드가 role=button 이라 링크의 click 은 카드로 올라가지 않게 막는다(events.js 가
    `a[href]` 를 먼저 보내 준다 — 없으면 아래 stopPropagation 이 막는다). */
-function jiraKeyHTML(r){
+function xrefRowHTML(r){
   const j = r.jira || {};
   if (!j.key) return "";
   const diff = !!j.differs;
   const title = diff
     ? `Jira 는 ${j.status || "?"}, 여기는 ${r.status} 입니다.`
     : `Jira 에서 ${j.key} 열기 (새 창)`;
-  return `<a class="jkey" href="${esc(j.url || "#")}" target="_blank" rel="noopener"
-     title="${esc(title)}" onclick="event.stopPropagation()">${esc(j.key)}</a>`
-    + (diff ? `<span class="jdiff" title="${esc(title)}">다름</span>` : "");
+  const bits = [`<span class="xsvc">Jira</span>`
+    + `<a class="jkey" href="${esc(j.url || "#")}" target="_blank" rel="noopener"
+     title="${esc(title)}" onclick="event.stopPropagation()">${esc(j.key)}</a>`];
+  if (diff) bits.push(`<span class="jdiff" title="${esc(title)}">다름</span>`);
+  return `<div class="xref">${bits.join(`<span class="xsep">·</span>`)}</div>`;
 }
 
 function cardHTML(r){
@@ -2033,9 +2061,9 @@ function cardHTML(r){
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">
     <button type="button" class="pickdoc" data-pick="${esc(r.id)}"
       aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button>
-    <div class="id">${liveDot}<span class="idg"><span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${jiraKeyHTML(r)}</span>${vh}<span class="idr"><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</span></div>
+    <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${vh}<span class="idr"><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}</span></div>
     <div class="t">${esc(r.title)}</div>
-    ${mwho}${mwhat}${acts}${dep}${stall}
+    ${xrefRowHTML(r)}${mwho}${mwhat}${acts}${dep}${stall}
     ${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}</div>`;
 }
 

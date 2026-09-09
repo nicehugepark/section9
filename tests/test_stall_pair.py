@@ -350,7 +350,7 @@ class StallRendersTheSame(unittest.TestCase):
             g("wakeBtnHTML"), g("driftBtnHTML"),
             g("deedBeltHTML"), g("holdLockHTML"), g("stallHTML"),
             g("tokensLineHTML"),   # REQ-20260907-009 — cardHTML 이 부른다
-            g("jiraKeyHTML"),      # REQ-20260908-074 — id 줄의 Jira 이슈 키, 없으면 render 가 멎는다
+            g("xrefRowHTML"),      # REQ-20260909-064 — 제목 아래의 밖의 서비스 참조 줄, 없으면 render 가 멎는다
             g("cardHTML"),
             "CAT = %s;" % json.dumps(rows),
             # 눌린 직후의 기억 상태를 세우는 자리 — 서버 왕복 없이 그 얼굴만 본다

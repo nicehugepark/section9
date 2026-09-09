@@ -1880,6 +1880,7 @@ def catalog_row(meta, path, body=""):
         "project": meta.get("project", ""),
         "slug": meta.get("slug", ""),  # 프로젝트 문서를 slug로도 검색 (REQ-20260824-024)
         "parent": meta.get("parent", ""),
+        "root": doc_root(meta),   # 뿌리 명시 (REQ-20260909-073) — parent 없음이 결함인지 가른다
         # 선행 의존(REQ-20260825-097): 카드·그래프가 "무엇을 기다리는가"를
         # 본문 파싱 없이 읽는다. 진실은 막힌 문서 쪽 한 곳뿐이다.
         "blocked_by": meta.get("blocked_by", []),
@@ -2598,6 +2599,16 @@ def doc_origin(meta):
     return str((meta or {}).get("origin") or "")
 
 
+def doc_root(meta):
+    """뿌리로 명시된 요청인가 (REQ-20260909-073) — 프론트매터 `root: true`.
+
+    parent 가 없는 요청은 둘 중 하나다: 파생인데 잇지 않은 것(결함)과 새 주제(정상).
+    둘을 가를 표가 없으면 검사가 정상까지 결함으로 세어 아무도 안 읽는 목록이 된다.
+    그래서 새 주제는 사람이 `--root` 로 못박고, 검사는 표 없는 것만 짚는다.
+    프론트매터는 문자열로 읽히므로(fm_parse) 참 판정은 여기 한 곳이다."""
+    return str((meta or {}).get("root") or "").strip().lower() in ("true", "1", "yes")
+
+
 def resolve_project(args, user, session):
     """새 문서가 어느 프로젝트에 붙는가 — 판정은 여기 **한 곳** (REQ-20260906-052).
 
@@ -2701,6 +2712,8 @@ def cmd_new(args):
     except ValueError as e:
         die(str(e))
 
+    if getattr(args, "root", False) and args.parent:
+        die("--root 와 --parent 는 배타다 — 파생이면 --parent, 새 주제면 --root (REQ-20260909-073)")
     dup = (_recent_duplicate(args.doc_type, args.title, original)
            if "auto-audit" in (args.tag_list or []) else None)
     if dup:
@@ -2727,6 +2740,7 @@ def cmd_new(args):
             # 짧은 id(REQ-20260906-009)는 정식 id 로 — 짧은 채 적히면 뒤의 정규화가
             # 못 찾아 지운다(실제 사고 2026-09-06: 044 의 parent 가 사라졌다, REQ-20260906-048)
             "parent": full_doc_id(args.parent) if args.parent else "", "children": [],
+            "root": "true" if getattr(args, "root", False) else "",   # 뿌리 명시 (REQ-20260909-073)
             "derived_from": full_doc_id(args.derived_from) if args.derived_from else "",
             "relates": args.relates or [],
             "relates_why": ({r: (getattr(args, "why", "") or "").strip()
@@ -13080,6 +13094,15 @@ def cmd_status(args):
         die(f"{e}")
     print(f"{args.id}: {old} -> {args.new_status}")
     warn_banned_terms(args.note or "", f"status {args.id}")   # 전이 노트도 기록이다 (REQ-20260906-064)
+    # parent 없는 사람 요청은 착수·전이 때 짚는다 — 막지 않는다 (REQ-20260909-073)
+    if args.new_status in ("in-progress", "review", "done"):
+        try:
+            _m, _ = read_doc(locate(args.id))
+            nudge = parent_nudge(_m, session=os.environ.get("S9_SESSION", ""))
+        except Exception:
+            nudge = ""
+        if nudge:
+            print(nudge, file=sys.stderr)
     try:
         update_active_reqs(args.id, args.new_status)
     except Exception:
@@ -13107,6 +13130,9 @@ def cmd_link(args):
         meta[key] = cur
 
     if args.parent:
+        if doc_root(meta):
+            die(f"{args.id} 는 뿌리로 명시된 요청이다 — 파생으로 바꾸려면 먼저 "
+                f"`s9 set {args.id} --no-root` (REQ-20260909-073)")
         meta["parent"] = args.parent
     if args.derived_from:
         meta["derived_from"] = args.derived_from
@@ -13293,6 +13319,25 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
             body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
                 else (body.rstrip("\n") + "\n\n## History\n" + line)
             changed.append("project")
+    if fields.get("root") is not None:
+        # 뿌리 명시 (REQ-20260909-073) — parent 와 배타다. 둘 다 있으면 검사가
+        # 어느 쪽을 믿을지 모르고, 그 문서는 다시 「parent 없음」 목록으로 돌아온다.
+        want = bool(fields["root"])
+        if want and (meta.get("parent") or "").strip():
+            raise ValueError(f"{cid} 는 parent({meta['parent']})가 있다 — 뿌리와 파생은 "
+                             f"배타다. 뿌리로 바꾸려면 먼저 parent 를 끊어라")
+        if want != doc_root(meta):
+            if want:
+                meta["root"] = "true"
+            else:
+                meta.pop("root", None)
+            actor = actor or resolve_user(None)
+            ts = now_iso()
+            line = (f"- {ts} root: {'뿌리로 명시' if want else '뿌리 표시 해제'} (by {actor}"
+                    + (f" via {via}" if via else "") + ")\n")
+            body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
+                else (body.rstrip("\n") + "\n\n## History\n" + line)
+            changed.append("root")
     if priority is not None:
         # 값 해석도 근거 기록도 화면과 **같은 경로**을 지난다 (REQ-20260829-029).
         _old, _new, body = apply_priority(meta, body, priority)
@@ -13346,7 +13391,7 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
 
 
 def cmd_set(args):
-    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os", "jira_key")}
+    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os", "jira_key", "root")}
     try:
         res = do_set(args.id, fields, actor=resolve_user(None),
                      priority=getattr(args, "priority", None))
@@ -13361,7 +13406,7 @@ def cmd_set(args):
                 print(guide)
             return
         die("nothing to set (use --title/--summary/--goal/--size/--project"
-            "/--priority/--jira-key)")
+            "/--priority/--jira-key/--root)")
     print(res["message"])
     # 프롬프트가 특정 프로젝트로 확정된 순간 — 컨텍스트 진입점을 안내 (1단계 경로 안내)
     if "project" in res["changed"] and res.get("project"):
@@ -15114,6 +15159,8 @@ def relates_audit():
 
 
 def cmd_linkcheck(args):
+    if getattr(args, "parents", False):
+        return cmd_parentless(args)
     if getattr(args, "relates_audit", False):
         rows = relates_audit()
         missing = [r for r in rows if not r[2]]
@@ -15175,6 +15222,103 @@ def cmd_untitled(args):
         print(f"- {rid} {_safe_fence(title, 120)}")
     if not args.quiet:
         print(f"제목 미정리 {len(rows)}건" if rows else "제목 미정리 없음")
+    return 0
+
+
+# ------------------------------------------- parent 없는 요청 (REQ-20260909-073)
+# 실측 2026-09-09: 9월 요청 476 중 parent 없음 204. 뿌리는 채팅 경로다 — 훅이
+# 세우는 요청은 parent 없이 서고, 리드는 착수 때 제목만 고치고 잇지 않는다.
+# 규약(파생은 --parent)은 있지만 그 경로에는 그것을 짚는 손이 없었다. 짚는 자리
+# 셋(착수·전이 / 매 턴 훅 주입 / linkcheck --parents)이 전부 아래 한 판정을 읽는다
+# — 판정이 갈리면 화면마다 다른 목록이 되고, 그러면 사람은 아무 목록도 믿지 않는다.
+
+def _parentless_row(r):
+    """이 요청은 parent 도 root 도 없는가 — 결함으로 셀 것만 참.
+    사람 입구(origin human)만 본다: 에이전트가 세운 요청은 cmd_new 가 origin_req
+    를 채우고 규약이 --parent 를 요구하는 자리라 이 검사의 뿌리(채팅 경로)가 아니다.
+    옛 문서(origin 없음)는 backfill 의 몫이고 매 턴 짚을 것이 아니다."""
+    if r.get("type") != "request" or r.get("status") == "cancelled":
+        return False
+    if (r.get("parent") or "").strip() or r.get("root"):
+        return False
+    return doc_origin(r) == "human"
+
+
+def parentless_requests(session="", since="", started_only=False):
+    """parent·root 둘 다 없는 사람 요청 — 생성일 순 (REQ-20260909-073).
+    session 을 주면 그 세션이 잡은 것만, started_only 면 open 은 뺀다(「착수한」)."""
+    sid = (session or "")[:8]
+    out = []
+    for r in load_catalog():
+        if not _parentless_row(r):
+            continue
+        if sid and (r.get("session") or "")[:8] != sid:
+            continue
+        if started_only and r.get("status") == "open":
+            continue
+        if since and (r.get("created") or "")[:10] < since:
+            continue
+        out.append(r)
+    out.sort(key=lambda r: r.get("created") or "")
+    return out
+
+
+_WORD_RE = re.compile(r"[0-9A-Za-z가-힣]{2,}")
+
+
+def _words(*texts):
+    return {w.lower() for t in texts for w in _WORD_RE.findall(str(t or ""))}
+
+
+def parent_candidates(meta, session="", now=None, limit=3):
+    """parent 후보 — 같은 세션이 최근 24시간에 다룬(open 이 아닌) 요청 가운데
+    제목·요약·태그의 낱말이 많이 겹치는 순, 최대 limit 개. 겹침은 토큰 교집합
+    크기뿐이다 — 고르는 것은 사람·리드의 몫이라 여기서 더 똑똑할 이유가 없다."""
+    sid = (session or meta.get("session") or "")[:8]
+    if not sid:
+        return []
+    now = now if now is not None else time.time()
+    mine = _words(meta.get("title"), meta.get("summary"), " ".join(meta.get("tags") or []))
+    cands = []
+    for r in load_catalog():
+        if r.get("type") != "request" or r.get("id") == meta.get("id"):
+            continue
+        if (r.get("session") or "")[:8] != sid or r.get("status") in ("open", "cancelled"):
+            continue
+        at = _iso_epoch(r.get("status_since") or r.get("updated"))
+        if now - at > 24 * 3600:
+            continue
+        theirs = _words(r.get("title"), r.get("summary"), " ".join(r.get("tags") or []))
+        cands.append((-len(mine & theirs), -at, r["id"], r.get("title", "")))
+    cands.sort()
+    return [(rid, title) for _s, _t, rid, title in cands[:limit]]
+
+
+def parent_nudge(meta, session=""):
+    """parent 없는 사람 요청을 짚는 한 문장 — 막지 않는다(경고). 해당 없으면 빈 문자열.
+    착수(in-progress)·review·done 전이(cmd_status)와 훅 주입이 이 문구를 그대로 쓴다."""
+    if not _parentless_row({**meta, "root": doc_root(meta), "origin": doc_origin(meta)}):
+        return ""
+    rid = meta.get("id", "")
+    msg = (f"⚠ {rid} 에 parent 가 없습니다 — 파생이면 `s9 link {rid} --parent <REQ>`, "
+           f"새 주제면 `s9 set {rid} --root`")
+    cands = parent_candidates(meta, session=session)
+    if cands:
+        msg += " · 후보: " + ", ".join(f"{cid}({t[:20]})" for cid, t in cands)
+    return msg
+
+
+def cmd_parentless(args):
+    rows = parentless_requests(session=getattr(args, "session", "") or "",
+                               since=getattr(args, "since", "") or "",
+                               started_only=bool(getattr(args, "started", False)))
+    for r in rows:
+        print(f"- {r['id']} {(r.get('created') or '')[:10]} [{r.get('status')}] "
+              f"{_safe_fence(r.get('title', ''), 60)}")
+    if not getattr(args, "quiet", False):
+        print(f"parent·root 없는 요청 {len(rows)}건" if rows else "parent·root 없는 요청 없음")
+        if rows:
+            print("파생이면 `s9 link <id> --parent <REQ>`, 새 주제면 `s9 set <id> --root`")
     return 0
 
 
@@ -31624,6 +31768,8 @@ def main():
                          "표를 남겨 다음 요청이 같은 말을 선행 문맥으로 또 "
                          "끌어오지 않는다 (REQ-20260908-008)")
     np.add_argument("--parent")
+    np.add_argument("--root", action="store_true",
+                    help="새 주제의 뿌리 — parent 와 배타 (REQ-20260909-073)")
     np.add_argument("--derived-from")
     np.add_argument("--relates", action="append")
     np.add_argument("--why", help="--relates 를 왜 걸었는지 한 줄 "
@@ -31694,6 +31840,10 @@ def main():
                      help="이 요청을 해야 하는 판 — 그 판의 세션이 s9 next 로 먼저 본다 (REQ-20260906-080)")
     se2.add_argument("--jira-key", dest="jira_key",
                      help="이미 있는 Jira 이슈를 잇는다(예: MP1-7) — 만들지 않는다. '' 는 끊기 (REQ-20260909-036)")
+    se2.add_argument("--root", dest="root", action="store_const", const=True, default=None,
+                     help="새 주제의 뿌리로 명시한다 — parent 와 배타 (REQ-20260909-073)")
+    se2.add_argument("--no-root", dest="root", action="store_const", const=False,
+                     help="뿌리 표시를 거둔다")
     se2.set_defaults(fn=cmd_set)
 
     lp = sub.add_parser("ls", help="list documents (from catalog)")
@@ -31733,6 +31883,15 @@ def main():
                     help="근접만으로 걸린 연관을 찾는다 (--fix 로 제거한다)")
     lc.add_argument("--relates-audit", action="store_true",
                     help="연관 간선 전수 + 이유 (REQ-20260827-030)")
+    lc.add_argument("--parents", action="store_true",
+                    help="parent·root 둘 다 없는 사람 요청을 생성일 순으로 (REQ-20260909-073)")
+    lc.add_argument("--since", default="", metavar="YYYY-MM-DD",
+                    help="--parents: 이 날짜 이후 생성된 것만")
+    lc.add_argument("--session", default="",
+                    help="--parents: 이 세션이 잡은 것만 (훅 주입이 쓴다)")
+    lc.add_argument("--started", action="store_true",
+                    help="--parents: 착수한 것만 (open 제외)")
+    lc.add_argument("--quiet", action="store_true")
     lc.set_defaults(fn=cmd_linkcheck)
     tg = sub.add_parser("tag", help="태그 유지보수 (통제 어휘 백필)")
     tg.add_argument("action", choices=["backfill"])
