@@ -23,6 +23,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -206,9 +207,14 @@ class ApiBoot(unittest.TestCase):
         self.assertEqual(st3, 200)
         self.assertIsNone(hd3.get("Content-Encoding"))
         self.assertIn(b"var b = 2;", body3)
-        # 조각을 고치면 다음 요청은 새 본문·새 ETag
-        with open(os.path.join(self.web, "app", "b.js"), "a") as f:
+        # 조각을 고치면 다음 요청은 새 본문·새 ETag. 다 쓴 뒤에야다 — 묶음은
+        # 모든 조각이 dwell(기본 1초)만큼 조용할 때만 새로 짓는다
+        # (REQ-20260909-095). 여기서는 mtime 을 뒤로 옮겨 그 시간을 안 기다린다.
+        fp = os.path.join(self.web, "app", "b.js")
+        with open(fp, "a") as f:
             f.write("var b2 = 3;\n")
+        old = time.time() - 30
+        os.utime(fp, (old, old))
         st4, hd4, body4 = self.get("/app/all.js", {"If-None-Match": etag})
         self.assertEqual(st4, 200)
         self.assertNotEqual(hd4.get("ETag"), etag)
