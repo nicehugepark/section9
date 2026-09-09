@@ -5,7 +5,7 @@
    회색 보조줄(.path). 색면 하이라이트도 세로 띠도 없다: 무게는 잉크와 획이 낸다.
 
    잉크 규칙 하나만 새로 정한다 — **되돌릴 수 없는 일만 붉다**(--c-blocked).
-   보관도 삭제도 되돌릴 수 있으므로 본문 잉크로 서고, 영구 소거만 붉게 선다.
+   보관도 휴지통도 되돌릴 수 있으므로 본문 잉크로 서고, 완전히 지우기만 붉게 선다.
    전부 붉으면 붉음이 아무 말도 하지 않는다. */
 
 /* ---- 타입바 끝의 두 손잡이 (고르기 · 보관함 · 휴지통) ---- */
@@ -75,6 +75,27 @@
 .doclist .tidybar button[disabled]{color:var(--faint);cursor:default;
   text-decoration:none}
 
+/* ---- 치운 직후의 한 줄 (되돌리기) ---- */
+/* 묶음 처리 띠와 **같은 옷**이다 — 자리도 문법도 이미 있는 것을 그대로 입는다
+   (REQ-20260910-006). 다른 점은 하나: 붙박이가 아니라 방금 일어난 일을 말하는
+   줄이라 띠에 붙어 다니지 않고 목록과 함께 흐른다(sticky 로 세우면 늘 거기
+   있던 붙박이로 읽힌다). 색면도 세로 띠도 없다 — 위아래 헤어라인과 잉크뿐이다. */
+.doclist .tidyundo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:7px 14px;background:var(--panel);
+  border-bottom:1px solid var(--hairline)}
+.doclist .tidyundo .n{font-size:11.5px;color:var(--muted);
+  margin-right:auto;word-break:keep-all}
+.doclist .tidyundo button{border:0;background:none;padding:0;cursor:pointer;
+  font-family:inherit;font-size:11.5px;font-weight:600;color:var(--text)}
+.doclist .tidyundo button:hover{text-decoration:underline;text-underline-offset:3px}
+.doclist .tidyundo button:focus-visible{outline:1px solid var(--text);outline-offset:2px}
+/* 닫기는 × 하나다 (s9-design R7). 글리프는 작아도 짚는 자리는 작지 않다 —
+   모양은 그대로 두고 보이지 않는 손잡이만 사방으로 넓힌다(눈금이 쓰는 그 수법). */
+.doclist .tidyundo button.tux{position:relative;color:var(--muted);
+  font-weight:400;font-size:13px;line-height:1}
+.doclist .tidyundo button.tux::before{content:"";position:absolute;inset:-11px}
+.doclist .tidyundo button.tux:hover{color:var(--text);text-decoration:none}
+
 /* ---- 문서 한 장의 치우기 무리 ---- */
 /* 자리는 문서 머리의 행동 띠(.dacts) 오른쪽 끝이다 (REQ-20260907-006) — 본문
    맨 아래에 두던 종전 줄은 한 화면만 내려도 보이지 않았다. 까닭은 tidy.js ④.
@@ -88,7 +109,7 @@
 /* 얼굴은 전이 버튼과 같은 .deed 체계 — 크기·안여백·글자 크기·hover 반전을 여기서
    다시 정하지 않는다. 잉크만 한 급 낮다(정책 버튼 .deed.pol 과 같은 층):
    앞으로 가는 일과 치우는 일의 위계다. 실패색은 쓰지 않는다 — 삭제는 되돌릴 수
-   있고, 되돌릴 수 없는 소거만 그 색을 갖는다. */
+   있고, 되돌릴 수 없는 「완전히 지우기」만 그 색을 갖는다. */
 .dacts .deed.tidy{color:var(--muted);border-color:var(--hairline)}
 /* 좁은 폭에서 띠가 접히면 이 무리는 통째로 다음 줄 오른쪽 끝으로 간다. 그때는
    왼쪽에 가를 무리가 없으므로 선을 걷고 여백만 남긴다. */
@@ -126,7 +147,7 @@
 .tidypanel .titem .twhen{font-family:var(--mono);font-size:10px;color:var(--faint);
   margin-top:2px}
 .tidypanel .titem .acts{margin-top:0;flex:none}
-/* 판 안의 버튼은 하나같이 **행위**다 — `되돌리기`·`영구 삭제`·`닫기` 중
+/* 판 안의 버튼은 하나같이 **행위**다 — `되돌리기`·`완전히 지우기`·`닫기` 중
    상태의 이름은 하나도 없다. 그러면 mono + 자간이 아니라 본문체다
    (REQ-20260828-007 4차가 창 바닥에서 이미 내린 결론, overlay.css .dlgfoot). */
 .tidypanel .acts button{font-family:inherit;font-size:11.5px;letter-spacing:0;

@@ -101,6 +101,31 @@ function applyProjects(d){
     loadDoc(v.dataset.showing, true, true);
 }
 
+/* 「문서가 바뀌었다」 — 문서를 옮긴 손이 지나는 **단 하나의 신호**
+   (REQ-20260910-005).
+
+   문서 한 장이 자리를 옮기면 그 사실을 들고 있는 목록이 둘이다: 카탈로그와
+   프로젝트 목록. 종전에는 치우는 손(tidy.js)이 카탈로그만 다시 받았고,
+   `/api/projects` 는 폴링 벨트 밖인 데다 60초 캐시까지 앉아 있어서 **같은
+   삭제가 Docs 에서는 반영되고 Projects 레일에서는 안 됐다** — 프로젝트를
+   버리면 레일에 남고, 되돌리면 레일에서 사라졌다(주인이 겪은 일, 2026-09-10).
+
+   무효화를 부르는 자리마다 두 줄로 적으면 다음에 붙는 변이가 또 한쪽을
+   빠뜨린다. 그러니 문서를 옮기는 손은 여기 하나만 부른다 — 목록이 셋이 되는
+   날에도 고칠 자리는 이 함수다.
+
+   프로젝트를 먼저 받는다: refreshCatalog 는 제 앞뒤로 projects 를 견주어
+   다시 그릴지 정하는데, 그 사이에 프로젝트가 도착하면 같은 변화를 두 번
+   세게 된다. 신선도는 지나서 받는다(rerender 없이 부르면 fresh 0). */
+async function docsChanged(){
+  const was = JSON.stringify(projects);
+  await refreshProjects();
+  await refreshCatalog(true);
+  // 카탈로그가 바뀌면 refreshCatalog 가 스스로 다시 그린다 — 레일만 바뀐
+  // 경우가 남으므로 그때만 여기서 그린다.
+  if (JSON.stringify(projects) !== was) render();
+}
+
 /* 전량을 받아야 하는 자리인가 (REQ-20260902-035 §4).
 
    서버의 기본 창은 진행 중인 요청은 전부 싣고 나머지(닫힌 요청·세션·지식)는

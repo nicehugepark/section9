@@ -4,10 +4,15 @@
    그대로 보여 준다 — 한 층으로 뭉개면 되돌릴 수 있는 일과 없는 일이 같은
    버튼을 쓰게 되고, 그 버튼은 언젠가 잘못 눌린다.
 
-     보관   목록에서 내린다. 문서는 그대로 있고 언제든 되돌린다.
-     삭제   휴지통으로 보낸다. 목록에서 사라지되 되돌릴 수 있다.
-     소거   휴지통에서 영구히 지운다. **되돌릴 수 없다** — 이 층만 붉고,
-            이 층만 한 번 더 묻는다.
+     보관       목록에서 내린다. 문서는 그대로 있고 언제든 되돌린다.
+     휴지통으로 목록에서 사라지되 되돌릴 수 있다.
+     완전히     휴지통에서 영영 지운다. **되돌릴 수 없다** — 이 층만 붉고,
+     지우기     이 층만 한 번 더 묻는다.
+
+   화면의 낱말은 확정 사전 여섯뿐이다 (REQ-20260910-006): 보관 · 보관 해제 ·
+   휴지통으로 · 되돌리기 · 완전히 지우기 · 휴지통 비우기. 명령 이름과 값
+   (`archive`·`rm`·`restore`·`purge`·`archived`)은 사람이 직접 치는 글자라 그대로
+   둔다.
 
    판정은 여기서 하지 않는다: 서버의 `/api/docs/tidy` 가 CLI(`s9 archive` ·
    `rm` · `restore` · `purge`)와 **같은 함수**를 지난다. 화면이 제 규칙을 한 벌
@@ -30,6 +35,9 @@ let tidyTab = "archived";             // archived | trash
 // 이미 비싸게 배운 것이다(없는 것과 안 온 것은 다른 화면이다).
 let tidyArch = null, tidyTrash = null;
 let tidyLoadedAt = 0;
+/* 치운 직후에 목록 띠 아래 서는 한 줄 — {op, ids} 또는 null (REQ-20260910-006).
+   op 는 방금 한 일이지 되돌릴 일이 아니다: 되돌리는 짝은 tidyAct 가 정한다. */
+let tidyUndo = null;
 
 const tidyWhen = s => String(s || "").slice(0, 16).replace("T", " ");
 
@@ -76,9 +84,21 @@ async function tidySend(op, ids, extra){
   // 계속 그리고 있으면 무엇이 일어났는지 화면이 거짓말한다.
   if (selectedDoc && ids.includes(selectedDoc)
       && (op === "rm" || op === "archive" || op === "purge")) docDeselect();
-  (res.done || []).forEach(id => tidySel.delete(id));
+  const moved = res.done || [];
+  moved.forEach(id => tidySel.delete(id));
+  /* 치운 뒤에 화면이 **말을 한다** (REQ-20260910-006). 종전에는 성공하면 아무
+     것도 띄우지 않아서, 사람이 받는 유일한 안내가 누르기 전 확인 창 한 줄이었다.
+     한 일과 실제로 옮겨진 문서만 적는다 — 일부가 넘어졌으면 넘어진 것은 위
+     알림이 이름으로 말하고, 이 줄은 간 것만 센다. */
+  const said = {rm: "rm", archive: "archive", restore: "back",
+                unarchive: "back", purge: "purge"}[op];
+  if (said && moved.length) tidyUndo = {op: said, ids: moved};
   await tidyFetch();
-  await refreshCatalog(true);
+  /* 목록은 둘이고 무효화는 하나다 (REQ-20260910-005). 여기서 카탈로그만 다시
+     받던 것이 사고의 뿌리였다 — 같은 삭제가 Docs 에서는 반영되고 Projects
+     레일에서는 안 됐다. 「문서가 바뀌었다」 신호 한 곳(app.js docsChanged)을
+     지나므로, 목록이 셋이 되는 날에도 이 줄은 그대로다. */
+  await docsChanged();
   if (tidyBox) tidyRender();
   tidyDecorate();
   return res;
@@ -173,6 +193,36 @@ function tidyDecorate(){
       const sig = String(n);
       if (bar2.dataset.sig !== sig){ bar2.innerHTML = html; bar2.dataset.sig = sig; }
     }
+    /* ③' 치운 직후의 한 줄 — **버린 그 자리에서 되돌린다** (REQ-20260910-006).
+
+       종전에는 누른 뒤 화면이 아무 말도 하지 않았다. 확인 창이 누르기 **전**
+       「휴지통에서 되돌릴 수 있습니다」라고 말하지만 그 휴지통이 어디에 있는지는
+       말하지 않았고, 실제 손잡이는 이 띠 끝 한 곳뿐이라 주인은 버린 뒤 한참을
+       뒤졌다(2026-09-10). 그래서 되돌리는 손을 버린 자리로 가져온다 — 새 자리를
+       만들지 않고 이미 있는 띠 아래 한 줄이다.
+
+       스스로 사라지지 않는다. 몇 초 뒤에 접히는 줄은 그때 화면을 안 보던 사람
+       에게는 없는 줄이고, 저절로 꺼지는 자리는 목록을 한 번 더 흔든다(설명 없는
+       움직임은 결함이다). 다음 치우기가 이 줄을 갈아 끼우고 × 가 걷는다. */
+    const und0 = list.querySelector(".tidyundo");
+    if (!tidyUndo){ if (und0) und0.remove(); }
+    else {
+      let und = und0;
+      if (!und){
+        const host = list.querySelector(".tidybar") || tb;
+        if (host){
+          host.insertAdjacentHTML("afterend",
+            `<div class="tidyundo" role="status" aria-live="polite"></div>`);
+          und = list.querySelector(".tidyundo");
+        }
+      }
+      if (und){
+        const sig = tidyUndo.op + ":" + tidyUndo.ids.join(",");
+        if (und.dataset.sig !== sig){
+          und.innerHTML = tidyUndoHTML(); und.dataset.sig = sig;
+        }
+      }
+    }
     // 손잡이 둘이 붙으면서 타입바가 한 줄 더 접힐 수 있다 — 그룹 머리와
     // 묶음 띠가 붙는 문턱(--tbh)을 그때 다시 잰다. 안 재면 머리가 타입바
     // 뒤에 숨는다(docs.css 가 이미 겪은 그 자리).
@@ -195,7 +245,7 @@ function tidyDecorate(){
      얼굴은 전이 버튼과 **같은 체계**(.deed)다 — 크기·안여백·글자 크기·hover
      반전을 여기서 다시 정하지 않는다. 잉크만 한 급 낮춰(정책 버튼과 같은 층)
      "지금 앞으로 가는 일이 아니다"를 말한다. 삭제는 되돌릴 수 있는 일이라
-     실패색을 쓰지 않는다 — 이 조각 머리말이 정한 대로 소거만 그 색이다.
+     실패색을 쓰지 않는다 — 이 조각 머리말이 정한 대로 완전히 지우기만 그 색이다.
 
      **한 화면에 「보관」이 둘일 수 없다** (REQ-20260831-029 리드 중재 2).
      둘을 막는 자리가 이제 둘이다.
@@ -217,7 +267,8 @@ function tidyDecorate(){
     const html = (isPrj ? "" : `<button type="button" class="deed tidy"`
       + ` data-tidy="${arch ? "unarch1" : "arch1"}"`
       + ` data-id="${esc(id)}" title="${arch
-          ? "목록으로 되돌린다" : "목록에서 내린다 — 문서는 그대로 있고 언제든 되돌린다"}">`
+          ? "문서 목록으로 되돌립니다"
+          : "보관함으로 내립니다 — 문서는 그대로 있고 언제든 되돌립니다"}">`
       + `${arch ? "보관 해제" : "보관함으로"}</button>`)
       + `<button type="button" class="deed tidy" data-tidy="rm1" data-id="${esc(id)}"`
       + ` title="휴지통으로 보냅니다 — 목록에서 사라지되 되돌릴 수 있습니다">휴지통으로</button>`;
@@ -231,6 +282,33 @@ function tidyDecorate(){
       box.dataset.for = id; box.innerHTML = html;
     }
   }else if (grp) grp.remove();
+}
+
+/* 한 일마다 한 문장 — 사람이 방금 무엇을 했는지, 그것이 어디로 갔는지를
+   말한다 (REQ-20260910-006 ux-writer). 되돌린 뒤 문장이 「문서 목록으로」까지만
+   말하는 것은 뜻이 좁아서가 아니다: 프로젝트 레일까지 함께 돌아오는 것은
+   docsChanged 가 보장하되, 사람이 실제로 보고 있는 자리가 문서 목록이다. */
+const TIDY_SAID = {
+  rm:      n => n > 1 ? `${n}건을 휴지통으로 보냈습니다` : "휴지통으로 보냈습니다",
+  archive: n => n > 1 ? `${n}건을 보관함으로 내렸습니다` : "보관함으로 내렸습니다",
+  back:    n => n > 1 ? `${n}건을 문서 목록으로 되돌렸습니다.`
+                      : "문서 목록으로 되돌렸습니다.",
+  purge:   n => `${n}건을 완전히 지웠습니다.`,
+};
+
+function tidyUndoHTML(){
+  const op = tidyUndo.op, n = tidyUndo.ids.length;
+  const say = (TIDY_SAID[op] || (() => ""))(n);
+  /* 되돌릴 수 있는 일에만 되돌리는 손이 선다 — 완전히 지운 뒤에는 없는 손을
+     지어내지 않는다. 「휴지통 보기」는 버린 자리에만: 되돌리지 않고 무엇이
+     들어갔는지 보러 가는 손이다. */
+  const back = (op === "rm" || op === "archive")
+    ? `<button type="button" data-tidy="undo">되돌리기</button>` : "";
+  const see = op === "rm"
+    ? `<button type="button" data-tidy="seetrash">휴지통 보기</button>` : "";
+  return `<span class="n">${esc(say)}</span>${back}${see}`
+    + `<button type="button" class="tux" data-tidy="undox"`
+    + ` aria-label="이 줄 닫기" title="이 줄을 닫습니다">\u00d7</button>`;
 }
 
 /* ------------------------------------------------- 보관함 · 휴지통 (판) */
@@ -266,9 +344,9 @@ function tidyRender(){
       </div>
       <div class="acts">
         <button type="button" data-tidy="back" data-id="${esc(r.id)}"
-          title="${tidyTab === "trash" ? "원래 자리로 되돌린다" : "목록으로 되돌린다"}">되돌리기</button>
+          title="문서 목록으로 되돌립니다">${tidyTab === "trash" ? "되돌리기" : "보관 해제"}</button>
         ${tidyTab === "trash" ? `<button type="button" class="gone" data-tidy="purge"
-          data-id="${esc(r.id)}" title="영구히 지웁니다 — 되돌릴 수 없습니다">영구 삭제</button>` : ""}
+          data-id="${esc(r.id)}" title="영구히 지웁니다 — 되돌릴 수 없습니다">완전히 지우기</button>` : ""}
       </div></div>`;
   const body = lost
     ? `<div class="tempty">이 목록을 받지 못했습니다 — 실행 중인 서버가 아직
@@ -280,7 +358,7 @@ function tidyRender(){
       : rows.map(item).join("");
   tidyBox.innerHTML = `<div class="dlghead">` + DLG_GRIP + `
       <span class="dlgcap">보관함 · 휴지통</span>
-      <span class="dlgdoc">되돌릴 수 있는 것과 없는 것</span>
+      <span class="dlgdoc">끝난 것은 보관함으로, 잘못 만든 것은 휴지통으로</span>
       <span class="dlgesc"><kbd>ESC</kbd> 닫기</span></div>
     <div class="tidytabs">
       <button type="button" data-tidy="tab" data-tab="archived"
@@ -291,11 +369,11 @@ function tidyRender(){
     <div class="tlist">${body}</div>
     <div class="tfoot">
       <span class="path">${tidyTab === "trash"
-        ? "삭제한 문서는 번호를 계속 물고 있습니다 — 영구 삭제해도 그 번호는 다시 나가지 않습니다."
+        ? "휴지통에 있는 문서도 번호를 그대로 씁니다 — 완전히 지워도 그 번호가 다른 문서에 다시 쓰이지는 않습니다."
         : "보관한 문서는 그대로 있습니다. 목록에서만 내려와 있습니다."}</span>
       <div class="acts">
         ${tidyTab === "trash" && rows && rows.length
-          ? `<button type="button" class="gone" data-tidy="purgeall">전부 영구 삭제</button>` : ""}
+          ? `<button type="button" class="gone" data-tidy="purgeall">휴지통 비우기</button>` : ""}
         <button type="button" data-tidy="close">닫기</button></div></div>`;
 }
 
@@ -361,6 +439,18 @@ async function tidyAct(what, el){
     if (ids.length && await tidyConfirmRm(ids)) await tidySend("rm", ids);
     return;
   }
+  if (what === "undo"){
+    const u = tidyUndo;
+    if (!u) return;
+    await tidySend(u.op === "rm" ? "restore" : "unarchive", u.ids);
+    return;
+  }
+  if (what === "undox"){ tidyUndo = null; tidyDecorate(); return; }
+  if (what === "seetrash"){
+    tidyTab = "trash";
+    if (tidyBox) tidyRender(); else await tidyOpen();
+    return;
+  }
   if (what === "back"){
     await tidySend(tidyTab === "trash" ? "restore" : "unarchive", [id]);
     return;
@@ -376,9 +466,9 @@ async function tidyAct(what, el){
       safe: true,
       title: `${ids.length}건을 영구히 지웁니다 — 되돌릴 수 없습니다`,
       descHtml: tidyNames(ids, i => (tidyTrash || []).find(x => x.id === i))
-        + `<p>번호는 계속 태워 둡니다 — 지운 번호가 다른 문서로 다시 나가는 `
-        + `일은 없습니다.</p>`,
-      ok: "영구 삭제하기", cancel: "그만두기"});
+        + `<p>번호는 비워 둔 채로 둡니다 — 지운 번호가 다른 문서에 다시 `
+        + `쓰이는 일은 없습니다.</p>`,
+      ok: "완전히 지우기", cancel: "그만두기"});
     if (yes) await tidySend("purge", ids, {confirm: true});
     return;
   }
@@ -398,13 +488,14 @@ function tidyNames(ids, find){
 }
 
 /* 삭제는 되돌릴 수 있지만 **목록에서 사라진다** — 스무 개를 한 번에 보내는
-   손이라 무엇이 가는지 한 번은 보여 준다. 영구 삭제와 달리 붉지 않다. */
+   손이라 무엇이 가는지 한 번은 보여 준다. 완전히 지우기와 달리 붉지 않다. */
 function tidyConfirmRm(ids){
-  return s9dlg({kind: "confirm", cap: "삭제", stop: false,
+  return s9dlg({kind: "confirm", cap: "휴지통", stop: false,
     title: ids.length > 1 ? `${ids.length}건을 휴지통으로 보냅니다`
                           : "이 문서를 휴지통으로 보냅니다",
     descHtml: tidyNames(ids, catFind)
-      + `<p>목록에서 사라지지만 <b>휴지통</b>에서 되돌릴 수 있습니다.</p>`,
+      + `<p>목록에서 사라지지만 Docs 탭 위 <b>「보관함 · 휴지통」</b>에서 `
+      + `되돌릴 수 있습니다.</p>`,
     ok: "휴지통으로 보내기", cancel: "그만두기"});
 }
 

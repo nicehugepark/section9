@@ -354,10 +354,66 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
         self.assertNotIn("한 번에 치운다", vis)
         self.assertNotIn("고르기를 끝낸다", vis, "화면은 존댓말이다")
 
-    def test_s4_the_confirm_names_only_the_trash(self):
+    def test_s4_the_confirm_names_where_the_handle_is(self):
+        """되돌릴 자리를 **화면에 실제로 있는 이름**으로 말한다.
+
+        종전 문장은 「휴지통에서 되돌릴 수 있습니다」였다 — 그 휴지통이 어디에
+        있는지는 말하지 않았고, 손잡이는 Docs 타입바 끝 한 곳뿐이라 주인은 버린
+        뒤 한참을 뒤졌다 (REQ-20260910-005/006)."""
         vis = self._strings(self.js)
-        self.assertIn("<b>휴지통</b>에서 되돌릴 수 있습니다", vis)
+        self.assertIn("Docs 탭 위 <b>「보관함 · 휴지통」</b>에서 ", vis)
         self.assertNotIn("치운 것 → 휴지통", vis)
+
+    def test_s5_the_words_are_the_settled_six(self):
+        """확정 사전 여섯만 선다 (REQ-20260910-006).
+
+        보관 / 보관 해제 · 휴지통으로 · 되돌리기 · 완전히 지우기 · 휴지통 비우기.
+        폐기한 낱말이 한 곳이라도 남으면 같은 것에 이름이 둘이 된다."""
+        vis = self._strings(self.js)
+        for gone in ("영구 삭제", "전부 영구 삭제", "영구 삭제하기", "소거"):
+            self.assertNotIn(gone, vis, "폐기한 낱말: " + gone)
+        self.assertIn("완전히 지우기", vis)
+        self.assertIn("휴지통 비우기", vis)
+        # 한 낱말이 두 뜻을 지지 않는다 — 휴지통 탭은 되돌리기, 보관함 탭은 보관 해제
+        self.assertIn('${tidyTab === "trash" ? "되돌리기" : "보관 해제"}', self.js)
+
+    def test_s6_one_signal_invalidates_both_lists(self):
+        """치우는 손은 **한 신호**만 지난다 (REQ-20260910-005 실제 사고).
+
+        종전에는 여기서 카탈로그만 다시 받아, 같은 삭제가 Docs 에서는 반영되고
+        Projects 레일에서는 안 됐다 — 버리면 남고 되돌리면 사라졌다. 목록이
+        둘인데 무효화가 하나였던 것이 뿌리다. 다음에 붙는 변이가 또 한쪽을
+        빠뜨리지 않게, 부르는 자리는 `docsChanged` 하나로 고정한다."""
+        send = self.js.split("async function tidySend(")[1].split("\n}\n")[0]
+        self.assertIn("await docsChanged();", send)
+        self.assertNotIn("refreshCatalog(", send,
+                         "목록을 낱개로 다시 받으면 다음 변이가 또 한쪽을 빠뜨린다")
+        app = open(os.path.join(HERE, "..", "web", "app", "app.js"),
+                   encoding="utf-8").read()
+        self.assertIn("async function docsChanged()", app)
+        body = app.split("async function docsChanged()")[1].split("\n}\n")[0]
+        self.assertIn("await refreshProjects();", body)
+        self.assertIn("await refreshCatalog(true);", body)
+        # 프로젝트를 먼저 받는다 — 그래야 같은 변화를 두 번 세지 않는다
+        self.assertLess(body.index("refreshProjects"), body.index("refreshCatalog"))
+
+    def test_s7_the_undo_line_stands_where_the_doc_was_thrown(self):
+        """버린 그 자리에 되돌리는 손이 선다 (REQ-20260910-006 ②).
+
+        되돌릴 수 있는 일에만 되돌리는 손을 세우고, 완전히 지운 뒤에는 없는
+        행동을 지어내지 않는다. 스스로 사라지지 않는다 — 몇 초 뒤에 접히는
+        줄은 그때 화면을 안 보던 사람에게는 없는 줄이다."""
+        vis = self._strings(self.js)
+        self.assertIn("휴지통으로 보냈습니다", vis)
+        self.assertIn("보관함으로 내렸습니다", vis)
+        self.assertIn("문서 목록으로 되돌렸습니다.", vis)
+        self.assertIn('data-tidy="undo"', self.js)
+        self.assertIn('data-tidy="seetrash"', self.js)
+        self.assertIn('data-tidy="undox"', self.js)
+        body = self.js.split("function tidyUndoHTML()")[1].split("\n}\n")[0]
+        self.assertIn('op === "rm" || op === "archive"', body,
+                      "되돌릴 수 있는 일에만 되돌리는 손이 선다")
+        self.assertNotIn("setTimeout", body, "스스로 사라지는 줄은 없는 줄이다")
 
     def test_s5_the_panel_opens_the_pile_that_is_not_empty(self):
         """한쪽이 0 이면 반대쪽부터 연다 — 둘 다 있으면 보관함 그대로."""
