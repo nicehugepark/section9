@@ -6,7 +6,7 @@ role: admin
 emails: ["claude01.pfe@example.invalid"]
 github: nicehugepark
 os_accounts: ["sjpark1", "sjpark", "seongjinpark"]
-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-09T17:25:01+09:00"}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-06T01:31:21+09:00"}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-06T15:19:21+09:00"}]
+machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-09T17:28:09+09:00"}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-06T01:31:21+09:00"}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-06T15:19:21+09:00"}]
 machines: ["eek-p620", "Seongjinui-Macmini.local"]
 ---
 
@@ -229,3 +229,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-09T16:37:18+09:00 config jira_enabled=off (by nicehugepark via dashboard)
 - 2026-09-09T16:37:22+09:00 config jira_enabled=on (by nicehugepark via dashboard)
 - 2026-09-09T17:00:49+09:00 config ui_skin=ledger (by nicehugepark via dashboard)
+- 2026-09-09T17:28:28+09:00 config ui_skin=calm (by nicehugepark via dashboard)
