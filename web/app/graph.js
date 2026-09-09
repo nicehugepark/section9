@@ -57,6 +57,39 @@ const hdrConds = () => HCOND.filter(c => c.val());
 // ('내 것만'은 값이 곧 이름이라 괄호를 달지 않는다)
 const condName = c => `<b>${c.ko}</b>`
   + (c.k === "mine" ? "" : `(<code>${esc(c.val())}</code>)`);
+/* 걸려 있는 조건을 관계도가 스스로 말한다 (REQ-20260909-066).
+
+   사용자가 본 것: Docs 목록에서 「질문」만 고른 뒤 관계도로 오면, 범례는 전부
+   켜져 있는데 질문만 그려진다 — 「전체를 보는데 질문만 나온다」. 헤더의 종류
+   조건은 탭을 가로질러 함께 걸리는 공용 조건이라 의도된 동작인데, 관계도에는
+   그 조건이 눈에 보이는 자리가 없었다. Docs 목록에서는 고른 값이 목록 위에
+   그대로 보이지만 관계도에는 점만 있다. 빈 화면이 아니니 아래 안내
+   (graphEmptyState)도 서지 않는다 — 그래서 조건이 걸린 채로도 말하는 줄이 는다.
+
+   말할 조건은 이 목록 하나가 정한다. 이번에 말하는 것은 종류뿐이다 —
+   사용자·프로젝트·태그·검색까지 함께 말하면 줄이 조건 목록이 되고, 그것은
+   헤더가 이미 하는 일이다. 넓히려면 여기에 키를 더한다(문구·손잡이는 HCOND
+   가 이미 갖고 있다). */
+const GCOND_SAY = ["type"];
+function graphCondSaid(gEmpty){
+  // 빈 화면 안내가 이미 그 조건을 범인으로 지목했으면 같은 말을 두 번 하지 않는다.
+  const already = (gEmpty && gEmpty.fix && gEmpty.fix.cond) ? gEmpty.fix.cond.k : null;
+  return HCOND.find(c => GCOND_SAY.includes(c.k) && c.val() && c.k !== already) || null;
+}
+function graphCondHTML(gEmpty){
+  const c = graphCondSaid(gEmpty);
+  if (!c) return "";
+  // 「지우면 몇 건이 되나」는 짐작하지 않고 세어 말한다. 다른 조건이 함께 걸려
+  // 있으면 그 수는 전체가 아니므로 그때는 '전체'라고 하지 않는다.
+  const n = filtered(false, false, new Set([c.k])).length;
+  return `<div class="gcond" role="status">`
+    + `<span class="gcondwhat">${c.ko} 조건: <code>${esc(c.val())}</code></span>`
+    + `<span class="gcondwhy">이 조건을 ${c.undo} `
+    + `${n === catalog.length ? "전체 " : ""}<b>${n}</b>건</span>`
+    + `<button type="button" class="gcondx" data-gfix="cond" `
+    + `data-gcond="${esc(c.k)}">${esc(c.btn)}</button></div>`;
+}
+
 /* 이 종류를 지금 조건에서 지운 범인 하나. 조건을 하나씩 빼 보고, 빼자마자 그
    종류가 나타나면 그게 범인이다. 둘 이상이 겹쳐 가리면 하나를 고르지 않는다 —
    틀린 범인을 대는 것은 아무 말도 안 하는 것보다 나쁘다. */
@@ -253,6 +286,7 @@ async function renderGraph(rows){
       <span class="gedge${depEdgeN ? "" : " none"}" title="blocked_by — 선행이 끝나야 후행이 풀린다. 화살촉이 가리키는 쪽이 막혀 있는 요청이다. 계보(parent 실선 · derived/relates 가는 점선)와 달리 잉크로 그리고, 여러 건을 붙잡은 선행일수록 진하고 굵다. 선행이 끝나면 이 화살표는 사라진다."><svg width="40" height="9" aria-hidden="true"><line x1="0" y1="4.5" x2="28" y2="4.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="9 5"/><polygon points="28,0.7 39,4.5 28,8.3" fill="currentColor"/></svg>선행 → 후행 대기 <b class="gecount">${depEdgeN}</b></span>
       <span style="margin-left:auto">앰버 호+숫자 = 이 요청이 붙잡고 있는 미완료 파생 요청 수(1건이면 4분의 1 바퀴, 4건부터 한 바퀴) · 점멸 = in-progress · 실선 링 = blocked · 점선 링 = review</span>
     </div>
+    ${graphCondHTML(gEmpty)}
     <canvas id="gcanvas"></canvas>${graphEmptyHTML(gEmpty)}
     <button type="button" class="gfit" id="gfit" hidden>⤢ 전체 보기</button>
     <div class="ghint">${graphLayout==="dag" ? "dag: 위→아래 = parent→파생 · " : ""}드래그 = 이동/노드 끌기 · 휠 = 줌 · 빈 곳 더블클릭 = 전체 보기 · 클릭 = 문서 열기</div>

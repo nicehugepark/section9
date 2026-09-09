@@ -50,6 +50,25 @@
 .gedge.none{opacity:.4}
 .gedge .gecount{font-family:var(--mono);color:var(--muted)}
 
+/* ------- 걸려 있는 조건을 관계도가 말한다 (REQ-20260909-066) -------
+   범례와 한 줄에 두지 않는다 — 범례는 켜고 끄는 손잡이의 줄이고 이 줄은 지금
+   걸린 조건을 세어 말하는 줄이라, 섞으면 접힘이 둘의 뜻을 갈라 놓는다.
+   색면·세로 띠 없이 헤어라인 한 줄과 글자 굵기로만 (계기판 언어). 문장이므로
+   범례의 모노·대문자·자간을 물려받지 않는다. */
+.gcond{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;
+  padding:8px 16px;border-bottom:1px solid var(--hairline);
+  font-size:11.5px;line-height:1.5;color:var(--muted);word-break:keep-all}
+.gcond .gcondwhat{color:var(--text);font-weight:600}
+.gcond code{font-family:var(--mono);font-size:11px;letter-spacing:.02em;
+  color:var(--text)}
+.gcond b{color:var(--text);font-weight:700}
+.gcond .gcondx{background:none;border:1px solid var(--border);color:var(--text);
+  font:inherit;font-size:11px;padding:4px 12px;cursor:pointer;white-space:nowrap;
+  border-radius:var(--r)}
+.gcond .gcondx:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
+.gcond .gcondx:focus-visible{background:var(--text);color:var(--bg);
+  border-color:var(--text);outline:1px solid var(--text);outline-offset:2px}
+
 /* ------- 그래프 빈 화면 안내 (REQ-20260826-039) -------
    캔버스가 비는 건 대개 렌더 실패가 아니라 조건의 교집합이 0인 것이다. 화면이
    그걸 말하지 않으면 사용자는 위 필터와 범례 두 곳을 스스로 대조해야 한다.
