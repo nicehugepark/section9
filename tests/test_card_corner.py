@@ -77,7 +77,8 @@ class TheCardHasOneRuler(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with open(INDEX, encoding="utf-8") as f:
-            cls.rules = _rules(_css(f.read()))
+            cls.src = _css(f.read())
+        cls.rules = _rules(cls.src)
         cls.card = [(s, d) for s, d in cls.rules
                     if re.search(r"(^|[\s,])\.card$", s)]
         cls.corner = [(s, d) for s, d in cls.rules
@@ -185,6 +186,40 @@ class TheCardHasOneRuler(unittest.TestCase):
             self.assertEqual("none", _decl(cap[0], "flex"),
                              "라벨이 줄어든다 — 「만…」 처럼 라벨의 부스러기만 "
                              "남으면 뜻이 없고 고장으로 보인다. 줄어드는 것은 값이다")
+        with self.subTest("the_lineage_label_is_whole_or_absent"):
+            # **라벨은 온전히 서거나 아예 빠진다** (REQ-20260910-047).
+            #
+            # 위 검사는 겹침만 봤다 — 칩이 제 상자에 갇히는 것까지. 그런데
+            # `.lincap` 은 `flex:none` 이라 제 상자(46.9px)를 늘 지키고, 그
+            # 상자가 부모의 `overflow:hidden` 에 **잘려** 보이는 부분만 깎인다.
+            # 상자를 재는 검사에는 언제나 46.9px 로 온전해 보이고 화면에는
+            # 「만든 사」와 반쪽 글자가 남는다 — DOC-20260910-001 이 적은
+            # 함정의 반대편이다(상자는 멀쩡한데 잉크가 아니다).
+            #
+            # 실측(2026-09-10, 실서버 9909·기본 밀도, 보이는 폭 = 칩의 클립
+            # 상자와 라벨 상자의 교집합):
+            #   ledger 1280 → 14.9/46.9 · 1440 → 41.6/46.9(5.3px 깎임) ·
+            #   soft 1440 → 0/46.9 · calm·field·cork 1600 → 32~43/46.9.
+            # 배율 1.25 캡처를 5배로 확대해 눈으로도 봤다(반 글자가 보인다).
+            #
+            # 처방은 **줄이는 것이 아니라 빼는 것**이다: 칩이 제 몫
+            # (라벨 46.9 + 여백 4 + 값 26.4)을 못 받는 카드에서는 계보 칩이
+            # 서지 않는다. 문턱 243 = 배지 87.8 + 틈 10 + 계보 77.3 + 틈 10 +
+            # 프로젝트 9ch 58. 이 수를 내리면 반 글자가 돌아온다.
+            m = re.search(
+                r"@container\s*\(\s*max-width\s*:\s*(\d+)px\s*\)\s*\{"
+                r"[^{}]*\.card\s+\.m\.mwho>\.lin\s*\{([^{}]*)\}",
+                self.src)
+            self.assertIsNotNone(
+                m, "좁은 카드에서 계보 칩을 빼는 규칙이 없다 — 라벨이 "
+                   "`overflow:hidden` 에 잘려 반 글자로 남는다")
+            self.assertEqual("none", _decl(m.group(2), "display"),
+                             "좁은 카드에서 계보 칩이 사라지지 않는다")
+            self.assertGreaterEqual(
+                int(m.group(1)), 243,
+                "문턱이 잰 값(243px) 아래다 — 배지 87.8 + 틈 10 + 계보 77.3 + "
+                "틈 10 + 프로젝트 58 이 안 들어가는 폭에서 칩이 서면 라벨이 "
+                "다시 잘린다")
         with self.subTest("the_judgement_word_never_breaks"):
             # `반려 in-progress` 가 `반려 in-` / `progress` 로 갈라졌다
             # (실서버 review 열). 상태 값은 사람이 CLI 에 그대로 치는 글자라
