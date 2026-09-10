@@ -72,7 +72,7 @@ class ThreeWaysToStand(unittest.TestCase):
         os.makedirs(os.path.join(cls.root, "state", "sessions"))
         cls.m = _load("s9stopbr", cls.root)
         cls.auto = tempfile.mkdtemp(prefix="s9stopbr-auto-")
-        cls.m._auto_dir = staticmethod(lambda: cls.auto)
+        cls.m._auto_dir = lambda: cls.auto   # staticmethod 객체는 3.9 에서 모듈 속성으로는 부를 수 없다
 
     @classmethod
     def tearDownClass(cls):

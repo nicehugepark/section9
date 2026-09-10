@@ -384,12 +384,20 @@ def main():
         return
 
     tp = data.get("transcript_path")
-    if tp and os.path.exists(tp):
-        # live tail + resume용: 원본 경로·cwd를 바인딩에 기록
+    if tp:
+        # live tail + resume용: 원본 경로·cwd를 바인딩에 기록. **파일이 아직
+        # 없어도 경로는 적는다** (REQ-20260910-009-2n7g, 실제 사고 2026-09-10
+        # 22:41): 새 세션의 대화 기록 파일은 첫 프롬프트가 지나야 생기는데,
+        # 시작 훅은 그보다 2초 앞서 돈다. 존재를 조건으로 걸자 바인딩에 경로가
+        # 없었고, 그 사이 사람이 계정을 바꾸려 하자 「대화 기록을 찾지 못해
+        # 바꾸지 않았습니다」로 거부됐다 — 파일은 그때 이미 있었다. 경로는
+        # Claude Code 가 준 사실이라 존재와 무관하게 참이고, 읽는 쪽
+        # (_binding_activity_paths·transcript_read)은 없는 파일을 이미 견딘다.
         subprocess.run([*S9_ARGV, "bind", "transcript_path", tp],
                        capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
         subprocess.run([*S9_ARGV, "bind", "cwd", data.get("cwd", "")],
                        capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
+    if tp and os.path.exists(tp):
         # 세션 시작/종료 시 스트림 미러링 — 파일명=원본 basename(전체SID.jsonl).
         # 끄기 스위치와 증분 쓰기는 mirror() 안쪽(=매 턴 미러와 같은 코드)이 본다.
         mirror(tp)

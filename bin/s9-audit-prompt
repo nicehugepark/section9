@@ -785,7 +785,7 @@ def main():
         run(env, "bind", "attach_pid", str(_claude_pid()))
         run(env, "bind", "ended", "")
         tp = data.get("transcript_path") or ""
-        if tp and os.path.exists(tp):
+        if tp:   # 파일이 아직 없어도 경로는 참이다 (REQ-20260910-009-2n7g, s9-audit-session 과 같은 이유)
             run(env, "bind", "transcript_path", tp)  # 신생 세션 자가 치유
     except Exception:
         pass

@@ -112,8 +112,10 @@ function showUsageHover(el){
   hoverWide(true);
   const rows = usageRows();
   if (!rows.length){
-    hovercard.innerHTML = `<div class="hid ucap">클로드 사용량</div>
-      <div class="hs">아직 받지 못했다 — 60초마다 다시 물어본다.</div>`;
+    const d = usageLast || {};
+    hovercard.innerHTML = `<div class="hid ucap">클로드 사용량</div>`
+      + (d.email ? `<div class="ht umail">${esc(d.email)}</div>` : "")
+      + `<div class="hs">${d.error ? esc(d.error) + " " : ""}아직 받지 못했다 — 60초마다 다시 물어본다.</div>`;
     placeHover(el); return;
   }
   const d = usageLast;
@@ -152,7 +154,22 @@ async function refreshUsage(){
          마지막 값이 있으면 시각 마크를 붙여 그대로 두고(서버가 stale 을 줄 때 이미 쓰는
          표시), 받은 적이 없으면 그 사실을 한 줄로 말한다. 「빈 칩에 키보드가 멈추면
          정거장이 된다」는 지적은 tabindex 로 풀 일이었지 글자를 지울 이유가 아니었다. */
-      if (usageLast){
+      /* **계정이 바뀌었으면 옛 값을 남기지 않는다** (REQ-20260910-008-2n7g, 실제
+         사고 2026-09-10 22:35). 맥에서 프로필 계정은 Keychain 을 못 읽어 사용량
+         조회가 늘 실패한다 — 그때 「마지막 값을 시각 마크와 함께 둔다」는 규칙이
+         **옛 계정의 메일과 숫자**를 그대로 세웠고, 사람은 계정을 바꾼 뒤에도
+         「여전히 바꾸기 전 계정이 보인다 · 제대로 바뀐 건지 알 길이 없다」고 읽었다.
+         서버는 실패 응답에도 그 세션의 계정(email·cfg_dir)을 싣는다 — 계정이
+         다르면 옛 숫자는 이 계정의 것이 아니니 버리고, 새 계정을 빈 숫자로 세운다.
+         처음부터 못 받은 때(F5 직후)도 같다: 계정을 아는데 「받지 못했습니다」만
+         세우면 상단에 계정이 없다.
+         왜 비었는지는 카드(호버)가 말한다. */
+      if (d && d.email && (!usageLast || d.email !== usageLast.email)){
+        usageLast = {email: d.email, cfg_dir: d.cfg_dir, limits: [], ok: false,
+                     stale: false, error: d.error || ""};
+        renderUsageChip(el, usageLast);
+        el.setAttribute("tabindex", "0");   // 계정이 서 있으니 카드(사유)에 tab 으로 닿는다
+      } else if (usageLast){
         usageLast = {...usageLast, stale: true};
         renderUsageChip(el, usageLast);
       } else {
