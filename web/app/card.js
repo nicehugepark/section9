@@ -192,11 +192,46 @@ const STOP_KIND = {
      배율 1.5   좌우 0.027 → 0.028 · 상하 0.026 → 0.020
    남은 1.5 의 몫은 그림 자체의 반화소다(7px 잉크 × 1.5 = 10.5화소라 어느 쪽에
    걸리는지가 카드의 화면 위치로 정해진다) — 감추지 않고 적어 둔다. */
-const GLYPH_PLAY = '<svg class="gly" viewBox="0 0 13 13" aria-hidden="true"'
-  + ' focusable="false"><path d="M4 3 L11 6.5 L4 10 Z" fill="currentColor"/></svg>';
-const GLYPH_PAUSE = '<svg class="gly" viewBox="0 0 13 13" aria-hidden="true"'
-  + ' focusable="false"><rect x="3" y="3" width="3" height="7" fill="currentColor"/>'
-  + '<rect x="7" y="3" width="3" height="7" fill="currentColor"/></svg>';
+/* **막대는 막대여야 한다** (REQ-20260910-009 P1 — 주인 지적 2026-09-10:
+   「pause 버튼을 보니까 너무 못생겼다」).
+
+   앞선 네 판(042·043·006·019)은 전부 **그림 안쪽 기하**를 다뤘다 — 눈금·거울
+   대칭 잔차·mask 반올림. 그 일은 옳았고 값은 그대로 둔다. 이번에 잰 것은
+   **줄과의 관계**다(id 줄을 5배로 떠서):
+
+     ⏸ 의 잉크  3x7 막대 둘 = 채운 면 42px^2
+     같은 줄 mono 10px 글자 한 자 = 획 8~12px^2
+
+   네 배다. 게다가 색이 --muted(대비 5.97:1)라 바로 옆 식별자 --faint 보다
+   진했다 — **줄에서 가장 조용해야 할 자리에 줄에서 가장 진한 덩어리**가 있었다.
+
+   모양도 문제였다: 막대 3 + 틈 1 + 막대 3 = 가로 7, 세로 7. **정사각**이고
+   잉크가 86% 다. 재생기의 ⏸ 는 막대 폭:높이가 1:3~1:3.5 인데 여기는 1:2.33 이라
+   막대 둘이 아니라 네모난 덩어리 하나로 읽힌다. 더구나 이 제품의 점 어휘에서
+   **사각은 「멎은 것」의 모양**(멈춤·죽음·중단해 둠)이다 — 행위 버튼이 상태의
+   모양을 입고 있었다.
+
+   그리고 틈 1px 은 배율 1.25 에서 1.25 화소라 반올림이 좌우로 갈려, 확대
+   캡처에서 두 막대의 폭과 농도가 눈에 띄게 달랐다.
+
+   **그래서 눈금을 13 에서 14 로 옮긴다.** 13 칸에는 좌우 대칭인 6폭 잉크
+   (막대2+틈2+막대2)가 안 들어간다 — (13-6)/2 = 3.5 라 반화소에 앉는다. 14 칸이면
+   4 에서 시작해 10 에서 끝나 정수다. 눈금이 짝수가 되니 과녁도 28(=14+7x2)로
+   떨어져 손잡이 눈금(20/28/36)에 그대로 든다. 한 칸 = 한 화소 규칙은 그대로다.
+
+     ⏸  막대 2 · 틈 2 · 높이 8 (y 3..11)  잉크 32px^2 · 비율 1:4
+     ▶   밑변 8 · 높이 8 (x 4..12)        잉크 32px^2
+
+   두 얼굴의 잉크를 같은 값으로 맞춘 것은 **상태 배타의 전제**다(042): 「한 축의
+   두 방향, 하나만 참」을 그림으로 약속하려면 두 그림의 무게가 같아야 한다.
+   ▶ 의 무게중심은 (4+4+12)/3 = 6.67 로 상자 한가운데 7 에서 0.33 왼쪽이다 —
+   삼각형은 상자가 아니라 무게중심으로 가운데를 잡으므로 이 쪽이 맞다.
+   틈 2px 은 배율 1.25 에서 2.5 화소라 어느 쪽으로 반올림돼도 살아남는다. */
+const GLYPH_PLAY = '<svg class="gly" viewBox="0 0 14 14" aria-hidden="true"'
+  + ' focusable="false"><path d="M4 3 L12 7 L4 11 Z" fill="currentColor"/></svg>';
+const GLYPH_PAUSE = '<svg class="gly" viewBox="0 0 14 14" aria-hidden="true"'
+  + ' focusable="false"><rect x="4" y="3" width="2" height="8" fill="currentColor"/>'
+  + '<rect x="8" y="3" width="2" height="8" fill="currentColor"/></svg>';
 /* 눌린 뒤의 얼굴을 한 붓이 칠한다 — 글리프 버튼과 낱말 버튼 둘 다.
 
    **이름은 요소가 들고 다닌다**(`data-name`). 칠하는 쪽이 상수를 골라 쓰면
@@ -2550,6 +2585,15 @@ function colHTML(key, label, color, grp){
 
 // Board는 요청의 상태 흐름만 다룬다 — knowledge/session 컬럼 제거 (REQ-20260825-084).
 // 그 컬럼이 하던 일("지식·세션 문서에 도달한다")은 Docs 목록 최상단의 타입바가 받는다.
+/* 앞 회차 판의 지문 — 같으면 다시 쓰지 않는다 (REQ-20260910-023).
+
+   **경과 시각의 글자는 지문에서 뺀다.** 그것은 초 단위로 바뀌므로 넣어 두면
+   지문이 매초 달라져 비교가 아무것도 걸러 내지 못한다(실측: 같은 목록으로
+   두 번 그려도 지문이 달랐다). 그 자리는 어차피 `tickElapsed` 가 1초마다
+   글자만 갈아 끼우므로, 시각이 흐른 것만으로 판을 다시 쓸 이유가 없다. */
+let boardSigLast = "";
+const boardSig = html =>
+  html.replace(/(<span class="elapsed"[^>]*>)[^<]*/g, "$1");
 function renderBoard(rows){
   const reqs = rows.filter(r => r.type === "request");
   /* **상단 상태 띠를 내렸다** (REQ-20260827-070 2차 — 사용자 물음에 대한 답).
@@ -2631,7 +2675,30 @@ function renderBoard(rows){
     html += colHTML(st, st, SCOLOR[st], grp);
   }
   html += `</div>`;
-  $("#view").innerHTML = html;
+  /* 다시 그려도 **보던 자리를 잃지 않는다** (REQ-20260910-023).
+
+     주인: 「보드 화면을 스크롤 해서 보는 중에 계속 새로고침이 된다.」 판은
+     `#view` 를 통째로 다시 쓰는데, 문서 목록은 15초 안전 폴·알림 채널·어떤
+     변이로든 갱신된다 — 그때마다 스크롤이 0 으로 돌아가 읽던 자리를 잃었다.
+     노트가 자주 쌓이는 날에는 몇 초에 한 번씩 그랬다.
+
+     두 겹으로 막는다. ① 지문이 같으면 아예 다시 쓰지 않는다 — 목록이
+     갱신돼도 판에 보일 것이 그대로면 왕복할 이유가 없다. ② 다시 쓸 때는
+     스크롤 자리를 재 두었다가 되돌린다. ①만으로는 모자란데, 경과 시각이
+     글자로 박혀 있어 1분마다 지문이 달라지기 때문이다.
+
+     판이 없으면(다른 탭에 갔다 왔다) 지문이 같아도 다시 쓴다 — 비교 대상이
+     화면에 없으니 지문은 아무것도 보장하지 않는다. 집어 둔 카드 표시는
+     html 에 없는 사실이라 어느 회차에나 다시 붙인다. */
+  const brd0 = $("#view .board");
+  const keep = brd0 ? {top: brd0.scrollTop, left: brd0.scrollLeft} : null;
+  const sig = boardSig(html);
+  if (!(brd0 && sig === boardSigLast)){
+    $("#view").innerHTML = html;
+    boardSigLast = sig;
+    const brd = $("#view .board");
+    if (brd && keep){ brd.scrollTop = keep.top; brd.scrollLeft = keep.left; }
+  }
   markPicked();   // 집어 둔 카드 표시 복원 (REQ-20260827-064)
   // 세 줄에서 잘린 카드에만 "전문 보기"를 연다 — 잘림은 재서 안다 (REQ-20260829-009).
   // 그림이 붙은 다음 프레임에 잰다: innerHTML 직후에는 아직 레이아웃이 없다.

@@ -108,6 +108,45 @@ class DocsRenderIdle(unittest.TestCase):
             self.assertEqual(self.paints([A], fresh_panel=False), 0,
                              "이미 그 그림을 그리고 있는 판을 또 칠한다")
 
+    # ------------------------------------------------ S5 — 판도 같은 규율을 쓴다
+    def test_the_board_does_not_repaint_for_a_ticking_clock(self):
+        """판의 지문에서 경과 시각의 글자는 빠진다 (REQ-20260910-023).
+
+        주인: 「보드 화면을 스크롤 해서 보는 중에 계속 새로고침이 된다.」 경과
+        시각을 지문에 넣어 두면 초마다 달라져 비교가 아무것도 걸러 내지 못한다
+        — 실측으로 같은 목록을 두 번 그려도 지문이 달랐다. 그 자리는 어차피
+        tickElapsed 가 글자만 갈아 끼운다.
+        """
+        card = read("card.js")
+        sig = grab(card, r"^const boardSig = html =>\n[^\n]*$", "boardSig")
+        A = ('<div class="id"><span class="idn">REQ-1</span>'
+             '<span class="elapsed" data-since="X">19m 19s</span></div>')
+        B = A.replace("19m 19s", "19m 20s")          # 초만 흘렀다
+        C = A.replace("REQ-1", "REQ-2")              # 목록이 실제로 바뀌었다
+        script = "\n".join([
+            sig,
+            "console.log(JSON.stringify({tick: boardSig(%s) === boardSig(%s),"
+            " real: boardSig(%s) === boardSig(%s)}));"
+            % (json.dumps(A), json.dumps(B), json.dumps(A), json.dumps(C)),
+        ])
+        got = self.node(script)
+        self.assertTrue(got["tick"],
+                        "시각이 흐른 것만으로 지문이 달라진다 — 판이 매초 다시 "
+                        "그려지고 보던 자리를 잃는다")
+        self.assertFalse(got["real"],
+                         "목록이 바뀌었는데 지문이 같다 — 화면이 멈춘다")
+
+    def test_the_board_keeps_where_you_were_looking(self):
+        """다시 쓸 때는 스크롤 자리를 재 두었다가 되돌린다 (REQ-20260910-023)."""
+        card = read("card.js")
+        i = card.index('const brd0 = $("#view .board");')
+        blk = card[i:card.index("markPicked();", i)]
+        self.assertIn("scrollTop", blk, "스크롤 자리를 재 두지 않는다")
+        self.assertIn("brd.scrollTop = keep.top", blk, "재 둔 자리를 안 되돌린다")
+        self.assertIn("brd0 &&", blk,
+                      "판이 없을 때도 지문을 믿는다 — 다른 탭에 갔다 오면 "
+                      "비교 대상이 화면에 없다")
+
     # ------------------------------------------------ S4 — roveSync 쓰기 횟수
     def test_rove_writes_only_when_needed(self):
         """짚어 둔 자리가 그대로면 tabIndex 를 한 번도 쓰지 않는다."""
