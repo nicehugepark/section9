@@ -5424,7 +5424,10 @@ def machine_os(machine, user=None):
 
 
 def machine_phrase(machine, user=None):
-    """사람에게 보일 머신 한 마디 — 머신값(판). 판은 곁들이는 것이지 판정 근거가 아니다."""
+    """사람에게 보일 컴퓨터 한 마디 — 컴퓨터 이름(운영체제).
+
+    운영체제는 곁들이는 것이지 판정 근거가 아니다 (REQ-20260910-018). 낱말도
+    「컴퓨터」다 — 화면에 「머신」·「판」을 쓰지 않는다 (REQ-20260910-017)."""
     mv = str(machine or "").strip()
     o = machine_os(mv, user)
     return f"{mv}({o})" if o else mv
@@ -10266,14 +10269,19 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     want_m = str((meta or {}).get("needs_machine") or "").strip()
     if want_m:
         if want_m != current_machine():
+            # 화면에 그대로 뜨는 문장이다 — 낱말은 「컴퓨터」다 (REQ-20260910-017
+            # 용어 판정: 「머신」은 사람이 어디에도 치지 않는 음차이고, 「판」은
+            # 화면 어디에도 없는 말이다). test_dialog_voice 가 지킨다.
             return block("needs_machine",
-                         f"이 요청은 {machine_phrase(want_m)} 에서 해야 합니다 — "
-                         f"이 머신은 {machine_phrase(current_machine())} 입니다")
+                         f"이 요청은 {machine_phrase(want_m)} 에서 합니다. "
+                         f"지금은 이 컴퓨터"
+                         f"({machine_phrase(current_machine())})라 진행하지 않습니다.")
     else:
         need = str((meta or {}).get("needs_os") or "").strip()
         if need and not needs_os_matches(need):
-            return block("needs_os", f"이 요청은 {need} 에서 해야 합니다 — 이 판({os_platform()})"
-                                     f"에서는 띄우지 않습니다")
+            return block("needs_os",
+                         f"이 요청은 {need} 컴퓨터에서 합니다. "
+                         f"이 컴퓨터는 {os_platform()} 라 진행하지 않습니다.")
     # 끝난 문서에는 **어떤 경로로도** 뜨지 않는다 (REQ-20260830-002).
     #
     # 실사고 2026-08-30 00:30: 18:56 에 done 으로 닫힌 REQ 에 무인 작업자가
