@@ -28517,7 +28517,10 @@ def jira_issue_create(doc_id, actor="", manual=False, **kw):
     """요청 하나를 Jira 이슈로 — {ok, key, url, error, skipped}. 실패는 문서에 남고
     outbox 로 간다(호출자가 워처든 사람이든 같은 길)."""
     import time as _time
-    path = find_path(doc_id)
+    # locate 는 없으면 None 을 준다 — find_path 는 die() 라 이 가드가 죽은 코드였고, outbox 에
+    # 실린 뒤 휴지통으로 간 문서 하나가 tick 전체를 죽였다(REQ-20260910-021 실측: 죽은 create
+    # 항목 하나에 outbox 66건이 막힘). 없는 문서는 skipped 로 흘려보내 outbox 에서 빠지게 한다.
+    path = locate(doc_id)
     if not path:
         return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
     meta, _body = read_doc(path)
@@ -28657,7 +28660,10 @@ def jira_title_push(doc_id, actor="", **kw):
     PUT /issue/{key} (REQ-20260909-032 · REQ-20260910-021). description 은 **지금 Jira 에
     있는 것이 우리가 쓴 것일 때만** 다시 쓴다(GET 으로 읽어 지문과 대본다) — 사람이
     Jira 에서 고친 것은 지우지 않고(REQ-20260909-030) 두었다는 사실을 History 에 적는다."""
-    path = find_path(doc_id)
+    # locate 는 없으면 None 을 준다 — find_path 는 die() 라 이 가드가 죽은 코드였고, outbox 에
+    # 실린 뒤 휴지통으로 간 문서 하나가 tick 전체를 죽였다(REQ-20260910-021 실측: 죽은 create
+    # 항목 하나에 outbox 66건이 막힘). 없는 문서는 skipped 로 흘려보내 outbox 에서 빠지게 한다.
+    path = locate(doc_id)
     if not path:
         return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
     meta, _body = read_doc(path)
@@ -28853,7 +28859,10 @@ def jira_after_note(doc_id, meta, label=""):
 def jira_comment_push(doc_id, actor="", **kw):
     """commented_ts 뒤의 보낼 노트를 차례로 코멘트로 — {ok, sent, skipped, error}.
     한 건이 실패하면 거기서 멈추고 커서는 마지막 성공에 남는다(다음 틱이 이어 보낸다)."""
-    path = find_path(doc_id)
+    # locate 는 없으면 None 을 준다 — find_path 는 die() 라 이 가드가 죽은 코드였고, outbox 에
+    # 실린 뒤 휴지통으로 간 문서 하나가 tick 전체를 죽였다(REQ-20260910-021 실측: 죽은 create
+    # 항목 하나에 outbox 66건이 막힘). 없는 문서는 skipped 로 흘려보내 outbox 에서 빠지게 한다.
+    path = locate(doc_id)
     if not path:
         return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
     meta, body = read_doc(path)
@@ -28957,7 +28966,10 @@ def jira_result_note(body, ts):
 
 def jira_result_push(doc_id, actor="", **kw):
     """jira.result_ts 의 닫는 전이를 코멘트 한 건으로 — {ok, skipped, error}."""
-    path = find_path(doc_id)
+    # locate 는 없으면 None 을 준다 — find_path 는 die() 라 이 가드가 죽은 코드였고, outbox 에
+    # 실린 뒤 휴지통으로 간 문서 하나가 tick 전체를 죽였다(REQ-20260910-021 실측: 죽은 create
+    # 항목 하나에 outbox 66건이 막힘). 없는 문서는 skipped 로 흘려보내 outbox 에서 빠지게 한다.
+    path = locate(doc_id)
     if not path:
         return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
     meta, body = read_doc(path)
@@ -29029,7 +29041,10 @@ def jira_pick_transition(transitions, our_status, j):
 
 def jira_status_push(doc_id, actor="", **kw):
     """요청의 지금 상태를 Jira 이슈에 반영 — {ok, status, skipped, error}."""
-    path = find_path(doc_id)
+    # locate 는 없으면 None 을 준다 — find_path 는 die() 라 이 가드가 죽은 코드였고, outbox 에
+    # 실린 뒤 휴지통으로 간 문서 하나가 tick 전체를 죽였다(REQ-20260910-021 실측: 죽은 create
+    # 항목 하나에 outbox 66건이 막힘). 없는 문서는 skipped 로 흘려보내 outbox 에서 빠지게 한다.
+    path = locate(doc_id)
     if not path:
         return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
     meta, _body = read_doc(path)
