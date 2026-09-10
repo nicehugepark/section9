@@ -152,5 +152,46 @@ class IngestCopiesAndRewrites(unittest.TestCase):
         self.assertNotIn(gone, shown, "머신 로컬 경로가 사람에게 남았다")
 
 
+class ExamplesInProseAreNotOverwritten(IngestCopiesAndRewrites):
+    """형식을 설명하는 예시 경로는 덮어쓰지 않는다 (REQ-20260910-008-62x6).
+
+    migrate 를 전수로 돌리면 설명문의 예시까지 문장으로 바뀌어 설명이
+    망가진다 — 실측 2026-09-10: 죽은 절대경로 30개 중 12개가 예시였다.
+    """
+
+    def _aged_doc(self, body):
+        import glob as _g
+        out = self._s9("new", "request", "--title", "예시가 든 문서",
+                       "--summary", "s", "--goal", "g", "--size", "S",
+                       inp=body)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        did = out.stdout.split()[0]
+        f = _g.glob(os.path.join(self.root, "vault", "**", did + ".md"),
+                    recursive=True)[0]
+        old = time.time() - 7200
+        os.utime(f, (old, old))
+        return did
+
+    def _survives(self, body, mark):
+        did = self._aged_doc(body)
+        r = self._s9("assets", "ingest", did)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        shown = self._s9("show", did).stdout
+        self.assertIn(mark, shown)
+        self.assertNotIn("남아 있지 않습니다", shown)
+
+    def test_an_inline_quoted_example_survives(self):
+        self._survives("훅이 쓰는 꼴은 `[Image: /x/a.png]` 다.",
+                       "[Image: /x/a.png]")
+
+    def test_an_indented_example_survives(self):
+        self._survives('확인:\n\n    "이 로그 왜 이래?\\n[File: /x/a.log]"',
+                       "[File: /x/a.log]")
+
+    def test_an_abbreviated_path_survives(self):
+        self._survives("맥이 적은 것은 [Image: /Users/…/assets/R/x.png] 였다.",
+                       "[Image: /Users/…/assets/R/x.png]")
+
+
 if __name__ == "__main__":
     unittest.main()

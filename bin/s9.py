@@ -2432,6 +2432,8 @@ def catalog_row(meta, path, body=""):
         # 문서를 다시 열지 않고 행만으로 연결 성분을 계산할 근거다.
         "derived_from": meta.get("derived_from", ""),
         "needs_os": meta.get("needs_os", ""),   # 어느 판에서 해야 하나 (REQ-20260906-080)
+        # 담당 머신 (REQ-20260910-016) — 「저 머신에서만」. 담당자(user)와 짝이다.
+        "needs_machine": meta.get("needs_machine", ""),
         # Jira 이슈 (REQ-20260908-074) — 카드·문서가 읽는 것은 이 덩이뿐이다
         "jira": jira_card_block(meta),
         "relates": meta.get("relates", []),
@@ -3242,6 +3244,14 @@ def cmd_new(args):
     origin, origin_actor, origin_req = request_origin(args, session)
     if getattr(args, "assignee", None):
         user = args.assignee            # 담당자 지정 — 생성자는 그대로 남는다
+    # 담당 머신은 부르는 이름으로 받아 머신값으로 푼다 (REQ-20260910-016).
+    # 문서를 만들기 **전에** 판정한다 — 못 푸는 이름이 문서에 남으면 그 요청은
+    # 어느 머신에도 닿지 않는다.
+    if getattr(args, "needs_machine", None):
+        try:
+            args.needs_machine = resolve_machine_name(args.needs_machine, user=user)
+        except ValueError as e:
+            die(str(e))
 
     # 프로젝트 매핑 + 인가 검사(가드레일) — 판정은 resolve_project 한 곳:
     # 명시적 --project 만 거부(die)하고, 자동 신호는 권한이 없으면 빈 값으로
@@ -3281,6 +3291,8 @@ def cmd_new(args):
             "project": proj,
             "project_source": proj_source,   # 어느 신호로 붙었나 (빈 값은 키 생략)
             "needs_os": getattr(args, "needs_os", "") or "",   # 어느 판에서 해야 하나 (REQ-20260906-080)
+            # 담당 머신 (REQ-20260910-016) — 이미 머신값으로 풀린 뒤다
+            "needs_machine": getattr(args, "needs_machine", "") or "",
             # 짧은 id(REQ-20260906-009)는 정식 id 로 — 짧은 채 적히면 뒤의 정규화가
             # 못 찾아 지운다(실제 사고 2026-09-06: 044 의 parent 가 사라졌다, REQ-20260906-048)
             "parent": full_doc_id(args.parent) if args.parent else "", "children": [],
@@ -5355,6 +5367,95 @@ def call_names_from_vault():
                    "id": meta.get("id", ""),
                    "updated": meta.get("updated", "")}
     return out
+
+
+# ── 담당 머신 (REQ-20260910-016 · 축 정정 REQ-20260910-018) ──────────────
+# 요청이 가야 할 곳은 판(OS)이 아니라 **담당자의 그 머신**이다. 판만 맞으면
+# 남의 맥도 그 요청을 집었다 — 이 저장소를 쓰는 맥이 한 대뿐이라 여태 티가
+# 안 났을 뿐이다. 축은 머신 하나이고, 판은 아래 표에서 파생한다.
+
+
+def machine_table(user=None):
+    """이 저장소가 아는 머신들 — {머신값: {machine, os, account, names, last}}.
+
+    원천 셋을 겹쳐 읽는다. ① 사람들 프로필의 `machine_accounts` — 어느 머신에
+    어느 계정으로 일했고 그 머신의 판이 무엇인지가 여기 있다(그래서 요청에
+    OS 를 따로 적게 하지 않는다). ② 세션 문서의 `call_name` — 밖에서 그
+    세션을 부르는 이름. ③ 손으로 적어 둔 `state/peers.json`.
+    user 를 주면 그 사람의 프로필만 본다.
+    """
+    out = {}
+
+    def slot(mv):
+        return out.setdefault(mv, {"machine": mv, "os": "", "account": "",
+                                   "names": [], "last": ""})
+
+    for u in ([user] if user else registered_users()):
+        for r in (user_profile(u) or {}).get("machine_accounts") or []:
+            if not isinstance(r, dict):
+                continue
+            mv = str(r.get("machine") or "").strip()
+            if not mv:
+                continue
+            s = slot(mv)
+            if str(r.get("last") or "") >= s["last"]:   # 마지막으로 본 줄이 이긴다
+                s["last"] = str(r.get("last") or "")
+                s["os"] = r.get("os") or s["os"]
+                s["account"] = r.get("account") or s["account"]
+    for nm, v in list(call_names_from_vault().items()) + list(read_peers().items()):
+        mv = str((v or {}).get("machine") or "").strip()
+        if not mv:
+            continue
+        s = slot(mv)
+        if nm and nm not in s["names"]:
+            s["names"].append(nm)
+        if v.get("os") and not s["os"]:
+            s["os"] = v["os"]
+    s = slot(current_machine())
+    if not s["os"]:
+        s["os"] = os_platform()
+    return out
+
+
+def machine_os(machine, user=None):
+    """그 머신의 판 — 모르면 빈 문자열. 판은 적는 값이 아니라 파생값이다."""
+    mv = str(machine or "").strip()
+    return (machine_table(user).get(mv) or {}).get("os", "") if mv else ""
+
+
+def machine_phrase(machine, user=None):
+    """사람에게 보일 머신 한 마디 — 머신값(판). 판은 곁들이는 것이지 판정 근거가 아니다."""
+    mv = str(machine or "").strip()
+    o = machine_os(mv, user)
+    return f"{mv}({o})" if o else mv
+
+
+def machine_label(v):
+    """`아는 머신` 목록 한 줄 — 머신값 (부르는 이름 · 판)."""
+    tail = " · ".join(x for x in [", ".join(v.get("names") or []), v.get("os") or ""] if x)
+    return v["machine"] + (f" ({tail})" if tail else "")
+
+
+def resolve_machine_name(name, user=None):
+    """부르는 이름(예: 맥)이나 머신값을 **머신값**으로 푼다. 빈 값은 빈 값(지우기).
+
+    사람이 hostname 을 외울 이유가 없다. 못 푸는 이름은 문서에 적지 않고
+    거절하며, 아는 머신들을 함께 보여 준다 — 오타 하나가 영영 아무 머신에도
+    닿지 않는 요청을 만들기 때문이다.
+    """
+    want = str(name or "").strip()
+    if not want:
+        return ""
+    table = machine_table(user)
+    for mv in table:
+        if want.lower() == mv.lower():
+            return mv
+    for mv, v in table.items():
+        for nm in v.get("names") or []:
+            if want.lower() == str(nm).lower():
+                return mv
+    known = "; ".join(machine_label(v) for _mv, v in sorted(table.items()))
+    raise ValueError(f"모르는 머신: {want} — 아는 머신: {known or '(없음)'}")
 
 
 # 이미 쌓인 것에서 표식을 되찾는 자리. 세션 문서의 History 줄은 제목을 40자로
@@ -10157,10 +10258,22 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     # 이 판에서 할 수 없는 요청은 **어떤 경로로도** 띄우지 않는다 (REQ-20260909-071,
     # 실측 2026-09-09 14:34: 맥용 검증 요청(needs_os macOS)의 정체 후속 작업자가 WSL 에
     # 떠서 「할 수 없다」며 blocked 로 바꿔 놓았다 — 맥 세션이 재던 중이었다).
-    need = str((meta or {}).get("needs_os") or "").strip()
-    if need and not needs_os_matches(need):
-        return block("needs_os", f"이 요청은 {need} 에서 해야 합니다 — 이 판({os_platform()})"
-                                 f"에서는 띄우지 않습니다")
+    # 담당 머신이 먼저다 (REQ-20260910-016 · 축 정정 REQ-20260910-018): 요청이
+    # 가야 할 곳은 판이 아니라 담당자의 그 머신이다. 판만 보면 같은 저장소를
+    # 쓰는 남의 맥도 집는다 — 여태 티가 안 난 것은 그 맥이 한 대뿐이라서다.
+    # 담당 머신이 꺼져 있으면 영영 안 띄운다: 시한도 폴백도 두지 않고, 옮기는
+    # 것은 사람의 손이다.
+    want_m = str((meta or {}).get("needs_machine") or "").strip()
+    if want_m:
+        if want_m != current_machine():
+            return block("needs_machine",
+                         f"이 요청은 {machine_phrase(want_m)} 에서 해야 합니다 — "
+                         f"이 머신은 {machine_phrase(current_machine())} 입니다")
+    else:
+        need = str((meta or {}).get("needs_os") or "").strip()
+        if need and not needs_os_matches(need):
+            return block("needs_os", f"이 요청은 {need} 에서 해야 합니다 — 이 판({os_platform()})"
+                                     f"에서는 띄우지 않습니다")
     # 끝난 문서에는 **어떤 경로로도** 뜨지 않는다 (REQ-20260830-002).
     #
     # 실사고 2026-08-30 00:30: 18:56 에 done 으로 닫힌 REQ 에 무인 작업자가
@@ -11420,12 +11533,18 @@ def dead_turn_tick(bindings=None, now=None, send=None, state_path=None, live=Non
     return resumed
 
 
-def here_watch_tick(now=None, grace=None, platform=None, _spawn=None):
-    """이 판(needs_os)의 open 요청을 워처가 집는다 (REQ-20260909-012). 반환: 집은 id."""
+def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None,
+                    _spawn=None):
+    """이 자리의 open 요청을 워처가 집는다 (REQ-20260909-012 · REQ-20260910-016).
+
+    무엇이 「이 자리의 것」인지는 `here_requests` 한 곳이 판정한다 — 담당
+    머신이면 그 머신의 그 사용자만, 옛 needs_os 문서면 그 판. 반환: 집은 id.
+    """
     import time as _time
     nowt = now or _time.time()
+    mach = machine or current_machine()
     out = []
-    for r in here_requests(platform=platform):
+    for r in here_requests(platform=platform, machine=mach, user=user):
         if r.get("status") != "open":
             continue
         path = locate(r["id"])
@@ -11444,9 +11563,13 @@ def here_watch_tick(now=None, grace=None, platform=None, _spawn=None):
             continue                       # 유예: 라이브 세션이 s9 next 로 집을 기회
         if rework_claimed(r["id"]):
             continue
+        by_machine = bool(str(meta.get("needs_machine") or "").strip())
+        where = machine_phrase(mach) if by_machine else (platform or os_platform())
         try:
             do_transition(r["id"], "in-progress",
-                          note=f"이 판({platform or os_platform()})의 워처가 집었다 — 다른 기계가 여기서 재 달라고 남긴 요청",
+                          note=(f"이 머신({where})의 워처가 집었다 — 담당 머신으로 지정된 요청"
+                                if by_machine else
+                                f"이 판({where})의 워처가 집었다 — 다른 기계가 여기서 재 달라고 남긴 요청"),
                           user=meta.get("user"), auto=True, via="watcher")
         except Exception as _e:
             _auto_log(f"HERE-TRANSITION-FAIL {r['id']}: {_e}")
@@ -11454,7 +11577,9 @@ def here_watch_tick(now=None, grace=None, platform=None, _spawn=None):
         meta, _body = read_doc(path)
         spawn = _spawn or (lambda did, m: _spawn_wake(
             did, m, mins=0, kind="resume",
-            why=f"다른 기계가 이 판({platform or os_platform()})에서 재 달라고 남긴 요청 — 워처가 집어 띄웠다."))
+            why=(f"이 머신({where})이 담당 머신으로 지정된 요청 — 워처가 집어 띄웠다."
+                 if by_machine else
+                 f"다른 기계가 이 판({where})에서 재 달라고 남긴 요청 — 워처가 집어 띄웠다.")))
         if spawn(r["id"], meta):
             out.append(r["id"])
     return out
@@ -11563,7 +11688,8 @@ def rework_watch_tick(grace=None, now=None):
                 why="맡고 있던 작업자가 사라졌다 — 워처가 이어받게 띄웠다.")
         if done_it:
             spawned.append(r["id"])
-    # 다른 기계가 이 판에서 재 달라고 남긴 open 요청을 집는다 (REQ-20260909-012).
+    # 이 자리에서 해야 할 open 요청을 집는다 (REQ-20260909-012 · REQ-20260910-016):
+    # 담당 머신이 이 머신이고 담당자가 이 머신의 사용자인 것, 그리고 옛 needs_os 문서.
     # 실측 2026-09-09 08:53: 맥 대시보드는 켜져 있었지만 needs_os=macOS 요청은
     # 사람이 `s9 code` 를 열어 `s9 next` 를 볼 때까지 아무도 집지 않았다. 규율은
     # 그대로다 — 담당자의 auto_resume 이 켜져 있고, 생성 뒤 유예가 지났고, 아무도
@@ -13891,7 +14017,12 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
     path = locate(cid)
     meta, body = read_doc(path)
     changed = []
-    for key in ("title", "summary", "goal", "size", "needs_os"):
+    if fields.get("needs_machine"):
+        # 부르는 이름을 머신값으로 푼다 — 못 풀면 문서를 건드리지 않고 거절 (REQ-20260910-016)
+        fields = dict(fields)
+        fields["needs_machine"] = resolve_machine_name(fields["needs_machine"],
+                                                       user=meta.get("user") or None)
+    for key in ("title", "summary", "goal", "size", "needs_os", "needs_machine"):
         if fields.get(key) is not None:
             meta[key] = fields[key]
             changed.append(key)
@@ -14027,7 +14158,7 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
 
 
 def cmd_set(args):
-    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os", "jira_key", "root", "origin")}
+    fields = {k: getattr(args, k, None) for k in ("title", "summary", "goal", "size", "project", "needs_os", "needs_machine", "jira_key", "root", "origin")}
     try:
         res = do_set(args.id, fields, actor=resolve_user(None),
                      priority=getattr(args, "priority", None))
@@ -14268,6 +14399,28 @@ def cmd_tag(args):
 # 하면 확장자 목록이 두 벌이 된다(한 벌만 고쳐진다). 그래서 훅은 경로만 적고
 # ingest 가 asset_mark 로 갈라 준다 — 판정은 여기 한 곳이다.
 ASSET_RE = re.compile(r"\[(Image|Audio|Video|File|Attach): ([^\]\n]+)\]")
+
+
+def quoted_spans(text):
+    """본문에서 「보여 주는 글자」의 자리 — 인라인 코드·펜스(``` ~~~)·
+    들여쓴 블록. 여기 든 마크는 첨부가 아니라 형식을 설명하는 예시다
+    (REQ-20260910-008-62x6). 반환: (시작, 끝) 목록."""
+    spans, fence, off = [], None, 0
+    for line in text.splitlines(keepends=True):
+        s = line.lstrip()
+        if fence is None and (s.startswith("```") or s.startswith("~~~")):
+            fence = s[:3]
+            spans.append((off, off + len(line)))
+        elif fence is not None:
+            spans.append((off, off + len(line)))
+            if s.startswith(fence):
+                fence = None
+        elif line.startswith("    ") or line.startswith("\t"):
+            spans.append((off, off + len(line)))
+        off += len(line)
+    for m in re.finditer(r"`[^`\n]*`", text):
+        spans.append(m.span())
+    return spans
 # 첨부 본문 추출 (REQ-20260825-054) — 전부 stdlib로 처리한다(의존성 0 원칙):
 # 텍스트류는 그대로, PDF는 zlib 스트림에서 텍스트 연산자, OOXML(docx/xlsx/pptx)은
 # zip 내부 XML에서 태그를 걷어내 뽑는다. 실패는 조용히 빈 문자열(첨부는 저장됨).
@@ -15327,13 +15480,25 @@ def ingest_assets(doc_id):
     except OSError:
         _doc_age = 0
 
+    _quoted = quoted_spans(body)
+
+    def _illustrative(src, at):
+        """이 마크는 첨부가 아니라 형식을 설명하는 예시인가.
+        ① 인용된 자리에 있다 — 코드·펜스·들여쓰기는 「보여 주는 글자」다.
+        ② 경로에 줄임표가 있다 — 사람이 줄여 쓴 글자라 어느 파일 체계에도 없다."""
+        a, b = at
+        if any(x <= a and b <= y for x, y in _quoted):
+            return True
+        return "…" in src or "..." in src
+
     def repl(m):
         kind, src = m.group(1), m.group(2).strip()
         if not os.path.isabs(src) or not os.path.exists(src):
             # 사람에게 머신 로컬 경로는 아무 뜻이 없다 — 사용자가 그 글자를 보고
             # 「아직도 렌더링이 안 된다」고 읽었다(2026-09-07 15:53). 무엇이
             # 있었는지 말해 주는 한 줄이 경로보다 낫다.
-            if _doc_age > ATTACH_GIVE_UP_SEC and os.path.isabs(src):
+            if (_doc_age > ATTACH_GIVE_UP_SEC and os.path.isabs(src)
+                    and not _illustrative(src, m.span())):
                 gave_up.append(src)
                 return ATTACH_GONE_KO
             return m.group(0)          # 이미 상대경로거나, 아직 기다려 볼 만하다
@@ -16792,16 +16957,34 @@ def cmd_handoff(args):
         print("(이관 중인 요청 없음)")
 
 
-def here_requests(platform=None, rows=None):
-    """이 판(운영체제)에서 해야 할 열린 요청들 (REQ-20260906-080) — needs_os 가 이 판인
-    open·blocked·in-progress 요청. Linux 요구는 WSL 도 만족한다. 다른 기계에서 잰 것을
-    GitHub 동기화로 받은 세션이 `s9 next` 에서 먼저 본다 — Remote Control 이 없어도
-    맥에서 재야 할 일이 맥의 세션에 닿는 길."""
+def here_requests(platform=None, rows=None, machine=None, user=None):
+    """이 자리에서 해야 할 열린 요청들 — open·blocked·in-progress.
+
+    두 겹이고 축은 **머신**이다 (REQ-20260910-016 · REQ-20260910-018).
+      ① 담당 머신(needs_machine) — 「저 머신에서만」. `needs_machine` 이 이
+         머신이고 담당자(`user`)가 이 자리의 사용자일 때만 집는다. 둘 중
+         하나라도 어긋나면 지나간다: 같은 저장소를 쓰는 다른 사람의 머신도,
+         같은 사람의 다른 머신도 그 요청을 집으면 안 된다(겹쳐 실행하면
+         충돌한다).
+      ② needs_os — 「이 판이면 아무 데서나」. 담당 머신을 모르는 옛 문서를
+         위해 읽기만 계속 지원한다. 새로 적는 축이 아니다.
+    둘 다 적혀 있으면 담당 머신이 이긴다.
+
+    담당 머신이 꺼져 있으면 이 목록은 그 요청을 **영영** 내지 않는다 — 시한도
+    자동 해제도 다른 머신으로의 폴백도 없다. 옮기는 것은 사람의 손이다.
+    """
     here = platform or os_platform()
+    mach = machine or current_machine()
+    who = user if user is not None else resolve_user()
     ok = {here} | ({"Linux"} if here == "WSL" else set())
     out = []
     for r in (rows if rows is not None else load_catalog()):
         if r.get("type") != "request" or r.get("status") not in ("open", "blocked", "in-progress"):
+            continue
+        want_m = str(r.get("needs_machine") or "").strip()
+        if want_m:
+            if want_m == mach and str(r.get("user") or "") == str(who or ""):
+                out.append(r)
             continue
         need = str(r.get("needs_os") or "").strip()
         if need and need in ok:
@@ -16834,7 +17017,8 @@ def cmd_next(args):
         print(json.dumps(d, ensure_ascii=False))
         return
     if here:
-        print(f"이 기계({os_platform()})에서 해야 할 요청 {len(here)}건 — 다른 기계가 여기서 재 달라고 남긴 것:")
+        print(f"이 기계({os_platform()})에서 해야 할 요청 {len(here)}건 — "
+              f"담당 머신이 이 머신({current_machine()})이거나, 이 판에서 재 달라고 남긴 것:")
         for r in here:
             print(f"  {r['id']} {r.get('title', '')} [{r.get('status', '')}] — 착수: s9 status {r['id']} in-progress")
     if not p:
@@ -33188,7 +33372,10 @@ def main():
     np.add_argument("--user")
     np.add_argument("--project")
     np.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL"],
-                    help="이 요청을 해야 하는 판 (REQ-20260906-080)")
+                    help="이 요청을 해야 하는 판 — 담당 머신을 모를 때 쓰는 약한 말 (REQ-20260906-080)")
+    np.add_argument("--needs-machine", dest="needs_machine",
+                    help="이 요청을 해야 하는 담당 머신 — 부르는 이름(예: 맥)이나 머신값 "
+                         "(REQ-20260910-016)")
     np.add_argument("--project-tag", dest="project_tag",
                     help="프롬프트 첫 줄 표기 [프로젝트: slug] 를 훅이 넘기는 자리 — "
                          "자동 신호라 권한이 없으면 거부하지 않고 빈 값으로 둔다 "
@@ -33270,6 +33457,9 @@ def main():
                      help="출처를 바로잡는다 — human 이면 origin_actor 를 걷는다 (REQ-20260909-109)")
     se2.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL", ""],
                      help="이 요청을 해야 하는 판 — 그 판의 세션이 s9 next 로 먼저 본다 (REQ-20260906-080)")
+    se2.add_argument("--needs-machine", dest="needs_machine",
+                     help="이 요청을 해야 하는 담당 머신 — 부르는 이름(예: 맥)이나 머신값, "
+                          "'' 는 지우기 (REQ-20260910-016)")
     se2.add_argument("--jira-key", dest="jira_key",
                      help="이미 있는 Jira 이슈를 잇는다(예: MP1-7) — 만들지 않는다. '' 는 끊기 (REQ-20260909-036)")
     se2.add_argument("--root", dest="root", action="store_const", const=True, default=None,

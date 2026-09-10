@@ -43,12 +43,13 @@ class HereWatch(unittest.TestCase):
                 os.environ[k] = v
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def new_request(self, needs_os="macOS"):
+    def new_request(self, needs_os="macOS", needs_machine=""):
         import contextlib, io, types
         args = types.SimpleNamespace(
             doc_type="request", title="맥에서 볼 것", summary="s", goal="g", status="open", size="S",
             priority=None, user="hong", assignee=None, tag_list=[], parent=None, derived_from=None,
             relates=None, why="", ref_doc=None, ref_link=None, ref_file=None, needs_os=needs_os,
+            needs_machine=needs_machine,
             from_chat="", project="pay", project_tag=None, body="b", body_file=None,
             origin="human", agent="")
         out = io.StringIO()
@@ -56,8 +57,9 @@ class HereWatch(unittest.TestCase):
             self.m.cmd_new(args)
         return out.getvalue().split()[0]
 
-    def tick(self, platform="macOS", grace=0):
+    def tick(self, platform="macOS", grace=0, machine="thisbox", user="hong"):
         return self.m.here_watch_tick(now=time.time() + 1, grace=grace, platform=platform,
+                                      machine=machine, user=user,
                                       _spawn=lambda did, meta: self.spawned.append(did) or True)
 
     def test_h1_the_watcher_picks_and_spawns(self):
@@ -83,6 +85,26 @@ class HereWatch(unittest.TestCase):
         finally:
             self.m.rework_claimed = real
         self.assertEqual(self.m.read_doc(self.m.find_path(rid))[0]["status"], "open")
+
+    def test_h4_the_watcher_picks_only_on_the_assigned_machine(self):
+        """담당 머신(needs_machine)이 이 머신이고 담당자도 맞을 때만 집는다 (REQ-20260910-016).
+
+        머신이 다르면 몇 번을 돌아도 영영 집지 않는다 — 시한도 자동 해제도
+        다른 머신으로의 폴백도 없다."""
+        self.m.do_user_config_set("hong", "auto_resume", "on")
+        self.m.write_peers({"저 머신": {"machine": "thatbox"}})
+        rid = self.new_request(needs_os="", needs_machine="저 머신")
+        self.assertEqual(self.m.read_doc(self.m.find_path(rid))[0]["needs_machine"], "thatbox")
+        for _ in range(3):
+            self.assertEqual(self.tick(), [], "담당 머신이 아닌데 집었다")
+        self.assertEqual(self.m.read_doc(self.m.find_path(rid))[0]["status"], "open")
+        self.assertEqual(self.tick(machine="thatbox", user="someone"), [],
+                         "담당자가 다른데 집었다")
+        self.assertEqual(self.tick(machine="thatbox"), [rid])
+        self.assertEqual(self.spawned, [rid])
+        meta, body = self.m.read_doc(self.m.find_path(rid))
+        self.assertEqual(meta["status"], "in-progress")
+        self.assertIn("담당 머신", body)
 
     def test_h3_in_progress_ones_are_not_the_here_ticks_business(self):
         self.m.do_user_config_set("hong", "auto_resume", "on")

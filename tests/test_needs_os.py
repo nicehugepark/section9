@@ -98,6 +98,75 @@ class NeedsOs(unittest.TestCase):
         self.assertTrue(self.m.needs_os_matches("Linux", platform="WSL"))
         self.assertFalse(self.m.needs_os_matches("Windows", platform="WSL"))
 
+    # M1. 담당 머신: 부르는 이름으로 적으면 머신값으로 풀려 문서·catalog 에 남고,
+    #     머신값 그대로도 받고, 빈 값으로 지워진다 (REQ-20260910-016)
+    def test_m1_needs_machine_is_resolved_stored_and_cleared(self):
+        self.cli("peer", "set", "맥", "--machine", "macbox", "--os", "macOS")
+        rid = self.new("담당 머신이 있는 것", "--needs-machine", "맥")
+        self.assertEqual(self.m.read_doc(self.m.locate(rid))[0]["needs_machine"], "macbox")
+        row = next(r for r in self.m.load_catalog() if r["id"] == rid)
+        self.assertEqual(row["needs_machine"], "macbox")
+        r = self.cli("set", rid, "--needs-machine", "testbox")   # 머신값 그대로도 받는다
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.m.read_doc(self.m.locate(rid))[0]["needs_machine"], "testbox")
+        r = self.cli("set", rid, "--needs-machine", "")          # 지우기
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # 빈 값은 프론트매터에서 아예 빠진다 — 없는 것과 같은 뜻이다
+        self.assertEqual(self.m.read_doc(self.m.locate(rid))[0].get("needs_machine", ""), "")
+
+    # M2. 모르는 이름은 거절하고 아는 머신을 보여 준다 — 문서는 만들어지지 않는다
+    def test_m2_unknown_machine_name_is_refused(self):
+        before = {r["id"] for r in self.m.load_catalog()}
+        r = self.cli("new", "request", "--title", "모르는 머신", "--summary", "s",
+                     "--size", "S", "--goal", "g", "--body", "b",
+                     "--needs-machine", "없는머신")
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("아는 머신", r.stdout + r.stderr)
+        self.assertIn("testbox", r.stdout + r.stderr)
+        self.assertEqual({r2["id"] for r2 in self.m.load_catalog()} - before, set())
+
+    # M3. 집기: 머신과 담당자가 **둘 다** 맞을 때만 집는다
+    def test_m3_here_requests_need_both_machine_and_user(self):
+        self.cli("user", "add", "other")
+        mine = self.new("내 머신 내 것", "--needs-machine", "testbox")
+        theirs = self.new("내 머신 남의 것", "--needs-machine", "testbox", "--user", "other")
+        far = self.new("다른 머신 내 것", "--needs-machine", "macbox")
+        ids = lambda rows: {r["id"] for r in rows}
+        all3 = {mine, theirs, far}
+        got = ids(self.m.here_requests(platform="WSL", machine="testbox", user="tester"))
+        self.assertEqual(got & all3, {mine})
+        # 담당 머신이 꺼져 있어도 다른 머신은 영영 집지 않는다 (시한·폴백 없음)
+        got = ids(self.m.here_requests(platform="macOS", machine="otherbox", user="tester"))
+        self.assertEqual(got & all3, set())
+
+    # M4. 둘 다 적혀 있으면 담당 머신이 이긴다
+    def test_m4_needs_machine_beats_needs_os(self):
+        a = self.new("판은 맞고 머신은 다르다", "--needs-machine", "macbox", "--needs-os", "Linux")
+        b = self.new("판은 다르고 머신은 맞다", "--needs-machine", "testbox", "--needs-os", "macOS")
+        ids = lambda rows: {r["id"] for r in rows}
+        got = ids(self.m.here_requests(platform="WSL", machine="testbox", user="tester"))
+        self.assertEqual(got & {a, b}, {b})
+
+    # M5. 막기: 담당 머신이 아니면 어떤 경로로도 작업자를 띄우지 않는다
+    def test_m5_no_worker_spawns_off_the_assigned_machine(self):
+        rid = self.new("담당 머신에서만", "--needs-machine", "macbox")
+        meta = self.m.read_doc(self.m.locate(rid))[0]
+        real = subprocess.Popen
+
+        def no_popen(*a, **kw):
+            raise AssertionError("무인 워커를 실제로 띄웠다")
+        subprocess.Popen = no_popen
+        out = {}
+        try:
+            with mock.patch.object(self.m, "current_machine", return_value="testbox"):
+                ok = self.m._spawn_worker(rid, meta, "p", "stalled", out=out)
+        finally:
+            subprocess.Popen = real
+        self.assertFalse(ok)
+        self.assertEqual(out.get("blocked"), "needs_machine", out)
+        self.assertIn("macbox", out.get("why", ""))
+        self.assertIn("testbox", out.get("why", ""))
+
     def test_n3_next_lists_requests_for_this_machine(self):
         rid = self.new("윈도우에서 잴 것", "--needs-os", "Windows")
         with mock.patch.object(self.m, "os_platform", lambda: "Windows"), \
