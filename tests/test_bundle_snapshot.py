@@ -237,14 +237,56 @@ class BundleSnapshot(unittest.TestCase):
     def test_s8b_a_truncated_part_is_caught(self):
         """잘린 조각은 잡힌다 — 이 검사가 막으려는 것이 그것이다."""
         missed = []
-        for fp in sorted(glob.glob(os.path.join(ROOT, "web/app/*.js")))[:12]:
-            with open(fp, "rb") as f:
-                raw = f.read()
-            cut = raw[:len(raw) * 2 // 3]
-            if self.m._balance_error(cut, "app") is None:
-                missed.append(os.path.relpath(fp, ROOT))
+        for sub, pat in (("app", "web/app/*.js"), ("css", "web/css/*.css")):
+            for fp in sorted(glob.glob(os.path.join(ROOT, pat))):
+                with open(fp, "rb") as f:
+                    raw = f.read()
+                cut = raw[:len(raw) * 2 // 3]
+                if self.m._balance_error(cut, sub) is None:
+                    missed.append(os.path.relpath(fp, ROOT))
         self.assertEqual(missed, [], "잘린 조각을 못 잡았다:\n" +
                          "\n".join(missed))
+
+    def test_s8c_a_cut_in_the_middle_of_a_line_is_always_caught(self):
+        """줄 중간에서 잘린 조각은 예외 없이 잡힌다 (REQ-20260910-007).
+
+        2/3 한 지점만 보면 그 지점이 우연히 구문상 온전한 파일을 놓친다 —
+        실제로 const.js 가 그렇게 새 나갔다. 임의의 바이트에서 잘린 조각은
+        낱말·문자열·줄 중간에서 끝나므로, **줄바꿈으로 끝나지 않는 절단은
+        전부** 잡혀야 한다. 평평한 선언(const X = ...;)만 있는 조각이 이
+        규율의 가장 약한 자리라 함께 본다.
+        """
+        missed = []
+        for sub, pat in (("app", "web/app/*.js"), ("css", "web/css/*.css")):
+            for fp in sorted(glob.glob(os.path.join(ROOT, pat))):
+                with open(fp, "rb") as f:
+                    raw = f.read()
+                for k in range(1, 60):
+                    cut = raw[:len(raw) * k // 60]
+                    if not cut or cut.endswith(b"\n"):
+                        continue      # 줄 경계는 구문상 온전할 수 있다
+                    if self.m._balance_error(cut, sub) is None:
+                        missed.append("%s @%d/60" %
+                                      (os.path.relpath(fp, ROOT), k))
+        self.assertEqual(missed, [], "줄 중간에서 잘렸는데 못 잡았다:\n" +
+                         "\n".join(missed[:20]))
+
+    def test_s8d_a_flat_declaration_part_is_caught_almost_everywhere(self):
+        """평평한 선언만 있는 조각도 거의 어디서 잘리든 잡힌다.
+
+        문장이 끝난 바로 그 자리(`;` 다음 줄바꿈)에서 잘린 조각은 균형도
+        맞고 끝도 마무리돼 있어, 기대 바이트 수 없이는 구별할 길이 없다 —
+        남는 구멍은 그 자리뿐이고 실측 1% 미만이다(옛 규율은 22%였다).
+        """
+        fp = os.path.join(ROOT, "web/app/const.js")
+        with open(fp, "rb") as f:
+            raw = f.read()
+        pts = [raw[:len(raw) * k // 500] for k in range(1, 500)]
+        missed = [c for c in pts if self.m._balance_error(c, "app") is None]
+        rate = len(missed) / float(len(pts))
+        self.assertLess(rate, 0.05,
+                        "const.js 의 절단점 %d 중 %d 을 놓쳤다 (%.1f%%)"
+                        % (len(pts), len(missed), rate * 100))
 
     # -- 회귀 -------------------------------------------------------------
     def test_s9_the_missing_part_path_still_works(self):

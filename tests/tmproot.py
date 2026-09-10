@@ -39,6 +39,18 @@ STALE_AGE = 3600.0          # 테스트 실행이 한 시간을 넘지는 않는
 # 두 실행이 같은 포트를 제 것이라 믿는다.
 KEEP = frozenset({"s9-portpool"})
 
+# 아이노드 바닥 (REQ-20260910-012). 실측 2026-09-10 17:00: /tmp 의 아이노드
+# 1,048,576 개가 하나도 남지 않아, bash 도구가 제 출력 파일조차 만들지 못했다 —
+# 테스트도 s9 명령도 아무것도 돌지 못했다. 남은 것은 전부 pid 가 이미 없는
+# 실행 루트였고(그중 하나가 32,746개), 거두니 35,921 개가 돌아왔다. 한 번의
+# 전체 실행이 쓰는 아이노드가 그만큼이라는 뜻이다.
+#
+# 그래서 두 줄을 긋는다. RUN_NEED 아래면 알리기만 하고(실행은 그대로 돈다),
+# FLOOR 아래면 시작하지 않는다 — 바닥난 채로 시작하면 실패가 알 수 없는
+# 모습으로 흩어져, 무엇이 문제인지 아무 데도 적히지 않는다.
+INODE_RUN_NEED = 50_000
+INODE_FLOOR = 10_000
+
 _RUN_RE = re.compile(r"^s9run-(\d+)-")
 
 
@@ -69,8 +81,14 @@ def stale_dirs(base=None, now=None, age=STALE_AGE, alive=None, names=None,
     """지난 실행이 남긴 우리 자리들.
 
     남의 것은 이름으로 뺀다. 살아 있는 실행 루트는 pid 로 뺀다 — 동시에 도는
-    다른 러너의 자리를 지우면 그 실행이 깨진다. 나이 기준은 그 둘을 통과한
-    것에만 적용한다.
+    다른 러너의 자리를 지우면 그 실행이 깨진다.
+
+    **주인이 없는 실행 루트에는 나이를 묻지 않는다** (REQ-20260910-012): pid 가
+    없다는 것은 그 실행이 이미 끝났다는 확정이지 짐작이 아니라, 한 시간을
+    기다릴 이유가 없다. 기다리는 동안이 바로 사고가 나는 자리였다 — 2026-09-10
+    에 아이노드를 바닥낸 여덟 자리는 전부 pid 가 없었고 전부 한 시간이 안
+    된 것이었다. 나이 기준은 pid 로 주인을 물을 수 없는 자리(s9gate-* 처럼 옛
+    체크아웃의 러너가 흘린 것)에만 남는다.
     """
     base = base or SYS_TMP
     now = time.time() if now is None else now
@@ -85,9 +103,12 @@ def stale_dirs(base=None, now=None, age=STALE_AGE, alive=None, names=None,
         if not is_ours(name) or name in KEEP:
             continue
         pid = run_root_pid(name)
-        if pid is not None and alive(pid):
-            continue            # 지금 도는 실행의 자리다
         path = os.path.join(base, name)
+        if pid is not None:
+            if alive(pid):
+                continue        # 지금 도는 실행의 자리다
+            out.append(path)    # 주인이 없다 — 나이를 묻지 않는다
+            continue
         try:
             if now - mtime(path) < age:
                 continue
@@ -110,6 +131,82 @@ def sweep_stale(base=None, now=None, age=STALE_AGE, alive=None):
             continue
         gone.append(path)
     return gone
+
+
+def inode_free(base=None, statvfs=None):
+    """임시 자리를 담은 파일시스템의 (남은 아이노드, 전체 아이노드).
+
+    세지 않는 파일시스템(tmpfs·btrfs 처럼 아이노드가 미리 정해지지 않은 것)은
+    전체를 0 으로 보고한다 — 그때는 (None, None) 이다. 모르는 것을 아는 척해
+    실행을 막지 않는다.
+    """
+    base = base or SYS_TMP
+    st = (os.statvfs if statvfs is None else statvfs)
+    try:
+        s = st(base)
+    except OSError:
+        return (None, None)
+    total = getattr(s, "f_files", 0) or 0
+    free = getattr(s, "f_favail", 0) or 0
+    if total <= 0:
+        return (None, None)
+    return (int(free), int(total))
+
+
+def inode_verdict(free, total, need=INODE_RUN_NEED, floor=INODE_FLOOR,
+                  base=None):
+    """('ok'|'unknown'|'warn'|'stop', 사람이 읽을 한 줄 또는 None).
+
+    stop 은 「지금 시작하면 아이노드가 바닥나 실패가 알 수 없는 모습으로
+    흩어진다」는 뜻이다. 한 줄에는 남은 수와 여는 방법이 함께 있어야 한다 —
+    무엇이 막았는지만 알려 주고 나가는 길을 안 적으면 사람이 다시 막힌다.
+    """
+    where = base or SYS_TMP
+    if free is None or not total:
+        return ("unknown", None)
+    # 바닥을 먼저 본다 — 두 줄은 따로 움직일 수 있고(환경으로 옮긴다),
+    # 넉넉함을 먼저 물으면 바닥이 위로 올라온 자리에서 판정이 뒤집힌다.
+    if free < floor:
+        return ("stop",
+                f"[임시자리] {where} 의 아이노드가 {free:,}개뿐이다"
+                f"(전체 {total:,}) — 이대로 시작하면 임시 파일을 못 만들어 "
+                f"실패가 흩어진다. `s9 doctor --fix` 로 거두거나, TMPDIR 을 "
+                f"여유 있는 자리로 두고 다시 불러라. 그래도 돌리려면 "
+                f"S9_TMP_ANYWAY=1.")
+    if free < need:
+        return ("warn",
+                f"[임시자리] {where} 의 아이노드가 {free:,}개 남았다"
+                f"(전체 {total:,}) — 전체 실행 한 번이 약 {need:,}개를 쓴다. "
+                f"`s9 doctor --fix` 로 거두거나 TMPDIR 을 다른 파일시스템으로 "
+                f"두어라.")
+    return ("ok", None)
+
+
+def inode_gate(base=None, env=None, statvfs=None):
+    """실행 직전 판정 — (돌려도 되는가, 알릴 한 줄).
+
+    문턱은 환경으로 옮길 수 있다(S9_TMP_INODE_FLOOR·S9_TMP_INODE_NEED). 사람이
+    S9_TMP_ANYWAY=1 로 지나가면 말은 그대로 하고 막지는 않는다 — 판정을 지우는
+    것이 아니라 사람이 알고 지나가는 것이다.
+    """
+    env = os.environ if env is None else env
+
+    def _num(key, default):
+        try:
+            return int(env[key])
+        except (KeyError, ValueError):
+            return default
+
+    free, total = inode_free(base, statvfs=statvfs)
+    level, line = inode_verdict(free, total,
+                                need=_num("S9_TMP_INODE_NEED", INODE_RUN_NEED),
+                                floor=_num("S9_TMP_INODE_FLOOR", INODE_FLOOR),
+                                base=base)
+    if level != "stop":
+        return (True, line)
+    if env.get("S9_TMP_ANYWAY") == "1":
+        return (True, line + " (S9_TMP_ANYWAY=1 — 그대로 돈다)")
+    return (False, line)
 
 
 def make_run_root(base=None, pid=None):

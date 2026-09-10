@@ -129,6 +129,17 @@ class Screen(unittest.TestCase):
             self.assertIn("담당 컴퓨터 바꾸기", mach)
             self.assertNotIn("가져오기", mach)
             self.assertIn("어느 컴퓨터에서나", mach)
+            # 맡기기 (REQ-20260910-003-t8rc): 일을 받을 수 있는 컴퓨터인지가
+            # **고르는 자리에** 선다. 맡기기 스위치는 컴퓨터마다 따로이고
+            # 저장소에 실리지 않아(무인 실행 스위치다), 배정하는 쪽에서는
+            # 저쪽이 꺼져 있는 것을 볼 길이 없었다 — 배정된 요청이 나흘 동안
+            # 조용히 걸러졌다. 줄에도 적고, 골랐을 때 확인 줄도 말한다.
+            self.assertIn("맡기기 꺼짐", self.src)
+            self.assertIn("맡기기 켜짐", self.src)
+            self.assertIn("takesWord(v)", mach, "목록 줄에 맡기기가 서지 않는다")
+            i = mach.index("confirm:")
+            self.assertIn("맡기기가 꺼져 있어", mach[i:i + 700],
+                          "꺼진 컴퓨터를 골라도 확인 줄이 아무 말도 하지 않는다")
             # 손잡이가 길에 이어져 있다 (events.js)
             self.assertIn('closest("[data-machset]")', self.src)
             # 바꾸는 길은 서버 한 곳 — 화면이 프론트매터를 직접 쓰지 않는다

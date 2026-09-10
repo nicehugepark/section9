@@ -1,4 +1,4 @@
-"""CDP 실브라우저 공용 헬퍼 — Windows Chrome 탐색·회수·stdlib WebSocket.
+"""CDP 실브라우저 공용 헬퍼 — 브라우저 탐색·회수·stdlib WebSocket.
 
 test_hover_realscale(REQ-20260831-019)에서 추출했다: 시험 파일끼리
 `import test_*` 로 얽히면 stdlib-only 검사(커밋 스모크)가 막고, 실제로도
@@ -6,6 +6,7 @@ test_hover_realscale(REQ-20260831-019)에서 추출했다: 시험 파일끼리
 webasset·portpool 처럼 제 이름의 헬퍼로 산다.
 """
 import base64
+import glob
 import json
 import os
 import shutil
@@ -13,20 +14,101 @@ import re
 import socket
 import struct
 import subprocess
+import sys
 import time
 
-# ---- Windows Chrome (s9 shot 과 같은 후보 순서) ----------------------------
+# ---- 실측 브라우저 탐색 (s9 shot 과 같은 후보 순서) ------------------------
+#
+# **화소 계약** (REQ-20260910-003). 마크의 획이 몇 번째 화소에 앉는지까지 재는
+# 시험(test_hover_realscale 류)은 브라우저의 글자·도형 래스터라이저에 걸린다 —
+# 같은 Chrome 이어도 운영체제가 다르면 값이 다르다. 실측 2026-09-10 맥 Chrome:
+# 과녁이 27 대신 28, ⏸ 잉크 +0.5화소, ▶ -1.095화소. 지금 소스에 적힌 기대값은
+# Windows Chrome 에서 잰 것이라, 맥 브라우저로 그 시험을 돌리면 코드가 옳아도
+# 3항목이 실패한다.
+#
+# 그래서 물음을 둘로 가른다: **브라우저를 찾았나**, 그리고 **그 브라우저로
+# 화소를 재도 되나.** 배치·스크롤·클릭만 재는 시험은
+# `chrome_path(pixel_contract=False)` 로 불러 맥에서도 실측하고, 화소를 재는
+# 시험은 기본값 그대로 두면 맥에서는 사유와 함께 건너뛴다. 맥의 기대값을 따로
+# 두는 일은 그 시험 파일의 몫이지 여기가 아니다.
+#
+# 계약 밖이라고 표시한 것은 **재 본 것뿐**이다 — 맥 갈래를 더하는 이 변경이
+# Windows·PATH 갈래의 선택을 바꾸지 않는다.
 
-def chrome_path():
-    for base in ("/mnt/c/Program Files/Google/Chrome/Application/chrome.exe",
-                 "/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-                 "/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe"):
+WIN_CANDIDATES = (
+    "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe",
+    "/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    "/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe",
+)
+PATH_NAMES = ("google-chrome", "chromium", "chromium-browser")
+MAC_CANDIDATES = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+)
+# playwright 가 받아 둔 Chromium — 맥에서 브라우저를 따로 깔지 않은 자리의 마지막 후보.
+MAC_PLAYWRIGHT_GLOB = (
+    "~/Library/Caches/ms-playwright/chromium-*/chrome-mac*/"
+    "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")
+
+NO_BROWSER = "브라우저 없음 — 실측 불가 환경"
+OFF_CONTRACT = (
+    "맥 브라우저만 찾았다 — 화소 계약(기대값을 Windows Chrome 에서 쟀다) 밖이라 "
+    "화소를 재는 시험은 건너뛴다 (REQ-20260910-003). 배치·스크롤만 재는 시험은 "
+    "chrome_path(pixel_contract=False) 로 부르면 맥에서도 실측한다")
+
+_said = set()
+
+
+def _mac_playwright():
+    """받아 둔 Chromium 을 build 번호 오름차순으로 — 뒤가 최신이다."""
+    def build(p):
+        m = re.search(r"chromium[-_](\d+)", p)
+        return int(m.group(1)) if m else -1
+    return sorted(glob.glob(os.path.expanduser(MAC_PLAYWRIGHT_GLOB)), key=build)
+
+
+def found():
+    """찾은 실측 브라우저를 (경로, 화소 계약 안인가) 로 — 앞에 있는 것이 우선."""
+    out = []
+    for base in WIN_CANDIDATES:
         if os.path.exists(base):
-            return base
-    for name in ("google-chrome", "chromium", "chromium-browser"):
+            out.append((base, True))
+    for name in PATH_NAMES:
         p = shutil.which(name)
         if p:
-            return p
+            out.append((p, True))
+    for base in MAC_CANDIDATES:
+        if os.path.exists(base):
+            out.append((base, False))
+    for p in reversed(_mac_playwright()):
+        out.append((p, False))
+    return out
+
+
+def skip_reason(pixel_contract=True):
+    """chrome_path() 가 None 을 낸 까닭 한 줄 — 건너뜀 메시지에 그대로 쓴다."""
+    got = found()
+    if not got:
+        return NO_BROWSER
+    if pixel_contract and not any(on for _, on in got):
+        return OFF_CONTRACT
+    return ""
+
+
+def chrome_path(pixel_contract=True):
+    """실측 브라우저 경로 — 없으면 None. 까닭은 skip_reason() 이 말한다.
+
+    pixel_contract 는 「이 시험이 화소를 재는가」다. 기본은 재는 쪽이라, 계약
+    밖의 브라우저밖에 없으면 경로 대신 None 을 낸다 — 건너뜀 메시지를 제 손으로
+    적어 둔 옛 시험도 사유를 알 수 있게, 물린 까닭을 실행마다 한 번 알린다.
+    """
+    for path, on_contract in found():
+        if on_contract or not pixel_contract:
+            return path
+    why = skip_reason(pixel_contract)
+    if why and why != NO_BROWSER and why not in _said:
+        _said.add(why)
+        print("[cdpreal] " + why, file=sys.stderr)
     return None
 
 

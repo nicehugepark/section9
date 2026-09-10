@@ -76,6 +76,18 @@ function machineBtnHTML(r){
    담당 컴퓨터(창이 스스로 붙인다), 「이 컴퓨터」=내가 앉은 곳. 까닭 칸은 없다 —
    되돌릴 수 있는 일이다. 바꾸는 길은 /api/doc/set → do_set 하나(CLI 와 같다). */
 const ANY_MACHINE = "*";   // 「어느 컴퓨터에서나」의 창 안 키 — 서버에는 "" 로 간다
+
+/* 그 컴퓨터가 일을 받을 수 있는가 (REQ-20260910-003-t8rc).
+   맡기기 스위치는 **컴퓨터마다** 따로이고 저장소에 실리지 않는다 — 무인 실행을
+   켜는 스위치라 그래야 한다(그 파일이 저장소에 있으면 push 할 수 있는 누구나
+   남의 컴퓨터에서 무인 실행을 켤 수 있다). 그래서 스위치 대신 **켜졌다는 사실**만
+   등록부를 타고 온다. 여기서 그 사실을 적지 않으면 「받을 수 없는 컴퓨터에
+   배정해 놓고 아무도 말해 주지 않는」 자리가 된다 — 실제로 한 컴퓨터에 배정된
+   요청이 나흘 동안 하나도 시작되지 않았고, 배정한 자리에서는 보이지 않았다.
+   적힌 적이 없으면 아무 말도 하지 않는다 — 모르는 것을 「꺼짐」으로 단정하면
+   화면이 거짓을 말한다. */
+const takesWord = v => v.takes === false ? "맡기기 꺼짐"
+                     : v.takes === true ? "맡기기 켜짐" : "";
 async function machineDoc(id, toHere){
   const r = catFind(id) || {};
   const cur = String(r.needs_machine || "").trim();
@@ -95,9 +107,14 @@ async function machineDoc(id, toHere){
                     hint: "담당 컴퓨터를 두지 않습니다 — 맡은 사람의 어느 세션이든 집습니다"}]
       .concat(rows.map(v => ({
         key: v.machine, label: v.machine,
-        tag: [v.os || "", v.last ? `마지막 ${fmtLast(v.last)}` : ""].filter(Boolean).join(" · "),
+        tag: [v.os || "", v.last ? `마지막 ${fmtLast(v.last)}` : "",
+              takesWord(v)].filter(Boolean).join(" · "),
+        hint: v.takes === false
+          ? "그 컴퓨터는 맡기기가 꺼져 있어 저절로 시작하지 않습니다 —"
+            + " 그 컴퓨터에서 Settings › 백그라운드 작업에서 켜거나, 사람이 직접 엽니다"
+          : "",
         note: v.machine === cur ? "지금 이것" : (v.machine === srvHere ? "이 컴퓨터" : ""),
-        cur: v.machine === cur})));
+        takes: v.takes, cur: v.machine === cur})));
     const picked = await s9choose({cap: "담당 컴퓨터",
       ...dlgFor(id, "진행할 컴퓨터를 바꿉니다"),
       sub: "어느 컴퓨터에서 합니까",
@@ -106,8 +123,12 @@ async function machineDoc(id, toHere){
       pickNote: "진행할 컴퓨터",
       confirm: {ok: "담당 컴퓨터 바꾸기",
                 idle: "지금 그 컴퓨터 그대로입니다.",
+                /* 꺼진 컴퓨터를 골랐으면 **누르기 전에** 말한다 — 막지는 않는다.
+                   사람이 그 컴퓨터를 곧 켤 수도 있고, 이 일은 되돌릴 수 있다. */
                 say: it => it.key === ANY_MACHINE ? "어느 컴퓨터에서나 진행합니다."
-                                                   : `${it.key} 에서 진행합니다.`},
+                  : `${it.key} 에서 진행합니다.`
+                    + (it.takes === false
+                       ? " 그 컴퓨터는 맡기기가 꺼져 있어 저절로 시작하지 않습니다." : "")},
       cancel: "그만두기"});
     if (!picked || !picked.key) return;
     next = picked.key === ANY_MACHINE ? "" : String(picked.key);
@@ -134,3 +155,15 @@ async function machineDoc(id, toHere){
       ok: "닫기"});
   }
 }
+
+/* ?machpick=<요청 id> — 고르는 창을 연 채로 둔다 (REQ-20260910-003-t8rc).
+   이 창은 손이 있어야만 나는 화면인데 캡처(`s9 shot`)는 주소만 연다. 그림을
+   따로 그리지 않고 **진짜 창을 부른다** — 이 파일이 이미 쓰는 규칙이다
+   (dialog.js 의 ?dlgbig). 목록이 catalog 를 한 번 받은 뒤라야 「지금 이것」이
+   서므로 조금 기다렸다 부른다. */
+(function(){
+  const m = /[?&]machpick=([^&]+)/.exec(location.search);
+  if (!m) return;
+  window.addEventListener("load", () => setTimeout(
+    () => machineDoc(decodeURIComponent(m[1])), 1200));
+})();

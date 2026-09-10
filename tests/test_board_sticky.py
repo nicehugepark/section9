@@ -33,7 +33,7 @@ import time
 import unittest
 import urllib.request
 
-from cdpreal import WS, chrome_path, reclaim
+from cdpreal import WS, chrome_path, reclaim, skip_reason
 from webasset import parts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -189,9 +189,11 @@ def shared():
         raise unittest.SkipTest(_MEASURED["err"])
     if "data" in _MEASURED:
         return _MEASURED["data"]
-    chrome = chrome_path()
+    # 여기서 재는 것은 자리와 스크롤이지 획이 앉은 화소가 아니다 — 그래서 화소
+    # 계약 밖의 브라우저(맥)로도 잰다 (REQ-20260910-003).
+    chrome = chrome_path(pixel_contract=False)
     if not chrome:
-        _MEASURED["err"] = "브라우저 없음 — 실측 불가 환경"
+        _MEASURED["err"] = skip_reason(pixel_contract=False)
         raise unittest.SkipTest(_MEASURED["err"])
     try:
         _MEASURED["data"] = measure(chrome)

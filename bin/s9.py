@@ -388,6 +388,29 @@ def user_config(name):
     return cfg
 
 
+def auto_resume_on(cfg):
+    """이 계정이 이 컴퓨터에서 **맡기기**를 켰는가 — 켬/끔 판정의 단일 출처.
+
+    값은 이 컴퓨터의 `config/local.json` 에만 산다(추적되지 않는다). 그것이
+    맞는 자리인지를 REQ-20260910-003-t8rc 가 다시 물었고, 답은 그대로다:
+    무인 실행 스위치가 추적 파일에 살면 저장소에 push 할 수 있는 누구나 남의
+    컴퓨터의 무인 실행을 켤 수 있다 (REQ-20260902-031). 대신 **켜졌다는 사실**은
+    등록부(machine_accounts 의 `takes`)로 내보내 다른 컴퓨터에서도 보이게 한다 —
+    나가는 것은 사실이고, 스위치는 나가지 않는다.
+
+    판정을 한 함수로 모으는 이유: 종전에는 깨우기 경로가 `not cfg.get(...)`,
+    워처가 `str(...) != "on"` 이라 값이 **`"off"` 인 계정에서 답이 갈렸다** —
+    하나는 켜짐, 하나는 꺼짐. 화면이 「꺼짐」이라 적었는데 무인 세션이 뜨는
+    일이 없어야 한다.
+
+    받는 모양은 화면(workercfg.js 의 `wcfgOn`)과 **같은 목록**이다: 손잡이와
+    CLI 가 쓰는 `"on"` 말고도 사람이 손으로 적을 만한 참값(`true`·`1`·`yes`,
+    JSON 의 `true`)을 켜짐으로 본다. 손으로 적은 값을 조용히 꺼짐으로 읽으면
+    「분명 켰는데 아무 일도 안 일어난다」가 된다."""
+    v = (cfg or {}).get("auto_resume")
+    return v is True or str(v or "").strip().lower() in ("on", "true", "1", "yes")
+
+
 def migrate_local_only_config(name):
     """추적 파일(settings.json)에 남은 자율 실행 키를 local.json 으로 옮긴다
     (REQ-20260902-031). 멱등. 반환: 옮긴 키 목록.
@@ -5388,7 +5411,8 @@ def machine_table(user=None):
 
     def slot(mv):
         return out.setdefault(mv, {"machine": mv, "os": "", "account": "",
-                                   "names": [], "last": ""})
+                                   "names": [], "last": "", "takes": None,
+                                   "last_recv": ""})
 
     for u in ([user] if user else registered_users()):
         for r in (user_profile(u) or {}).get("machine_accounts") or []:
@@ -5398,10 +5422,18 @@ def machine_table(user=None):
             if not mv:
                 continue
             s = slot(mv)
+            # 마지막으로 받은 때는 그 컴퓨터가 제 줄에 적어 보낸 사실이다
+            # (REQ-20260910-002-t8rc) — 계정이 여럿이면 가장 새것이 그 컴퓨터의 답이다.
+            if str(r.get("last_recv") or "") > s["last_recv"]:
+                s["last_recv"] = str(r.get("last_recv") or "")
             if str(r.get("last") or "") >= s["last"]:   # 마지막으로 본 줄이 이긴다
                 s["last"] = str(r.get("last") or "")
                 s["os"] = r.get("os") or s["os"]
                 s["account"] = r.get("account") or s["account"]
+                # 맡기기(REQ-20260910-003-t8rc) — 적힌 적이 없으면 **모름**이다.
+                # 없는 것을 「꺼짐」으로 단정하면 화면이 거짓을 말한다.
+                if r.get("takes") is not None:
+                    s["takes"] = bool(r.get("takes"))
     for nm, v in list(call_names_from_vault().items()) + list(read_peers().items()):
         mv = str((v or {}).get("machine") or "").strip()
         if not mv:
@@ -5414,6 +5446,18 @@ def machine_table(user=None):
     s = slot(current_machine())
     if not s["os"]:
         s["os"] = os_platform()
+    # 이 컴퓨터가 받은 때는 등록부를 거치지 않는다 — 폴 도장을 직접 볼 수 있고,
+    # 등록부의 값은 길어야 MACHINE_RECV_BEAT_SEC 만큼 과거다 (REQ-20260910-002-t8rc).
+    _got = _read_epoch_file(_SYNC_PULL_TS)
+    if _got:
+        s["last_recv"] = datetime.datetime.fromtimestamp(_got).astimezone().isoformat(
+            timespec="seconds")
+    if user:
+        # 이 컴퓨터 줄의 맡기기는 **지금 설정**이 이긴다 — 등록부는 마지막으로
+        # 적힌 때의 사실이지만 여기서는 그 파일을 직접 볼 수 있고, 무인 세션을
+        # 띄우는 자리(`_spawn_worker`)가 읽는 것도 바로 이 값이다. 방금 끈
+        # 것이 그 자리에서 곧바로 꺼짐으로 보여야 배정하는 사람이 헛짚지 않는다.
+        s["takes"] = auto_resume_on(user_config(user))
     return out
 
 
@@ -5434,8 +5478,14 @@ def machine_phrase(machine, user=None):
 
 
 def machine_label(v):
-    """`아는 머신` 목록 한 줄 — 머신값 (부르는 이름 · 판)."""
-    tail = " · ".join(x for x in [", ".join(v.get("names") or []), v.get("os") or ""] if x)
+    """`아는 머신` 목록 한 줄 — 머신값 (부르는 이름 · 판 · 맡기기).
+
+    맡기기는 **꺼져 있을 때만** 적는다 (REQ-20260910-003-t8rc) — 이 목록은
+    담당 컴퓨터를 고르라고 내미는 자리라, 일을 받지 못하는 컴퓨터를 고르려는
+    손에게는 그 사실이 곧 답이다. 적힌 적이 없는 컴퓨터에는 아무 말도 하지
+    않는다: 모르는 것을 꺼짐으로 단정하면 목록이 거짓을 말한다."""
+    tail = " · ".join(x for x in [", ".join(v.get("names") or []), v.get("os") or "",
+                                  "맡기기 꺼짐" if v.get("takes") is False else ""] if x)
     return v["machine"] + (f" ({tail})" if tail else "")
 
 
@@ -10332,7 +10382,7 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
             f"미충족이면 남은 것만 이어서 하라.")
     owner = meta.get("user", "")
     cfg = user_config(owner)
-    if not cfg.get("auto_resume"):
+    if not auto_resume_on(cfg):
         # 화면과 **같은 낱말**로 말한다 (REQ-20260901-022). 종전 문구는 두 번
         # 틀렸다: ① 「자동 이어가기」는 화면 어디에도 없는 세 번째 이름이었고
         # (카드의 「자동 이어받기 끄기」는 요청 하나만 막는 다른 정책이다)
@@ -10653,6 +10703,29 @@ def _safe_title(meta):
     return _safe_fence(meta.get("title", ""), 120)
 
 
+def _apply_scope_clause(s9bin, doc_id):
+    """자동 적용 모드 워커의 수정 범위 — 저장소 전체 (REQ-20260910-022).
+
+    종전에는 web/·vault/·tests/ 로 한정했다. 그 한정의 뜻은 "고쳐도 되는 곳"이
+    아니라 "검증할 수 있는 곳"이었는데, 실제로는 bin/s9.py 한 줄 고침까지
+    blocked 로 되돌아왔다 — 사람이 없는 자리에서 도는 작업자가 제 손으로는
+    아무것도 못 고치고 사람을 다시 부르는 것이 반복됐다(주인 지적 2026-09-10:
+    「어떻게 못하는 상황이 있을 수가 있지?」). 그래서 경계를 **범위에서 검증으로**
+    옮긴다: 어디든 고칠 수 있되, 고친 자리를 검증하지 못하면 적용하지 않고
+    blocked 로 올린다. 옵트인(auto_resume_apply)한 계정에만 해당한다.
+
+    두 스폰 경로(_spawn_rework·_spawn_wake)가 같은 문장을 쓴다 — 두 벌이면
+    한 벌만 고쳐진다."""
+    return (
+        f"수정 범위는 이 저장소 전체다 — bin/·harness/·설정 파일도 고칠 수 있다. "
+        f"대신 고친 자리마다 검증이 따라야 한다: 그 자리의 시험을 실행하고, "
+        f"bin/ 을 고쳤으면 `{s9bin} show {doc_id}` 를 한 번 실행해 CLI 가 오류 없이 "
+        f"끝나는지 확인하라. CLAUDE.md·.claude/ 아래는 생성물이니 원천"
+        f"(harness/common/PROTOCOL.md·harness/claude/gen_roster.py)에서 고쳐라. "
+        f"검증할 수 없으면 적용하지 말고 "
+        f"`{s9bin} status {doc_id} blocked --note '사유'` 로 전이하라. ")
+
+
 def _spawn_rework(doc_id, meta, note):
     """무인 재작업 스폰 — 반려된 REQ를 워커에 넘긴다.
     방어장치·봉투·Popen은 _spawn_worker 하나에만 있다 (경로 이중화 금지)."""
@@ -10697,9 +10770,7 @@ def _spawn_rework(doc_id, meta, note):
            f"review로 전이하라(확인 포인트 필수 — **300자·갈래 3개 이내**, 그 이상은 전이가 "
            f"거부된다: 무엇이 달라졌나/어디서 무엇을 눌러 보나/무엇이 보이면 승인·반려인가 "
            f"네 문장. 원인·경위·고친 방법은 `{s9bin} note {doc_id} '...' --label response` 로). "
-           f"수정 범위는 web/·vault/·tests/ 안으로 "
-           f"한정하고 그 밖(특히 bin/·harness/·설정 파일)은 제안(note)으로만 남겨라. "
-           f"검증이 불가능하면 적용하지 말고 `s9 status {doc_id} blocked --note '사유'` 로 전이하라. "
+           + _apply_scope_clause(s9bin, doc_id)
            if apply_mode else
            f"이 세션은 제한 권한이다(DOC-20260823-003 심사: 읽기 도구 + s9 CLI만, 파일 편집 불가) — "
            f"구현이 필요하면 코드를 직접 고치지 말고 완성 패치·분석을 "
@@ -10739,8 +10810,7 @@ def _spawn_wake(doc_id, meta, mins=None, by="", out=None,
            f"review로 전이하라(확인 포인트 필수 — **300자·갈래 3개 이내**, 그 이상은 전이가 "
            f"거부된다: 무엇이 달라졌나/어디서 무엇을 눌러 보나/무엇이 보이면 승인·반려인가 "
            f"네 문장. 원인·경위·고친 방법은 `{s9bin} note {doc_id} '...' --label response` 로). "
-           f"수정 범위는 web/·vault/·tests/ 안으로 "
-           f"한정하고 그 밖(특히 bin/·harness/·설정 파일)은 제안(note)으로만 남겨라. "
+           + _apply_scope_clause(s9bin, doc_id)
            if apply_mode else
            f"이 세션은 제한 권한이다(DOC-20260823-003 심사: 읽기 도구 + s9 CLI만, 파일 편집 불가) — "
            f"구현이 필요하면 코드를 직접 고치지 말고 완성 패치·분석을 "
@@ -11559,11 +11629,14 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
     """이 자리의 open 요청을 워처가 집는다 (REQ-20260909-012 · REQ-20260910-016).
 
     무엇이 「이 자리의 것」인지는 `here_requests` 한 곳이 판정한다 — 담당
-    머신이면 그 머신의 그 사용자만, 옛 needs_os 문서면 그 판. 반환: 집은 id.
+    머신이면 그 머신의 그 사용자만, 옛 needs_os 문서면 그 판, 둘 다 안 적혔으면
+    담당자가 같은 아무 컴퓨터나(REQ-20260910-009). 반환: 집은 id.
     """
     import time as _time
     nowt = now or _time.time()
     mach = machine or current_machine()
+    local = dict(local_facts(user))
+    local["machine"] = mach
     out = []
     for r in here_requests(platform=platform, machine=mach, user=user):
         if r.get("status") != "open":
@@ -11573,7 +11646,7 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
             continue
         meta, _body = read_doc(path)
         cfg = user_config(meta.get("user", "")) or {}
-        if str(cfg.get("auto_resume") or "off").lower() != "on":
+        if not auto_resume_on(cfg):
             continue                       # 담당자가 맡기기를 안 켰다
         try:
             created = datetime.datetime.fromisoformat(str(meta.get("created"))).timestamp()
@@ -11584,23 +11657,42 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
             continue                       # 유예: 라이브 세션이 s9 next 로 집을 기회
         if rework_claimed(r["id"]):
             continue
+        # 다른 컴퓨터가 쥔 것은 전이도 하지 않는다 (REQ-20260910-009). 담당이
+        # 안 붙은 요청은 이제 **여러 컴퓨터의 목록에 동시에 든다** — 전이는
+        # 리스를 보지 않으므로, 여기서 보지 않으면 두 대가 같은 요청을
+        # in-progress 로 바꿔 놓고 스폰만 busy-elsewhere 로 막힌다(화면에는 남의
+        # 컴퓨터가 집은 것처럼 남는다). 스폰이 쓰는 그 판정을 그대로 쓴다.
+        _ok, _code, _why = exec_verdict(meta, local, want="spawn")
+        if not _ok:
+            _auto_log(f"HERE-SKIP({_code}) {r['id']} {_why}")
+            continue
         by_machine = bool(str(meta.get("needs_machine") or "").strip())
-        where = machine_phrase(mach) if by_machine else (platform or os_platform())
+        by_os = bool(str(meta.get("needs_os") or "").strip())
+        where = machine_phrase(mach) if by_machine or not by_os else (platform or os_platform())
+        # 세 갈래를 각각의 말로 적는다 (REQ-20260910-009) — 「담당 컴퓨터로
+        # 지정된 요청」이라고만 적으면, 담당이 없어서 이 컴퓨터가 집은 것까지
+        # 지정된 것처럼 읽혀 나중에 왜 여기서 돌았는지 알 수 없다.
+        if by_machine:
+            why_note = "담당 컴퓨터로 지정된 요청"
+            why_spawn = f"이 머신({where})가 담당 컴퓨터로 지정된 요청 — 워처가 집어 띄웠다."
+        elif by_os:
+            why_note = "다른 기계가 여기서 재 달라고 남긴 요청"
+            why_spawn = f"다른 기계가 이 판({where})에서 재 달라고 남긴 요청 — 워처가 집어 띄웠다."
+        else:
+            why_note = "담당 컴퓨터가 정해지지 않은 요청 — 노는 컴퓨터가 집는다"
+            why_spawn = (f"담당 컴퓨터가 정해지지 않은 요청 — 이 컴퓨터({where})의 "
+                         f"워처가 집어 띄웠다.")
+        head = f"이 판({where})의 워처가 집었다" if by_os and not by_machine \
+            else f"이 머신({where})의 워처가 집었다"
         try:
-            do_transition(r["id"], "in-progress",
-                          note=(f"이 머신({where})의 워처가 집었다 — 담당 컴퓨터로 지정된 요청"
-                                if by_machine else
-                                f"이 판({where})의 워처가 집었다 — 다른 기계가 여기서 재 달라고 남긴 요청"),
+            do_transition(r["id"], "in-progress", note=f"{head} — {why_note}",
                           user=meta.get("user"), auto=True, via="watcher")
         except Exception as _e:
             _auto_log(f"HERE-TRANSITION-FAIL {r['id']}: {_e}")
             continue
         meta, _body = read_doc(path)
         spawn = _spawn or (lambda did, m: _spawn_wake(
-            did, m, mins=0, kind="resume",
-            why=(f"이 머신({where})가 담당 컴퓨터로 지정된 요청 — 워처가 집어 띄웠다."
-                 if by_machine else
-                 f"다른 기계가 이 판({where})에서 재 달라고 남긴 요청 — 워처가 집어 띄웠다.")))
+            did, m, mins=0, kind="resume", why=why_spawn))
         if spawn(r["id"], meta):
             out.append(r["id"])
     return out
@@ -11709,8 +11801,9 @@ def rework_watch_tick(grace=None, now=None):
                 why="맡고 있던 작업자가 사라졌다 — 워처가 이어받게 띄웠다.")
         if done_it:
             spawned.append(r["id"])
-    # 이 자리에서 해야 할 open 요청을 집는다 (REQ-20260909-012 · REQ-20260910-016):
-    # 담당 머신이 이 머신이고 담당자가 이 머신의 사용자인 것, 그리고 옛 needs_os 문서.
+    # 이 자리에서 해야 할 open 요청을 집는다 (REQ-20260909-012 · REQ-20260910-016 ·
+    # REQ-20260910-009): 담당 머신이 이 머신이고 담당자가 이 머신의 사용자인 것,
+    # 옛 needs_os 문서, 그리고 담당 컴퓨터가 정해지지 않은 그 사용자의 요청.
     # 실측 2026-09-09 08:53: 맥 대시보드는 켜져 있었지만 needs_os=macOS 요청은
     # 사람이 `s9 code` 를 열어 `s9 next` 를 볼 때까지 아무도 집지 않았다. 규율은
     # 그대로다 — 담당자의 auto_resume 이 켜져 있고, 생성 뒤 유예가 지났고, 아무도
@@ -12641,6 +12734,13 @@ def sync_run(reason="", transport=True):
                     pass
             return "busy"
         try:
+            # 이 회차에 「마지막으로 받은 때」를 얹는다 (REQ-20260910-002-t8rc) —
+            # 어차피 미는 길이라 따로 밀 이유가 없다. 최소 간격(MACHINE_RECV_BEAT_SEC)은
+            # 여기서도 그대로라 commit 마다 등록부가 다시 쓰이지 않는다.
+            try:
+                machine_recv_beat()
+            except Exception:
+                pass
             # 커밋 범위를 데이터 경로로 못 박는다 (REQ-20260826-003).
             # 종전엔 데이터만 add 한 뒤 pathspec 없이 commit 해서 **인덱스
             # 전체**가 실렸다. 결과가 둘이었다: (A) admin 이 stage 해둔 WIP
@@ -12871,6 +12971,15 @@ def sync_poll(timeout=8):
         _sync_poll_record(result, ms=int((_time.time() - t0) * 1000))
     except Exception:
         pass
+    # 받았다는 사실을 등록부에 올린다 (REQ-20260910-002-t8rc). 최소 간격을 넘겼을 때만
+    # 적고, 그때는 스스로 한 번 민다 — 문서 이벤트가 없는 조용한 컴퓨터는 밀어 주는
+    # 회차가 없어서, 여기서 밀지 않으면 그 컴퓨터의 사실은 영영 이 저장소를 못 떠난다.
+    # 실패한 폴은 올리지 않는다: 못 받은 것은 못 받은 것이다.
+    if result in ("ok", "none"):
+        try:
+            machine_recv_beat(push=True)
+        except Exception:
+            pass
     return result
 
 
@@ -12893,6 +13002,73 @@ def sync_poll_classify(text):
     if re.search(r"Not possible to fast-forward|diverg|cannot fast-forward", t):
         return "diverged", []
     return "net", []
+
+
+# ------------------------------- 갈래가 갈린 저장소를 다시 붙인다 (REQ-20260910-034)
+# 실제 발생 2026-09-06 11:35 ~ 09-10 11:24: 한 머신의 pull 이 한 번 실패한 뒤
+# **나흘 동안 한 번도 다시 시도하지 않았다**. state/sync.jsonl 의 마지막 줄이
+# 그 실패였고 그 뒤는 비어 있었다. 까닭은 폴이 `pull --ff-only` 뿐이기
+# 때문이다 — 로컬 commit 이 앞서 갈래가 갈리면 폴은 영영 그 갈래를 못 넘고,
+# 그것을 넘는 유일한 길(전송 경로: commit→pull --rebase→push)은
+# state/.sync-queue 가 있을 때만 도는데 문서 이벤트가 없는 머신에는 그 파일이
+# 안 생긴다. 그래서 여기서 전송 경로를 직접 부른다. 간격은 배로 늘리되(원격을
+# 헛되이 두드리지 않게) **끊지 않는다** — 포기하는 자리를 만들지 않는 것이
+# 이 요청의 goal 이다.
+SYNC_REATTACH_BASE_SEC = 60        # 다시 붙이기를 다시 하기까지의 첫 간격
+SYNC_REATTACH_MAX_SEC = 1800       # 간격 상한 30분 — 늘어나도 차례는 계속 온다
+_SYNC_REATTACH = os.path.join(ROOT, "state", ".sync-reattach.json")
+
+
+def _sync_reattach_state(path=None):
+    """다시 붙이기의 표 — {tries, last, since}. 없거나 깨졌으면 빈 표."""
+    try:
+        with open(path or _SYNC_REATTACH, encoding="utf-8") as f:
+            st = json.load(f)
+        return st if isinstance(st, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _sync_reattach_wait(tries):
+    """연속 실패 tries 회 뒤 다음 시도까지 미룰 시간 — 60s 부터 배로, 30분 상한.
+    첫 갈래(tries=0)는 미루지 않는다."""
+    if tries <= 0:
+        return 0.0
+    return float(min(SYNC_REATTACH_MAX_SEC,
+                     SYNC_REATTACH_BASE_SEC * (2 ** (tries - 1))))
+
+
+def _sync_reattach_due(now=None, path=None):
+    """다시 붙일 차례인가. 차례면 표(시도 횟수·마지막 시각)를 갱신하고 True.
+
+    상한에 닿아도 False 로 굳는 갈래가 없다 — 나흘이 지나도 차례는 온다."""
+    import time as _time
+    now = now or _time.time()
+    path = path or _SYNC_REATTACH
+    st = _sync_reattach_state(path)
+    try:
+        tries, last = int(st.get("tries") or 0), float(st.get("last") or 0.0)
+    except (TypeError, ValueError):
+        tries, last = 0, 0.0
+    if now - last < _sync_reattach_wait(tries):
+        return False
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"tries": tries + 1, "last": now,
+                       "since": st.get("since") or now_iso()}, f,
+                      ensure_ascii=False)
+    except OSError:
+        pass
+    return True
+
+
+def _sync_reattach_clear(path=None):
+    """붙었다 — 미룸을 푼다. 다음에 갈래가 갈리면 곧바로 한 번 시도한다."""
+    try:
+        os.remove(path or _SYNC_REATTACH)
+    except OSError:
+        pass
 
 
 def _sync_poll_once(timeout=8):
@@ -12938,9 +13114,25 @@ def _sync_poll_once(timeout=8):
                 sync_run("poll-dirty")
             except Exception:
                 pass
+        # 갈래가 갈렸으면(ff 불가) 폴만으로는 영영 못 받는다 — 전송 경로를
+        # 직접 불러 다시 붙인다 (REQ-20260910-034). 실패하면 다음 시도를
+        # 미루되 끊지 않는다.
+        if kind == "diverged" and _sync_reattach_due():
+            try:
+                out = sync_run("poll-reattach")
+            except Exception as e:
+                out = f"error:{type(e).__name__}"
+            if out == "ok":
+                _sync_reattach_clear()
+                _sync_log("↺ 갈래가 갈렸던 저장소를 다시 붙였다 (poll-reattach)")
+                return "ok"
+            st = _sync_reattach_state()
+            _sync_log(f"⚠ 다시 붙이기 실패({out}) — {int(_sync_reattach_wait(st.get('tries') or 1))}s "
+                      f"뒤에 다시 한다 (연속 {st.get('tries') or 1}회)")
         return kind
     after = _sync_git("rev-parse", "HEAD").stdout.strip()
     _sync_pull_stamp()
+    _sync_reattach_clear()      # 받았다 — 미룸을 푼다
     if after != before:
         try:
             # 앞뒤 HEAD 를 이미 들고 있다 — 그 사이 바뀐 문서만 반영한다
@@ -13651,6 +13843,65 @@ def _last_status_line(text):
     return (m.group(1) if m else ""), last
 
 
+def _doc_identity(meta):
+    """이 문서가 무엇인지 — `id` 가 있으면 그것, 없으면 사람 프로필의 `name`.
+
+    사용자 프로필(users/*/profile.md)에는 id 가 없어 지금껏 병합기가 곧바로
+    손을 뗐다(REQ-20260910-006-t8rc). 그런데 이 문서는 두 컴퓨터가 **같은 줄**
+    (machine_accounts)을 각자 고치는 유일한 문서라, 형식을 아는 병합이 가장
+    필요한 자리다. 두 갈래를 한 함수로 두어 짝짓는 규칙이 한 곳에만 있게 한다."""
+    if meta.get("id"):
+        return ("id", meta["id"])
+    if meta.get("name"):
+        return ("name", meta["name"])
+    return None
+
+
+def _iso_max(*vals):
+    """ISO 시각 여럿 중 가장 새것 (읽을 수 없는 것은 빼고, 없으면 None)."""
+    got = [(v, _epoch(v)) for v in vals if v]
+    got = [(v, e) for v, e in got if e is not None]
+    return max(got, key=lambda p: p[1])[0] if got else None
+
+
+def _iso_min(*vals):
+    got = [(v, _epoch(v)) for v in vals if v]
+    got = [(v, e) for v, e in got if e is not None]
+    return min(got, key=lambda p: p[1])[0] if got else None
+
+
+def _merge_machine_rows(o_rows, t_rows):
+    """machine_accounts — (machine, account) 로 짝지어 항목마다 새것을 취한다.
+
+    JSON 그대로 합집합하면 같은 컴퓨터의 옛 줄과 새 줄이 둘 다 남아 표가
+    거짓이 된다. 짝의 대표는 `last` 가 새것인 쪽이되, 그 줄에 없는 항목
+    (다른 컴퓨터가 모르는 `takes` 같은 것)은 옛 줄의 값을 남긴다. `first` 는
+    이른 쪽, `last_recv` 는 새것인 쪽 — 받기 상태는 `last` 를 고치지 않는
+    별도의 쓰기라 대표 줄에만 있다고 볼 수 없다."""
+    out, at = [], {}
+    for r in list(o_rows) + list(t_rows):
+        if not isinstance(r, dict):
+            continue
+        key = (r.get("machine"), r.get("account"))
+        prev = at.get(key)
+        if prev is None:
+            at[key] = dict(r)
+            out.append(key)
+            continue
+        win, lose = ((prev, r) if (_epoch(prev.get("last")) or 0.0)
+                     >= (_epoch(r.get("last")) or 0.0) else (r, prev))
+        merged = {**lose, **win}
+        first = _iso_min(prev.get("first"), r.get("first"))
+        if first:
+            merged["first"] = first
+        for k in ("last", "last_recv"):
+            newest = _iso_max(prev.get(k), r.get(k))
+            if newest:
+                merged[k] = newest
+        at[key] = merged
+    return [at[k] for k in out]
+
+
 def merge_doc(base_text, ours_text, theirs_text):
     """세 판을 의미로 합친다. 못 합치면 None (git 기본 충돌로 떨어진다)."""
     bm, bb = fm_parse(base_text)
@@ -13658,8 +13909,15 @@ def merge_doc(base_text, ours_text, theirs_text):
     tm, tb = fm_parse(theirs_text)
     if not om or not tm or not bm:
         return None
-    if not (om.get("id") and om.get("id") == tm.get("id") == bm.get("id")):
+    ident = _doc_identity(om)
+    if not ident or ident != _doc_identity(tm) or ident != _doc_identity(bm):
         return None
+    # 프로필의 Notes 는 `### 시각` 헤더가 아니라 `- 시각 ...` 줄 목록이다 — 헤더
+    # 단위로 합치면 헤더가 없어 통째로 한 덩어리가 되고, ours 것만 남아 남의
+    # 컴퓨터가 적은 줄이 소리 없이 사라진다. 문서 종류가 아니라 **내용**으로
+    # 가른다: 양쪽 어디에도 헤더가 없을 때만 줄 단위로 합친다.
+    line_notes = ident[0] == "name" and not any(
+        NOTE_HDR_RE.match(l) for txt in (ob, tb) for l in txt.splitlines())
 
     def later(o, t):
         return o if str(om.get("updated") or "") >= str(tm.get("updated") or "") else t
@@ -13682,6 +13940,8 @@ def merge_doc(base_text, ours_text, theirs_text):
             v = o
         elif k == "updated":
             v = max(str(o or ""), str(t or ""))
+        elif k == "machine_accounts" and isinstance(o, list) and isinstance(t, list):
+            v = _merge_machine_rows(o, t)
         elif isinstance(o, list) and isinstance(t, list):
             v, keyset = [], set()
             for item in list(o) + list(t):
@@ -13726,7 +13986,7 @@ def merge_doc(base_text, ours_text, theirs_text):
     for n in order:
         b, o, t = bs.get(n, ""), os_.get(n, ""), ts_.get(n, "")
         if n == "Notes":
-            v = _merge_notes(b, o, t)
+            v = _merge_lines(b, o, t) if line_notes else _merge_notes(b, o, t)
         elif n == "History":
             v = _merge_lines(b, o, t)
         elif o == t or t == b:
@@ -13844,6 +14104,13 @@ def cmd_sync(args):
                  else "(인스턴스가 아니거나 S9_SYNC=off)")
               + f"  마커 {SYNC_MARKER}"
               f"{' 존재' if os.path.exists(SYNC_MARKER) else ' 없음'}")
+        # 컴퓨터마다 마지막으로 받은 때 (REQ-20260910-002-t8rc) — 위의 한 줄은
+        # 이 컴퓨터만 말한다. 남의 컴퓨터가 며칠째 못 받고 있는 것이 여기 선다.
+        lines = machine_recv_lines(_fp_user() or None)
+        if lines:
+            print("컴퓨터별 마지막 받음:")
+            for ln in lines:
+                print("  " + ln)
         log = os.path.join(ROOT, "state", "sync.log")
         if os.path.exists(log):
             with open(log, encoding="utf-8") as f:
@@ -17013,8 +17280,177 @@ def takeover_handoff(doc_id, actor, local=None, session=None):
     return (ok, code, why, sid)
 
 
+# ── 컴퓨터 하나에 묶인 일감 (REQ-20260910-013-t8rc) ───────────────────────
+# `s9 next` 는 「이 컴퓨터에서 할 일」만 낸다 — 「저 컴퓨터에 묶인 일」을 세는
+# 자리가 없었다. 그래서 컴퓨터 하나가 빠질 때 needs_machine 과 lease 를 vault
+# 전체에 grep 해 손으로 표를 만들어야 했다. here_requests 의 주석이 「담당
+# 컴퓨터가 꺼져 있으면 영영 기다린다 — 옮기는 것은 사람의 손이다」라고 못박은
+# 그 손이 지금 grep 이다. 세는 자리와 옮기는 자리를 아래 둘이 맡는다.
+
+
+def machine_bound_requests(machine, rows=None, now=None):
+    """그 컴퓨터에 묶인 미완 요청 — 담당 컴퓨터이거나, 그 컴퓨터가 점유(lease) 중이거나.
+
+    묶는 끈은 둘이고 성질이 다르다. ① `needs_machine` 은 **풀리지 않는다** —
+    그 컴퓨터가 꺼져도 그대로라, 사람이 옮기지 않으면 그 요청은 영영 선다.
+    ② lease 는 **시한부**다 — DOC_LEASE_TTL 이 지나면 저절로 풀린다. 빠지는
+    컴퓨터의 표에는 둘 다 실려야 한다: 손이 필요한 것은 ①, 만료된 ② 는 걸린
+    자리만 정리하면 그만이다.
+
+    lease 는 신선하든 만료됐든 행에 싣되 `lease_fresh` 로 갈라 둔다 —
+    `machine_handoff` 가 그 한 값으로 「지금 쓰는 중」과 「남아 있는 자국」을
+    가른다. 묶였다고 세는 것은 신선한 lease 뿐이다(만료된 것은 이미 아무
+    컴퓨터의 것도 아니다).
+
+    반환은 work_order 순의 카탈로그 행 + {bound, lease_fresh}.
+    bound 는 ("담당", "점유") 중 실제로 걸린 끈들.
+    """
+    mv = str(machine or "").strip()
+    if not mv:
+        return []
+    out = []
+    for r in (rows if rows is not None else load_catalog()):
+        if r.get("type") != "request" or \
+                r.get("status") not in ("open", "blocked", "in-progress"):
+            continue
+        lease = r.get("lease") if isinstance(r.get("lease"), dict) else {}
+        mine_lease = str(lease.get("machine") or "") == mv
+        fresh = bool(lease) and doc_lease_fresh(lease, now)
+        bound = []
+        if str(r.get("needs_machine") or "").strip() == mv:
+            bound.append("담당")
+        if mine_lease and fresh:
+            bound.append("점유")
+        if not bound:
+            continue
+        row = dict(r)
+        row["bound"] = bound
+        row["lease_fresh"] = bool(mine_lease and fresh)
+        out.append(row)
+    return work_order(out) if out else []
+
+
+def _release_stale_lease(doc_id, machine, actor):
+    """빠진 컴퓨터가 남긴 **만료된** 점유 한 줄을 정리한다.
+
+    지우는 것이 아니라 History 로 옮긴다(release_doc_session 과 같은 계약) —
+    근거가 없으면 다음 사람은 「이 문서에 왜 주인이 없나」를 판정할 수 없다.
+    `updated` 는 건드리지 않는다: 점유를 푸는 것은 진전이 아니다.
+    """
+    path = locate(doc_id) or locate(canon_id(doc_id))
+    if not path:
+        return False
+    acquire_lock()
+    try:
+        meta, body = read_doc(path)
+        lease = doc_lease(meta)
+        if not lease or str(lease.get("machine") or "") != str(machine) \
+                or doc_lease_fresh(lease):
+            return False
+        meta.pop("lease", None)
+        last = str(lease.get("renewed") or lease.get("since") or "")[:16]
+        line = (f"- {now_iso()} lease 해제: {lease.get('user') or '?'}@{machine} "
+                f"(마지막 갱신 {last or '미상'}, 만료) (by {actor} via handoff)\n")
+        body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
+            else (body.rstrip("\n") + "\n\n## History\n" + line)
+        write_doc(path, meta, body)
+        rebuild_index(quiet=True)
+    finally:
+        release_lock()
+    return True
+
+
+def machine_handoff(src, dst, actor="", now=None):
+    """일감을 컴퓨터째 옮긴다 — `s9 handoff --from A --to B` 의 한 경로.
+
+    하는 일은 둘뿐이다: 담당 컴퓨터(needs_machine)를 바꾸고, 빠지는 컴퓨터가
+    남긴 **만료된** 점유를 정리한다. 신선한 점유는 건드리지 않는다 — 저쪽이
+    지금 그 문서를 만지고 있다는 뜻이라, 여기서 풀면 두 컴퓨터가 같은 문서를
+    쓴다. 담당만 옮겨 두고 「저쪽이 쥐고 있다」로 보고한다: 점유는 시한부라
+    저쪽이 멈추면 저절로 풀린다.
+
+    쓰기는 새로 짓지 않고 `do_set` 을 그대로 부른다(REQ-20260906-053 의 한
+    경로) — History 한 줄·색인·동기화가 거기 이미 붙어 있다.
+    반환 {"src","dst","moved","released","held","failed"}.
+    """
+    src = resolve_machine_name(src)
+    dst = resolve_machine_name(dst)
+    if not src or not dst:
+        raise ValueError("옮길 컴퓨터(--from)와 받을 컴퓨터(--to)를 둘 다 줘라")
+    if src == dst:
+        raise ValueError(f"보내는 곳과 받는 곳이 같다: {src}")
+    who = actor or resolve_user(None)
+    res = {"src": src, "dst": dst, "moved": [], "released": [], "held": [],
+           "failed": []}
+    for r in machine_bound_requests(src, now=now):
+        rid = r["id"]
+        lease = r.get("lease") if isinstance(r.get("lease"), dict) else {}
+        if str(lease.get("machine") or "") == src:
+            if r.get("lease_fresh"):
+                res["held"].append(rid)
+            elif _release_stale_lease(rid, src, who):
+                res["released"].append(rid)
+        if "담당" in (r.get("bound") or []):
+            try:
+                do_set(rid, {"needs_machine": dst}, actor=who, via="handoff")
+                res["moved"].append(rid)
+            except ValueError as e:
+                res["failed"].append((rid, str(e)))
+    return res
+
+
+def _bound_why(r):
+    """묶인 까닭 한 마디 — 표의 각 줄이 스스로 「왜 저 컴퓨터의 것인가」를 말한다."""
+    bits = []
+    if "담당" in (r.get("bound") or []):
+        bits.append("담당 컴퓨터로 지정")
+    if "점유" in (r.get("bound") or []):
+        lease = r.get("lease") or {}
+        t = str(lease.get("renewed") or lease.get("since") or "")[11:16]
+        bits.append(f"{lease.get('user') or '?'} 가 {t or '?'} 부터 쥐고 있다")
+    return " · ".join(bits)
+
+
 def cmd_handoff(args):
-    """`s9 handoff` — 이관의 양쪽을 한 번에. 훅은 --quiet 로 매 턴 부른다."""
+    """`s9 handoff` — 이관의 양쪽을 한 번에. 훅은 --quiet 로 매 턴 부른다.
+
+    갈래 셋이고 축이 둘이다. 인자가 없으면 **이 세션**이 오간 이관을 내고,
+    `--of <컴퓨터>` 는 **그 컴퓨터**에 묶인 미완 요청을 세고, `--from A --to B`
+    는 그것들을 실제로 옮긴다 (REQ-20260910-013-t8rc)."""
+    of = getattr(args, "of_machine", None)
+    src, dst = getattr(args, "from_machine", None), getattr(args, "to_machine", None)
+    if src or dst:
+        try:
+            res = machine_handoff(src, dst)
+        except ValueError as e:
+            die(str(e))
+        print(f"{machine_phrase(res['src'])} → {machine_phrase(res['dst'])}: "
+              f"담당 옮김 {len(res['moved'])}건 · 만료된 점유 해제 "
+              f"{len(res['released'])}건")
+        for rid in res["moved"]:
+            print(f"  {rid} 담당 컴퓨터 {res['src']} -> {res['dst']}")
+        for rid in res["released"]:
+            print(f"  {rid} 만료된 점유 해제 ({res['src']})")
+        for rid in res["held"]:
+            print(f"  {rid} 저쪽이 지금 쥐고 있다 — 멈추면 저절로 풀린다")
+        for rid, why in res["failed"]:
+            print(f"  {rid} 옮기지 못했다: {why}")
+        return
+    if of:
+        try:
+            mv = resolve_machine_name(of)
+        except ValueError as e:
+            die(str(e))
+        rows = machine_bound_requests(mv)
+        if not rows:
+            print(f"{machine_phrase(mv)} 에 묶인 미완 요청 없음")
+            return
+        print(f"{machine_phrase(mv)} 에 묶인 미완 요청 {len(rows)}건:")
+        for r in rows:
+            print(f"  {r['id']} {_safe_title(r)} [{r.get('status', '')}]"
+                  f" — {_bound_why(r)}")
+        print(f"  옮기기: s9 handoff --from {mv} --to <받을 컴퓨터>")
+        return
     rows = handoff_rows(session=getattr(args, "session", None) or None)
     for r in rows["incoming"]:
         print(f"- {r['text']}")
@@ -17027,7 +17463,8 @@ def cmd_handoff(args):
 def here_requests(platform=None, rows=None, machine=None, user=None):
     """이 자리에서 해야 할 열린 요청들 — open·blocked·in-progress.
 
-    두 겹이고 축은 **머신**이다 (REQ-20260910-016 · REQ-20260910-018).
+    세 겹이고 축은 **머신**이다 (REQ-20260910-016 · REQ-20260910-018 ·
+    REQ-20260910-009).
       ① 담당 머신(needs_machine) — 「저 머신에서만」. `needs_machine` 이 이
          머신이고 담당자(`user`)가 이 자리의 사용자일 때만 집는다. 둘 중
          하나라도 어긋나면 지나간다: 같은 저장소를 쓰는 다른 사람의 머신도,
@@ -17035,26 +17472,52 @@ def here_requests(platform=None, rows=None, machine=None, user=None):
          충돌한다).
       ② needs_os — 「이 판이면 아무 데서나」. 담당 머신을 모르는 옛 문서를
          위해 읽기만 계속 지원한다. 새로 적는 축이 아니다.
+      ③ 둘 다 비어 있으면 — 「아무 컴퓨터에서나」. 담당자만 맞으면 낸다.
     둘 다 적혀 있으면 담당 머신이 이긴다.
 
     담당 머신이 꺼져 있으면 이 목록은 그 요청을 **영영** 내지 않는다 — 시한도
     자동 해제도 다른 머신으로의 폴백도 없다. 옮기는 것은 사람의 손이다.
+
+    ③ 이 없던 동안 **담당이 안 붙은 요청은 어느 컴퓨터에서도 보이지 않았다**
+    (REQ-20260910-009, 실측 2026-09-10 16:05: open 10건 중 4건이 이 상태였고
+    이 컴퓨터의 `s9 next` 는 1건만 냈다 — 두 대가 오전 내내 놀았다). 접수만
+    되고 영영 서 있는 요청을 만들지 않으려면 기본값은 「아무도 아님」이 아니라
+    「아무나」여야 한다. 겹쳐 집는 것은 이 목록이 아니라 문서 리스가 막는다
+    (`doc_lease_verdict` 의 busy-elsewhere) — 스폰은 그 검사를 지나서 온다.
+
+    그 리스 검사는 **이 목록에도** 선다 (REQ-20260910-011). ③ 이 「담당자만
+    맞으면 낸다」로 넓어지면서, 다른 컴퓨터가 지금 쥐고 있는 in-progress 문서가
+    이 컴퓨터의 목록에 「착수하라」로 올랐다(test_two_machine S5b: alpha 세션이
+    쥔 alice 의 문서를 beta 의 `s9 next` 가 권했다). 스폰만 막고 목록은 그대로
+    두면 사람이 그 줄을 보고 손으로 집는다 — 두 컴퓨터가 같은 문서를 만진다.
+    판정은 새로 짓지 않고 리스 한 함수를 그대로 부른다(REQ-20260902-016).
     """
     here = platform or os_platform()
     mach = machine or current_machine()
     who = user if user is not None else resolve_user()
     ok = {here} | ({"Linux"} if here == "WSL" else set())
+    local = dict(local_facts(who))
+    local["machine"] = mach
     out = []
     for r in (rows if rows is not None else load_catalog()):
         if r.get("type") != "request" or r.get("status") not in ("open", "blocked", "in-progress"):
             continue
+        # 다른 컴퓨터의 신선한 리스 — 세 갈래 모두에 선다. 담당 머신이 이
+        # 컴퓨터라도, 저쪽이 지금 쥐고 있으면 지금 집을 것은 아니다.
+        if doc_lease_verdict(r, local, want="list")[1] == "busy-elsewhere":
+            continue
+        mine = doc_owner(r) == str(who or "")
         want_m = str(r.get("needs_machine") or "").strip()
         if want_m:
-            if want_m == mach and str(r.get("user") or "") == str(who or ""):
+            if want_m == mach and mine:
                 out.append(r)
             continue
         need = str(r.get("needs_os") or "").strip()
-        if need and need in ok:
+        if need:
+            if need in ok:
+                out.append(r)
+            continue
+        if mine:
             out.append(r)
     return work_order(out) if out else []
 
@@ -17085,7 +17548,8 @@ def cmd_next(args):
         return
     if here:
         print(f"이 기계({os_platform()})에서 해야 할 요청 {len(here)}건 — "
-              f"담당 컴퓨터가 이 컴퓨터({current_machine()})이거나, 이 판에서 재 달라고 남긴 것:")
+              f"담당 컴퓨터가 이 컴퓨터({current_machine()})이거나, 이 판에서 재 달라고 "
+              f"남겼거나, 담당 컴퓨터가 정해지지 않은 것:")
         for r in here:
             print(f"  {r['id']} {r.get('title', '')} [{r.get('status', '')}] — 착수: s9 status {r['id']} in-progress")
     if not p:
@@ -17115,12 +17579,62 @@ def cmd_reopened(args):
         print("(반려/재개 대기 없음)")
 
 
-def review_requests():
-    """review 상태 요청 + 리뷰 포인트(마지막 '-> review' 전이의 note)."""
+# 판정 대기가 얼마나 오래됐나 (REQ-20260910-010). 실측 2026-09-10: 그날 done 32건
+# 중 review 를 탄 넷이 판정 칸에서만 440분(건당 중앙값 112분)을 썼고, 리드가 검증해
+# 바로 닫은 28건은 중앙값 14.8분이었다. 규칙(PROTOCOL 12조 ①)은 이미 있었고 없던
+# 것은 「이 건이 몇 분째 대기 중인가」다 — 목록 어디에도 나이가 없었다. 임계는 그
+# 둘 사이에 둔다: 30분을 넘겼으면 리드가 직접 판정할 건인지부터 다시 고른다.
+REVIEW_STALE_MIN = 30
+
+
+def review_wait_min(row, now=None):
+    """review 로 들어간 뒤 흐른 분. 축은 status_since(그 상태가 된 때)이고,
+    없으면 updated·created 를 차례로 쓴다 — catalog_window 와 같은 축이다."""
+    import time as _time
+    at = _iso_epoch(row.get("status_since") or row.get("updated")
+                    or row.get("created"))
+    if not at:
+        return 0
+    return max(0, int(((now if now is not None else _time.time()) - at) // 60))
+
+
+def review_wait_text(mins):
+    """「37분째」 · 「1시간 52분째」 — 판정 칸에서 대기한 시간."""
+    mins = max(0, int(mins or 0))
+    if mins < 60:
+        return f"{mins}분째"
+    return f"{mins // 60}시간 {mins % 60}분째"
+
+
+def review_age_text(row):
+    """목록 한 줄에 붙는 나이 — 임계를 넘겼으면 그 사실까지 한 덩어리로."""
+    w = row.get("waited_min", 0)
+    mark = f" ⚠ {REVIEW_STALE_MIN}분 넘김" if w >= REVIEW_STALE_MIN else ""
+    return f"판정 대기 {review_wait_text(w)}{mark}"
+
+
+def review_stale_nudge(rows):
+    """임계를 넘긴 건을 리드에게 짚는 한 줄. 없으면 빈 문자열 — 매 턴·매 세션
+    실리는 자리라, 짚을 것이 없으면 한 글자도 싣지 않는다."""
+    stale = [r for r in rows if r.get("waited_min", 0) >= REVIEW_STALE_MIN]
+    if not stale:
+        return ""
+    ids = ", ".join(r["id"] for r in stale[:6])
+    if len(stale) > 6:
+        ids += f" 외 {len(stale) - 6}건"
+    return (f"⚠ {REVIEW_STALE_MIN}분 넘게 판정을 기다리는 요청 {len(stale)}건: {ids} — "
+            f"판정에 **사람만 아는 것**(취향·방향·바깥 사실)이 들어가지 않으면 "
+            f"리드가 지금 `s9 status <id> done` 또는 `in-progress` 로 닫아라 "
+            f"(PROTOCOL 12조 ①).")
+
+
+def review_requests(now=None):
+    """review 상태 요청 + 리뷰 포인트(마지막 '-> review' 전이의 note) + 대기한 분."""
     rows = [r for r in load_catalog()
             if r["type"] == "request" and r["status"] == "review"]
     rows.sort(key=lambda r: r["updated"])
     for r in rows:
+        r["waited_min"] = review_wait_min(r, now=now)
         if r.get("review_point"):
             continue  # catalog에 이미 있으면 재사용
         try:
@@ -17276,7 +17790,12 @@ def cmd_review(args):
                                f"{_row_actor(r) or '?'}@{r.get('machine') or '?'}",
                                "확인 포인트", 300)
                if args.quiet else f"\n    확인: {r['review_point']}"))
-        print(f"- {r['id']} {_safe_title(r)} ({r['user']}, updated {r['updated'][:16]}){rp}")
+        print(f"- {r['id']} {_safe_title(r)} ({r['user']}, {review_age_text(r)}){rp}")
+    # 짚는 줄은 확인 포인트 봉투 **밖**이다 — 남이 쓴 데이터가 아니라 이 도구가
+    # 리드에게 하는 말이라, 데이터와 같은 칸에 섞으면 지시가 인용문처럼 읽힌다.
+    nudge = review_stale_nudge(rows)
+    if nudge:
+        print(nudge)
     if not rows and not args.quiet:
         print("(확인 대기 없음)")
 
@@ -17433,6 +17952,7 @@ def cmd_digest(args):
 
     reopened = reopened_requests(mine=True)   # 세션 주입 — 내 것만 (REQ-20260902-016)
     review = review_requests()
+    review_nudge = review_stale_nudge(review)
     # 내 프로젝트의 컨텍스트 진입점 (DOC-20260824-001 1단계 — 경로만, 내용 주입은 3단계)
     ctxs = [f"- {p['slug']}: projects/{p['slug']}/CONTEXT.md"
             for p in user_projects(user)
@@ -17465,8 +17985,12 @@ def cmd_digest(args):
         ("## ⚠ 반려/재개 — 사용자가 대시보드에서 되돌림. 최우선으로 이어서 작업하라",
          [f"- {r['id']} {r['title']}" + (f" — 사유: {r['reason']}" if r['reason'] else "")
           for r in reopened]),
+        # 나이를 함께 낸다 (REQ-20260910-010) — 몇 분째 대기 중인지가 보여야
+        # 리드가 그 자리에서 판정할지 사람에게 남길지 고른다. 짚는 줄은 목록의
+        # 마지막 항목으로 붙어 예산 축소에도 review 절과 함께 남는다.
         ("## ⏳ review 대기 — 사용자 확인 필요. 이에 대한 피드백이 오면 재작업 시 먼저 in-progress로 전이하라",
-         [f"- {r['id']} {r['title']} ({r['user']})" for r in review]),
+         [f"- {r['id']} {r['title']} ({r['user']}, {review_age_text(r)})" for r in review]
+         + ([review_nudge] if review_nudge else [])),
         (f"## active — {user} (이어받을 작업)", [line(r) for r in mine]),
         ("## active — others", [line(r) for r in others[:15]]),
         ("## 최근 완료", [line(r) for r in closed[:8]]),
@@ -20186,6 +20710,16 @@ def record_machine_account(name, machine=None, acct=None):
     # 커밋할 때 쓰던 S9_USER 가 없는 계정 한 줄을 만들어 냈다.
     acct = acct or getpass.getuser()
     plat, ts = os_platform(), now_iso()
+    # 이 컴퓨터가 **일을 받을 수 있는가**를 함께 적는다 (REQ-20260910-003-t8rc).
+    # 맡기기 스위치는 이 컴퓨터의 추적되지 않는 파일에만 살아서, 요청에 담당
+    # 컴퓨터를 박는 자리에서는 그 컴퓨터가 꺼져 있는지 볼 길이 없었다 — 실측
+    # 2026-09-10: 한 컴퓨터에 배정된 요청이 하나도 빠짐없이 조용히 걸러졌는데
+    # 여기서는 그 사실이 어디에도 안 보였다. 나가는 것은 **사실 한 줄**이고
+    # 스위치가 아니다: 읽는 자리(`auto_resume_on`)는 여전히 local.json 만 보므로
+    # 이 값을 손으로 고쳐도 아무것도 켜지지 않는다.
+    # 다른 컴퓨터의 줄에는 적지 않는다 — 이 컴퓨터의 설정이기 때문이다.
+    takes = (auto_resume_on(user_config(name))
+             if machine == current_machine() else None)
     with open(ppath, encoding="utf-8") as f:
         meta, body = fm_parse(f.read())
     rows = meta.get("machine_accounts") or []
@@ -20194,17 +20728,128 @@ def record_machine_account(name, machine=None, acct=None):
     for r in rows:
         if isinstance(r, dict) and r.get("machine") == machine \
                 and r.get("account") == acct:
-            if r.get("last") == ts and r.get("os") == plat:
+            if r.get("last") == ts and r.get("os") == plat \
+                    and (takes is None or r.get("takes") == takes):
                 return False
             r["last"], r["os"] = ts, plat
+            if takes is not None:
+                r["takes"] = takes
             break
     else:
         rows.append({"machine": machine, "os": plat, "account": acct,
-                     "first": ts, "last": ts})
+                     "first": ts, "last": ts,
+                     **({} if takes is None else {"takes": takes})})
         body = body.rstrip("\n") + f"\n- {ts} 처음 본 컴퓨터 {acct}@{machine} ({plat})\n"
     meta["machine_accounts"] = rows
     write_doc(ppath, meta, body)
     return True
+
+
+# ------------------------------- 못 받은 컴퓨터를 화면에 세운다 (REQ-20260910-002-t8rc)
+# 이 컴퓨터가 못 받고 있는 것은 sync_status(SYNC_RECV_WARN/ALERT)가 말한다. 그러나
+# **남의 컴퓨터**가 며칠째 못 받고 있는지는 어디에도 없었다 — 등록부에는 first_seen·
+# hostname·root 뿐이라, 맥미니가 나흘 동안 한 줄도 못 받는 동안 다른 컴퓨터의 화면은
+# 조용했다. 그래서 받은 때를 등록부의 제 줄(`last_recv`)에 적어 내보낸다: 나가는 것은
+# **사실 한 줄**이고, 적는 것은 언제나 제 줄뿐이다 (`takes` 와 같은 규칙,
+# REQ-20260910-003-t8rc).
+#
+# 되먹임 차단이 이 설계의 전부다. 매 폴마다 적으면 폴이 곧 commit 이 되어 동기화가
+# 스스로를 먹는다. 그래서 최소 간격은 하나(MACHINE_RECV_BEAT_SEC)이고 부르는 자리는
+# 둘이다 — ① 미는 회차(sync_run)에 얹혀 적고(따로 밀지 않는다), ② 문서 이벤트가
+# 없어 조용한 컴퓨터만 그 간격을 넘겼을 때 제가 한 번 민다. 임계를 간격보다 넉넉히
+# 두는 이유도 같다: 10분 간격으로 적는 값에 10분 임계를 걸면 정상이 사고로 보인다.
+MACHINE_RECV_BEAT_SEC = 600      # 등록부에 「받았다」를 다시 적기까지의 최소 간격
+MACHINE_RECV_WARN_SEC = 1800     # 이보다 오래 못 받은 컴퓨터는 주의
+MACHINE_RECV_ALERT_SEC = 7200    # 이보다 오래면 사고
+
+
+def machine_recv_beat(push=False, now=None, name=None):
+    """이 컴퓨터가 마지막으로 받은 때를 등록부의 제 줄에 적는다.
+
+    받은 때의 원천은 로컬의 폴 도장(_SYNC_PULL_TS) 하나다 — 여기서 시계를 따로
+    만들지 않는다. push=True 면 적은 뒤 스스로 한 번 민다(조용한 컴퓨터의 길).
+    돌려주는 값: 적었으면 True, 최소 간격에 걸렸거나 적을 자리가 없으면 False.
+
+    등록부에 이 컴퓨터 줄이 없으면 **만들지 않는다** — 계정 이력은 세션이 적는
+    것이고, 받았다는 사실 하나로 「이 사람이 여기서 일했다」를 지어내면 그 표가
+    거짓이 된다."""
+    import time as _time
+    now = now or _time.time()
+    if sync_mode() != "remote":
+        return False
+    got = _read_epoch_file(_SYNC_PULL_TS)
+    if not got:
+        return False                     # 아직 한 번도 받은 적이 없다
+    name = name or _fp_user()
+    if not name:
+        return False
+    ppath = os.path.join(USERS, name, "profile.md")
+    if not os.path.isfile(ppath):
+        return False
+    machine, acct = current_machine(), getpass.getuser()
+    try:
+        with open(ppath, encoding="utf-8") as f:
+            meta, body = fm_parse(f.read())
+    except OSError:
+        return False
+    rows = meta.get("machine_accounts") or []
+    row = next((r for r in rows if isinstance(r, dict)
+                and r.get("machine") == machine and r.get("account") == acct), None)
+    if row is None:
+        return False
+    prev = _epoch(row.get("last_recv"))
+    if prev and now - prev < MACHINE_RECV_BEAT_SEC:
+        return False                     # 최소 간격 — 폴이 commit 이 되지 않게
+    if prev and prev >= got:
+        return False                     # 적힌 것이 더 새것이다 (되돌려 적지 않는다)
+    row["last_recv"] = datetime.datetime.fromtimestamp(got).astimezone().isoformat(
+        timespec="seconds")
+    meta["machine_accounts"] = rows
+    write_doc(ppath, meta, body)
+    if push:
+        try:
+            sync_run("recv-beat")
+        except Exception:
+            pass
+    return True
+
+
+def machine_recv_level(last_recv, now=None):
+    """그 컴퓨터의 받기 상태 — "" (괜찮다) · "late" (주의) · "stale" (사고).
+
+    적힌 적이 없으면 아무 말도 하지 않는다("") — 모르는 것을 사고라고 적으면
+    화면이 거짓을 말한다. 낱말은 sync_status 의 level 과 같다: 두 자리가 같은
+    이름을 써야 한 자리에서 고친 임계가 다른 자리에서 어긋나지 않는다."""
+    import time as _time
+    e = _epoch(last_recv)
+    if not e:
+        return ""
+    gap = (now or _time.time()) - e
+    if gap > MACHINE_RECV_ALERT_SEC:
+        return "stale"
+    if gap > MACHINE_RECV_WARN_SEC:
+        return "late"
+    return ""
+
+
+def machine_recv_lines(user=None, now=None):
+    """컴퓨터마다 「이름 — 마지막 받음 N분 전」 한 줄씩 (CLI 표시용).
+
+    임계를 넘은 줄만 사유를 덧붙인다 — 다 괜찮은데 다 떠드는 목록은 아무것도
+    말하지 않는 것과 같다."""
+    import time as _time
+    now = now or _time.time()
+    out = []
+    for mv, v in sorted(machine_table(user).items()):
+        lr = v.get("last_recv") or ""
+        if not lr:
+            continue
+        lvl = machine_recv_level(lr, now)
+        line = f"{machine_phrase(mv, user)} — 마지막 받음 {_ago_word(_epoch(lr), now)}"
+        if lvl:
+            line += "  [사고 — 오래 못 받고 있다]" if lvl == "stale" else "  [주의]"
+        out.append(line)
+    return out
 
 
 def do_user_attach(name, machine=None):
@@ -27507,8 +28152,15 @@ _BAL_RE_WORD = {"return", "typeof", "case", "in", "of", "do", "else", "delete",
 def _balance_error(raw, sub="app"):
     """반쯤 쓰인 조각인지 값싸게 본다 — 문제면 사유 한 줄, 없으면 None.
 
-    괄호·따옴표·주석의 균형만 본다. 문법을 아는 검사가 아니라 **잘린 파일**을
-    잡는 검사다: 쓰다 만 파일은 거의 언제나 닫히지 않은 괄호나 따옴표로 끝난다.
+    괄호·따옴표·주석의 균형과 **조각의 끝**을 본다. 문법을 아는 검사가 아니라
+    **잘린 파일**을 잡는 검사다: 쓰다 만 파일은 거의 언제나 닫히지 않은 괄호나
+    따옴표로 끝난다. 다만 균형만으로는 못 보는 자리가 있다 — `const X = ...;`
+    처럼 평평한 선언만 있는 조각(web/app/const.js)은 문장 경계에서 잘리면
+    괄호가 언제나 맞는다(REQ-20260910-007). 그래서 신호를 둘 더 본다:
+    조각은 줄바꿈으로 끝나야 하고, 주석을 걷어낸 마지막 유효 글자가 문장을
+    닫는 글자(js `;`·`}`, css `}`)여야 한다. 임의의 바이트에서 잘린 조각은
+    낱말·문자열·줄 중간에서 끝나므로 이 둘 중 하나에 반드시 걸린다.
+
     정상 조각을 떨어뜨리는 것이 곧 사고이므로 애매하면 통과시킨다 — 실측
     2026-09-09: 지금 저장소의 web/app/*.js·web/css/*.css 전부가 통과하고, 앞의
     2/3 만 남긴 잘린 사본은 전부 걸렸다(tests/test_bundle_snapshot.py S8).
@@ -27521,6 +28173,8 @@ def _balance_error(raw, sub="app"):
     tmpl = []           # 템플릿 문자열 안에서 열린 ${ 의 깊이
     i, n, line = 0, len(src), 1
     prev, prevword = "", ""
+    sig = ""            # 주석·공백을 걷어낸 마지막 유효 글자 (prev 와 달리
+                        # 줄바꿈이 지우지 않는다 — 조각의 끝을 보는 값이다)
     js = (sub != "css")
     while i < n:
         c = src[i]
@@ -27562,9 +28216,9 @@ def _balance_error(raw, sub="app"):
             if src[j] == "$":
                 tmpl.append(len(stack))
                 stack.append(("{", line))
-                i, prev = j + 2, "{"
+                i, prev, sig = j + 2, "{", "{"
                 continue
-            i, prev = j + 1, q
+            i, prev, sig = j + 1, q, q
             continue
         if js and c == "/":
             if prev == "" or prev in _BAL_RE_PREV or prevword in _BAL_RE_WORD:
@@ -27585,9 +28239,9 @@ def _balance_error(raw, sub="app"):
                         break
                     j += 1
                 if ok:
-                    i, prev, prevword = j + 1, "/", ""
+                    i, prev, prevword, sig = j + 1, "/", "", "/"
                     continue
-            i, prev, prevword = i + 1, "/", ""
+            i, prev, prevword, sig = i + 1, "/", "", "/"
             continue
         if c in _BAL_OPEN:
             stack.append((c, line))
@@ -27611,7 +28265,7 @@ def _balance_error(raw, sub="app"):
                     return "닫히지 않은 따옴표 ` (줄 %d)" % line
                 line += src.count("\n", i, j)
                 i = j + (2 if src[j] == "$" else 1)
-                prev = "`"
+                prev = sig = "`"
                 continue
             if not stack:
                 return "짝 없는 %s (줄 %d)" % (c, line)
@@ -27622,9 +28276,9 @@ def _balance_error(raw, sub="app"):
             j = i
             while j < n and (src[j].isalnum() or src[j] in "_$"):
                 j += 1
-            prevword, prev, i = src[i:j], src[j - 1], j
+            prevword, prev, sig, i = src[i:j], src[j - 1], src[j - 1], j
             continue
-        prevword, prev = "", c
+        prevword, prev, sig = "", c, c
         i += 1
     if stack:
         ch, ln = stack[0]
@@ -27642,6 +28296,14 @@ def _balance_error(raw, sub="app"):
         if not closed:
             return "문장이 끝나지 않았다 — 마지막 줄 %r (잘린 조각일 수 있다)" % (
                 last[-40:],)
+    if sig:
+        # 균형이 맞아도 끝이 마무리되지 않았으면 잘린 것이다 (REQ-20260910-007).
+        # 내용이 하나도 없는 조각(sig 가 빈 값)은 옛 규율 그대로 통과시킨다.
+        if not src.rstrip(" \t\r").endswith("\n"):
+            return "끝에 줄바꿈이 없다 (쓰는 중일 수 있다)"
+        if sig not in (";}" if js else "}"):
+            return "마지막 문장이 %r 로 끝났다 (줄 %d) — 잘렸을 수 있다" % (
+                sig, line)
     return None
 
 
@@ -34257,6 +34919,14 @@ def main():
                              "이 세션이 놓아야 할 것 (REQ-20260909-010)")
     ho.add_argument("--quiet", action="store_true")
     ho.add_argument("--session")
+    # 컴퓨터 축 (REQ-20260910-013-t8rc) — 세는 자리와 옮기는 자리.
+    # 이름은 부르는 이름이어도 된다(`s9 peer` 가 아는 것).
+    ho.add_argument("--of", dest="of_machine", metavar="컴퓨터",
+                    help="그 컴퓨터에 묶인 미완 요청을 센다 (담당 컴퓨터 + 점유 중)")
+    ho.add_argument("--from", dest="from_machine", metavar="컴퓨터",
+                    help="일감을 넘길 컴퓨터 (--to 와 짝)")
+    ho.add_argument("--to", dest="to_machine", metavar="컴퓨터",
+                    help="일감을 받을 컴퓨터 (--from 과 짝)")
     ho.set_defaults(fn=cmd_handoff)
 
     wt = sub.add_parser("worktree",

@@ -152,8 +152,10 @@ class TransportRepo(unittest.TestCase):
         spec.loader.exec_module(m)
         return m
 
-    # T4. B 의 push 를 A 의 폴링이 당긴다; A 가 앞서 있으면 건너뛴다
-    def test_t4_poll_fast_forwards_and_skips_when_diverged(self):
+    # T4. B 의 push 를 A 의 폴링이 당긴다; 갈래가 갈리면 다시 붙인다
+    #     (REQ-20260910-034 로 개정: 종전에는 「건너뛴다」였고, 그 건너뜀이
+    #      나흘짜리 미동기화가 됐다 — 넘어가지 않고 전송 경로로 푼다)
+    def test_t4_poll_fast_forwards_and_reattaches_when_diverged(self):
         m = self.load_a()
         with open(os.path.join(self.b, "from_b.txt"), "w") as f:
             f.write("b\n")
@@ -174,8 +176,10 @@ class TransportRepo(unittest.TestCase):
             sh("git", "add", "-A", cwd=self.b)
             sh("git", "commit", "-q", "-m", "from b2", cwd=self.b)
             sh("git", "push", "-q", cwd=self.b)
-            self.assertEqual(m.sync_poll(), "diverged")
-            self.assertFalse(os.path.exists(os.path.join(self.a, "from_b2.txt")))
+            self.assertEqual(m.sync_poll(), "ok", "갈래는 건너뛰지 않고 다시 붙인다")
+            self.assertTrue(os.path.exists(os.path.join(self.a, "from_b2.txt")))
+            self.assertIn("local a", sh("git", "log", "--format=%s", "-5",
+                                        cwd=self.bare).stdout, "내 commit 이 origin 에 섰다")
 
     # T5. 손잡이와 폴링이 같은 명령
     def test_t5_handle_and_poll_share_the_command(self):

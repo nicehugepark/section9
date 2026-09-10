@@ -1,6 +1,6 @@
 {
   "_": "시험 예산 기준선 (REQ-20260903-009). source_contract_files 는 라쳇이다 — 줄일 때만 고친다. 올려야 한다면 그 까닭을 why 에 한 줄 적어라. known 은 이미 있던 것들이라, 새로 늘어난 파일이 실패 메시지에 이름으로 지목된다.",
-  "source_contract_files": 63,
+  "source_contract_files": 64,
   "why": [
     "2026-09-03 기준선: 항목 1,986 · 소스를 두 번 이상 열어 글자를 대조하는 파일 51. 이 숫자는 지금까지 쌓인 빚이지 목표가 아니다 — 여기서부터 내려간다.",
     "문턱이 '두 번 이상'인 까닭: 동작 시험도 준비 삼아 소스를 한 번 열 수 있다. 한 번 읽는 것까지 세면 REQ-20260903-005 의 윈도우 시험처럼 대부분 동작인 파일이 오탐으로 걸린다.",
@@ -11,7 +11,8 @@
     "64 (2026-09-07, REQ-20260907-085): test_doc_tidy 가 「치운 것」이 tidy.js·tidy.css·guide.html 어디에도 **없다**는 것을 확인한다 — 없음은 실행으로 못 재는 계약이라 소스를 읽는다. 같은 파일의 나머지 항목(손잡이가 두 수를 따로 센다·기본 탭·빈 탭 두 줄)은 함수를 불러 값을 재는 동작 시험이다.",
     "2026-09-08 (REQ-20260908-009): 세는 자를 고쳤다 — 읽기 동사는 이름의 **한 마디**여야 한다. 끝 네 글자만 보면 「context」가 「text」로 걸려, 소스를 한 번도 안 읽는 파일이 라쳇에 잡혔다(test_chat_documented). 마디 경계를 요구해도 known 61개는 그대로다(전수 대조). 숫자는 64 그대로.",
     "65 (2026-09-08, REQ-20260908-047·052): test_media_asset_api 의 Routes·send_asset_contract 가 `/api/asset`·`/api/asset-info`·`/api/chat/upload` 의 배선을 소스로 확인한다 — 그 라우트는 `cmd_serve()` 안의 핸들러 클래스에 있어 서버를 띄우지 않고는 부를 수가 없다. 같은 파일의 나머지(asset_full·project_asset_path·doc_refs_path·_range_of·attach_max_for·asset_kind)는 전부 함수를 불러 값을 재는 동작 시험이다. 내려가는 길은 REQ-20260908-007 이 graph_data 네 벌에 한 것과 같다 — 에셋 라우트의 판단을 모듈 최상위로 끌어올리면 이 한 벌은 다시 빠진다.",
-    "63 (2026-09-09, REQ-20260909-057): 세는 자를 다시 고쳤다 — 이름 조각이 아니라 **인자**로 판정한다. 대문자 인자를 그 파일 안의 정의로 되짚어 tests/ 밖 경로일 때만 센다. 문서 id·세션 id 를 받는 헬퍼(043/044·009 의 오탐)가 빠지고, 알려진 65 중 둘이 진짜 오탐으로 드러나 빠졌다: test_pdf_text(PDF 본문 추출을 fixtures/·절대 경로로 재는 동작 시험) · test_asset_text(fixtures/ PDF 한 번 + 소스 한 번 = 문턱 아래). 나머지 63은 그대로(전수 대조)."
+    "63 (2026-09-09, REQ-20260909-057): 세는 자를 다시 고쳤다 — 이름 조각이 아니라 **인자**로 판정한다. 대문자 인자를 그 파일 안의 정의로 되짚어 tests/ 밖 경로일 때만 센다. 문서 id·세션 id 를 받는 헬퍼(043/044·009 의 오탐)가 빠지고, 알려진 65 중 둘이 진짜 오탐으로 드러나 빠졌다: test_pdf_text(PDF 본문 추출을 fixtures/·절대 경로로 재는 동작 시험) · test_asset_text(fixtures/ PDF 한 번 + 소스 한 번 = 문턱 아래). 나머지 63은 그대로(전수 대조).",
+    "64 (2026-09-10, REQ-20260910-026·027): test_usage_chip_keeps 의 StaleMarkIsDrawn 이 index.html 의 `.usagechip .stale` 규칙을 읽는다 — 마크가 폰트 글리프가 아니라 `mask` + `currentColor` 그림이고 획이 1px 이며 칩의 줄보다 높지 않다는 계약은 그리지 않고는 잴 수 없고, 그리려면 실브라우저가 필요하다(그 값이 틀려도 node 는 아무 말도 하지 않는다). 같은 파일의 Chip 여덟 항목은 renderUsageChip 을 실제로 불러 결과 글자를 재는 동작 시험이다."
   ],
   "known": [
     "test_account_flicker.py",
@@ -72,6 +73,7 @@
     "test_sync_status.py",
     "test_term_mention.py",
     "test_timezone_pick.py",
+    "test_usage_chip_keeps.py",
     "test_ux_agents.py",
     "test_viewer_gate.py",
     "test_wake_handle.py",

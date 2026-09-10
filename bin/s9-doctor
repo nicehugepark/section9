@@ -834,6 +834,10 @@ TMP_WARN, TMP_CRIT = 2000, 20000
 TMP_DIR_GROWN = 1 << 20   # ext4 디렉터리는 한 번 커지면 줄지 않는다
 TMP_OURS = ("s9gate-", "s9shot-", "cdp-prof-", "claude-")
 TMP_STALE_AGE = 3600      # 테스트 실행이 한 시간을 넘지는 않는다
+# 아이노드 (REQ-20260910-012). 러너의 두 줄과 같은 값이어야 한다
+# (tests/tmproot.py 의 INODE_RUN_NEED·INODE_FLOOR) — 판정이 두 벌이면 한쪽이
+# 괜찮다고 하는 자리에서 다른 쪽이 멈춘다. 근거는 그 파일에 적혀 있다.
+TMP_INODE_WARN, TMP_INODE_CRIT = 50_000, 10_000
 DISK_WARN, DISK_CRIT = 90.0, 95.0
 SERVE_SLOW = 2.0
 S9_HOOK_EVENTS = ("UserPromptSubmit", "SessionStart", "Stop", "SessionEnd",
@@ -891,13 +895,28 @@ def tmp_verdict(t):
     if ours:
         line += f" (우리 것 {ours}개)"
     advice = []
+    # 아이노드는 개수와 따로 본다 (REQ-20260910-012) — 최상위가 여덟 개여도
+    # 바닥날 수 있고, 바닥나면 테스트도 s9 명령도 임시 파일을 못 만들어 죽는다.
+    ino_free, ino_total = t.get("inode_free"), t.get("inode_total")
+    if ino_free is not None and ino_total:
+        line += f" · 아이노드 {ino_free:,}/{ino_total:,} 남음"
+        if ino_free < TMP_INODE_CRIT:
+            level = "critical"
+            advice.append(f"아이노드가 {ino_free:,}개뿐이다 — 이 자리를 쓰는 "
+                          f"모든 것이 임시 파일을 못 만들고 죽는다. "
+                          f"`s9 doctor --fix` 로 거두고, 그래도 모자라면 "
+                          f"무엇이 수만 개를 품고 있는지 찾아라.")
+        elif ino_free < TMP_INODE_WARN:
+            level = worst_level([level, "warn"])
+            advice.append(f"아이노드가 {ino_free:,}개 남았다 — 전체 테스트 한 "
+                          f"번이 약 {TMP_INODE_WARN:,}개를 쓴다.")
     if dir_bytes > TMP_DIR_GROWN:
         line += f" · 디렉터리 {human(dir_bytes)} — 과거 누적의 흔적"
         advice.append("/tmp 디렉터리가 한때 수만 개를 담았다(ext4 디렉터리는 "
                       "줄지 않는다). 부트마다 이 자리를 통째로 지우므로 그만큼 "
                       "기동이 느려진다 — 임시 디렉터리를 만들고 안 지우는 쪽을 "
                       "찾아라.")
-    if level != "ok":
+    if n > TMP_WARN:        # 개수 때문에 오른 등급일 때만 — 아이노드는 제 말을 한다
         advice.append(f"지금도 {n}개가 쌓여 있다.")
     return _v("tmp", "/tmp", level, line, " ".join(advice) or None)
 
@@ -1190,14 +1209,35 @@ def boot_info():
     return out
 
 
+def tmp_inodes(path="/tmp"):
+    """(남은 아이노드, 전체) — 세지 않는 파일시스템이면 (None, None).
+
+    최상위 개수만으로는 못 보는 자리다 (REQ-20260910-012): 2026-09-10 에는
+    최상위가 여덟 개였는데 그중 하나가 32,746개를 품고 있었고, 아이노드는
+    바닥이었다. 개수가 아니라 남은 아이노드를 봐야 「곧 아무것도 못 돈다」가
+    보인다.
+    """
+    try:
+        st = os.statvfs(path)
+    except OSError:
+        return (None, None)
+    total = getattr(st, "f_files", 0) or 0
+    if total <= 0:
+        return (None, None)
+    return (int(getattr(st, "f_favail", 0) or 0), int(total))
+
+
 def tmp_info(path="/tmp"):
+    ino_free, ino_total = tmp_inodes(path)
     try:
         names = os.listdir(path)
         dir_bytes = os.stat(path).st_size
     except OSError:
-        return {"entries": 0, "dir_bytes": 0, "ours": 0}
+        return {"entries": 0, "dir_bytes": 0, "ours": 0,
+                "inode_free": ino_free, "inode_total": ino_total}
     return {"entries": len(names), "dir_bytes": dir_bytes,
-            "ours": sum(1 for n in names if n.startswith(TMP_OURS))}
+            "ours": sum(1 for n in names if n.startswith(TMP_OURS)),
+            "inode_free": ino_free, "inode_total": ino_total}
 
 
 def disk_info():
@@ -1387,6 +1427,11 @@ def sweep_stale_tmp(base="/tmp", now=None, age=TMP_STALE_AGE):
     않는 것(claude-*, snap-private-tmp, systemd-private-*, .X11-unix)은
     아무리 오래돼도 건드리지 않는다. 살아 있는 실행 루트(s9run-<pid>-)도
     남긴다: 지금 도는 다른 러너의 자리를 지우면 그 실행이 깨진다.
+
+    반대로 **주인이 없는 실행 루트는 나이를 묻지 않고 거둔다** — 러너와 같은
+    규칙이다(tests/tmproot.py, REQ-20260910-012). pid 가 없으면 그 실행은 이미
+    끝났다는 확정이라 한 시간을 기다릴 이유가 없고, 기다리는 그 한 시간이
+    2026-09-10 에 /tmp 의 아이노드를 바닥낸 자리였다.
     """
     now = time.time() if now is None else now
     gone, freed = 0, 0
@@ -1398,11 +1443,14 @@ def sweep_stale_tmp(base="/tmp", now=None, age=TMP_STALE_AGE):
         if not name.startswith("s9") or name in TMP_KEEP:
             continue
         m = TMP_RUN_RE.match(name)
-        if m and owner_alive(int(m.group(1))):
-            continue
+        dead_run = False
+        if m:
+            if owner_alive(int(m.group(1))):
+                continue
+            dead_run = True         # 주인이 없다 — 나이를 묻지 않는다
         path = os.path.join(base, name)
         try:
-            if now - os.path.getmtime(path) < age:
+            if not dead_run and now - os.path.getmtime(path) < age:
                 continue
             size = 0
             if os.path.isdir(path) and not os.path.islink(path):

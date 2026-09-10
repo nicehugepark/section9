@@ -107,6 +107,44 @@ class HereWatch(unittest.TestCase):
         # 화면·기록의 낱말은 「컴퓨터」다 (REQ-20260910-017 용어 판정)
         self.assertIn("담당 컴퓨터", body)
 
+    def test_h5_the_watcher_picks_the_unassigned_one_anywhere(self):
+        """담당 컴퓨터도 판도 안 적힌 요청은 담당자가 같은 아무 컴퓨터나 집는다
+        (REQ-20260910-009). 남는 History 한 줄은 담당 컴퓨터로 지정된 경우와
+        구분돼야 한다 — 왜 여기서 돌았는지가 문서에만 남는다."""
+        self.m.do_user_config_set("hong", "auto_resume", "on")
+        rid = self.new_request(needs_os="", needs_machine="")
+        self.assertEqual(self.tick(platform="Linux", machine="anybox"), [rid])
+        meta, body = self.m.read_doc(self.m.find_path(rid))
+        self.assertEqual(meta["status"], "in-progress")
+        self.assertIn("담당 컴퓨터가 정해지지 않은 요청", body)
+        self.assertNotIn("담당 컴퓨터로 지정된 요청", body)
+        self.assertEqual(self.spawned, [rid])
+
+    def test_h7_a_request_held_by_another_machine_is_left_alone(self):
+        """다른 컴퓨터가 쥔(신선한 리스) 요청은 전이도 스폰도 하지 않는다
+        (REQ-20260910-009). 담당 없는 요청이 여러 컴퓨터의 목록에 함께 들면서
+        생긴 겹침을 문서 리스가 막는다 — 전이 자체가 리스를 보지 않기 때문에
+        워처가 먼저 본다."""
+        self.m.do_user_config_set("hong", "auto_resume", "on")
+        rid = self.new_request(needs_os="", needs_machine="")
+        path = self.m.find_path(rid)
+        meta, body = self.m.read_doc(path)
+        now = self.m.now_iso()
+        meta["lease"] = {"user": "hong", "machine": "thatbox", "session": "aaaa1111",
+                         "since": now, "renewed": now}
+        self.m.write_doc(path, meta, body)
+        self.m.rebuild_index(quiet=True)
+        self.assertEqual(self.tick(platform="Linux", machine="anybox"), [])
+        self.assertEqual(self.m.read_doc(path)[0]["status"], "open")
+        self.assertEqual(self.spawned, [])
+
+    def test_h6_the_unassigned_one_is_not_picked_for_someone_else(self):
+        """담당자가 다르면 집지 않는다 — 같은 저장소를 쓰는 남의 요청이다."""
+        self.m.do_user_config_set("hong", "auto_resume", "on")
+        rid = self.new_request(needs_os="", needs_machine="")
+        self.assertEqual(self.tick(platform="Linux", machine="anybox", user="someone"), [])
+        self.assertEqual(self.m.read_doc(self.m.find_path(rid))[0]["status"], "open")
+
     def test_h3_in_progress_ones_are_not_the_here_ticks_business(self):
         self.m.do_user_config_set("hong", "auto_resume", "on")
         rid = self.new_request()

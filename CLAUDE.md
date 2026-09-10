@@ -236,8 +236,13 @@
    blocked에는 반드시 --note로 사유·해제 조건을 남겨라 — 카드(⛔)와 `s9 blocked`, 훅 주입이
    그 note를 그대로 보여준다. '패치 적용 대기(리드)' blocked는 다음 리드 턴이 자동으로 집는다. (REQ-20260824-011)
    오너 config `auto_resume_apply=on`(옵트인, REQ-20260824-012)이면 백그라운드 재작업이 패치를 직접
-   적용·검증(tests, s9 shot)하고 review까지 완결한다 — 수정 범위는 web/·vault/·tests/ 한정,
-   검증 불가 시 blocked. off(기본)는 제안 전용(패치 note + blocked).
+   적용·검증(tests, s9 shot)하고 review까지 완결한다 — **수정 범위는 저장소 전체다**
+   (REQ-20260910-022: web/·vault/·tests/ 한정을 풀었다. bin/ 한 줄 고침까지 blocked 로
+   되돌아와, 사람이 없는 자리의 작업자가 제 손으로 아무것도 못 고쳤다). 경계는 범위가
+   아니라 **검증**이다 — 고친 자리의 시험을 실행하고, bin/ 을 고쳤으면 s9 명령 하나로
+   CLI 가 오류 없이 끝나는지 확인하고, 검증할 수 없으면 적용하지 말고 blocked.
+   CLAUDE.md·.claude/ 는 생성물이니 원천(harness/)에서 고친다.
+   off(기본)는 제안 전용(패치 note + blocked).
    **승인 메모도 이벤트다** (REQ-20260824-028): review→done의 '승인: <메모>'는 훅이 리드에게 1회
    주입하고(질문이면 답, 후속 함의면 `s9 new request --parent`로 착수 — 검토 승인 = 구현 착수 신호),
    유예 내 미소비면 워처가 백그라운드 후속 작업자를 스폰한다. 반려 루프와 대칭.

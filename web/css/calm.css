@@ -268,7 +268,6 @@
 /* 태그 = 색 글자. 배경도 테두리도 없이 '#'과 글자색만으로 구분한다 */
 [data-skin="calm"] .card .tag{background:none;border:0;padding:0;white-space:nowrap;
   font-size:11px;font-weight:500;color:hsl(var(--th) var(--hu-s) var(--hu-l))}
-[data-skin="calm"] .card .tag::before{content:none}
 /* 크기(S/M/L) 칩은 없다 — 카드에서 내렸다 (REQ-20260909-074). 담당자 이니셜과
    같은 낱글자라 혼동되어 윤곽 칩으로 갈라 두었던 자리인데, 갈라도 축 이름이
    없어 뜻이 서지 않았다. 읽는 자리는 문서 메타 표 하나다. */

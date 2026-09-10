@@ -248,10 +248,34 @@ function machineDemo(rows){
   if (!m) return rows;
   if (m[1] === "empty") return [];
   const ago = d => new Date(Date.now() - d * 86400000).toISOString();
+  const mago = n => new Date(Date.now() - n * 60000).toISOString();
+  /* 받음 칸의 세 모습을 여기서 다 볼 수 있게 둔다 (REQ-20260910-002-t8rc):
+     주의(45분) · 사고(나흘) · 적힌 적 없음. 화면을 눈으로 못 보면 고칠 수도 없다. */
   return rows.concat([
-    {machine: "MACBOOK-AIR", os: "macOS", account: "sjpark", first: ago(9), last: ago(9)},
-    {machine: "BUILD-BOX-02", os: "Linux", account: "runner", first: ago(31), last: ago(4)},
+    {machine: "MACBOOK-AIR", os: "macOS", account: "sjpark", first: ago(9), last: ago(9),
+     last_recv: mago(45)},
+    {machine: "BUILD-BOX-02", os: "Linux", account: "runner", first: ago(31), last: ago(4),
+     last_recv: ago(4)},
+    {machine: "NUC-LAB", os: "Linux", account: "lab", first: ago(12), last: ago(2)},
   ]);
+}
+/* 그 컴퓨터가 마지막으로 받은 때 (REQ-20260910-002-t8rc).
+   이 컴퓨터가 못 받고 있는 것은 헤더의 동기화 칩이 말한다. 이 칸이 말하는 것은
+   **남의 컴퓨터**다 — 한 컴퓨터가 나흘 동안 한 줄도 못 받는 동안 다른 컴퓨터의
+   화면은 조용했고, 그동안 그 컴퓨터에 배정된 요청은 아무도 집지 않았다.
+   값은 그 컴퓨터가 제 줄에 적어 보낸 것이고(profile 의 machine_accounts.last_recv),
+   적힌 적이 없으면 아무 말도 하지 않는다 — 모르는 것을 사고로 적으면 표가 거짓을
+   말한다. 임계는 서버(MACHINE_RECV_WARN/ALERT_SEC)와 같은 수다.
+   눈에 걸리게 하는 방법은 색면이 아니라 **낱말과 잉크**다. */
+const MACHINE_RECV_WARN_MS = 30 * 60 * 1000;
+const MACHINE_RECV_ALERT_MS = 2 * 60 * 60 * 1000;
+function recvCellHTML(iso){
+  const t = Date.parse(iso || "") || 0;
+  if (!t) return `<span class="mel" title="이 컴퓨터가 받은 때를 아직 올린 적이 없습니다">—</span>`;
+  const gap = Date.now() - t;
+  const lvl = gap > MACHINE_RECV_ALERT_MS ? "mrs" : gap > MACHINE_RECV_WARN_MS ? "mrl" : "";
+  return `<span title="${esc(shortWhen(iso))}">${esc(fmtElapsed(iso))} 전</span>`
+    + (lvl ? ` <span class="${lvl}">못 받음</span>` : "");
 }
 function machineHistoryHTML(u){
   const rows = machineDemo((u.machine_accounts || []).slice())
@@ -278,11 +302,13 @@ function machineHistoryHTML(u){
       <td class="mw">${esc(shortWhen(r.first))}</td>
       <td class="mw">${once ? `<span class="mone">한 번뿐</span>`
                             : esc(shortWhen(r.last))}
-        <span class="mel">${esc(fmtElapsed(r.last))}</span></td></tr>`;
+        <span class="mel">${esc(fmtElapsed(r.last))}</span></td>
+      <td class="mr">${recvCellHTML(r.last_recv)}</td></tr>`;
   }).join("");
   return `<div class="cfg-h">컴퓨터·계정 이력</div>
     <div class="mhwrap"><table class="mhtbl"><thead><tr>
       <th>컴퓨터</th><th>운영체제</th><th>계정</th><th>처음</th><th>마지막</th>
+      <th title="그 컴퓨터가 저장소에서 마지막으로 받은 때 — 10분에 한 번 올라옵니다">마지막 받음</th>
     </tr></thead><tbody>${body}</tbody></table></div>`;
 }
 

@@ -154,6 +154,54 @@ class AuditTable(unittest.TestCase):
         self.assertRegex(self.page, r"\.audit table\{min-width:680px\}",
                          "최소폭이 없으면 가로 스크롤 대신 셀이 눌린다")
 
+    # ── E1 날짜는 행이 아니라 하루 머리로 (REQ-20260910-025) ─────────────
+    def test_the_date_stands_once_a_day_above_the_rows(self):
+        """행 안에서 접는 방식은 첫 행을 접지 않아 시각 열이 날짜 폭을 유지했다."""
+        self.assertNotIn('once("day"', self.page,
+                         "날짜는 행 안에서 접지 않는다 — 첫 행이 접히지 않아 열 폭이 남는다")
+        self.assertIn('<tr class="day"><td colspan="5">', self.page,
+                      "날짜가 바뀌는 자리마다 하루 머리 행 한 줄이 서야 한다")
+        # 행의 시각 칸에 보이는 글자는 시:분뿐이다
+        m = re.search(r'<td class="ts">(.*?)</td>', self.page, re.S)
+        self.assertIsNotNone(m, "시각 칸을 찾지 못했다")
+        visible = re.sub(r'<span class="dup">.*?</span>', "", m.group(1), flags=re.S)
+        self.assertIn("slice(11, 16)", visible, "보이는 글자는 시:분이다")
+        self.assertNotIn("slice(0, 10)", visible, "날짜는 보이는 자리에 남지 않는다")
+
+    def test_the_day_head_is_not_a_colour_field(self):
+        """하루 머리는 누를 것이 없는 이름 줄이다 — 칠하면 데이터 행으로 읽힌다."""
+        body = self.rule(".audit tbody tr.day td")
+        # 막는 것은 **칠**이지 `background` 라는 글자가 아니다. 이 줄은 스킨이
+        # 데이터 행에 주는 줄무늬를 되돌려야 해서 `background:none` 을 명시로
+        # 적는다 — 속성을 빼는 것보다 강하게 규칙을 지키는 쪽이라, 글자만 보고
+        # 반려하면 옳은 코드가 걸린다 (REQ-20260910-027 에서 실제로 걸렸다).
+        for paint in re.findall(r"background[^:;]*:\s*([^;]+)", body):
+            self.assertIn(paint.strip(), ("none", "transparent"),
+                          "하루 머리에 색면을 두지 않는다: background:%s" % paint.strip())
+        self.assertIn("border-top:1px solid var(--border)", body,
+                      "구분은 위 경계 한 줄이다")
+        self.assertIn("color:var(--muted)", body)
+        # hover 로도 칠해지지 않는다 — 스킨마다 있는 tint 규칙 전부
+        for hover in re.findall(r"[^\n{]*\.audit tr[^{\n]*:hover td\{", self.page):
+            self.assertIn(":not(.day)", hover,
+                          "hover tint 가 하루 머리까지 칠한다: %s" % hover.strip())
+        # grid 스킨의 줄무늬도 하루 머리를 세지 않는다
+        zebra = re.search(r'\[data-skin="grid"\][^{]*\.audit tbody tr:nth-child\(even\)'
+                          r'([^,{]*)', self.page)
+        self.assertIsNotNone(zebra, "grid 스킨의 줄무늬 규칙이 없다")
+        self.assertIn(":not(.day)", zebra.group(1),
+                      "줄무늬가 하루 머리를 칠하면 데이터 행이 하나 더 있는 것으로 읽힌다")
+
+    def test_the_row_still_carries_its_full_time(self):
+        """눈에서 뺀 것이지 잃은 것이 아니다 — 한 행만 복사해도 며칠 것인지 남는다."""
+        m = re.search(r'<td class="ts">(.*?)</td>', self.page, re.S)
+        self.assertIsNotNone(m, "시각 칸을 찾지 못했다")
+        self.assertIn('<span class="dup">', m.group(1),
+                      "날짜는 .dup(1px·clip-path)으로 행에 남는다")
+        # 남는 폭 규칙이 다섯 열에 걸친 하루 머리 칸에 걸리면 앞 열들이 벌어진다
+        self.assertIn(".audit tbody tr:not(.day) td:last-child{width:100%}", self.page)
+        self.assertNotIn(".audit th:last-child,.audit td:last-child{width:100%}", self.page)
+
     # ── S10 잣대가 있다 ────────────────────────────────────────────────
     def test_the_design_system_has_a_table_section(self):
         doc = _load(SKILL)

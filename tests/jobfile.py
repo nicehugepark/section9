@@ -20,13 +20,18 @@ import time
 _NOOP = (lambda n: None, lambda: None)
 
 
-def start(total, root=None, name="테스트", hint="tests", args="", kind=""):
+def start(total, root=None, name="테스트", hint="tests", args="", kind="",
+          req=None):
     """잡 파일을 쓴다. 반환 (bump(n), clear) — 어떤 실패도 러너를 못 죽인다.
 
     파일 이름에 pid 가 들어간다 (REQ-20260830-022 반려 재작업): 이름이 하나면
     동시 실행 둘이 서로 덮어쓰고, 먼저 끝난 쪽의 정리가 다른 쪽 표시까지
     지운다 — 리드와 무인 작업자는 실제로 동시에 테스트를 돌린다. 죽은 실행이
-    남긴 파일은 읽는 쪽 pid 대조가 무시하고 7일 sweep 이 거둔다."""
+    남긴 파일은 읽는 쪽 pid 대조가 무시하고 7일 sweep 이 거둔다.
+
+    `req` 는 이 실행의 선언 귀속(REQ-20260830-026)이다. 러너가 워커의 봉투를
+    환경에서 걷으므로(REQ-20260910-004) 값으로 받는다 — 안 주면 예전처럼
+    `$S9_JOB_REQ` 를 읽는다."""
     if os.environ.get("S9_TESTS_NESTED") == "1":
         return _NOOP
     root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,7 +40,8 @@ def start(total, root=None, name="테스트", hint="tests", args="", kind=""):
     state = {"name": name, "hint": hint, "pid": os.getpid(),
              "started": time.time(),
              "session": (os.environ.get("S9_SESSION") or "")[:8],
-             "req": (os.environ.get("S9_JOB_REQ") or "")[:40],
+             "req": (req if req is not None
+                     else (os.environ.get("S9_JOB_REQ") or ""))[:40],
              "args": str(args or "")[:120],
              # 이 실행이 어떤 종류인가 (REQ-20260905-006) — full·smoke·targeted.
              # **러너만 아는 사실이다**: 명령줄에는 `--changed` 가 고른 파일도,

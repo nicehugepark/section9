@@ -71,6 +71,12 @@
 /* 처음과 마지막이 같은 줄 = 한 번 스쳐간 머신 */
 .mhtbl .mone{color:var(--muted)}
 .mhtbl tr.stale .mone{color:var(--faint)}
+/* 마지막으로 받은 때 (REQ-20260910-002-t8rc) — 임계를 넘은 줄만 낱말로 말한다.
+   색면도 띠도 아니고 **글자의 잉크**다: 주의는 진행 중의 잉크, 사고는 막힘의 잉크.
+   오래 안 쓴 줄(.stale)은 명도가 한 급 내려가는데, 못 받고 있다는 사실은 그 뒤로
+   물리면 안 된다 — 오래 조용한 컴퓨터일수록 이 낱말이 읽혀야 한다. */
+.mhtbl .mrl,.mhtbl tr.stale .mrl{color:var(--c-inprogress);font-weight:600}
+.mhtbl .mrs,.mhtbl tr.stale .mrs{color:var(--c-blocked);font-weight:600}
 .mhempty{margin:10px 0 24px}
 /* ------- 비밀 키 · 대화 기록 (REQ-20260828-012 · 013) -------
    값을 그리는 자리가 없다는 것이 이 블록의 전부다. 목록은 머신 이력 표(.mhtbl)와

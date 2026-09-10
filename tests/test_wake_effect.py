@@ -422,6 +422,21 @@ class TheSpawnCommandIsWhatWeThink(unittest.TestCase):
                       "클레임 지시가 없으면 워처가 그 위에 또 띄운다")
         self.assertIn("44분", prompt, "왜 깨웠는지가 워커에게 안 간다")
 
+    def test_r8g_the_prompt_opens_the_whole_repo_but_demands_proof(self):
+        """깨우기도 재작업과 같은 범위 문장을 쓴다 (REQ-20260910-022).
+
+        종전에는 web/·vault/·tests/ 로 한정해, bin/ 한 줄 고침이 필요한 요청이
+        고칠 손을 쥐고도 blocked 로 되돌아왔다. 경계는 범위가 아니라 검증이다 —
+        어디든 고치되 검증하지 못하면 적용하지 않는다."""
+        prompt = self.capture()["argv"][2]
+        self.assertIn("저장소 전체", prompt)
+        self.assertNotIn("web/·vault/·tests/", prompt)
+        self.assertIn("검증할 수 없으면", prompt,
+                      "범위만 넓히고 검증 요구가 빠지면 그냥 통과한다")
+        # 옵트인하지 않은 계정은 그대로 제한 권한이다 — 범위 해제가 새지 않는다.
+        self.cfg["auto_resume_apply"] = False
+        self.assertNotIn("저장소 전체", self.capture()["argv"][2])
+
     def test_r8f_the_environment_does_not_leak_the_lead_session(self):
         """리드의 세션 id 를 물려주면 두 주체가 같은 세션을 쓴다 (REQ-081)."""
         env = self.capture()["kw"].get("env") or {}

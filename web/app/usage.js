@@ -100,7 +100,9 @@ function usageTitle(){
         const when = fmtWhen(x.resets_at);
         return `${name} ${x.percent}%, ${fmtUntil(x.resets_at)} 초기화${when ? `, ${when}` : ""}`;
       }).join(". ")
-    + ". 60초마다 갱신";
+    + ". 60초마다 갱신"
+    // 마크는 그림이라 스크린리더에 닿지 않는다 — 같은 사실을 칩 이름에도 적는다
+    + (d.stale ? ". 지금은 마지막으로 받은 값이다" : "");
 }
 /* 사용량 카드 (REQ-20260827-056 재작업). 새 팝오버를 만들지 않고 doclink
    미리보기·우선순위 척도와 **같은 카드**를 쓴다 — 점선/칩에 손을 얹으면 뜬다는
@@ -137,7 +139,7 @@ async function refreshUsage(){
   const el = $("#usage-chip");
   if (!el) return;
   try{
-    const d = await loadSupply("usage", async () => {
+    let d = await loadSupply("usage", async () => {   // ?usagestale 이 갈래를 바꾼다
       const r = await s9Fetch("/api/claude/usage");
       return r.ok ? await r.json() : null;
     }, {prio: 1, tries: 1, quiet: true});
@@ -159,6 +161,10 @@ async function refreshUsage(){
       }
       el.setAttribute("aria-label", usageTitle()); return;
     }
+    // ?usagestale: 진단·헤드리스 캡처용 — 마지막 값이 남은 갈래를 강제로 그린다
+    // (?usagecard 와 동형). 이 갈래는 중계가 끊겨야만 보이므로, 마크를 눈으로
+    // 확인할 길이 달리 없다 (REQ-20260910-026).
+    if (/[?&]usagestale/.test(location.search)) d = {...d, stale: true};
     usageLast = d;
     el.setAttribute("tabindex", "0");   // 되살아나면 다시 tab 으로 닿는다
     // 카드는 그림이라 스크린리더에 닿지 않는다 — 같은 사실을 칩의 이름으로 붙인다
@@ -171,7 +177,16 @@ async function refreshUsage(){
 }
 
 /* 칩 한 줄 — 성공한 값도, 못 받아 남겨 둔 마지막 값도 같은 글자로 그린다.
-   두 벌로 그리면 한 벌만 고쳐진다. `stale` 이면 시각 마크가 붙는다(사전은 marks.css). */
+   두 벌로 그리면 한 벌만 고쳐진다. `stale` 이면 시각 마크가 붙는다(사전은 marks.css).
+
+
+   **마크는 글리프가 아니라 그림이다** (REQ-20260910-026). 여기 있던 U+23F3 은
+   코드포인트라 맥·iPad Safari 가 컬러 이모지 폰트로 그렸다 — 색도 획 두께도
+   OS 가 정해, 10.5px mono 글자 줄에 노란 타일 하나가 앉았다. 카드의 시계
+   (`.elapsed::before`, board.css)를 다시 그릴 때 세운 규칙을 그대로 따른다:
+   한 칸 = 한 화소 · 획 1px · `mask` + `currentColor` 라 색이 스킨·톤을
+   따라간다. 마크는 `aria-hidden` 이고, 스크린리더가 읽는 같은 사실은
+   `usageTitle()` 이 말한다. */
 function renderUsageChip(el, d){
   const L = {};
   (d.limits || []).forEach(x => { L[x.kind] = x; });

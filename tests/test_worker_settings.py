@@ -185,6 +185,22 @@ class WorkerSettings(unittest.TestCase):
             self.assertNotRegex(self.words, r"\b(window\.)?(confirm|alert)\s*\(",
                                 "네이티브 창 금지 — s9dlg 를 쓴다")
             self.assertIn("s9dlg(", self.wc)
+        with self.subTest("on_and_off_are_read_the_same_on_both_sides"):
+            # 켬/끔을 묻는 자리는 **하나뿐**이다 (REQ-20260910-003-t8rc).
+            # 종전에는 깨우는 자리가 `not cfg.get(...)`, 워처가 `!= "on"` 이라
+            # 값이 "off" 인 계정에서 답이 갈렸다 — 화면은 꺼짐이라 적는데
+            # 무인 세션이 떴다. 서버는 `auto_resume_on` 한 함수로 묻고,
+            # 화면(wcfgOn)은 그 함수와 **같은 목록**을 켜짐으로 읽는다.
+            self.assertIn("def auto_resume_on", self.s9)
+            asks = [ln for ln in self.s9.splitlines()
+                    if re.search(r'get\(\s*["\']auto_resume["\']\s*\)', ln)]
+            self.assertEqual(len(asks), 1,
+                             "맡기기 켬/끔을 묻는 자리가 둘 이상이다:\n"
+                             + "\n".join(asks))
+            i = self.wc.index("const wcfgOn")
+            for word in ("on", "true", "1", "yes"):
+                self.assertIn(f'"{word}"', self.wc[i:i + 300],
+                              f"화면이 {word} 를 켜짐으로 읽지 않는다")
         with self.subTest("fact_line_stands_only_while_it_is_on"):
             self.assertIn("r.fact && wcfgOn(cfg[r.key])", self.wc,
                           "사실 줄은 켜져 있는 동안에만 선다")

@@ -59,7 +59,8 @@ class NeedsOs(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.m.read_doc(self.m.locate(rid))[0]["needs_os"], "Windows")
 
-    # N2. 판별 — Linux 요구는 WSL 도 만족, macOS 요구는 리눅스에서 안 보인다, 닫힌 것은 빠진다
+    # N2. 판별 — Linux 요구는 WSL 도 만족, macOS 요구는 리눅스에서 안 보인다, 닫힌 것은 빠진다.
+    #     담당도 판도 안 적힌 것(c)은 **어느 판에서나** 든다 (REQ-20260910-009)
     def test_n2_here_requests_filter_by_platform(self):
         a = self.new("맥 것", "--needs-os", "macOS")
         b = self.new("리눅스 것", "--needs-os", "Linux")
@@ -68,10 +69,11 @@ class NeedsOs(unittest.TestCase):
         self.cli("status", d, "in-progress", "--note", "x"); self.cli("status", d, "done", "--note", "goal 충족", "--force")
         ids = lambda rows: {r["id"] for r in rows}
         mine = {a, b, c, d}
-        self.assertEqual(ids(self.m.here_requests("macOS")) & mine, {a})
-        self.assertEqual(ids(self.m.here_requests("WSL")) & mine, {b})
-        self.assertEqual(ids(self.m.here_requests("Linux")) & mine, {b})
-        self.assertEqual(ids(self.m.here_requests("Windows")) & mine, set())
+        u = "tester"
+        self.assertEqual(ids(self.m.here_requests("macOS", user=u)) & mine, {a, c})
+        self.assertEqual(ids(self.m.here_requests("WSL", user=u)) & mine, {b, c})
+        self.assertEqual(ids(self.m.here_requests("Linux", user=u)) & mine, {b, c})
+        self.assertEqual(ids(self.m.here_requests("Windows", user=u)) & mine, {c})
 
     # N3. s9 next 가 이 기계의 것을 먼저 보이고 --json 에 here 가 든다
     def test_n4_the_watcher_does_not_spawn_on_the_wrong_platform(self):
@@ -212,6 +214,41 @@ class NeedsOs(unittest.TestCase):
         self.assertIn("testbox", t)                     # 이 컴퓨터는 늘 한 줄
         self.assertEqual(t["macbox"]["os"], "macOS")
         self.assertIn("맥", t["macbox"]["names"])
+
+    # M9. 담당도 판도 안 적힌 요청은 「아무 컴퓨터에서나」 — 담당자가 같은 어느
+    #     컴퓨터에도 뜨고, 남의 것은 뜨지 않고, 닫힌 것은 빠진다 (REQ-20260910-009).
+    #     실측 2026-09-10 16:05: 이 갈래가 없어 open 10건 중 4건을 아무 컴퓨터도
+    #     내지 않았다 — 접수만 되고 영영 서 있었다.
+    def test_m9_unassigned_requests_show_up_on_every_machine(self):
+        self.cli("user", "add", "other")
+        free = self.new("담당 없는 것")
+        theirs = self.new("담당 없는 남의 것", "--user", "other")
+        closed = self.new("담당 없이 끝난 것")
+        self.cli("status", closed, "in-progress", "--note", "x")
+        self.cli("status", closed, "done", "--note", "goal 충족", "--force")
+        ids = lambda rows: {r["id"] for r in rows}
+        all3 = {free, theirs, closed}
+        for platform, machine in (("WSL", "testbox"), ("macOS", "macbox"),
+                                  ("Windows", "winbox")):
+            got = ids(self.m.here_requests(platform=platform, machine=machine,
+                                           user="tester"))
+            self.assertEqual(got & all3, {free},
+                             f"{machine}({platform}) 에서 {got & all3}")
+        # 담당자가 다르면 그 사람의 자리에서만 보인다
+        got = ids(self.m.here_requests(platform="WSL", machine="testbox", user="other"))
+        self.assertEqual(got & all3, {theirs})
+
+    # M10. 그 요청이 s9 next 의 「이 기계에서 해야 할 요청」에 실제로 실린다
+    def test_m10_next_lists_the_unassigned_one(self):
+        rid = self.new("담당 없이 next 에 뜰 것")
+        with mock.patch.object(self.m, "os_platform", lambda: "Windows"), \
+                mock.patch.object(self.m, "current_machine", lambda: "winbox"), \
+                mock.patch.object(self.m, "resolve_user", lambda *a, **kw: "tester"), \
+                mock.patch.object(sys, "stdout", new_callable=io.StringIO) as out:
+            self.m.cmd_next(type("A", (), {"user": None, "all": False, "json": False})())
+        text = out.getvalue()
+        self.assertIn(rid, text)
+        self.assertIn("담당 컴퓨터가 정해지지 않은 것", text)
 
     def test_n3_next_lists_requests_for_this_machine(self):
         rid = self.new("윈도우에서 잴 것", "--needs-os", "Windows")

@@ -23,6 +23,27 @@ sys.path.insert(0, HERE)
 import tmproot  # noqa: E402
 
 
+def _live_run_root(name):
+    """지금 도는 **다른** 전체 실행의 자리인가 (REQ-20260910-012).
+
+    이 시험은 /tmp 를 실행 전후로 견주는데, 그 사이 다른 전체 실행이 시작하면
+    그쪽 실행 루트가 「이 실행이 남긴 것」으로 잡힌다(실측 2026-09-10: 백그라운드
+    작업자 둘이 동시에 전체를 돌리자 s9run-2540533-… 하나로 졌다). 우리가 띄운
+    자식은 이 시점에 이미 끝났으니, 그 자식이 흘린 것이라면 pid 가 없다 —
+    살아 있는 pid 의 실행 루트는 남의 것이라고 말할 수 있다.
+    """
+    pid = tmproot.run_root_pid(name)
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
 class Naming(unittest.TestCase):
     """T5. 우리 것과 남의 것을 이름으로 가른다."""
 
@@ -226,7 +247,8 @@ class Runner(unittest.TestCase):
             r = self._run("tmp_leak_probe")
             self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
             after = set(os.listdir(tmproot.SYS_TMP))
-            new = {n for n in after - before if tmproot.is_ours(n)}
+            new = {n for n in after - before
+                   if tmproot.is_ours(n) and not _live_run_root(n)}
             self.assertEqual(new, set(),
                              f"실행이 /tmp 에 남긴 것: {sorted(new)}")
         with self.subTest("runner_reports_what_it_reaped"):

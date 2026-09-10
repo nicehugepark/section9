@@ -141,7 +141,12 @@ const wcfgMine = k => /^(auto_resume|worker)_/.test(k) || k === "auto_resume";
 
 let wcfgCapsOpen = false;   // 한도 여덟을 폈나 (판을 다시 그려도 손이 기억된다)
 
-const wcfgOn = v => String(v ?? "off").toLowerCase() === "on";
+/* 켜짐으로 읽는 모양은 서버(`auto_resume_on`)와 **같은 목록**이다
+   (REQ-20260910-003-t8rc). 손잡이와 CLI 는 "on" 만 쓰지만 사람이 손으로 적을
+   만한 참값도 함께 받는다 — 화면은 꺼짐이라 적는데 무인 세션이 뜨는(또는 그
+   반대의) 어긋남이 이 목록이 갈리는 데서 났다. */
+const wcfgOn = v => v === true
+  || ["on", "true", "1", "yes"].includes(String(v ?? "").trim().toLowerCase());
 
 /* 한 행 — 첫 칸은 **사람 이름 + 실제 키 이름**이다. 키를 지우면 터미널에서
    `auto_resume_gh` 를 켠 사람이 화면에서 그 글자를 눈으로 찾지 못한다(Ctrl+F

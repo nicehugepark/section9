@@ -88,7 +88,18 @@ class TimezoneList(unittest.TestCase):
                 # 훑는 목록에는 `Etc/` 도 슬래시 없는 호환 이름도 없다
                 self.assertFalse([n for n in self.names if n.startswith("Etc/")])
                 self.assertFalse([n for n in self.names if "/" not in n])
-                for n in ("UTC", "EST", "GMT", "MST7MDT"):
+                # 이 컴퓨터의 tzdata 에 **있는** 호환 이름만 견준다
+                # (REQ-20260910-008): `EST`·`MST7MDT` 같은 옛 이름은 배포판에
+                # 따라 아예 없다 — 이 리눅스의 486개 중 슬래시 없는 이름은
+                # Factory·GMT·UTC·localtime 넷뿐이다. 없는 이름을 찾는 검사는
+                # 목록의 계약이 아니라 그 기계의 tzdata 판을 시험한다.
+                import zoneinfo
+                have = zoneinfo.available_timezones()
+                compat = [n for n in ("UTC", "EST", "GMT", "MST7MDT")
+                          if n in have]
+                self.assertIn("UTC", compat,
+                              "검사가 비었다 — 어느 tzdata 에나 있는 이름이 없다")
+                for n in compat:
                     self.assertIn(n, self.legacy, "%s 가 훑는 목록에 섞였다" % n)
 
             # ---------- ③ 파일 시스템 부산물 ----------

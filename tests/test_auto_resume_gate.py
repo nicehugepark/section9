@@ -229,7 +229,14 @@ class TestReworkWatcher(unittest.TestCase):
                             for s in argv), argv)
         p = [s for s in argv if isinstance(s, str) and R4 in s][0]
         self.assertIn("자동 적용 모드", p)
-        self.assertIn("web/·vault/·tests/", p)
+        # F4 (REQ-20260910-022): 수정 범위는 저장소 전체다. 종전의
+        # web/·vault/·tests/ 한정은 bin/ 한 줄 고침까지 blocked 로 되돌렸다 —
+        # 경계는 범위가 아니라 검증에 있다.
+        self.assertIn("저장소 전체", p)
+        self.assertNotIn("web/·vault/·tests/", p)
+        # F5: 넓어진 범위에 검증이 따라붙는다 — 못 하면 blocked.
+        self.assertIn("검증할 수 없으면", p)
+        self.assertIn("blocked", p)
         self.assertIn("<<참고>>", p)  # F3: 노트 격리 프레이밍 유지
         self.cli("eeee5555", "last", R4, "--add")
         # F2: off 오너(bob 대상 아님 — alice off 복원 후 제한 봉투 회귀 확인)

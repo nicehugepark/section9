@@ -952,6 +952,47 @@ def env_baseline():
     return {k: v for k, v in os.environ.items() if k.startswith(ENV_PREFIX)}
 
 
+# 무인 재작업 워커의 봉투 (bin/s9.py `_spawn_worker`) — 러너는 이 셋을 **값으로**
+# 받고 환경에서는 걷는다. S9_SESSION 은 걷지 않는다: 사람의 세션에도 늘 있고,
+# 잡 파일의 세션 귀속(대시보드 live)이 그 값을 쓴다.
+WORKER_ENVELOPE = ("S9_USER", "S9_JOB_REQ", "S9_AUTO_RESUME")
+CALLER = {}          # 걷어 둔 봉투 — 러너 자신이 쓸 자리에 값으로 넘긴다
+
+
+def scrub_caller_envelope(env=None):
+    """부른 쪽의 s9 봉투를 환경에서 걷는다 — 걷은 값을 돌려준다.
+
+    무인 재작업 워커는 `S9_USER=<담당자>`·`S9_JOB_REQ=<REQ>`·`S9_AUTO_RESUME=1`
+    을 실어 띄운다. 그 값은 프로세스 환경이라 러너가 띄우는 샤드도, 시험이 부르는
+    `s9` 하위 프로세스도 그대로 물려받는다. 그런데 시험들은 임시 뿌리를 세우고
+    제 사용자·제 요청을 만든다 — 물려받은 봉투는 그 뿌리에서 거짓말이 된다:
+
+      S9_USER        `resolve_user()` 가 세션 바인딩 다음에 이것을 보므로, 그
+                     뿌리에 **없는 사용자**가 현재 사용자로 선다 →
+                     `ensure_default_project()` 가 '' 를 내고 `is_mine()` 이
+                     not-mine 을 낸다.
+      S9_JOB_REQ     `request_origin()` 이 출처 REQ 로 읽어 새 요청이 전부
+                     origin=derived 로 선다(agent 여야 할 자리).
+      S9_AUTO_RESUME 같은 함수가 「무인 워커가 만든 것」으로 판정한다.
+
+    실측 2026-09-10(REQ-20260910-004): 워커 안에서 돌린 전체 실행이 이 이유로
+    19파일 56건을 냈고, 같은 tree 를 사람이 돌리면 통과했다. 시험 일곱 파일이
+    이미 저마다 이 키들을 지우고 있었다 — 흩어진 방어는 새로 드는 파일을 못
+    지킨다. 원격 실행은 이미 같은 판정을 내려 두었다(`remote_run.py`: 정체를
+    환경변수로 걸지 않고 원격 OS 계정을 `s9 user attach` 로 잇는다, 실측
+    2026-09-05 34건). 이 함수는 그 판정을 **이 머신의 실행에도** 세운다.
+
+    걷은 값은 사라지지 않는다: 결과 알림은 걷기 전에 뜬
+    `async_notify.take_env()` 사본을 쓰고, 잡 파일의 요청 귀속은 이 반환값을
+    `jobfile.start(req=…)` 로 받는다."""
+    env = os.environ if env is None else env
+    taken = {}
+    for k in WORKER_ENVELOPE:
+        if k in env:
+            taken[k] = env.pop(k)
+    return taken
+
+
 def env_restore(base):
     """S9_* 만 기준선으로. 다른 변수는 손대지 않는다(PATH·HOME·TMPDIR…)."""
     for k in [k for k in os.environ if k.startswith(ENV_PREFIX)]:
@@ -1153,6 +1194,10 @@ def main():
     # 결과 알림 표식(S9_TESTS_ASYNC)은 여기서 걷는다 (REQ-20260906-029) — 샤드·안쪽
     # 러너·시험 속 러너가 물려받으면 저마다 수신함에 쓴다. 알리는 것은 이 실행 하나다.
     notify_env = async_notify.take_env()
+    # 부른 쪽의 s9 봉투도 여기서 걷는다 (REQ-20260910-004) — 알림 사본을 뜬
+    # **뒤**라 알림은 담당자 이름을 그대로 쓰고, 시험은 제 뿌리의 사용자·출처로
+    # 돈다. 걷지 않으면 무인 워커 안의 전체 실행만 19파일이 진다.
+    CALLER.update(scrub_caller_envelope())
     argv0 = sys.argv[1:]
     explicit = "--remote" in argv0
     # 기억된 원격은 **전체 실행**에만 쓴다 — 스모크·검사·표적·--changed 는 이
@@ -1231,6 +1276,17 @@ def main():
         if stale:
             print(f"[임시자리 정리/시작 전] 지난 실행이 남긴 파일 {len(stale)}개",
                   file=sys.stderr)
+    # 거둔 **뒤에** 아이노드를 본다 (REQ-20260910-012) — 거두기 전 숫자로 막으면
+    # 제 손으로 되찾을 수 있는 자리에서 멈춘다. 바닥이면 시작하지 않는다:
+    # 아이노드가 없으면 임시 파일을 못 만들어, 실패가 원인과 상관없는 모습으로
+    # 파일마다 흩어진다(2026-09-10 실측 — 그날은 러너가 아니라 bash 도구가 제
+    # 출력 파일을 못 만들어 죽었다). 안쪽 실행도 함께 본다 — 회수와 달리 이것은
+    # 읽기만 하는 판정이고, 바닥이면 안쪽도 똑같이 못 돈다.
+    may_run, tmp_line = tmproot.inode_gate()
+    if tmp_line:
+        print(tmp_line, file=sys.stderr)
+    if not may_run:
+        return 2
     # 이 실행이 만드는 임시 자리는 전부 여기 안에 생기고 끝나면 함께 사라진다
     # (REQ-20260829-003). 84개 파일에 tearDown 을 심는 대신 검사를 여기서 막는다.
     #
@@ -1347,7 +1403,8 @@ def main():
                 drop_run_lock(lock_fh)
                 return 1
             bump, clear = jobfile.start(len(files), kind=job_kind,
-                                        args=" ".join(sys.argv[1:4]))
+                                        args=" ".join(sys.argv[1:4]),
+                                        req=CALLER.get("S9_JOB_REQ"))
             try:
                 ran = True
                 ok, _n = run_sharded(pats, jobs, bump=bump, skip=_dropped)
@@ -1409,7 +1466,8 @@ def main():
         # 잡 파일 (REQ-20260830-022): 이 실행이 도는 동안 화면 헤더 칩과 카드가
         # "테스트 N분째 · M건" 을 그린다. 안쪽 실행(S9_TESTS_NESTED)은 안 쓴다.
         bump, clear = jobfile.start(suite.countTestCases(), kind=job_kind,
-                                    args=" ".join(sys.argv[1:4]))
+                                    args=" ".join(sys.argv[1:4]),
+                                    req=CALLER.get("S9_JOB_REQ"))
 
         # 파일별 소요를 잰다 (REQ-20260905-001) — 샤딩 무게의 원천이다.
         #

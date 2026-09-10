@@ -202,6 +202,29 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 .pgroup.idcol{flex-direction:column;align-items:flex-end;gap:2px}
 .usagechip .warn{color:var(--c-inprogress);font-weight:600}
 .usagechip .crit{color:var(--c-blocked);font-weight:600}
+/* 「지금은 마지막으로 받은 값이다」 마크 — 모래시계 (REQ-20260910-026).
+   여기 있던 것은 `⏳`(U+23F3)라 코드포인트였다: 맥·iPad Safari 가 컬러 이모지
+   폰트로 그려 색도 획 두께도 OS 가 정했고, 10.5px mono 줄에 노란 타일이 앉았다.
+   카드의 시계를 다시 그릴 때 세운 인라인 마크 규칙을 그대로 따른다
+   (board.css `.elapsed::before`, REQ-20260910-009 P2):
+
+   - 눈금 **9칸 = 9px** — 지키는 것은 크기가 아니라 **한 칸 = 한 화소**다.
+     카드의 시계는 11 인데 여기가 9 인 까닭은 **줄 상자**다: 11px 로 그렸더니
+     10.5px mono 의 글자 위쪽보다 마크가 높아 칩의 줄이 1px 자랐고, 값이
+     낡을 때마다 계정 줄이 1px 튀어 올랐다(실측 — 캡처의 잉크 행 86→85).
+     카드의 시계는 `--card-edge` 만큼 넉넉한 줄에 서서 그 일이 없었다.
+   - 획 전부 1px, 좌표는 `.5` 중심이라 가로·세로 획이 화소 경계에 앉는다
+   - `mask` + `background-color:currentColor` — 색이 스킨·톤을 그대로 따라간다
+   - 세로는 `vertical-align:middle` 로 맡긴다. 고정 화소로 앉히면 칩의 글자
+     크기를 바꾸는 스킨·density 에서 다시 어긋난다(P2 는 `-3px` 로 줄 상자를
+     3px 밀어 test_id_realscale 에 걸렸다).
+
+   잉크는 가로 획 둘과 대각 둘 — 시계(원)와 모양 갈래가 갈려, 같은 화면에서
+   「도는 것」과 「기다리는 것」이 섞이지 않는다. */
+.usagechip .stale{display:inline-block;vertical-align:middle;
+  width:9px;height:9px;background-color:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cpath d='M1.5 0.5h6M1.5 8.5h6M1.5 0.5L7.5 8.5M7.5 0.5L1.5 8.5' fill='none' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E") center/9px 9px no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cpath d='M1.5 0.5h6M1.5 8.5h6M1.5 0.5L7.5 8.5M7.5 0.5L1.5 8.5' fill='none' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E") center/9px 9px no-repeat}
 .mystrip{border:1px solid var(--border);background:var(--panel);margin:0 0 14px}
 .mystrip[hidden]{display:none}
 .mystrip .ms-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;

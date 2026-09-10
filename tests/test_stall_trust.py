@@ -184,6 +184,98 @@ class StallTrust(unittest.TestCase):
         with open(p, "w", encoding="utf-8") as f:
             json.dump(b, f)
 
+    @classmethod
+    def set_lease(cls, rid, machine, age_sec, user="alice", session="othr0001"):
+        """이 문서의 리스를 <machine> 이 age_sec 초 전에 갱신한 것으로 둔다."""
+        q = cls.docpath(rid)
+        lines = open(q, encoding="utf-8").read().splitlines()
+        end = lines.index("---", 1)
+        head = [ln for ln in lines[:end] if not ln.startswith("lease:")]
+        if machine:
+            ts = (datetime.datetime.now().astimezone()
+                  - datetime.timedelta(seconds=age_sec)
+                  ).isoformat(timespec="seconds")
+            head.append("lease: " + json.dumps(
+                {"user": user, "machine": machine, "session": session,
+                 "since": ts, "renewed": ts}, ensure_ascii=False))
+        open(q, "w", encoding="utf-8").write(
+            "\n".join(head + lines[end:]) + "\n")
+
+    # ---- C9. 남이 쥐고 도는 일은 멈춤이 아니다 (REQ-20260910-039) --------
+    def test_lease_elsewhere_is_not_a_stall(self):
+        """다른 컴퓨터가 리스를 쥐고 방금 갱신했으면 attached 다.
+
+        주인 캡처 2026-09-10 15:08(맥 Safari): in-progress 열 머리에 「멈춤 5」가
+        서고 다섯 카드 전부 「멈춤 49분째 진전 없음」이었는데, 그중 셋은
+        eek-p620 의 리스를 쥐고 15:03 에 갱신돼 있었다 — 저쪽에서 도는 일을
+        이쪽 판이 멎었다고 그렸다. 화면에는 `leaseElsewhere` 가 이미 있었지만
+        그것이 바꾸는 것은 점 하나뿐이라, 점은 「저기서 돈다」 글자는 「멈췄다」로
+        갈렸다. 판정 한 자리(`stall_verdict`)를 고쳤고 이 시험이 그것을 잠근다.
+        """
+        rid = self.mkreq("남이 쥔 것")
+        self.cli("status", rid, "in-progress", "--note", "t", sess="lead1234")
+        self.backdate(rid, 3600)
+        self.addCleanup(self.cli, "index", "rebuild")
+        self.addCleanup(self.set_lease, rid, "", 0)
+        self.clear_hands("lead1234")
+
+        with self.subTest("정상: 저쪽이 방금 갱신했으면 멈춤으로 안 센다"):
+            self.set_lease(rid, "otherbox", 60)
+            self.cli("index", "rebuild")
+            v = self.verdict(rid)
+            self.assertEqual(v["state"], "attached", v)
+            self.assertIsNone(v["mins"],
+                              "저쪽이 도는데 깨울 분(minutes)을 준다 — 그 카드의 "
+                              "깨우기가 곧 두 번째 손이다")
+
+        with self.subTest("정상: 화면·CLI 가 같은 글자를 쓴다"):
+            row = self.live_row(rid)
+            self.assertEqual(row.get("stall_state"), "attached", row)
+            self.assertIsNone(row.get("stalled_mins"))
+            want = self.m.lease_working_why(self.row(rid).get("lease"))
+            self.assertEqual(row.get("stall_why"), want,
+                             "화면이 판정과 다른 문장을 짓는다")
+            self.assertIn("otherbox", want)
+            res = self.m.wake_request(rid, actor="tester")
+            self.assertFalse(res["ok"], res)
+            self.assertIn("otherbox", res["message"],
+                          "거부 사유가 어느 컴퓨터인지 말하지 않는다")
+
+        with self.subTest("경계: 조용한 시간은 그대로 낸다"):
+            v = self.verdict(rid)
+            self.assertGreaterEqual(v["quiet_mins"] or 0, 15,
+                                    "저쪽이 돌아도 문서가 조용한 것은 사실이다 — "
+                                    "숨기면 반대편 병이다")
+            self.assertGreaterEqual(self.live_row(rid).get("quiet_mins") or 0, 15)
+
+        with self.subTest("경계: 이 컴퓨터의 리스는 이 갈래를 타지 않는다"):
+            self.set_lease(rid, "testbox", 60)
+            self.cli("index", "rebuild")
+            v = self.verdict(rid)
+            self.assertEqual(v["state"], "stalled", v)
+            self.assertGreaterEqual(v["mins"] or 0, 15)
+
+        with self.subTest("실패: 진전이 멎은 리스는 종전대로 멈춤이다"):
+            self.set_lease(rid, "otherbox", self.m.STALLED_WIN + 600)
+            self.cli("index", "rebuild")
+            v = self.verdict(rid)
+            self.assertEqual(v["state"], "stalled", v)
+            self.assertGreaterEqual(v["mins"] or 0, 15)
+            self.assertIn(rid, [r["id"] for r in self.m.stalled_requests()],
+                          "저쪽이 죽었는데 목록에서 사라졌다")
+
+        with self.subTest("회귀: CLI 목록과 화면 판정이 같은 수를 센다"):
+            self.set_lease(rid, "otherbox", 60)
+            self.cli("index", "rebuild")
+            self.assertNotIn(rid, [r["id"] for r in self.m.stalled_requests()],
+                             "CLI 는 '멈췄다' 는데 화면은 '저기서 돈다' 다")
+            live = {r["id"]: r for r in self.m.catalog_with_live()}
+            self.assertEqual(
+                len([r for r in live.values()
+                     if r.get("stall_state") == "stalled"]),
+                len(self.m.stalled_requests()),
+                "열 머리의 「멈춤 N」과 s9 stalled 가 다른 수를 센다")
+
     # ---- C7. 회귀: 진짜 멈춤은 여전히 멈춤이다 ---------------------------
     def test_stall_trust(self):
         """StallTrust 의 계약을 한 항목으로 — 검사는 그대로다."""

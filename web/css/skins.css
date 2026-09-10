@@ -472,7 +472,7 @@
    상자로 읽힌다. 이 스킨은 줄무늬를 쓰므로 아래 경계를 내린다. */
 [data-skin="grid"] .audit td{border-bottom:0}
 [data-skin="grid"] .card:nth-child(even),
-[data-skin="grid"] .audit tbody tr:nth-child(even) td,
+[data-skin="grid"] .audit tbody tr:nth-child(even):not(.day) td,
 [data-skin="grid"] .doclist .row:nth-child(even){
   background:color-mix(in srgb, var(--text) 3%, var(--panel))}
 [data-skin="grid"] .card:hover,[data-skin="grid"] .doclist .row:hover{

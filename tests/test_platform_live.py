@@ -191,12 +191,23 @@ class TestPidAlive(unittest.TestCase):
 class TestIsClaude(unittest.TestCase):
     """S4. pid 재사용 방어가 맥 갈래에서도 산다."""
 
+    # 가짜 claude 는 **파이썬**을 그 이름으로 이어 띄운다 (REQ-20260910-008).
+    # 예전에는 `sleep` 을 `claude` 라는 이름으로 이어 띄웠는데, coreutils 가
+    # uutils(Rust 구현)인 리눅스에서는 그 한 실행 파일이 argv[0] 로 어느
+    # 유틸리티인지 정하므로 `claude` 라는 이름으로 부르면 실행을 거절한다
+    # ("Requested utility `claude` does not match executable name"). 그러면
+    # 프로세스가 곧바로 죽어 zombie 로만 남고, 거기서 두 갈래의 답이 갈렸다:
+    # `/proc/<pid>/comm` 은 zombie 에도 남아 `claude` 를 주는데, `ps` 는
+    # `[claude] <defunct>` 로 적어 이름이 `[claude]` 가 된다. 파이썬은 제
+    # argv[0] 이 무엇이든 그대로 도므로 어느 배포판에서나 선다.
+    FAKE_ARGV = ("-c", "import time; time.sleep(30)")
+
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix="s9plat-claude-", dir=TMP)
         cls.link = os.path.join(cls.dir, "claude")
-        os.symlink(shutil.which("sleep") or "/bin/sleep", cls.link)
-        cls.claude = subprocess.Popen([cls.link, "30"],
+        os.symlink(os.path.realpath(sys.executable), cls.link)
+        cls.claude = subprocess.Popen([cls.link, *cls.FAKE_ARGV],
                                       stdin=subprocess.DEVNULL)
         cls.other = subprocess.Popen(["sleep", "30"], stdin=subprocess.DEVNULL)
         for _ in range(200):
@@ -216,6 +227,13 @@ class TestIsClaude(unittest.TestCase):
         mod.proc_cache_clear()
 
     def test_s4_claude_yes_other_no(self):
+        # 먼저 밑동을 확인한다 — 가짜 claude 가 죽어 있으면 아래의 "못
+        # 알아본다"는 판정이 아니라 밑동이 무너진 것이다. 둘을 구별하지
+        # 않으면 다음 사람이 판정 코드를 엉뚱하게 고친다.
+        self.assertIsNone(self.claude.poll(),
+                          "가짜 claude 가 죽었다 — 이 기계는 그 이름으로는 "
+                          "실행을 거절한다(판정이 아니라 밑동의 문제다)")
+        self.assertIsNone(self.other.poll(), "비교용 프로세스가 죽었다")
         for name in BACKENDS:
             with self.subTest(backend=name), Backend(name):
                 self.assertTrue(mod._pid_is_claude(self.claude.pid),
