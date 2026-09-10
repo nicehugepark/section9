@@ -18317,6 +18317,17 @@ def cmd_digest(args):
                     f"{sync_status_hint(ss)}\n" + text)
     except Exception:
         pass
+    # 남의 컴퓨터에 담기지 않은 일이 쌓였으면 머리 한 줄 (REQ-20260911-001).
+    # 2026-09-10 에 두 번 있었다 — 끝나고 검증까지 마친 코드가 한 컴퓨터의
+    # 작업 트리에만 하루를 남았고(46파일), 그날 밤 다시 10파일이 남았다.
+    # 어느 화면에도 그 사실이 없어 다른 컴퓨터에서는 「일이 끝났다」로 보였다.
+    # **이 컴퓨터 것은 세지 않는다** — 그건 `git status` 가 이미 말한다.
+    try:
+        line = other_machines_uncommitted_line()
+        if line:
+            text = line + "\n" + text
+    except Exception:
+        pass
     print(text)
     # 세션 시작의 눈에 띄는 자리에서 유실 감사 1회 (REQ-20260901-009, 전수
     # 0.87초 실측). 워처(10분 주기)가 본체고 이쪽은 리드의 눈 — 유실이 있는데
@@ -21061,6 +21072,25 @@ MACHINE_RECV_WARN_SEC = 1800     # 이보다 오래 못 받은 컴퓨터는 주�
 MACHINE_RECV_ALERT_SEC = 7200    # 이보다 오래면 사고
 
 
+def machine_uncommitted(root=None):
+    """이 컴퓨터의 작업 트리에 담기지 않은 **추적 파일** 수 (REQ-20260911-001).
+
+    추적되지 않는 파일(`??`)은 세지 않는다 — state/ 아래는 언제나 지저분하고,
+    그것을 세면 수가 늘 0 이 아니라 표시가 뜻을 잃는다. 세는 것은 「담을 것이
+    있는가」이지 「자리가 깨끗한가」가 아니다.
+
+    못 물으면 -1 (모른다) — 0(깨끗하다)과 가른다. 거짓 안심을 만들지 않는다."""
+    try:
+        r = subprocess.run(["git", "-C", root or ROOT, "status", "--porcelain",
+                            "--untracked-files=no"],
+                           capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return -1
+    if r.returncode != 0:
+        return -1
+    return len([ln for ln in r.stdout.splitlines() if ln.strip()])
+
+
 def machine_recv_beat(push=False, now=None, name=None):
     """이 컴퓨터가 마지막으로 받은 때를 등록부의 제 줄에 적는다.
 
@@ -21102,6 +21132,14 @@ def machine_recv_beat(push=False, now=None, name=None):
         return False                     # 적힌 것이 더 새것이다 (되돌려 적지 않는다)
     row["last_recv"] = datetime.datetime.fromtimestamp(got).astimezone().isoformat(
         timespec="seconds")
+    # 담기지 않은 일도 같은 줄에 싣는다 (REQ-20260911-001) — 받은 때와 같은
+    # 규칙이다: 나가는 것은 **사실 한 줄**이고 적는 것은 언제나 제 줄뿐이다.
+    # 0 은 적지 않는다 — 깨끗한 것이 보통이라, 적으면 표가 0 으로 뒤덮인다.
+    _un = machine_uncommitted()
+    if _un > 0:
+        row["uncommitted"] = _un
+    else:
+        row.pop("uncommitted", None)
     meta["machine_accounts"] = rows
     write_doc(ppath, meta, body)
     if push:
@@ -21110,6 +21148,39 @@ def machine_recv_beat(push=False, now=None, name=None):
         except Exception:
             pass
     return True
+
+
+def other_machines_uncommitted_line(name=None, here=None):
+    """다른 컴퓨터에 담기지 않은 일이 있으면 그 사실 한 줄 — 없으면 ""."""
+    name = name or _fp_user()
+    if not name:
+        return ""
+    ppath = os.path.join(USERS, name, "profile.md")
+    if not os.path.isfile(ppath):
+        return ""
+    try:
+        with open(ppath, encoding="utf-8") as f:
+            meta, _ = fm_parse(f.read())
+    except OSError:
+        return ""
+    here = here or current_machine()
+    hits = []
+    for r in (meta.get("machine_accounts") or []):
+        if not isinstance(r, dict) or r.get("machine") == here:
+            continue
+        try:
+            n = int(r.get("uncommitted") or 0)
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            hits.append((str(r.get("machine") or "?"), n))
+    if not hits:
+        return ""
+    hits.sort(key=lambda x: -x[1])
+    what = " · ".join(f"{m} {n}파일" for m, n in hits)
+    return ("◈ 담기지 않은 일 — " + what
+            + " — 그 컴퓨터에서 끝난 코드가 작업 트리에만 있다."
+              " 담기지 않은 것은 다른 컴퓨터에서는 없는 것이다")
 
 
 def machine_recv_level(last_recv, now=None):

@@ -269,13 +269,25 @@ function machineDemo(rows){
    눈에 걸리게 하는 방법은 색면이 아니라 **낱말과 잉크**다. */
 const MACHINE_RECV_WARN_MS = 30 * 60 * 1000;
 const MACHINE_RECV_ALERT_MS = 2 * 60 * 60 * 1000;
-function recvCellHTML(iso){
+/* 담기지 않은 일 — 0 일 때는 아무것도 그리지 않는다 (REQ-20260911-001).
+   깨끗한 것이 보통이라, 0 을 그리면 표가 0 으로 뒤덮여 진짜 신호가 묻힌다.
+   같은 줄에 세우는 까닭: 「저 컴퓨터가 지금 어떤가」를 묻는 자리가 여기다. */
+function undoneCellHTML(n){
+  const k = +n || 0;
+  if (k <= 0) return "";
+  return ` <span class="mrl" title="그 컴퓨터의 작업 트리에 담기지 않은 변경이`
+    + ` ${k}개 있습니다 — 담기지 않은 것은 다른 컴퓨터에서는 없는 것입니다"`
+    + `>담기지 않음 ${k}</span>`;
+}
+function recvCellHTML(iso, undone){
   const t = Date.parse(iso || "") || 0;
-  if (!t) return `<span class="mel" title="이 컴퓨터가 받은 때를 아직 올린 적이 없습니다">—</span>`;
+  if (!t) return `<span class="mel" title="이 컴퓨터가 받은 때를 아직 올린 적이 없습니다">—</span>`
+    + undoneCellHTML(undone);
   const gap = Date.now() - t;
   const lvl = gap > MACHINE_RECV_ALERT_MS ? "mrs" : gap > MACHINE_RECV_WARN_MS ? "mrl" : "";
   return `<span title="${esc(shortWhen(iso))}">${esc(fmtElapsed(iso))} 전</span>`
-    + (lvl ? ` <span class="${lvl}">못 받음</span>` : "");
+    + (lvl ? ` <span class="${lvl}">못 받음</span>` : "")
+    + undoneCellHTML(undone);
 }
 function machineHistoryHTML(u){
   const rows = machineDemo((u.machine_accounts || []).slice())
@@ -303,7 +315,7 @@ function machineHistoryHTML(u){
       <td class="mw">${once ? `<span class="mone">한 번뿐</span>`
                             : esc(shortWhen(r.last))}
         <span class="mel">${esc(fmtElapsed(r.last))}</span></td>
-      <td class="mr">${recvCellHTML(r.last_recv)}</td></tr>`;
+      <td class="mr">${recvCellHTML(r.last_recv, r.uncommitted)}</td></tr>`;
   }).join("");
   return `<div class="cfg-h">컴퓨터·계정 이력</div>
     <div class="mhwrap"><table class="mhtbl"><thead><tr>

@@ -234,7 +234,8 @@ class RecvScreen(unittest.TestCase):
     def test_column_stands_and_speaks_in_words(self):
         fn = websrc.fn(self, self.src, "machineHistoryHTML")
         self.assertRegex(fn, r"<th[^>]*>마지막 받음</th>", "받음 칸이 표에 없다")
-        self.assertIn("recvCellHTML(r.last_recv)", fn, "서버가 주는 값을 읽지 않는다")
+        self.assertIn("recvCellHTML(r.last_recv, r.uncommitted)", fn,
+                      "서버가 주는 값을 읽지 않는다")
         cell = websrc.fn(self, self.src, "recvCellHTML")
         self.assertIn("못 받음", cell, "임계를 넘은 컴퓨터가 낱말로 말하지 않는다")
         # 적힌 적 없는 컴퓨터에는 아무 말도 하지 않는다
@@ -264,6 +265,162 @@ class RecvScreen(unittest.TestCase):
     def test_demo_can_be_opened_without_hands(self):
         demo = websrc.fn(self, self.src, "machineDemo")
         self.assertIn("last_recv", demo, "받음 칸의 모습을 손으로 볼 길이 없다")
+
+
+class UncommittedIsCarriedOnTheSameLine(unittest.TestCase):
+    """담기지 않은 일도 등록부의 제 줄로 나간다 (REQ-20260911-001).
+
+    2026-09-10 에 두 번 있었다 — 끝나고 검증까지 마친 코드가 한 컴퓨터의 작업
+    트리에만 하루를 남았고(46파일), 그날 밤 다시 10파일이 남았다. 어느 화면에도
+    그 사실이 없어 다른 컴퓨터에서는 「일이 끝났다」로 보였다. 받은 때(last_recv)와
+    같은 자리·같은 규칙으로 싣는다: 나가는 것은 사실 한 줄, 적는 것은 제 줄뿐.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="s9undone-")
+        os.makedirs(os.path.join(self.root, "state"))
+        os.makedirs(os.path.join(self.root, "users", USER))
+        os.environ["S9_ROOT"] = self.root
+        self.m = _load("s9_undone", S9)
+        self.profile = os.path.join(self.root, "users", USER, "profile.md")
+
+    def tearDown(self):
+        os.environ.pop("S9_ROOT", None)
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def write_profile(self, rows):
+        self.m.write_doc(self.profile, {"name": USER, "type": "user",
+                                        "machine_accounts": rows}, "")
+
+    def rows(self):
+        return self.m.user_profile(USER).get("machine_accounts") or []
+
+    def seed_row(self, **extra):
+        self.write_profile([{"machine": HOST, "os": "Linux", "account": ACCT,
+                             "first": "2026-09-01T00:00:00+09:00",
+                             "last": "2026-09-10T00:00:00+09:00", **extra}])
+
+    def beat(self, undone, **kw):
+        m = self.m
+        with open(m._SYNC_PULL_TS, "w", encoding="utf-8") as f:
+            f.write(str(time.time() - 5))
+        with mock.patch.object(m, "sync_mode", lambda: "remote"), \
+                mock.patch.object(m, "_fp_user", lambda: USER), \
+                mock.patch.object(m, "current_machine", lambda: HOST), \
+                mock.patch.object(m.getpass, "getuser", lambda: ACCT), \
+                mock.patch.object(m, "machine_uncommitted", lambda root=None: undone), \
+                mock.patch.object(m, "sync_run", lambda reason="": "ok"):
+            return m.machine_recv_beat(**kw)
+
+    # ---------- U1·U2 적는 자리 ----------
+    def test_u1_a_clean_tree_writes_no_column(self):
+        """깨끗하면 칸 자체가 서지 않는다 — 0 으로 표를 뒤덮지 않는다."""
+        self.seed_row()
+        self.assertTrue(self.beat(0))
+        self.assertNotIn("uncommitted", self.rows()[0])
+
+    def test_u2_three_changed_files_are_written(self):
+        self.seed_row()
+        self.assertTrue(self.beat(3))
+        self.assertEqual(3, self.rows()[0]["uncommitted"])
+
+    def test_u2b_a_cleaned_tree_clears_the_old_number(self):
+        """담고 나면 그 수가 사라진다 — 낡은 경고가 남아 있으면 거짓말이 된다."""
+        self.seed_row(uncommitted=9)
+        self.assertTrue(self.beat(0))
+        self.assertNotIn("uncommitted", self.rows()[0])
+
+    # ---------- U3 최소 간격은 그대로 ----------
+    def test_u3_the_gate_still_holds(self):
+        self.seed_row()
+        self.assertTrue(self.beat(1))
+        self.assertFalse(self.beat(7),
+                         "담기지 않은 수가 바뀌었다고 최소 간격을 뚫었다 — "
+                         "폴이 곧 commit 이 된다")
+        self.assertEqual(1, self.rows()[0]["uncommitted"])
+
+    # ---------- U4 없는 줄은 만들지 않는다 ----------
+    def test_u4_no_row_no_invention(self):
+        self.write_profile([{"machine": "other-host", "os": "macOS",
+                             "account": "someone", "first": "2026-09-01T00:00:00+09:00",
+                             "last": "2026-09-01T00:00:00+09:00"}])
+        self.assertFalse(self.beat(4))
+        self.assertEqual(1, len(self.rows()))
+
+    # ---------- U2 세는 자 ----------
+    def test_the_counter_skips_untracked_files(self):
+        """추적되지 않는 파일은 세지 않는다 — state/ 아래는 언제나 지저분하다.
+
+        진짜 저장소에 대고 잰다 — 세는 자가 무엇을 세는지는 실행이 답한다.
+        이 저장소가 깨끗하든 아니든 **음수가 아니어야** 하고(물을 수 있었다),
+        추적되지 않는 파일을 하나 만들어도 수가 늘지 않아야 한다."""
+        repo = os.path.dirname(HERE)
+        before = self.m.machine_uncommitted(repo)
+        self.assertGreaterEqual(before, 0, "저장소에 물었는데 모른다고 한다")
+        junk = os.path.join(repo, "state", "s9-undone-probe.tmp")
+        os.makedirs(os.path.dirname(junk), exist_ok=True)
+        with open(junk, "w", encoding="utf-8") as f:
+            f.write("x")
+        try:
+            self.assertEqual(before, self.m.machine_uncommitted(repo),
+                             "추적되지 않는 파일까지 셌다 — state/ 아래는 "
+                             "언제나 지저분해서 수가 늘 0 이 아니게 된다")
+        finally:
+            os.unlink(junk)
+
+    def test_the_counter_says_it_does_not_know_rather_than_zero(self):
+        """git 이 없는 자리에서는 -1 이다 — 0(깨끗하다)으로 안심시키지 않는다."""
+        self.assertEqual(-1, self.m.machine_uncommitted(self.root),
+                         "저장소가 아닌 자리인데 깨끗하다고 답했다")
+
+    # ---------- U5·U6 매 턴 머리 한 줄 ----------
+    def line(self):
+        with mock.patch.object(self.m, "_fp_user", lambda: USER), \
+                mock.patch.object(self.m, "current_machine", lambda: HOST):
+            return self.m.other_machines_uncommitted_line()
+
+    def test_u5_this_machine_is_not_counted(self):
+        """이 컴퓨터 것은 세지 않는다 — 그건 git status 가 이미 말한다."""
+        self.seed_row(uncommitted=12)
+        self.assertEqual("", self.line())
+
+    def test_u5b_quiet_when_everyone_is_clean(self):
+        self.write_profile([
+            {"machine": HOST, "account": ACCT, "os": "Linux"},
+            {"machine": "far-host", "account": "b", "os": "macOS"}])
+        self.assertEqual("", self.line())
+
+    def test_u6_other_machines_are_named_with_their_counts(self):
+        self.write_profile([
+            {"machine": HOST, "account": ACCT, "os": "Linux", "uncommitted": 2},
+            {"machine": "far-host", "account": "b", "os": "macOS", "uncommitted": 10},
+            {"machine": "mid-host", "account": "c", "os": "WSL", "uncommitted": 4}])
+        got = self.line()
+        self.assertIn("far-host 10파일", got)
+        self.assertIn("mid-host 4파일", got)
+        self.assertNotIn(HOST, got, "이 컴퓨터가 남의 목록에 섰다")
+        self.assertLess(got.index("far-host"), got.index("mid-host"),
+                        "많은 쪽이 먼저 서지 않는다")
+
+
+class UncommittedOnTheScreen(unittest.TestCase):
+    """표의 받음 칸이 담기지 않은 수를 함께 말한다 (REQ-20260911-001)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(index_path(), encoding="utf-8") as f:
+            cls.src = f.read()
+
+    def test_the_cell_says_it_only_when_there_is_something(self):
+        cell = websrc.fn(self, self.src, "undoneCellHTML")
+        self.assertIn("담기지 않음", cell, "낱말로 말하지 않는다")
+        self.assertIn("if (k <= 0) return \"\";", cell,
+                      "0 을 그린다 — 표가 0 으로 뒤덮인다")
+
+    def test_the_recv_cell_carries_it_in_both_branches(self):
+        cell = websrc.fn(self, self.src, "recvCellHTML")
+        self.assertEqual(2, cell.count("undoneCellHTML(undone)"),
+                         "적힌 적 없는 컴퓨터 갈래에서 빠졌다")
 
 
 if __name__ == "__main__":
