@@ -116,6 +116,12 @@ class TestCodeArgs(unittest.TestCase):
                    "HOME": cls.home,
                    "S9_CODE_DRYRUN": "1", "S9_USER": "tester"}
         cls.env.pop("S9_SESSION", None)
+        # HOME 만 옮겨서는 격리가 되지 않는다 (REQ-20260910-007-2n7g): 프로필로
+        # 띄운 세션에는 CLAUDE_CONFIG_DIR 이 있고, 그것이 HOME 보다 먼저 이긴다 —
+        # s9-install 이 위에서 만든 가짜 .claude 대신 **사람의 진짜 프로필**에
+        # settings.json 을 쓰고, P1 의 단정은 빈 자리를 본다. 새 사람의 환경에는
+        # 이 값이 없으니, 없는 것이 곧 이 시험이 흉내내려는 상태다.
+        cls.env.pop("CLAUDE_CONFIG_DIR", None)
         subprocess.run([S9, "init"], capture_output=True, env=cls.env, timeout=15)
         subprocess.run([S9, "user", "add", "tester"], capture_output=True,
                        env=cls.env, timeout=15)

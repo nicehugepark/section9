@@ -142,7 +142,7 @@ class DivergedRecover(unittest.TestCase):
             json.dump({"tries": 500, "last": 1000.0}, f)
         self.assertFalse(m._sync_reattach_due(now=1000.0 + m.SYNC_REATTACH_MAX_SEC - 1, path=p))
         self.assertTrue(m._sync_reattach_due(now=1000.0 + m.SYNC_REATTACH_MAX_SEC, path=p))
-        # 나흘 뒤에도 (그날 jade 가 멈춰 있던 그 시간)
+        # 나흘 뒤에도 — 실제로 한 컴퓨터가 그만큼 멈춰 있었다 (REQ-20260910-034)
         with open(p, "w") as f:
             json.dump({"tries": 500, "last": 1000.0}, f)
         self.assertTrue(m._sync_reattach_due(now=1000.0 + 4 * 86400, path=p))

@@ -30,7 +30,12 @@ def secret_names():
 
 class NoSecretNames(unittest.TestCase):
     def test_secret_names_do_not_appear_in_code(self):
-        names = [n for n in secret_names() if len(n) >= 4 and n != "test"]
+        # 대문자·숫자·밑줄뿐인 이름은 제품이 정한 키다 (환경변수 꼴) — s9 스스로
+        # `JIRA_SECRET_KEY = "JIRA_API_TOKEN"` 으로 코드에 두고 화면에도 그 글자를
+        # 세운다. 이 시험이 막는 것은 **개인 장치의 이름**(호스트명)이지 키 이름이
+        # 아니다 (REQ-20260906-011 · 실제 실패 2026-09-10, REQ-20260910-007-2n7g).
+        names = [n for n in secret_names()
+                 if len(n) >= 4 and n != "test" and not re.fullmatch(r"[A-Z][A-Z0-9_]*", n)]
         if not names:
             self.skipTest("이 기계에 비밀 이름이 없다 — 지킬 재료가 없다")
         hits = []
