@@ -182,8 +182,6 @@
 .gate-h{margin-top:8px;border-top:1px solid var(--hairline);padding-top:6px}
 .gate-h summary{cursor:pointer;font-family:var(--mono);font-size:10px;
   color:var(--faint);text-transform:uppercase;letter-spacing:.05em;list-style:none}
-.gate-h summary::before{content:"▸ "}
-.gate-h[open] summary::before{content:"▾ "}
 .gate-r{margin:7px 0 0;font-size:12px;line-height:1.5}
 .gate-r .path{display:block;margin-bottom:2px}
 /* ── 문서 본문 표 (REQ-20260827-008) ───────────────────────────────────────
@@ -318,8 +316,7 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .reqstream summary{cursor:pointer;font-weight:600;font-size:11px;color:var(--muted);
   border-top:1px solid var(--border);padding:14px 0 8px;margin-top:28px;list-style:none;
   text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono)}
-.reqstream summary::before{content:"▸ ";color:var(--faint)}
-.reqstream[open] summary::before{content:"▾ "}
+.reqstream summary::before{color:var(--faint)}
 .reqstream .term{max-height:440px;margin-top:8px}
 
 /* ------- audit: 레저 테이블 ------- */
@@ -332,8 +329,7 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
 .audit .cap summary{padding:8px 16px;cursor:pointer;list-style:none;
   font-size:11px;letter-spacing:.01em;color:var(--muted)}
 .audit .cap summary::-webkit-details-marker{display:none}
-.audit .cap summary::before{content:"▸ ";color:var(--faint)}
-.audit .cap[open] summary::before{content:"▾ "}
+.audit .cap summary::before{color:var(--faint)}
 .audit .cap summary:hover{color:var(--text);text-decoration:underline}
 .audit .cap p{margin:0;padding:0 16px 10px;line-height:1.65}
 .audit .tblwrap{overflow-x:auto}
@@ -347,9 +343,20 @@ a.doclink{color:var(--text);cursor:pointer;text-decoration:underline;
   border-bottom:1px solid var(--border);white-space:nowrap}
 .audit td{padding:8px 14px;border-bottom:1px solid var(--hairline);vertical-align:top}
 /* 남는 폭은 마지막 본문 열이 가진다 (표 절 3) — 이것이 없으면 auto 배치가 남는 폭을
-   모든 열에 나눠, 접힌 열 셋이 폭만 차지하고 행의 좌우가 600px 떨어진다. */
-.audit th:last-child,.audit td:last-child{width:100%}
-.audit tr:hover td{background:var(--accent-soft)}
+   모든 열에 나눠, 접힌 열 셋이 폭만 차지하고 행의 좌우가 600px 떨어진다.
+   하루 머리 행은 열 다섯을 하나로 걸치니 이 규칙에서 뺀다 — colspan 칸에 100% 를
+   주면 자동 배치가 그 폭을 걸친 열들에 다시 나눠 열 폭 계약이 흔들린다. */
+.audit th:last-child,.audit tbody tr:not(.day) td:last-child{width:100%}
+.audit tbody tr:not(.day):hover td{background:var(--accent-soft)}
+/* 하루 머리 — 날짜는 행마다가 아니라 하루에 한 번 선다 (REQ-20260910-025).
+   행 안에서 접는 것만으로는 첫 행이 열 폭을 날짜 길이로 잡아 아래 행이 내리 비었다.
+   색면을 쓰지 않는다(s9-design 금지 목록) — 하루의 경계는 위 경계 한 줄과 글자
+   위계(작은 mono·muted)로만 말한다. 표의 첫 줄이면 위 경계를 내린다. */
+.audit tbody tr.day td{padding:13px 14px 5px;border-bottom:0;
+  border-top:1px solid var(--border);background:none;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.audit tbody tr.day:first-child td{border-top:0;padding-top:9px}
 .audit td.ts{font-family:var(--mono);font-size:10.5px;color:var(--muted);
   white-space:nowrap;font-variant-numeric:tabular-nums}
 /* 세션은 기계 문자열이라 음절이 없다 — 좁은 열에서 토큰 한가운데가 끊기지 않게 */

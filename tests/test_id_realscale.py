@@ -174,6 +174,8 @@ MEASURE_JS = """
       idact: box(act),
       idr: box(card.querySelector('.idr')),
       idmark: box(card.querySelector('.idmark')),
+      // 점이 서는 자리 — 벨트가 지켜야 하는 그 자다 (아래 the_belt_stands…).
+      dot: box(card.querySelector('.livedot')),
       belt: box(card.querySelector('.deedbelt')),
       // 벨트는 **과녁과 칠이 다른 층**이다 (s9-design 7절): 버튼 상자는 27px
       // 과녁이고 그림은 13px 다. 자리를 재는 것은 그림 쪽이다 — 과녁은 일부러
@@ -358,20 +360,30 @@ class TheIdAndTheClockNeverShareInk(unittest.TestCase):
             self.assertEqual([], bad,
                              "id 줄만 들여쓰였다 — 카드의 줄들이 한 자를 안 쓴다")
         with self.subTest("the_belt_stands_in_the_dot_place"):
-            # 3차가 옮긴 자리를 **실측으로** 못박는다: 벨트는 점의 상자
-            # (`.idmark`) 한가운데에 서고, 식별자와 같은 줄이며, 식별자의 잉크에
-            # 닿지 않는다. 교대(점 ↔ ■)가 줄을 밀지 않는 근거가 이 셋이다.
+            # 3차가 옮긴 자리를 **실측으로** 못박는다: 벨트는 점이 서는 자리에
+            # 서고, 식별자와 같은 줄이며, 식별자의 잉크에 닿지 않는다.
+            # 교대(점 ↔ ■)가 줄을 밀지 않는 근거가 이 셋이다.
+            #
+            # **재는 기준이 상자에서 점으로 바뀌었다** (REQ-20260910-009 5차 반려 —
+            # 주인 2026-09-10 15:01: 「마우스를 올릴 때 위치가 바뀐다」). 종전에는
+            # 마크 상자(`.idmark` 13px)의 한가운데를 자로 삼았는데, 정작 **점은
+            # 그 한가운데에 선 적이 없다** — 점이 줄에서 쓰던 `margin-right:6px`
+            # 를 들고 있어 잉크가 상자 왼쪽 7px 에 섰다. 그래서 이 항목이 통과하는
+            # 동안에도 화면에서는 손을 얹을 때 마크가 3px 뛰었다. 자를 점으로
+            # 바꾸면 그 어긋남이 이 항목에 잡힌다. 무대(상자 왼쪽 7px)가 왜 상자
+            # 한가운데가 아닌지는 web/css/board.css 의 `.idmark` 주석에 있고,
+            # 얼굴 여덟 × 벨트 둘 전수는 tests/test_mark_swap.py 가 잰다.
             self.maxDiff = None
             bad = []
             for r in self.rows:
-                if not r["beltInk"] or not r["idmark"]:
+                if not r["beltInk"] or not r["dot"]:
                     continue
-                mk, bl = r["idmark"], r["beltInk"]
-                cx_mk = (mk["l"] + mk["r"]) / 2.0
+                dt, bl = r["dot"], r["beltInk"]
+                cx_dt = (dt["l"] + dt["r"]) / 2.0
                 cx_bl = (bl["l"] + bl["r"]) / 2.0
-                if abs(cx_mk - cx_bl) > 1.0:
-                    bad.append("%s 벨트가 점의 상자 한가운데를 벗어났다 "
-                               "(%.1f vs %.1f)" % (self._where(r), cx_bl, cx_mk))
+                if abs(cx_dt - cx_bl) > 1.0:
+                    bad.append("%s 벨트가 점의 자리를 벗어났다 "
+                               "(%.1f vs %.1f)" % (self._where(r), cx_bl, cx_dt))
                 # 좁은 폭에서 식별자가 아랫줄로 내려가는 것은 계약이다
                 # (아래 the_narrow_card_drops_the_whole_group) — 그때는 벨트와
                 # 식별자가 다른 줄인 것이 정상이라 같은 줄일 때만 잰다.

@@ -59,13 +59,13 @@
 (function ccSayPreview(){
   if (!/[?&]ccsay/.test(location.search)) return;
   const rows = [
-    ["↻", {ok: false, reason: "턴 진행 중 — 유휴 상태에서만 재시작(작업 보호)"}, "모델을"],
-    ["↻", {ok: false, reason: "서버 연결 실패"}, "모델을"],
-    ["↻", {ok: false, reason: "세션 없음/종료됨"}, "계정을"],
-    ["↻", {ok: false, reason: "대시보드 서버가 구버전(재시작 API 없음) — 세션 터미널에서 serve 재시작 후 재시도"}, "생각의 깊이를"],
-    ["↻", {ok: false, reason: "오류: [Errno 2] No such file"}, "모델을"],
-    ["↻", {ok: true, mode: "wrapper"}, "모델을"],
-    ["↻", {ok: true, mode: "manual", cmd: "bin/s9 code --resume 01c62d83 --model sonnet"}, "모델을"],
+    [mk("redo"), {ok: false, reason: "턴 진행 중 — 유휴 상태에서만 재시작(작업 보호)"}, "모델을"],
+    [mk("redo"), {ok: false, reason: "서버 연결 실패"}, "모델을"],
+    [mk("redo"), {ok: false, reason: "세션 없음/종료됨"}, "계정을"],
+    [mk("redo"), {ok: false, reason: "대시보드 서버가 구버전(재시작 API 없음) — 세션 터미널에서 serve 재시작 후 재시도"}, "생각의 깊이를"],
+    [mk("redo"), {ok: false, reason: "오류: [Errno 2] No such file"}, "모델을"],
+    [mk("redo"), {ok: true, mode: "wrapper"}, "모델을"],
+    [mk("redo"), {ok: true, mode: "manual", cmd: "bin/s9 code --resume 01c62d83 --model sonnet"}, "모델을"],
   ];
   // 문장 속 시간은 사람 말로 — 라틴 축약은 모노 메타의 어휘다 (REQ-20260901-014)
   const fin = `<span style="color:var(--cc-green)">✓ 세션 재시작 완료 (12초) — sonnet 으로 이어집니다</span>`;

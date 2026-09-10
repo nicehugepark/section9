@@ -320,3 +320,11 @@ const RESTART_POLL_MS = 2000;      // 돌아왔는지 되묻는 간격
    **사실이 아니게 되면** 거둔다. */
 const RESTART_TRUTH_MS = 10000;
 const RESTART_TRUTH_MAX_MS = 30 * 60 * 1000;   // 여기까지만 되묻는다
+
+/* 마크는 이름으로 부른다 (REQ-20260910-027) — 모양·눈금·색은 `web/css/marks.css`
+   한 곳에 있고, 화면을 그리는 쪽은 **어느 마크인지**만 말한다. 종전에는 코드에
+   `"▲"`·`"↻"` 같은 코드포인트가 박혀 있어, 맥·iPad Safari 에서 컬러 이모지로
+   나오고 획 두께를 OS 가 정했다. `aria-hidden` 인 까닭: 마크는 옆 낱말이 이미
+   한 말을 되풀이하는 그림이라 화면낭독기가 두 번 읽을 것이 아니다. */
+function mk(name){ return '<span class="mk mk-' + name + '" aria-hidden="true"></span>'; }
+window.mk = mk;

@@ -177,7 +177,7 @@ function renderUsageChip(el, d){
   (d.limits || []).forEach(x => { L[x.kind] = x; });
   const pct = x => x == null ? "—"
     : `<span class="${x.percent >= 90 ? "crit" : x.percent >= 70 ? "warn" : ""}">${x.percent}%</span>`;
-  el.innerHTML = `${esc(d.email || "?")}${d.stale ? " ⏳" : ""}` +
+  el.innerHTML = `${esc(d.email || "?")}${d.stale ? " " + mk("clock") : ""}` +
     ` · 5h ${pct(L.session)} · wk ${pct(L.weekly_all)}` +
     (L.weekly_scoped
       ? ` · ${esc((L.weekly_scoped.scope_name || "model").toLowerCase())} ${pct(L.weekly_scoped)}` : "");

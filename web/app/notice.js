@@ -147,7 +147,7 @@ function renderOldCode(){
   // `bin/s9` 로 못 박혀 있었는데, 지문이 채팅 판정자(bin/s9-audit-prompt)까지
   // 보게 된 지금 그 문구는 훅만 바뀐 경우에 거짓말이 된다.
   const chg = Array.isArray(d.changed) && d.changed.length ? d.changed : ["bin/s9"];
-  el.innerHTML = `<span class="oc-t"><span class="oc-mark" aria-hidden="true">▲</span>`
+  el.innerHTML = `<span class="oc-t"><span class="oc-mark">${mk("warn")}</span>`
     + ` 서버가 옛 코드로 실행 중입니다</span>`
     + `<span class="oc-d">${at ? esc(at) + " 시작 이후 " : ""}`
     + `${chg.map(f => `<code>${esc(f)}</code>`).join(" · ")} 가 바뀌었습니다`
@@ -292,7 +292,7 @@ function renderGuard(){
       : `${at} 에 멈춘 뒤로 서버를 지켜보는 것이 없습니다${why}.`;
     detail += " 지금 서버가 종료되면 자동으로 다시 시작되지 않습니다.";
     el.innerHTML = `<span class="gw-t" style="color:var(--c-blocked)">`
-      +   `<span class="gw-mark" aria-hidden="true">▲</span> 자동 복구가 멈췄습니다</span>`
+      +   `<span class="gw-mark">${mk("warn")}</span> 자동 복구가 멈췄습니다</span>`
       + `<span class="gw-d">${detail}</span>`
       + `<span class="gw-act">`
       +   `<button class="gw-cmd" id="gw-cmd"`
@@ -455,7 +455,7 @@ function renderSvChip(){
      없는 값이 조용히 사라지지 않게 하는 것이 이 칩의 몫이다. */
   const lost = Object.keys(SUPPLY).filter(k => supplyLost(k) && !SUPPLY[k].quiet);
   if (lost.length)
-    items.push({tone: "sv-bad", mark: "▲",
+    items.push({tone: "sv-bad", mark: mk("warn"),
       label: lost.length === 1 ? supplyLabel(lost[0]) + " 못 받음"
                                : `못 받은 것 ${lost.length}개`,
       title: lost.map(k => eul(supplyLabel(k)) + " 받지 못했습니다").join(" · ")
@@ -496,12 +496,12 @@ function renderSvChip(){
      사실만 센다. 낱말과 조립은 jobChip 하나가 안다. */
   const job = jobChip(jobs);
   if (job)
-    items.push({tone: "sv-run", mark: "↻", spin: true,
+    items.push({tone: "sv-run", mark: mk("redo"), spin: true,
       label: job.label, title: job.title,
       act: () => document.querySelector('header [data-tab="terminal"]')?.click()});
   const oc = ocInfo;
   if (oc && oc.stale && ocAck() === oc.started)
-    items.push({tone: "sv-warn", mark: "▲", label: "서버 재시작 필요",
+    items.push({tone: "sv-warn", mark: mk("warn"), label: "서버 재시작 필요",
       title: "실행 중인 서버가 시작 당시 코드로 동작하고 있습니다 — 눌러서 자세히",
       act: () => { ocSetAck(null); renderOldCode(); }});
   /* sync 되풀이 실패 (REQ-20260907-005) — 같은 사유로 N회 연속 실패해 로컬 commit 이
@@ -509,17 +509,17 @@ function renderSvChip(){
      그대로 옮긴다(횟수는 라벨, 사유·다음 행동은 툴팁). 누르면 Terminal 로 간다. */
   const sa = oc && oc.sync_alert;
   if (sa && sa.text)
-    items.push({tone: "sv-bad", mark: "▲", label: sa.label || "sync 실패",
+    items.push({tone: "sv-bad", mark: mk("warn"), label: sa.label || "sync 실패",
       title: sa.text, seq: sa.since || "",
       act: () => document.querySelector('header [data-tab="terminal"]')?.click()});
   const d = gwInfo, st = gwState(d);
   if (st === "attention" && gwAck() === d.last_death.ts)
-    items.push({tone: "sv-bad", mark: "▲", label: "자동 복구 멈춤",
+    items.push({tone: "sv-bad", mark: mk("warn"), label: "자동 복구 멈춤",
       title: "지금 서버가 종료되면 자동으로 다시 시작되지 않습니다 — 눌러서 자세히",
       act: () => { gwSetAck(null); renderGuard(); }});
   else if (st === "recovered"){
     const ev = d.last_death, at = String(ev.ts || "").slice(11, 16);
-    items.push({tone: "sv-ok", mark: "↻",
+    items.push({tone: "sv-ok", mark: mk("redo"),
       label: `자동 복구 ${Math.max(1, d.restarts || 1)}회`,
       title: `${at} 에 멈췄다가 `
         + (ev.retry_in ? `${ev.retry_in}초 뒤 ` : "곧 ") + "스스로 다시 떴습니다"

@@ -254,7 +254,7 @@
 [data-skin="glass"] .card:hover,[data-skin="glass"] .urow:hover,
 [data-skin="glass"] .mystrip .ms-row:hover,[data-skin="glass"] .mystrip .ms-row.sel,
 [data-skin="glass"] .backlinks .bl:hover{background:var(--gl-tint)}
-[data-skin="glass"] .audit tr:hover td{background:var(--gl-tint)}
+[data-skin="glass"] .audit tbody tr:not(.day):hover td{background:var(--gl-tint)}
 [data-skin="glass"] .audit td,[data-skin="glass"] .metatbl td{border-bottom-color:var(--gl-hairline)}
 /* 컨트롤: 라운드 + 반투명 */
 [data-skin="glass"] .hrow2 input[type="text"],[data-skin="glass"] .hrow2 select,
@@ -442,7 +442,8 @@
 [data-skin="grid"] .mystrip{margin:10px 14px}
 /* 컬럼: 고정폭을 버리고 화면을 나눠 가진다 — 잉크 헤더 바가 구획의 앵커 */
 [data-skin="grid"] .board{padding-bottom:0}
-[data-skin="grid"] .col{flex:1 1 0;width:auto;min-width:212px;padding-bottom:0}
+/* 바닥은 176px 하나다 (REQ-20260910-029) — 근거는 board.css 의 `.col` 주석. */
+[data-skin="grid"] .col{flex:1 1 0;width:auto;min-width:176px;padding-bottom:0}
 [data-skin="grid"] .col h2{background:var(--text);color:var(--bg);border-bottom:0;
   letter-spacing:.12em;padding:8px 12px}
 [data-skin="grid"] .col h2 .n{color:color-mix(in srgb, var(--bg) 72%, transparent)}
@@ -462,8 +463,11 @@
   background:color-mix(in srgb, var(--text) 3%, var(--panel))}
 [data-skin="grid"] .card:hover,[data-skin="grid"] .doclist .row:hover{
   background:color-mix(in srgb, var(--text) 8%, var(--panel))}
-[data-skin="grid"] .audit tr:hover td{
+[data-skin="grid"] .audit tbody tr:not(.day):hover td{
   background:color-mix(in srgb, var(--text) 8%, var(--panel))}
+/* 하루 머리는 줄무늬를 받지 않는다 (REQ-20260910-025) — 데이터 행이 아니라 그 위에
+   서는 이름이라, 칠하면 행 하나가 더 있는 것으로 읽힌다. */
+[data-skin="grid"] .audit tbody tr.day td{background:none}
 [data-skin="grid"] .doclist .row{padding:6px 12px}
 [data-skin="grid"] .doclist{width:300px}
 /* 좌우 여백이 다른 스킨·밀도에서도 붙박이 줄이 판 끝에 정확히 맞도록 --vpad 로
@@ -546,7 +550,7 @@
 [data-skin="slate"] .doclist .row:hover,[data-skin="slate"] .urow:hover,
 [data-skin="slate"] .backlinks .bl:hover,[data-skin="slate"] .mystrip .ms-row:hover{
   background:var(--sl-tint)}
-[data-skin="slate"] .audit tr:hover td{background:var(--sl-tint)}
+[data-skin="slate"] .audit tbody tr:not(.day):hover td{background:var(--sl-tint)}
 [data-skin="slate"] .typebar .tb.on{color:var(--sl-blue);border-bottom-color:var(--sl-blue)}
 [data-skin="slate"] .typebar .tb:hover{color:var(--sl-blue)}
 /* 같은 이유로 doclist 만 뺀다 (REQ-20260828-009) — 파란 색면과 파란 세로 띠였다 */

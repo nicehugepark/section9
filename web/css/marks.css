@@ -1,0 +1,108 @@
+/* marks.css — **마크 사전 한 곳** (REQ-20260910-027, 009 의 S2)
+
+   이 화면의 마크는 출처가 넷이었다: 손으로 격자에 맞춘 SVG(⏸ ▶) · 폰트
+   코드포인트(⏱ ⏳ ▲ ↻ ⧉ ▸ ▾) · `.cdot` 사각 · `.livedot`. 폰트 코드포인트는
+   맥·iPad Safari 에서 **컬러 이모지**로 나오고 획 두께를 OS 가 정해, 손으로
+   맞춘 SVG 와 1em 거리에 나란히 서면 결이 따로 논다. 오늘 ⏱ 를 그래서 다시
+   그렸고(REQ-20260910-009 P2), 이 파일이 그 일을 나머지 전부에 한다.
+
+   **사전의 규칙 셋.**
+   ① **한 칸 = 한 화소.** `viewBox="0 0 11 11"` 그림은 **11px 로만** 그린다.
+      배율이 1.25·1.5 여도 그림과 상자가 같은 반올림을 받아 함께 움직인다 —
+      눈금과 상자가 어긋나면 획이 반 화소에 걸려 번진다(REQ-20260831-019).
+      11 인 까닭: 이 마크들은 과녁이 아니라 **10~12px 글자 옆에 서는 인라인
+      마크**라 글자에 맞춘 것이다. 과녁을 가진 손잡이 글리프(⏸ ▶)는 13 칸
+      13px 이고 `.gly`(actions.css)가 그 자리를 맡는다 — 눈금이 둘인 것이
+      아니라 **자리가 둘**이고, 규칙(한 칸 = 한 화소)은 하나다.
+   ② **획은 1px, 좌표는 .5 중심.** 1.5px 획은 어느 배율에서도 한쪽 끝이 반
+      화소에 걸린다(s9-design 「배율 불변」이 소수 px 테두리를 금한 그 자리).
+      채운 마크의 곧은 모서리는 정수 좌표에 둔다.
+   ③ **`mask` + `currentColor`.** 색을 그림이 들고 있으면 스킨·톤마다 다시
+      적어야 하고, 폰트 글리프는 OS 가 색까지 정해 컬러 이모지가 된다. 칠은
+      요소의 `color` 가 하고 그림은 모양만 맡는다 — 스킨 색이 그대로 온다.
+
+   ④ **그림에 `width`·`height` 를 적는다** — `viewBox` 만 있는 SVG 를 `mask` 로
+      쓰면 **배율 1.25 에서 마크가 통째로 사라진다**(2026-09-10 실측: 1 과 1.5 는
+      멀쩡한데 1.25 만 빈 자리. 상자·칠·mask-image 는 그대로 붙어 있으니 값으로는
+      잡히지 않고, 그 배율로 찍은 화소를 확대해 눈으로 보고서야 잡혔다). 그림에
+      제 크기가 없으면 엔진이 배율마다 다른 크기로 그리려다 실패한다.
+
+   **폰트로 남는 것**: 문장 안의 부호 `×`(닫기·해제) · `+` · `−`(U+2212).
+   그건 그림이 아니라 **글자**다(s9-design ux-writer R7 이 이미 한 벌로 정했다).
+
+   잉크(측정값, 11px 기준): 경고 28px² · 다시 22 · 복사 38 · 접힘/펼침 13.5 ·
+   시각 20. mono 10px 글자 한 자가 8~12px² 이라 어느 것도 그 4배를 넘지 않는다.
+   접힘/펼침은 **짝이라 잉크가 같아야** 한다(한 축의 두 방향) — 13.5 로 맞췄다. */
+
+/* 마크가 서는 두 자리: 제 요소(`<span class="mk mk-…">`)와 글자 앞(`::before`).
+   둘이 **같은 규칙 한 블록**을 쓴다 — 자리마다 다시 적으면 그때부터 사전이
+   둘이 된다. `::before` 로 서는 것은 원래 `content:"▸ "` 처럼 글자 뒤에 공백을
+   달고 있었다: 공백은 폰트가 정하는 폭이라 스킨마다 어긋난다. 틈은 여백으로 준다. */
+.mk,
+.oc-cmd::before,.gw-cmd::before,
+.gate-h summary::before,.reqstream summary::before,.audit .cap summary::before,
+.term details summary::before,
+.artmeta > summary::after{
+  content:"";display:inline-block;flex:none;width:11px;height:11px;
+  vertical-align:-1px;background-color:currentColor;
+  /* **단축이 아니라 낱개 속성으로 적는다.** `mask:var(--mk) center/11px …` 는
+     계산값에 값을 끼운 뒤 단축을 다시 파싱해야 해서, 끼운 값이 `url()` 이면
+     크롬이 그림을 못 싣고 **요소가 통째로 사라진다**(2026-09-10 실측: 상자
+     11x11 · 칠은 잉크색 · mask-image 도 붙어 있는데 화면에는 아무것도 없었다).
+     수치로는 다 맞아 보였고, 5배 캡처를 눈으로 열어 보고서야 잡혔다. */
+  -webkit-mask-image:var(--mk);mask-image:var(--mk);
+  -webkit-mask-size:11px 11px;mask-size:11px 11px;
+  -webkit-mask-position:center;mask-position:center;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
+/* 글자 앞에 설 때의 틈 — 카드·칩의 작은 눈금(4px)과 같다 */
+.oc-cmd::before,.gw-cmd::before,
+.gate-h summary::before,.reqstream summary::before,.audit .cap summary::before,
+.term details summary::before{margin-right:4px}
+/* 요약 **뒤**에 서는 자리 — 틈은 앞에 준다 */
+.artmeta > summary::after{margin-left:4px}
+
+/* ── 사전 ─────────────────────────────────────────────────────────
+   모양 하나 = 줄 하나. 새 마크는 여기에만 더한다. 모양은 `:root` 의 변수로
+   서고, 아래 두 블록(제 요소 `.mk-*` · 글자 앞 `::before`)이 **그 하나를**
+   가리킨다 — 같은 그림을 두 번 적으면 그때부터 사전이 둘이다. */
+:root{
+  /* 경고 — 채운 세모. 밑변은 정수 y, 꼭지는 격자 한가운데(5.5) */
+  --mk-warn-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Cpath d='M5.5 3 L9.5 10 L1.5 10 Z' fill='%23000'/%3E%3C/svg%3E");
+  /* 다시 — 네 바퀴 중 세 바퀴를 그린 테와, 비워 둔 한 바퀴 자리에 놓인 머리.
+     머리를 테 위에 겹쳐 놓으면 11px 에서 덩어리 하나로 뭉친다(첫 판에서
+     눈으로 잡았다: 화살표가 아니라 「G」로 읽혔다) — 빈 사분면에 세운다. */
+  --mk-redo-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Cpath d='M9 5.5 A3.5 3.5 0 1 1 5.5 2' fill='none' stroke='%23000' stroke-width='1'/%3E%3Cpath d='M5.5 0 L5.5 4 L8.5 2 Z' fill='%23000'/%3E%3C/svg%3E");
+  /* 복사 — 겹친 두 장. 뒷장은 가려지는 두 변을 그리지 않는다 */
+  --mk-copy-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Cpath d='M4.5 7.5 H1.5 V1.5 H7.5 V4.5' fill='none' stroke='%23000' stroke-width='1'/%3E%3Crect x='4.5' y='4.5' width='5' height='5' fill='none' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E");
+  /* 접힘 / 펼침 — 한 축의 두 방향이라 잉크가 같다(13.5px² 씩) */
+  --mk-fold-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Cpath d='M4 2.5 L8.5 5.5 L4 8.5 Z' fill='%23000'/%3E%3C/svg%3E");
+  --mk-unfold-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Cpath d='M2.5 4 L8.5 4 L5.5 8.5 Z' fill='%23000'/%3E%3C/svg%3E");
+  /* 시각 — 오늘 `.elapsed::before` 로 그린 그 그림 그대로다(REQ-20260910-009 P2).
+     여기로 옮겨 두 벌이 되지 않게 한다. 「얼마나 지났나」와 「언제 잰 값인가」는
+     같은 것을 묻는 말이라 마크도 하나다 — 사용량 줄의 모래시계가 이 마크로 왔다. */
+  /* 잉크는 11칸 상자의 **한가운데**에 선다 (REQ-20260910-009 5차, 주인 2026-09-10
+     15:01: 「시계그림과 시간 값의 좌표도 의도한 바가 맞는지」). 종전 좌표는
+     테가 `cy 6.5`, 꼭지가 `y 2.5` 라 잉크가 1..10 이 아니라 2..11 에 앉아
+     상자 중심보다 1.0px 아래였다 — 상자를 가운데 맞추는 `align-items:center`
+     로는 그 1px 이 안 걷힌다. 한 칸 올려 잉크를 1..10 에 둔다(테 `cy 5.5` ·
+     바늘 `5.5→3.5` · 꼭지 `y 1.5`). 실측(tests/_probe_marks.py, 스킨 10 ×
+     배율 1·1.25·1.5): 그림과 숫자의 잉크 경계 중심이 1.0px 어긋나던 것이 0 이 된다. */
+  --mk-clock-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Ccircle cx='5.5' cy='5.5' r='3.5' fill='none' stroke='%23000' stroke-width='1'/%3E%3Cpath d='M5.5 5.5V3.5M4 1.5h3' fill='none' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+/* 제 요소로 서는 자리 */
+.mk-warn{--mk:var(--mk-warn-src)}
+.mk-redo{--mk:var(--mk-redo-src)}
+.mk-copy{--mk:var(--mk-copy-src)}
+.mk-fold{--mk:var(--mk-fold-src)}
+.mk-unfold{--mk:var(--mk-unfold-src)}
+.mk-clock{--mk:var(--mk-clock-src)}
+
+/* 글자 앞에 서는 자리 — 어느 마크가 어디에 서는가. 모양은 위, 자리는 여기. */
+.oc-cmd::before,.gw-cmd::before{--mk:var(--mk-copy-src);color:var(--faint)}
+.gate-h summary::before,.reqstream summary::before,
+.audit .cap summary::before,.term details summary::before,
+.artmeta > summary::after{--mk:var(--mk-fold-src)}
+.gate-h[open] summary::before,.reqstream[open] summary::before,
+.audit .cap[open] summary::before,.term details[open] summary::before,
+.artmeta[open] > summary::after{--mk:var(--mk-unfold-src)}

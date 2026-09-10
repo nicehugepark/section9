@@ -249,7 +249,7 @@ const ACCOUNT_GONE_MAX = 3;      // 넘으면 그 사실만 적는다 — 목록
    desc 가 이미 한 번 말했다(이 파일이 세워 둔 규칙: 한 창이 같은 사실을 세 번
    말하면 사람은 셋 다 흘려 읽는다). 여기 남는 것은 할 수 있는 일 하나뿐이다. */
 const ACCOUNT_AGAIN = `<button type="button" class="dlgact" data-act="again">`
-  + `↻ 계정 목록 다시 받기</button>`;
+  + `${mk("redo")} 계정 목록 다시 받기</button>`;
 function acctFoot(rows, st){
   if (st === "lost") return ACCOUNT_AGAIN;
   const gone = (rows || []).filter(r => !r.ready && r.key !== ACCOUNT_HOME);
@@ -708,7 +708,7 @@ function restartLog(T, d, what, model){
   const out = $("#ccout"), w = $("#cc-wait");
   if (!T || TERM !== T || !out || !w) return;
   w.insertAdjacentHTML("beforebegin",
-    ccLine("↻", "var(--cc-dim)", restartLine(d, what)));
+    ccLine(mk("redo"), "var(--cc-dim)", restartLine(d, what)));
   const ln = w.previousElementSibling;
   if (d.ok && d.mode === "wrapper" && ln){
     /* 진행 감시 (REQ-20260825-047): 경과를 돌려 "멈춘 듯" 보이지 않게 한다.
@@ -807,18 +807,18 @@ async function restartDlgOpen(what, d, n, cap){
    칩이 감시보다 오래 살아 결과 없이 사라질 자리가 없다. */
 function restartChip(kind, what, d){
   if (kind === "going")
-    return svRestartSet({tone: "sv-warn", mark: "↻", spin: true, keep: true,
+    return svRestartSet({tone: "sv-warn", mark: mk("redo"), spin: true, keep: true,
       label: "세션 다시 시작 중",
       title: "같은 대화가 새 설정으로 이어집니다 — 눌러서 터미널에서 보기",
       act: () => goTab("terminal")});
   if (kind === "stopping")
-    return svRestartSet({tone: "sv-warn", mark: "↻", spin: true, keep: true,
+    return svRestartSet({tone: "sv-warn", mark: mk("redo"), spin: true, keep: true,
       label: "하던 일을 멈추는 중",
       title: "멈추면 곧바로 다시 시작합니다 — 눌러서 터미널에서 보기",
       act: () => goTab("terminal")});
   if (kind === "hand")
     // 실패가 아니다 — 사람 손이 한 번 필요할 뿐이라 붉히지 않는다
-    return svRestartSet({tone: "sv-warn", mark: "▲", keep: true,
+    return svRestartSet({tone: "sv-warn", mark: mk("warn"), keep: true,
       label: "세션 터미널에서 한 번",
       title: "이 세션은 처음 한 번만 손으로 다시 시작해야 합니다 — 눌러서 명령 보기",
       act: () => s9dlg({kind: "alert", cap: "다시 시작", stop: false,
@@ -843,7 +843,7 @@ function restartChip(kind, what, d){
      livedot 일곱 얼굴이 이미 쓰는 확립어다. */
   if (kind === "lost"){
     svTruthWatch();    // 사실이 아니게 되면 스스로 물러난다
-    return svRestartSet({tone: "sv-bad", mark: "▲", keep: true,
+    return svRestartSet({tone: "sv-bad", mark: mk("warn"), keep: true,
       label: "세션이 돌아왔는지 모름",
       title: "다시 시작했는데 세션이 돌아온 것을 확인하지 못했습니다 — 눌러서 터미널에서 보기",
       act: () => goTab("terminal")});
@@ -853,7 +853,7 @@ function restartChip(kind, what, d){
   const n = (d && +d.again) || 1;
   const say = restartSay(d, what);
   svTruthWatch();
-  return svRestartSet({tone: "sv-bad", mark: "▲", keep: true,
+  return svRestartSet({tone: "sv-bad", mark: mk("warn"), keep: true,
     /* 되풀이가 사람에게 보이게 한다 (REQ-20260901-014 ②). 네 번을 눌러도 여섯
        글자가 그대로여서 화면이 내 손을 받았는지조차 안 보였다 — 사용자가
        "아무런 반응이 없다"고 쓴 자리가 여기다. 회차는 가장 싼 진전이라 먼저 준다. */

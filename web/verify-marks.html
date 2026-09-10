@@ -1,0 +1,30 @@
+<!doctype html><meta charset="utf-8"><title>마크 사전 검증</title>
+<!-- 사전 한 곳(web/css/marks.css)이 그리는 마크를 **글자 옆에서** 본다.
+     격자 위에 홀로 놓고 보는 것과 이웃과 함께 보는 것은 다르다(REQ-20260910-027). -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/marks.css">
+<style>
+ body{margin:0;padding:20px;background:var(--bg);color:var(--text);
+   font:13px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif}
+ .row{display:flex;align-items:center;gap:6px;margin:0 0 10px;
+   font-family:var(--mono);font-size:10px;color:var(--muted)}
+ .row b{font-weight:400;color:var(--faint)}
+ #strip{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;
+   color:var(--muted)}
+</style>
+<!-- 한 줄에 모아 5배로 뜨는 띠 — 마크끼리 잉크 무게를 견주는 자리 -->
+<div id="strip">
+  <span class="mk mk-warn"></span>경고
+  <span class="mk mk-redo"></span>다시
+  <span class="mk mk-copy"></span>복사
+  <span class="mk mk-fold"></span>접힘
+  <span class="mk mk-unfold"></span>펼침
+  <span class="mk mk-clock"></span>17h 24m
+</div>
+<hr>
+<div class="row"><span class="mk mk-warn"></span>REQ-20260910-027 <b>경고</b></div>
+<div class="row"><span class="mk mk-redo"></span>REQ-20260910-027 <b>다시</b></div>
+<div class="row"><span class="mk mk-copy"></span>REQ-20260910-027 <b>복사</b></div>
+<div class="row"><span class="mk mk-fold"></span>REQ-20260910-027 <b>접힘</b></div>
+<div class="row"><span class="mk mk-unfold"></span>REQ-20260910-027 <b>펼침</b></div>
+<div class="row"><span class="mk mk-clock"></span>17h 24m <b>시각</b></div>

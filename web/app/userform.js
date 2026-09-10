@@ -57,7 +57,7 @@ function showUserForm(u, host, isAdminEdit){
                aria-controls="tz-pop" aria-autocomplete="list" aria-label="시간대"
                autocomplete="off" spellcheck="false" placeholder="설정 안 함"
                value="${esc(cfg.timezone || "")}">
-        <span class="tzcar" aria-hidden="true">▾</span>
+        <span class="tzcar">${mk("unfold")}</span>
       </div>
       <span class="tznow" id="tz-now" aria-live="polite"></span>
     </div>

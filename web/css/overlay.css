@@ -36,8 +36,7 @@
 .artmeta > summary{cursor:pointer;font-family:var(--mono);font-size:10.5px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--faint);list-style:none}
 .artmeta > summary::-webkit-details-marker{display:none}
-.artmeta > summary::after{content:" ▸";color:var(--faint)}
-.artmeta[open] > summary::after{content:" ▾"}
+.artmeta > summary::after{color:var(--faint)}
 .artmeta > summary:hover{color:var(--text)}
 
 /* ------- 구간에 메모 달기 (REQ-20260827-072) -------

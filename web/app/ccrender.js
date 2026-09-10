@@ -263,7 +263,7 @@ const ccPathRules = (escaped, keep) => escaped
    위치는 CSS 가 잡는다 — 흐름에서 빠져 있어 줄 정렬을 흔들지 않는다.
    title 은 무엇이 복사되는지를 말한다(손잡이가 붙은 블록 하나). */
 const CCBCP = '<button class="ccbcp" type="button" ' +
-  'title="이 블록을 클립보드로 복사합니다">⧉ 복사</button>';
+  'title="이 블록을 클립보드로 복사합니다">' + mk("copy") + ' 복사</button>';
 
 /* 복사본에서 손잡이 글자를 걷어낸 뒤 준다 — 안 걷으면 붙여넣은 명령 첫 줄이
    "⧉ 복사" 로 시작한다. 실행은 화면의 몫이 아니다: 복사까지가 끝이다. */
@@ -274,7 +274,7 @@ function ccBlockCopy(btn){
   cl.querySelectorAll(".ccbcp").forEach(b => b.remove());
   const say = ok => {
     btn.textContent = ok ? "복사됨" : "복사 실패";
-    setTimeout(() => { btn.textContent = "⧉ 복사"; }, 1400);
+    setTimeout(() => { btn.innerHTML = mk("copy") + " 복사"; }, 1400);
   };
   try{
     navigator.clipboard.writeText(cl.textContent).then(() => say(true),

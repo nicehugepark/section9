@@ -11,8 +11,6 @@
 .term .ev.agent{opacity:.7;padding-left:12px;border-left:1px solid #3a4655}
 .term .hd{font-weight:600}
 .term details summary{cursor:pointer;list-style:none}
-.term details summary::before{content:"▸ "}
-.term details[open] summary::before{content:"▾ "}
 .term .meta{color:#5c6878;font-size:11px}
 /* 이 판의 빈 자리도 두 줄이다(REQ-20260907-019). 터미널 뷰는 tone 토큰 밖의
    고정 다크라 --muted 를 물려받으면 배경에 잠긴다 — 세 층을 여기서 준다. */
