@@ -440,11 +440,88 @@ class StallRendersTheSame(unittest.TestCase):
          "title": "붙어 있는데 조용하다", "user": "u", "stall_state": "attached",
          "hand_mins": 3, "quiet_mins": 34,
          "stoppable": {"kind": "session", "session": "abcd1234"}},
+        # 담당 컴퓨터가 **다른** 것 — 여기서는 못 이어간다 (REQ-20260911-002)
+        {"id": "REQ-O", "type": "request", "status": "in-progress",
+         "title": "저 컴퓨터의 일", "user": "u", "needs_machine": "OTHER-PC",
+         "stalled_mins": 45, "quiet_mins": 45,
+         "updated": "2026-08-29T16:45:00+09:00"},
+        # 담당 컴퓨터가 **이 컴퓨터**인 것 — 지금처럼 이어갈 수 있다 (회귀)
+        {"id": "REQ-P", "type": "request", "status": "in-progress",
+         "title": "이 컴퓨터의 일", "user": "u", "needs_machine": "THIS-PC",
+         "stalled_mins": 45, "quiet_mins": 45,
+         "updated": "2026-08-29T16:45:00+09:00"},
     ]
 
-    # 진행 축이 세울 수 있는 캡션은 셋뿐이다 (규칙 1·2). 「진행 중」·「담당」·
+
+    # ---------- 못 누를 손잡이는 세우지 않는다 (REQ-20260911-002) ----------
+    def test_no_play_where_this_computer_cannot_play(self):
+        """담당 컴퓨터가 다른 카드에는 ▶ 가 서지 않는다.
+
+        주인 물음 2026-09-11 08:42: 「맥에서 진행되는 작업인데, 이 머신에서
+        play 해도 맥에서 다시 이어지는건가? 아니면 여기서 진행되나?」 —
+        답은 **둘 다 아니다**. 서버가 「이 요청은 <그 컴퓨터> 에서 합니다」로
+        거부한다(_spawn_worker 의 needs_machine 검사). 사실 줄은 이미
+        「… 을 기다리는 중」으로 갈라져 있었는데 손잡이만 그 갈래를 몰라서,
+        카드가 기다린다고 적어 놓고 그 옆에 눌러도 안 되는 ▶ 를 세웠다.
+        """
+        out = self.render(self.ROWS)
+        o = out["REQ-O"]
+        self.assertNotIn("data-wake=", o["belt"],
+                         "저 컴퓨터의 일인데 이 컴퓨터에 ▶ 가 섰다 — 눌러도 거부된다")
+        self.assertNotIn("data-wake=", o["card"], "카드 어디에도 서면 안 된다")
+        self.assertNotIn("data-wake=", o["docbelt"], "문서 머리 띠에도 서면 안 된다")
+        # 그 대신 카드가 무엇을 기다리는지는 그대로 말한다
+        self.assertIn("OTHER-PC", o["row"], "무엇을 기다리는지 말하지 않는다")
+        self.assertIn("기다리는 중", o["row"])
+
+    def test_the_column_badge_counts_what_the_handles_count(self):
+        """열 머리의 「멈춤 N」과 ▶ 가 선 카드 수는 같아야 한다.
+
+        card.js 의 그 자리 주석이 세운 규율이다 — 배지가 세는 수와 손잡이가 선
+        카드 수가 어긋나면 사람은 배지를 세다 말고 카드를 센다. 담당 컴퓨터를
+        기다리는 카드에서 ▶ 를 걷으면서 배지만 그대로 두면 그 어긋남이 난다.
+        """
+        # 배지는 열을 짓는 함수 안에 있어 행 하나로는 못 그린다 — 그래서 여기서
+        # 재는 것은 **두 자리가 같은 술어를 쓰는가**다. 세는 자리와 세우는 자리가
+        # 각자 판정하면 언젠가 갈린다(이 파일이 조각을 원문에서 떠 오는 이유).
+        m = re.search(r"const stalls = key === \"in-progress\"\s*\n?\s*\?([^;]+);",
+                      self.src)
+        self.assertIsNotNone(m, "열 머리의 멈춤 수를 세는 자리를 못 찾았다")
+        self.assertIn("waitingMachine(r)", m.group(1),
+                      "배지가 담당 컴퓨터를 기다리는 카드까지 「멈춤」으로 센다 — "
+                      "그 카드에는 ▶ 도 안 서고 줄도 「기다리는 중」이다")
+        wake = _grab(self.src, "wakeBtnHTML")
+        self.assertIn("waitingMachine(r)", wake, "손잡이 쪽 술어가 사라졌다")
+        # 그리고 실제로 그려 본다 — 술어가 같아도 그리는 자리가 다를 수 있다.
+        out = self.render(self.ROWS)
+        self.assertNotIn("data-wake=", out["REQ-O"]["belt"])
+        self.assertIn("data-wake=", out["REQ-P"]["belt"])
+
+    def test_play_still_stands_where_this_computer_can_play(self):
+        """회귀 — 담당 컴퓨터가 이 컴퓨터면, 그리고 담당이 없으면 그대로 선다."""
+        out = self.render(self.ROWS)
+        self.assertIn("data-wake=", out["REQ-P"]["belt"],
+                      "이 컴퓨터가 담당인데 ▶ 가 사라졌다")
+        self.assertIn("data-wake=", out["REQ-A"]["belt"],
+                      "담당 컴퓨터가 없는 카드의 ▶ 까지 걷었다")
+
+    def test_a_held_card_keeps_its_handle_whatever_the_machine(self):
+        """사람이 중단해 둔 것은 그대로다 — 그것은 이어가기가 아니라 정책이다."""
+        rows = [dict(r) for r in self.ROWS]
+        for r in rows:
+            if r["id"] == "REQ-M":
+                r["needs_machine"] = "OTHER-PC"
+        out = self.render(rows)
+        self.assertIn("data-restart=", out["REQ-M"]["belt"],
+                      "중단해 둔 카드의 ↻ 까지 걷었다")
+
+    # 진행 축이 세울 수 있는 캡션은 넷뿐이다 (규칙 1·2). 「진행 중」·「담당」·
     # 「손길」 캡션이 이 목록에 없는 것이 이 개정의 전부다.
-    AXIS_CAPS = ("중단", "멈춤", "오래 걸림")
+    # 「담당 컴퓨터」는 REQ-20260910-017 이 세운 넷째 갈래다 — 그때 이 목록에
+    # 못 들어온 것은 픽스처에 needs_machine 행이 없어 한 번도 안 그려졌기
+    # 때문이고, REQ-20260911-002 가 그 행을 세우며 드러났다. 다른 축이 아니라
+    # 같은 축의 넷째 얼굴이라(사다리 안에서 자기 차례에 선다) 자격이 있다.
+    AXIS_CAPS = ("중단", "멈춤", "오래 걸림", "담당 컴퓨터")
     DEAD_CAPS = ("진행 중", "담당", "손길", "맡은 손")
 
     @staticmethod

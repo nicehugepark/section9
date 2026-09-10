@@ -835,6 +835,15 @@ function wakeBtnHTML(r, wordy){
   const held = heldState(r);
   const st = held ? null : stallState(r);
   if (!held && !st) return "";
+  /* 담당 컴퓨터를 기다리는 카드에는 서지 않는다 (REQ-20260911-002, 주인 물음
+     2026-09-11 08:42: 「이 머신에서 play 해도 맥에서 다시 이어지는건가?」).
+     답은 둘 다 아니다 — 서버가 「이 요청은 <그 컴퓨터> 에서 합니다」로 거부한다
+     (_spawn_worker 의 needs_machine 검사). 사실 줄은 이미 「… 을 기다리는 중」
+     으로 갈라져 있는데(machine.js waitingRowHTML) 손잡이만 그 갈래를 몰라서,
+     카드가 「기다리는 중」이라 적어 놓고 그 옆에 눌러도 안 되는 ▶ 를 세웠다.
+     여기서 할 수 있는 일은 그 줄의 「이 컴퓨터로 바꾸기」 하나다.
+     사람이 중단해 둔 것(held)은 그대로다 — 그것은 이어가기가 아니라 정책이다. */
+  if (!held && waitingMachine(r)) return "";
   if (st && r.commit_drift) return "";
   const going = wokePending(r.id);
   /* 손 위의 글은 **[이 카드의 처지] — [누르면 무엇이 되나]** 다 (REQ-20260830-042
@@ -2676,8 +2685,12 @@ function colHTML(key, label, color, grp){
      것을 굳이 말하는 자리가 늘면 있는 것이 묻힌다. */
   // 세는 술어도 카드가 쓰는 그 하나다 (REQ-20260828-041 2차) — 배지가 세는 수와
   // 손잡이가 선 카드 수가 어긋나면, 사용자는 배지를 세다 말고 카드를 센다.
+  // 담당 컴퓨터를 기다리는 카드는 이 수에서 빠진다 (REQ-20260911-002) — 바로 위
+  // 주석이 세운 그 규율이다: 배지가 세는 수와 손잡이가 선 카드 수는 같아야 한다.
+  // 그 카드에는 ▶ 가 서지 않고(wakeBtnHTML) 사실 줄도 「멈춤」이 아니라
+  // 「담당 컴퓨터 … 을 기다리는 중」이다. 저 컴퓨터에서는 멈춘 것이 아니다.
   const stalls = key === "in-progress"
-    ? live.filter(r => stallState(r)).length : 0;
+    ? live.filter(r => stallState(r) && !waitingMachine(r)).length : 0;
   // 컬럼은 이제 전부 request 상태다 (REQ-20260825-084로 etc 컬럼 제거) — 드롭 대상 표시 상시
   return `<div class="col" style="--sc:${color}" data-colstatus="${key}"><h2><span class="cdot"></span>${label}<span class="n">${live.length}</span>${stalls ? `<span class="stn" title="이 열의 ${live.length}건 중 ${stalls}건은 문서에 오래 새 기록이 없습니다">멈춤 ${stalls}</span>` : ""}</h2>
     <div class="cards">${body}
