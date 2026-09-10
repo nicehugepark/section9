@@ -73,9 +73,20 @@ def commit_sha7(root, env=None):
 
 
 def commit_req(root, sha):
-    """커밋 메시지의 첫 REQ id — 없으면 ''."""
+    """커밋 메시지의 첫 REQ id — 없으면 ''.
+
+    사람이 쓰는 commit 메시지에는 컴퓨터 표식 없는 짧은 꼴(`REQ-20260910-009`)이
+    흔하다. 그대로 넘기면 같은 번호가 두 컴퓨터에 있을 때 노트도 부모도 「모호한
+    id」로 튕긴다 (REQ-20260910-051, 실제 사고 2026-09-10). 여기서 한 번 푼다 —
+    후보가 하나면 정식 id 로, 여럿이면 짧은 꼴 그대로(부르는 쪽이 그때 물러난다).
+    """
     m = REQ_RE.search(_git(root, "log", "-1", "--format=%B", sha) if sha else "")
-    return m.group(0) if m else ""
+    if not m:
+        return ""
+    try:
+        return _load_s9(root).full_doc_id(m.group(0)) or m.group(0)
+    except Exception:
+        return m.group(0)
 
 
 def _s9_bin(root):
@@ -215,12 +226,27 @@ def _create_red_request(root, pend, env):
             "--goal", "실패한 파일이 통과하고 통과 기록이 남는다",
             "--summary", f"{label} 의 백그라운드 전체 테스트가 실패했고 "
                          f"{GRACE_SEC // 60}분 안에 고쳐지지 않았다 — {', '.join(files)[:120]}",
-            "--body", body]
-    if req:
-        args += ["--parent", req]
-    r = _s9(root, *args, env=env)
-    m = REQ_RE.search(r.stdout or "")
-    new_id = m.group(0) if (r.returncode == 0 and m) else ""
+            ]
+
+    def _try(extra_body="", parent=""):
+        a = list(args) + ["--body", body + extra_body]
+        if parent:
+            a += ["--parent", parent]
+        rr = _s9(root, *a, env=env)
+        mm = REQ_RE.search(rr.stdout or "")
+        return rr, (mm.group(0) if (rr.returncode == 0 and mm) else "")
+
+    # 부모는 **있으면 좋은 것**이지 이 요청이 서는 조건이 아니다
+    # (REQ-20260910-051, 실제 사고 2026-09-10). commit 메시지에서 뽑은 id 는
+    # 컴퓨터 표식이 없는 짧은 꼴이라 같은 번호가 두 컴퓨터에 있으면 모호해진다
+    # — 그때 부모 하나 때문에 요청 전체가 안 서면, 부르는 워처가 30초마다 다시
+    # 걸어 같은 요청이 쌓인다(그날 여섯 건). 부모가 걸리면 부모를 빼고 한 번 더
+    # 걸고, 못 이은 사실과 사유를 본문에 적는다.
+    r, new_id = _try(parent=req)
+    if not new_id and req:
+        why = (r.stderr or r.stdout).strip().splitlines()[-1][:160] if (r.stderr or r.stdout).strip() else "사유 없음"
+        r, new_id = _try(extra_body=f"\n\n부모를 잇지 못했다 — `{req}` (사유: {why})."
+                                    f" 손으로 이으려면 `s9 link <이 요청> --parent <전체 id>`.")
     if not new_id:
         print(f"[알림] 후속 요청을 못 만들었다: {(r.stderr or r.stdout).strip()[:200]}",
               file=sys.stderr)

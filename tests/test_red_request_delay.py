@@ -95,6 +95,10 @@ def marker(sha):
     return os.path.join(ROOT, "state", "tests-async", f"{sha}.req")
 
 
+def tearDownModule():
+    shutil.rmtree(ROOT, ignore_errors=True)
+
+
 class RedRequestDelay(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -106,10 +110,6 @@ class RedRequestDelay(unittest.TestCase):
                       "--body", "x").split()[0]
         bind("sess1234", active=[cls.req])
         cls.on = env_for(S9_TESTS_ASYNC="1")
-
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(ROOT, ignore_errors=True)
 
     def setUp(self):
         pin_env()
@@ -280,6 +280,97 @@ class RedRequestDelay(unittest.TestCase):
         self.assertEqual(hook("고침\n"), (0, ""))
         os.unlink(red_path)
         self.assertEqual(hook("고침\n"), (0, ""))   # 기록이 없으면 조용
+
+
+class TheParentIsNotACondition(unittest.TestCase):
+    """부모 하나 때문에 요청이 안 서거나, 반쯤 선 문서가 남지 않는다 (REQ-20260910-051).
+
+    실제 사고 2026-09-10: commit 메시지에서 뽑은 부모 id 는 컴퓨터 표식이 없는
+    짧은 꼴(`REQ-20260910-009`)인데 같은 번호가 두 컴퓨터에 있었다. `s9 new` 는
+    문서를 다 쓴 **뒤에** 부모를 찾다 「모호한 id」로 죽었고, 부르는 워처는
+    실패로 읽어 30초마다 다시 걸었다 — 같은 요청이 여섯 개 섰고 전부 부모가
+    풀리지 않은 채였다. 여기서 못박는 것 둘: 실패한 `s9 new` 는 **아무것도
+    남기지 않는다** · 실패 요청은 부모를 못 이어도 **한 번은** 선다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        pin_env()
+        cls.req = cli("new", "request", "--title", "부모 후보", "--summary", "s",
+                      "--size", "S", "--user", "alice", "--goal", "g",
+                      "--body", "x").split()[0]
+        # 같은 번호·다른 컴퓨터 표식 — 모호함을 만든다.
+        src = an._load_s9(ROOT).locate(cls.req)
+        cls.twin = cls.req.rsplit("-", 1)[0] + "-zz99"
+        dst = os.path.join(os.path.dirname(src), cls.twin + ".md")
+        with open(src, encoding="utf-8") as f:
+            body = f.read()
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write(body.replace(cls.req, cls.twin))
+        cli("index", "rebuild")
+        cls.short = cls.req.rsplit("-", 1)[0]      # 표식을 뗀 짧은 꼴
+
+    def setUp(self):
+        pin_env()
+        an.clear_pending(ROOT)
+
+    def _new(self, *extra):
+        return subprocess.run(
+            [S9, "new", "request", "--title", "부모 시험", "--summary", "s", "--size", "S",
+             "--user", "alice", "--goal", "g", "--body", "b", *extra],
+            capture_output=True, text=True, env=env_for(), stdin=subprocess.DEVNULL)
+
+    def test_n1_a_missing_parent_leaves_nothing_behind(self):
+        """N1. 없는 부모 — 죽되 문서는 하나도 안 생긴다."""
+        n = len(req_docs())
+        r = self._new("--parent", "REQ-20200101-999")
+        self.assertNotEqual(0, r.returncode, r.stdout)
+        self.assertEqual(n, len(req_docs()),
+                         "실패했는데 문서가 남았다 — 반쯤 쓴 문서는 다음 회차를 부른다")
+
+    def test_n2_an_ambiguous_parent_leaves_nothing_behind(self):
+        """N2. 모호한 부모(같은 번호가 두 컴퓨터에) — 죽되 문서는 안 생긴다."""
+        n = len(req_docs())
+        r = self._new("--parent", self.short)
+        self.assertNotEqual(0, r.returncode, r.stdout)
+        self.assertIn("모호한 id", r.stderr + r.stdout)
+        self.assertEqual(n, len(req_docs()))
+
+    def test_n3_a_good_parent_still_links_both_ways(self):
+        """N3. 회귀 — 제대로 된 부모는 그대로 이어지고 부모의 children 에 든다."""
+        n = len(req_docs())
+        r = self._new("--parent", self.req)
+        self.assertEqual(0, r.returncode, r.stderr)
+        new_id = r.stdout.split()[0]
+        self.assertEqual(n + 1, len(req_docs()))
+        self.assertIn(f"parent: {self.req}", cli("show", new_id, "--meta"))
+        self.assertIn(new_id, cli("show", self.req, "--meta"))
+
+    def test_r7_a_red_request_stands_even_when_the_parent_will_not_resolve(self):
+        """R7. 부모가 모호해도 실패 요청은 선다 — 부모 없이, 그 사실을 본문에 적고."""
+        n = len(req_docs())
+        an.notify_full_result(False, ["test_z.py"], 100, 297, where="원격 머신", root=ROOT,
+                              env=self.on if hasattr(self, "on") else env_for(S9_TESTS_ASYNC="1"),
+                              sha="eee0001", req=self.short, now=T)
+        new_id = an.pending_red_tick(ROOT, now=T + 30 * MIN, env=env_for(S9_TESTS_ASYNC="1"))
+        self.assertTrue(new_id.startswith("REQ-"), f"부모 하나 때문에 요청이 안 섰다: {new_id!r}")
+        self.assertEqual(n + 1, len(req_docs()))
+        doc = cli("show", new_id)
+        self.assertIn("부모를 잇지 못했다", doc, "못 이은 사실이 본문에 없다")
+        self.assertIn(self.short, doc, "어느 부모였는지가 본문에 없다")
+
+    def test_r8_it_does_not_stand_again_on_the_next_tick(self):
+        """R8. 그 뒤 틱은 다시 세우지 않는다 — 30초마다 쌓이던 자리다."""
+        an.notify_full_result(False, ["test_y.py"], 100, 297, where="원격 머신", root=ROOT,
+                              env=env_for(S9_TESTS_ASYNC="1"), sha="fff0001",
+                              req=self.short, now=T)
+        first = an.pending_red_tick(ROOT, now=T + 30 * MIN, env=env_for(S9_TESTS_ASYNC="1"))
+        self.assertTrue(first.startswith("REQ-"))
+        n = len(req_docs())
+        for k in range(1, 4):
+            self.assertEqual("", an.pending_red_tick(
+                ROOT, now=T + (30 + k) * MIN, env=env_for(S9_TESTS_ASYNC="1")))
+        self.assertEqual(n, len(req_docs()), "틱마다 같은 요청이 또 섰다")
 
 
 if __name__ == "__main__":

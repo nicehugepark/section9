@@ -3291,6 +3291,15 @@ def cmd_new(args):
 
     if getattr(args, "root", False) and args.parent:
         die("--root 와 --parent 는 배타다 — 파생이면 --parent, 새 주제면 --root (REQ-20260909-073)")
+    # 부모는 **쓰기 전에** 푼다 (REQ-20260910-051, 실제 사고 2026-09-10):
+    # 옛 순서는 문서를 다 쓴 다음에야 부모를 찾았고, 그 자리에서 죽으면 부모
+    # 없는 문서 하나가 남은 채 종료 코드만 실패였다. 부르는 쪽(전체 테스트
+    # 실패 요청)은 실패로 읽어 30초 뒤 다시 걸었고, 같은 요청이 여섯 개 섰다.
+    # find_path 는 모호하거나 없으면 여기서 죽는다 — 아무것도 만들지 않은 채로.
+    parent_path, parent_id = "", ""
+    if args.parent:
+        parent_path = find_path(args.parent)
+        parent_id = _frontmatter_id(parent_path) or full_doc_id(args.parent)
     dup = (_recent_duplicate(args.doc_type, args.title, original)
            if "auto-audit" in (args.tag_list or []) else None)
     if dup:
@@ -3318,7 +3327,7 @@ def cmd_new(args):
             "needs_machine": getattr(args, "needs_machine", "") or "",
             # 짧은 id(REQ-20260906-009)는 정식 id 로 — 짧은 채 적히면 뒤의 정규화가
             # 못 찾아 지운다(실제 사고 2026-09-06: 044 의 parent 가 사라졌다, REQ-20260906-048)
-            "parent": full_doc_id(args.parent) if args.parent else "", "children": [],
+            "parent": parent_id, "children": [],
             "root": "true" if getattr(args, "root", False) else "",   # 뿌리 명시 (REQ-20260909-073)
             "derived_from": full_doc_id(args.derived_from) if args.derived_from else "",
             "relates": args.relates or [],
@@ -3344,15 +3353,14 @@ def cmd_new(args):
                 f"- {ts} created by {user} (status: {meta['status']})\n")
         write_doc(path, meta, body)
 
-        if args.parent:
-            ppath = find_path(args.parent)
-            pmeta, pbody = read_doc(ppath)
+        if parent_path:
+            pmeta, pbody = read_doc(parent_path)
             children = pmeta.get("children", [])
             if doc_id not in children:
                 children.append(doc_id)
                 pmeta["children"] = children
                 pmeta["updated"] = ts
-                write_doc(ppath, pmeta, pbody)
+                write_doc(parent_path, pmeta, pbody)
 
         rebuild_index(quiet=True)
     finally:
