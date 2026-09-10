@@ -111,7 +111,10 @@ class WakeHandle(unittest.TestCase):
                 self.assertIn("stallHTML(stallDoc)", self.src, "문서 화면이 안 부른다")
                 # 조각이 둘이 된 뒤로도 **둘 다** 같은 함수에서 온다 (REQ-20260830-040) —
                 # 벨트를 문서에서 빼면 문서 화면만 손잡이를 잃는다.
-                self.assertIn("deedBeltHTML(r)", self.card, "보드 카드가 벨트를 안 부른다")
+                # 카드도 `wordy` 로 부른다 (REQ-20260910-009 반려 재작업) — 그림이
+                # 아니라 낱말이 서고, 그림은 CSS 가 카드에서만 감춘다.
+                self.assertRegex(self.card, r"deedBeltHTML\(r(, *true)?\)",
+                                 "보드 카드가 벨트를 안 부른다")
                 # 문서는 낱말 얼굴(wordy)로 부른다 (REQ-20260830-046) — 함수는 같다.
                 # **무엇을 넘기는지는 이 계약이 아니다** (REQ-20260907-046): 인자를
                 # 글자 그대로 못 박았더니 REQ-20260907-027 이 색인에 없는 문서까지
@@ -319,9 +322,8 @@ class ThePaintIsNotTheTarget(unittest.TestCase):
         with self.subTest("the_focus_ring_rounds_the_circle_not_the_target"):
             ring = [d for s, d in self.belt if "focus-visible" in s]
             self.assertTrue(ring, "글리프 손잡이의 포커스 링 규칙이 없다")
-            # -7px = 안여백(과녁 28 과 원 14 의 차의 반) — 링은 원 둘레에
-            # 두른다 (REQ-20260910-009 S1 로 27/13 에서 28/14 로 옮겼다).
-            self.assertIn("outline-offset:-7px", ring[0])
+            # -6px = 안여백(과녁 27 과 원 13 의 차의 반) — 링은 원 둘레에 두른다.
+            self.assertIn("outline-offset:-6px", ring[0])
         with self.subTest("an_inverted_card_inverts_the_chip_too"):
             inv = [d for s, d in self.belt
                    if '[data-skin="terminal"]' in s and ".card:hover" in s]
@@ -512,7 +514,7 @@ class TheMarkSharesOneStage(unittest.TestCase):
                                 "옛 그림자 맥박을 다시 부른다")
         with self.subTest("the_glyph_grid_is_the_pixel_grid"):
             boxes = {}
-            for name in ("GLYPH_PLAY", "GLYPH_PAUSE"):
+            for name in ("GLYPH_PLAY", "GLYPH_STOP"):
                 m = re.search(r"const %s = ([\s\S]*?;)" % name, self.src)
                 self.assertIsNotNone(m, name)
                 v = re.search(r'viewBox="0 0 (\d+) (\d+)"', m.group(1))
@@ -521,12 +523,12 @@ class TheMarkSharesOneStage(unittest.TestCase):
                                  "%s 의 눈금이 정사각이 아니다" % name)
                 boxes[name] = int(v.group(1))
             self.assertEqual(len(set(boxes.values())), 1,
-                             "▶ 와 ⏸ 가 서로 다른 눈금을 쓴다: %s" % boxes)
+                             "▶ 와 ■ 가 서로 다른 눈금을 쓴다: %s" % boxes)
             n = next(iter(boxes.values()))
-            pause = re.search(r"const GLYPH_PAUSE = ([\s\S]*?;)", self.src).group(1)
+            pause = re.search(r"const GLYPH_STOP = ([\s\S]*?;)", self.src).group(1)
             for v in re.findall(r'(?<=[\s"])(?:x|y|width|height)="([^"]+)"', pause):
                 self.assertRegex(v, r"^\d+$",
-                                 "⏸ 좌표 %s 가 정수가 아니다 — 화소 격자에서 "
+                                 "■ 좌표 %s 가 정수가 아니다 — 화소 격자에서 "
                                  "내린다" % v)
             seen = 0
             for sel, dec in self.rules:

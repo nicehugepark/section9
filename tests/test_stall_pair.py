@@ -314,7 +314,7 @@ class StallRendersTheSame(unittest.TestCase):
             # 문서가 같은 그림을 그리는지 보는 이 시험의 판정 대상이기도 하다.
             _const(self.src, "DRIFT_LABEL"),
             _const(self.src, "GLYPH_PLAY"),
-            _const(self.src, "GLYPH_PAUSE"),
+            _const(self.src, "GLYPH_STOP"),
             # 눌린 손잡이의 잠금 표시도 원문에서 (REQ-20260831-009) — 이 시험이
             # 재는 것이 바로 "되돌아온 ▶ 가 잠겨 있나"라, 베끼면 판정이 거짓이 된다.
             _const(self.src, "DEED_BUSY"),

@@ -16,7 +16,11 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSS = os.path.join(ROOT, "web", "css")
 
-GRADES = {"--ctl-lg": "36px", "--ctl-md": "28px", "--ctl-sm": "20px"}
+# md 가 27 인 것은 실측이 정했다 — 그림 13 + 안여백 6x2 + 테 1x2.
+# 28/14 로 옮겼더니 비정수 배율에서 잉크가 원 중심에서 0.5화소 치우쳤다
+# (test_hover_realscale, REQ-20260910-009). 값이 셋이라는 것이 규율이지
+# 그 값이 4의 배수라는 것이 규율이 아니다.
+GRADES = {"--ctl-lg": "36px", "--ctl-md": "27px", "--ctl-sm": "20px"}
 
 
 def _read(name):
@@ -129,40 +133,48 @@ class TheGlyphInkIsLighterThanBefore(unittest.TestCase):
         self.assertIsNotNone(m, name)
         return m.group(1)
 
-    def test_the_bars_are_bars_not_slabs(self):
-        """막대는 높이가 폭의 세 배 이상이다 — 3x7 은 슬래브였다."""
-        pause = self._glyph("GLYPH_PAUSE")
-        bars = re.findall(r'width="(\d+)" height="(\d+)"', pause)
-        self.assertEqual(len(bars), 2, "⏸ 의 막대가 둘이 아니다")
-        for w, h in bars:
-            self.assertGreaterEqual(
-                int(h), int(w) * 3,
-                "막대 %sx%s 는 비율 1:3 에 못 미친다 — 네모난 덩어리로 "
-                "읽힌다" % (w, h))
+    def test_the_stop_mark_is_a_square_not_a_player_glyph(self):
+        """멈춤 마크는 **채운 사각**이다 — 재생기의 두 막대가 아니다.
 
-    def test_the_gap_survives_a_fractional_scale(self):
-        """두 막대 사이 틈은 2px 이상이다.
-
-        1px 은 배율 1.25 에서 1.25 화소라 반올림이 좌우로 갈려, 확대 캡처에서
-        두 막대의 폭과 농도가 다르게 그려졌다.
+        REQ-20260910-009 2차 반려. `||` 는 재생기의 「잠시 멈춤」이라 이 손잡이가
+        하는 일(`STOP_KIND` 셋: 거기서 끝난다 · 중단하라고 전한다 · 하던 일은
+        마치고 멈춘다)과 뜻이 다르다. 셋의 공통은 「잠시」가 아니라 「멎게
+        한다」이고, 그 마크는 재생기에서도 이 제품의 점 어휘에서도 사각이다.
         """
-        pause = self._glyph("GLYPH_PAUSE")
-        xs = [int(x) for x in re.findall(r'x="(\d+)"', pause)]
-        ws = [int(w) for w in re.findall(r'width="(\d+)"', pause)]
-        self.assertEqual(len(xs), 2)
-        gap = max(xs) - (min(xs) + ws[0])
-        self.assertGreaterEqual(gap, 2, "막대 사이 틈이 %dpx 다" % gap)
+        stop = self._glyph("GLYPH_STOP")
+        rects = re.findall(r'width="(\d+)" height="(\d+)"', stop)
+        self.assertEqual(len(rects), 1,
+                         "멈춤 마크가 사각 하나가 아니다 — 막대 둘로 돌아갔나")
+        w, h = int(rects[0][0]), int(rects[0][1])
+        self.assertEqual(w, h, "멈춤 마크가 정사각이 아니다 (%dx%d)" % (w, h))
+        self.assertNotIn("path", stop, "멈춤 마크에 곡선/삼각이 섞였다")
+
+    def test_the_stop_mark_sits_dead_centre(self):
+        """사각은 상자 한가운데다 — 사방 틈이 같고 좌표는 정수다.
+
+        비정수 배율에서 반올림이 갈릴 자리를 만들지 않는다(s9-design 배율 불변).
+        """
+        stop = self._glyph("GLYPH_STOP")
+        box = int(re.search(r'viewBox="0 0 (\d+)', stop).group(1))
+        x = int(re.search(r'x="(\d+)"', stop).group(1))
+        y = int(re.search(r'y="(\d+)"', stop).group(1))
+        w = int(re.search(r'width="(\d+)"', stop).group(1))
+        h = int(re.search(r'height="(\d+)"', stop).group(1))
+        self.assertEqual(x, box - x - w,
+                         "좌우 틈이 다르다 (왼 %d · 오른 %d)" % (x, box - x - w))
+        self.assertEqual(y, box - y - h,
+                         "상하 틈이 다르다 (위 %d · 아래 %d)" % (y, box - y - h))
 
     def test_the_two_faces_weigh_the_same(self):
-        """▶ 와 ⏸ 의 잉크가 ±10% 안이다 — 상태 배타의 전제다.
+        """▶ 와 ■ 의 잉크가 ±10% 안이다 — 상태 배타의 전제다.
 
         「한 축의 두 방향, 하나만 참」을 그림으로 약속하려면 두 그림의 무게가
         같아야 한다 (REQ-20260830-042).
         """
-        pause = self._glyph("GLYPH_PAUSE")
-        ws = [int(v) for v in re.findall(r'width="(\d+)"', pause)]
-        hs = [int(v) for v in re.findall(r'height="(\d+)"', pause)]
-        pink = sum(w * h for w, h in zip(ws, hs))
+        stop = self._glyph("GLYPH_STOP")
+        w = int(re.search(r'width="(\d+)"', stop).group(1))
+        h = int(re.search(r'height="(\d+)"', stop).group(1))
+        pink = w * h
         play = self._glyph("GLYPH_PLAY")
         d = re.search(r'd="([^"]+)"', play).group(1)
         pts = re.findall(r"([\d.]+) ([\d.]+)", d)
@@ -171,7 +183,7 @@ class TheGlyphInkIsLighterThanBefore(unittest.TestCase):
         yink = abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2
         self.assertLessEqual(
             abs(yink - pink) / pink, 0.10,
-            "▶ %.1fpx^2 와 ⏸ %dpx^2 의 무게가 10%% 넘게 다르다" % (yink, pink))
+            "▶ %.1fpx^2 와 ■ %dpx^2 의 무게가 10%% 넘게 다르다" % (yink, pink))
 
     def test_the_resting_ink_is_not_darker_than_the_line(self):
         """쉬는 얼굴의 잉크는 같은 줄의 식별자와 한 층(--faint)이다."""

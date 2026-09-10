@@ -95,7 +95,7 @@ BELT = ('<span class="acts deedbelt"><button type="button" class="deed stop ico"
 def fixture_html():
     """실제 화면과 같은 캐스케이드·같은 마크업 — index.html 이 부르는 CSS 를 같은
     순서로, id 줄은 card.js 가 짓는 그 구조로: 식별자 · 묶음(.idr)[벨트 +
-    .idnow[경과 시각 · 이어 말하기]]. 마크업이 화면과 어긋나면 이 시험은 화면이
+    .idnow[경과 시각 · 행위 묶음 .idact[벨트 · 이어 말하기]]]. 마크업이 화면과 어긋나면 이 시험은 화면이
     아니라 제 픽스처를 잰다 — 084 에서 시각을 카드 직계로 두었더니 「시각이 첫
     줄을 떠났다」로 82px 이 나왔는데, 화면에서는 그 자리가 아니었다."""
     css_files, _ = parts()
@@ -107,16 +107,22 @@ def fixture_html():
         for tag, dot, idn, ela in CARDS:
             dot_html = '<span class="livedot on"></span>' if dot else ""
             cards.append(
-                '<div class="card" data-status="in-progress" id="c-%d-%s"'
+                # 모든 카드를 **집힌 상태**로 세운다 (REQ-20260910-009 3차):
+                # 집힘 낱말과 행위가 어느 얼굴에서도 잉크를 안 나누는지 재려면
+                # 그 낱말이 실제로 그려져 있어야 한다. 004 가 「손 얹히면
+                # 감춘다」로 피하던 겹침을, 이제 **자리**로 피하는지 잰다.
+                '<div class="card picked" data-status="in-progress" id="c-%d-%s"'
                 ' style="--sc:var(--muted)">'
-                '<div class="id">%s<span class="idn">%s</span>'
-                '<span class="idr">%s<span class="idnow">'
+                '<div class="id"><span class="idmark">%s</span>'
+                '<span class="idn">%s</span><span class="pkst">대상</span>'
+                '<span class="idr"><span class="idnow">'
                 '<span class="elapsed">%s</span>'
+                '<span class="idact">%s'
                 '<button type="button" class="pickdoc">이어 말하기</button>'
-                '</span></span></div>'
+                '</span></span></span></div>'
                 '<div class="t">제목 줄은 아래에서 시작한다</div>'
                 '<div class="m"><span class="badge">nice</span></div></div>'
-                % (w, tag, dot_html, idn, BELT, ela))
+                % (w, tag, dot_html, idn, ela, BELT))
         blocks.append('<div class="cards" style="width:%dpx">%s</div>'
                       % (w, "".join(cards)))
     return ('<!doctype html><html lang="ko" data-theme="light"'
@@ -137,6 +143,8 @@ MEASURE_JS = """
     out.push({w: +w, tag,
       card: box(card),
       idn: box(card.querySelector('.idn')),
+      pkst: box(card.querySelector('.pkst')),
+      idact: box(card.querySelector('.idact')),
       idr: box(card.querySelector('.idr')),
       belt: box(card.querySelector('.deedbelt')),
       pick: box(card.querySelector('.pickdoc')),
@@ -274,10 +282,27 @@ class TheIdAndTheClockNeverShareInk(unittest.TestCase):
             # 갈라짐은 세로로만 오지 않는다 — 벨트와 시각이 같은 줄에 있어도 그
             # 사이가 벌어지면 사람은 「⏸ 만 남고 시각은 저쪽」으로 읽는다.
             #
-            # 틈의 상한은 **칸의 최소폭(52px)**이다. 종전에는 손잡이가 흐름에 서서
-            # 칸이 손잡이만큼 넓어졌고 그 상한이 없었다 — 실화면에서 벌어진 것이
-            # 그것이다(주인 캡처 2026-09-09 15:54). 이제 시각이 52px 보다 길면
-            # (1분 넘게 지난 카드 대부분) 틈이 아예 없고, 짧으면 그 차만큼만 남는다.
+            # 틈의 상한을 **새 값으로 다시 세운다** (REQ-20260910-009 반려 재작업).
+            #
+            # 종전 25.0 은 「칸 52 − 가장 짧은 시각(「⏱ 12s」29.7)」에서 온 값이고,
+            # 그 값이 성립하던 전제 둘이 이번에 바뀌었다:
+            #   ① 벨트가 **쉼 얼굴에서 보이지 않는다** — 쉬는 카드에서 사람이 보는
+            #      것은 `식별자 …… 시각` 뿐이라, 벨트와 시각 사이에는 볼 틈이 없다.
+            #      종전 값은 늘 보이던 벨트를 전제로 잰 것이다.
+            #   ② 칸이 52 → 58 로 올랐다 — 벨트가 낱말이 되며 손잡이(56px)가
+            #      기댈 흰 자리가 사라져, 손잡이가 제 폭을 온전히 갖게 했다.
+            #
+            # 그래서 상한을 **고정 숫자에서 유도식으로** 바꾼다. 그 자리는 손잡이의
+            # 주차 공간이므로, 비는 폭은 **주차 공간을 넘지 않아야** 한다:
+            #
+            #     틈 ≤ 붙어 있는 여백 8 + max(0, 칸의 최소폭 58 − 시각의 폭)
+            #
+            # 여백 8 은 늘 있는 것이다 — 벨트의 오른쪽 여백 6(두 낱말이 붙어
+            # 「중단하기이어 말하기」로 읽히던 것을 벌린 값)과 줄의 틈 2.
+            #
+            # 시각이 58 보다 길면 우변이 8 로 떨어져 붙은 것과 같고, 짧을수록
+            # 딱 그 차만큼만 허용된다. 고정값보다 **좁은** 계약이다 — 종전에는 시각이
+            # 아무리 길어도 25 까지 벌어질 수 있었다.
             self.maxDiff = None
             self.assertEqual(
                 [], ["%s 틈=%.1f (벨트 %.1f · 칸 %.1f · 시각 %.1f)"
@@ -286,16 +311,21 @@ class TheIdAndTheClockNeverShareInk(unittest.TestCase):
                         r["idr"]["r"] - r["idr"]["l"],
                         r["ela"]["r"] - r["ela"]["l"])
                      for r in self.rows
-                     if r["ela"]["l"] - r["belt"]["r"] > 25.0],
+                     if r["ela"]["l"] - r["belt"]["r"]
+                     > 8.5 + max(0.0, 58.0 - (r["ela"]["r"] - r["ela"]["l"]))],
                 "벨트와 시각 사이가 칸의 최소폭보다 더 벌어졌다 — 한 묶음으로 "
-                "안 읽힌다")   # 최악은 calm/compact 의 「12s」(시각 29.7px) = 24.3
+                "안 읽힌다")
             self.assertEqual(
                 [], ["%s 틈=%.1f (시각 %.1f)"
                      % (self._where(r), r["ela"]["l"] - r["belt"]["r"],
                         r["ela"]["r"] - r["ela"]["l"])
                      for r in self.rows
-                     if r["ela"]["r"] - r["ela"]["l"] >= 52.0
-                     and r["ela"]["l"] - r["belt"]["r"] >= 6.0],
+                     # 칸의 최소폭 52 → 58, 붙은 상태의 틈 0 → 8
+                     # (REQ-20260910-009 반려 재작업: 벨트가 낱말이 되면서
+                     #  두 낱말 사이에 늘 6px 여백이 서고 줄의 틈 2 가 더해진다.
+                     #  8 은 「붙어 있음」의 새 바닥이지 벌어짐이 아니다.)
+                     if r["ela"]["r"] - r["ela"]["l"] >= 58.0
+                     and r["ela"]["l"] - r["belt"]["r"] > 8.5],
                 "시각이 칸의 최소폭보다 긴데도 벨트와 사이가 벌어졌다 — 칸의 폭을 "
                 "시각 아닌 것이 정하고 있다")
         with self.subTest("the_handle_never_reaches_the_belt_ink"):
@@ -385,6 +415,27 @@ class TheIdAndTheClockNeverShareInk(unittest.TestCase):
                 self.assertLess(
                     abs(r["pick"]["t"] - r["ela"]["t"]), 3.0,
                     "%s 에서 시각과 손잡이가 다른 줄에 있다" % self._where(r))
+        with self.subTest("the_picked_word_keeps_its_ink"):
+            # **004 의 「비켜서기」를 대신하는 계약** (REQ-20260910-009 3차).
+            #
+            # 그때는 손 얹히면 집힘 낱말을 감춰서 겹침을 피했다 — 낱말이 손잡이
+            # 바로 왼쪽에 있었기 때문이다. 이제 낱말은 식별자 뒤(흐름 안)이고
+            # 행위 묶음은 칸의 오른끝(흐름 밖)이라 **자리로** 겹치지 않는다.
+            # 감추지 않고도 지켜지는지를 스킨·밀도·폭·배율 전수로 잰다.
+            bad = []
+            for r in self.rows:
+                a, b = r.get("pkst"), r.get("idact")
+                if not a or not b:
+                    continue
+                same_line = abs(a["t"] - b["t"]) < 8.0
+                overlap = min(a["r"], b["r"]) - max(a["l"], b["l"])
+                if same_line and overlap > 0.5:
+                    bad.append("%s 집힘 낱말과 행위 묶음이 %.1fpx 겹친다"
+                               % (self._where(r), overlap))
+            self.maxDiff = None
+            self.assertEqual([], bad,
+                             "집힘 낱말이 손잡이에 덮인다 — 자리로 못 피하면 "
+                             "004 처럼 감추는 수밖에 없어진다")
         with self.subTest("the_long_id_goes_whole_not_cut"):
             by = {}
             for r in self.rows:

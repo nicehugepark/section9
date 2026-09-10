@@ -244,10 +244,10 @@ def moments(field):
 # ---- 본 시험 ---------------------------------------------------------------
 
 def glyph_sources():
-    """card.js 의 글리프 상수 원문 — {'GLYPH_PAUSE': svg, 'GLYPH_PLAY': svg}."""
+    """card.js 의 글리프 상수 원문 — {'GLYPH_STOP': svg, 'GLYPH_PLAY': svg}."""
     src = open(os.path.join(WEB, "app", "card.js"), encoding="utf-8").read()
     out = {}
-    for name in ("GLYPH_PAUSE", "GLYPH_PLAY"):
+    for name in ("GLYPH_STOP", "GLYPH_PLAY"):
         m = re.search(r"const %s =([^;]+);" % name, src)
         if not m:
             raise AssertionError("card.js 에서 %s 를 못 찾았다" % name)
@@ -279,7 +279,7 @@ def grid():
     for name, svg in gs.items():
         mv = re.search(r'viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"', svg)
         vb[name] = (float(mv.group(1)), float(mv.group(2)))
-        if name == "GLYPH_PAUSE":
+        if name == "GLYPH_STOP":
             rects = re.findall(r'<rect x="([\d.]+)" y="([\d.]+)"'
                                r' width="([\d.]+)" height="([\d.]+)"', svg)
             ink[name] = [tuple(map(float, r)) for r in rects]
@@ -297,8 +297,12 @@ class TheGridKeepsItsContract(unittest.TestCase):
     def setUpClass(cls):
         cls.g = grid()
 
-    def test_the_target_stays_27(self):
-        """원 + 2×padding + 테두리 2 = 과녁 27 (과녁은 1px 도 안 준다)."""
+    def test_the_target_stays_at_the_middle_grade(self):
+        """원 + 2×padding + 테두리 2 = 과녁 27 (손잡이 눈금의 가운데 급).
+
+        28/14 로 옮겨 봤다가 이 시험이 되돌렸다 — 비정수 배율에서 잉크가 원
+        중심에서 0.5화소 치우쳤다 (REQ-20260910-009). 과녁은 1px 도 안 준다.
+        """
         got = self.g["gly"] + 2 * self.g["pad"] + 2
         self.assertAlmostEqual(got, 27.0, places=3,
                                msg="눈금 합이 과녁을 벗어났다: %.3f" % got)
@@ -310,20 +314,20 @@ class TheGridKeepsItsContract(unittest.TestCase):
                              "%s 의 viewBox(%g×%g)가 그림 상자(%g)와 다르다"
                              % (name, w, h, self.g["gly"]))
 
-    def test_the_pause_ink_is_mirror_symmetric_in_source(self):
-        """⏸ 두 막대는 좌우 거울이고 상하 여백이 같다 — 좌표 원천에서."""
-        vbw = self.g["vb"]["GLYPH_PAUSE"][0]
-        (x1, y1, w1, h1), (x2, y2, w2, h2) = self.g["ink"]["GLYPH_PAUSE"]
-        self.assertEqual((y1, h1), (y2, h2), "두 막대의 세로가 다르다")
-        self.assertAlmostEqual(x1, vbw - (x2 + w2), places=3,
-                               msg="두 막대가 좌우 거울이 아니다")
-        self.assertAlmostEqual(y1, self.g["vb"]["GLYPH_PAUSE"][1] - (y1 + h1),
-                               places=3, msg="상하 여백이 다르다")
+    def test_the_stop_ink_is_centred_in_source(self):
+        """■ 는 사방 여백이 같다 — 좌표 원천에서 (REQ-20260910-009 2차)."""
+        vbw, vbh = self.g["vb"]["GLYPH_STOP"]
+        (x, y, w, h), = self.g["ink"]["GLYPH_STOP"]
+        self.assertAlmostEqual(x, vbw - (x + w), places=3,
+                               msg="좌우 여백이 다르다")
+        self.assertAlmostEqual(y, vbh - (y + h), places=3,
+                               msg="상하 여백이 다르다")
+        self.assertEqual(w, h, "정사각이 아니다")
 
 
 def pause_expected_center(g):
-    (x1, y1, w1, h1), (x2, y2, w2, h2) = g["ink"]["GLYPH_PAUSE"]
-    return ((x1 + x2 + w2) / 2.0, y1 + h1 / 2.0)
+    (x, y, w, h), = g["ink"]["GLYPH_STOP"]
+    return (x + w / 2.0, y + h / 2.0)
 
 
 def play_expected_center(g):
@@ -361,13 +365,17 @@ def _card_html(suffix, nudge, glyphs):
             '<div class="card" data-status="in-progress"'
             ' style="--sc:var(--muted)">'
             '<div class="id"><span class="idn">REQ-20260831-006</span>'
-            '<span class="acts deedbelt">'
+            # 벨트는 쉼 얼굴에서 감춰진다 (REQ-20260910-009 3차 — id 줄은
+            # 라벨만 진다). 이 시험이 재는 것은 **그림의 기하**이지 언제 보이는가가
+            # 아니므로, 픽스처에서는 명시로 보이게 세운다. 보이고 안 보이고는
+            # tests/test_wake_handle.py 와 실화면 캡처가 따로 잰다.
+            '<span class="acts deedbelt" style="visibility:visible">'
             '<button type="button" class="deed stop ico" id="pp%s"'
             ' aria-label="중단해 두기">%s</button>'
             '<button type="button" class="deed wake ico" id="ww%s"'
             ' aria-label="이어가기">%s</button>'
             "</span></div></div></div>"
-            % (nudge, nudge, suffix, glyphs["GLYPH_PAUSE"],
+            % (nudge, nudge, suffix, glyphs["GLYPH_STOP"],
                suffix, glyphs["GLYPH_PLAY"]))
 
 
@@ -566,7 +574,7 @@ class TheHoverFaceIsSymmetricAtEveryScale(unittest.TestCase):
         결함이었다 — 한도는 그 아래). 기대 중심은 좌표 원천에서 읽는다."""
         g = grid()
         ex, ey = pause_expected_center(g)
-        vb = g["vb"]["GLYPH_PAUSE"]
+        vb = g["vb"]["GLYPH_STOP"]
         for s, name, m in self._each():
             if not name.startswith("pause"):
                 continue

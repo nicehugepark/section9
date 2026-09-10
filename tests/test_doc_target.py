@@ -48,7 +48,11 @@ class DocTarget(unittest.TestCase):
             # 늘 떠 있는 버튼은 제목보다 먼저 읽힌다 — 얹었을 때만
             css = self._css_card()
             self.assertIn("display:none", css, "손잡이가 카드마다 상시로 붙어 있다")
-            self.assertIn(".card:hover .pickdoc", css)
+            # 손잡이는 이제 행위 묶음(.idact) 안에 있고 그 묶음이 함께 뜬다
+            # (REQ-20260910-009 3차 — 행위를 라벨 줄의 흐름에서 뺐다). 고정할
+            # 성질은 「얹었을 때만 뜬다」이지 그 규칙이 걸린 선택자가 아니다.
+            self.assertRegex(css, r"\.card:hover \.(pickdoc|idact)",
+                             "얹었을 때 손잡이가 뜨는 규칙이 없다")
             self.assertIn(":focus-visible", css, "키보드로는 손잡이를 볼 수 없다")
         with self.subTest("the_viewer_can_pick_too"):
                 self.assertIn('data-pick="${esc(m.id)}"', self.src,

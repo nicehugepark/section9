@@ -108,15 +108,19 @@ class TheIdNeverCoversTheClock(unittest.TestCase):
                     "absolute", (_decl(dec, "position") or ""),
                     "%s 가 흐름 밖으로 떴다 — 벨트만 흐름에 남아 좁은 카드에서 "
                     "묶음이 갈라진다" % sel)
-            pick = [d for s2, d in self.rules if s2.endswith(".card .pickdoc")]
-            self.assertTrue(pick, "`.card .pickdoc` 규칙이 없다")
+            # 떠 있는 것은 이제 손잡이 하나가 아니라 **행위 묶음**이다
+            # (REQ-20260910-009 3차: 벨트와 「이어 말하기」가 성격이 같아 한
+            # 묶음으로 묶였다 — s9-design 전 스킨 검수 규칙 2). 계약의 주어만
+            # 옮겼고 계약 자체는 그대로다: 흐름 밖 · 칸의 오른끝.
+            pick = [d for s2, d in self.rules if s2.endswith(".card .idact")]
+            self.assertTrue(pick, "`.card .idact` 규칙이 없다")
             self.assertEqual(
                 "absolute", (_decl(pick[0], "position") or ""),
-                "손잡이가 흐름에 섰다 — 칸의 폭을 제 낱말로 넓혀 벨트와 시각 "
-                "사이를 벌린다")
+                "행위 묶음이 흐름에 섰다 — 칸의 폭을 제 낱말로 넓혀 라벨 줄의 "
+                "폭을 먹는다")
             self.assertEqual(
                 "0", (_decl(pick[0], "right") or "").replace("px", ""),
-                "손잡이가 칸의 오른끝에 안 맞는다 — 시각과 오른끝이 갈리면 손이 "
+                "행위 묶음이 칸의 오른끝에 안 맞는다 — 시각과 오른끝이 갈리면 손이 "
                 "얹힐 때 자리가 옮겨 보인다")
             self.assertEqual(
                 "relative", (_decl(cell[0], "position") or ""),

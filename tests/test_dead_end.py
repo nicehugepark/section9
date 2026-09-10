@@ -177,7 +177,10 @@ class DeadEnd(unittest.TestCase):
             # ---------- ⑤ 같은 행동은 두 화면에서 같은 규칙 ----------
         with self.subTest("w3_card_and_doc_call_the_same_gate"):
                 self.assertIn("const stall = stallHTML(r);", self.card)
-                self.assertIn("const belt = deedBeltHTML(r);", self.card)
+                # wordy 는 **얼굴 인자일 뿐 조건이 아니다** — 카드도 낱말을 입으면서
+                # `deedBeltHTML(r, true)` 가 됐다(REQ-20260910-009). 고정할 성질은
+                # 두 화면이 같은 함수를 지난다는 것이지 인자의 수가 아니다.
+                self.assertRegex(self.card, r"const belt = deedBeltHTML\(r[,)]")
                 m = re.search(r"const stallRow = ([\s\S]+?);\n", self.src)
                 self.assertTrue(m, "문서 화면이 조각을 잇는 자리가 없다")
                 made = " ".join(m.group(1).split())

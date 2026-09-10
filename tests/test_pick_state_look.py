@@ -102,17 +102,38 @@ class PickStateLook(unittest.TestCase):
                 for part in sel.split(","):
                     if ".picked" in part:
                         self.fail("집힌 카드가 경과시각을 지운다: " + part.strip())
-        with self.subTest("the_word_steps_aside_while_the_pointer_is_there"):
-            # 손잡이는 이 칸 안에 떠 있어 칸을 넓히지 않는다(REQ-20260909-084) —
-            # 대신 제 낱말이 칸의 최소폭보다 넓으면 왼쪽으로 넘쳐 바로 옆의 집힘
-            # 낱말을 덮는다. 넘침 폭은 글꼴이 정한다(실측: 이 판 3.9px · 주인
-            # Chrome 에서는 「대상」의 절반, REQ-20260910-004). 칸을 넓히는 것은
-            # 084 를 되돌리는 길이라, 시각이 쓰는 그 교대를 낱말도 쓴다.
-            hit = [part for sel, css in rules_for(self.src, ".pkst")
-                   if "visibility:hidden" in css.replace(" ", "")
-                   for part in sel.split(",") if ":hover" in part]
-            self.assertTrue(hit, "얹었을 때 집힘 낱말이 손잡이에게 자리를 "
-                                 "비키는 규칙이 없다 — 손잡이가 그 글자를 덮는다")
+        with self.subTest("the_word_and_the_handles_never_share_ink"):
+            # **004 의 「비켜서기」는 물러났다** (REQ-20260910-009 3차).
+            #
+            # 그 규칙(손 얹히면 집힘 낱말을 감춘다)의 까닭은 「손잡이가 칸을
+            # 넘쳐 바로 옆의 「대상」을 덮는다」였다 — 낱말이 오른쪽 묶음의
+            # 첫 자식이라 손잡이 바로 왼쪽에 있었기 때문이다. 3차에서 낱말을
+            # **식별자 바로 뒤**로 옮기고 행위 둘을 각자 제 자리(점의 자리 ·
+            # 시각 칸의 떠 있는 묶음)로 보내면서 **덮을 거리가 사라졌다**.
+            # 지속 상태를 찰나의 규칙으로 감추던 것이니, 까닭이 사라졌으면
+            # 규칙도 물러나는 것이 맞다.
+            #
+            # 계약은 지우지 않고 **다시 세운다**: 감추는 것으로 겹침을 피하는
+            # 대신, **자리로** 겹치지 않게 한다. 집힘 낱말은 흐름 안(식별자
+            # 뒤)이고 행위 묶음은 흐름 밖(칸의 오른끝)이라, 어느 얼굴에서도
+            # 두 상자가 만나지 않는다. 실제 화소로 겹치지 않는지는
+            # tests/test_id_realscale.py 의 the_picked_word_keeps_its_ink 가
+            # 스킨·밀도·폭·배율 전수로 잰다.
+            gone = [part for sel, css in rules_for(self.src, ".pkst")
+                    if "visibility:hidden" in css.replace(" ", "")
+                    for part in sel.split(",") if ":hover" in part]
+            self.assertEqual(
+                [], gone,
+                "집힘 낱말이 아직 손 얹힘에 감춰진다 — 덮을 거리가 없어졌으므로 "
+                "지속 상태를 찰나의 규칙으로 지울 이유도 없다: %s" % gone)
+            act = [c for s2, c in rules_for(self.src, ".idact")
+                   if s2.endswith(".card .idact")]
+            self.assertTrue(act, "행위 묶음 규칙이 없다")
+            flat = act[0].replace(" ", "")
+            self.assertIn("position:absolute", flat,
+                          "행위 묶음이 흐름 안에 섰다 — 라벨 줄의 폭을 먹고, "
+                          "집힘 낱말과 자리를 다투기 시작한다")
+            self.assertIn("right:0", flat, "행위 묶음이 칸의 오른끝에 안 맞는다")
         with self.subTest("the_word_comes_back_when_the_hand_leaves"):
             # 지속 상태의 점유가 아니어야 한다 — `.picked` 만으로 지우면 집어 둔
             # 내내 무엇을 집었는지 화면에서 사라진다.
@@ -161,9 +182,27 @@ class PickStateLook(unittest.TestCase):
             base = [c for s2, c in rules.items() if s2.endswith(".pkst")]
             self.assertTrue(base, ".pkst 규칙이 없다")
             flat = base[0].replace(" ", "")
-            self.assertIn("font-weight:700", flat, "낱말이 주변 글자만큼 흐리다")
-            self.assertRegex(flat, r"font-size:1[12](\.\d+)?px",
-                             "낱말이 id 줄(10px)과 같은 크기라 눈에 걸리지 않는다")
+            # **두 채널로 갈린다 — 크기가 아니라 무게와 색** (REQ-20260910-009 3차).
+            #
+            # 종전 값(11.5px·700)의 근거는 「id 줄이 가장 작고 흐리니 한 급 크게,
+            # 굵게」였다. 그런데 그 줄은 카드에서 **가장 조용해야 하는 줄**이고,
+            # 결과는 「눈에 걸린다」가 아니라 「가장 조용한 줄에서 혼자 소리친다」
+            # 였다 (주인 2026-09-10 11:09, s9-design 2절: 강조가 셋 이상이면
+            # 강조가 없는 것과 같다).
+            #
+            # 크기는 줄에 맞추고(10px) 갈리는 일은 **무게와 색**이 맡는다:
+            # 이웃은 mono 10px `--faint`(대비 4.69:1) 400 이고 이 낱말은 본문체
+            # `--text`(15.6:1) 600 이다 — 굵기 한 급 + 잉크 세 배 차라 열 장
+            # 중에서 골라진다(캡처로 확인, REQ 첨부).
+            self.assertIn("font-weight:600", flat,
+                          "낱말이 주변 글자(400)와 같은 무게다 — 갈릴 채널이 "
+                          "색 하나뿐이 된다")
+            self.assertIn("color:var(--text)", flat,
+                          "낱말이 --text 가 아니다 — 이웃(--faint)과 잉크가 "
+                          "안 갈리면 무게만으로는 안 걸린다")
+            self.assertRegex(flat, r"font-size:10px",
+                             "낱말이 줄의 크기(10px)를 벗어났다 — 한 급 키우면 "
+                             "가장 조용해야 할 줄에서 혼자 소리친다")
 
 if __name__ == "__main__":
     unittest.main()

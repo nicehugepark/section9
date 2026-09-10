@@ -227,11 +227,46 @@ const STOP_KIND = {
    ▶ 의 무게중심은 (4+4+12)/3 = 6.67 로 상자 한가운데 7 에서 0.33 왼쪽이다 —
    삼각형은 상자가 아니라 무게중심으로 가운데를 잡으므로 이 쪽이 맞다.
    틈 2px 은 배율 1.25 에서 2.5 화소라 어느 쪽으로 반올림돼도 살아남는다. */
-const GLYPH_PLAY = '<svg class="gly" viewBox="0 0 14 14" aria-hidden="true"'
-  + ' focusable="false"><path d="M4 3 L12 7 L4 11 Z" fill="currentColor"/></svg>';
-const GLYPH_PAUSE = '<svg class="gly" viewBox="0 0 14 14" aria-hidden="true"'
-  + ' focusable="false"><rect x="4" y="3" width="2" height="8" fill="currentColor"/>'
-  + '<rect x="8" y="3" width="2" height="8" fill="currentColor"/></svg>';
+/* **마크가 뜻과 어긋나 있었다** (REQ-20260910-009 2차 반려 · 마크 재선정).
+
+   `||` 는 재생기의 「잠시 멈춤」이다 — 누르면 자리를 지킨 채 멎고, 다시 누르면
+   그 자리에서 이어진다. 그런데 이 손잡이가 하는 일은 `STOP_KIND` 세 갈래이고
+   셋 다 그것이 아니다:
+
+     worker   지금 하던 일이 **거기서 끝나고** 사유가 문서에 남는다
+     session  맡은 창에 **중단하라고 전한다** — 곧바로 멎지 않을 수 있다
+     agent    나눠 맡은 일손이 **하던 일은 마치고 멈춘다**
+
+   셋의 공통은 「잠시」가 아니라 **「멎게 한다」**다. 그 마크는 **채운 사각(■)**
+   이다 — 재생기에서도 정지이고, 이 제품의 점 어휘에서도 **사각이 「멎은 것」**
+   (▫ 멈춤 · ▪ 죽음 · ⊟ 중단해 둠)이다. 두 사전이 같은 모양을 가리킨다.
+
+   그리고 그 겹침은 혼동이 아니라 **설명**이다: 왼쪽 끝의 점이 지금 ● (도는 것)
+   이고, 손잡이가 ■ 라면 **누르면 저 모양이 된다**를 그림이 말한다. `×`(끊음)도
+   후보였으나 셋 중 둘이 「전하고 기다린다」라 너무 단호하다 — 곧장 끊기는 것은
+   worker 하나뿐이다.
+
+   잉크는 ▶ 와 같은 **36px^2** 로 맞춘다(상태 배타의 전제 — 한 축의 두 방향은
+   같은 무게여야 한다). ■ 는 5x5 라 13칸 상자에서 사방 틈이 4 로 같고(25px^2), ▶ 는 밑변 7 · 높이 7
+   로 24.5px^2 다 — 차 2%. ▶ 의 좌표는 REQ-20260831-006 이 정한 그대로 둔다. */
+/* **눈금은 13 이다 — 14 로 옮겼다가 실측이 되돌렸다** (REQ-20260910-009).
+
+   14 로 옮긴 까닭은 좌우 대칭인 짝수 폭 잉크를 정수 좌표에 앉히기 위해서였고,
+   그 자체는 맞다. 그런데 `tests/test_hover_realscale.py` 가 실브라우저 화소로
+   재니 비정수 배율에서 **더 나빠졌다**: 1.5 에서 잉크가 원 중심에서 0.500화소,
+   1.25 에서 ▶ 가 0.687화소 치우쳤다 (13 눈금의 실측 잔차는 0.000·0.022·0.020,
+   REQ-20260831-019). 14 × 1.25 = 17.5 라 상자의 절반이 반화소에 걸리는데,
+   13 × 1.25 = 16.25 는 mask 와 그림이 **같은** 반올림을 받아 함께 움직인다.
+
+   **잰 값이 취향을 이긴다.** 손잡이 눈금의 가운데 급이 짝수(28)면 보기 좋다는
+   것은 내 선호였고, 화면이 배율마다 다르게 그려지지 않는 것은 주인이 두 번
+   반려한 사항이다(REQ-20260831-019/020). 그래서 눈금 13 · 과녁 27 로 되돌리고,
+   `--ctl-md` 를 27 로 둔다 — 사전의 값이 셋이라는 것이 규율이지 그 값이 4의
+   배수라는 것이 규율이 아니다. */
+const GLYPH_PLAY = '<svg class="gly" viewBox="0 0 13 13" aria-hidden="true"'
+  + ' focusable="false"><path d="M4 3 L11 6.5 L4 10 Z" fill="currentColor"/></svg>';
+const GLYPH_STOP = '<svg class="gly" viewBox="0 0 13 13" aria-hidden="true"'
+  + ' focusable="false"><rect x="4" y="4" width="5" height="5" fill="currentColor"/></svg>';
 /* 눌린 뒤의 얼굴을 한 붓이 칠한다 — 글리프 버튼과 낱말 버튼 둘 다.
 
    **이름은 요소가 들고 다닌다**(`data-name`). 칠하는 쪽이 상수를 골라 쓰면
@@ -719,7 +754,7 @@ function stopBtnHTML(r, wordy){
     + ` data-stop="${esc(r.id)}" data-kind="${esc(kind)}"${going ? DEED_BUSY : ""}`
     + ` data-name="${STOP_LABEL}" data-tip="${esc(tip)}"`
     + ` aria-label="${going ? STOP_GOING : STOP_LABEL}"`
-    + ` title="${going ? STOP_GOING : esc(tip)}">${GLYPH_PAUSE}`
+    + ` title="${going ? STOP_GOING : esc(tip)}">${GLYPH_STOP}`
     + (wordy ? `<span class="lbl">${STOP_LABEL}</span>` : "") + `</button>`;
 }
 /* 사람이 중단해 둔 자리인가 — 술어 하나 (REQ-20260829-024 라운드4).
@@ -1961,6 +1996,16 @@ function cardHTML(r){
      벨트가 카드에서 서는 자리는 사실 줄이 아니라 **id 줄**이다 — 그 줄은 모든
      카드에 이미 있어서, 손잡이가 카드마다 다른 데 서던 것이 여기서 멎는다. */
   const stall = stallHTML(r);
+  /* 벨트는 **작은 마크 하나**다 — 낱말이 아니다 (REQ-20260910-009 2차 반려).
+
+     주인 2026-09-10 11:08: 「왜 갑자기 pause 버튼이 '중단하기' 같이 말로
+     바뀌었지? 훨씬 공간도 많이 차지 하는데. 이런건 안하느니만 못한 작업이다.」
+
+     두 반려를 함께 놓으면 답의 모양이 좁혀진다. 1차는 「뜬금없는 위치에 || 이런
+     이미지」였고 2차는 「낱말은 자리를 너무 먹는다」다 — 그림도 낱말도 아닌 것이
+     아니라, **뜻이 맞는 작은 마크가 맞는 자리에** 서야 한다는 뜻이다.
+     낱말로 간 것은 「지속 상태는 글자로」를 이 자리에 잘못 댄 것이었다. 그 규율은
+     **상태**의 것이고 이것은 **행위**다 — 행위는 마크로 말해도 된다. */
   const belt = deedBeltHTML(r);
   /* 신원 한 문장이 두 채널로 나간다. 낭독기·검색에는 시각적 숨김 글자(`vh`),
      손에는 식별자의 손 위 글(`tell`). **벨트에 걸지 않는 이유**는 둘이다:
@@ -2099,7 +2144,7 @@ function cardHTML(r){
   const mwho = mwhoBits ? `<div class="m mwho">${mwhoBits}</div>` : "";
   const mwhat = mwhatBits ? `<div class="m mwhat">${mwhatBits}</div>` : "";
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">
-    <div class="id">${liveDot}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span>${vh}<span class="idr"><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${belt}<span class="idnow">${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}<button type="button" class="pickdoc" data-pick="${esc(r.id)}" aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button></span></span></div>
+    <div class="id"><span class="idmark">${liveDot}${belt}</span><span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${vh}<span class="idr"><span class="idnow">${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}<span class="idact"><button type="button" class="pickdoc" data-pick="${esc(r.id)}" aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button></span></span></span></div>
     <div class="t">${esc(r.title)}</div>
     ${xrefRowHTML(r)}${mwho}${mwhat}${acts}${dep}${stall}</div>`;
 }
