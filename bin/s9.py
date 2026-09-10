@@ -6373,8 +6373,14 @@ def _line_ts(line):
 def iso_epoch(ts):
     """ISO8601 → epoch (파싱 실패 시 0.0 = '아주 오래된 것')."""
     import datetime as _dt
+    s = str(ts)
+    # Claude 의 jsonl 은 `…T00:01:00.000Z` 로 적는데, `fromisoformat` 이 `Z` 를
+    # 푸는 것은 3.11 부터다 — 3.9(맥 기본 파이썬)에서는 모든 응답 시각이 0.0
+    # 이 되어 토큰 창 합산이 통째로 None 이었다 (REQ-20260910-012-2n7g).
+    if s.endswith("Z") or s.endswith("z"):
+        s = s[:-1] + "+00:00"
     try:
-        return _dt.datetime.fromisoformat(str(ts)).timestamp()
+        return _dt.datetime.fromisoformat(s).timestamp()
     except (TypeError, ValueError):
         return 0.0
 
@@ -16660,7 +16666,10 @@ def jobs_running(now=None):
         if table is None:
             table = proc_table()
         cmd = table.get(pid) or ""
-        if str(j.get("hint") or "") not in cmd:
+        # 대소문자를 가리지 않는다 — 맥의 프레임워크 파이썬은 `Python` 으로
+        # 다시 뜨므로 `python` 이라는 hint 가 제 명령줄에서도 안 잡혔다
+        # (REQ-20260910-012-2n7g).
+        if str(j.get("hint") or "").lower() not in cmd.lower():
             continue
         try:
             quiet = max(0, int(now - os.path.getmtime(p)))

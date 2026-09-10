@@ -116,7 +116,7 @@ class StopNeverShootsTheSession(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.auto = tempfile.mkdtemp(prefix="s9int-auto-", dir=TMP)
-        mod._auto_dir = staticmethod(lambda: cls.auto)
+        mod._auto_dir = lambda: cls.auto   # staticmethod 객체는 3.9 에서 모듈 속성으로는 부를 수 없다
 
     def setUp(self):
         for p in glob.glob(os.path.join(mod.STATE, "*.json")):

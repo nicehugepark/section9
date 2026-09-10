@@ -206,8 +206,15 @@ class TestIsClaude(unittest.TestCase):
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix="s9plat-claude-", dir=TMP)
         cls.link = os.path.join(cls.dir, "claude")
-        os.symlink(os.path.realpath(sys.executable), cls.link)
-        cls.claude = subprocess.Popen([cls.link, *cls.FAKE_ARGV],
+        target, argv = os.path.realpath(sys.executable), cls.FAKE_ARGV
+        if sys.platform == "darwin":
+            # 맥의 프레임워크 파이썬은 제 이름(`Python`)으로 다시 떠서 링크
+            # 이름이 남지 않는다 — 실측 comm=`Python`. `/bin/sleep` 의 링크는
+            # 링크 이름 그대로 뜬다(comm=`claude`). 복사본은 서명 검사에 죽는다.
+            # (REQ-20260910-012-2n7g)
+            target, argv = "/bin/sleep", ("30",)
+        os.symlink(target, cls.link)
+        cls.claude = subprocess.Popen([cls.link, *argv],
                                       stdin=subprocess.DEVNULL)
         cls.other = subprocess.Popen(["sleep", "30"], stdin=subprocess.DEVNULL)
         for _ in range(200):
