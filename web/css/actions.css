@@ -731,7 +731,15 @@ button.asgnb:focus-visible{outline:1px solid var(--text);outline-offset:2px}
    글자로 박힌 식별자라 mono 로 두고(그래야 "그게 그거"임이 이어진다), 행위는
    본문체로 세운다. 한글에 트래킹을 거는 것은 이 문서가 이미 금한 것이기도 하다.
    생김새가 다르면 같은 줄에 있어도 헷갈리지 않는다. */
-.acts button.deed{font-family:inherit;font-size:11.5px;letter-spacing:0;font-weight:600}
+/* **판정 버튼의 낱말은 접히지 않는다** (REQ-20260910-009 4차 반려).
+   실서버 실측: review 열에서 `반려 in-progress` 가 `반려 in-` / `progress` 로
+   갈라졌다(`승인 done` 은 짧아 한 줄이라, 나란히 선 둘의 키가 달랐다).
+   상태 값(`in-progress`)은 사람이 CLI 에 그대로 치는 글자라 줄일 수 없다
+   (규약 2조 ⑤) — 그러니 **낱말을 지키고 줄을 내준다**: 버튼 안은 nowrap 이고,
+   둘이 나란히 못 서면 무리가 통째로 줄을 바꾼다. */
+.acts button.deed{font-family:inherit;font-size:11.5px;letter-spacing:0;font-weight:600;
+  white-space:nowrap}
+.judge .acts{flex-wrap:wrap;row-gap:4px}
 /* 글리프 손잡이 — ▶ 이어가기 · ⏸ 중단하기 (REQ-20260830-032 오너 판정).
 
    **그림은 작아도 손이 닿는 자리는 안 줄인다.** 낱말 버튼이 서 있던 자리와

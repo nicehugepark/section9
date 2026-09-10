@@ -108,28 +108,40 @@ class TheIdNeverCoversTheClock(unittest.TestCase):
                     "absolute", (_decl(dec, "position") or ""),
                     "%s 가 흐름 밖으로 떴다 — 벨트만 흐름에 남아 좁은 카드에서 "
                     "묶음이 갈라진다" % sel)
-            # 떠 있는 것은 이제 손잡이 하나가 아니라 **행위 묶음**이다
-            # (REQ-20260910-009 3차: 벨트와 「이어 말하기」가 성격이 같아 한
-            # 묶음으로 묶였다 — s9-design 전 스킨 검수 규칙 2). 계약의 주어만
-            # 옮겼고 계약 자체는 그대로다: 흐름 밖 · 칸의 오른끝.
+            # **행위 묶음은 흐름 안으로 돌아왔다** (REQ-20260910-009 4차 반려 —
+            # 주인 2026-09-10 13:44: 「가려지고」).
+            #
+            # 「떠 있어야 한다」던 까닭은 084 의 것이었다: 흐름에 서면 칸이
+            # 낱말만큼 넓어져 **벨트와 시각 사이**에 빈 자리가 생긴다. 그런데
+            # 3차에서 벨트가 이 묶음을 떠나 점의 자리로 갔다 — 벌어질 사이가
+            # 아예 없어졌고, 까닭만 사라진 채 규칙이 남았다.
+            #
+            # 그 규칙이 실제로 한 일은 나빴다. 묶음이 흐름 밖이라 칸의 고유폭에
+            # 한 톨도 못 보태, 칸의 최소폭을 **사람이 손으로 잰 숫자**(52 → 56)로
+            # 적어야 했다. 그 숫자는 한 스킨·한 밀도에서 한 번 잰 것이고, mono
+            # 대체 글꼴이 한글을 더 넓게 그리는 스킨에서는 칸이 낱말보다 좁았다.
+            # 오른끝 맞춤 + `overflow:hidden` 이라 잘려 나간 것은 낱말의 머리였고,
+            # 화면에는 「이어 말하기」가 「기어 말하기」로 떴다.
+            #
+            # 그래서 계약을 뒤집는다: 묶음은 **시각과 같은 격자 칸에 겹쳐** 서고,
+            # 칸의 폭은 `max(시각, 낱말)` 로 저절로 선다. 손으로 적을 숫자가
+            # 없어졌으므로 `min-width` 도 함께 걷었다 — 그 최소폭이 곧 손으로
+            # 적던 그 숫자다. 실측은 tests/test_id_realscale.py
+            # `the_word_is_never_cut` 가 스킨·밀도·폭·배율 전수로 잰다.
             pick = [d for s2, d in self.rules if s2.endswith(".card .idact")]
             self.assertTrue(pick, "`.card .idact` 규칙이 없다")
-            self.assertEqual(
+            self.assertNotEqual(
                 "absolute", (_decl(pick[0], "position") or ""),
-                "행위 묶음이 흐름에 섰다 — 칸의 폭을 제 낱말로 넓혀 라벨 줄의 "
-                "폭을 먹는다")
-            self.assertEqual(
-                "0", (_decl(pick[0], "right") or "").replace("px", ""),
-                "행위 묶음이 칸의 오른끝에 안 맞는다 — 시각과 오른끝이 갈리면 손이 "
-                "얹힐 때 자리가 옮겨 보인다")
-            self.assertEqual(
-                "relative", (_decl(cell[0], "position") or ""),
-                "칸이 기준 상자가 아니다 — 떠 있는 손잡이가 칸이 아니라 카드 "
-                "모서리에 붙어, 묶음이 내려가도 따라오지 않는다")
-            self.assertIsNotNone(
+                "행위 묶음이 다시 흐름 밖으로 떴다 — 칸의 폭에 제 낱말을 못 "
+                "보태고, 그러면 최소폭을 손으로 적어야 하며 어느 글꼴에선가 "
+                "낱말이 잘린다")
+            self.assertIsNone(
+                _decl(pick[0], "overflow"),
+                "행위 묶음에 overflow 가 돌아왔다 — 낱말을 자르는 것은 어떤 "
+                "폭에서도 답이 아니다")
+            self.assertIsNone(
                 _decl(cell[0], "min-width"),
-                "칸에 최소폭이 없다 — 경과 시각이 없는 카드에는 손잡이가 설 "
-                "자리가 없고, 시각이 아주 짧으면 손잡이가 벨트를 덮는다")
+                "칸에 손으로 적은 최소폭이 돌아왔다 — 폭은 낱말이 정한다")
         with self.subTest("the_strut_keeps_the_id_wrappable"):
             strut = [d for s, d in self.rules if s == ".card .id::before"]
             self.assertTrue(strut, "`.card .id::before` 스트럿이 없다")

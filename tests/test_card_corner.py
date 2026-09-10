@@ -112,6 +112,52 @@ class TheCardHasOneRuler(unittest.TestCase):
                 self.assertIsNotNone(val, "%s 에 줄높이 선언이 없다" % sel)
                 self.assertIn("var(--card-edge", val,
                               "%s 의 줄높이가 자를 안 읽는다: %s" % (sel, val))
+        with self.subTest("the_who_line_never_folds"):
+            # **1행은 접히지 않는다** (REQ-20260910-009 4차 반려. 주인 2026-09-10
+            # 13:44: 「들여쓰기도 안맞고, 가려지고, 깨지고」).
+            #
+            # 실서버 실측: 카드 23장 중 **14장에서 이 줄이 접혔다**(줄높이 18 ·
+            # 36 · 52px 세 갈래). 식별자 왼끝은 23장 전부 34px 로 같았으니,
+            # 「들여쓰기가 안 맞는다」로 읽힌 것은 id 줄이 아니라 이 줄이 카드마다
+            # 다른 키를 갖는 것이었다. REQ-20260907-022 의 주석은 이미 「nowrap
+            # 이고, 넘치면 줄이 아니라 프로젝트 이름이 줄어든다」고 적어 두었는데
+            # **CSS 에는 그 말이 없었다** — 계약이 주석에만 있으면 지켜지지 않는다.
+            #
+            # 픽스처가 아니라 실서버에서만 잡힌 까닭은 「만든 사람 백그라운드
+            # 작업」 같은 **실제로 긴 값**이 픽스처에 없었기 때문이다. 그래서
+            # 여기서는 값이 아니라 **규칙**을 잰다.
+            mw = [d for s2, d in self.rules if s2 == ".card .m.mwho"]
+            self.assertTrue(mw, "`.card .m.mwho` 규칙이 없다")
+            self.assertEqual("nowrap", _decl(mw[0], "flex-wrap"),
+                             "1행이 접힐 수 있다 — 「누구」와 「어디」가 위아래로 "
+                             "갈리면 카드마다 키가 달라진다")
+            self.assertIsNotNone(_decl(mw[0], "min-height"),
+                                 "담당 배지가 없는 카드는 이 줄이 낮아진다 — "
+                                 "자리를 잡아 두지 않으면 키가 두 값이 된다")
+        with self.subTest("nothing_in_the_who_line_paints_over_its_neighbour"):
+            # 값이 제 상자보다 커지면 **잘려야** 한다. 바닥(min-width)만 주고
+            # 자르지 않았더니 「만든」이 옆의 「section9」 위에 겹쳐 찍혔다
+            # (4배 캡처, REQ-20260910-009 4차) — 주인이 말한 「가려지고」를
+            # 고치다가 새로 만든 자리다.
+            for name in (".card .m.mwho .lin", ".card .m.mwho .linv"):
+                hit = [d for s2, d in self.rules if s2 == name]
+                self.assertTrue(hit, "%s 규칙이 없다" % name)
+                self.assertEqual("hidden", _decl(hit[0], "overflow"),
+                                 "%s 가 제 상자 밖으로 넘친다 — 넘친 글자는 "
+                                 "이웃의 잉크 위에 앉는다" % name)
+            cap = [d for s2, d in self.rules if s2 == ".card .m.mwho .lincap"]
+            self.assertTrue(cap, "계보 라벨 규칙이 없다")
+            self.assertEqual("none", _decl(cap[0], "flex"),
+                             "라벨이 줄어든다 — 「만…」 처럼 라벨의 부스러기만 "
+                             "남으면 뜻이 없고 고장으로 보인다. 줄어드는 것은 값이다")
+        with self.subTest("the_judgement_word_never_breaks"):
+            # `반려 in-progress` 가 `반려 in-` / `progress` 로 갈라졌다
+            # (실서버 review 열). 상태 값은 사람이 CLI 에 그대로 치는 글자라
+            # 줄일 수 없다(규약 2조 ⑤) — 낱말을 지키고 줄을 내준다.
+            bt = [d for s2, d in self.rules if s2 == ".acts button.deed"]
+            self.assertTrue(bt, "판정 버튼 규칙이 없다")
+            self.assertEqual("nowrap", _decl(bt[0], "white-space"),
+                             "버튼 안에서 낱말이 접힌다")
         with self.subTest("the_belt_never_swells_the_id_line"):
             nail = [d for s, d in self.rules
                     if s == ".card .id .acts.deedbelt"]

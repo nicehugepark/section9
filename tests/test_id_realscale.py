@@ -94,10 +94,20 @@ BELT = ('<span class="acts deedbelt"><button type="button" class="deed stop ico"
 
 def fixture_html():
     """실제 화면과 같은 캐스케이드·같은 마크업 — index.html 이 부르는 CSS 를 같은
-    순서로, id 줄은 card.js 가 짓는 그 구조로: 식별자 · 묶음(.idr)[벨트 +
-    .idnow[경과 시각 · 행위 묶음 .idact[벨트 · 이어 말하기]]]. 마크업이 화면과 어긋나면 이 시험은 화면이
-    아니라 제 픽스처를 잰다 — 084 에서 시각을 카드 직계로 두었더니 「시각이 첫
-    줄을 떠났다」로 82px 이 나왔는데, 화면에서는 그 자리가 아니었다."""
+    순서로, id 줄은 card.js 가 짓는 그 구조 그대로:
+
+        .id[ .idmark[점 · 벨트]? · .idn · .pkst · .idr[ .idnow[시각 · .idact[낱말]]]]
+
+    **픽스처가 한 세대 뒤처져 있던 것이 4차 반려의 절반이다**
+    (REQ-20260910-009, 주인 2026-09-10 13:44: 「들여쓰기도 안맞고, 가려지고」).
+    3차에서 card.js 는 벨트를 `.idact` 에서 **점의 자리(`.idmark`)** 로 옮겼는데
+    이 픽스처는 옛 자리에 그대로 두었다. 그래서 43건이 통과하는 동안 화면에서는
+    아무도 재지 않은 마크업이 그려졌다 — 이 파일의 첫 줄이 경고하던 바로 그
+    일(「마크업이 화면과 어긋나면 이 시험은 화면이 아니라 제 픽스처를 잰다」)이
+    이 파일 안에서 일어났다. 마크업을 card.js 와 한 글자씩 맞춘다.
+
+    `.idmark` 는 **점이나 벨트가 있을 때만** 선다 — card.js 가 그렇게 짓는다
+    (없는 카드에 13px 상자를 세우던 것이 「들여쓰기」의 정체다)."""
     css_files, _ = parts()
     css = "\n".join(open(os.path.join(WEB, "css", f), encoding="utf-8").read()
                     for f in css_files)
@@ -105,7 +115,11 @@ def fixture_html():
     for w in WIDTHS:
         cards = []
         for tag, dot, idn, ela in CARDS:
-            dot_html = '<span class="livedot on"></span>' if dot else ""
+            # 점이 있는 카드에만 벨트가 선다 — 화면에서도 벨트는 「지금 붙어
+            # 있는 것」에 서는 손이라 조용한 카드에는 없다. 마크 상자는 그 둘
+            # 중 하나라도 있을 때만 나온다(card.js 의 `idmark`).
+            mark = (('<span class="livedot on"></span>' + BELT) if dot else "")
+            mark_html = '<span class="idmark">%s</span>' % mark if mark else ""
             cards.append(
                 # 모든 카드를 **집힌 상태**로 세운다 (REQ-20260910-009 3차):
                 # 집힘 낱말과 행위가 어느 얼굴에서도 잉크를 안 나누는지 재려면
@@ -113,16 +127,16 @@ def fixture_html():
                 # 감춘다」로 피하던 겹침을, 이제 **자리**로 피하는지 잰다.
                 '<div class="card picked" data-status="in-progress" id="c-%d-%s"'
                 ' style="--sc:var(--muted)">'
-                '<div class="id"><span class="idmark">%s</span>'
+                '<div class="id">%s'
                 '<span class="idn">%s</span><span class="pkst">대상</span>'
                 '<span class="idr"><span class="idnow">'
                 '<span class="elapsed">%s</span>'
-                '<span class="idact">%s'
+                '<span class="idact">'
                 '<button type="button" class="pickdoc">이어 말하기</button>'
                 '</span></span></span></div>'
                 '<div class="t">제목 줄은 아래에서 시작한다</div>'
                 '<div class="m"><span class="badge">nice</span></div></div>'
-                % (w, tag, dot_html, idn, ela, BELT))
+                % (w, tag, mark_html, idn, ela))
         blocks.append('<div class="cards" style="width:%dpx">%s</div>'
                       % (w, "".join(cards)))
     return ('<!doctype html><html lang="ko" data-theme="light"'
@@ -130,25 +144,51 @@ def fixture_html():
             '<meta charset="utf-8"><style>%s</style>'
             '<style>body{margin:16px;background:var(--bg)}'
             '.cards{display:inline-block;vertical-align:top;margin-right:12px}'
+            # 캡처는 **손 얹힘 얼굴**로 뜬다 (REQ-20260910-009 4차). 주인이 본
+            # 결함(잘린 낱말 · 제 줄로 떨어진 손잡이)은 전부 이 얼굴에 있고,
+            # 캡처에는 포인터가 없어 :hover 가 안 걸린다. `visibility` 는 상자를
+            # 1px 도 안 옮기므로 **재는 값은 그대로**이고 보이는 것만 달라진다.
+            # 손 얹힘 얼굴은 셋이 함께 바뀐다(board.css) — 시각이 비키고, 그
+            # 자리에 낱말이 서고, 점이 ■ 로 바뀐다. 하나라도 빠뜨리면 캡처에
+            # 화면에 없는 얼굴(시각과 낱말이 겹친 것)이 뜬다.
+            '.card .elapsed{visibility:hidden}'
+            '.card .idact{visibility:visible}'
+            '.card .id .idmark .acts.deedbelt{visibility:visible}'
+            '.card .id .idmark .livedot{visibility:hidden}'
             '</style></head><body>%s</body></html>' % (css, "".join(blocks)))
 
 
 MEASURE_JS = """
 (() => {
-  const box = el => { const r = el.getBoundingClientRect();
+  const box = el => { if (!el) return null; const r = el.getBoundingClientRect();
     return {l: r.left, r: r.right, t: r.top, b: r.bottom}; };
   const out = [];
   for (const card of document.querySelectorAll('.card')) {
     const [, w, tag] = card.id.split('-');
+    const pick = card.querySelector('.pickdoc');
+    const act = card.querySelector('.idact');
     out.push({w: +w, tag,
       card: box(card),
       idn: box(card.querySelector('.idn')),
       pkst: box(card.querySelector('.pkst')),
-      idact: box(card.querySelector('.idact')),
+      idact: box(act),
       idr: box(card.querySelector('.idr')),
+      idmark: box(card.querySelector('.idmark')),
       belt: box(card.querySelector('.deedbelt')),
-      pick: box(card.querySelector('.pickdoc')),
-      ela: box(card.querySelector('.elapsed'))});
+      // 벨트는 **과녁과 칠이 다른 층**이다 (s9-design 7절): 버튼 상자는 27px
+      // 과녁이고 그림은 13px 다. 자리를 재는 것은 그림 쪽이다 — 과녁은 일부러
+      // 마크 상자 밖으로 나간다.
+      beltInk: box(card.querySelector('.deedbelt svg.gly')),
+      pick: box(pick),
+      ela: box(card.querySelector('.elapsed')),
+      title: box(card.querySelector('.t')),
+      meta: box(card.querySelector('.m')),
+      // 잘림은 상자로는 안 보인다 — 잘린 낱말도 상자는 온전하다. 그린 폭
+      // (scrollWidth)과 보이는 폭(clientWidth)을 함께 실어야 잡힌다.
+      pickInk: pick ? pick.scrollWidth : null,
+      pickSeen: pick ? pick.clientWidth : null,
+      actInk: act ? act.scrollWidth : null,
+      actSeen: act ? act.clientWidth : null});
   }
   return out;
 })()
@@ -270,75 +310,76 @@ class TheIdAndTheClockNeverShareInk(unittest.TestCase):
                 [], ["%s h=%.2f v=%.2f" % (self._where(r), r["h"], r["v"])
                      for r in bad],
                 "식별자가 경과시각을 덮었다 — 캡처는 scratchpad/req021/")
-        with self.subTest("the_group_never_splits"):
-            # 084 의 계약: 벨트와 경과시각은 한 묶음이라 늘 같은 줄에 있다.
-            # 갈라지면 좁은 카드에서 ⏸ 만 남고 시각이 아랫줄로 떨어진다.
+        with self.subTest("the_word_is_never_cut"):
+            # **4차 반려가 세운 계약** (주인 2026-09-10 13:44: 「가려지고」 ·
+            # 캡처에서 「이어 말하기」가 「기어 말하기」로 떴다).
+            #
+            # 3차는 행위 묶음을 흐름 밖에 두고 칸의 최소폭을 한 스킨에서 잰
+            # 낱말 폭(55.9)에 맞춘 56px 로 못박은 뒤 `overflow:hidden` 으로
+            # 넘침을 잘랐다. 다른 스킨의 mono 대체 글꼴이 한글을 더 넓게 그리면
+            # 칸이 낱말보다 좁아지고, 오른끝 맞춤이라 잘려 나가는 것은 낱말의
+            # **머리**였다. 상자만 재던 계약은 그것을 못 봤다 — 잘린 낱말도
+            # 상자는 온전하기 때문이다. 그래서 **그린 폭과 보이는 폭**을 잰다.
+            self.maxDiff = None
+            self.assertEqual(
+                [], ["%s 낱말이 %.1fpx 잘렸다 (그린 폭 %.1f · 보이는 폭 %.1f)"
+                     % (self._where(r), r["pickInk"] - r["pickSeen"],
+                        r["pickInk"], r["pickSeen"])
+                     for r in self.rows
+                     if r["pickInk"] - r["pickSeen"] > 0.5],
+                "「이어 말하기」가 잘린다 — 칸이 낱말보다 좁다")
+            self.assertEqual(
+                [], ["%s 묶음이 %.1fpx 잘렸다"
+                     % (self._where(r), r["actInk"] - r["actSeen"])
+                     for r in self.rows
+                     if r["actInk"] - r["actSeen"] > 0.5],
+                "행위 묶음이 잘린다 — 칸이 묶음보다 좁다")
+        with self.subTest("the_id_line_starts_where_the_card_does"):
+            # **4차 반려가 세운 두 번째 계약** (주인: 「들여쓰기도 안맞고」).
+            #
+            # 3차는 벨트를 점의 자리로 보내며 그 자리를 13px 상자로 못박았는데,
+            # **점도 벨트도 없는 카드에까지** 그 상자를 세웠다 — 화면의 대부분인
+            # 그 카드들에서 식별자만 홀로 13px 안으로 들어가, 제목·메타와 왼끝이
+            # 어긋났다. 마크가 없는 카드에서는 식별자가 카드의 다른 줄과 같은
+            # 자리에서 시작해야 한다. 마크가 있는 카드는 마크가 그 자리에 서므로
+            # **마크의 왼끝**이 그 자다.
+            self.maxDiff = None
+            bad = []
             for r in self.rows:
-                self.assertLess(
-                    abs(r["belt"]["t"] - r["ela"]["t"]), 3.0,
-                    "%s 에서 묶음이 갈라졌다: 벨트 t=%.1f · 시각 t=%.1f"
-                    % (self._where(r), r["belt"]["t"], r["ela"]["t"]))
-        with self.subTest("the_group_holds_together_tightly"):
-            # 갈라짐은 세로로만 오지 않는다 — 벨트와 시각이 같은 줄에 있어도 그
-            # 사이가 벌어지면 사람은 「⏸ 만 남고 시각은 저쪽」으로 읽는다.
-            #
-            # 틈의 상한을 **새 값으로 다시 세운다** (REQ-20260910-009 반려 재작업).
-            #
-            # 종전 25.0 은 「칸 52 − 가장 짧은 시각(「⏱ 12s」29.7)」에서 온 값이고,
-            # 그 값이 성립하던 전제 둘이 이번에 바뀌었다:
-            #   ① 벨트가 **쉼 얼굴에서 보이지 않는다** — 쉬는 카드에서 사람이 보는
-            #      것은 `식별자 …… 시각` 뿐이라, 벨트와 시각 사이에는 볼 틈이 없다.
-            #      종전 값은 늘 보이던 벨트를 전제로 잰 것이다.
-            #   ② 칸이 52 → 58 로 올랐다 — 벨트가 낱말이 되며 손잡이(56px)가
-            #      기댈 흰 자리가 사라져, 손잡이가 제 폭을 온전히 갖게 했다.
-            #
-            # 그래서 상한을 **고정 숫자에서 유도식으로** 바꾼다. 그 자리는 손잡이의
-            # 주차 공간이므로, 비는 폭은 **주차 공간을 넘지 않아야** 한다:
-            #
-            #     틈 ≤ 붙어 있는 여백 8 + max(0, 칸의 최소폭 58 − 시각의 폭)
-            #
-            # 여백 8 은 늘 있는 것이다 — 벨트의 오른쪽 여백 6(두 낱말이 붙어
-            # 「중단하기이어 말하기」로 읽히던 것을 벌린 값)과 줄의 틈 2.
-            #
-            # 시각이 58 보다 길면 우변이 8 로 떨어져 붙은 것과 같고, 짧을수록
-            # 딱 그 차만큼만 허용된다. 고정값보다 **좁은** 계약이다 — 종전에는 시각이
-            # 아무리 길어도 25 까지 벌어질 수 있었다.
+                head = r["idmark"] or r["idn"]
+                for name in ("title", "meta"):
+                    other = r[name]
+                    if not other:
+                        continue
+                    off = head["l"] - other["l"]
+                    if abs(off) > 1.0:
+                        bad.append("%s id 줄의 왼끝이 %s 보다 %.1fpx 어긋났다"
+                                   % (self._where(r), name, off))
+            self.assertEqual([], bad,
+                             "id 줄만 들여쓰였다 — 카드의 줄들이 한 자를 안 쓴다")
+        with self.subTest("the_belt_stands_in_the_dot_place"):
+            # 3차가 옮긴 자리를 **실측으로** 못박는다: 벨트는 점의 상자
+            # (`.idmark`) 한가운데에 서고, 식별자와 같은 줄이며, 식별자의 잉크에
+            # 닿지 않는다. 교대(점 ↔ ■)가 줄을 밀지 않는 근거가 이 셋이다.
             self.maxDiff = None
-            self.assertEqual(
-                [], ["%s 틈=%.1f (벨트 %.1f · 칸 %.1f · 시각 %.1f)"
-                     % (self._where(r), r["ela"]["l"] - r["belt"]["r"],
-                        r["belt"]["r"] - r["belt"]["l"],
-                        r["idr"]["r"] - r["idr"]["l"],
-                        r["ela"]["r"] - r["ela"]["l"])
-                     for r in self.rows
-                     if r["ela"]["l"] - r["belt"]["r"]
-                     > 8.5 + max(0.0, 58.0 - (r["ela"]["r"] - r["ela"]["l"]))],
-                "벨트와 시각 사이가 칸의 최소폭보다 더 벌어졌다 — 한 묶음으로 "
-                "안 읽힌다")
-            self.assertEqual(
-                [], ["%s 틈=%.1f (시각 %.1f)"
-                     % (self._where(r), r["ela"]["l"] - r["belt"]["r"],
-                        r["ela"]["r"] - r["ela"]["l"])
-                     for r in self.rows
-                     # 칸의 최소폭 52 → 58, 붙은 상태의 틈 0 → 8
-                     # (REQ-20260910-009 반려 재작업: 벨트가 낱말이 되면서
-                     #  두 낱말 사이에 늘 6px 여백이 서고 줄의 틈 2 가 더해진다.
-                     #  8 은 「붙어 있음」의 새 바닥이지 벌어짐이 아니다.)
-                     if r["ela"]["r"] - r["ela"]["l"] >= 58.0
-                     and r["ela"]["l"] - r["belt"]["r"] > 8.5],
-                "시각이 칸의 최소폭보다 긴데도 벨트와 사이가 벌어졌다 — 칸의 폭을 "
-                "시각 아닌 것이 정하고 있다")
-        with self.subTest("the_handle_never_reaches_the_belt_ink"):
-            # 손잡이는 칸 안에 떠 있으므로, 시각이 칸의 최소폭보다 짧으면 왼쪽으로
-            # 넘친다. 넘쳐도 벨트의 **잉크**에는 닿지 않아야 한다 — 27px 과녁 안의
-            # 그림(과 손이 얹혔을 때의 원)은 13px 이라 상자 양쪽에 7px 씩 흰 자리가
-            # 있고, 넘침은 그 안에서 끝나야 한다. 칸의 최소폭(7ch)이 그 자다.
-            self.maxDiff = None
-            bad = ["%s 손잡이 왼끝이 벨트 상자 안으로 %.1fpx 들어갔다 "
-                   "(그림까지 7.0)"
-                   % (self._where(r), r["belt"]["r"] - r["pick"]["l"])
-                   for r in self.rows if r["pick"]["l"] < r["belt"]["r"] - 6.5]
-            self.assertEqual([], bad, "손이 얹히면 손잡이가 벨트를 덮는다")
+            bad = []
+            for r in self.rows:
+                if not r["beltInk"] or not r["idmark"]:
+                    continue
+                mk, bl = r["idmark"], r["beltInk"]
+                cx_mk = (mk["l"] + mk["r"]) / 2.0
+                cx_bl = (bl["l"] + bl["r"]) / 2.0
+                if abs(cx_mk - cx_bl) > 1.0:
+                    bad.append("%s 벨트가 점의 상자 한가운데를 벗어났다 "
+                               "(%.1f vs %.1f)" % (self._where(r), cx_bl, cx_mk))
+                # 좁은 폭에서 식별자가 아랫줄로 내려가는 것은 계약이다
+                # (아래 the_narrow_card_drops_the_whole_group) — 그때는 벨트와
+                # 식별자가 다른 줄인 것이 정상이라 같은 줄일 때만 잰다.
+                if abs(bl["t"] - r["idn"]["t"]) < 3.0 \
+                        and bl["r"] > r["idn"]["l"] + 0.5:
+                    bad.append("%s 벨트의 그림이 식별자의 잉크로 %.1fpx 들어갔다"
+                               % (self._where(r), bl["r"] - r["idn"]["l"]))
+            self.assertEqual([], bad, "벨트가 점의 자리를 지키지 않는다")
         with self.subTest("the_group_drops_whole_at_real_columns"):
             # 주인 화면이 실제로 쓰는 폭(220px)에서 재는 갈래. 여기서 못 서는
             # 카드가 있다는 것 자체는 결함이 아니다 — 21자 식별자를 깎지 않는 한

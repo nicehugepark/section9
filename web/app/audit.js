@@ -28,9 +28,11 @@ async function renderAudit(){
      걸러 놓고 보면 종류·남긴 사람·세션 열이 스무 행 내리 같은 값이었다
      (REQ-20260907-012 검수 중-1). 값은 지우지 않고 `.dup` 으로 가린다:
      1px + clip 이라 화면낭독기와 복사는 값을 그대로 갖는다.
-     **시각 열의 날짜도 같은 규칙을 받는다** (REQ-20260910-009 P5): 이 열만
-     접지 않아 `2026-09-10` 이 스무 행 내리 똑같이 서 있었고, 정작 다른 값인
-     시:분이 그 뒤에 묻혔다. 세 열에만 적용된 규칙은 규칙이 아니다. */
+     **시각 열의 날짜는 접는 것으로 모자랐다** (REQ-20260910-025): P5 가 날짜에도
+     같은 규칙을 걸었으나 값만 접히고 열은 안 접혔다 — 첫 행은 접히는 대상이
+     아니라 날짜를 온전히 보이고, 그 한 행이 열 폭을 130px 로 잡아 2행부터 네 칸이
+     내리 비었다. 접힌 표가 「접혔다」가 아니라 「빠졌다」로 읽힌 까닭이다.
+     그래서 날짜는 행 안이 아니라 **하루 머리 행**으로 올린다(아래 dayhead). */
   const seen = {};
   const once = (col, key, html) => {
     const same = seen[col] === key;
@@ -40,12 +42,22 @@ async function renderAudit(){
   /* 열 순서: 폭이 고정된 열(시각·종류·남긴 사람·세션)이 앞, 폭이 변하는 본문 열
      (사건 내용)이 마지막 — 본문이 가운데 있으면 그 열이 남는 폭을 다 가져가
      짧은 행에 빈 자리가 수백 px 생긴다 (표 절 3). */
+  /* 하루 머리 — 날짜가 바뀌는 자리에만 서는 한 줄. 어느 행도 날짜를 보이지
+     않으므로 시각 열이 시:분 폭(약 48px)으로 줄고, 날짜는 하루에 한 번만 읽힌다.
+     행마다 남기는 `.dup` 날짜는 1px·clip 이라 폭을 만들지 않으면서 복사·화면낭독기
+     에는 온전한 시각을 준다 — 한 행만 집어 옮겨도 며칠 것인지 잃지 않는다. */
+  let day = "";
   const body = page.map(e => {
     const k = kindOf(e.text);
     const ses = esc(e.session) + "@" + esc(e.machine);
-    return `<tr>
-      <td class="ts">${once("day", e.ts.slice(0, 10),
-        esc(e.ts.slice(0, 10)) + " ")}${esc(e.ts.slice(11, 16))}</td>
+    const d = e.ts.slice(0, 10);
+    let head = "";
+    if (d !== day){
+      day = d;
+      head = `<tr class="day"><td colspan="5">${esc(d)}</td></tr>`;
+    }
+    return head + `<tr>
+      <td class="ts"><span class="dup">${esc(d)} </span>${esc(e.ts.slice(11, 16))}</td>
       <td>${once("kind", k, `<span class="kind" style="--kc:${KC[k]}">${k}</span>`)}</td>
       <td>${once("by", e.by, esc(e.by))}</td>
       <td class="ses">${once("ses", String(e.doc) + ses, dlink(e.doc, ses))}</td>

@@ -415,8 +415,13 @@ function lineageChip(r){
   const who = (o && o !== "human") ? (originWho(r) || "에이전트")
             : (creator && creator !== owner) ? creator : "";
   if (!who) return "";
+  /* 값을 span 으로 싼다 (REQ-20260910-009 4차): 이 칩이 좁은 줄에서 줄어들 때
+     **라벨이 아니라 값이** 줄어야 한다. 맨 텍스트로 두었더니 말줄임이 칩 전체에
+     걸려 「만…」 한 글자만 남았다 — 라벨의 부스러기라 아무 뜻이 없고, 사람 눈에는
+     고장으로 보인다(4배 캡처로 잡았다). */
   return `<span class="lin" title="${esc(lineageTell(r))}">`
-    + `<span class="lincap">만든 사람</span>${esc(who)}</span>`;
+    + `<span class="lincap">만든 사람</span>`
+    + `<span class="linv">${esc(who)}</span></span>`;
 }
 // 손 위의 글과 낭독기가 함께 읽는 한 문장 — 조각이 줄인 것을 여기서 다 말한다.
 function lineageTell(r){
@@ -2143,8 +2148,23 @@ function cardHTML(r){
      `tokensLineHTML` 은 docs.js 가 쓰므로 그대로 산다. */
   const mwho = mwhoBits ? `<div class="m mwho">${mwhoBits}</div>` : "";
   const mwhat = mwhatBits ? `<div class="m mwhat">${mwhatBits}</div>` : "";
+  /* 마크 자리는 **채울 것이 있을 때만 선다** (REQ-20260910-009 4차 반려 —
+     주인 2026-09-10 13:44: 「들여쓰기도 안맞고」).
+
+     3차에서 벨트를 점의 자리로 보내며 그 자리를 `.idmark` 13px 상자로 못박았다.
+     교대하는 두 얼굴(점 ↔ ■)이 줄을 안 밀게 하려면 상자가 고정이어야 하니 그건
+     맞는데, **점도 벨트도 없는 카드에까지 그 상자를 세운 것**이 틀렸다. 그런
+     카드가 화면의 대부분이다(open·review·done·cancelled 전부) — 그 카드들에서
+     식별자만 홀로 13px 안으로 들어가, 카드의 다른 줄들과 왼끝이 어긋났다.
+
+     상자가 필요한 것은 **교대가 일어나는 카드**뿐이다: 점이 있거나(쉼↔손 얹힘에
+     ■ 가 들어선다) 벨트가 있을 때. 둘 다 없으면 교대할 것이 없으니 상자도 없고,
+     식별자가 줄머리에 서서 카드의 다른 줄과 같은 자를 쓴다.
+     회귀는 tests/test_id_realscale.py 의 `the_id_line_starts_where_the_card_does`. */
+  const idmark = (liveDot || belt)
+    ? `<span class="idmark">${liveDot}${belt}</span>` : "";
   return `<div class="card" ${isReq ? 'draggable="true"' : ""} tabindex="0" role="button" style="--sc:${SCOLOR[r.status]||"var(--muted)"}" data-doc="${esc(r.id)}" data-status="${esc(r.status)}">
-    <div class="id"><span class="idmark">${liveDot}${belt}</span><span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${vh}<span class="idr"><span class="idnow">${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}<span class="idact"><button type="button" class="pickdoc" data-pick="${esc(r.id)}" aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button></span></span></span></div>
+    <div class="id">${idmark}<span class="idn"${tell ? ` title="${esc(tell)}"` : ""}>${esc(shortId(r.id))}</span><span class="pkst" title="이어 말할 대상으로 골라 둔 카드입니다 — 「이어 말하기」를 다시 누르면 놓습니다">${PICKED_MARK}</span>${vh}<span class="idr"><span class="idnow">${r.status_since ? `<span class="elapsed" data-since="${esc(r.status_since)}" title="현재 상태(${esc(r.status)}) 시작 이후 경과">${fmtElapsed(r.status_since)}</span>` : ""}<span class="idact"><button type="button" class="pickdoc" data-pick="${esc(r.id)}" aria-label="${esc(shortId(r.id))} 에 이어 말하기">이어 말하기</button></span></span></span></div>
     <div class="t">${esc(r.title)}</div>
     ${xrefRowHTML(r)}${mwho}${mwhat}${acts}${dep}${stall}</div>`;
 }

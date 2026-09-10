@@ -126,14 +126,37 @@ class PickStateLook(unittest.TestCase):
                 [], gone,
                 "집힘 낱말이 아직 손 얹힘에 감춰진다 — 덮을 거리가 없어졌으므로 "
                 "지속 상태를 찰나의 규칙으로 지울 이유도 없다: %s" % gone)
+            # **묶음은 흐름 밖이 아니라 시각과 같은 격자 칸에 겹쳐 선다**
+            # (REQ-20260910-009 4차 반려 — 주인: 「가려지고」).
+            #
+            # 3차의 「흐름 밖 · 칸의 오른끝」은 겹침을 자리로 피하려던 것이었는데,
+            # 흐름 밖이면 칸의 폭에 제 낱말을 못 보태 최소폭을 손으로 적어야
+            # 했고, 그 숫자보다 넓게 그리는 스킨에서 낱말의 머리가 잘렸다
+            # (「이어 말하기」 → 「기어 말하기」). 이제 묶음은 시각과 같은 칸
+            # (`grid-area:1/1`)에 서서 칸의 폭을 `max(시각, 낱말)` 로 만든다 —
+            # 잘림도, 「대상」 쪽으로의 넘침도 구조적으로 없다.
+            #
+            # 이 계약이 지키는 것은 그대로다: 손이 얹혀도 줄이 흔들리지 않고
+            # 집힘 낱말과 잉크를 나누지 않는다. 그것을 화소로 재는 것은
+            # tests/test_id_realscale.py 의 the_picked_word_keeps_its_ink ·
+            # the_word_is_never_cut 다.
             act = [c for s2, c in rules_for(self.src, ".idact")
                    if s2.endswith(".card .idact")]
             self.assertTrue(act, "행위 묶음 규칙이 없다")
             flat = act[0].replace(" ", "")
-            self.assertIn("position:absolute", flat,
-                          "행위 묶음이 흐름 안에 섰다 — 라벨 줄의 폭을 먹고, "
-                          "집힘 낱말과 자리를 다투기 시작한다")
-            self.assertIn("right:0", flat, "행위 묶음이 칸의 오른끝에 안 맞는다")
+            self.assertNotIn("position:absolute", flat,
+                             "행위 묶음이 다시 흐름 밖으로 떴다 — 칸의 폭에 제 "
+                             "낱말을 못 보태고, 그러면 최소폭을 손으로 적어야 "
+                             "하며 어느 글꼴에선가 낱말이 잘린다")
+            self.assertNotIn("overflow:hidden", flat,
+                             "행위 묶음이 다시 낱말을 자른다 — 자르는 것은 어떤 "
+                             "폭에서도 답이 아니다")
+            cell = [c for s2, c in rules_for(self.src, ".idnow")
+                    if s2.endswith(".card .id .idnow")]
+            self.assertTrue(cell, "「지금」 칸 규칙이 없다")
+            self.assertNotIn("min-width", cell[0].replace(" ", ""),
+                             "칸에 손으로 적은 최소폭이 돌아왔다 — 폭은 낱말이 "
+                             "정한다")
         with self.subTest("the_word_comes_back_when_the_hand_leaves"):
             # 지속 상태의 점유가 아니어야 한다 — `.picked` 만으로 지우면 집어 둔
             # 내내 무엇을 집었는지 화면에서 사라진다.

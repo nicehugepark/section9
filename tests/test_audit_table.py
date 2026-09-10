@@ -51,6 +51,51 @@ class AuditTable(unittest.TestCase):
         self.assertNotIn('once("ev"', self.page)
         self.assertNotIn('once("ts"', self.page)
 
+    # ── E1 날짜는 하루 머리로 선다 (REQ-20260910-025) ────────────────────
+    def test_the_date_stands_once_a_day_above_the_rows(self):
+        """행 안에서 접는 것만으로는 열이 안 접힌다 — 첫 행이 열 폭을 잡는다.
+
+        P5 는 날짜에도 접기를 걸었으나 첫 행은 접히는 대상이 아니라 날짜를 온전히
+        보였고, 그 한 행이 시각 열을 130px 로 잡아 2행부터 네 칸이 내리 비었다.
+        날짜를 하루 머리 행으로 올리면 어느 행도 날짜를 보이지 않아 열이 시:분
+        폭으로 줄고, 날짜는 하루에 한 번 읽힌다.
+        """
+        self.assertIn('<tr class="day"><td colspan="5">', self.page,
+                      "하루가 바뀌는 자리에 서는 머리 행이 없다")
+        self.assertIn('if (d !== day){', self.page,
+                      "날짜가 바뀔 때만 머리 행이 서야 한다")
+        # 행 안에서 접는 방식은 제거했다 — 접어도 첫 행이 열 폭을 잡는다
+        self.assertNotIn('once("day"', self.page,
+                         "날짜는 접는 대상이 아니라 하루 머리로 올라간 값이다")
+
+    def test_the_day_head_is_not_a_colour_field(self):
+        body = self.rule(".audit tbody tr.day td")
+        self.assertIn("background:none", body,
+                      "하루 머리는 색면이 아니다 (s9-design 금지 목록)")
+        self.assertIn("border-top:1px solid var(--border)", body,
+                      "하루의 경계는 위 경계 한 줄로 말한다")
+        self.assertIn("border-bottom:0", body, "머리와 첫 행 사이를 가르지 않는다")
+        # 데이터 행이 아니므로 hover 로도 칠해지지 않는다 — 스킨의 tint 도 같다
+        self.assertNotIn(".audit tr:hover td{", self.page,
+                         "hover 는 데이터 행만 받는다 — tr:not(.day) 로 좁혀야 한다")
+        self.assertIn(".audit tbody tr:not(.day):hover td{", self.page)
+        self.assertIn('[data-skin="grid"] .audit tbody tr.day td{background:none}',
+                      self.page, "줄무늬 스킨에서도 하루 머리는 칠하지 않는다")
+
+    def test_the_row_still_carries_its_full_time(self):
+        """날짜가 화면에서 하루 머리로 갔어도 행은 온전한 시각을 갖는다."""
+        m = re.search(r'<td class="ts">(.*?)</td>', self.page, re.S)
+        self.assertIsNotNone(m, "시각 칸을 찾지 못했다")
+        self.assertIn('<span class="dup">${esc(d)} </span>', m.group(1),
+                      "행마다 남는 날짜가 없으면 한 행만 복사할 때 며칠 것인지 잃는다")
+        self.assertIn("${esc(e.ts.slice(11, 16))}", m.group(1),
+                      "보이는 글자는 시:분뿐이다")
+        # colspan 머리 행은 「남는 폭은 마지막 열이 가진다」에서 빠진다
+        self.assertIn(".audit tbody tr:not(.day) td:last-child{width:100%}", self.page)
+        self.assertNotIn(".audit th:last-child,.audit td:last-child{width:100%}",
+                         self.page,
+                         "colspan 칸에 100% 를 주면 열 폭 계약이 흔들린다")
+
     # ── S3 접은 값을 잃지 않는다 ─────────────────────────────────────────
     def test_the_folded_value_is_not_lost(self):
         body = self.rule(".audit td .dup")
