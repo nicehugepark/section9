@@ -16460,6 +16460,28 @@ def stall_verdict(r, now, win, hands=None, assigned=None):
         return dict(v, state="attached",
                     why=f"「{_j.get('name', '작업')}」이 {_j.get('mins', 0)}분째 "
                         f"진행 중입니다 — 끝나면 저절로 이어집니다")
+    # **다른 컴퓨터가 쥐고 움직이는 것은 멈춤이 아니다** (REQ-20260910-039).
+    #
+    # 주인 캡처 2026-09-10 15:08(맥 Safari): in-progress 열 머리에 「멈춤 5」가
+    # 서고 다섯 카드 전부 「멈춤 49분째 진전 없음」이었다. 그런데 그 셋은
+    # eek-p620 의 리스를 쥐고 있었고 15:03 에 갱신돼 있었다 — 저쪽에서 지금
+    # 돌고 있는데 이쪽 판이 멎었다고 그린 것이다.
+    #
+    # 화면에는 이미 `leaseElsewhere` 가 있었지만 그것이 바꾸는 것은 **점 하나**
+    # 뿐이었다. 줄과 열 머리의 수는 이 판정을 먹으므로, 판정이 남의 리스를
+    # 모르면 화면은 점으로는 「저기서 돈다」, 글자로는 「멈췄다」고 말한다 —
+    # 둘이 어긋나면 사람은 둘 다 안 믿는다(REQ-20260828-036 이 같은 자리에서
+    # 배운 것이다). 그래서 판정을 여기 한 곳에서 고친다.
+    #
+    # 잣대는 신선(누가 쥐고 있나)이 아니라 **진전**(쥔 쪽이 움직이나)이다 —
+    # `doc_lease_working` 이 그 물음의 유일한 자리이고 화면의 SLOW_WIN 과 같은
+    # 초를 쓴다. 다른 컴퓨터의 진전은 벽시계로만 보이므로 이 이상은 못 잰다.
+    # 조용한 시간(quiet_mins)은 감추지 않는다 — 저쪽이 돌아도 문서가 조용한
+    # 것은 사실이고, 그 사실을 숨기면 반대편 병을 앓는다.
+    _lease = r.get("lease") if isinstance(r.get("lease"), dict) else None
+    _lm = str((_lease or {}).get("machine") or "").strip()
+    if _lm and _lm != current_machine() and doc_lease_working(_lease, now):
+        return dict(v, state="attached", why=lease_working_why(_lease))
     # 점이 '멈췄다/죽었다'고 그린 행은 잣대를 좁힌다 — 점과 손잡이가 같은
     # 시계를 봐야 '멈췄다고 적혔는데 못 누르는 카드'가 사라진다.
     #

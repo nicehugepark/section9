@@ -74,7 +74,14 @@ class StallOnePredicate(unittest.TestCase):
         with open(INDEX, encoding="utf-8") as f:
             cls.src = f.read()
         cls.state = _code(_grab(cls.src, "stallState"))
-        cls.stall = _grab(cls.src, "stallHTML")
+        # 담당 컴퓨터를 기다리는 갈래는 web/app/machine.js 에 산다
+        # (REQ-20260910-017 — 카드·문서·손잡이 셋이 함께 쓰는 것이라 한 파일로
+        # 모았다). `stallHTML` 이 그 이름을 부르므로 조각에 함께 실어야
+        # node 가 돈다 — 조각 목록이 화면을 이어 붙이는 자리다.
+        cls.stall = (_grab(cls.src, "waitingMachine")
+                     + _grab(cls.src, "waitingRowHTML")
+                     + _grab(cls.src, "waitingDotHTML")
+                     + _grab(cls.src, "stallHTML"))
         # 손잡이는 사실 줄을 떠나 id 줄의 벨트로 갔다 (REQ-20260830-040 규칙 4) —
         # 짓는 자리는 여전히 한 곳씩이라, 술어 하나라는 계약은 그대로다.
         cls.belt = _grab(cls.src, "deedBeltHTML") + _grab(cls.src, "wakeBtnHTML") \
@@ -319,6 +326,10 @@ class StallRendersTheSame(unittest.TestCase):
             # 재는 것이 바로 "되돌아온 ▶ 가 잠겨 있나"라, 베끼면 판정이 거짓이 된다.
             _const(self.src, "DEED_BUSY"),
             g("wokePending"), g("stopPending"), g("stallState"),
+            # 담당 컴퓨터 갈래는 web/app/machine.js 에 산다 (REQ-20260910-017) —
+            # stallHTML 과 cardHTML 이 그 이름을 부르므로 조각에 함께 실어야
+            # node 가 돈다. 조각 목록이 화면을 이어 붙이는 자리다.
+            g("waitingMachine"), g("waitingRowHTML"), g("waitingDotHTML"),
             # 세우기 손잡이의 네 갈래 (REQ-20260830-035) — 문안 표와 공용
             # 조각도 원문에서 떠 온다. 베끼면 두 벌이 되고, 갈래 하나가 카드에만
             # 서고 문서엔 안 서는 것을 못 잡는다.

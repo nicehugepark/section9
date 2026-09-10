@@ -23,9 +23,13 @@ function waitingMachine(r){
   const here = (window.__whoami || {}).machine || "";
   if (here && want === here) return null;       // 이 자리다 — 기다릴 것이 없다
   if (leaseElsewhere(r)) return null;           // 저쪽이 쥐고 도는 중이면 그 줄이 말한다
-  const t = Date.parse(r.status_since || r.updated || "");
-  return {machine: want,
-          mins: isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / 60000))};
+  /* **분은 서버 것이다** (REQ-20260828-036 · test_stall_pair f5). 여기서 시계를
+     보면 CLI(`s9 stalled`)와 화면이 다른 말을 하게 된다 — 그 어긋남이 이
+     저장소가 이미 앓은 병이다. 서버가 실어 준 조용한 시간을 그대로 읽는다.
+     안 실어 준 회차에는 수를 말하지 않는다: 모르는 것을 0 이라고 적는 것은
+     「방금부터 기다린다」는 거짓이다. */
+  const q = r.quiet_mins == null ? null : +r.quiet_mins;
+  return {machine: want, mins: q};
 }
 
 /* 「이 컴퓨터로 바꾸기」는 담당자 본인과 admin 에게만 선다 — 「이 컴퓨터에서
@@ -38,7 +42,7 @@ function waitingRowHTML(r){
   const row = `<div class="rvpt elsew" title="이 요청은 ${esc(w.machine)} 에서만 진행합니다`
     + ` — 그 컴퓨터에서 section9 가 열리면 시작합니다">`
     + `<span class="rvcap">담당 컴퓨터</span>${esc(w.machine)} 을 기다리는 중`
-    + ` · ${fmtStall(w.mins)}</div>`;
+    + (w.mins == null ? "" : ` · ${fmtStall(w.mins)}`) + `</div>`;
   if (!canTakeover(r)) return row;
   return `<div class="deedrow wordy">` + row
     + `<div class="acts"><button type="button" class="deed"`
