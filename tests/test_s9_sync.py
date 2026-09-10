@@ -120,6 +120,34 @@ class TestS9Sync(unittest.TestCase):
                 show = sh("git", "--git-dir", self.bare, "show", "--stat", "main")
                 self.assertIn("assets", show.stdout)
 
+            # Y10. 한글 이름의 첨부가 있어도 sync 가 멎지 않는다 (REQ-20260910-033).
+            # core.quotepath 가 켜져 있으면 diff --name-only 가 한글 이름을 "..." 로
+            # escape 해 내주고, 그걸 pathspec 으로 되넘기면 실제 파일과 안 맞아 commit 이
+            # 죽었다. sync 는 -z 로 읽어 이 escape 를 넘어야 한다.
+        with self.subTest("y10_unicode_named_attachment_does_not_jam_sync"):
+                sh("git", "config", "core.quotepath", "true", cwd=self.root)
+                try:
+                    src = os.path.join(self.root, "state", "쉼-calm-판전체.png")
+                    with open(src, "wb") as f:
+                        f.write(b"\x89PNG\r\n\x1a\n")
+                    rid = self.s9("new", "request", "--title", "한글 첨부",
+                                  "--summary", "s", "--goal", "g", "--size", "S",
+                                  "--user", "tester",
+                                  "--body", f"확인용\n\n[Image: {src}]\n").stdout.split()[0]
+                    n0 = len(origin_log(self.bare))
+                    r = self.s9("assets", "ingest", rid)
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                    self.assertGreater(
+                        len(origin_log(self.bare)), n0,
+                        "한글 이름 첨부가 sync 커밋을 막았다 — quotepath escape 를 pathspec 으로 되넘겼다")
+                    # 작업 트리에 그 파일이 커밋되어 남은 변경이 없다
+                    st = sh("git", "-C", self.root, "-c", "core.quotepath=false",
+                            "status", "--porcelain")
+                    self.assertNotIn("쉼-calm", st.stdout,
+                                     "한글 이름 첨부가 커밋되지 않고 작업 트리에 남았다")
+                finally:
+                    sh("git", "config", "core.quotepath", "false", cwd=self.root)
+
             # Y8. 보호경로를 stage 해도 문서 동기화는 멈추지 않는다 (결함 B)
         with self.subTest("y8_guarded_path_does_not_halt_sync"):
                 hook = os.path.join(self.root, ".git", "hooks", "pre-commit")

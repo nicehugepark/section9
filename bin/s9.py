@@ -12132,8 +12132,8 @@ def _sync_pull_cmd(timeout=8):
     # 문서에서 사라졌다(REQ-20260906-082). autostash 는 같은 경합에서도 「충돌 시 보관함에
     # 남긴다」로 끝나고 다음 회차의 pull 을 막지 않는다.
     try:
-        staged = [n.strip() for n in (_sync_git("diff", "--cached", "--name-only").stdout or "")
-                  .splitlines() if n.strip() and not n.strip().startswith(tuple(SYNC_DATA_PATHS))]
+        staged = [n for n in (_sync_git("diff", "--cached", "--name-only", "-z").stdout or "")
+                  .split("\0") if n.strip() and not n.startswith(tuple(SYNC_DATA_PATHS))]
     except Exception:
         staged = []
     r = _sync_git("rebase", "--autostash", "-q", "@{u}", timeout=timeout)
@@ -12641,9 +12641,14 @@ def sync_run(reason="", transport=True):
             # 커밋 대상을 **실제로 스테이징된 데이터 파일**로 지목한다.
             # 디렉토리 pathspec 을 그대로 넘기면, 통째로 무시(.gitignore)되는
             # 경로 하나 때문에 커밋 전체가 "pathspec did not match" 로 죽는다.
+            # 이름은 -z(NUL 구분)로 읽는다 — core.quotepath 가 켜져 있으면(git 기본)
+            # 한글·유니코드 이름이 C-escape 되어 "..." 로 나오고, 그걸 pathspec 으로
+            # 되넘기면 실제 파일과 안 맞아 commit 이 통째로 "pathspec did not match" 로
+            # 죽는다(REQ-20260910-033, 실측 2026-09-10: 한글 캡처 이름에 sync 다섯 번
+            # 연속 실패·동기화가 멎음). -z 는 escape 없이 원 이름을 준다.
             names = [n for n in _sync_git(
-                "diff", "--cached", "--name-only", "--", *paths
-            ).stdout.splitlines() if n.strip()]
+                "diff", "--cached", "--name-only", "-z", "--", *paths
+            ).stdout.split("\0") if n.strip()]
             if names:
                 import time as _tm
                 _t0 = _tm.time()

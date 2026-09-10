@@ -50,7 +50,7 @@ class SyncClassify(unittest.TestCase):
             # 「당기기」는 fetch 뒤 rebase 다 — 대본의 "pull" 은 그 rebase 에 답한다
             op = "pull" if argv[:2] == ("rebase", "--autostash") else argv[0]
             if op == "diff":
-                return CP(out="vault/x.md\n")
+                return CP(out="vault/x.md\0" if "-z" in argv else "vault/x.md\n")
             if op in q and q[op]:
                 return q[op].pop(0)
             return CP()
@@ -110,7 +110,7 @@ class SyncClassify(unittest.TestCase):
         def fake(*argv, timeout=6):
             self.calls.append(argv)
             if argv[0] == "diff":
-                return CP(out="vault/x.md\n")
+                return CP(out="vault/x.md\0" if "-z" in argv else "vault/x.md\n")
             if argv[:2] == ("rebase", "--autostash"):
                 raise subprocess.TimeoutExpired("git", timeout)
             return CP()
@@ -154,7 +154,7 @@ class SyncClassify(unittest.TestCase):
         def fake(*argv, timeout=6):
             self.calls.append(argv)
             if argv[0] == "diff":
-                return CP(out="vault/x.md\n")
+                return CP(out="vault/x.md\0" if "-z" in argv else "vault/x.md\n")
             if argv[:2] == ("rebase", "--autostash"):
                 return CP(1, self.CONF)
             if argv[:2] == ("rebase", "--abort"):
@@ -191,9 +191,10 @@ class SyncClassify(unittest.TestCase):
         def fake(*argv, timeout=6):
             self.calls.append(argv)
             if argv[:3] == ("diff", "--cached", "--name-only") and "--" not in argv:
-                return CP(out="bin/s9.py\nvault/x.md\n")
+                sep = "\0" if "-z" in argv else "\n"
+                return CP(out=f"bin/s9.py{sep}vault/x.md{sep}")
             if argv[0] == "diff":
-                return CP(out="vault/x.md\n")
+                return CP(out="vault/x.md\0" if "-z" in argv else "vault/x.md\n")
             return CP()
         with mock.patch.object(self.m, "_sync_git", fake), \
                 mock.patch.object(self.m, "sync_mode", lambda: "remote"), \

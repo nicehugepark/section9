@@ -205,6 +205,14 @@ def install_git_hooks():
     subprocess.run(["git", "config", "merge.s9doc.name", "section9 document merge"],
                    cwd=ROOT, capture_output=True)
     say("merge driver OK: merge.s9doc → s9 merge-doc")
+    # 유니코드(한글) 이름의 첨부가 있어도 sync 가 멎지 않게 한다 (REQ-20260910-033).
+    # core.quotepath 가 켜져 있으면(git 기본) diff --name-only 가 한글 이름을 C-escape 해
+    # "..." 로 내주고, sync 가 그걸 pathspec 으로 되넘기면 실제 파일과 안 맞아 commit 이
+    # 죽는다. sync 코드도 -z 로 막지만(같은 요청), 사람이 손으로 git 을 쓸 때도 이름이
+    # 읽히게 저장소 설정으로 함께 끈다.
+    subprocess.run(["git", "config", "core.quotepath", "false"], cwd=ROOT,
+                   capture_output=True)
+    say("git config OK: core.quotepath=false (유니코드 이름 첨부 sync)")
 
 
 def remote_control_wanted(argv=None):
