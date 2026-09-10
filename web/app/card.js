@@ -2629,7 +2629,8 @@ function renderBoard(rows){
       + `전체 ${dbk.groups.length}건이 선행을 기다린다`
       + `<button class="bgo" data-goto="graph">선행 대기 현황 →</button></div>`;
   }
-  html += `<div class="board">`;
+  // 열은 판 안쪽의 .cols 가 세운다 — 판 자체는 스크롤 상자다 (board.css, REQ-20260910-002)
+  html += `<div class="board"><div class="cols">`;
   for (const st of STATUSES){
     let grp = reqs.filter(r => r.status === st);
     // 끝난 컬럼은 우선순위로 세우지 않는다 (REQ-20260827-016).
@@ -2674,7 +2675,7 @@ function renderBoard(rows){
     if (!colStanding(st, grp)) continue;
     html += colHTML(st, st, SCOLOR[st], grp);
   }
-  html += `</div>`;
+  html += `</div></div>`;
   /* 다시 그려도 **보던 자리를 잃지 않는다** (REQ-20260910-023).
 
      주인: 「보드 화면을 스크롤 해서 보는 중에 계속 새로고침이 된다.」 판은

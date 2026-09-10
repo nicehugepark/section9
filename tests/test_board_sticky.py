@@ -74,7 +74,7 @@ def fixture_html():
             '<style>body{margin:0;background:var(--bg)}'
             '.top{height:120px;background:var(--panel);flex:none}</style></head>'
             '<body><div class="top">머리 자리(헤더·필터 줄·띠)</div>'
-            '<main><div id="view"><div class="board">%s</div></div></main>'
+            '<main><div id="view"><div class="board"><div class="cols">%s</div></div></div></main>'
             "</body></html>" % (css, "".join(cols)))
 
 
@@ -152,6 +152,20 @@ HEIGHT_JS = """
   const h2 = board.querySelector('.col h2');
   out.boardTop = board.scrollTop;
   out.headDy = +(h2.getBoundingClientRect().top - (b.top + board.clientTop)).toFixed(1);
+  // 판을 끝까지 내린다 (REQ-20260910-002) — 열 상자가 판 높이까지만 서면 여기서
+  // 머리가 열 아래끝에 밀려 판 윗변을 떠난다. 재는 것은 머리 넷 중 가장 많이
+  // 떠난 값과, 열 높이가 판의 내용 높이와 같은가다.
+  board.scrollTop = 99999;
+  out.boardEnd = board.scrollTop;
+  const top = board.getBoundingClientRect().top + board.clientTop;
+  out.headDyAtEnd = Math.max(...[...board.querySelectorAll('.col h2')]
+    .map(h => Math.abs(h.getBoundingClientRect().top - top)));
+  const cols = [...board.querySelectorAll('.col')].map(c => c.getBoundingClientRect().height);
+  out.colMin = +Math.min(...cols).toFixed(1);
+  out.colMax = +Math.max(...cols).toFixed(1);
+  out.contentHeight = board.scrollHeight - board.clientTop * 2
+    - parseFloat(getComputedStyle(board).paddingBottom);
+  out.innerBoard = board.clientHeight - parseFloat(getComputedStyle(board).paddingBottom);
   board.scrollTop = 0;
   return out;
 })()
@@ -433,6 +447,55 @@ class TheBoardKeepsItsMinimumHeight(unittest.TestCase):
             abs(d["headDy"]), 1.5,
             "창 %dpx 에서 머리가 판의 윗변을 떠났다: %.1fpx"
             % (d["innerHeight"], d["headDy"]))
+
+
+class TheColumnsAreAsTallAsTheBoardContent(unittest.TestCase):
+    """열은 판의 내용 높이만큼 선다 — 판을 끝까지 내려도 머리가 남는다 (REQ-20260910-002).
+
+    맥 Safari 실측 2026-09-10(뷰포트 368): 판을 300px 내리자 머리 여섯이 전부
+    사라졌다. 판이 flex 상자이고 높이가 정해져 있어 열이 판 높이(306)까지만
+    섰고, 열 안에 갇힌 sticky 머리가 열 아래끝을 따라 올라갔다. 높은 창도
+    630px 넘게 내리면 같다. 열을 세우는 flex 를 판 안쪽 .cols 로 옮겨 열이
+    내용 높이를 받게 한 뒤, 이 계약이 두 창 높이에서 끝까지 내려 잰다.
+    """
+    tall = low = None
+
+    @classmethod
+    def setUpClass(cls):
+        d = shared()
+        cls.tall, cls.low = d["tall"], d["low"]
+
+    def _heads_stay(self, d):
+        self.assertGreater(d["boardEnd"], d["boardTop"],
+                           "판이 끝까지 내려가지 않았다 — 재는 자리가 아니다")
+        self.assertLess(
+            d["headDyAtEnd"], 1.5,
+            "창 %dpx 에서 판을 끝(%dpx)까지 내리자 머리가 판 윗변을 %.1fpx 떠났다 — "
+            "열 상자가 판 높이까지만 서서 머리가 열 아래끝에 밀렸다"
+            % (d["innerHeight"], d["boardEnd"], d["headDyAtEnd"]))
+
+    def _columns_fill(self, d):
+        self.assertLess(
+            abs(d["colMin"] - d["colMax"]), 1.5,
+            "열 높이가 %.1f~%.1fpx 로 다르다 — 짧은 열이 긴 열만큼 서지 않는다"
+            % (d["colMin"], d["colMax"]))
+        self.assertGreaterEqual(
+            d["colMax"] + 1.5, d["contentHeight"],
+            "열(%.1fpx)이 판의 내용 높이(%.1fpx)보다 짧다 — 열이 판 높이까지만 섰다"
+            % (d["colMax"], d["contentHeight"]))
+
+    def test_a_tall_window_keeps_the_heads_at_the_board_end(self):
+        """창 1280x800 에서 판을 끝까지 내려도 머리가 판 윗변에 남는다 (N1)."""
+        self._heads_stay(self.tall)
+
+    def test_a_low_window_keeps_the_heads_at_the_board_end(self):
+        """뷰포트 380 에서 판을 끝까지 내려도 머리가 판 윗변에 남는다 (B1)."""
+        self._heads_stay(self.low)
+
+    def test_the_columns_are_as_tall_as_the_content(self):
+        """열 여섯의 높이가 판의 스크롤 내용 높이와 같다 (N2)."""
+        self._columns_fill(self.tall)
+        self._columns_fill(self.low)
 
 
 if __name__ == "__main__":
