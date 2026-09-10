@@ -760,6 +760,12 @@ def run_sharded(pats, jobs, bump=None, skip=()):
     # 놀았다. 칸을 맞춘 뒤 6→343 · 8→317 · 10→295초 (2026-09-05, 14코어).
     env = {**os.environ, "S9_TESTS_NESTED": "1",
            "S9_TEST_PORT_SLOTS": str(max(4, jobs))}
+    # 계정 프로필 경로는 물려주지 않는다 (REQ-20260910-010-2n7g, 실제 사고
+    # 2026-09-10): 프로필로 뜬 세션의 백그라운드 전체 실행에서 HOME 만 옮긴
+    # 시험이 s9-install 을 돌리자, 설치는 HOME 보다 먼저 이기는 CLAUDE_CONFIG_DIR
+    # 을 따라 **실제 계정 프로필**에 임시 경로 훅을 다섯 번 쌓았다. 시험이 각자
+    # 걷어내는 것(test_s9_code_args 의 pop)은 한 파일의 일이고, 여기는 전부의 일이다.
+    env.pop("CLAUDE_CONFIG_DIR", None)
     t_start = time.time()
     for group in shard(body, jobs):
         out = tempfile.NamedTemporaryFile(mode="w+", suffix=".shard",

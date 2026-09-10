@@ -13,6 +13,7 @@ post-merge git hook이 자동 실행하므로 pull 후 별도 조치 불필요.
 usage: s9-install [--quiet] [--no-claude]
 """
 import json
+import re
 import os
 import stat
 import shutil
@@ -73,7 +74,16 @@ def owned_hook(cmd):
     (/tmp/.../scratchpad/wt/bin/)에서 실행된 설치가 남긴 훅 5개가, 그 디렉토리가
     지워진 뒤에도 settings.json 에 계속 남아 있었다 — 죽은 경로를 부르는
     no-op 이라 조용했고, 재설치를 해도 경로가 안 맞아 정리되지 않았다."""
-    return MARK in cmd or "s9-audit" in cmd
+    return MARK in cmd or "s9-audit" in cmd or bool(_OWN_SCRIPT_RE.search(cmd))
+
+
+# 이름으로 보는 두 번째 그물 (REQ-20260910-010-2n7g, 실제 사고 2026-09-10): 시험이
+# 임시 저장소(/T/s9run-*/s9coderoot-*/bin/s9-git-gate)에서 실 계정 프로필에 설치를
+# 돌려 남긴 훅 5개는 경로에 `/section9/bin/` 도 `s9-audit` 도 없어 위 판정을
+# 지나갔고, 재설치가 다섯 번 돌아도 걷히지 않았다 — 그 계정으로 뜬 세션은 도구를
+# 부를 때마다 hook error 를 찍었다. 훅 스크립트의 **이름**은 이 하네스가 정한
+# 것이라 어느 디렉토리에서 설치됐든 같다.
+_OWN_SCRIPT_RE = re.compile(r'[/\\]s9-(git-gate|audit-[a-z-]+)(\.cmd)?(["\s]|$)')
 
 
 def say(msg):
