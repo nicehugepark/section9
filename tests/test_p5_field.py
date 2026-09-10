@@ -15,6 +15,7 @@ git 전송층은 진짜고 흉내 내는 것은 머신 이름뿐이다. 사람�
 
     실행: python3 tests/ p5_field
 """
+import json
 import os
 import unittest
 
@@ -114,13 +115,29 @@ class TestS1Assign(unittest.TestCase):
         """`s9 next` 는 **아직 아무도 착수하지 않은 카드를 권하지 않는다** —
         멈춘 in-progress 만 고른다(next_pickup→stalled_requests). 인계 직후
         B 가 볼 자리는 `s9 next` 가 아니라 `s9 ls --user bob` 이다.
-        (초안이 여기서 틀렸다: "B 의 `s9 next` 가 그 문서를 권한다".)"""
+        (초안이 여기서 틀렸다: "B 의 `s9 next` 가 그 문서를 권한다".)
+
+        **권하는 것은 `id` 하나다** (REQ-20260910-009 이후): `--json` 에는
+        「이 자리에서 해야 할 열린 요청들」(`here`)이 함께 실리는데, 그 목록은
+        담당자만 맞으면 아직 착수 안 한 것도 낸다 — 그것이 그 목록의 일이다.
+        출력 전체에서 id 를 찾으면 두 목록이 한 자로 뭉개진다.
+        """
         fx, X = self.fx, self.X
         fx.cli("alpha", "assign", X, BOB, "--why", "인계", user=ALICE)
         fx.sync("alpha")
         fx.pull("beta")
-        self.assertNotIn(X, fx.cli("beta", "next", "--json", user=BOB))
-        self.assertNotIn(X, fx.cli("alpha", "next", "--json", user=ALICE))
+        for m, who in (("beta", BOB), ("alpha", ALICE)):
+            d = json.loads(fx.cli(m, "next", "--json", user=who))
+            self.assertNotEqual(X, d.get("id"),
+                                f"{m} 의 s9 next 가 착수 안 한 카드를 권했다")
+        # 그 대신 **맡은 사람의 자리에만** 「여기서 할 일」로 선다 — 인계가
+        # 화면에 닿는 자리가 여기다.
+        bob_here = [r["id"] for r in json.loads(
+            fx.cli("beta", "next", "--json", user=BOB))["here"]]
+        alice_here = [r["id"] for r in json.loads(
+            fx.cli("alpha", "next", "--json", user=ALICE))["here"]]
+        self.assertIn(X, bob_here, "인계받은 사람의 「여기서 할 일」에 없다")
+        self.assertNotIn(X, alice_here, "넘긴 사람에게 아직 남아 있다")
 
 
 class TestS2TwoMachinesOnePerson(unittest.TestCase):
@@ -224,11 +241,24 @@ class TestS3Derived(unittest.TestCase):
         self.assertEqual(meta.get("parent"), self.X)
 
     def test_beta_does_not_pick_up_the_derived_card(self):
-        """B 는 그 파생 카드를 집지 않는다 — 만든 자리는 alpha 다."""
+        """B 는 그 파생 카드를 집지 않는다 — 권하지도, 남의 자리에 세우지도 않는다.
+
+        `machine: alpha` 는 **만들어진 자리**를 적은 것이지 담당 컴퓨터가
+        아니다(그것은 `needs_machine` 이다). 담당 컴퓨터가 안 적힌 요청은
+        담당자의 어느 컴퓨터에서나 집을 수 있고(REQ-20260910-009 ③), 그
+        기본값이 없던 동안 접수만 되고 영영 서 있는 요청이 생겼다. 그래서
+        여기서 지키는 것은 둘이다: **권하지 않는다**(`id`) · **남의 자리에
+        세우지 않는다**(BOB 의 「여기서 할 일」).
+        """
         fx, Z = self.fx, self.Z
         self.assertEqual(fx.doc("beta", Z)[0].get("machine"), "alpha")
-        self.assertNotIn(Z, fx.cli("beta", "next", "--json", user=BOB))
-        self.assertNotIn(Z, fx.cli("beta", "next", "--json", user=ALICE))
+        for who in (BOB, ALICE):
+            d = json.loads(fx.cli("beta", "next", "--json", user=who))
+            self.assertNotEqual(Z, d.get("id"),
+                                f"beta 의 s9 next 가 {who} 에게 파생 카드를 권했다")
+        bob_here = [r["id"] for r in json.loads(
+            fx.cli("beta", "next", "--json", user=BOB))["here"]]
+        self.assertNotIn(Z, bob_here, "만든 사람이 아닌 사람의 자리에 섰다")
         self.assertNotIn(Z, fx.cli("beta", "reopened", user=BOB))
 
 
