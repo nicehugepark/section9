@@ -129,10 +129,16 @@ class TheRetry(unittest.TestCase):
 
             # ---------- 큐를 두지 않은 근거 ----------
         with self.subTest("the_measurement_is_written_down"):
-            i = self.src.find("const ATT_BACKOFF")
-            head = self.src[max(0, i - 2600):i]
-            self.assertIn("동시 상한", head, "큐를 재 본 기록이 없다")
-            self.assertRegex(head, r"19|재시도",
+            # **어디에 적혔는지는 계약이 아니다.** 종전에는 `const ATT_BACKOFF`
+            # 앞 2,600자를 잘라 그 창 안에서 찾았는데, 그 창은 앞 파일의 꼬리를
+            # 함께 물고 있었고 실제 근거도 거기(dialog.js)에 있었다. 파일이 하나
+            # 늘자(REQ-20260910-017 의 machine.js) 창이 밀려 거짓 실패가 났다.
+            # 고정할 성질은 「재 본 기록이 화면 소스에 남아 있다」이지 그 글이
+            # 몇 글자 앞에 있느냐가 아니다 — 이어 붙인 한 장 전체에서 찾는다.
+            self.assertIn("동시 상한", self.src, "큐를 재 본 기록이 없다")
+            i = self.src.find("동시 상한")
+            near = self.src[max(0, i - 800):i + 800]
+            self.assertRegex(near, r"19|재시도",
                              "무엇을 얼마나 재 봤는지 적혀 있지 않다")
         with self.subTest("there_is_no_queue"):
             self.assertNotRegex(self.src, r"attQueue|attSem|ATT_MAX_INFLIGHT",

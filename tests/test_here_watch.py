@@ -104,7 +104,8 @@ class HereWatch(unittest.TestCase):
         self.assertEqual(self.spawned, [rid])
         meta, body = self.m.read_doc(self.m.find_path(rid))
         self.assertEqual(meta["status"], "in-progress")
-        self.assertIn("담당 머신", body)
+        # 화면·기록의 낱말은 「컴퓨터」다 (REQ-20260910-017 용어 판정)
+        self.assertIn("담당 컴퓨터", body)
 
     def test_h3_in_progress_ones_are_not_the_here_ticks_business(self):
         self.m.do_user_config_set("hong", "auto_resume", "on")
