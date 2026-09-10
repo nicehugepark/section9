@@ -19658,6 +19658,14 @@ def trash_entries():
                 "summary": meta.get("summary", ""),
                 "status": meta.get("status", ""), "user": meta.get("user", ""),
                 "project": meta.get("project", ""),
+                # 판정이 보는 원 필드 (REQ-20260910-013). 이 셋이 빠져 있으면
+                # doc_access 는 이 행을 **아무 소속도 없는 문서**로 읽는다:
+                # slug 는 버린 PRJ 문서가 자기 프로젝트를 대게 하고,
+                # creator_raw·assignee 는 살아 있는 문서와 같은 갈래를 타게 한다
+                # (creator_field 는 `path` 가 있는 행을 옛 catalog 로 보고 닫는다).
+                "slug": meta.get("slug", ""),
+                "creator_raw": str(meta.get("creator") or ""),
+                "assignee": meta.get("assignee", ""),
                 "created": meta.get("created", ""),
                 "deleted": mt,
                 "path": os.path.relpath(p, ROOT),
@@ -20688,15 +20696,50 @@ def member_active(m, today=None):
     return (not until) or (until >= today)
 
 
-def project_role(ref, user, today=None):
-    """활성 멤버면 프로젝트 역할, 아니면 '' (만료·미참여 모두 '')."""
-    pr = load_project(ref)
-    if not pr:
-        return ""
-    for m in pr[0].get("members", []):
+def roster_role(meta, user, today=None):
+    """명부(프로젝트 meta) 안에서 활성 멤버의 역할, 아니면 ''.
+
+    project_role 에서 갈라 둔다 — 버린 프로젝트는 등록부로 못 찾고 명부만
+    손에 들어오는 자리가 있다 (doc_access, REQ-20260910-013). 규칙이 두 벌이
+    되면 살아 있을 때와 버린 뒤의 판정이 갈린다."""
+    for m in (meta or {}).get("members", []) or []:
         if m.get("user") == user and member_active(m, today):
             return m.get("role", "")
     return ""
+
+
+def load_trashed_project(ref):
+    """버린 프로젝트 문서 (vault/projects/.trash/<slug>.md). 없으면 None.
+
+    **판정에만 쓴다 — 되살리는 것이 아니다.** 등록부(project_path)는 .trash 를
+    보지 않아야 한다: 버린 프로젝트에 새 요청이 붙거나 그것이 목록에 다시
+    서면 버린 일이 무효가 된다. 하지만 등록부가 잊었다는 이유로 그 프로젝트의
+    문서들이 멤버의 화면에서까지 사라지면, 버리는 순간 admin 말고는 아무도
+    그것을 보지도 되돌리지도 못한다 (REQ-20260910-013)."""
+    d = os.path.join(PROJECTS, TRASH_DIR)
+    if not os.path.isdir(d):
+        return None
+    p = os.path.join(d, safe_name(ref) + ".md")
+    if not os.path.exists(p):
+        p = ""
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".md"):
+                continue
+            fp = os.path.join(d, fn)
+            meta, _ = read_doc(fp)
+            if meta.get("id") == ref or meta.get("slug") == ref:
+                p = fp
+                break
+        if not p:
+            return None
+    meta, body = read_doc(p)
+    return meta, body, p
+
+
+def project_role(ref, user, today=None):
+    """활성 멤버면 프로젝트 역할, 아니면 '' (만료·미참여 모두 '')."""
+    pr = load_project(ref)
+    return roster_role(pr[0], user, today) if pr else ""
 
 
 def user_projects(user, today=None, include_expired=False):
@@ -21217,6 +21260,11 @@ def doc_access(row, me):
     if row.get("type") == "project":
         proj = row.get("slug") or row.get("id") or proj
     pr = load_project(proj) if proj else None
+    if pr is None and proj:
+        # 등록부가 이 slug 를 모른다. 둘 중 하나다 — 애초에 없는 프로젝트
+        # (정책 부재 → 아래 owner 갈래)이거나, **버려진** 프로젝트다.
+        # 뒤쪽이면 명부는 .trash 안에 그대로 있다 (REQ-20260910-013).
+        pr = load_trashed_project(proj)
     if role == "viewer":
         # 관찰 범위 (REQ-20260902-030): 기본은 프로젝트 멤버십, 그 위에
         # admin 이 준 observe(all | slug 목록, until 만료)가 얹힌다.
@@ -21226,7 +21274,9 @@ def doc_access(row, me):
         if scope and pr and (pr[0].get("slug") or "") in scope:
             return "observe"
     if pr:
-        if project_role(proj, me):
+        # 명부는 이미 손에 있다 — project_role 로 다시 찾지 않는다.
+        # 버린 프로젝트는 그 길로는 못 찾기도 한다 (REQ-20260910-013).
+        if roster_role(pr[0], me):
             return "member"
         # 만든 사람은 멤버가 아니어도 자기 문서를 본다 (REQ-20260908-026).
         # 두 vault 가 만나 같은 slug 가 충돌하고 사람이 한쪽을 택하면 진 쪽
