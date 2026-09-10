@@ -10030,18 +10030,43 @@ def read_claude_oauth(cfg, platform=None, run=None):
     # 물려주면 자격증명 없는 자리가 남의 사용량을 단다(REQ-20260906-014, r1_6). 종전에는
     # ~/.claude 로 못박아, 프로필(CLAUDE_CONFIG_DIR)로 뜬 맥 세션은 제 계정인데도 Keychain
     # 을 못 읽어 헤더가 「자격증명 없음」이었다(REQ-20260910-040, 맥 실측 2026-09-10).
-    if os.path.realpath(os.path.expanduser(cfg or "")) != os.path.realpath(
-            os.path.expanduser(claude_home())):
-        return None
-    try:
-        import subprocess as _sp
-        r = (run or _sp.run)(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
-                             capture_output=True, encoding="utf-8", errors="replace", timeout=10)
-        if r.returncode != 0 or not (r.stdout or "").strip():
-            return None
-        return json.loads(r.stdout.strip()).get("claudeAiOauth") or {}
-    except Exception:
-        return None
+    # …라고 두었던 자리인데, Claude Code 는 프로필마다 **제 항목**을 따로 둔다
+    # (REQ-20260910-014-2n7g, 맥미니 실측 2026-09-10 23:5x): 기본 자리(~/.claude)는
+    # 「Claude Code-credentials」, CLAUDE_CONFIG_DIR 로 뜬 프로필은
+    # 「Claude Code-credentials-<sha256(그 경로)[:8]>」 — claude04 프로필 경로의
+    # sha256 앞 8자가 Keychain 의 71b3ff26 항목과 맞았다. 항목 이름이 계정을 가르니
+    # 남의 사용량이 달릴 길이 없고, 활성 프로필만 읽던 제한은 필요가 없어졌다:
+    # 그 제한이 곧 「프로필 계정은 사용량이 늘 —」(주인 지적 23:53: 「이유가 있다면
+    # 이유를 고쳐야지」)이었다.
+    import subprocess as _sp
+    for svc in keychain_service_names(cfg):
+        try:
+            r = (run or _sp.run)(["security", "find-generic-password", "-s", svc, "-w"],
+                                 capture_output=True, encoding="utf-8", errors="replace", timeout=10)
+            if r.returncode != 0 or not (r.stdout or "").strip():
+                continue
+            return json.loads(r.stdout.strip()).get("claudeAiOauth") or {}
+        except Exception:
+            continue
+    return None
+
+
+def keychain_service_names(cfg):
+    """그 설정 디렉토리의 Keychain 항목 이름 후보, 맞을 법한 것부터
+    (REQ-20260910-014-2n7g). 기본 자리(~/.claude)는 접미 없는 이름, 프로필은
+    경로의 sha256 앞 8자를 접미로 단다 — Claude Code 의 규칙을 실측으로 맞췄다.
+    프로필이 활성 자리이기도 하면(CLAUDE_CONFIG_DIR 로 뜬 서버) 접미 없는 이름도
+    뒤에 둔다 — 옛 판이 그 이름으로 적어 둔 것을 잃지 않으려고."""
+    import hashlib
+    path = os.path.abspath(os.path.expanduser(cfg or ""))
+    home = os.path.abspath(os.path.expanduser("~/.claude"))
+    plain = "Claude Code-credentials"
+    if os.path.realpath(path) == os.path.realpath(home):
+        return [plain]
+    names = [plain + "-" + hashlib.sha256(path.encode("utf-8")).hexdigest()[:8]]
+    if os.path.realpath(path) == os.path.realpath(os.path.expanduser(claude_home())):
+        names.append(plain)
+    return names
 
 
 def claude_usage(cfg_dir=None, ttl=60, offline=False):
@@ -10099,12 +10124,12 @@ def claude_usage(cfg_dir=None, ttl=60, offline=False):
         active = os.path.realpath(cfg) == os.path.realpath(
             os.path.expanduser(claude_home()))
         if sys.platform == "darwin" and not active:
-            # 실패 문장이 세 경우를 가른다 (REQ-20260910-040): ① 활성 계정인데 없음
-            # ② 프로필이라 Keychain 을 안 읽음 ③ 파일 자체가 없음. Keychain 항목이
-            # 있어도 이 프로필 것이 아닐 수 있어, 「없음」이라 적으면 거짓이 된다.
-            out["error"] = ("자격증명 없음 — 이 계정은 활성(로그인) 프로필이 아니라 "
-                            "Keychain 을 읽지 않는다. 이 컴퓨터에서 이 계정으로 "
-                            "로그인한 세션에서만 사용량이 뜬다.")
+            # 실패 문장이 경우를 가른다 (REQ-20260910-040 → 014): 프로필도 이제
+            # 제 Keychain 항목(경로 해시 접미)을 읽으므로, 여기 오는 것은 그 항목이
+            # 없을 때다 — 이 컴퓨터에서 그 프로필로 로그인한 적이 없다.
+            out["error"] = ("자격증명 없음 — Keychain 에 이 프로필의 항목이 없다. "
+                            "이 컴퓨터에서 이 계정으로 한 번 로그인하면(계정 창 → "
+                            "그 계정으로 다시 시작 → /login) 사용량이 뜬다.")
         else:
             out["error"] = (f"자격증명 없음 ({os.path.join(cfg, '.credentials.json')}"
                             + (" · Keychain 항목 없음" if sys.platform == "darwin" else "") + ")")

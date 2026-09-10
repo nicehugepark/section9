@@ -142,9 +142,11 @@ class LoginCheck(unittest.TestCase):
 
         def run(argv, **kw):
             calls.append(argv)
+            # Keychain 은 항목 이름으로 답한다 — 기본 자리의 이름에만 자격증명이 있다
             class R:
-                returncode = 0
-                stdout = '{"claudeAiOauth": {"accessToken": "t", "subscriptionType": "max"}}'
+                returncode = 0 if argv[3] == "Claude Code-credentials" else 44
+                stdout = ('{"claudeAiOauth": {"accessToken": "t", "subscriptionType": "max"}}'
+                          if argv[3] == "Claude Code-credentials" else "")
             return R()
         with mock.patch.object(s, "claude_home", lambda: home):
             self.assertIsNone(s.read_claude_oauth(home, platform="linux", run=run))
@@ -153,9 +155,13 @@ class LoginCheck(unittest.TestCase):
             self.assertEqual(calls[-1][:3], ["security", "find-generic-password", "-s"])
             other = tempfile.mkdtemp(prefix="s9login8o-")
             n = len(calls)
+            # 다른 슬롯은 **제 이름**(경로 해시 접미)으로만 묻는다 (REQ-20260910-014-2n7g)
+            # — 기본 자리의 항목을 물려받지 않고, 제 항목이 없으면 없는 것이다.
             self.assertIsNone(s.read_claude_oauth(other, platform="darwin", run=run),
                               "활성 계정이 아닌 슬롯이 Keychain 의 자격증명을 물려받았다")
-            self.assertEqual(len(calls), n)
+            asked = [c[3] for c in calls[n:]]
+            self.assertTrue(asked and all(a.startswith("Claude Code-credentials-") for a in asked),
+                            f"다른 슬롯이 기본 자리의 항목 이름으로 물었다: {asked}")
             with open(os.path.join(home, ".credentials.json"), "w", encoding="utf-8") as f:
                 f.write('{"claudeAiOauth": {"accessToken": "f", "subscriptionType": "pro"}}')
             self.assertEqual(s.read_claude_oauth(home, platform="darwin", run=run).get("subscriptionType"), "pro")
