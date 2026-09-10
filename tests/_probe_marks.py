@@ -284,7 +284,17 @@ def measure(scale, skins, out_prefix):
     if not chrome:
         raise SystemExit("크롬 없음")
     win = "/mnt/c/" in chrome
-    marker = "s9probe-marks"
+    # 이름은 **실행마다 갈라야 한다** (REQ-20260910-052). 이 한 이름에서
+    # 프로파일(--user-data-dir)·픽스처 html·reclaim() 대상이 모두 나오므로,
+    # 고정 이름이면 같은 자를 둘이 동시에 돌릴 때 서로를 지운다: 한쪽의
+    # rmtree 가 남의 프로파일을 지우고, 같은 DevToolsActivePort 를 읽어 남의
+    # 브라우저에 붙고, finally 의 reclaim(marker) 이 marker 를 명령줄에 가진
+    # headless 크롬을 **전부** 죽이고, os.remove(fix) 가 남이 읽으려던 픽스처를
+    # 지운다. 실측: 배율 1.0 과 1.5 를 동시에 돌리면 1.5 쪽이 parts=None 을 냈다.
+    # 이 스위트의 다른 CDP 시험 일곱(test_id_realscale·test_mark_swap·
+    # test_board_sticky·test_hover_realscale·test_link_newtab·
+    # test_doc_head_handles·test_graph_type_axis)이 이미 이 꼴이다.
+    marker = "s9probe-marks-%d-%g" % (os.getpid(), scale)
     if win:
         base = "/mnt/c/Temp"
         os.makedirs(base, exist_ok=True)
@@ -293,7 +303,9 @@ def measure(scale, skins, out_prefix):
         fix = os.path.join(base, marker + ".html")
         url = "file:///C:/Temp/" + marker + ".html"
     else:
-        base = "/tmp"
+        # 러너는 실행마다 임시 루트를 세워 TMPDIR 을 그리로 돌린다 — /tmp 를
+        # 박아 쓰면 프로파일이 그 루트 밖에 남아 회수되지 않는다.
+        base = os.environ.get("TMPDIR", "/tmp")
         prof_wsl = prof_arg = os.path.join(base, marker)
         fix = os.path.join(base, marker + ".html")
         url = "file://" + fix
@@ -449,7 +461,7 @@ def hover_shots(scale, skins):
     if not chrome:
         raise SystemExit("크롬 없음")
     win = "/mnt/c/" in chrome
-    marker = "s9probe-hover"
+    marker = "s9probe-hover-%d-%g" % (os.getpid(), scale)   # measure() 와 같은 까닭
     if win:
         base = "/mnt/c/Temp"
         os.makedirs(base, exist_ok=True)
@@ -457,7 +469,7 @@ def hover_shots(scale, skins):
         fix = os.path.join(base, marker + ".html")
         url = "file:///C:/Temp/" + marker + ".html"
     else:
-        base = "/tmp"
+        base = os.environ.get("TMPDIR", "/tmp")
         prof_wsl = prof_arg = os.path.join(base, marker)
         fix = os.path.join(base, marker + ".html")
         url = "file://" + fix

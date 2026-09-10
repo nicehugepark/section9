@@ -9154,6 +9154,46 @@ def _ensure_resumable(transcript_path, full_sid, account):
     return (True, True, "")
 
 
+def _session_transcript(b):
+    """그 세션의 대화 기록 경로와 전체 id — 바인딩이 비었으면 **찾아서 채운다**.
+
+    (REQ-20260910-009) 바인딩의 `transcript_path` 는 훅이 적는다. 훅이 아직
+    돌지 않았거나 그 세션이 우리 훅 밖에서 떴으면 빈 칸이다 — 빈 칸은
+    「기록이 없다」가 아니라 「아직 안 적혔다」다. 그러니 묻는 자리에서 한 번
+    찾아보고, 찾았으면 바인딩에 적어 둔다(자가 치유). 계정을 한 번 바꾼 세션의
+    기록은 홈이 아니라 그 프로필 아래에 살아서, 찾는 자리도 그만큼 넓다.
+
+    적혀 있는데 그 자리에 파일이 없으면 다른 자리를 한 번 더 본다(계정이
+    옮겨 갔을 수 있다). 못 찾으면 **적힌 경로를 그대로 돌려준다** — 그 경로가
+    가리키는 대화가 정말 없는 것인지, 첫 프롬프트 전이라 아직 안 생긴 것인지
+    (a95d4c80 뒤로는 훅이 파일보다 먼저 경로를 적는다) 여기서는 가릴 수 없다.
+    가리는 자리는 부르는 쪽이다.
+
+    반환 (경로, 전체id). 둘 다 "" 면 바인딩에 적힌 것도 찾은 것도 없다.
+    """
+    b = b or {}
+    tp = b.get("transcript_path") or ""
+    if not tp or not os.path.isfile(tp):
+        found = _discover_transcript(b.get("session") or "",
+                                     session_cfg_dir(b) or "")
+        if found and found != tp:
+            try:
+                acquire_lock(timeout=2.0)
+            except SystemExit:
+                return (found, os.path.splitext(os.path.basename(found))[0])
+            try:
+                cur = read_binding(b.get("machine") or current_machine(),
+                                   b.get("session") or "")
+                if cur:
+                    cur["transcript_path"] = found
+                    write_binding(cur)
+                b["transcript_path"] = found
+            finally:
+                release_lock()
+            tp = found
+    return (tp, os.path.splitext(os.path.basename(tp))[0] if tp else "")
+
+
 def session_model(b):
     """대상 세션의 현재 모델 — 트랜스크립트 마지막 assistant 이벤트의 model.
     (effort는 트랜스크립트에 기록되지 않아 미표시.)
@@ -9441,10 +9481,10 @@ def restart_session(sid8, model="", effort="", account="", stop_workers=False,
         if not _pid_is_claude(pid):
             return {"ok": False,
                     "reason": f"pid {pid}가 claude 프로세스가 아님(재사용 의심)"}
-        tp = b.get("transcript_path") or ""
-        full = os.path.splitext(os.path.basename(tp))[0] if tp else ""
-        if not full:
-            return {"ok": False, "reason": "세션 전체 id 미상 — 트랜스크립트 없음"}
+        # 바인딩이 비었으면 찾아서 채운다; 그래도 없으면 **아직 한 마디도
+        # 오가지 않은 세션**이라 이어받을 대화가 없다 (REQ-20260910-009).
+        tp, full = _session_transcript(b)
+        fresh = not full
 
         st = transcript_read(tp)
         lim = {"model": st.get("limit_model") or "",
@@ -9499,9 +9539,14 @@ def restart_session(sid8, model="", effort="", account="", stop_workers=False,
         # 종전에는 세션부터 내리고 나중에 실패를 알렸다 — 계정 전환 재시작이
         # `No conversation found` 로 죽고, 화면은 90초를 기다리다 「돌아온 것을
         # 확인하지 못했습니다」를 냈다.
-        resumable, copied, why = _ensure_resumable(tp, full, account) \
-            if account else (True, False, "")
-        if not resumable and not force:
+        # 이어받을 대화가 아직 없는 세션은 **막지 않는다** (REQ-20260910-009).
+        # 잃을 대화가 없으니 지킬 것도 없다 — `--resume` 없이 새 계정으로 띄운다.
+        if fresh:
+            resumable, copied, why = False, False, ""
+        else:
+            resumable, copied, why = _ensure_resumable(tp, full, account) \
+                if account else (True, False, "")
+        if not resumable and not fresh and not force:
             return refuse("no_resume", why)
         flags = (["--model", model] if model else []) \
             + (["--effort", effort] if effort else [])
@@ -9518,6 +9563,10 @@ def restart_session(sid8, model="", effort="", account="", stop_workers=False,
                       f"{safe_name(account)} " + manual)
         out = {"ok": True, "cmd": manual, "saved": saved,
                "resume_copied": copied, "resumed_conversation": resumable}
+        if fresh:
+            # 화면이 「같은 대화가 이어집니다」를 쓸 근거가 없는 갈래다 —
+            # 이을 대화가 아예 없다. 잃은 것도 없다.
+            out["fresh_session"] = True
         if st.get("limit"):
             # 거부가 아니라 **진행**이다 — 그래도 갈래 이름은 말한다. 화면이
             # "한도로 멈춰 있어 멈출 것이 없으니 그대로 바꿉니다" 를 쓸 근거다.
@@ -9526,7 +9575,7 @@ def restart_session(sid8, model="", effort="", account="", stop_workers=False,
         if force:
             out["forced"] = True
             out["discarded_turn"] = discarded_turn
-            if not resumable:
+            if not resumable and not fresh:
                 out["why_kind"] = "no_resume"
                 out["discarded_conversation"] = True
                 out["reason_forced"] = why
@@ -12635,14 +12684,18 @@ def sync_stats(limit=2000):
         return xs[min(len(xs) - 1, int(round((len(xs) - 1) * q)))]
     stages = {}
     for r in recs:
-        st = stages.setdefault(r.get("stage", "?"), {"n": 0, "fail": 0, "ms": []})
+        st = stages.setdefault(r.get("stage", "?"),
+                               {"n": 0, "fail": 0, "ms": [], "streak": 0})
         st["n"] += 1
         st["ms"].append(int(r.get("ms") or 0))
         if r.get("rc", 0) != 0:
             st["fail"] += 1
+            st["streak"] += 1
+        else:
+            st["streak"] = 0    # 끝에서 이어진 연속 실패만 남긴다 (REQ-20260910-052-62x6)
     out = {}
     for k, st in stages.items():
-        out[k] = {"n": st["n"], "fail": st["fail"],
+        out[k] = {"n": st["n"], "fail": st["fail"], "streak": st["streak"],
                   "p50_ms": pct(st["ms"], 0.5), "p95_ms": pct(st["ms"], 0.95)}
     pushes = [r for r in recs if r.get("stage") == "push"]
     rejected = [r for r in pushes if r.get("kind") == "rejected"]
@@ -12653,6 +12706,20 @@ def sync_stats(limit=2000):
                                    if pushes else None),
             "last_ok": oks[-1]["ts"] if oks else "",
             "last_fail": fails[-1]["ts"] if fails else ""}
+
+
+def sync_stats_warning(st, threshold=None):
+    """`s9 sync --stats` 첫 줄에 설 경고 — 임계 이상 연속으로 진 단계가 있으면 그
+    한 줄, 없으면 빈 문자열 (REQ-20260910-052-62x6)."""
+    n = int(threshold if threshold is not None else sync_alert_after())
+    bad = [(k, v.get("streak") or 0) for k, v in (st.get("stages") or {}).items()
+           if (v.get("streak") or 0) >= max(1, n)]
+    if not bad:
+        return ""
+    bad.sort(key=lambda kv: -kv[1])
+    part = " · ".join(f"{k} {c}회" for k, c in bad)
+    return (f"⚠ 자동 {bad[0][0]} 이 잇달아 실패하고 있습니다 — {part} 연속. "
+            f"`s9 sync` 로 사유를 보고 고치세요.")
 
 
 def _sync_net_backoff(active):
@@ -12809,8 +12876,13 @@ def sync_run(reason="", transport=True):
                                   "--", *names)
                     _sync_event(reason, "commit", _t0, r, attempt=1)
                 if r.returncode != 0:
-                    _sync_log(f"commit 실패: {r.stderr.strip()[:120]}")
+                    # 종전에는 이 한 줄이 전부였다 (REQ-20260910-052-62x6) — 74회를
+                    # 지는 동안 sync.log 밖으로는 아무 데도 그 사실이 없었다.
+                    ck = _sync_commit_fail_kind(r.stderr)
+                    _sync_log(f"commit 실패({ck}): {r.stderr.strip()[:120]}")
+                    _sync_streak_record(ck, r.stderr, stage="commit")
                     return "error"
+                _sync_streak_clear("commit")
             if sync_mode() != "remote":
                 return "local"      # 혼자 쓰는 자리 — 바깥으로 나가지 않는다
             if not transport:
@@ -12838,10 +12910,10 @@ def sync_run(reason="", transport=True):
                 _sync_event(reason, "pull", t0, pl, attempt=attempt, kind=kind)
                 if pl.returncode == 0:
                     _sync_pull_stamp()
-                    _sync_streak_clear()
+                    _sync_streak_clear("pull")
                 if pl.returncode != 0:
                     _sync_abort_rebase()
-                    _sync_streak_record(kind, pl.stderr)
+                    _sync_streak_record(kind, pl.stderr, stage="pull")
                     if kind == "untracked" and attempt == 0:
                         # 자리를 막은 것이 추적 안 되는 파일이면(십중팔구 s9 가
                         # 스스로 쓴 것) 비켜 세우고 곧바로 한 번 더 당긴다.
@@ -13270,7 +13342,14 @@ SYNC_ALERT_WORD = {                # 알림 문구에 서는 사유의 짧은 �
     "rejected": "push 거부",
     "protected": "보호 규칙",
     "untracked": "추적 안 되는 파일",
+    "lock": "잠금 경합",
+    "other": "그 밖의 오류",
 }
+# commit 단계 실패는 pull 과 사유가 다르다 (REQ-20260910-052-62x6):
+#   hook   s9-guard 가 거부했다 — 다시 해도 같다. 사람이 담기는 내용을 고쳐야 한다
+#   lock   HEAD/index.lock 경합 — 곧 풀린다(sync_run 이 한 번 다시 한다)
+#   other  그 밖 (pathspec 어긋남 등)
+SYNC_REQUEST_AFTER = 10            # 이만큼 연속 실패하면 요청 문서가 한 번 선다
 
 
 def _sync_pull_fail_label(kind):
@@ -13278,19 +13357,41 @@ def _sync_pull_fail_label(kind):
     return "pull conflict" if kind == "conflict" else f"pull 실패({kind})"
 
 
-class SyncFailStreak:
-    """같은 사유의 연속 실패 카운터. record() 는 임계에 닿는 그 한 번만 알림을 돌려주고,
-    success() 가 0 으로 되돌린다. 사유(kind)가 바뀌면 1 부터 다시 센다."""
+def _sync_commit_fail_kind(stderr):
+    """자동 commit 실패를 셋으로 가른다 (REQ-20260910-052-62x6).
 
-    def __init__(self, kind="", count=0, told=False, line="", since=""):
+    잠금 경합(lock)이 먼저다 — 그 stderr 에는 앞선 시도의 훅 출력이 함께 실려 올 수
+    있는데, 다시 하면 풀리는 것을 「훅 거부」로 적으면 사람을 헛걸음시킨다."""
+    t = str(stderr or "")
+    if _sync_commit_lock_failed(t):
+        return "lock"
+    if re.search(r"s9-guard:|hook declined|pre-commit|commit-msg|"
+                 r"Traceback \(most recent call last\)|SyntaxError", t):
+        return "hook"
+    return "other"
+
+
+class SyncFailStreak:
+    """같은 단계·사유의 연속 실패 카운터. record() 는 임계에 닿는 그 한 번만 알림을
+    돌려주고, success(stage) 가 그 단계의 셈만 0 으로 되돌린다. 단계(stage)나
+    사유(kind)가 바뀌면 1 부터 다시 센다.
+
+    stage 는 나중에 더해졌다 (REQ-20260910-052-62x6) — 그전에는 pull 만 셌다. 그래서
+    기본값이 "pull" 이고, stage 키가 없는 옛 상태 파일도 pull 로 읽힌다."""
+
+    def __init__(self, kind="", count=0, told=False, line="", since="",
+                 stage="pull", requested=False):
         self.kind, self.count, self.told = kind, int(count or 0), bool(told)
         self.line, self.since = line, since
+        self.stage, self.requested = stage or "pull", bool(requested)
 
-    def record(self, kind, stderr="", threshold=SYNC_ALERT_AFTER):
-        if kind != self.kind:
+    def record(self, kind, stderr="", threshold=SYNC_ALERT_AFTER, stage="pull"):
+        stage = stage or "pull"
+        if kind != self.kind or stage != self.stage:
             first = next((ln.strip() for ln in str(stderr or "").splitlines()
                           if ln.strip()), "")
             self.kind, self.count, self.told = kind, 0, False
+            self.stage, self.requested = stage, False
             self.line, self.since = first[:200], now_iso()
         self.count += 1
         if self.count >= max(1, int(threshold or SYNC_ALERT_AFTER)) and not self.told:
@@ -13298,12 +13399,27 @@ class SyncFailStreak:
             return self.as_dict()
         return None
 
-    def success(self):
+    def request_due(self, threshold=SYNC_REQUEST_AFTER):
+        """요청 문서를 세울 때인가 — 임계를 넘긴 첫 한 번만 True. 같은 streak 에서
+        두 번 서지 않는다(같은 사고로 요청이 열 장 서면 아무도 안 읽는다)."""
+        n = max(1, int(threshold or SYNC_REQUEST_AFTER))
+        if self.count >= n and not self.requested:
+            self.requested = True
+            return True
+        return False
+
+    def success(self, stage="pull"):
+        """한 단계의 성공은 **그 단계의** 셈만 지운다 — commit 이 성공했다고 pull 이
+        지고 있는 사실까지 지워지면, 그 pull 실패는 영영 임계에 닿지 못한다."""
+        if (stage or "pull") != self.stage:
+            return
         self.kind, self.count, self.told, self.line, self.since = "", 0, False, "", ""
+        self.stage, self.requested = "", False
 
     def as_dict(self):
         return {"kind": self.kind, "count": self.count, "told": self.told,
-                "line": self.line, "since": self.since}
+                "line": self.line, "since": self.since,
+                "stage": self.stage, "requested": self.requested}
 
     @classmethod
     def load(cls, path=None):
@@ -13313,7 +13429,8 @@ class SyncFailStreak:
             if not isinstance(d, dict):
                 raise ValueError
             return cls(d.get("kind", ""), d.get("count", 0), d.get("told", False),
-                       d.get("line", ""), d.get("since", ""))
+                       d.get("line", ""), d.get("since", ""),
+                       d.get("stage", "pull"), d.get("requested", False))
         except (OSError, ValueError, TypeError):
             return cls()
 
@@ -13351,10 +13468,13 @@ def _sync_pending_count():
 
 
 def sync_alert_text(alert, pending=0):
-    """수신함·칩 툴팁이 함께 쓰는 한 문장 — 사유, 첫 줄, push 되지 않은 수, 다음 행동."""
+    """수신함·칩 툴팁이 함께 쓰는 한 문장 — 단계, 사유, 첫 줄, push 되지 않은 수,
+    다음 행동. 단계를 적는 이유는 사람이 할 일이 갈리기 때문이다 — pull 실패는
+    기다리거나 충돌을 풀면 되고, commit 실패는 담기는 내용을 고쳐야 한다."""
     word = SYNC_ALERT_WORD.get(alert.get("kind", ""), alert.get("kind", "") or "?")
     line = (alert.get("line") or "").strip()
-    return (f"sync pull 이 {int(alert.get('count') or 0)}회 연속 실패 — "
+    stage = alert.get("stage") or "pull"
+    return (f"sync {stage} 이 {int(alert.get('count') or 0)}회 연속 실패 — "
             f"{word}({alert.get('kind', '')})"
             + (f": {line}" if line else "")
             + f". 로컬 commit {int(pending or 0)}개가 push 되지 않았습니다. "
@@ -13371,7 +13491,10 @@ def sync_alert_fact(streak=None, pending=None):
         pending = _sync_pending_count()
     d = s.as_dict()
     d["pending"] = int(pending or 0)
-    d["label"] = f"sync 실패 {s.count}회"
+    # commit 실패는 라벨에 단계를 적는다 — 「sync 실패」만으로는 사람이 바깥과
+    # 오가는 길이 진 줄 알고 네트워크를 본다. 진 것은 제 컴퓨터의 commit 이다.
+    d["label"] = (f"sync commit 실패 {s.count}회" if s.stage == "commit"
+                  else f"sync 실패 {s.count}회")
     d["text"] = sync_alert_text(d, pending)
     return d
 
@@ -13405,22 +13528,83 @@ def _sync_alert_notify(alert, pending=0):
     return n
 
 
-def _sync_streak_record(kind, stderr):
-    """pull 실패 한 번을 센다 — 임계에 닿으면 그 자리에서 알린다."""
+def sync_request_after(cfg=None):
+    """연속 실패 몇 회에 **요청 문서**를 세울 것인가 — 오너 config
+    `sync_request_after`, 기본 10. 알림(수신함·칩)은 임계 3 에 나지만 그 알림은
+    지나가는 줄이라, 사람이 그날 안 보면 없던 것이 된다. 요청은 남는다."""
+    if cfg is None:
+        try:
+            cfg = user_config(resolve_user(None)) or {}
+        except Exception:
+            cfg = {}
+    try:
+        n = int(str(cfg.get("sync_request_after", "") or "").strip() or 0)
+    except (ValueError, TypeError):
+        n = 0
+    return n if n > 0 else SYNC_REQUEST_AFTER
+
+
+def _sync_streak_request(alert, pending=0):
+    """되풀이 실패를 요청 문서로 세운다 — 같은 streak 에서 한 번뿐.
+
+    2026-09-10 의 사고가 이 자리를 만들었다: commit 이 74회 지는 동안 sync.log 만
+    쌓였고, 검증까지 끝난 하루치 코드가 한 컴퓨터의 작업 트리에만 남았다."""
+    stage = alert.get("stage") or "pull"
+    body = (sync_alert_text(alert, pending)
+            + f"\n\n첫 줄: {(alert.get('line') or '').strip()}"
+            + f"\n처음 진 때: {alert.get('since') or '—'}"
+            + f"\n이 컴퓨터: {current_machine()}"
+            + "\n\n`s9 sync --stats` 로 단계별 실패 수를 본다.")
+    try:
+        out = subprocess.run(
+            [os.path.realpath(__file__), "new", "request",
+             "--title", f"sync {stage} 이 되풀이 실패한다"[:24],
+             "--summary", (f"sync 의 자동 {stage} 이 "
+                           f"{int(alert.get('count') or 0)}회 연속 실패했다 — "
+                           f"{SYNC_ALERT_WORD.get(alert.get('kind', ''), '?')}"),
+             "--goal", (f"자동 {stage} 이 다시 성공하고, 진 사유가 고쳐져 "
+                        f"같은 연속 실패가 이어지지 않는다"),
+             "--size", "M", "--project", "section9",
+             "--tag", "sync", "--origin", "agent"],
+            input=body, capture_output=True, encoding="utf-8",
+            errors="replace", timeout=20)
+        if out.returncode == 0:
+            rid = (out.stdout.split() or [""])[0]
+            _sync_log(f"⚠ 요청으로 세움: {rid or '?'} ({stage} {alert.get('count')}회)")
+            return rid
+        _sync_log(f"⚠ 요청을 세우지 못했습니다: {(out.stderr or '').strip()[:160]}")
+    except Exception as e:
+        # 이 자리를 조용히 지나가면 이 요청이 고치려던 그 실패를 그대로 되풀이한다 —
+        # 세우지 못했다는 사실만이라도 남긴다.
+        _sync_log(f"⚠ 요청을 세우지 못했습니다: {type(e).__name__}: {e}")
+    return ""
+
+
+def _sync_streak_record(kind, stderr, stage="pull"):
+    """한 단계의 실패 한 번을 센다 — 임계에 닿으면 그 자리에서 알리고, 요청 임계까지
+    가면 요청 문서를 한 번 세운다."""
     try:
         s = SyncFailStreak.load()
-        a = s.record(kind, stderr, threshold=sync_alert_after())
+        a = s.record(kind, stderr, threshold=sync_alert_after(), stage=stage)
+        due = s.request_due(sync_request_after())
         s.save()
-        if a:
-            _sync_alert_notify(a, _sync_pending_count())
+        if a or due:
+            pending = _sync_pending_count()
+            if a:
+                _sync_alert_notify(a, pending)
+            if due:
+                _sync_streak_request(s.as_dict(), pending)
     except Exception:
         pass
 
 
-def _sync_streak_clear():
+def _sync_streak_clear(stage="pull"):
+    """그 단계가 성공했다 — 그 단계의 셈만 지운다."""
     try:
         if os.path.exists(_SYNC_ALERT_STATE):
-            SyncFailStreak().save()
+            s = SyncFailStreak.load()
+            s.success(stage)
+            s.save()
     except Exception:
         pass
 
@@ -14075,13 +14259,19 @@ def cmd_sync(args):
         if getattr(args, "json", False):
             print(json.dumps(st, ensure_ascii=False, indent=1))
             return
+        # 경고가 맨 앞이다 (REQ-20260910-052-62x6) — 종전에는 실패 수가 표 안에
+        # 있었고, 698건 중 74건이 진 날에도 그 숫자를 읽은 사람이 없었다.
+        warn = sync_stats_warning(st)
+        if warn:
+            print(warn)
         print(f"이벤트 {st['events']}건  마지막 성공 {st['last_ok'] or '—'}  "
               f"마지막 실패 {st['last_fail'] or '—'}")
         for k in ("commit", "pull", "push"):
             v = st["stages"].get(k)
             if v:
                 print(f"  {k:6s} {v['n']:5d}건  실패 {v['fail']:4d}  "
-                      f"p50 {v['p50_ms']:5d}ms  p95 {v['p95_ms']:5d}ms")
+                      f"p50 {v['p50_ms']:5d}ms  p95 {v['p95_ms']:5d}ms"
+                      + (f"  연속 실패 {v['streak']}회" if v.get("streak") else ""))
         rr = st["push_rejected_rate"]
         print(f"  push 거부율 {rr * 100:.0f}%" if rr is not None
               else "  push 기록 없음")
@@ -19620,14 +19810,33 @@ def cmd_note(args):
         pass
 
 
-def _discover_transcript(sid8):
+def _discover_transcript(sid8, cfg_dir=""):
     """세션 native transcript 자동 발견 (REQ-20260824-013) — 무인 스폰 세션은 Stop 훅
     전까지 바인딩에 transcript가 없어 클레임해도 live 신선도를 증명 못 했다.
-    클레임 시점에 ~/.claude/projects/*/<sid8>*.jsonl 를 찾아 바인딩에 채운다."""
+    클레임 시점에 ~/.claude/projects/*/<sid8>*.jsonl 를 찾아 바인딩에 채운다.
+
+    **대화 기록은 계정마다 따로 산다** (REQ-20260910-009). 계정을 한 번 바꾼
+    세션의 기록은 `~/.claude/projects` 가 아니라 그 프로필
+    (`~/.claude-profiles/<계정>/projects`) 아래에 있어, 홈 한 자리만 뒤지면
+    있는 기록을 없다고 답했다 — 그 답이 곧 계정 전환 거부였다. 그 세션이
+    실제로 쓰는 설정 디렉토리(`cfg_dir`)와 프로필 전체를 함께 본다.
+    """
     import glob as _glob
-    root = os.environ.get("S9_CLAUDE_PROJECTS",
-                          os.path.expanduser("~/.claude/projects"))
-    cands = _glob.glob(os.path.join(root, "*", safe_name(sid8) + "*.jsonl"))
+    if not sid8:
+        return ""            # id 가 없으면 `*.jsonl` 이 되어 남의 기록을 집는다
+    roots = [os.environ.get("S9_CLAUDE_PROJECTS",
+                            os.path.expanduser("~/.claude/projects"))]
+    if cfg_dir:
+        roots.append(os.path.join(os.path.expanduser(cfg_dir), "projects"))
+    roots += sorted(_glob.glob(os.path.join(profiles_base(), "*", "projects")))
+    cands, seen = [], set()
+    for root in roots:
+        key = os.path.abspath(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        cands += _glob.glob(os.path.join(root, "*",
+                                         safe_name(sid8) + "*.jsonl"))
     # 설치 표식 이전의 옛 대화는 후보가 아니다 (REQ-20260905-025) — 예전 하네스가
     # 남긴 것을 우리 세션으로 오인해 요청·기록으로 끌어오는 길을 여기서 막는다.
     try:

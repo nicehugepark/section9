@@ -14,8 +14,18 @@ center` 라 11px 그림과 글자 줄 상자를 가운데로 맞추는데, soft 
 tests/test_card_corner.py 에 있다 — 둘은 같은 사고의 앞뒤다. 규칙을 지켜도 눈에
 어긋나 보일 수 있으므로, 판정은 화면이 한다.
 
+**두 번째 사고 — 배율 1.5 에서만 갈렸다** (REQ-20260910-022). 그림 잉크를
+제 상자 한가운데에 두고서도 배율 1.5 에서 열 스킨 중 아홉이 0.67px(= 화소
+하나)을 냈다. 뿌리는 숫자 쪽이었다: 줄 상자는 내림자 자리까지 품으므로 mono
+10px 숫자의 잉크 중심은 줄 한가운데가 아니라 `L/2 − 0.5` 에 앉는다.
+`align-items:center` 는 상자를 맞추니, 잉크가 상자 한가운데인 그림은 늘
+0.5px 아래에 선다 — 배율 1 에서는 그 반 칸이 화소로 반올림돼 0.5 로,
+1.5 에서는 화소 하나로 보였다. 그림을 반 칸 위(11칸 상자의 잉크 1..9)로
+옮겨 걷었다(web/css/marks.css `--mk-clock-src`).
+
 실행: python3 tests/ clock_center
 """
+import time
 import unittest
 
 from _probe_marks import measure
@@ -44,6 +54,29 @@ def _mid(part):
     return (part["y0"] + part["y1"]) / 2
 
 
+def _measure_or_retry(scale, tries=3):
+    """한 배율을 재되, CDP 연결이 끊기면 다시 띄워 잰다.
+
+    끊김은 결함이 아니라 **연결**의 사고다 — headless 크롬을 배율마다 새로
+    띄우다 보면 몇 번에 한 번은 DevTools 소켓이 먼저 닫힌다(실측 2026-09-10:
+    네 번 중 한 번). 그런데 종전에는 그 한 번이 `SkipTest` 로 나가 **화소를
+    재지 않은 실행이 통과로 보였다** — 이 시험이 잡으라고 있는 어긋남이
+    그대로 지나간 회차가 있었다(REQ-20260910-022). 그래서 끊김은 다시
+    시도하고, 끝내 못 붙었을 때만 건너뛴다. 브라우저가 아예 없는 환경은
+    위(`chrome_path`)에서 이미 갈렸다.
+    """
+    last = None
+    for _ in range(tries):
+        try:
+            return measure(scale, list(SKINS), "clockcenter")
+        except (ConnectionError, RuntimeError, OSError) as e:
+            last = e
+            time.sleep(1.5)
+        except SystemExit as e:            # 크롬을 못 찾은 자리 — 재시도 무의미
+            raise unittest.SkipTest("실측 불가: %s" % e)
+    raise unittest.SkipTest("CDP 실측 불가(%d회): %s" % (tries, last))
+
+
 class TheClockStandsWithTheNumber(unittest.TestCase):
     rows = None
 
@@ -51,12 +84,9 @@ class TheClockStandsWithTheNumber(unittest.TestCase):
     def setUpClass(cls):
         if not chrome_path():
             raise unittest.SkipTest("브라우저 없음 — 실측 불가 환경")
-        try:
-            cls.rows = []
-            for sc in SCALES:
-                cls.rows += measure(sc, list(SKINS), "clockcenter")
-        except (ConnectionError, RuntimeError, OSError, SystemExit) as e:
-            raise unittest.SkipTest("CDP 실측 불가: %s" % e)
+        cls.rows = []
+        for sc in SCALES:
+            cls.rows += _measure_or_retry(sc)
 
     def test_the_clock_stands_with_the_number(self):
         """그림과 숫자의 잉크 세로 중심이 같은 자리에 있다."""

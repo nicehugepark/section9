@@ -18,6 +18,7 @@
 import importlib.machinery
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -357,6 +358,43 @@ class TestSuiteNetworkDiscipline(unittest.TestCase):
             if "wait_server" not in src:
                 bad.append(fn)
         self.assertEqual(bad, [], f"공용 대기 헬퍼를 안 쓰는 서버 테스트: {bad}")
+
+
+class TestSuiteProfileDiscipline(unittest.TestCase):
+    """크롬을 띄우는 테스트는 프로파일 자리를 **실행마다** 가른다.
+
+    `--user-data-dir` 에 쓰는 이름 하나에서 프로파일·픽스처 html·reclaim() 대상이
+    모두 나온다. 그 이름이 고정이면 같은 자를 둘이 동시에 돌릴 때 서로를 지운다 —
+    한쪽의 rmtree 가 남의 프로파일을 지우고, 같은 DevToolsActivePort 를 읽어 남의
+    브라우저에 붙고, reclaim(marker) 이 그 표식을 명령줄에 가진 headless 크롬을
+    **전부** 죽인다. `s9 shot` 은 h1 이 지키고(s9shot-<pid>), 여기서는 나머지
+    테스트 쪽을 본다 (REQ-20260910-052: tests/_probe_marks.py 가 "s9probe-marks"
+    로 고정이라 배율 1.0 과 1.5 를 동시에 돌리면 1.5 쪽이 빈 값을 냈다).
+    """
+    def test_h14_chrome_profiles_are_per_process(self):
+        bad = []
+        for fn in sorted(os.listdir(HERE)):
+            if not fn.endswith(".py"):
+                continue
+            with open(os.path.join(HERE, fn), encoding="utf-8") as f:
+                src = f.read()
+            if "--user-data-dir" not in src:
+                continue
+            # 표식을 짓는 자리만 본다 — `marker = "..."` 꼴. 남이 만든 이름을
+            # 받아 쓰는 파일(인자로 넘어온 것)과 문자열을 흉내로 검사하는
+            # 파일(test_port_exhaustion)은 제 이름을 짓지 않으므로 걸리지 않는다.
+            for m in re.finditer(r'^\s*(?:cls\.)?marker\s*=\s*(.+)$',
+                                 src, re.M):
+                expr = m.group(1)
+                if "os.getpid()" in expr or "%d" in expr and "getpid" in expr:
+                    continue
+                if not (expr.startswith('"') or expr.startswith("'")):
+                    continue          # 계산해 만든 이름 — 고정 문자열이 아니다
+                bad.append("%s: %s" % (fn, expr.strip()))
+        self.assertEqual(
+            bad, [],
+            "프로파일 표식이 실행마다 갈리지 않는다(동시 실행이 서로를 죽인다): %s"
+            % bad)
 
 
 if __name__ == "__main__":

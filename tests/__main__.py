@@ -58,6 +58,50 @@ COMMON = ("bin/s9", "bin/s9.py", "tests/__main__.py", "tests/portpool.py",
           "tests/tmproot.py", "tests/jobfile.py", "tests/precious.py")
 
 
+def ensure_catalog(root=None):
+    """이 뿌리에 카탈로그가 없으면 한 번 만든다 (REQ-20260910-054).
+
+    `index/catalog.jsonl` 은 vault/ 에서 만드는 파생 인덱스라 커밋하지 않는다
+    (projects/section9/CONTEXT.md). 그래서 **갓 만든 worktree 와 갓 clone 한
+    저장소에는 없다** — vault/ 는 track 되니 문서는 다 있는데 색인만 없다.
+    `s9` 는 그 자리에서도 `S9_ROOT` 로 본 저장소를 읽으니 멀쩡하지만, 시험은
+    다르다: 여럿이 **제 뿌리를 S9_ROOT 로 못박고** 진짜 코퍼스를 판정 근거로
+    쓴다(test_short_ref 의 「반증 조건」). 색인이 없으면 그 코퍼스가 0행이 되고,
+    코드는 멀쩡한데 다섯 파일 14건이 그 자리에서만 진다 (실측 2026-09-10:
+    worktree 에서 failures=12 errors=2, ZeroDivisionError 둘 포함).
+
+    그러니 여기서 **전제를 갖춘다** — 시험이 빈 코퍼스를 통과로 넘기게 만들지
+    않는다. 없을 때만 만들고, 있으면 손대지 않는다: 카탈로그가 진짜로 깨진
+    자리는 그대로 져야 그 사실이 드러난다.
+
+    반환: 만들었으면 True, 이미 있거나 만들 자리가 아니면 False.
+    """
+    root = root or REPO
+    cat = os.path.join(root, "index", "catalog.jsonl")
+    if os.path.exists(cat):
+        return False
+    if not os.path.isdir(os.path.join(root, "vault")):
+        return False        # 색인할 문서가 없다 — 빈 뿌리는 이 함수의 몫이 아니다
+    s9 = os.path.join(root, "bin", "s9")
+    if not os.path.isfile(s9):
+        return False
+    print("[카탈로그] index/catalog.jsonl 이 없다 — vault 에서 한 번 만든다"
+          f" ({root})", file=sys.stderr)
+    try:
+        r = subprocess.run([sys.executable, s9, "index", "rebuild"],
+                           cwd=root, capture_output=True, timeout=600,
+                           encoding="utf-8", errors="replace",
+                           env={**os.environ, "S9_ROOT": root})
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[카탈로그] 만들지 못했다: {e}", file=sys.stderr)
+        return False
+    if r.returncode != 0 or not os.path.exists(cat):
+        print("[카탈로그] 만들지 못했다: "
+              + (r.stderr or r.stdout or "").strip()[-400:], file=sys.stderr)
+        return False
+    return True
+
+
 def _git(repo, *a):
     import subprocess
     try:
@@ -1282,6 +1326,10 @@ def main():
         if stale:
             print(f"[임시자리 정리/시작 전] 지난 실행이 남긴 파일 {len(stale)}개",
                   file=sys.stderr)
+        # 코퍼스 전제 (REQ-20260910-054): 카탈로그가 없는 뿌리(갓 만든 worktree·
+        # 갓 clone 한 저장소)에서는 진짜 코퍼스를 보는 시험들이 빈 색인 위에서
+        # 판정한다. 샤드는 이 뿌리를 물려받으니 바깥 실행 한 번이면 된다.
+        ensure_catalog()
     # 거둔 **뒤에** 아이노드를 본다 (REQ-20260910-012) — 거두기 전 숫자로 막으면
     # 제 손으로 되찾을 수 있는 자리에서 멈춘다. 바닥이면 시작하지 않는다:
     # 아이노드가 없으면 임시 파일을 못 만들어, 실패가 원인과 상관없는 모습으로
