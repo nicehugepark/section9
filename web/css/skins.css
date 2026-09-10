@@ -279,7 +279,7 @@
 [data-skin="glass"] .ghint{background:var(--gl-solid);border-color:var(--gl-hairline);
   border-radius:8px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 [data-skin="glass"] .legend{border-bottom-color:var(--gl-hairline)}
-[data-skin="glass"] .md pre{border-radius:8px;border-left-color:var(--gl-line)}
+[data-skin="glass"] .md pre{border-radius:8px;border-color:var(--gl-line)}
 [data-skin="glass"] .kind{background:color-mix(in srgb, var(--kc) 13%, transparent);
   border-radius:6px;padding:1px 8px}
 [data-skin="glass"] .kind::before{content:none}
@@ -631,7 +631,7 @@
 [data-skin="cork"] .settings-panel,[data-skin="cork"] .hovercard{border-radius:10px;
   border-color:var(--ck-line);box-shadow:var(--ck-lift)}
 [data-skin="cork"] .ghint{border-radius:6px}
-[data-skin="cork"] .md pre{border-radius:8px;border-left:0}
+[data-skin="cork"] .md pre{border-radius:8px}
 /* density: compact — 웰 안에 뜬 라운드 카드다. 라운드·그림자·리프트는 그대로
    두고 안쪽 여백만 줄인다(slate 와 같은 이유로 좌우는 10px 에서 멈춘다).
    컬럼 제목은 웰의 어깨에 얹혀 있어 아래 여백이 카드와의 간격을 겸한다 —

@@ -43,10 +43,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
 
 
+
+_INDEX_CACHE = []
+
+
+def _index_src():
+    """이어 붙인 한 장 — 이 파일 전체가 한 번만 연다 (시험 예산 라쳇)."""
+    if not _INDEX_CACHE:
+        with open(INDEX, encoding="utf-8") as f:
+            _INDEX_CACHE.append(f.read())
+    return _INDEX_CACHE[0]
+
+
 class DocTable(unittest.TestCase):
     def setUp(self):
-        with open(INDEX, encoding="utf-8") as f:
-            self.src = f.read()
+        self.src = _index_src()
 
     # ---------- ① 규칙은 한 곳에만 ----------
 
@@ -183,6 +194,106 @@ class DocTable(unittest.TestCase):
 
     def _css(self):
         return websrc.css_section(self, self.src, r"/\* ── 문서 본문 표")
+
+
+class CodeSpansAreRendered(unittest.TestCase):
+    """문서 본문의 코드 구간 (REQ-20260910-024-62x6).
+
+    주인: "문서에서 코드가 들어가는 부분은 코드 구간 렌더링이 됐으면 좋겠다.
+    단순 문자열로 보여주는게 아니라." 캡처에는 파이썬 한 함수가 줄바꿈과
+    들여쓰기를 잃고 한 문단으로 이어 붙어 있었다.
+
+    원인은 표 결함(위 DocTable)과 같은 갈래다 — `md2html` 의 코드 갈래가
+    ``` 로 **시작하는** 줄만 봤다. 이 저장소의 노트는 4칸 들여쓴 블록으로 코드를
+    적는 일이 더 많고, `~~~` 펜스도 쓴다. 둘 다 문단으로 떨어졌다.
+
+    갈래를 더할 때 함께 지켜야 하는 것이 셋이다.
+      ① 들여쓴 블록이 **목록의 이어지는 줄**과 문단 중간의 들여쓴 줄을 먹지
+         않는다 — 이 저장소 노트에 그런 줄이 많다.
+      ② 코드 안쪽은 `inline()` 을 지나지 않는다. 코드는 코드다.
+      ③ 넣는 글자는 `esc()` 를 지난다. 본문에 `<script>` 가 있을 수 있다.
+
+    렌더 결과 자체(줄바꿈·들여쓰기 보존, 표·첨부 회귀 14건)는 node 로 실제
+    `md2html` 을 돌려 쟀다 — 이 환경의 파이썬은 JS 를 실행하지 못하므로 여기서는
+    그 동작을 가능하게 하는 계약을 지킨다.
+
+    실행: python3 tests/ doc_table
+    """
+
+    # 한 장은 **한 번만** 읽는다 — 준비 삼아 여는 것이 파일마다 두 번을 넘으면
+    # 시험 예산 라쳇(test_test_budget)이 「소스 글자만 대조하는 파일」로 센다.
+    # 위 갈래가 이미 같은 장을 읽으므로 그것을 나눠 쓴다.
+    @classmethod
+    def setUpClass(cls):
+        cls.page = _index_src()
+
+    def setUp(self):
+        self.src = self.page
+        self.body = re.search(r"function md2html\([^)]*\)\{[\s\S]*?\n\}",
+                              self.src).group(0)
+
+    def test_both_fence_marks_open_a_code_span(self):
+        """``` 와 ~~~ 둘 다 펜스다."""
+        self.assertRegex(self.body, r"```\|~~~",
+                         "펜스 갈래가 ``` 한 가지만 본다 — ~~~ 가 문단으로 떨어진다")
+
+    def test_a_fence_closes_only_on_its_own_mark(self):
+        """``` 안에 적은 ~~~ 가 블록을 끊으면 안 된다."""
+        self.assertIn("fenceCh", self.body,
+                      "여는 마크를 기억하지 않으면 다른 마크가 블록을 닫는다")
+
+    def test_indented_block_becomes_a_code_span(self):
+        """4칸(또는 탭)들여쓴 줄의 연속이 코드 구간이다."""
+        self.assertRegex(self.body, r"\{4\}\|\\t",
+                         "들여쓴 코드 블록 갈래가 없다")
+
+    def test_indented_block_does_not_eat_lists_or_paragraphs(self):
+        """목록 항목 아래 들여쓴 줄은 코드가 아니라 이어지는 설명이다."""
+        m = re.search(r"if \(!inList && !para\.length[^)]*\)", self.body)
+        self.assertIsNotNone(
+            m, "들여쓴 갈래가 목록·문단 안에서도 켜진다 — 노트의 이어지는 줄이 코드가 된다")
+
+    def test_code_content_does_not_pass_through_inline(self):
+        """코드 안쪽에 인라인 규칙(첨부·문서 id·굵게)을 걸면 코드가 아니게 된다."""
+        head = self.body.find("const fen = raw.match(")
+        tail = self.body.find("mdTable(")
+        self.assertGreater(head, -1, "코드 갈래를 찾지 못했다")
+        self.assertGreater(tail, head, "코드 갈래가 표 갈래보다 뒤에 있다")
+        self.assertNotIn("inline(", self.body[head:tail],
+                         "코드 갈래가 inline() 을 부른다")
+
+    def test_code_text_is_escaped(self):
+        """본문은 사람과 에이전트가 쓴 글이다 — 태그가 살아나면 안 된다."""
+        self.assertRegex(self.body, r"esc\(src\)\.split",
+                         "본문이 esc() 를 지나지 않는다")
+
+    # ---------- 화면: 색면이 아니라 가느다란 테두리 ----------
+
+    def _pre_css(self):
+        m = re.search(r"\.md pre\{([^}]*)\}", self.src)
+        self.assertIsNotNone(m, ".md pre 규칙이 없다")
+        return m.group(1)
+
+    def test_code_span_is_drawn_with_a_hairline_not_a_fill(self):
+        """색면 하이라이트 금지 — 구간은 1px 테두리가 말한다."""
+        css = self._pre_css()
+        self.assertNotIn("background", css,
+                         "코드 구간을 색면으로 칠했다 (s9-design: 색면 하이라이트 금지)")
+        self.assertRegex(css, r"border:1px solid var\(--",
+                         "1px 테두리가 없다")
+
+    def test_long_lines_scroll_inside_the_box(self):
+        """긴 줄은 그 상자 안에서만 흐른다 — 문서가 옆으로 밀리면 안 된다."""
+        css = self._pre_css()
+        self.assertIn("overflow-x:auto", css, "가로 흐름이 상자에 갇히지 않는다")
+        self.assertIn("max-width:100%", css, "상자가 부모보다 넓어질 수 있다")
+
+    def test_no_skin_drops_one_side_of_the_border(self):
+        """스킨이 한 변만 지우면 테두리가 기울어 보인다."""
+        for m in re.finditer(r'\[data-skin="(\w+)"\] \.md pre\{([^}]*)\}', self.src):
+            self.assertNotRegex(
+                m.group(2), r"border-(top|right|bottom|left):0",
+                "%s 스킨이 코드 구간 테두리의 한 변을 지운다" % m.group(1))
 
 
 if __name__ == "__main__":

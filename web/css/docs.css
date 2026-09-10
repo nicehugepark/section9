@@ -297,8 +297,12 @@ audio.attmed{width:min(100%,560px);max-width:100%}
 .md h2{border-bottom:1px solid var(--border);padding-bottom:6px;margin-top:30px;
   font-size:15px;text-transform:uppercase;letter-spacing:.05em}
 .md h3{font-size:13px;color:var(--muted);margin-top:20px;font-family:var(--mono)}
-.md pre{background:var(--accent-soft);border-left:2px solid var(--border);
-  padding:11px 14px;overflow-x:auto;font-size:12px}
+/* 코드 구간 (REQ-20260910-024-62x6). 색면이 아니라 가느다란 테두리가 구간을
+   말한다 — 문법 강조도, 배경 칠도 쓰지 않는다. 긴 줄은 이 상자 안에서만 가로로
+   흐른다(문서는 안 밀린다). */
+.md pre{border:1px solid var(--border);padding:10px 12px;overflow-x:auto;
+  font-size:12px;font-family:var(--mono);line-height:1.55;margin:12px 0;
+  -moz-tab-size:4;tab-size:4;max-width:100%}
 .md code{background:var(--accent-soft);padding:1px 5px;font-family:var(--mono);font-size:12px}
 .md pre code{background:none;padding:0}
 .md a{color:var(--text)}

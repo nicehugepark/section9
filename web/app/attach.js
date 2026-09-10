@@ -243,7 +243,7 @@ document.addEventListener("error", e => {
 /* minimal markdown renderer */
 function md2html(src, docId){
   const lines = esc(src).split("\n");
-  let out = [], inCode = false, inList = false, para = [];
+  let out = [], inCode = false, inList = false, para = [], fenceCh = "";
   const flushPara = () => { if (para.length){ out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; } };
   const flushList = () => { if (inList){ out.push("</ul>"); inList = false; } };
   // 첨부 인라인 렌더 (REQ-20260825-023/-050): [Image: assets/<id>/<f>] →
@@ -314,9 +314,31 @@ function md2html(src, docId){
   };
   for (let li = 0; li < lines.length; li++){
     const raw = lines[li];
-    if (raw.startsWith("```")){ flushPara(); flushList();
-      out.push(inCode ? "</code></pre>" : "<pre><code>"); inCode = !inCode; continue; }
-    if (inCode){ out.push(raw); continue; }
+    /* 코드 구간 (REQ-20260910-024-62x6). 여태 이 자리는 ``` 로 **시작하는** 줄만
+       봤다 — `~~~` 펜스와 4칸 들여쓴 블록은 문단으로 떨어져, 파이썬 한 함수가
+       줄바꿈과 들여쓰기를 잃고 한 문단으로 이어 붙었다(주인 캡처 2026-09-10).
+       여는 마크를 기억해 같은 마크로만 닫는다 — ``` 안에 적은 `~~~` 가 블록을
+       끊지 않게. 안쪽 글자는 `inline()` 을 지나지 않는다: 코드는 코드다. */
+    const fen = raw.match(/^ {0,3}(```|~~~)/);
+    if (inCode){
+      if (fen && fen[1][0] === fenceCh){ out.push("</code></pre>"); inCode = false; }
+      else out.push(raw);
+      continue;
+    }
+    if (fen){ flushPara(); flushList();
+      fenceCh = fen[1][0]; inCode = true; out.push("<pre><code>"); continue; }
+    /* 들여쓴 코드 블록. 문단·목록 안에서는 켜지 않는다 — 목록 항목 아래 들여쓴
+       줄은 이 저장소의 노트에서 「이어지는 설명」이지 코드가 아니다. 4칸(또는
+       탭 하나)만 벗겨 안쪽 상대 들여쓰기를 남긴다. */
+    if (!inList && !para.length && raw.trim() && /^(?: {4}|\t)/.test(raw)){
+      const buf = [];
+      while (li < lines.length && (!lines[li].trim() || /^(?: {4}|\t)/.test(lines[li])))
+        buf.push(lines[li++].replace(/^(?: {4}|\t)/, ""));
+      li--;
+      while (buf.length && !buf[buf.length - 1].trim()) buf.pop();
+      out.push("<pre><code>" + buf.join("\n") + "</code></pre>");
+      continue;
+    }
     // 표 — 여러 줄이 모여야 뜻이 생기는 블록이라 문단으로 뭉치기 전에 가른다.
     // 규칙은 터미널 뷰와 **같은 mdTable 한 곳**에 있고, 여기 칸은 원문이라
     // inline 을 걸어 셀 안의 코드·문서 id·첨부 강조를 살린다 (REQ-20260827-008).
