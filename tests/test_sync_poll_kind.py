@@ -109,6 +109,66 @@ class PollKind(unittest.TestCase):
         self.assertEqual((kind, paths), ("dirty", ["bin/s9.py", "state/x"]))
         self.assertFalse(all(p.startswith("state/") for p in paths), "코드가 섞였으면 회복하지 않는다")
 
+    def test_r5_dirty_document_is_recovered_too(self):
+        """문서(vault/users/projects)만 걸린 dirty 도 전송 루프로 푼다 (REQ-20260910-006-2n7g).
+
+        종전 조건은 state/ 만 풀어, profile.md·세션 문서가 dirty 면 받기 poll 이
+        다음 문서 이벤트까지(유휴면 몇 시간) 막혔다 — 맥 실측 5시간.
+        """
+        m = self.m
+        os.makedirs(os.path.join(self.root, "users", "nicehugepark"), exist_ok=True)
+        p = os.path.join(self.root, "users", "nicehugepark", "profile.md")
+        with open(p, "w") as f:
+            f.write("# base\n")
+        git(self.root, "add", "-f", p); git(self.root, "commit", "-q", "-m", "profile")
+        git(self.root, "push", "-q", "origin", "main")
+        other = os.path.join(self.tmp, "other5")
+        git(self.tmp, "clone", "-q", self.bare, other)
+        git(other, "config", "user.email", "o@example.com"); git(other, "config", "user.name", "o")
+        with open(os.path.join(other, "users", "nicehugepark", "profile.md"), "w") as f:
+            f.write("# base\n남의 줄\n")
+        git(other, "commit", "-qam", "남의 문서 변경"); git(other, "push", "-q", "origin", "main")
+        with open(p, "w") as f:
+            f.write("# base\n내 줄\n")
+        calls = []
+        real = m.sync_run
+        m.sync_run = lambda reason="", transport=True: calls.append(reason) or real(reason, transport)
+        try:
+            kind = m._sync_poll_once()
+        finally:
+            m.sync_run = real
+        self.assertEqual(kind, "dirty")
+        self.assertEqual(m._SYNC_POLL_LAST["paths"], ["users/nicehugepark/profile.md"])
+        self.assertEqual(calls, ["poll-dirty"], "문서만 걸린 dirty 도 전송 루프로 풀어야 한다")
+
+    def test_r6_dirty_code_is_not_recovered(self):
+        """코드가 섞이면 전송 루프를 부르지 않는다 — 사람의 편집일 수 있다."""
+        m = self.m
+        os.makedirs(os.path.join(self.root, "web"), exist_ok=True)
+        for rel in ("web/app.js",):
+            fp = os.path.join(self.root, rel)
+            with open(fp, "w") as f:
+                f.write("// base\n")
+            git(self.root, "add", "-f", fp)
+        git(self.root, "commit", "-q", "-m", "code"); git(self.root, "push", "-q", "origin", "main")
+        other = os.path.join(self.tmp, "other6")
+        git(self.tmp, "clone", "-q", self.bare, other)
+        git(other, "config", "user.email", "o@example.com"); git(other, "config", "user.name", "o")
+        with open(os.path.join(other, "web", "app.js"), "w") as f:
+            f.write("// base\n남\n")
+        git(other, "commit", "-qam", "남의 코드"); git(other, "push", "-q", "origin", "main")
+        with open(os.path.join(self.root, "web", "app.js"), "w") as f:
+            f.write("// base\n나\n")
+        calls = []
+        real = m.sync_run
+        m.sync_run = lambda reason="", transport=True: calls.append(reason) or real(reason, transport)
+        try:
+            kind = m._sync_poll_once()
+        finally:
+            m.sync_run = real
+        self.assertEqual(kind, "dirty")
+        self.assertEqual(calls, [], "코드가 걸리면 전송 루프를 부르지 않는다")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

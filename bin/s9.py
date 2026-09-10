@@ -12908,10 +12908,19 @@ def _sync_poll_once(timeout=8):
         lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
         first = next((ln for ln in lines if re.match(r"(error|fatal):", ln)), lines[0] if lines else "")
         _SYNC_POLL_LAST["error"], _SYNC_POLL_LAST["paths"] = first[:200], paths
-        # 이 머신의 살림(state/)만 걸렸으면 전송 루프가 푼다 — commit→rebase→push.
-        # 맥이 09:12 훅 commit 으로 풀린 그 길을 스스로 간다. state/ 밖(사람이
-        # 고치던 코드)이 섞였으면 손대지 않는다: 남의 편집을 commit 하지 않는다.
-        if kind == "dirty" and paths and all(p.startswith("state/") for p in paths):
+        # 걸린 것이 **sync 가 이미 매 이벤트마다 커밋하는 자리**(state/ 이 머신의
+        # 살림 · vault·users·projects 문서)뿐이면 전송 루프로 푼다 —
+        # commit→rebase(--autostash)→push. 맥이 09:12 훅 commit 으로 풀린 그 길을
+        # 스스로 간다. 문서가 걸렸을 때도 풀어야 하는 이유(REQ-20260910-006-2n7g, 실측
+        # 2026-09-10 14:26~19:31): profile.md·세션 문서가 dirty 인 채 5시간 동안
+        # 받기 poll 이 막혀, 이 맥이 다른 컴퓨터의 변경을 하나도 못 받았다 —
+        # 종전 조건은 state/ 만 풀어 문서가 걸리면 다음 문서 이벤트가 올 때까지
+        # (유휴면 몇 시간) 그대로 멎었다. **코드(bin·web·tests·harness)가 섞이면
+        # 손대지 않는다**: 그것은 sync 가 커밋하는 자리가 아니고 사람의 편집일 수
+        # 있다(REQ-20260906-082 의 「남의 편집을 commit 하지 않는다」는 그대로다).
+        _recover = tuple(x + "/" for x in SYNC_DATA_PATHS) + ("state/",)
+        if kind == "dirty" and paths and all(
+                p == ".s9-sync" or p.startswith(_recover) for p in paths):
             try:
                 sync_run("poll-dirty")
             except Exception:
