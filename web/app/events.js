@@ -281,6 +281,10 @@ document.addEventListener("click", e => {
   if (ju){ e.stopPropagation(); jiraUnlinkDoc(ju.dataset.jiraunlink); return; }
   const tko = evEl(e.target)?.closest("[data-takeover]");
   if (tko){ e.stopPropagation(); takeoverDoc(tko.dataset.takeover); return; }
+  // 담당 컴퓨터 손잡이 둘 (REQ-20260910-017-62x6): 문서 띠의 「담당 컴퓨터 바꾸기」와
+  // 카드 사실 줄의 「이 컴퓨터로 바꾸기」(data-here) — 같은 길(machineDoc)이다.
+  const mc = evEl(e.target)?.closest("[data-machset]");
+  if (mc){ e.stopPropagation(); machineDoc(mc.dataset.machset, mc.dataset.here === "1"); return; }
   /* 열려 있는 문서를 놓는 손잡이 — 문서를 여는 길보다 **먼저** 잡는다
      (REQ-20260829-012 → -20260831-007). 이제 이 손잡이는 고른 줄 **안**에 서므로
      먼저 잡히지 않으면 놓으려던 누름이 그 문서를 다시 여는 누름이 된다.

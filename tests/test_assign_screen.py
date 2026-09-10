@@ -97,12 +97,15 @@ class Screen(unittest.TestCase):
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
             "badgeFace",
             "assignDoc", "assignPick", "takeoverDoc", "stallHTML",
-            "cardHTML")}
+            "cardHTML",
+            # 담당 컴퓨터 (REQ-20260910-017-62x6)
+            "waitingMachine", "waitingRowHTML", "machineBtnHTML", "machineDoc")}
         cls.mine = "\n".join(cls.parts[n] for n in (
             "originWho", "originBits", "lineageChip", "lineageTell",
             "lineageRowHTML", "leaseElsewhere", "canTakeover",
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
-            "assignDoc", "takeoverDoc"))
+            "assignDoc", "takeoverDoc",
+            "waitingRowHTML", "machineBtnHTML", "machineDoc"))
 
     # ---- ① 화면은 내부어를 모른다 ------------------------------------------
     def test_screen(self):
@@ -116,6 +119,22 @@ class Screen(unittest.TestCase):
             seen = " ".join(_visible(self.mine))
             for w in WORDS:
                 self.assertIn(w, seen, f"화면 낱말 '{w}' 가 사라졌다")
+        with self.subTest("a4_the_machine_in_charge_stands"):
+            # 담당 컴퓨터 (REQ-20260910-017-62x6): 기다리는 줄과 지름길의 낱말.
+            # 「가져오기」는 이 화면에서 이미 다른 뜻이라 여기서는 쓰지 않는다.
+            mach = "\n".join(self.parts[n] for n in
+                              ("waitingRowHTML", "machineBtnHTML", "machineDoc"))
+            self.assertIn("을 기다리는 중", mach)
+            self.assertIn("이 컴퓨터로 바꾸기", mach)
+            self.assertIn("담당 컴퓨터 바꾸기", mach)
+            self.assertNotIn("가져오기", mach)
+            self.assertIn("어느 컴퓨터에서나", mach)
+            # 손잡이가 길에 이어져 있다 (events.js)
+            self.assertIn('closest("[data-machset]")', self.src)
+            # 바꾸는 길은 서버 한 곳 — 화면이 프론트매터를 직접 쓰지 않는다
+            self.assertIn('"/api/machines"', self.s9)
+            self.assertIn('"needs_machine": req.get("needs_machine")', self.s9)
+
         with self.subTest("a3_role_names_are_not_translated"):
                 who = self.parts["originWho"]
                 self.assertIn('a.slice(4)', who, "sub:<역할> 은 역할 이름 그대로여야 한다")

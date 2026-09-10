@@ -121,7 +121,7 @@ class NeedsOs(unittest.TestCase):
                      "--size", "S", "--goal", "g", "--body", "b",
                      "--needs-machine", "없는머신")
         self.assertNotEqual(r.returncode, 0, r.stdout)
-        self.assertIn("아는 머신", r.stdout + r.stderr)
+        self.assertIn("아는 컴퓨터", r.stdout + r.stderr)
         self.assertIn("testbox", r.stdout + r.stderr)
         self.assertEqual({r2["id"] for r2 in self.m.load_catalog()} - before, set())
 
@@ -166,6 +166,52 @@ class NeedsOs(unittest.TestCase):
         self.assertEqual(out.get("blocked"), "needs_machine", out)
         self.assertIn("macbox", out.get("why", ""))
         self.assertIn("testbox", out.get("why", ""))
+
+    # M6. 화면의 길(do_set, via=dashboard)로 바꿔도 이름이 풀리고 History 한 줄이 남는다
+    def test_m6_do_set_from_dashboard_resolves_and_records(self):
+        self.cli("peer", "set", "맥", "--machine", "macbox", "--os", "macOS")
+        rid = self.new("화면에서 바꾸는 것")
+        # 이 프로세스 안의 모듈은 S9_MACHINE 을 물려받지 않는다(그 값은 subprocess
+        # 환경에만 있다) — 「이 컴퓨터」를 시험이 정한 값으로 고정한다.
+        with mock.patch.object(self.m, "current_machine", return_value="testbox"):
+            self._m6_body(rid)
+
+    def _m6_body(self, rid):
+        res = self.m.do_set(rid, {"needs_machine": "맥"}, actor="tester", via="dashboard")
+        self.assertTrue(res.get("ok"), res)
+        meta, body = self.m.read_doc(self.m.locate(rid))
+        self.assertEqual(meta["needs_machine"], "macbox")
+        self.assertIn("needs_machine: (어느 컴퓨터에서나) -> macbox (by tester via dashboard)", body)
+        # 「이 컴퓨터로 바꾸기」 = 이 컴퓨터의 머신값
+        res = self.m.do_set(rid, {"needs_machine": "testbox"}, actor="tester", via="dashboard")
+        self.assertTrue(res.get("ok"), res)
+        self.assertEqual(self.m.read_doc(self.m.locate(rid))[0]["needs_machine"], "testbox")
+        # 「어느 컴퓨터에서나」 = 빈 값 → 칸이 빠지고 History 에 남는다
+        self.m.do_set(rid, {"needs_machine": ""}, actor="tester", via="dashboard")
+        meta, body = self.m.read_doc(self.m.locate(rid))
+        self.assertEqual(meta.get("needs_machine", ""), "")
+        self.assertIn("needs_machine: testbox -> (어느 컴퓨터에서나)", body)
+        # 없는 키(None)는 건드리지 않는다 — 프로젝트만 바꾸는 요청이 담당 컴퓨터를 지우면 안 된다
+        self.m.do_set(rid, {"needs_machine": "macbox"}, actor="tester")
+        self.m.do_set(rid, {"needs_machine": None, "title": "t2"}, actor="tester")
+        self.assertEqual(self.m.read_doc(self.m.locate(rid))[0]["needs_machine"], "macbox")
+
+    # M7. 모르는 이름은 화면의 길에서도 거절되고 문서는 그대로다
+    def test_m7_dashboard_path_refuses_unknown_machine(self):
+        rid = self.new("모르는 이름")
+        with self.assertRaises(ValueError) as cm:
+            self.m.do_set(rid, {"needs_machine": "없는컴퓨터"}, actor="tester", via="dashboard")
+        self.assertIn("아는 컴퓨터", str(cm.exception))
+        self.assertEqual(self.m.read_doc(self.m.locate(rid))[0].get("needs_machine", ""), "")
+
+    # M8. 고르는 창의 목록(machine_table)은 쓰던 컴퓨터·부르는 이름·이 컴퓨터를 함께 낸다
+    def test_m8_machine_table_feeds_the_chooser(self):
+        self.cli("peer", "set", "맥", "--machine", "macbox", "--os", "macOS")
+        with mock.patch.object(self.m, "current_machine", return_value="testbox"):
+            t = self.m.machine_table("tester")
+        self.assertIn("testbox", t)                     # 이 컴퓨터는 늘 한 줄
+        self.assertEqual(t["macbox"]["os"], "macOS")
+        self.assertIn("맥", t["macbox"]["names"])
 
     def test_n3_next_lists_requests_for_this_machine(self):
         rid = self.new("윈도우에서 잴 것", "--needs-os", "Windows")

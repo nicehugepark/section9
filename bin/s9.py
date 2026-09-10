@@ -1926,7 +1926,7 @@ def find_path(doc_id):
     if len(cands) > 1:
         die(f"모호한 id: {doc_id} — 후보 {len(cands)}건: "
             + ", ".join(f"{r['id']}({r.get('title', '')[:16]})" for r in cands)
-            + " — 뒷부분(머신 표식)까지 붙인 전체 id로 다시 지정하라")
+            + " — 뒷부분(컴퓨터 표식)까지 붙인 전체 id로 다시 지정하라")
     p = locate(doc_id)
     if not p:
         die(f"document not found: {doc_id}")
@@ -2061,10 +2061,10 @@ def machine_fp_conflict():
 
 
 def _fp_conflict_message(fp, host):
-    return (f"머신 fingerprint 충돌: fingerprint {fp} 은(는) 등록부(users/<me>/machines.json)에서 "
-            f"'{host}' 의 것인데 이 머신은 '{current_machine()}' 이다 — 같은 날 "
-            f"같은 id 를 두 머신이 낼 수 있다. 이 머신의 발번을 멈춘다. 해제: "
-            f"S9_ORIGIN=<새 fingerprint 4자> 로 이 머신의 fingerprint 를 따로 정하라 "
+    return (f"컴퓨터 fingerprint 충돌: fingerprint {fp} 은(는) 등록부(users/<me>/machines.json)에서 "
+            f"'{host}' 의 것인데 이 컴퓨터는 '{current_machine()}' 이다 — 같은 날 "
+            f"같은 id 를 두 컴퓨터가 낼 수 있다. 이 컴퓨터의 발번을 멈춘다. 해제: "
+            f"S9_ORIGIN=<새 fingerprint 4자> 로 이 컴퓨터의 fingerprint 를 따로 정하라 "
             f"(REQ-20260902-027)")
 
 
@@ -5205,7 +5205,7 @@ def cmd_peer(args):
             if not want or want in str(v.get("os", "")).lower()]
     if not rows:
         print("아는 세션이 없다 — 한 번 물어 `s9 peer set '<부르는 이름>' "
-              "--machine <머신> --os <os> --note <무엇을 맡는가>` 로 적어 두면 "
+              "--machine <컴퓨터> --os <os> --note <무엇을 맡는가>` 로 적어 두면 "
               "다시 묻지 않는다.")
         return
     for n, v in rows:
@@ -5458,7 +5458,7 @@ def resolve_machine_name(name, user=None):
             if want.lower() == str(nm).lower():
                 return mv
     known = "; ".join(machine_label(v) for _mv, v in sorted(table.items()))
-    raise ValueError(f"모르는 머신: {want} — 아는 머신: {known or '(없음)'}")
+    raise ValueError(f"모르는 컴퓨터: {want} — 아는 컴퓨터: {known or '(없음)'}")
 
 
 # 이미 쌓인 것에서 표식을 되찾는 자리. 세션 문서의 History 줄은 제목을 40자로
@@ -11575,7 +11575,7 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
         where = machine_phrase(mach) if by_machine else (platform or os_platform())
         try:
             do_transition(r["id"], "in-progress",
-                          note=(f"이 머신({where})의 워처가 집었다 — 담당 머신으로 지정된 요청"
+                          note=(f"이 머신({where})의 워처가 집었다 — 담당 컴퓨터로 지정된 요청"
                                 if by_machine else
                                 f"이 판({where})의 워처가 집었다 — 다른 기계가 여기서 재 달라고 남긴 요청"),
                           user=meta.get("user"), auto=True, via="watcher")
@@ -11585,7 +11585,7 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
         meta, _body = read_doc(path)
         spawn = _spawn or (lambda did, m: _spawn_wake(
             did, m, mins=0, kind="resume",
-            why=(f"이 머신({where})이 담당 머신으로 지정된 요청 — 워처가 집어 띄웠다."
+            why=(f"이 머신({where})가 담당 컴퓨터로 지정된 요청 — 워처가 집어 띄웠다."
                  if by_machine else
                  f"다른 기계가 이 판({where})에서 재 달라고 남긴 요청 — 워처가 집어 띄웠다.")))
         if spawn(r["id"], meta):
@@ -14035,10 +14035,20 @@ def do_set(doc_id, fields, actor="", via="", priority=None, jira_kw=None):
         fields = dict(fields)
         fields["needs_machine"] = resolve_machine_name(fields["needs_machine"],
                                                        user=meta.get("user") or None)
+    old_nm = str(meta.get("needs_machine") or "")
     for key in ("title", "summary", "goal", "size", "needs_os", "needs_machine"):
         if fields.get(key) is not None:
             meta[key] = fields[key]
             changed.append(key)
+    if "needs_machine" in changed and str(meta.get("needs_machine") or "") != old_nm:
+        # 화면·CLI 어느 쪽에서 바꿔도 한 줄이 남는다 — 「왜 저 컴퓨터에서 안 도나」의
+        # 답이 History 에 있어야 한다 (REQ-20260910-017-62x6).
+        who = actor or resolve_user(None)
+        line = (f"- {now_iso()} needs_machine: {old_nm or '(어느 컴퓨터에서나)'} -> "
+                f"{meta.get('needs_machine') or '(어느 컴퓨터에서나)'} (by {who}"
+                + (f" via {via}" if via else "") + ")\n")
+        body = (body.rstrip("\n") + "\n" + line) if "## History" in body \
+            else (body.rstrip("\n") + "\n\n## History\n" + line)
     if fields.get("origin") is not None:
         # 출처를 바로잡는 손잡이 (REQ-20260909-109). 출처는 지어내지 않는 값이라
         # 여태 set 에 없었는데, 분류기가 사람의 채팅을 물음으로 갈라 agent 로 적는
@@ -17031,7 +17041,7 @@ def cmd_next(args):
         return
     if here:
         print(f"이 기계({os_platform()})에서 해야 할 요청 {len(here)}건 — "
-              f"담당 머신이 이 머신({current_machine()})이거나, 이 판에서 재 달라고 남긴 것:")
+              f"담당 컴퓨터가 이 컴퓨터({current_machine()})이거나, 이 판에서 재 달라고 남긴 것:")
         for r in here:
             print(f"  {r['id']} {r.get('title', '')} [{r.get('status', '')}] — 착수: s9 status {r['id']} in-progress")
     if not p:
@@ -19307,7 +19317,7 @@ def cmd_resume_item(args):
     if getattr(args, "spawn", False):
         meta, _ = read_doc(find_path(args.id))
         ok = _spawn_worker(args.id, meta, plan["prompt"], reason="resume-item")
-        print(f"\n-- {'재개 백그라운드 작업 스폰됨' if ok else '스폰 보류 (옵트인·캡·머신 조건 미충족 — s9 log 확인)'}")
+        print(f"\n-- {'재개 백그라운드 작업 스폰됨' if ok else '스폰 보류 (옵트인·캡·컴퓨터 조건 미충족 — s9 log 확인)'}")
 
 
 def cmd_contrib(args):
@@ -20139,7 +20149,7 @@ def record_machine_account(name, machine=None, acct=None):
     else:
         rows.append({"machine": machine, "os": plat, "account": acct,
                      "first": ts, "last": ts})
-        body = body.rstrip("\n") + f"\n- {ts} 처음 본 머신 {acct}@{machine} ({plat})\n"
+        body = body.rstrip("\n") + f"\n- {ts} 처음 본 컴퓨터 {acct}@{machine} ({plat})\n"
     meta["machine_accounts"] = rows
     write_doc(ppath, meta, body)
     return True
@@ -20548,7 +20558,7 @@ def cmd_user(args):
         print(f"{name}: attached {acct}@{mach}"
               + ("" if changed else " (already attached)"))
         if sync_on:
-            print("두 번째 머신이 붙었다 — 이 저장소는 이제 바깥과 오간다(동기화 remote, "
+            print("두 번째 컴퓨터가 붙었다 — 이 저장소는 이제 바깥과 오간다(동기화 remote, "
                   "표식 .s9-sync). 문서 이벤트마다 commit→pull→push. 끄려면 `s9 sync --off`")
 
     elif args.action == "list":
@@ -22077,7 +22087,7 @@ def cmd_project(args):
         print(f"{res['old']} -> {res['new']}: 프로젝트 문서·"
               f"{'에셋 공간·' if res['assets'] else ''}"
               f"문서 {res['docs']}건의 project·에이전트 미러를 옮겼다")
-        print("   출처(만든 사람·머신)는 그대로다 — 옮긴 것은 이름이다.")
+        print("   출처(만든 사람·컴퓨터)는 그대로다 — 옮긴 것은 이름이다.")
         return
 
     if action == "agents":
@@ -31460,6 +31470,15 @@ def cmd_serve(args):
                                "serveguard": guard_report(s9_port()),
                                "catalog": {"etag": _ce, "window": _cw}}
                 self._json(payload)
+            elif parsed.path == "/api/machines":
+                # 담당 컴퓨터를 고르는 목록 (REQ-20260910-017-62x6). 원천은 machine_table
+                # 하나다 — 화면이 machine_accounts 를 따로 읽으면 peers·call_name 이
+                # 빠져 CLI(`s9 set --needs-machine`)가 받는 이름을 화면은 못 고른다.
+                _qm = urllib.parse.parse_qs(parsed.query)
+                _um = (_qm.get("user") or [""])[0].strip() or None
+                _rows = sorted(machine_table(_um).values(),
+                               key=lambda v: str(v.get("last") or ""), reverse=True)
+                self._json({"machines": _rows, "here": current_machine()})
             elif parsed.path == "/api/whoami":
                 # 서버 파생 신원 — 대시보드 라벨·admin 판정·개인화의 단일 출처
                 self._json(whoami_info())
@@ -31906,9 +31925,12 @@ def cmd_serve(args):
                     # 카드에서 프로젝트 바꾸기 — CLI(`s9 set`)와 같은 경로(do_set) (REQ-20260906-053)
                     # 문서 화면에서 Jira 이슈 잇기/끊기도 같은 길이다 (REQ-20260909-036)
                     try:
+                        # 담당 컴퓨터 바꾸기·이 컴퓨터로 바꾸기도 같은 길이다 (REQ-20260910-017-62x6).
+                        # 부르는 이름→머신값 풀이·모르는 이름 거절은 do_set 이 한다.
                         res = do_set(str(req.get("id") or ""),
                                      {"project": req.get("project"),
-                                      "jira_key": req.get("jira_key")},
+                                      "jira_key": req.get("jira_key"),
+                                      "needs_machine": req.get("needs_machine")},
                                      actor=actor, via="dashboard")
                     except ValueError as e:
                         res = {"ok": False, "error": str(e)}
@@ -33472,9 +33494,9 @@ def main():
     np.add_argument("--user")
     np.add_argument("--project")
     np.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL"],
-                    help="이 요청을 해야 하는 판 — 담당 머신을 모를 때 쓰는 약한 말 (REQ-20260906-080)")
+                    help="이 요청을 해야 하는 판 — 담당 컴퓨터를 모를 때 쓰는 약한 말 (REQ-20260906-080)")
     np.add_argument("--needs-machine", dest="needs_machine",
-                    help="이 요청을 해야 하는 담당 머신 — 부르는 이름(예: 맥)이나 머신값 "
+                    help="이 요청을 해야 하는 담당 컴퓨터 — 부르는 이름(예: 맥)이나 컴퓨터 이름값 "
                          "(REQ-20260910-016)")
     np.add_argument("--project-tag", dest="project_tag",
                     help="프롬프트 첫 줄 표기 [프로젝트: slug] 를 훅이 넘기는 자리 — "
@@ -33558,7 +33580,7 @@ def main():
     se2.add_argument("--needs-os", dest="needs_os", choices=["Linux", "macOS", "Windows", "WSL", ""],
                      help="이 요청을 해야 하는 판 — 그 판의 세션이 s9 next 로 먼저 본다 (REQ-20260906-080)")
     se2.add_argument("--needs-machine", dest="needs_machine",
-                     help="이 요청을 해야 하는 담당 머신 — 부르는 이름(예: 맥)이나 머신값, "
+                     help="이 요청을 해야 하는 담당 컴퓨터 — 부르는 이름(예: 맥)이나 컴퓨터 이름값, "
                           "'' 는 지우기 (REQ-20260910-016)")
     se2.add_argument("--jira-key", dest="jira_key",
                      help="이미 있는 Jira 이슈를 잇는다(예: MP1-7) — 만들지 않는다. '' 는 끊기 (REQ-20260909-036)")
@@ -33629,7 +33651,7 @@ def main():
 
     ro = sub.add_parser("reopened", help="대시보드 반려/재개 후 미착수 요청 목록 (기본: 내 것)")
     ro.add_argument("--quiet", action="store_true")
-    ro.add_argument("--all", action="store_true", help="담당·머신 무관 전부")
+    ro.add_argument("--all", action="store_true", help="담당·컴퓨터 무관 전부")
     ro.set_defaults(fn=cmd_reopened)
 
     sn = sub.add_parser("snapshot",
@@ -33645,7 +33667,7 @@ def main():
     pr = sub.add_parser("peer", help="다른 자리의 세션 이름 (Remote Control 로 부를 때 쓴다)")
     pr.add_argument("action", choices=("ls", "set", "rm"), nargs="?", default="ls")
     pr.add_argument("name", nargs="?", help="그 세션을 밖에서 부르는 이름")
-    pr.add_argument("--machine", default="", help="그 세션이 도는 머신 이름")
+    pr.add_argument("--machine", default="", help="그 세션이 도는 컴퓨터 이름")
     pr.add_argument("--os", default="", help="macOS · Linux · Windows … (ls 에서는 좁히는 말)")
     pr.add_argument("--note", default="", help="무엇을 맡는 자리인가")
     pr.set_defaults(fn=cmd_peer)
@@ -33673,12 +33695,12 @@ def main():
 
     bl = sub.add_parser("blocked", help="대기(blocked) 요청 목록 + 사유")
     bl.add_argument("--quiet", action="store_true")
-    bl.add_argument("--all", action="store_true", help="담당·머신 무관 전부")
+    bl.add_argument("--all", action="store_true", help="담당·컴퓨터 무관 전부")
     bl.set_defaults(fn=cmd_blocked)
 
     av = sub.add_parser("approvals", help="미확인 승인 메모 목록 (--quiet=1회 소비)")
     av.add_argument("--quiet", action="store_true")
-    av.add_argument("--all", action="store_true", help="담당·머신 무관 전부")
+    av.add_argument("--all", action="store_true", help="담당·컴퓨터 무관 전부")
     av.set_defaults(fn=cmd_approvals)
 
     nx = sub.add_parser("next", help="아무도 붙어 있지 않은 미완 중 다음에 집을 것 1건")
@@ -34120,7 +34142,7 @@ def main():
     sl = sub.add_parser("stalled",
                         help="클레임해 놓고 진전이 멈춘 in-progress 요청")
     sl.add_argument("--quiet", action="store_true")
-    sl.add_argument("--all", action="store_true", help="담당·머신 무관 전부")
+    sl.add_argument("--all", action="store_true", help="담당·컴퓨터 무관 전부")
     sl.set_defaults(fn=cmd_stalled)
 
     ho = sub.add_parser("handoff",

@@ -261,6 +261,8 @@ function machineHistoryHTML(u){
   if (!rows.length)
     return `<div class="cfg-h">컴퓨터·계정 이력</div>
       <p class="empty mhempty">이 계정으로 세션을 연 적이 없습니다.</p>`;
+  // 지금 이 화면을 여는 컴퓨터가 어느 줄인지 표시한다 (REQ-20260910-017-62x6).
+  const here = (window.__whoami || {}).machine || "";
   const body = rows.map(r => {
     const t = Date.parse(r.last || "") || 0;
     const stale = !t || Date.now() - t > MACHINE_FRESH_MS;
@@ -269,7 +271,8 @@ function machineHistoryHTML(u){
     // 비교하게 만들 이유가 없다.
     const once = r.first && r.last && r.first === r.last;
     return `<tr class="${stale ? "stale" : ""}">
-      <td class="mn">${esc(r.machine || "?")}</td>
+      <td class="mn">${esc(r.machine || "?")}${here && r.machine === here
+        ? ` <span class="mone" title="지금 이 화면을 여는 컴퓨터">이 컴퓨터</span>` : ""}</td>
       <td class="mo">${esc(r.os || "?")}</td>
       <td class="ma">@${esc(r.account || "?")}</td>
       <td class="mw">${esc(shortWhen(r.first))}</td>

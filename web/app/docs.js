@@ -543,6 +543,9 @@ async function loadDoc(id, bg, force){
     ["blocked_by", depRow],
     ["summary", esc(m.summary) || null], ["goal", esc(m.goal) || null],
     ["user / machine / session", esc([m.user, m.machine, m.session].filter(Boolean).join(" / "))],
+    // 담당 컴퓨터 (REQ-20260910-017-62x6) — 안 정해졌으면 행을 세우지 않는다.
+    // 라벨은 프론트매터 키 그대로다 (REQ-20260907-012-62x6 ⑤: 이 표의 라벨은 키 사전).
+    ["needs_machine", esc(m.needs_machine) || null],
     /* 프로젝트 표기는 **그 자체가 손잡이**다 (REQ-20260907-010) — 카드가 세운
        규칙(REQ-20260906-053)을 그대로 쓰고, 짓는 함수도 카드와 **같은 것 하나**다.
        두 화면이 각자 글자를 가지면 한쪽만 고쳐진다(판정 버튼이 세 번 반려된 그
@@ -704,7 +707,7 @@ async function loadDoc(id, bg, force){
      (앞으로 자동으로 맡나)·판정(상태를 옮기나)과 다른 축이다 — 누가 맡나.
      자리는 정책 뒤, 판정 앞: 「누가」가 정해진 다음에 「어디로」를 누른다.
      행은 카탈로그가 아니라 **문서 자신**을 먹인다(색인에 아직 없는 새 문서). */
-  const asgBtn = assignBtnHTML(m);
+  const asgBtn = assignBtnHTML(m) + machineBtnHTML(m);   // 「누가」 옆에 「어디서」 (REQ-20260910-017-62x6)
   // 무리 사이만 헤어라인(.adiv)이 가른다 — 빈 무리는 가를 것도 없다.
   /* 답 찾기는 **왼쪽 무리의 맨 앞**이다 (REQ-20260907-042 · designer).
      왼쪽 = 이 문서로 무언가를 한다(답을 찾는다 · 이어 말한다), 오른쪽(치우기)
