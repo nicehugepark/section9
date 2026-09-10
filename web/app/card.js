@@ -970,6 +970,10 @@ function stallHTML(r){
   if (elsew) return elsew;
   const stopped = stoppedRowHTML(r);
   if (stopped) return stopped;
+  // 담당 컴퓨터를 기다리는 것은 멈춤이 아니다 (REQ-20260910-017-62x6) — 사람이 중단해
+  // 둔 것(stopped)보다는 뒤, 멈춤 판정보다는 앞. 줄을 짓는 것은 web/app/machine.js.
+  const waiting = waitingRowHTML(r);
+  if (waiting) return waiting;
   const st = stallState(r);
   if (!st) return slowRowHTML(r);
   // 마지막 시각을 못 읽으면 그 조각만 빠진다 — "· 마지막 " 로 끝나는 줄은 값이
@@ -2060,6 +2064,10 @@ function cardHTML(r){
     ? (elsewDot
          ? `<span class="livedot off" title="${esc(elsewDot.machine)} 에서 ${
               elsewDot.mins < 1 ? "방금" : elsewDot.mins + "분 전"}까지 움직였습니다 — 이 컴퓨터에서는 진행을 볼 수 없습니다"></span>`
+       /* 담당 컴퓨터를 기다리는 요청의 점도 **모름(○)** 이다 (REQ-20260910-017-62x6):
+          이 컴퓨터가 아는 것은 「저기서만 한다」뿐이다. 문장만 참으로 바꾼다. */
+       : waitingMachine(r)
+         ? waitingDotHTML(r)
        : st && st.face === "dead"
          ? `<span class="livedot dot-stopped" title="이 요청을 맡았던 일이 도중에 멎었습니다 — ${esc(st.reason||"까닭은 남아 있지 않습니다")}"></span>`
        : st
