@@ -352,7 +352,11 @@
    잉크가 하고, mono·자간은 걸지 않는다 — 한글 낱말이라 트래킹을 걸면 흩어진다
    (바로 위 `.dlgopt.cur .on` 과 같은 이유). 오른쪽 `.on` 은 이미 상태
    ("지금 이것"·"로그인 전")가 쓰고 있으므로 자리를 다투지 않는다. */
-.dlgopt .ot{margin-left:8px;font-size:10.5px;color:var(--muted);font-weight:400}
+.dlgopt .ot{margin-left:8px;font-size:10.5px;color:var(--muted);font-weight:400;
+  /* 곁말은 한 덩어리다 (REQ-20260910-004-t8rc, 맥 실측 2026-09-10): 이름이 길면
+     [macOS · 마지막 · 맡기기 꺼짐] 이 낱말 안에서 접혔다 — 「맡기 / 기 꺼짐」.
+     한글은 음절 사이 어디서든 접히므로 덩어리째 다음 줄로 내린다. */
+  white-space:nowrap;display:inline-block}
 /* 고를 수 없는 줄 — **누르면 아무 일도 안 일어나는** 것이 아니라 애초에 눌릴
    것으로 보이지 않아야 한다. 색만으로 가르지 않는다: 표식이 ● / ○ / · 셋으로
    갈리고(모양), 오른쪽에 이유가 낱말로 선다("로그인 전"). 이유를 적는 `.on` 은
