@@ -6,7 +6,7 @@ role: admin
 emails: ["claude01.pfe@example.invalid"]
 github: nicehugepark
 os_accounts: ["sjpark1", "sjpark", "seongjinpark"]
-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-10T16:06:28+09:00"}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-10T16:21:04+09:00", "last_recv": "2026-09-10T16:26:02+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-09T21:15:46+09:00"}]
+machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-10T16:06:28+09:00"}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-10T16:21:04+09:00", "last_recv": "2026-09-10T16:38:39+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-09T21:15:46+09:00"}]
 machines: ["eek-p620", "Seongjinui-Macmini.local"]
 ---
 
@@ -254,3 +254,7 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-10T16:30:39+09:00 config jira_enabled=off (by nicehugepark via dashboard)
 - 2026-09-10T16:30:42+09:00 config jira_enabled=on (by nicehugepark via dashboard)
 - 2026-09-10T16:30:59+09:00 config jira_token_expires=2026-09-12 (by nicehugepark via dashboard)
+- 2026-09-10T16:37:04+09:00 config auto_resume_per_day=200 (by nicehugepark)
+- 2026-09-10T16:37:04+09:00 config auto_resume_per_hour=40 (by nicehugepark)
+- 2026-09-10T16:38:33+09:00 config auto_resume_global_per_day=300 (by nicehugepark)
+- 2026-09-10T16:38:33+09:00 config auto_resume_global_per_hour=60 (by nicehugepark)
