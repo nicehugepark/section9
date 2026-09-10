@@ -30,6 +30,7 @@
 
 실행: python3 tests/ mark_swap
 """
+import contextlib
 import json
 import os
 import shutil
@@ -140,8 +141,13 @@ MEASURE_JS = """
 """
 
 
-def measure(chrome):
-    marker = "s9markswap-%d" % os.getpid()
+@contextlib.contextmanager
+def _page(chrome, marker, html):
+    """헤드리스 창 하나를 띄워 CDP 연결을 넘긴다 — 띄우고 거두는 일은 여기 한 번.
+
+    이 파일에는 브라우저를 쓰는 시험이 둘이다(상자를 재는 것 · 손을 얹는 것).
+    배관을 두 벌로 적으면 한 벌만 고쳐진다.
+    """
     win = chrome.startswith("/mnt/c/")
     if win:
         os.makedirs("/mnt/c/Temp", exist_ok=True)
@@ -155,14 +161,14 @@ def measure(chrome):
         url = "file://" + fix
     shutil.rmtree(prof_wsl, ignore_errors=True)
     with open(fix, "w", encoding="utf-8") as f:
-        f.write(fixture_html())
+        f.write(html)
     proc = subprocess.Popen(
         [chrome, "--headless=new", "--disable-gpu",
          "--user-data-dir=" + prof_arg, "--no-first-run",
          "--no-default-browser-check", "--disable-extensions",
          "--remote-debugging-port=0", "--window-size=900,1400", url],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    ws, rows = None, []
+    ws = None
     try:
         port, dev = None, os.path.join(prof_wsl, "DevToolsActivePort")
         for _ in range(120):
@@ -184,15 +190,7 @@ def measure(chrome):
                 break
             time.sleep(0.25)
         time.sleep(0.3)
-        for skin in SKINS:
-            for den in DENSITIES:
-                ws.eval("document.documentElement.dataset.skin=%r;"
-                        "document.documentElement.dataset.density=%r"
-                        % (skin, den))
-                time.sleep(0.1)
-                for d in ws.eval(MEASURE_JS):
-                    rows.append(dict(d, skin=skin, den=den))
-        return rows
+        yield ws
     finally:
         if ws is not None:
             ws.close()
@@ -206,6 +204,20 @@ def measure(chrome):
             os.remove(fix)
         except OSError:
             pass
+
+
+def measure(chrome):
+    rows = []
+    with _page(chrome, "s9markswap-%d" % os.getpid(), fixture_html()) as ws:
+        for skin in SKINS:
+            for den in DENSITIES:
+                ws.eval("document.documentElement.dataset.skin=%r;"
+                        "document.documentElement.dataset.density=%r"
+                        % (skin, den))
+                time.sleep(0.1)
+                for d in ws.eval(MEASURE_JS):
+                    rows.append(dict(d, skin=skin, den=den))
+    return rows
 
 
 class TheMarkKeepsItsPlaceWhenTheFaceChanges(unittest.TestCase):
@@ -284,6 +296,114 @@ class TheMarkKeepsItsPlaceWhenTheFaceChanges(unittest.TestCase):
                                % (skin, den, lefts))
             self.assertEqual([], self._cut(bad),
                              "마크의 얼굴이 식별자를 밀었다")
+
+
+# ---------------------------------------------------------------------------
+# 손을 얹었을 때 — 교대할 짝이 없으면 교대하지 않는다 (REQ-20260910-049)
+#
+# 위의 시험이 재는 것은 「두 얼굴이 같은 자리에 서는가」이고, 여기서 재는 것은
+# 「언제 교대하는가」다. 벨트는 멈출 수 있거나 이어갈 수 있는 카드에만 선다
+# (card.js deedBeltHTML 은 어느 쪽도 아니면 빈 문자열). 그런데 점을 숨기는
+# 규칙이 카드에 손이 얹혔다는 것만 보고 걸려 있으면, 세울 것이 없는 카드는
+# 점만 사라지고 13px 구멍이 남는다 — 주인이 본 것이 그것이다(2026-09-10 21:13).
+
+HOVER_HTML_CARDS = (
+    ("with_belt", '<span class="livedot on"></span>'
+                  + _glyph("stop")),
+    ("no_belt", '<span class="livedot on"></span>'),
+)
+
+
+def hover_fixture():
+    css_files, _ = parts()
+    css = "\n".join(open(os.path.join(WEB, "css", f), encoding="utf-8").read()
+                     for f in css_files)
+    cards = "".join(
+        '<div class="card" data-status="in-progress" data-kind="%s"'
+        ' style="--sc:var(--muted)">'
+        '<div class="id"><span class="idmark">%s</span>'
+        '<span class="idn">REQ-20260910-049</span></div>'
+        '<div class="t">손 올리면 점 자리가 빈다</div></div>' % (name, inner)
+        for name, inner in HOVER_HTML_CARDS)
+    return ('<!doctype html><html lang="ko" data-theme="light"'
+            ' data-skin="ledger" data-density="normal"><head>'
+            '<meta charset="utf-8"><style>%s</style>'
+            '<style>body{margin:16px;background:var(--bg)}'
+            '.card{width:220px;margin-bottom:24px}</style></head>'
+            '<body>%s</body></html>' % (css, cards))
+
+
+HOVER_JS = """
+(() => {
+  const out = {};
+  for (const card of document.querySelectorAll('.card')) {
+    const dot = card.querySelector('.livedot');
+    const belt = card.querySelector('.acts.deedbelt');
+    out[card.dataset.kind] = {
+      dot: getComputedStyle(dot).visibility,
+      belt: belt ? getComputedStyle(belt).visibility : null,
+      at: (r => ({x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2}))(
+        card.getBoundingClientRect()),
+    };
+  }
+  return out;
+})()
+"""
+
+
+def hover_states(chrome):
+    """손을 얹기 전과 뒤의 `visibility` 를 카드별로 잰다 — 진짜 포인터로.
+
+    `:hover` 를 흉내내지 않는다: CDP 로 마우스를 그 카드 위로 **옮긴다**.
+    사람이 하는 것과 같은 사건이라야 CSS 가 같은 판정을 한다.
+    """
+    with _page(chrome, "s9hover-%d" % os.getpid(), hover_fixture()) as ws:
+        before = ws.eval(HOVER_JS)
+        after = {}
+        for kind, v in before.items():
+            ws.call("Input.dispatchMouseEvent", type="mouseMoved",
+                    x=v["at"]["x"], y=v["at"]["y"], buttons=0)
+            time.sleep(0.15)
+            after[kind] = ws.eval(HOVER_JS)[kind]
+        # 손을 치운다 — 다음 회차가 앞의 자국을 물려받지 않게.
+        ws.call("Input.dispatchMouseEvent", type="mouseMoved", x=1, y=1,
+                buttons=0)
+        return before, after
+
+
+class TheDotStaysWhenThereIsNothingToSwapWith(unittest.TestCase):
+    """손잡이가 없는 카드는 손을 얹어도 점이 남는다 (REQ-20260910-049)."""
+
+    @classmethod
+    def setUpClass(cls):
+        chrome = chrome_path(pixel_contract=False)
+        if not chrome:
+            raise unittest.SkipTest("브라우저 없음 — 실측 불가 환경")
+        try:
+            cls.before, cls.after = hover_states(chrome)
+        except (ConnectionError, RuntimeError, OSError) as e:
+            raise unittest.SkipTest("CDP 실측 불가: %s" % e)
+
+    def test_h1_a_card_with_a_handle_swaps_the_dot_for_it(self):
+        """손잡이가 있으면 점이 물러나고 그 자리에 손잡이가 선다."""
+        self.assertEqual("hidden", self.after["with_belt"]["dot"],
+                         "손잡이가 섰는데 점도 함께 보인다 — 한 자리에 둘이다")
+        self.assertEqual("visible", self.after["with_belt"]["belt"],
+                         "손을 얹었는데 손잡이가 안 선다")
+
+    def test_h2_a_card_without_a_handle_keeps_its_dot(self):
+        """세울 것이 없으면 점이 그대로다 — 빈 자리를 남기지 않는다."""
+        self.assertEqual("visible", self.after["no_belt"]["dot"],
+                         "손잡이가 없는 카드에서 점만 사라졌다 — 식별자 "
+                         "왼쪽이 아무것도 없는 자리가 된다 (주인 지적 "
+                         "2026-09-10 21:13)")
+
+    def test_h3_before_the_hand_both_cards_show_their_dot(self):
+        """손을 얹기 전에는 둘 다 점이다 — 회귀 기준선."""
+        for kind in ("with_belt", "no_belt"):
+            self.assertEqual("visible", self.before[kind]["dot"], kind)
+        self.assertEqual("hidden", self.before["with_belt"]["belt"],
+                         "손을 얹지 않았는데 손잡이가 서 있다")
 
 
 if __name__ == "__main__":

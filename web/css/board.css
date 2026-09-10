@@ -272,10 +272,16 @@ html.boardfit #view>.board{flex:1 1 auto;min-height:320px}
   margin:0;visibility:hidden}
 .card:hover .id .idmark .acts.deedbelt,
 .card:focus-within .id .idmark .acts.deedbelt{visibility:visible}
-.card:hover .id .idmark .livedot,
-.card:focus-within .id .idmark .livedot{visibility:hidden}
+/* 점을 숨기는 조건은 **벨트가 있을 때**다 (REQ-20260910-049, 주인 지적
+   2026-09-10 21:13: 「문서번호 좌측에 아무것도 없이 공백이 되는게 의도한게
+   맞나」). 벨트는 멈출 수 있거나 이어갈 수 있는 카드에만 선다 —
+   deedBeltHTML 은 어느 쪽도 아니면 빈 문자열을 준다. 그런데 숨김은 카드에
+   손이 얹혔다는 것만 보고 걸려 있어서, 세울 것이 없는 카드는 점만 사라지고
+   13px 구멍이 남았다. 교대할 짝이 있는 자리에서만 교대한다. */
+.card:hover .id .idmark:has(.acts.deedbelt) .livedot,
+.card:focus-within .id .idmark:has(.acts.deedbelt) .livedot{visibility:hidden}
 @media (pointer:coarse){.card .id .idmark .acts.deedbelt{visibility:visible}
-  .card .id .idmark .livedot{visibility:hidden}}
+  .card .id .idmark:has(.acts.deedbelt) .livedot{visibility:hidden}}
 /* 자리는 묶음이, **활자는 손잡이가** 진다 (REQ-20260910-009 3차).
    줄높이를 묶음 안쪽 선택자에 실었더니 `test_card_corner` 의 「줄 키는 한
    숫자」 계약이 `.card .pickdoc` 에서 그 선언을 못 찾았다 — 그 계약이 옳다:
