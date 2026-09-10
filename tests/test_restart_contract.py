@@ -222,16 +222,25 @@ class BeforeYouKillTheSession(RestartCase):
     def _acct_dir(self, name):
         return os.path.join(PROFILES, name, "projects", CWD_KEY)
 
-    # S13. F — 이어받을 수 없으면 SIGTERM 전에 거부한다
-    def test_s13_no_resume_refuses_before_sigterm(self):
+    # S13. 개정 — 이어받을 대화가 **아예 없으면** 막지 않고 그 사실을 말한다
+    #      (REQ-20260910-054-t8rc). 종전 계약은 거부였다(REQ-20260901-011 F).
+    #      뒤집은 까닭: a95d4c80 이 훅을 고쳐 기록 파일보다 경로가 먼저 적히게
+    #      되면서, **첫 프롬프트 전의 계정 전환이 전부** 이 거부에 걸렸다.
+    #      원본이 지워진 세션과 아직 안 생긴 세션을 코드는 가릴 수 없고,
+    #      어느 쪽이든 잃을 대화가 없다. 거부가 막아 주던 피해(`claude
+    #      --resume` 이 No conversation found 로 죽던 것)는 다른 자리가
+    #      이미 막는다 — 이을 것이 없으면 빈 resume 을 안 붙인다(아래 단정).
+    def test_s13_no_conversation_goes_through_and_says_so(self):
         full, tp = self.session("s13sess", [asst("end_turn")])
         os.remove(tp)          # 원본도 없고 대상에도 없다
         r = self.restart("s13sess", account="acct2")
-        self.assertFalse(r["ok"])
-        self.assertEqual(r["why_kind"], "no_resume")
-        self.assertEqual(self.kills, [],
-                         "이어질 수 있는지 모르는 채로 세션을 내렸다")
-        self.assertFalse(os.path.exists(mod._restart_marker_path("s13sess")))
+        self.assertTrue(r["ok"], r)
+        self.assertTrue(r["fresh_session"], "이을 대화가 없다는 사실을 안 말했다")
+        self.assertFalse(r["resumed_conversation"])
+        self.assertNotIn("--resume", r["cmd"],
+                         "못 찾을 sid 를 넘기면 claude 가 뜨자마자 죽는다")
+        with open(mod._restart_marker_path("s13sess"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["resume"], "")
 
     # S14. E — 대화 기록을 대상 계정으로 옮기고 진행한다
     def test_s14_the_conversation_is_carried_over(self):
@@ -269,14 +278,20 @@ class BeforeYouKillTheSession(RestartCase):
         self.assertTrue(os.path.isfile(os.path.join(
             HOME_PROFILE, "projects", CWD_KEY, full + ".jsonl")))
 
-    # force 는 이 검사도 지난다 — 다만 대화가 안 이어진다는 사실을 말한다
-    def test_forcing_past_no_resume_says_the_conversation_is_lost(self):
+    # force 를 붙여도 **같은 길**이다 — 버린 대화가 없으니 버렸다고 하지 않는다
+    # (REQ-20260910-054-t8rc 개정). 종전에는 force 만이 이 자리를 지날 수 있어
+    # `discarded_conversation` 이 「force 로 밀고 지나갔다」는 뜻이었다. 이제
+    # force 없이도 지나므로 그 이름의 뜻이 사라졌다 — 말하는 것은 하나,
+    # 「이어받을 대화가 없다」(fresh_session)다.
+    def test_forcing_changes_nothing_when_there_is_no_conversation(self):
         full, tp = self.session("s13bsess", [asst("end_turn")])
         os.remove(tp)
         r = self.restart("s13bsess", account="acct5", force=True)
         self.assertTrue(r["ok"], r)
         self.assertFalse(r["resumed_conversation"])
-        self.assertTrue(r["discarded_conversation"])
+        self.assertTrue(r["fresh_session"])
+        self.assertNotIn("discarded_conversation", r,
+                         "버린 대화가 없는데 버렸다고 적었다")
         # 못 찾을 sid 를 넘기면 claude 가 뜨자마자 죽는다 — 안 넘긴다
         with open(mod._restart_marker_path("s13bsess"), encoding="utf-8") as f:
             self.assertEqual(json.load(f)["resume"], "")

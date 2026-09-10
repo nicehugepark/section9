@@ -178,22 +178,23 @@ class ASessionWithNoConversationIsNotRefused(Base):
         self.assertNotEqual(r.get("why_kind"), "no_resume")
         self.assertNotIn("트랜스크립트 없음", str(r.get("reason") or ""))
 
-    def test_a_recorded_path_with_no_file_yet_is_still_refused(self):
-        """a95d4c80 뒤에 남은 구멍 — 이 시험은 지금 동작을 못박아 둔 것이다.
+    def test_a_recorded_path_with_no_file_yet_goes_through_as_fresh(self):
+        """a95d4c80 뒤에 남았던 구멍 — 이제 열렸다 (REQ-20260910-054-t8rc).
 
         대화 기록 파일은 첫 프롬프트가 지나야 생기고, 훅은 그보다 앞서 경로를
         적는다(a95d4c80). 그 사이의 계정 전환은 `_ensure_resumable` 이
-        「대상 계정에 이 대화의 기록이 없고, 옮길 원본도 없다」로 막아,
-        사람은 문구만 바뀐 같은 벽을 만난다. 여는 것은 REQ-20260901-011 F 가
-        세운 가드를 고치는 일이라 파생 요청으로 넘겼다.
+        「대상 계정에 이 대화의 기록이 없고, 옮길 원본도 없다」로 막아, 사람은
+        문구만 바뀐 같은 벽을 만났다. 이제 그 갈래는 거부가 아니라
+        **fresh_session** 이다 — 이을 대화가 없으니 지킬 것도 없다.
         """
         make_binding("f00d0006", attach_pid=str(os.getpid()),
                      transcript_path=os.path.join(
                          HOME_PROJ, CWD_KEY,
                          "f00d0006-1111-2222-3333-444444444444.jsonl"))
         r = self.restart("f00d0006", account="second@ex.com")
-        self.assertFalse(r.get("ok"))
-        self.assertEqual(r.get("why_kind"), "no_resume")
+        self.assertTrue(r.get("ok"), r)
+        self.assertTrue(r.get("fresh_session"))
+        self.assertNotIn("--resume", r.get("cmd", ""))
 
     def test_a_model_only_change_goes_through_too(self):
         make_binding("f00d0003", attach_pid=str(os.getpid()))

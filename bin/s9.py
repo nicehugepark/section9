@@ -9121,6 +9121,14 @@ def _profile_dir(account):
     return os.path.abspath(os.path.join(profiles_base(), safe_name(account)))
 
 
+# 「이어받을 대화가 아예 없다」 — 거부 사유가 아니라 **갈래**다
+# (REQ-20260910-054-t8rc). 기록 파일은 첫 프롬프트가 지나야 생기고 훅은 그보다
+# 앞서 경로를 적으므로(a95d4c80), 그 사이의 계정 전환은 원본도 사본도 없는
+# 상태로 이 자리에 온다. 지운 세션과 아직 안 생긴 세션을 코드는 가릴 수 없고,
+# 가릴 필요도 없다 — 어느 쪽이든 잃을 대화가 없다.
+NO_CONVERSATION_YET = "대상 계정에 이 대화의 기록이 없고, 옮길 원본도 없다"
+
+
 def _ensure_resumable(transcript_path, full_sid, account):
     """대상 계정이 이 대화를 **이어받을 수 있게** 한다 (REQ-20260901-011 E·F).
 
@@ -9134,7 +9142,7 @@ def _ensure_resumable(transcript_path, full_sid, account):
     반환 (ok, copied, why): ok=False 면 **SIGTERM 을 쏘기 전에** 거부해야 한다.
     지금까지는 이어질 수 있는지 확인하지 않고 세션부터 내렸다."""
     if not transcript_path or not full_sid:
-        return (False, False, "세션 전체 id 미상 — 트랜스크립트 없음")
+        return (False, False, NO_CONVERSATION_YET)
     dest_dir = os.path.join(_profile_dir(account), "projects",
                             os.path.basename(os.path.dirname(transcript_path)))
     dest = os.path.join(dest_dir, full_sid + ".jsonl")
@@ -9144,8 +9152,7 @@ def _ensure_resumable(transcript_path, full_sid, account):
         # 덮지 않는다: 대상 쪽 기록이 더 나중일 수 있다 (`s9 resume` 과 같은 규칙)
         return (True, False, "")
     if not os.path.isfile(transcript_path):
-        return (False, False,
-                "대상 계정에 이 대화의 기록이 없고, 옮길 원본도 없다")
+        return (False, False, NO_CONVERSATION_YET)
     try:
         os.makedirs(dest_dir, exist_ok=True)
         shutil.copyfile(transcript_path, dest)
@@ -9546,6 +9553,15 @@ def restart_session(sid8, model="", effort="", account="", stop_workers=False,
         else:
             resumable, copied, why = _ensure_resumable(tp, full, account) \
                 if account else (True, False, "")
+            # 이어받을 대화가 **아예 없는** 것은 거부 사유가 아니다
+            # (REQ-20260910-054-t8rc). 종전에는 여기서 막았고, a95d4c80 이 훅을
+            # 고쳐 경로를 먼저 적게 되면서 **첫 프롬프트 전의 계정 전환이 전부**
+            # 이 벽에 걸렸다 — 문구만 바뀌고 벽은 남았다. 막아서 지키던 피해
+            # (`claude --resume` 이 No conversation found 로 죽던 것)는 이미
+            # 다른 자리가 막는다: 이을 것이 없으면 _restart_cmd 가 빈 resume 을
+            # 안 붙인다. 남은 값은 경고뿐이라, 경고는 화면이 하고 길은 연다.
+            if not resumable and why == NO_CONVERSATION_YET:
+                fresh, why = True, ""
         if not resumable and not fresh and not force:
             return refuse("no_resume", why)
         flags = (["--model", model] if model else []) \
