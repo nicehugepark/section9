@@ -23470,6 +23470,17 @@ def cmd_instance(args):
         "commit", "-q", "-m",
         "section9 인스턴스 — 코드만, 문서는 빈 자리에서 시작 (s9 instance init)")
     git("branch", "-M", "main")     # 빌린 이름을 돌려준다 (옛 이력은 여기서 사라진다)
+    # -M 이 가져가는 것은 **그 한 이름**뿐이다 (REQ-20260910-055-t8rc). clone 은
+    # 베이스의 **현재 가지**를 가져오는데(--depth 1 이 --single-branch 를 함의),
+    # 베이스가 main 이 아닌 가지에 서 있으면(worktree 는 언제나 wt/<이름>)
+    # 그 가지는 -M 이 덮을 이름이 아니라 그대로 남고, 그 안에 vault/·users/ 가
+    # 통째로 든 첫 commit 이 있다 — 인스턴스를 만든 사람이 제 저장소에서 남의
+    # 기억을 보게 되는 그 사고(REQ-20260908-039)가 되돌아온다. 기능 가지에 서서
+    # init 하는 사람도 같은 자리를 만난다.
+    for _b in (git("branch", "--format=%(refname:short)",
+                   check=False).stdout or "").split():
+        if _b != "main":
+            git("branch", "-D", _b, check=False)
     # 업스트림의 흔적을 걷는다 (REQ-20260908-039). 원격 추적 가지가 남으면
     # `git log --all` 에 남의 문서가 그대로 보이고 그 객체가 .git 에 남는다.
     # 필요할 때 `s9 instance upgrade` 가 다시 fetch 한다.
