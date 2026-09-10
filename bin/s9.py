@@ -28365,6 +28365,63 @@ def jira_assignee_for(meta, user):
     return str((user_config(user) or {}).get("jira_account_id") or "").strip()
 
 
+def jira_description_lines(meta, body="", mark=True):
+    """description 의 문단들 — 생성과 갱신이 **같은 줄**을 만든다 (REQ-20260910-021:
+    생성 때만 쓰고 다시 안 써서, 뒤늦게 채운 요약·완료 기준이 티켓에 영영 안 갔다).
+    첫 문단이 완료 기준이다 — Jira 의 접힌 미리보기에서도 보인다(주인 캡처 MP1-4 는
+    description 이 접혀 비어 보였다, REQ-20260909-032). 담당·크기·상태 줄은 붙이지
+    않는다(주인 2026-09-09 15:58, REQ-20260909-085) — 담당은 assignee, 상태는 Jira
+    상태가 이미 말하고 크기는 리드의 예산이다."""
+    doc_id = meta.get("id", "")
+    return [ln for ln in [
+        f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
+        f"요약: {meta.get('summary')}" if meta.get("summary") else "",
+        *jira_original_lines(body),
+        f"section9 요청 {doc_id}" if mark else ""] if ln]
+
+
+def jira_desc_sig(lines):
+    """우리가 쓴 description 의 지문 — 문서 jira.desc_sig 에 남겨 다음 갱신이
+    「지금 Jira 에 있는 것이 우리 것인가」를 판정한다."""
+    import hashlib
+    return hashlib.sha1("\n".join(lines).encode("utf-8")).hexdigest()[:12]
+
+
+def _jira_adf_lines(adf):
+    """ADF → 문단 글 목록. 우리가 쓰는 모양(paragraph > text)만 읽고 나머지 마디는
+    글자만 모은다 — 사람이 표·목록을 넣었으면 그 글자가 우리 줄과 다르니 「우리 것」
+    판정에서 걸린다."""
+    out = []
+    for para in (adf or {}).get("content") or [] if isinstance(adf, dict) else []:
+        parts = []
+        stack = list((para or {}).get("content") or [])
+        while stack:
+            c = stack.pop(0)
+            if not isinstance(c, dict):
+                continue
+            if c.get("type") == "text":
+                parts.append(str(c.get("text") or ""))
+            stack = list(c.get("content") or []) + stack
+        txt = "".join(parts).strip()
+        if txt:
+            out.append(txt)
+    return out
+
+
+JIRA_OURS_RE = re.compile(r"^(완료 기준: |요약: |원문:|section9 요청 )")
+
+
+def jira_description_is_ours(cur_lines, sig, body=""):
+    """지금 Jira 에 있는 description 을 덮어도 되나 — 사람이 Jira 에서 고친 것은 지우지
+    않는다(security·architect, REQ-20260909-030). 기준 둘: ① 문서에 지문이 있으면 그
+    지문과 같을 때 ② 지문이 없던 이슈(이 개정 전에 만든 것)면 문단 하나하나가 우리 모양
+    (완료 기준·요약·원문·요청 번호·원문 문단)일 때. 둘 다 아니면 두고 History 에 적는다."""
+    if sig:
+        return jira_desc_sig(cur_lines) == sig
+    ours = set(jira_original_lines(body))
+    return all(JIRA_OURS_RE.match(ln) or ln in ours for ln in cur_lines)
+
+
 def jira_issue_fields(meta, j, body="", assignee_id=""):
     """이슈에 실을 것 — title·summary·goal·원문(Original)·요청 id. 노트는 나가지 않는다
     (코멘트는 content=notes 일 때만, REQ-20260909-034)."""
@@ -28375,15 +28432,7 @@ def jira_issue_fields(meta, j, body="", assignee_id=""):
               # 제목은 section9 제목 그대로 — [REQ-…] 접두는 붙이지 않는다(주인 지적 2026-09-09
               # 11:28, REQ-20260909-039). 문서 번호는 description 의 「section9 요청 …」 줄에 있다.
               "summary": jira_summary_of(meta),
-              # 첫 문단이 완료 기준이다 — Jira 의 접힌 미리보기에서도 보인다(주인 캡처 MP1-4
-              # 는 description 이 접혀 비어 보였다, REQ-20260909-032).
-              "description": _jira_adf([
-                  f"완료 기준: {meta.get('goal')}" if meta.get("goal") else "",
-                  f"요약: {meta.get('summary')}" if meta.get("summary") else "",
-                  *jira_original_lines(body),
-                  # 담당·크기·상태 줄은 붙이지 않는다(주인 2026-09-09 15:58, REQ-20260909-085) —
-                  # 담당은 assignee, 상태는 Jira 상태가 이미 말하고 크기는 리드의 예산이다
-                  f"section9 요청 {doc_id}" if mark else ""])}
+              "description": _jira_adf(jira_description_lines(meta, body, mark))}
     if mark:
         fields["labels"] = [jira_label(doc_id)]
     if assignee_id:
@@ -28512,7 +28561,9 @@ def jira_issue_create(doc_id, actor="", manual=False, **kw):
                                    "status": status, "status_category": cat, "synced_at": now_iso(),
                                    "synced_by": "s9", "pending": "", "last_error": "",
                                    "actor": actor or user,
-                                   "via": "manual" if manual else "watcher"},
+                                   "via": "manual" if manual else "watcher",
+                                   "desc_sig": jira_desc_sig(
+                                       jira_description_lines(meta, _body, jira_mark_on(j)))},
                           f"이슈 {key} 생성 by {actor or user}" + (" (s9 jira create)" if manual else ""))
         return {"ok": True, "key": key, "url": cur["url"], "skipped": False, "error": "",
                 "status": status}
@@ -28602,8 +28653,10 @@ def jira_push_wanted(meta, note="", auto=False):
 
 
 def jira_title_push(doc_id, actor="", **kw):
-    """제목이 바뀌면 이슈 summary 를 맞춘다 — PUT /issue/{key} fields.summary (REQ-20260909-032).
-    description 은 건드리지 않는다(사람이 Jira 에서 고친 것을 지우지 않는다)."""
+    """제목·요약·완료 기준이 바뀌면 이슈의 summary 와 description 을 맞춘다 —
+    PUT /issue/{key} (REQ-20260909-032 · REQ-20260910-021). description 은 **지금 Jira 에
+    있는 것이 우리가 쓴 것일 때만** 다시 쓴다(GET 으로 읽어 지문과 대본다) — 사람이
+    Jira 에서 고친 것은 지우지 않고(REQ-20260909-030) 두었다는 사실을 History 에 적는다."""
     path = find_path(doc_id)
     if not path:
         return {"ok": False, "error": f"문서 없음: {doc_id}", "skipped": True}
@@ -28615,11 +28668,25 @@ def jira_title_push(doc_id, actor="", **kw):
     if jira_auth_header(user)[0] is None:
         return {"ok": False, "error": f"@{user} 의 준비물이 없다", "skipped": True}
     summary = jira_summary_of(meta)
+    j = project_jira(str(meta.get("project") or "")) or {}
+    lines = jira_description_lines(meta, _body, jira_mark_on(j) if j else True)
+    sig = jira_desc_sig(lines)
+    fields, said, patch = {"summary": summary}, "제목 맞춤", {}
+    st0, d0, _ = jira_http(user, "GET", f"/rest/api/3/issue/{cur['key']}?fields=description", **kw)
+    if st0 == 200 and isinstance(d0, dict):
+        now_lines = _jira_adf_lines((d0.get("fields") or {}).get("description"))
+        if jira_description_is_ours(now_lines, str(cur.get("desc_sig") or ""), _body):
+            if jira_desc_sig(now_lines) != sig:
+                fields["description"] = _jira_adf(lines)
+                said = "제목·본문 맞춤"
+            patch["desc_sig"] = sig
+        else:
+            said = "제목 맞춤 — 본문은 Jira 에서 고쳐져 있어 두었다"
     st, _d, err = jira_http(user, "PUT", f"/rest/api/3/issue/{cur['key']}",
-                            body={"fields": {"summary": summary}}, **kw)
+                            body={"fields": fields}, **kw)
     if st in (200, 204):
-        _jira_write(doc_id, {"synced_at": now_iso(), "synced_by": "s9", "pending": "",
-                             "last_error": ""}, f"{cur['key']} 제목 맞춤 — {summary}")
+        patch.update({"synced_at": now_iso(), "synced_by": "s9", "pending": "", "last_error": ""})
+        _jira_write(doc_id, patch, f"{cur['key']} {said} — {summary}")
         return {"ok": True, "skipped": False, "error": ""}
     return {"ok": False, "error": err or f"summary 갱신이 {st} 로 거절됐다", "skipped": False}
 
@@ -28678,10 +28745,15 @@ def jira_link_label(doc_id, key, user, **kw):
     return False
 
 
+JIRA_FIELD_KEYS = ("title", "summary", "goal")   # 바뀌면 이슈의 제목·본문을 다시 맞추는 것들
+
+
 def jira_after_set(doc_id, meta, body, changed):
-    """do_set 의 끝 — 제목이 정리됐으면 미뤄 둔 생성을 싣고, 이슈가 있으면 제목을 맞춘다."""
+    """do_set 의 끝 — 제목이 정리됐으면 미뤄 둔 생성을 싣고, 이슈가 있으면 제목·본문을
+    맞춘다. 요약·완료 기준은 접수 뒤에 채워지는 일이 잦다(훅이 세운 요청은 제목만
+    먼저 정리된다) — 그것도 outbox 로 간다(REQ-20260910-021)."""
     try:
-        if "title" not in (changed or []):
+        if not any(k in (changed or []) for k in JIRA_FIELD_KEYS):
             return False
         cur = meta.get("jira") if isinstance(meta.get("jira"), dict) else {}
         if cur.get("key"):

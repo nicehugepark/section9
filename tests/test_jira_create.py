@@ -42,8 +42,13 @@ class Stub(http.server.BaseHTTPRequestHandler):
         if u.path == "/rest/api/3/search/jql":
             return self._send(200, {"issues": [{"key": k} for k in Stub.found]})
         if u.path.startswith("/rest/api/3/issue/"):
-            return self._send(200, {"fields": {"status": {"name": "To Do"}}})
+            f = {"status": {"name": "To Do"}}
+            if Stub.description is not None:      # 갱신이 GET 으로 읽는 지금의 본문
+                f["description"] = Stub.description
+            return self._send(200, {"fields": f})
         return self._send(404, {"errorMessages": ["no"]})
+
+    description = None   # None 이면 본문 없음(비어 있음) — 우리 것으로 본다
 
     puts = []
 
@@ -82,6 +87,7 @@ class JiraCreate(unittest.TestCase):
 
     def setUp(self):
         Stub.found, Stub.fail_post, Stub.posts, Stub.log = [], 0, [], []
+        Stub.description = None
         self._env = {k: os.environ.get(k) for k in ("S9_ROOT", "S9_USER", "S9_SESSION")}
         self.root = tempfile.mkdtemp(prefix="s9jc-")
         os.environ["S9_ROOT"] = self.root
@@ -348,6 +354,71 @@ class JiraTitleHold(JiraCreate):
         self.assertEqual(done, [(rid, True)])
         self.assertEqual(Stub.puts[-1][1]["fields"]["summary"], "환불 API (개정)")
         self.assertIn("제목 맞춤", self.doc(rid)[1])
+
+    # ── 뒤늦게 채운 요약·완료 기준도 티켓으로 (REQ-20260910-021) ──────────────
+    def _texts(self, adf):
+        return [c["text"] for p in adf["content"] for c in p["content"]]
+
+    def _adf(self, *lines):
+        return {"type": "doc", "version": 1,
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": ln}]}
+                            for ln in lines]}
+
+    def test_n4_a_late_summary_and_goal_reach_the_description(self):
+        """접수 뒤 채운 요약·완료 기준이 outbox 를 거쳐 description 으로 간다 — 우리가 쓴
+        본문이 그대로 있을 때(Jira 가 돌려주는 본문이 지문과 같다)."""
+        rid = self.new_request()
+        self.create(rid)
+        self.assertTrue(self.doc(rid)[0]["jira"].get("desc_sig"))
+        self.m.jira_outbox_write([])
+        Stub.log, Stub.puts = [], []
+        # Jira 에는 생성 때 우리가 쓴 본문이 그대로 있다
+        Stub.description = Stub.posts[-1]["fields"]["description"]
+        self.m.do_set(rid, {"summary": "환불을 셋으로 나눈다", "goal": "셋 다 환불된다"}, actor="hong")
+        self.assertEqual([r["kind"] for r in self.m.jira_outbox_read()], ["title"])
+        done = self.m.jira_outbox_tick(_sleep=self.slept.append)
+        self.assertEqual(done, [(rid, True)])
+        f = Stub.puts[-1][1]["fields"]
+        texts = self._texts(f["description"])
+        self.assertEqual(texts[0], "완료 기준: 셋 다 환불된다")
+        self.assertEqual(texts[1], "요약: 환불을 셋으로 나눈다")
+        self.assertIn("제목·본문 맞춤", self.doc(rid)[1])
+        # 지문이 새 본문으로 바뀌어 다음 갱신도 「우리 것」으로 판정된다
+        self.assertEqual(self.doc(rid)[0]["jira"]["desc_sig"], self.m.jira_desc_sig(texts))
+
+    def test_n5_a_description_edited_in_jira_is_left_alone(self):
+        """사람이 Jira 에서 본문을 고쳤으면 요약·완료 기준을 채워도 본문은 두고 제목만
+        맞춘다 — 그 사실이 History 에 남는다 (REQ-20260909-030)."""
+        rid = self.new_request()
+        self.create(rid)
+        self.m.jira_outbox_write([])
+        Stub.log, Stub.puts = [], []
+        Stub.description = self._adf("완료 기준: 환불이 된다", "담당자가 Jira 에서 덧붙인 문단")
+        self.m.do_set(rid, {"goal": "환불이 3초 안에 된다"}, actor="hong")
+        done = self.m.jira_outbox_tick(_sleep=self.slept.append)
+        self.assertEqual(done, [(rid, True)])
+        f = Stub.puts[-1][1]["fields"]
+        self.assertNotIn("description", f)
+        self.assertEqual(f["summary"], "환불 API")
+        self.assertIn("본문은 Jira 에서 고쳐져 있어 두었다", self.doc(rid)[1])
+
+    def test_n6_an_issue_made_before_the_fingerprint_is_still_ours(self):
+        """이 개정 전에 만든 이슈(지문 없음)도 본문이 우리 모양뿐이면 다시 쓴다 —
+        MP1-61 처럼 요약·완료 기준이 비어 있던 티켓이 이 길로 채워진다."""
+        rid = self.new_request()
+        self.create(rid)
+        meta, body = self.doc(rid)
+        del meta["jira"]["desc_sig"]
+        self.m.write_doc(self.m.find_path(rid), meta, body)
+        self.m.jira_outbox_write([])
+        Stub.log, Stub.puts = [], []
+        Stub.description = self._adf("원문:", "비밀스러운 본문 SECRET-BODY-LINE", f"section9 요청 {rid}")
+        self.m.do_set(rid, {"summary": "늦게 적은 요약"}, actor="hong")
+        done = self.m.jira_outbox_tick(_sleep=self.slept.append)
+        self.assertEqual(done, [(rid, True)])
+        texts = self._texts(Stub.puts[-1][1]["fields"]["description"])
+        self.assertIn("요약: 늦게 적은 요약", texts)
+        self.assertEqual(self.doc(rid)[0]["jira"]["desc_sig"], self.m.jira_desc_sig(texts))
 
 
 if __name__ == "__main__":
