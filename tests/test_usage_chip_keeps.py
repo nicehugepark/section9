@@ -1,7 +1,7 @@
 """사용량 칩은 못 받았다고 지워지지 않는다 (REQ-20260907-068).
 
 한 번(`tries: 1`) 실패하면 칩을 비우고 마지막 값까지 버렸다 — WSL 중계의 간헐
-리셋 한 번에 계정 줄이 아무 말 없이 사라졌다. 이제 마지막 값이 있으면 ⏳ 를
+리셋 한 번에 계정 줄이 아무 말 없이 사라졌다. 이제 마지막 값이 있으면 시각 마크를
 달고 남고, 받은 적이 없으면 「사용량을 받지 못했습니다」가 선다.
 
 `renderUsageChip` 과 실패 갈래를 node 로 **실행**해 잰다(소스 글자 대조 아님).
@@ -34,6 +34,9 @@ def find_node():
 NODE = find_node()
 
 STUBS = r"""
+// 마크는 사전(marks.css)에서 온다 — 화면은 이름만 부른다 (REQ-20260910-027).
+// 이 시험이 재는 것은 「값이 남고 표가 붙는가」이므로 마크는 이름만 있으면 된다.
+const mk = name => '<span class="mk mk-' + name + '"></span>';
 const esc = s => String(s);
 const usageTitle = () => "사용량";
 function mkEl(){ const a = {}; return {textContent: "", innerHTML: "",
@@ -75,17 +78,19 @@ const el = mkEl();
 renderUsageChip(el, {email: "a@b", limits: [{kind: "session", percent: 29}, {kind: "weekly_all", percent: 22}]});
 console.log(el.innerHTML);""")
         self.assertIn("a@b", out); self.assertIn("5h", out); self.assertIn("29%", out)
-        self.assertNotIn("⏳", out)
+        # 표는 폰트 글자(⏳)에서 사전의 마크로 옮겼다 (REQ-20260910-027) —
+        # 고정할 성질은 「낡은 값에 표가 붙는가」이지 그 코드포인트가 아니다.
+        self.assertNotIn("mk-clock", out)
 
     def test_a_stale_value_carries_the_mark(self):
         out = self._run(r"""
 const el = mkEl();
 renderUsageChip(el, {email: "a@b", stale: true, limits: []});
 console.log(el.innerHTML);""")
-        self.assertIn("⏳", out)
+        self.assertIn("mk-clock", out)
 
     def test_failure_after_a_value_keeps_it_with_the_mark(self):
-        """핵심 — 실패해도 마지막 값이 ⏳ 를 달고 남는다. 칩이 비지 않는다."""
+        """핵심 — 실패해도 마지막 값이 시각 마크를 달고 남는다. 칩이 비지 않는다."""
         src = USAGE_SRC
         driver = STUBS + _fn(src, "renderUsageChip") + r"""
 let usageLast = {email: "a@b", limits: [{kind: "session", percent: 29}]};
@@ -97,7 +102,7 @@ console.log(JSON.stringify({html: el.innerHTML, text: el.textContent, last: !!us
         self.assertEqual(r.returncode, 0, r.stderr)
         got = __import__("json").loads(r.stdout.strip())
         self.assertIn("a@b", got["html"], "마지막 값이 지워졌다 — 계정 줄이 사라진다")
-        self.assertIn("⏳", got["html"], "못 받은 것을 표시하지 않는다")
+        self.assertIn("mk-clock", got["html"], "못 받은 것을 표시하지 않는다")
         self.assertTrue(got["last"], "usageLast 를 버렸다 — 다음 실패에 빈 칸이 된다")
 
     def test_failure_with_no_value_says_so(self):

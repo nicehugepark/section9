@@ -281,8 +281,10 @@ setTimeout(() => {
         복구 성공(↻)은 REQ-20260827-017 이후 헤더 줄이 아니라 툴바의 상태
         칩에서 말한다 — 그래서 renderGuard 하나가 아니라 블록 전체를 본다."""
         body = self._block()
-        self.assertRegex(body, r"[↻⟳]", "복구를 뜻하는 마크가 없다")
-        self.assertIn("▲", body, "주의를 뜻하는 마크가 없다")
+        # 마크는 폰트 글자가 아니라 사전(marks.css)에서 온다 (REQ-20260910-027).
+        self.assertRegex(body, r'[↻⟳]|mk\("redo"\)', "복구를 뜻하는 마크가 없다")
+        # 마크는 사전에서 온다 (REQ-20260910-027)
+        self.assertRegex(body, r'▲|mk\("warn"\)', "주의를 뜻하는 마크가 없다")
 
     # ---------- 진단 훅 ----------
 

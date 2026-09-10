@@ -27607,6 +27607,19 @@ def _balance_error(raw, sub="app"):
     if stack:
         ch, ln = stack[0]
         return "닫히지 않은 %s (줄 %d)" % (ch, ln)
+    # **끝이 말이 되는가** (REQ-20260910-038, 실측 2026-09-10). 괄호·따옴표가
+    # 다 맞아도 잘린 파일이 있다: `const.js` 를 2/3 에서 자르면 주석이 닫힌 뒤
+    # `const PLAYA` 로 끝나 균형은 완전한데 문장은 반이다. 균형만 보는 검사가
+    # 놓치는 자리다. 마지막으로 뜻이 있는 글자가 문장을 닫는 글자인지 본다 —
+    # `}` `;` `*/` 그리고 주석 줄. 애매하면 통과시키는 원칙은 그대로라
+    # 여기서도 **닫는 글자로 끝나지 않을 때만** 잡는다.
+    tail = src.rstrip()
+    if tail:
+        last = tail.splitlines()[-1].strip()
+        closed = tail[-1] in "};)]," or tail.endswith("*/") or last.startswith("//")
+        if not closed:
+            return "문장이 끝나지 않았다 — 마지막 줄 %r (잘린 조각일 수 있다)" % (
+                last[-40:],)
     return None
 
 

@@ -140,8 +140,11 @@ class HeaderNoticeArea(unittest.TestCase):
     def test_chip_reads_without_colour(self):
         """색만으로 상태를 구분하지 않는다 — 마크와 문구가 같이 말한다."""
         body = self._fn("renderSvChip")
-        self.assertRegex(body, r"[↻⟳]", "복구를 뜻하는 마크가 없다")
-        self.assertIn("▲", body, "주의를 뜻하는 마크가 없다")
+        # 마크는 폰트 글자가 아니라 사전(marks.css)에서 온다 (REQ-20260910-027) —
+        # 고정할 성질은 「복구를 뜻하는 마크가 있다」이지 그 코드포인트가 아니다.
+        self.assertRegex(body, r'[↻⟳]|mk\("redo"\)', "복구를 뜻하는 마크가 없다")
+        # 마크는 사전에서 온다 (REQ-20260910-027)
+        self.assertRegex(body, r'▲|mk\("warn"\)', "주의를 뜻하는 마크가 없다")
         self.assertIn("자동 복구", body, "칩이 무슨 사실인지 글자로 말하지 않는다")
 
     def test_chip_has_no_colour_fill(self):
