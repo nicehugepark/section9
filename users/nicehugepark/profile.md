@@ -251,3 +251,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-10T11:40:27+09:00 config auto_resume=on (by nicehugepark)
 - 2026-09-10T11:40:52+09:00 config auto_resume_apply=on (by nicehugepark)
 - 2026-09-10T11:40:52+09:00 config auto_resume_model=opus (by nicehugepark)
+- 2026-09-10T16:30:39+09:00 config jira_enabled=off (by nicehugepark via dashboard)
