@@ -1731,11 +1731,15 @@ def resolve_id(doc_id):
     """id → 후보 uid 목록 (REQ-20260825-031, git 짧은 해시 원리).
     정확 일치(레거시 포함)가 최우선 — 있으면 그 1건만. 아니면 짧은 지칭
     (지문 없는 date형)을 uid prefix로 해석해 후보 전부를 돌려준다."""
-    rows = load_catalog()
-    exact = [r for r in rows if r["id"] == doc_id]
+    # 전부를 복사하지 않고 돌려주는 행만 복사한다 (REQ-20260910-013-2n7g):
+    # locate 가 부를 때마다 카탈로그 전체를 얕은 복사하던 것이 맥미니에서
+    # 한 패스 1,200회·0.36초였다. 반환 행은 여전히 복사본이라 호출자가 고쳐도
+    # 캐시가 오염되지 않는다.
+    rows = _catalog_refresh()
+    exact = [dict(r) for r in rows if r["id"] == doc_id]
     if exact:
         return exact[:1]
-    return [r for r in rows if r["id"].startswith(doc_id + "-")]
+    return [dict(r) for r in rows if r["id"].startswith(doc_id + "-")]
 
 
 def full_doc_id(doc_id):
@@ -1816,14 +1820,25 @@ def id_alias(rows=None):
     # 카탈로그 캐시 키가 같으면 다시 짓지 않는다 — 한 catalog 패스가 이 맵을
     # 18회 재구축하던 비용(canon_id 가 alias 없이 불릴 때마다)을 지운다.
     # 반환은 복사본 — 호출자 변형이 캐시에 스미지 않는다.
+    return dict(_id_alias_cached())
+
+
+def _id_alias_cached():
+    """캐시된 alias 맵 **그대로** (복사 없음) — 읽기만 하는 canon_id 의 길.
+    돌려받은 맵을 고치면 캐시가 오염된다; 고칠 일이 있으면 id_alias 를 써라."""
     with _ALIAS_LOCK:
-        rows = load_catalog()
+        # 복사하지 않는다 (REQ-20260910-013-2n7g): 여기서 load_catalog 을 부르면
+        # 캐시가 맞아 맵을 다시 짓지 않는 때조차 행 전부를 얕은 복사했다 —
+        # canon_id 가 stall_verdict 마다 불리니 카탈로그 한 패스에 그 복사가
+        # 3,000번(맥미니 실측 1.9초, 예산 0.6초의 세 배). 맵을 짓는 쪽은 행을
+        # 읽기만 하므로 내부 리스트로 충분하다.
+        rows = _catalog_refresh()
         key = _CATALOG_CACHE["key"]
         if key != _ALIAS_CACHE["key"]:
             _ALIAS_CACHE["map"] = _build_id_alias(rows)
             _ALIAS_CACHE["key"] = key
             _ALIAS_CACHE["gen"] += 1
-        return dict(_ALIAS_CACHE["map"])
+        return _ALIAS_CACHE["map"]
 
 
 def _build_id_alias(rows):
@@ -1843,7 +1858,8 @@ def canon_id(doc_id, alias=None):
     """바인딩에 저장된 REQ id를 카탈로그 정식 id로. 해석 불가면 입력 그대로."""
     if not doc_id:
         return doc_id
-    return (id_alias() if alias is None else alias).get(doc_id, doc_id)
+    # 읽기만 하므로 복사본이 아니라 캐시 그대로를 본다 (REQ-20260910-013-2n7g)
+    return (_id_alias_cached() if alias is None else alias).get(doc_id, doc_id)
 
 
 CLAIM_GRACE = 1800      # 잡아만 놓고 이만큼 지나면 클레임이 풀린다
