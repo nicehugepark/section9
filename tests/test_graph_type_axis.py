@@ -98,7 +98,7 @@ class TheGraphKeepsItsOwnTypeAxis(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        chrome = chrome_path()
+        chrome = chrome_path(pixel_contract=False)
         if chrome is None:
             raise unittest.SkipTest("실브라우저 미검증 — Chrome/Edge 를 찾지 못했다")
         cls.port = free_port()

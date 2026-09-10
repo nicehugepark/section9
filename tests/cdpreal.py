@@ -34,6 +34,30 @@ import time
 #
 # 계약 밖이라고 표시한 것은 **재 본 것뿐**이다 — 맥 갈래를 더하는 이 변경이
 # Windows·PATH 갈래의 선택을 바꾸지 않는다.
+#
+# **어느 시험이 어느 쪽인가** (REQ-20260910-050, 전수 판정 2026-09-10). 가르는
+# 물음 하나: **기대값을 Windows Chrome 에서 잰 화소·반화소 수치로 적었는가.**
+# 적었으면 기본값(True)으로 두어 맥에서 건너뛰고, 아니면 False 로 맥에서도 잰다.
+#
+#   기본값 그대로 — 맥에서 건너뛴다 (화소·글꼴 계량에 걸린다)
+#     test_hover_realscale  배율 1·1.25·1.5 의 실화소 대칭
+#     test_clock_center     그림과 숫자의 잉크 중심 1px
+#     test_id_realscale     좁은 열에서 상자가 갈리는 자리(-1.19px 급)
+#     test_mark_swap        점과 벨트의 상자 중심 0.5px 한도
+#     test_terminal_agents_fit  「세 줄 반」 상한 — 글꼴 줄높이에 걸린다
+#     _probe_marks          마크 잉크를 보는 진단 도구
+#
+#   False — 맥에서도 잰다 (무엇이 서고 무엇이 열리는가)
+#     test_board_sticky · test_graph_type_axis · test_tab_pane_match
+#     test_project_screen · test_project_tab · test_project_card_screen
+#     test_doc_head_handles · test_terminal_fit · test_link_newtab
+#     test_mark_swap 의 손 얹기 갈래(visibility)
+#
+#   test_link_newtab 을 False 로 둔 까닭: 맥과 Windows 에서 새 탭 조합키가
+#   다르지만(커맨드 / ctrl), 이 시험이 실제로 누르는 것은 화면이 스스로 여는
+#   div 손잡이이고 그 판정은 `ctrlKey || metaKey || shiftKey`(events.js)라
+#   양쪽에서 같다. 앵커 갈래는 「우리가 두 번 열지 않았다」를 재므로 브라우저가
+#   무엇을 하든 기록이 비어 있어야 옳다 — 조합키에 걸리지 않는다.
 
 WIN_CANDIDATES = (
     "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe",

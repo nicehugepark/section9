@@ -429,7 +429,7 @@ SAVE = r"""
 
 def probe(scale=1.0):
     """검증 자를 실브라우저에 띄워 DOM 을 재 온다 (없으면 SkipTest)."""
-    chrome = chrome_path()
+    chrome = chrome_path(pixel_contract=False)
     if chrome is None:
         raise unittest.SkipTest("실브라우저 미검증 — Chrome/Edge 를 찾지 못했다")
     win = chrome.startswith("/mnt/")
