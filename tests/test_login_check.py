@@ -132,8 +132,9 @@ class LoginCheck(unittest.TestCase):
     def test_l8_usage_credentials_come_from_the_keychain_on_mac(self):
         """L8. 사용량 조회의 자격증명도 맥에서는 Keychain 에서 온다 — 파일이 없어도 (REQ-20260906-071)."""
         s = _load("s9_login8", S9)
-        # Keychain 은 기본 설정 자리(~/.claude)의 것으로만 읽는다 (REQ-20260906-014) —
-        # 집을 임시 자리로 옮겨 기본 자리를 흉내 낸다 (l5 와 같은 방법).
+        # Keychain 은 **활성 계정**(claude_home = CLAUDE_CONFIG_DIR 또는 ~/.claude)의
+        # 것으로만 읽는다 (REQ-20260906-014 · REQ-20260910-040) — 프로필로 뜬 세션도
+        # 제 계정을 읽어야 하므로 읽는 조건은 claude_home() 이다. home 을 활성 자리로 세운다.
         fake_home = tempfile.mkdtemp(prefix="s9login8-")
         home = os.path.join(fake_home, ".claude")
         os.makedirs(home)
@@ -145,8 +146,7 @@ class LoginCheck(unittest.TestCase):
                 returncode = 0
                 stdout = '{"claudeAiOauth": {"accessToken": "t", "subscriptionType": "max"}}'
             return R()
-        with mock.patch("os.path.expanduser",
-                        lambda p: p.replace("~", fake_home, 1) if p.startswith("~") else p):
+        with mock.patch.object(s, "claude_home", lambda: home):
             self.assertIsNone(s.read_claude_oauth(home, platform="linux", run=run))
             got = s.read_claude_oauth(home, platform="darwin", run=run)
             self.assertEqual(got.get("subscriptionType"), "max")
@@ -154,7 +154,7 @@ class LoginCheck(unittest.TestCase):
             other = tempfile.mkdtemp(prefix="s9login8o-")
             n = len(calls)
             self.assertIsNone(s.read_claude_oauth(other, platform="darwin", run=run),
-                              "기본 자리가 아닌 슬롯이 Keychain 의 자격증명을 물려받았다")
+                              "활성 계정이 아닌 슬롯이 Keychain 의 자격증명을 물려받았다")
             self.assertEqual(len(calls), n)
             with open(os.path.join(home, ".credentials.json"), "w", encoding="utf-8") as f:
                 f.write('{"claudeAiOauth": {"accessToken": "f", "subscriptionType": "pro"}}')

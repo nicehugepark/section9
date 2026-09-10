@@ -9895,11 +9895,14 @@ def read_claude_oauth(cfg, platform=None, run=None):
         pass
     if (platform or sys.platform) != "darwin":
         return None
-    # Keychain 항목은 계정의 것이라 **기본 설정 자리(~/.claude)** 의 것으로만 읽는다 —
-    # 다른 설정 디렉토리(프로필·빈 슬롯)에 물려주면 자격증명 없는 자리가 남의 사용량을
-    # 단다 (REQ-20260906-014, test_switch_residue r1_6 이 맥에서 드러냈다).
+    # Keychain 항목은 **지금 로그인한 계정**(=claude_home, CLAUDE_CONFIG_DIR 또는
+    # ~/.claude)의 것이다 — Claude Code 가 계정을 바꾸면 이 한 항목을 그 계정 것으로
+    # 다시 쓴다. 그래서 **활성 설정 디렉토리의 것으로만** 읽는다: 다른 프로필·빈 슬롯에
+    # 물려주면 자격증명 없는 자리가 남의 사용량을 단다(REQ-20260906-014, r1_6). 종전에는
+    # ~/.claude 로 못박아, 프로필(CLAUDE_CONFIG_DIR)로 뜬 맥 세션은 제 계정인데도 Keychain
+    # 을 못 읽어 헤더가 「자격증명 없음」이었다(REQ-20260910-040, 맥 실측 2026-09-10).
     if os.path.realpath(os.path.expanduser(cfg or "")) != os.path.realpath(
-            os.path.expanduser("~/.claude")):
+            os.path.expanduser(claude_home())):
         return None
     try:
         import subprocess as _sp
@@ -9964,8 +9967,18 @@ def claude_usage(cfg_dir=None, ttl=60, offline=False):
     out = {"ok": False, "cfg_dir": cfg, "email": account_of(cfg)}
     cred = read_claude_oauth(cfg)
     if cred is None:
-        out["error"] = (f"자격증명 없음 ({os.path.join(cfg, '.credentials.json')}"
-                        + (" · Keychain 항목 없음" if sys.platform == "darwin" else "") + ")")
+        active = os.path.realpath(cfg) == os.path.realpath(
+            os.path.expanduser(claude_home()))
+        if sys.platform == "darwin" and not active:
+            # 실패 문장이 세 경우를 가른다 (REQ-20260910-040): ① 활성 계정인데 없음
+            # ② 프로필이라 Keychain 을 안 읽음 ③ 파일 자체가 없음. Keychain 항목이
+            # 있어도 이 프로필 것이 아닐 수 있어, 「없음」이라 적으면 거짓이 된다.
+            out["error"] = ("자격증명 없음 — 이 계정은 활성(로그인) 프로필이 아니라 "
+                            "Keychain 을 읽지 않는다. 이 컴퓨터에서 이 계정으로 "
+                            "로그인한 세션에서만 사용량이 뜬다.")
+        else:
+            out["error"] = (f"자격증명 없음 ({os.path.join(cfg, '.credentials.json')}"
+                            + (" · Keychain 항목 없음" if sys.platform == "darwin" else "") + ")")
         return out
     out["subscription"] = cred.get("subscriptionType", "")
     token = cred.get("accessToken", "")
