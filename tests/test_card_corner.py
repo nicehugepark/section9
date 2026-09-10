@@ -40,6 +40,19 @@ INDEX = index_path()
 CORNER = (".elapsed", ".pickdoc")
 # 모서리 좌표가 읽어야 하는 자.
 RULER = ("--card-pt", "--card-pb", "--card-px")
+# 모서리 줄에 서는 셋 — 이 셋을 겨누는 규칙은 줄높이를 `--card-edge` 로만 적는다.
+CORNER_LEAF = re.compile(r"\.(elapsed|pickdoc|id)$")
+
+
+def _targets_corner(part):
+    """이 선택자가 겨누는 **마지막 원소**가 모서리 줄의 셋 중 하나인가.
+
+    마지막 원소만 보는 까닭: `.card .id .idn` 은 식별자 줄 **안의** 다른 부품이라
+    제 줄높이를 가져도 된다. 줄 상자를 정하는 것은 셋 자신뿐이다.
+    """
+    bare = re.sub(r"::?[a-zA-Z-]+(\([^)]*\))?", "", part).strip()
+    leaf = re.split(r"[\s>+~]+", bare)[-1] if bare else ""
+    return bool(CORNER_LEAF.search(leaf))
 
 
 def _css(src):
@@ -112,6 +125,28 @@ class TheCardHasOneRuler(unittest.TestCase):
                 self.assertIsNotNone(val, "%s 에 줄높이 선언이 없다" % sel)
                 self.assertIn("var(--card-edge", val,
                               "%s 의 줄높이가 자를 안 읽는다: %s" % (sel, val))
+        with self.subTest("no_skin_writes_the_corner_line_again"):
+            # **덮어쓰기까지 봐야 계약이다** (REQ-20260910-042). 위 검사는 선택자
+            # 이름이 정확히 맞을 때만 봤다 — `[data-skin="soft"] .card .elapsed`
+            # 는 이름이 달라 검사에 들지 않았고, 거기 남아 있던 `line-height:1.4`
+            # 가 soft 에서만 시계 그림을 숫자보다 1px 위에 세웠다. `.elapsed` 는
+            # 그림과 글자를 `align-items:center` 로 맞추므로, 줄 상자가 12px 에서
+            # 14px 로 바뀌면 11px 그림이 화소 격자에 얹히는 자리가 갈린다.
+            # 스킨이 이 줄의 키를 달리 하려면 고칠 것은 `.card` 의 `--card-edge`
+            # 다 — 그래야 셋이 함께 온다.
+            off = []
+            for sel, dec in self.rules:
+                val = _decl(dec, "line-height")
+                if not val or "var(--card-edge" in val:
+                    continue
+                for part in sel.split(","):
+                    if _targets_corner(part):
+                        off.append("%s{line-height:%s}" % (part.strip(), val))
+            self.assertEqual(
+                off, [],
+                "모서리 줄의 줄높이를 자 밖에서 다시 적는 규칙이 있다: %s — "
+                "스킨이 이 줄을 달리 하려면 `.card` 의 `--card-edge` 를 바꿔라"
+                % off)
         with self.subTest("the_who_line_never_folds"):
             # **1행은 접히지 않는다** (REQ-20260910-009 4차 반려. 주인 2026-09-10
             # 13:44: 「들여쓰기도 안맞고, 가려지고, 깨지고」).
