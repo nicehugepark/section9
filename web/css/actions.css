@@ -372,7 +372,8 @@
    `border-color:var(--text)` 가 남으면 27px 상자에 1px 링이 돌아 원을 다시
    과녁 크기로 되돌린다. */
 .deedrow .acts button.deed.ico,.acts.deedbelt button.deed.ico{border-color:transparent;
-  /* 6px = (27 - 1(테두리)×2 - 13(원))/2.
+  /* 6px = (28(과녁) - 1(테두리)×2 - 14(원))/2 — 눈금이 13 에서 14 로
+     옮겨 가며 과녁이 27 에서 28 이 되었고, 안여백은 6 그대로다.
 
      지름이 두 얼굴의 **벌어짐**을 정한다: 쉬는 얼굴의 틈은 글리프 잉크가
      기준이고 손 얹힌 얼굴의 틈은 원의 왼끝이 기준이라, 둘의 차는 정확히
@@ -417,8 +418,8 @@
      끊으면 mask 가 0/1 뿐이라 가장자리가 계단으로 서고(첫 판에서 눈으로 잡았다),
      테두리 라운드가 공짜로 주던 부드러움이 사라진다. 흐리는 폭의 한가운데가
      6.5px 라 보이는 지름은 그대로다. */
-  -webkit-mask-image:radial-gradient(circle at 50% 50%,#000 6.25px,transparent 6.75px);
-  mask-image:radial-gradient(circle at 50% 50%,#000 6.25px,transparent 6.75px)}
+  -webkit-mask-image:radial-gradient(circle at 50% 50%,#000 6.75px,transparent 7.25px);
+  mask-image:radial-gradient(circle at 50% 50%,#000 6.75px,transparent 7.25px)}
 /* 면을 벗는 것은 **쉴 때뿐**이다 (`:not(:hover)`).
 
    이 경로는 스킨을 이겨야 클립을 지킬 수 있어서 특이도가 높다. 그래서 면까지
@@ -430,7 +431,11 @@
    `background-clip` 을 border-box 로 되돌린다. */
 .deedrow .acts button.deed.ico:not(:hover),
 .acts.deedbelt button.deed.ico:not(:hover){
-  background-color:transparent;background-image:none;color:var(--muted)}
+  /* 쉬는 얼굴의 잉크는 **같은 줄의 글자와 한 층**이다 (REQ-20260910-009 P1).
+     --muted 는 식별자(--faint)보다 한 급 진해서, 채운 그림이라는 것과 겹쳐
+     줄에서 가장 무거운 것이 손잡이가 되었다. 진해지는 것은 손이 얹혔을
+     때뿐이다 — 그때는 스킨이 말한 잉크가 원을 통째로 칠한다. */
+  background-color:transparent;background-image:none;color:var(--faint)}
 /* 키보드로 닿은 자리의 링도 **칠이다** — 과녁이 아니라 원을 두른다.
    기본 링(`outline-offset:1px`)은 27px 상자 밖에 그려져, 손이 얹혔을 때와
    똑같이 식별자의 마지막 글자를 덮었다(캡처로 확인). 안으로 6px 들여 잉크 원의
@@ -444,7 +449,7 @@
    (그 얼굴의 원은 종전과 똑같이 그려진다 — 잃는 것은 손 얹힌 얼굴에서만 필요한
    반화소 정렬이다). */
 .deedrow .acts button.deed.ico:focus-visible,
-.acts.deedbelt button.deed.ico:focus-visible{outline-offset:-6px;
+.acts.deedbelt button.deed.ico:focus-visible{outline-offset:-7px;
   background-clip:content-box;
   -webkit-mask-image:none;mask-image:none}
 /* 문서 머리의 행동 띠 (REQ-20260830-046) — 진행(▶/⏸/잠금) · 옮기기·판정 ·
@@ -461,7 +466,7 @@
    접히고, 무리 안은 nowrap 이라 좁은 폭에서도 버튼이 제 무리를 안 떠난다. */
 .dacts .dgrp{display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .dacts button.deed.wgly{display:inline-flex;align-items:center;gap:5px}
-.dacts button.deed.wgly .gly{display:block;width:13px;height:13px}
+.dacts button.deed.wgly .gly{display:block;width:14px;height:14px}
 /* 정책 버튼(잠금)는 잉크 한 급 낮음 — 행위와 정책의 위계다. 색면 없음. */
 .dacts .deed.pol{color:var(--muted);border-color:var(--hairline)}
 /* 보조 급(정책·치우기) 버튼의 hover 얼굴 (REQ-20260907-006). 잉크를 한 급 낮춘
@@ -704,11 +709,17 @@ button.asgnb:focus-visible{outline:1px solid var(--text);outline-offset:2px}
    그림은 `currentColor` 다 — hover 반전(.acts button:hover)에서 배경과 함께
    뒤집히고, 열 몇 벌의 스킨·톤이 자기 잉크를 그대로 물려준다. 색면 없음. */
 .acts button.deed.ico{display:inline-flex;align-items:center;justify-content:center;
-  min-width:27px;min-height:27px;padding:0;line-height:1;border-radius:999px}
+  /* 과녁은 손잡이 눈금의 가운데 급이다 (REQ-20260910-009 S1). 27 이던 것이
+     28 이 된 까닭은 값 맞추기가 아니라 그림이다: 눈금이 14 로 옮겨 가면서
+     14 + 7x2 = 28 이 떨어졌고, 그 값이 마침 눈금의 가운데 급이다. 짝수라
+     비정수 배율에서 위아래가 다르게 반올림되지 않는다. 칠은 여전히 과녁이
+     아니다 — 아래에서 14px 원 안에만 든다. */
+  min-width:var(--ctl-md);min-height:var(--ctl-md);padding:0;line-height:1;
+  border-radius:999px}
 /* 그림 상자 = 원 (REQ-20260831-019). 13px 은 손이 얹혔을 때 칠해지는 원과
    같은 사각이라, 비정수 배율에서 둘이 서로 다른 화소에 앉는 일이 없다.
    눈금은 그대로 한 칸 = 한 화소다(viewBox 13 ↔ 13px). */
-.acts button.deed.ico .gly{display:block;width:13px;height:13px}
+.acts button.deed.ico .gly{display:block;width:14px;height:14px}
 /* 도는 중: 낱말이 없으니 **숨으로** 말한다. 옅히기만 하면 꺼진 버튼과 구별이
    안 되고(그건 "못 누른다"는 뜻이다), 이건 "지금 하고 있다"는 뜻이다.
    대기 상태에서만 도는 반복이라 이 문서가 허락한 자리다. */

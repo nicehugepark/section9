@@ -27,7 +27,10 @@ async function renderAudit(){
   /* 연속한 같은 값은 첫 행에만 보인다 — 장부의 관행이고 s9-design 표 절 8 이다.
      걸러 놓고 보면 종류·남긴 사람·세션 열이 스무 행 내리 같은 값이었다
      (REQ-20260907-012 검수 중-1). 값은 지우지 않고 `.dup` 으로 가린다:
-     1px + clip 이라 화면낭독기와 복사는 값을 그대로 갖는다. */
+     1px + clip 이라 화면낭독기와 복사는 값을 그대로 갖는다.
+     **시각 열의 날짜도 같은 규칙을 받는다** (REQ-20260910-009 P5): 이 열만
+     접지 않아 `2026-09-10` 이 스무 행 내리 똑같이 서 있었고, 정작 다른 값인
+     시:분이 그 뒤에 묻혔다. 세 열에만 적용된 규칙은 규칙이 아니다. */
   const seen = {};
   const once = (col, key, html) => {
     const same = seen[col] === key;
@@ -41,7 +44,8 @@ async function renderAudit(){
     const k = kindOf(e.text);
     const ses = esc(e.session) + "@" + esc(e.machine);
     return `<tr>
-      <td class="ts">${esc(e.ts.slice(0, 16).replace("T", " "))}</td>
+      <td class="ts">${once("day", e.ts.slice(0, 10),
+        esc(e.ts.slice(0, 10)) + " ")}${esc(e.ts.slice(11, 16))}</td>
       <td>${once("kind", k, `<span class="kind" style="--kc:${KC[k]}">${k}</span>`)}</td>
       <td>${once("by", e.by, esc(e.by))}</td>
       <td class="ses">${once("ses", String(e.doc) + ses, dlink(e.doc, ses))}</td>

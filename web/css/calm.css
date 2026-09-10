@@ -4,7 +4,7 @@
    회흑. 강조는 단일 파랑 하나로 몰아 시선을 분산시키지 않는다. */
 :root[data-theme="mist"]{
   --bg:#eef1f6; --panel:#ffffff; --border:#dde3ec; --hairline:#e9edf4;
-  --text:#101828; --muted:#5a6474; --faint:#98a2b3; --accent:#2f6bff;
+  --text:#101828; --muted:#5a6474; --faint:#6b7686; --accent:#2f6bff;
   --c-open:#2f6bff; --c-inprogress:#b25e09; --c-blocked:#d92d20;
   --c-review:#7a5af8; --c-done:#0f9d76; --c-cancelled:#98a2b3;
   --c-draft:#98a2b3; --c-published:#0e7090;
@@ -18,7 +18,7 @@
    과하게 올리지 않는다(본문 대비 ~9:1). */
 :root[data-theme="graphite"]{
   --bg:#15181d; --panel:#1c2028; --border:#2c323d; --hairline:#242932;
-  --text:#e6e9ef; --muted:#9aa4b2; --faint:#6b7688; --accent:#5b9dff;
+  --text:#e6e9ef; --muted:#9aa4b2; --faint:#828d9f; --accent:#5b9dff;
   --c-open:#5b9dff; --c-inprogress:#e0a14a; --c-blocked:#f27171;
   --c-review:#a78bfa; --c-done:#34d3a6; --c-cancelled:#6b7688;
   --c-draft:#6b7688; --c-published:#3fb6c8;

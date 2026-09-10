@@ -277,8 +277,11 @@ class ThePaintIsNotTheTarget(unittest.TestCase):
         with self.subTest("the_target_is_not_shaved"):
             hit = [d for s, d in self.rules if s.endswith(".acts button.deed.ico")]
             self.assertTrue(hit, "글리프 손잡이의 과녁 규칙이 없다")
-            self.assertIn("min-width:27px", hit[0])
-            self.assertIn("min-height:27px", hit[0])
+            # 과녁은 손잡이 눈금의 가운데 급이다 (REQ-20260910-009 S1) —
+            # 값을 여기 베끼지 않고 토큰 이름으로 잰다. 눈금이 흩어지는
+            # 것은 test_control_scale 이 따로 막는다.
+            self.assertIn("min-width:var(--ctl-md)", hit[0])
+            self.assertIn("min-height:var(--ctl-md)", hit[0])
         with self.subTest("the_paint_is_clipped_into_the_target"):
             shaper = [d for s, d in self.belt
                       if "mask-image" in d and "none" not in d]
@@ -316,7 +319,9 @@ class ThePaintIsNotTheTarget(unittest.TestCase):
         with self.subTest("the_focus_ring_rounds_the_circle_not_the_target"):
             ring = [d for s, d in self.belt if "focus-visible" in s]
             self.assertTrue(ring, "글리프 손잡이의 포커스 링 규칙이 없다")
-            self.assertIn("outline-offset:-6px", ring[0])
+            # -7px = 안여백(과녁 28 과 원 14 의 차의 반) — 링은 원 둘레에
+            # 두른다 (REQ-20260910-009 S1 로 27/13 에서 28/14 로 옮겼다).
+            self.assertIn("outline-offset:-7px", ring[0])
         with self.subTest("an_inverted_card_inverts_the_chip_too"):
             inv = [d for s, d in self.belt
                    if '[data-skin="terminal"]' in s and ".card:hover" in s]

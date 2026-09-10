@@ -17,6 +17,12 @@
     (투명이면 아래 글자가 그대로 겹쳐 읽힌다).
   · 판이 세로 스크롤 상자다(스크롤할 것이 있으면 scrollTop 이 실제로 움직인다).
 
+판의 **최소 높이**도 여기서 잰다 (REQ-20260909-011). 배치가 높이를 주는 대신
+창이 320px 어치도 못 남기는 경우가 있다 — 맥 Safari 창 420(뷰포트 368)에서 판은
+205px 였고 문서 스크롤은 0 이었다. `.board{min-height:320px}` 를
+`html.boardfit #view>.board{min-height:0}` 가 덮었기 때문이다. 설계는 그 반대다:
+판이 눌리는 대신 문서가 스크롤된다. 그 갈림은 창을 낮춰 실제로 재야만 보인다.
+
 실행: python3 tests/ board_sticky
 """
 import json
@@ -121,94 +127,158 @@ HOVER_JS = """
 })()
 """
 
+# 판의 높이 계약 (REQ-20260909-011) — 창 높이를 바꿔 두 번 잰다.
+# 재는 것 넷: 판의 높이 · 계산된 min-height · 문서가 스크롤되는가 · 문서를 끝까지
+# 내렸을 때 판의 아래끝이 창 안에 들어오는가. 마지막 하나가 「문서 스크롤이
+# 눌린 판보다 낫다」를 실제로 확인하는 자리다 — 스크롤해도 못 보는 부분이 남으면
+# 그 선택은 값을 못 한다.
+HEIGHT_JS = """
+(() => {
+  const board = document.querySelector('.board');
+  const se = document.scrollingElement || document.documentElement;
+  se.scrollTop = 0;
+  board.scrollTop = 0;
+  const r = board.getBoundingClientRect();
+  const out = {innerHeight: window.innerHeight,
+               height: +r.height.toFixed(1),
+               minHeight: getComputedStyle(board).minHeight,
+               docMax: se.scrollHeight - se.clientHeight};
+  se.scrollTop = 99999;
+  out.docTop = se.scrollTop;
+  out.bottomAtDocEnd = +board.getBoundingClientRect().bottom.toFixed(1);
+  se.scrollTop = 0;
+  board.scrollTop = 120;
+  const b = board.getBoundingClientRect();
+  const h2 = board.querySelector('.col h2');
+  out.boardTop = board.scrollTop;
+  out.headDy = +(h2.getBoundingClientRect().top - (b.top + board.clientTop)).toFixed(1);
+  board.scrollTop = 0;
+  return out;
+})()
+"""
+
+# 낮은 창 — 맥 Safari 실측(창 420 · 뷰포트 368)과 같은 자리를 CDP 로 만든다.
+LOW_VIEWPORT = (1000, 380)
+TALL_VIEWPORT = (1280, 800)
+MIN_BOARD = 320   # board.css 의 `.board{min-height}` 와 같은 값
+
+_MEASURED = {}
+
+
+def shared():
+    """브라우저는 한 번만 띄운다 — 두 계약이 같은 실측을 나눠 쓴다.
+
+    스킨 열 벌을 도는 실측과 창 높이를 바꾸는 실측이 각각 브라우저를 띄우면
+    이 파일 하나가 두 배로 길어진다(처리 예산, PROTOCOL 18조).
+    """
+    if "err" in _MEASURED:
+        raise unittest.SkipTest(_MEASURED["err"])
+    if "data" in _MEASURED:
+        return _MEASURED["data"]
+    chrome = chrome_path()
+    if not chrome:
+        _MEASURED["err"] = "브라우저 없음 — 실측 불가 환경"
+        raise unittest.SkipTest(_MEASURED["err"])
+    try:
+        _MEASURED["data"] = measure(chrome)
+    except (ConnectionError, RuntimeError, OSError, StopIteration) as e:
+        _MEASURED["err"] = "CDP 실측 불가: %s" % e
+        raise unittest.SkipTest(_MEASURED["err"])
+    return _MEASURED["data"]
+
+
+def measure(chrome):
+    marker = "s9req093-%d" % os.getpid()
+    win = chrome.startswith("/mnt/c/")
+    if win:
+        os.makedirs("/mnt/c/Temp", exist_ok=True)
+        prof_wsl, prof_arg = "/mnt/c/Temp/" + marker, "C:\\Temp\\" + marker
+        fix = os.path.join("/mnt/c/Temp", marker + ".html")
+        url = "file:///C:/Temp/%s.html" % marker
+    else:
+        base = os.environ.get("TMPDIR", "/tmp")
+        prof_wsl = prof_arg = os.path.join(base, marker)
+        fix = os.path.join(base, marker + ".html")
+        url = "file://" + fix
+    shutil.rmtree(prof_wsl, ignore_errors=True)
+    with open(fix, "w", encoding="utf-8") as f:
+        f.write(fixture_html())
+    proc = subprocess.Popen(
+        [chrome, "--headless=new", "--disable-gpu",
+         "--user-data-dir=" + prof_arg, "--no-first-run",
+         "--no-default-browser-check", "--disable-extensions",
+         "--remote-debugging-port=0", "--window-size=1280,800", url],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ws, skins = None, {}
+    try:
+        port, dev = None, os.path.join(prof_wsl, "DevToolsActivePort")
+        for _ in range(120):
+            if os.path.exists(dev):
+                try:
+                    port = int(open(dev).read().splitlines()[0])
+                    break
+                except (ValueError, IndexError, OSError):
+                    pass
+            time.sleep(0.25)
+        if port is None:
+            raise ConnectionError("DevToolsActivePort 미출현")
+        pages = json.loads(urllib.request.urlopen(
+            "http://127.0.0.1:%d/json/list" % port, timeout=10).read())
+        page = next(p for p in pages if p.get("type") == "page")
+        ws = WS(page["webSocketDebuggerUrl"])
+        for _ in range(80):
+            if ws.eval("document.readyState") == "complete":
+                break
+            time.sleep(0.25)
+        time.sleep(0.3)
+        for skin in SKINS:
+            ws.eval("document.documentElement.dataset.skin=%r" % skin)
+            time.sleep(0.12)
+            skins[skin] = ws.eval(MEASURE_JS)
+            # 손 얹은 얼굴은 **실포인터**로만 나온다 (REQ-20260909-100 반려의
+            # 교훈 — 정지 화면만 찍고 통과시킨 것이 그 반려를 불렀다).
+            # CSS 를 복제해 흉내 내면 실제 캐스케이드와 갈릴 수 있다.
+            pt = ws.eval(POINT_JS)
+            ws.call("Input.dispatchMouseEvent", type="mouseMoved",
+                    x=pt["x"], y=pt["y"], button="none", buttons=0)
+            time.sleep(0.35)
+            skins[skin]["hover"] = ws.eval(HOVER_JS)
+            ws.call("Input.dispatchMouseEvent", type="mouseMoved",
+                    x=2, y=2, button="none", buttons=0)
+            time.sleep(0.1)
+        # 높이 계약은 기본 스킨 하나로 잰다 — 최소 높이는 스킨이 아니라
+        # board.css 의 사슬이 정하고, 스킨마다 다시 재는 것은 같은 값을
+        # 열 번 세는 일이다.
+        ws.eval("document.documentElement.dataset.skin='ledger'")
+        heights = {}
+        for name, (w, h) in (("tall", TALL_VIEWPORT), ("low", LOW_VIEWPORT)):
+            ws.call("Emulation.setDeviceMetricsOverride", width=w, height=h,
+                    deviceScaleFactor=1, mobile=False)
+            time.sleep(0.25)
+            heights[name] = ws.eval(HEIGHT_JS)
+        ws.call("Emulation.clearDeviceMetricsOverride")
+        return {"skins": skins, "tall": heights["tall"], "low": heights["low"]}
+    finally:
+        if ws is not None:
+            ws.close()
+        try:
+            proc.terminate()
+        except OSError:
+            pass
+        reclaim(marker, win)
+        shutil.rmtree(prof_wsl, ignore_errors=True)
+        try:
+            os.remove(fix)
+        except OSError:
+            pass
+
 
 class TheColumnHeadStaysOnTop(unittest.TestCase):
     data = None
 
     @classmethod
     def setUpClass(cls):
-        chrome = chrome_path()
-        if not chrome:
-            raise unittest.SkipTest("브라우저 없음 — 실측 불가 환경")
-        try:
-            cls.data = cls.measure(chrome)
-        except (ConnectionError, RuntimeError, OSError, StopIteration) as e:
-            raise unittest.SkipTest("CDP 실측 불가: %s" % e)
-
-    @classmethod
-    def measure(cls, chrome):
-        marker = "s9req093-%d" % os.getpid()
-        win = chrome.startswith("/mnt/c/")
-        if win:
-            os.makedirs("/mnt/c/Temp", exist_ok=True)
-            prof_wsl, prof_arg = "/mnt/c/Temp/" + marker, "C:\\Temp\\" + marker
-            fix = os.path.join("/mnt/c/Temp", marker + ".html")
-            url = "file:///C:/Temp/%s.html" % marker
-        else:
-            base = os.environ.get("TMPDIR", "/tmp")
-            prof_wsl = prof_arg = os.path.join(base, marker)
-            fix = os.path.join(base, marker + ".html")
-            url = "file://" + fix
-        shutil.rmtree(prof_wsl, ignore_errors=True)
-        with open(fix, "w", encoding="utf-8") as f:
-            f.write(fixture_html())
-        proc = subprocess.Popen(
-            [chrome, "--headless=new", "--disable-gpu",
-             "--user-data-dir=" + prof_arg, "--no-first-run",
-             "--no-default-browser-check", "--disable-extensions",
-             "--remote-debugging-port=0", "--window-size=1280,800", url],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        ws, out = None, {}
-        try:
-            port, dev = None, os.path.join(prof_wsl, "DevToolsActivePort")
-            for _ in range(120):
-                if os.path.exists(dev):
-                    try:
-                        port = int(open(dev).read().splitlines()[0])
-                        break
-                    except (ValueError, IndexError, OSError):
-                        pass
-                time.sleep(0.25)
-            if port is None:
-                raise ConnectionError("DevToolsActivePort 미출현")
-            pages = json.loads(urllib.request.urlopen(
-                "http://127.0.0.1:%d/json/list" % port, timeout=10).read())
-            page = next(p for p in pages if p.get("type") == "page")
-            ws = WS(page["webSocketDebuggerUrl"])
-            for _ in range(80):
-                if ws.eval("document.readyState") == "complete":
-                    break
-                time.sleep(0.25)
-            time.sleep(0.3)
-            for skin in SKINS:
-                ws.eval("document.documentElement.dataset.skin=%r" % skin)
-                time.sleep(0.12)
-                out[skin] = ws.eval(MEASURE_JS)
-                # 손 얹은 얼굴은 **실포인터**로만 나온다 (REQ-20260909-100 반려의
-                # 교훈 — 정지 화면만 찍고 통과시킨 것이 그 반려를 불렀다).
-                # CSS 를 복제해 흉내 내면 실제 캐스케이드와 갈릴 수 있다.
-                pt = ws.eval(POINT_JS)
-                ws.call("Input.dispatchMouseEvent", type="mouseMoved",
-                        x=pt["x"], y=pt["y"], button="none", buttons=0)
-                time.sleep(0.35)
-                out[skin]["hover"] = ws.eval(HOVER_JS)
-                ws.call("Input.dispatchMouseEvent", type="mouseMoved",
-                        x=2, y=2, button="none", buttons=0)
-                time.sleep(0.1)
-            return out
-        finally:
-            if ws is not None:
-                ws.close()
-            try:
-                proc.terminate()
-            except OSError:
-                pass
-            reclaim(marker, win)
-            shutil.rmtree(prof_wsl, ignore_errors=True)
-            try:
-                os.remove(fix)
-            except OSError:
-                pass
+        cls.data = shared()["skins"]
 
     def test_the_column_head_stays_on_top(self):
         """스크롤한 뒤에도 상태 머리가 판의 윗변에 남는다."""
@@ -293,6 +363,76 @@ class TheColumnHeadStaysOnTop(unittest.TestCase):
                          "머리의 선에 손으로 적은 색이 있다 — var(--hairline)/"
                          "var(--border) 처럼 그 스킨의 선 토큰을 읽어야 한다: %s"
                          % bad)
+
+
+class TheBoardKeepsItsMinimumHeight(unittest.TestCase):
+    """창이 낮아도 판은 320px 아래로 줄지 않는다 — 대신 문서가 스크롤된다.
+
+    맥 Safari 실측 2026-09-09(창 420 · 뷰포트 368): 판 205px · 계산된
+    min-height 0px · 문서 스크롤 0. `.board{min-height:320px}` 를
+    `html.boardfit #view>.board{min-height:0}` 가 덮었다 — 두 규칙 다 .board 를
+    가리키는데 뒤엣것의 선택자가 더 좁아 이긴다. 부모 REQ-20260909-100 이 적어
+    둔 설계는 그 반대이고, 이 계약이 그 설계를 잰다.
+    """
+    tall = low = None
+
+    @classmethod
+    def setUpClass(cls):
+        d = shared()
+        cls.tall, cls.low = d["tall"], d["low"]
+
+    def test_a_tall_window_still_gets_its_height_from_the_layout(self):
+        """창이 높으면 판은 남는 높이를 그대로 받고 문서는 넘치지 않는다 (N1·N2)."""
+        d = self.tall
+        self.assertLessEqual(
+            d["docMax"], 0,
+            "창 %dpx 에서 문서가 %dpx 넘쳤다 — 판이 남는 높이보다 커졌다는 뜻이고, "
+            "그러면 판이 sticky 머리를 데리고 창 밖으로 나간다"
+            % (d["innerHeight"], d["docMax"]))
+        self.assertGreater(
+            d["height"], MIN_BOARD,
+            "창 %dpx 에서 판이 최소 높이(%dpx)에 걸렸다 — 최소값이 배치를 대신하고 "
+            "있다: %.1fpx" % (d["innerHeight"], MIN_BOARD, d["height"]))
+
+    def test_a_low_window_does_not_squash_the_board(self):
+        """뷰포트 380 에서 판의 높이·최소 높이가 320px 이다 (B1·B2)."""
+        d = self.low
+        self.assertGreaterEqual(
+            d["height"], MIN_BOARD - 0.5,
+            "창 %dpx 에서 판이 %.1fpx 로 줄었다 — 최소 높이 %dpx 가 boardfit 사슬에 "
+            "덮였다 (계산된 min-height=%s)"
+            % (d["innerHeight"], d["height"], MIN_BOARD, d["minHeight"]))
+        self.assertEqual(
+            "%dpx" % MIN_BOARD, d["minHeight"],
+            "판의 계산된 min-height 가 %s 다 — html.boardfit 규칙이 .board 의 "
+            "최소값을 덮고 있다" % d["minHeight"])
+
+    def test_a_low_window_scrolls_the_document_instead(self):
+        """판이 최소 높이에 걸리면 문서가 스크롤되고, 끝까지 내리면 판이 다 보인다 (F1·F2)."""
+        d = self.low
+        self.assertGreater(
+            d["docMax"], 0,
+            "창 %dpx 에서 문서 스크롤이 없다(%dpx) — 판이 창에 안 들어가는데 "
+            "스크롤도 없으면 아래쪽은 볼 방법이 없다" % (d["innerHeight"], d["docMax"]))
+        self.assertGreater(
+            d["docTop"], 0,
+            "문서를 내렸는데 scrollTop 이 0 이다 — 스크롤 상자가 아니다")
+        self.assertLessEqual(
+            d["bottomAtDocEnd"], d["innerHeight"] + 2,
+            "문서를 끝까지 내려도 판의 아래끝이 창 밖 %.1fpx 에 있다 — 스크롤해도 "
+            "닿지 못하는 부분이 남는다" % d["bottomAtDocEnd"])
+
+    def test_a_low_window_keeps_the_board_a_scroll_box(self):
+        """낮은 창에서도 판은 제 세로 스크롤 상자이고 머리는 판 윗변에 남는다 (R2)."""
+        d = self.low
+        self.assertGreater(
+            d["boardTop"], 0,
+            "창 %dpx 에서 판이 세로로 스크롤되지 않는다 — 머리가 붙을 자리가 없다"
+            % d["innerHeight"])
+        self.assertLess(
+            abs(d["headDy"]), 1.5,
+            "창 %dpx 에서 머리가 판의 윗변을 떠났다: %.1fpx"
+            % (d["innerHeight"], d["headDy"]))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,76 @@
+/* control.css — 손잡이 사전 (REQ-20260910-009 S1)
+
+   주인 지적 2026-09-10: 「pause 버튼을 보니까 너무 못생겼다」.
+
+   ⏸ 를 탓할 일이 아니었다. 다섯 탭의 모든 button/a/select/input/summary 를
+   실측하니 **손잡이 높이가 16종**이었다:
+
+     11 · 12 · 13 · 13 · 15 · 18 · 18 · 19 · 19.5 · 22 · 23 · 27 · 27 · 32 · 33 · 37
+
+   글자 크기 7종(9.5~13), 모서리 3종(0 · 10px · 999px)이 한 화면에 있었고,
+   **44x44 를 넘는 손잡이는 하나도 없었다** — s9-design 7절이 스스로 정한
+   최소치인데 최대가 37, 최소가 11 이다. iPad Safari 가 실제 사용처인 제품에서
+   11px 과녁은 못 누른다.
+
+   그 열여섯 중 과녁·모서리·시각 피드백을 **제대로 갖춘 것은 ⏸ 하나뿐**이었다.
+   규칙을 지키는 것이 혼자면 그것이 튄다. 그래서 ⏸ 를 다섯 번째로 다시 그리는
+   대신 없던 사전을 만든다.
+
+   ---- 세 급 ----
+
+     --ctl-lg  36px / 13px    화면 머리의 주 손잡이 — 탭 · 필터 · 검색 · 판 머리
+     --ctl-md  28px / 11.5px  행위 버튼 — ⏸ ▶ · 승인 · 반려 · 「더 보기」
+     --ctl-sm  20px / 10.5px  줄 안의 글자 손잡이 — 이어 말하기 · 우선순위 · Jira 키
+
+   값은 tokens.css 에 있다. 여기 없는 것은 **스킨의 몫**이다: 색 · 모서리 ·
+   면 · 깊이는 스킨이 말하고, **크기는 스킨이 못 바꾼다**. 그것이 지금까지
+   16종이 생긴 길이었다(스킨마다 제 값을 다시 적었다).
+
+   ---- 과녁과 칠은 다른 층이다 (s9-design 7절) ----
+
+   sm 급은 10~13px 글자 손잡이라 상자를 20px 로 키우면 그 줄이 통째로 자란다 —
+   ⏸ 가 12px 줄을 26px 로 부풀린 그 병이다. 그래서 **상자는 그대로 두고 과녁만
+   겹판(::after)으로 얹는다**: 겹판은 `position:absolute` 라 흐름에 없고, 줄
+   높이는 1px 도 안 변하며, 손과 펜은 20px 을 얻는다. 칠(글자색·밑줄)은 여전히
+   글자에만 든다.
+
+   회귀는 tests/test_control_scale.py 가 잰다. */
+
+/* ---- lg — 화면 머리의 주 손잡이 ---------------------------------------- */
+/* 33 · 37 · 27 · 32 로 흩어져 있던 넷을 한 값으로. 이 급은 제 줄을 가진
+   블록이라 상자를 그대로 키운다(겹판이 필요 없다). */
+.tabs button,
+.hrow2 select,
+.hrow2 input[type="text"],
+.hrow2 input[type="search"],
+.audit > details > summary{min-height:var(--ctl-lg)}
+.tabs button{display:inline-flex;align-items:center}
+
+/* ---- md — 행위 버튼 ----------------------------------------------------- */
+/* 낱말을 입은 행위 버튼(승인·반려·잠금·치우기)과 「더 보기」. 글리프 손잡이
+   (.deed.ico)의 과녁도 같은 토큰을 쓴다 — 그 규칙은 actions.css 에 있다
+   (칠을 원 안에 가두는 mask 와 한 몸이라 그 파일을 떠날 수 없다). */
+.acts button.deed:not(.ico),
+.more,
+.oc-cmd{min-height:var(--ctl-md)}
+
+/* ---- sm — 줄 안의 글자 손잡이: 과녁만 얹는다 ---------------------------- */
+/* 겹판은 상자의 좌우 끝을 그대로 쓰고 세로로만 20px 를 편다. 가로를 넓히지
+   않는 것은 옆 손잡이의 과녁과 겹치면 어느 쪽이 눌렸는지 사람이 못 알기
+   때문이다(한 줄에 우선순위·프로젝트·Jira 키가 나란히 선다).
+   `z-index` 를 주지 않는다 — 겹판은 제 손잡이 위에만 있으면 되고, 띄우면
+   뒤에 선 hovercard 를 가린다. */
+.card .pickdoc,
+.card .prio,.card .proj,.card .xref .jkey,
+.rvmore,.grpf,.pjnew,.oc-fold,
+.typebar .tb,
+.doclist .row .id .prio{position:relative}
+.card .pickdoc::after,
+.card .prio::after,.card .proj::after,.card .xref .jkey::after,
+.rvmore::after,.grpf::after,.pjnew::after,.oc-fold::after,
+.typebar .tb::after,
+.doclist .row .id .prio::after{content:"";position:absolute;left:0;right:0;
+  top:50%;height:var(--ctl-sm);transform:translateY(-50%)}
+/* `.pickdoc` 은 이미 카드 모서리에 절대 위치라 `position:relative` 가 그 자리를
+   흔든다 — 그 하나만 제 값을 되돌린다(겹판은 그대로 얹힌다). */
+.card .pickdoc{position:absolute}

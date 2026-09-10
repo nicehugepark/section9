@@ -1,7 +1,7 @@
 /* tokens.css — 토큰 — 색·간격·글꼴의 단일 소유자. 컴포넌트는 값을 직접 쓰지 않는다. */
 :root{
   --bg:#fafaf8; --panel:#ffffff; --border:#d8d8d3; --hairline:#e9e9e5;
-  --text:#141518; --muted:#5c6470; --faint:#9096a0;
+  --text:#141518; --muted:#5c6470; --faint:#6e7583;
   --accent:#141518; --accent-soft:#f0f0ec; --accent-line:#141518;
   --r:0;
   --c-draft:#868c96; --c-open:#1d4ed8; --c-inprogress:#b45309; --c-blocked:#b91c1c;
@@ -14,12 +14,17 @@
      대체 글꼴로 떨어져 자간이 흩어진다 — 그 자리에서 body 의 글꼴 더미를
      다시 적지 않도록 여기 한 곳에 둔다(스킨은 이 값을 갈아 끼우면 된다). */
   --sans:"Noto Sans KR",system-ui,sans-serif;
+  /* 손잡이 눈금 (REQ-20260910-009 S1). 규칙과 까닭은 control.css 에 있다.
+     값이 여기 있는 것은 스킨이 색·모서리만 말하고 크기는 못 바꾸게 하기
+     위해서다 — 실측에서 손잡이 높이가 16종이었다. */
+  --ctl-lg:36px; --ctl-md:28px; --ctl-sm:20px;
+  --ctl-lg-fs:13px; --ctl-md-fs:11.5px; --ctl-sm-fs:10.5px;
 }
 /* 테마: system(OS 추종) / paper(라이트 고정=기본 토큰) / carbon(다크 고정) / phosphor(CRT) */
 @media (prefers-color-scheme: dark){
   :root[data-theme="system"]{
     --bg:#111214; --panel:#17181b; --border:#33353a; --hairline:#232529;
-    --text:#e8e8e4; --muted:#9aa0aa; --faint:#5f646d;
+    --text:#e8e8e4; --muted:#9aa0aa; --faint:#7b8089;
     --accent:#e8e8e4; --accent-soft:#222327; --accent-line:#e8e8e4;
     --c-open:#5b8def; --c-inprogress:#d99537; --c-blocked:#e05d5d;
     --c-review:#a582e8; --c-done:#3fa583; --c-published:#3d9d96;
@@ -29,7 +34,7 @@
 }
 :root[data-theme="carbon"]{
   --bg:#111214; --panel:#17181b; --border:#33353a; --hairline:#232529;
-  --text:#e8e8e4; --muted:#9aa0aa; --faint:#5f646d;
+  --text:#e8e8e4; --muted:#9aa0aa; --faint:#7b8089;
   --accent:#e8e8e4; --accent-soft:#222327; --accent-line:#e8e8e4;
   --c-open:#5b8def; --c-inprogress:#d99537; --c-blocked:#e05d5d;
   --c-review:#a582e8; --c-done:#3fa583; --c-published:#3d9d96;
@@ -38,7 +43,7 @@
 }
 :root[data-theme="phosphor"]{
   --bg:#0a0e0a; --panel:#0d120d; --border:#2b3a2b; --hairline:#1a231a;
-  --text:#b9e2b2; --muted:#79a674; --faint:#4b6f49;
+  --text:#b9e2b2; --muted:#79a674; --faint:#5f8a5c;
   --accent:#b9e2b2; --accent-soft:#131b13; --accent-line:#b9e2b2;
   --c-draft:#5f7f5c; --c-open:#5b9bd5; --c-inprogress:#d9b13b; --c-blocked:#e06c5d;
   --c-review:#b78ee0; --c-done:#55c07a; --c-cancelled:#5f7f5c; --c-published:#46b39a;
