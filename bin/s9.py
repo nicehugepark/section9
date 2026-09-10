@@ -14865,6 +14865,15 @@ def attach_max_for(name):
             if asset_kind(name) in ("audio", "video") else ATTACH_MAX_BYTES)
 
 
+ASSET_TEXT_TYPES = {
+    ".md": "text/markdown", ".markdown": "text/markdown", ".txt": "text/plain",
+    ".log": "text/plain", ".csv": "text/csv", ".json": "application/json",
+    ".jsonl": "application/json", ".yaml": "text/yaml", ".yml": "text/yaml",
+    ".toml": "text/plain", ".py": "text/x-python", ".js": "application/javascript",
+    ".css": "text/css", ".html": "text/html", ".htm": "text/html", ".xml": "application/xml",
+}
+
+
 def asset_ctype(path):
     """첨부의 Content-Type — 판정은 여기 한 곳이다 (REQ-20260908-048).
 
@@ -14875,7 +14884,13 @@ def asset_ctype(path):
     를 받은 브라우저는 인코딩을 추측하고 한글 UTF-8 은 그 추측에서 깨진다.
     """
     import mimetypes
-    ctype = mimetypes.guess_type(str(path or ""))[0] or "application/octet-stream"
+    # 글자 파일의 확장자는 여기서 먼저 정한다 (REQ-20260910-012-2n7g): 파이썬의
+    # mimetypes 는 리눅스에서 /etc/mime.types 를 읽어 `.md` 를 알지만, 맥의
+    # 기본 파이썬에는 그 표가 없어 `.md`·`.log` 가 octet-stream 으로 떨어졌다 —
+    # 화면은 글자 첨부를 내려받기로만 열었다.
+    ext = os.path.splitext(str(path or ""))[1].lower()
+    ctype = ASSET_TEXT_TYPES.get(ext) \
+        or mimetypes.guess_type(str(path or ""))[0] or "application/octet-stream"
     if (ctype.startswith("text/") or ctype in (
             "application/json", "application/javascript",
             "application/xml")) and "charset" not in ctype:

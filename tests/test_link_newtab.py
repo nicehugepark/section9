@@ -31,6 +31,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import unittest
 import urllib.error
@@ -231,7 +232,11 @@ class LinksOpenInANewTab(unittest.TestCase):
 
         # S5 — Ctrl + 왼쪽 클릭은 **진짜 입력**으로 누른다 (CDP 수정키: Ctrl = 2).
         cls.ws.eval(RECORD)
-        o["cardCtrl"] = cls.press(card, button="left", modifiers=2)
+        # 새 탭의 보조키는 판마다 다르다 — 맥 Chrome 은 Ctrl+클릭을 오른쪽 클릭
+        # (맥락 메뉴)으로 바꿔 click 이 오지 않는다; 거기서는 ⌘(CDP modifiers=4)다.
+        # 화면은 둘 다 받는다(events.js: ctrlKey || metaKey). (REQ-20260910-012-2n7g)
+        o["cardCtrl"] = cls.press(card, button="left",
+                                  modifiers=(4 if sys.platform == "darwin" else 2))
 
         # S7 — 맨 왼쪽 클릭은 지금처럼 이 탭 안에서 연다(회귀). 화면이 바뀌므로 끝에.
         cls.ws.eval(RECORD)
