@@ -260,3 +260,7 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-10T16:38:33+09:00 config auto_resume_global_per_hour=60 (by nicehugepark)
 - 2026-09-11T00:07:20+09:00 config worker_worktree=on (by nicehugepark)
 - 2026-09-11T10:03:51+09:00 config auto_resume=on (by nicehugepark via dashboard)
+- 2026-09-11T10:29:30+09:00 config auto_resume_apply=on (by nicehugepark via dashboard)
+- 2026-09-11T10:29:37+09:00 config auto_resume_gh=on (by nicehugepark via dashboard)
+- 2026-09-11T10:29:49+09:00 config auto_resume_jira=on (by nicehugepark via dashboard)
+- 2026-09-11T10:29:58+09:00 config worker_worktree=on (by nicehugepark via dashboard)
