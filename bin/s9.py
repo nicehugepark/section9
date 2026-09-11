@@ -6434,6 +6434,9 @@ def inbox_orphans(self_sid, window=INBOX_ADOPT_WINDOW_SEC,
                 continue
             if now - iso_epoch(rec.get("ts")) > window:
                 continue
+            # 이 고침 전에 적힌 낡은 줄은 옮겨지기 전 경로를 들고 있다 —
+            # 거두는 자리에서도 지금 자리로 고쳐 준다 (REQ-20260911-010).
+            rec["text"] = upload_move_rewrite(rec.get("text") or "")
             kept.append(rec)
         if kept:
             out.append({"sid": sid, "lines": kept})
@@ -7241,6 +7244,10 @@ def chat_send(text, sid8=None, sender="", kind="chat", req="",
         raise ValueError(
             f"라이브 클로드 세션이 없다 — 터미널에서 `cd {ROOT} && bin/s9 code`"
             f"로 세션을 시작한 뒤 다시 보내라")
+    # 붙인 그림은 이 줄이 적히기 **전에** 이미 문서 옆으로 옮겨져 있다
+    # (chat_audit → ingest_assets). 원문의 업로드 경로를 그대로 적으면 세션이
+    # 빈 자리를 Read 하게 된다 (REQ-20260911-010).
+    text = upload_move_rewrite(text)
     line = {"ts": now_iso(), "from": sender or "dashboard", "kind": kind,
             "text": text}
     if req:
@@ -15912,6 +15919,118 @@ def attach_tags(paths, text_of=None):
     return out
 
 
+UPLOAD_MOVES_PATH = ("state", "terminal", "upload-moves.jsonl")
+UPLOAD_MOVES_KEEP = 2000      # 이보다 길어지면 앞을 버린다 — 옛 줄은 이미 소비됐다
+
+
+def _upload_moves_path(make=False):
+    p = os.path.join(ROOT, *UPLOAD_MOVES_PATH)
+    if make:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+    return p
+
+
+def upload_move_record(src, dst):
+    """업로드 임시본이 문서 옆으로 옮겨 간 자리를 남긴다 (REQ-20260911-010).
+
+    채팅에 붙인 그림은 `state/terminal/uploads/…` 에 저장되고 그 **절대경로**가
+    수신함 줄에 실려 세션에게 간다. 그런데 같은 요청 안에서 `ingest_assets` 가
+    그 파일을 문서 옆 `assets/<문서id>/` 로 옮기므로, 줄이 적히는 시점에 그
+    경로는 이미 빈 자리다 — 세션은 그림을 못 읽는다.
+
+    옮기는 자리는 셋인데 하나(`chat_append_doc` → `s9 note`)는 **다른
+    프로세스**라, 옮긴 값을 호출부로 들고 나갈 수가 없다. 그래서 파일에 남긴다:
+    옮긴 쪽이 적고, 줄을 적는 쪽(`chat_send`)이 읽어 고쳐 적는다.
+
+    append-only 로 쓴다 — 서버와 `s9 note` 서브프로세스가 동시에 적을 수 있고,
+    통째로 다시 쓰면 한쪽의 기록이 조용히 사라진다.
+    """
+    try:
+        path = _upload_moves_path(make=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"src": os.path.abspath(src),
+                                "dst": os.path.abspath(dst),
+                                "ts": now_iso()}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass                  # 기록에 실패해도 이전 자체는 성공이다
+
+
+def upload_moves():
+    """{옮기기 전 경로: 옮긴 뒤 경로} — 같은 경로가 여러 번이면 마지막 것."""
+    out = {}
+    try:
+        with open(_upload_moves_path(), encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return out
+    if len(lines) > UPLOAD_MOVES_KEEP:
+        lines = lines[-UPLOAD_MOVES_KEEP:]
+        try:
+            with open(_upload_moves_path(), "w", encoding="utf-8") as f:
+                f.writelines(lines)
+        except OSError:
+            pass
+    for ln in lines:
+        try:
+            rec = json.loads(ln)
+        except ValueError:
+            continue
+        if rec.get("src") and rec.get("dst"):
+            out[rec["src"]] = rec["dst"]
+    return out
+
+
+def _upload_move_search(src):
+    """기록에 없는 경우의 되찾기 — 문서 옆 assets 에서 같은 이름을 찾는다.
+
+    기록은 이 고침(REQ-20260911-010) 이후에 옮긴 것만 담고 있다. 그전에 옮겨져
+    이미 빈 자리를 가리키게 된 줄, 그리고 다른 인스턴스가 옮긴 것은 기록이
+    없다. `ingest_assets` 가 짓는 이름이 `safe_name(원래 이름)` 이라 이름으로
+    되찾을 수 있다.
+
+    **딱 하나일 때만** 돌려준다 — 같은 이름이 여러 문서에 붙어 있으면 어느
+    것인지 알 수 없고, 그때는 엉뚱한 그림을 가리키느니 그대로 두는 편이 낫다.
+    """
+    import glob as _glob
+    name = safe_name(os.path.basename(src))
+    if not name:
+        return ""
+    # vault/<갈래>/<년>/<월>/assets/<문서id>/<이름> — 전수 순회가 아니라
+    # 이 한 꼴만 본다(`**` 는 문서 1800건을 매번 훑는다).
+    hits = _glob.glob(os.path.join(ROOT, "vault", "*", "*", "*",
+                                   "assets", "*", name))
+    return hits[0] if len(hits) == 1 else ""
+
+
+def upload_move_rewrite(text):
+    """수신함으로 나가는 글에서 **옮겨진** 첨부 경로를 지금 자리로 고쳐 적는다.
+
+    고치는 것은 ① 절대경로이고 ② 지금 그 자리에 없고 ③ 옮긴 자리를 알아냈고
+    ④ 그 자리에 실제로 파일이 있는 것뿐이다 — 넷 중 하나라도 아니면 글자를
+    건드리지 않는다. 사람이 쓴 경로를 추측으로 바꾸는 것이 못 고치는 것보다
+    나쁘다.
+    """
+    if not text or ("[Image: /" not in text and "[File: /" not in text
+                    and "[Video: /" not in text and "[Audio: /" not in text
+                    and "[Attach: /" not in text):
+        return text
+    moves = None
+
+    def repl(m):
+        nonlocal moves
+        kind, src = m.group(1), m.group(2).strip()
+        if not os.path.isabs(src) or os.path.exists(src):
+            return m.group(0)
+        if moves is None:
+            moves = upload_moves()
+        dst = moves.get(os.path.abspath(src)) or _upload_move_search(src)
+        if not dst or not os.path.exists(dst):
+            return m.group(0)
+        return f"[{kind}: {dst}]"
+
+    return ASSET_RE.sub(repl, text)
+
+
 def doc_asset_dir(doc_id, make=False):
     """문서의 첨부 디렉토리 — <문서 디렉토리>/assets/<**정식** 문서ID>/.
 
@@ -16176,8 +16295,12 @@ def ingest_assets(doc_id):
                 # 원본을 걷는다 — 남의 파일은 그대로 둔다.
                 if in_state and not os.path.samefile(src, dst):
                     os.remove(src)
+                    upload_move_record(src, dst)
             elif in_state:
                 shutil.move(src, dst)          # 우리 업로드 임시본
+                # 그 경로를 들고 있는 수신함 줄이 빈 자리를 가리키지 않게
+                # 옮긴 자리를 남긴다 (REQ-20260911-010).
+                upload_move_record(src, dst)
             else:
                 shutil.copyfile(src, dst)      # CC 캐시 등 — 원본 보존
         except (OSError, ValueError):
