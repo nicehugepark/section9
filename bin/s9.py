@@ -29913,6 +29913,10 @@ def jira_outbox_add(doc_id, kind="create", now=None):
     return True
 
 
+JIRA_OUTBOX_VERB = {"create": "이슈 생성", "push": "상태 보냄", "title": "제목 보냄",
+                    "comment": "노트 보냄", "result": "처리 결과 보냄"}
+
+
 def jira_outbox_read():
     try:
         with open(JIRA_OUTBOX, encoding="utf-8") as f:
@@ -29954,7 +29958,7 @@ def jira_issue_create(doc_id, actor="", manual=False, **kw):
     if auth is None:
         msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
         _jira_write(doc_id, {"pending": "create", "last_error": msg}, "")
-        return {"ok": False, "error": msg, "skipped": True}
+        return {"ok": False, "error": msg, "skipped": False}
     st, found = jira_find_issue(user, j, doc_id, **kw)
     site = j["site"].rstrip("/")
     if found:
@@ -29985,6 +29989,12 @@ def jira_issue_create(doc_id, actor="", manual=False, **kw):
                                    "desc_sig": jira_desc_sig(
                                        jira_description_lines(meta, _body, jira_mark_on(j)))},
                           f"이슈 {key} 생성 by {actor or user}" + (" (s9 jira create)" if manual else ""))
+        # 늦게 선 이슈는 「해야 할 일」로 난다 — 그 사이 문서가 옮겨 갔으면 상태를
+        # 뒤따라 보낸다(REQ-20260911-009 실측: 쓸기가 살려 낸 REQ-20260910-011-2n7g
+        # 가 done 인데 MP1-96 은 To Do 였다). 전이는 이미 지나갔으니 그 자리에서
+        # 실을 수 없고, 이을 자리는 생성 직후 여기뿐이다.
+        if str(meta.get("status") or "") not in ("", "open"):
+            jira_outbox_add(doc_id, "push")
         return {"ok": True, "key": key, "url": cur["url"], "skipped": False, "error": "",
                 "status": status}
     return _jira_create_failed(doc_id, err or f"Jira 가 {st} 로 답했다", cur)
@@ -30047,6 +30057,66 @@ def jira_outbox_tick(now=None, limit=5, **kw):
     return done
 
 
+# ── 문서에만 남은 pending 을 outbox 로 되돌린다 (REQ-20260911-009) ────────────
+# 실제 사고 2026-09-11: 문서는 done 인데 Jira 는 「진행 중」인 요청 셋(MP1-63 ·
+# MP1-72 · 이슈가 아예 안 선 REQ-20260910-011-2n7g). 원인은 하나다 — API token 을
+# 못 읽는 순간의 실패가 `skipped` 로 돌아와 outbox 에서 **빠졌고**, 문서의 pending 은
+# 남았는데 그것을 다시 읽는 자리가 없었다. create 는 더했다: jira_after_new_request 가
+# `pending == "create"` 를 보고 다시 싣지 않아 이슈가 영영 서지 않는다. 준비물 없음을
+# 다시 시도할 실패로 돌린 것이 첫째 고침이고, 이 쓸기가 둘째다 — 이미 새어 나간 것과
+# 앞으로 다른 까닭에 샐 것을 같은 자리(outbox)로 되돌린다.
+JIRA_SWEEP_STATE = os.path.join(ROOT, "state", "jira-sweep.json")
+JIRA_SWEEP_SEC = 600
+
+
+def _jira_sweep_read():
+    try:
+        with open(JIRA_SWEEP_STATE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _jira_sweep_write(st):
+    os.makedirs(os.path.dirname(JIRA_SWEEP_STATE), exist_ok=True)
+    tmp = JIRA_SWEEP_STATE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(tmp, JIRA_SWEEP_STATE)
+
+
+def jira_pending_sweep(now=None, force=False):
+    """10분에 한 번 — pending 이 남았는데 outbox 에 없는 문서를 다시 싣는다.
+    카탈로그의 jira 블록만 읽으므로 문서를 열지 않는다. 반환: [(id, kind)]."""
+    import time as _time
+    now = now or _time.time()
+    st = _jira_sweep_read()
+    if not force and now - float(st.get("at") or 0) < JIRA_SWEEP_SEC:
+        return []
+    _jira_sweep_write({"at": now})
+    have = {(r.get("id"), r.get("kind")) for r in jira_outbox_read()}
+    out = []
+    for row in load_catalog():
+        j = row.get("jira")
+        if not isinstance(j, dict):
+            continue
+        kind = str(j.get("pending") or "").strip()
+        if kind not in ("create", "push"):
+            # pending 이 비었어도 어긋날 수 있다 — 이슈가 전이보다 **늦게** 서면
+            # 「해야 할 일」로 나고 그 전이는 이미 지나갔다(REQ-20260911-009 실측:
+            # 95건 중 6건). 문서가 적어 둔 이름·카테고리로 대보고, 어긋나면 싣는다.
+            pj = project_jira(str(row.get("project") or ""))
+            if not j.get("key") or not pj or jira_status_matches(
+                    row.get("status"), pj, j.get("status"), j.get("status_category")):
+                continue
+            kind = "push"
+        if (row.get("id"), kind) in have:
+            continue
+        if jira_outbox_add(row.get("id"), kind, now=now):
+            out.append((row.get("id"), kind))
+    return out
+
+
 # ── 우리 → Jira 상태 push (REQ-20260908-075) ─────────────────────────────────
 # Jira 는 상태를 직접 쓰지 못한다 — transition 을 골라 POST 한다. id 는 워크플로마다
 # 다르므로 이름(프로젝트 status_map)이나 카테고리(statusCategory: new · indeterminate ·
@@ -30054,6 +30124,16 @@ def jira_outbox_tick(now=None, limit=5, **kw):
 # 워처가 보낸다. pull 이 일으킨 전이는 되쏘지 않는다(note 가 「jira:」로 시작).
 JIRA_CATEGORY = {"open": "new", "in-progress": "indeterminate", "blocked": "indeterminate",
                  "review": "indeterminate", "done": "done", "cancelled": "done"}
+
+
+def jira_status_matches(our, j, name, cat):
+    """이 이름/카테고리가 우리 상태와 같은가 — 이름(status_map)이 먼저, 없으면 카테고리.
+    판정은 여기 하나다: push 가 「이미 같다」를 보는 자리와 쓸기가 「어긋났다」를 보는
+    자리가 갈리면, 한쪽이 부르고 다른 쪽이 되돌리는 왕복이 10분마다 돈다."""
+    want = str(((j or {}).get("status_map") or {}).get(our) or "").strip().lower()
+    if want:
+        return str(name or "").strip().lower() == want
+    return str(cat or "") == JIRA_CATEGORY.get(our, "")
 
 
 def jira_push_wanted(meta, note="", auto=False):
@@ -30089,7 +30169,7 @@ def jira_title_push(doc_id, actor="", **kw):
         return {"ok": False, "error": "이슈가 없다", "skipped": True}
     user = meta.get("user") or actor
     if jira_auth_header(user)[0] is None:
-        return {"ok": False, "error": f"@{user} 의 준비물이 없다", "skipped": True}
+        return {"ok": False, "error": f"@{user} 의 준비물이 없다", "skipped": False}
     summary = jira_summary_of(meta)
     j = project_jira(str(meta.get("project") or "")) or {}
     lines = jira_description_lines(meta, _body, jira_mark_on(j) if j else True)
@@ -30298,7 +30378,7 @@ def jira_comment_push(doc_id, actor="", **kw):
     if auth is None:
         msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
         _jira_write(doc_id, {"last_error": msg}, "")
-        return {"ok": False, "error": msg, "skipped": True}
+        return {"ok": False, "error": msg, "skipped": False}
     cursor = str(cur.get("commented_ts") or "")
     done = set(cur.get("commented") or [])       # 최근 처리한 노트 키(멱등, 100개까지)
     todo = [(ts, label, text) for ts, label, text in jira_notes_of(body)
@@ -30410,7 +30490,7 @@ def jira_result_push(doc_id, actor="", **kw):
     if auth is None:
         msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
         _jira_write(doc_id, {"last_error": msg}, "")
-        return {"ok": False, "error": msg, "skipped": True}
+        return {"ok": False, "error": msg, "skipped": False}
     key = cur["key"]
     what = jira_comment_secret(note)
     if what:
@@ -30475,7 +30555,7 @@ def jira_status_push(doc_id, actor="", **kw):
     if auth is None:
         msg = f"@{user} 의 준비물이 없다 — " + " · ".join(missing)
         _jira_write(doc_id, {"pending": "push", "last_error": msg}, "")
-        return {"ok": False, "error": msg, "skipped": True}
+        return {"ok": False, "error": msg, "skipped": False}
     key = cur["key"]
     our = meta.get("status", "")
     st, d, err = jira_http(user, "GET", f"/rest/api/3/issue/{key}?fields=status", **kw)
@@ -30484,10 +30564,7 @@ def jira_status_push(doc_id, actor="", **kw):
     now_st = (d.get("fields") or {}).get("status") or {}
     now_name = str(now_st.get("name") or "")
     now_cat = str(((now_st.get("statusCategory") or {}).get("key")) or "")
-    want_name = str((j.get("status_map") or {}).get(our) or "").strip().lower()
-    already = (want_name and now_name.lower() == want_name) or \
-              (not want_name and now_cat == JIRA_CATEGORY.get(our, ""))
-    if already:
+    if jira_status_matches(our, j, now_name, now_cat):
         _jira_write(doc_id, {"status": now_name, "status_category": now_cat,
                              "synced_at": now_iso(), "synced_by": "s9",
                              "pending": "", "last_error": ""}, "")
@@ -30699,7 +30776,7 @@ def jira_watch_tick():
     """워처 한 틱의 Jira 몫 — outbox(생성·push)와 pull. 한 줄로 부른다: 워처 루프의
     글자를 늘리면 그 루프를 읽는 계약 시험(test_snapshot s6)이 스냅샷 호출을 못 본다.
     실패는 워처를 세우지 않는다."""
-    for fn in (jira_outbox_tick, jira_pull_tick):
+    for fn in (jira_pending_sweep, jira_outbox_tick, jira_pull_tick):
         try:
             fn()
         except Exception:
@@ -30768,8 +30845,10 @@ def cmd_jira(args):
     if args.action == "outbox":
         rows = jira_outbox_read()
         if getattr(args, "run", False):
+            kinds = {r["id"]: r.get("kind") for r in rows}
             for i, ok in jira_outbox_tick():
-                print(f"{i}: {'생성' if ok else '실패 — 다음에 다시'}")
+                what = JIRA_OUTBOX_VERB.get(kinds.get(i), "보냄")
+                print(f"{i}: {what if ok else '실패 — 다음에 다시'}")
             rows = jira_outbox_read()
         if not rows:
             print("outbox 비어 있음")
