@@ -160,6 +160,13 @@ function termBindInput(T){
 
 function termKeydown(T, e){
   const ta = e.target;
+  /* **한글 조합 중의 키는 입력기의 것이다** (REQ-20260911-001-2n7g, 맥 실측
+     2026-09-11 10:06): 「스스로 판단해」 끝에서 Enter 를 누르면 마지막 「해」가
+     아직 조합 중이라 keydown(keyCode 229, isComposing) 이 먼저 오고, 그 자리에서
+     전송해 버리면 입력기가 조합을 끝내며 「해」를 빈 칸에 다시 넣는다 — 그래서
+     「해」가 따로 한 번 더 갔다. 조합 중에는 아무것도 하지 않는다: Safari 는
+     조합이 끝난 뒤 Enter 를 한 번 더 주고, Chrome 은 사람이 한 번 더 누른다. */
+  if (e.isComposing || e.keyCode === 229) return;
   if (T.pal.open){                               // L4 — 팔레트 내비게이션
     if (e.key === "ArrowDown" || e.key === "ArrowUp"){
       e.preventDefault();
