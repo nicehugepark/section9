@@ -334,8 +334,8 @@ class TestSpawnPidRecord(unittest.TestCase):
                              "스폰 후 pid를 기록하지 않는다")
             # 까닭도 함께 적는다 (REQ-20260831-025) — 마커가 그것을 버리던 동안,
             # 제 손으로 ▶ 를 누른 사람이 "저절로 떴다"는 문장을 읽었다.
-            self.assertIn("_auto_mark_pid(doc_id, wp, reason)", src,
-                          "스폰 까닭(사람 wake·워처)이 마커에 안 실린다")
+            self.assertRegex(src, r"_auto_mark_pid\(doc_id, wp, reason\b",
+                             "스폰 까닭(사람 wake·워처)이 마커에 안 실린다")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

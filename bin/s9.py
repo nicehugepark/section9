@@ -4797,7 +4797,7 @@ def _restart_cmd(base_cmd, m):
 SPAWN_WIN = 600   # 스폰 마커를 '기동 중'으로 보는 창 (쿨다운과 같은 시간 규모)
 
 
-def _auto_mark_pid(doc_id, proc, reason=""):
+def _auto_mark_pid(doc_id, proc, reason="", acct=""):
     """스폰한 워커의 pid와 **까닭**을 마커에 기록 (REQ-20260825-086 · -20260831-025).
 
     pid 는 그 워커가 아직 살아 있는지 확인할 유일한 근거다. Popen이 모킹된
@@ -4834,6 +4834,11 @@ def _auto_mark_pid(doc_id, proc, reason=""):
     p.pop("died", None)      # 새로 떴다 — 앞 죽음의 표식을 지운다
     if reason:
         p["reason"] = reason
+    # 어느 계정으로 띄웠나 (REQ-20260911-014) — 한도로 죽었을 때 **어느 계정이
+    # 막혔는지**를 말해야 사람이 고칠 수 있다. 「사용 한도를 다 썼습니다」만으로는
+    # 어느 계정을 바꿔야 하는지 알 수 없다.
+    if acct:
+        p["acct"] = acct
     # 다시 뜬 자리에 '세워 둠' 이 남아 있으면 카드가 도는 작업을 세워 둔 것으로
     # 그린다 (REQ-20260829-024 라운드4).
     stop_mark_clear(doc_id)
@@ -10813,6 +10818,13 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     env.update(wt_env)
     env["S9_AUTO_RESUME"] = "1"
     env["S9_USER"] = owner
+    # 작업자도 **사람이 고른 계정**으로 뜬다 (REQ-20260911-014, 실사고 2026-09-11).
+    # 여태 작업자는 서버 프로세스의 환경을 그대로 물려받았다. 서버는 보통
+    # `CLAUDE_CONFIG_DIR` 없이 떠 있으므로 작업자는 언제나 기본 계정이었고, 그
+    # 계정의 주 한도가 다 찬 날에는 여섯 번을 띄워 여섯 번 다 「weekly limit」
+    # 한 줄만 남기고 죽었다 — 사람은 토큰을 아끼려고 계정을 옮겨 두었는데
+    # 작업자만 옛 계정으로 갔다(REQ-20260911-013 이 4시간 멈춘 까닭).
+    _wacct = code_account_apply(env, owner)
     # 워커가 돌리는 긴 잡(테스트 러너)의 선언 귀속 (REQ-20260830-026):
     # S9_SESSION 은 아래서 걷히므로(세션 의미론), 잡 전용 선언을 따로 싣는다.
     # jobfile 이 이 값을 req 필드로 적고, 카탈로그가 그 카드에 붙인다.
@@ -10857,7 +10869,7 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
                               stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
                               start_new_session=True)
         # 생존 확인 근거(pid) + 누가 띄웠나(reason) — REQ-20260825-086 · -025
-        _auto_mark_pid(doc_id, wp, reason)
+        _auto_mark_pid(doc_id, wp, reason, acct=_wacct["account"])
         if not wt_name and scope:
             lease_set_pid(doc_id, getattr(wp, "pid", 0))
         if wt_name:
@@ -10868,7 +10880,8 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
         # 로그 토큰(SPAWN(resume)/SPAWN(fresh))은 그대로 둔다 — 운영 중 grep과
         # 기존 테스트가 이 형태를 읽는다. 사유는 뒤에 덧붙인다.
         _auto_log(f"SPAWN({'resume' if sid else 'fresh'}) {doc_id} "
-                  f"reason={reason}" + (f" sid={sid[:8]}" if sid else ""))
+                  f"reason={reason}" + (f" sid={sid[:8]}" if sid else "")
+                  + f" acct={_wacct['account']}")
         return True
     except FileNotFoundError:
         _auto_log(f"claude not found — skip {doc_id} {reason}")
@@ -12672,7 +12685,8 @@ SPAWN_EARLY_SEC = 60                 # 이 안에 죽으면 '즉사'
 def _spawn_fail_kind(tail):
     """워커 로그의 마지막 줄을 셋으로 가른다 (REQ-20260903-018).
 
-        overload  API 과부하·한도·타임아웃 — 잠시 물러났다 다시 건다
+        overload  API 과부하·타임아웃 — 잠시 물러났다 다시 건다
+        limit     그 계정의 사용 한도 — 몇 초 뒤에 다시 걸어도 같은 답이다
         fatal     인증 실패·claude 없음 — 다시 걸어도 같은 답이라 즉시 세운다
         other     모르겠다 — 종전 동작 그대로(재시도 경로를 안 탄다)
 
@@ -12689,6 +12703,17 @@ def _spawn_fail_kind(tail):
     t = str(tail or "")
     if not t.strip():
         return "other"
+    # **계정의 한도는 과부하가 아니다** (REQ-20260911-014, 실사고 2026-09-11).
+    # 「You've hit your weekly limit · resets Sep 13, 8pm」은 이 표의 어느 낱말과도
+    # 안 맞아 `other` 로 떨어졌고, `other` 는 이 경로를 안 탄다 — 그래서 작업자가
+    # 여섯 번 떠서 여섯 번 다 같은 줄만 남기고 죽는 동안 문서는 in-progress 인
+    # 채였고 화면에는 「멈춤 · 진전 없음」만 떴다(REQ-20260911-013, 4시간 10분).
+    # 30초 뒤에 다시 건다고 풀릴 것이 아니니 물러나는 갈래가 아니라 **세우는**
+    # 갈래다. 다만 사유가 다르므로 이름을 따로 준다: 사람이 할 일이 「기다리기」가
+    # 아니라 「계정 바꾸기」다.
+    if re.search(r"hit your .{0,16}limit|usage limit reached|limit\s*·\s*resets",
+                 t, re.I):
+        return "limit"
     if re.search(r"(?<!\d)429(?!\d)|(?<!\d)5[023]9(?!\d)|(?<!\d)500(?!\d)|"
                  r"(?<!\d)503(?!\d)|overloaded|overload_error|rate.?limit|"
                  r"timed? ?out|socket hang ?up|ECONNRESET|EAI_AGAIN|"
@@ -12776,8 +12801,16 @@ def _spawn_retry_tick(doc_id, cfg=None, now=None):
         p["last"] = 0
         out = "wait"
     else:
+        # 사람이 할 일이 갈래마다 다르다 — 문장도 갈린다 (REQ-20260911-014).
+        acct = str(p.get("acct") or "").strip()
         why = ("API 과부하로 이어가지 못했습니다"
                if kind == "overload" else
+               (f"{acct or '이 컴퓨터의 기본 계정'} 의 사용 한도를 다 써 "
+                f"백그라운드 작업자가 뜨자마자 멈췄습니다 — 대시보드 머리의 "
+                f"계정에서 다른 계정으로 바꾸면 다음 작업자부터 그 계정으로 "
+                f"뜹니다(한도가 풀리기를 기다렸다 다시 in-progress 로 두어도 "
+                f"됩니다)")
+               if kind == "limit" else
                "이 컴퓨터에서 백그라운드 작업을 띄울 수 없습니다")
         tries = (f" — {n}회 시도" if kind == "overload" else " — 재시도 없음")
         p.pop("retry", None)
