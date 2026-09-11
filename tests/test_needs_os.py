@@ -43,8 +43,10 @@ class NeedsOs(unittest.TestCase):
                               stdin=subprocess.DEVNULL, timeout=30)
 
     def new(self, title, *extra):
+        # 담당을 안 말한 요청은 이 시험에서 「어느 컴퓨터에서나」다 (REQ-20260911-004-2n7g)
+        anyw = () if any(a in ("--needs-machine", "--needs-os") for a in extra) else ("--any-machine",)
         r = self.cli("new", "request", "--title", title, "--summary", "s", "--size", "S",
-                     "--goal", "g", "--body", "b", *extra)
+                     "--goal", "g", "--body", "b", *anyw, *extra)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout.split()[0]
 

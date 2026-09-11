@@ -55,8 +55,11 @@ class MachineHandoff(unittest.TestCase):
                               env=cls.env, stdin=subprocess.DEVNULL, timeout=60)
 
     def new(self, title, *extra, status=None):
+        # 담당을 안 말한 요청은 이 시험에서 「어느 컴퓨터에서나」다 (REQ-20260911-004-2n7g:
+        # 기본값이 세운 컴퓨터로 바뀌어 그 뜻은 --any-machine 으로 적는다)
+        anyw = () if any(a in ("--needs-machine", "--needs-os") for a in extra) else ("--any-machine",)
         r = self.cli("new", "request", "--title", title, "--summary", "s",
-                     "--size", "S", "--goal", "g", "--body", "b", *extra)
+                     "--size", "S", "--goal", "g", "--body", "b", *anyw, *extra)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         rid = r.stdout.split()[0]
         if status:

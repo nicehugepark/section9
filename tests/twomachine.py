@@ -184,6 +184,13 @@ class TwoMachine:
                 "--body", kw.get("body", "orig")]
         if kw.get("priority"):
             args += ["--priority", kw["priority"]]
+        # 두 컴퓨터 시나리오의 요청은 「어느 컴퓨터에서나」다 — 기본값이 세운 컴퓨터로
+        # 바뀌어(REQ-20260911-004-2n7g) 그 뜻은 --any-machine 으로 적는다. 담당을 시험하는
+        # 자리는 any_machine=False 로 끄고 --needs-machine 을 kw 로 준다.
+        if kw.get("any_machine", True) and not kw.get("needs_machine"):
+            args += ["--any-machine"]
+        if kw.get("needs_machine"):
+            args += ["--needs-machine", kw["needs_machine"]]
         out = self.cli(machine, *args, sess=sess, user=user)
         head = out.split()[0] if out.split() else ""
         if not head.startswith("REQ-"):

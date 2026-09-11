@@ -3291,6 +3291,14 @@ def cmd_new(args):
             args.needs_machine = resolve_machine_name(args.needs_machine, user=user)
         except ValueError as e:
             die(str(e))
+    elif not getattr(args, "any_machine", False) and not getattr(args, "needs_os", None):
+        # (--needs-os 는 「그 판의 다른 컴퓨터가 재 달라」는 약한 말이라 여기서 덮지 않는다)
+        # **요청은 세운 컴퓨터가 맡는다** (주인 결정 2026-09-11 10:16, REQ-20260911-004-2n7g).
+        # 담당이 비어 있으면 「노는 컴퓨터가 집는다」 규칙이 돌아, 맥에서 세운 요청을
+        # 리눅스의 워처가 13초 만에 가져갔다 — 세운 세션이 막 착수하려던 일이다.
+        # 바꾸는 길은 대시보드의 「담당 컴퓨터 바꾸기」와 사람의 프롬프트 지시(리드가
+        # --needs-machine 으로 옮긴다) 둘이고, 어느 컴퓨터여도 되는 일만 --any-machine.
+        args.needs_machine = current_machine()
 
     # 프로젝트 매핑 + 인가 검사(가드레일) — 판정은 resolve_project 한 곳:
     # 명시적 --project 만 거부(die)하고, 자동 신호는 권한이 없으면 빈 값으로
@@ -34695,7 +34703,9 @@ def main():
                     help="이 요청을 해야 하는 판 — 담당 컴퓨터를 모를 때 쓰는 약한 말 (REQ-20260906-080)")
     np.add_argument("--needs-machine", dest="needs_machine",
                     help="이 요청을 해야 하는 담당 컴퓨터 — 부르는 이름(예: 맥)이나 컴퓨터 이름값 "
-                         "(REQ-20260910-016)")
+                         "(REQ-20260910-016). 없으면 이 요청을 세운 컴퓨터다 (REQ-20260911-004-2n7g)")
+    np.add_argument("--any-machine", dest="any_machine", action="store_true",
+                    help="어느 컴퓨터여도 되는 일 — 담당 컴퓨터를 비워 노는 컴퓨터가 집게 한다")
     np.add_argument("--project-tag", dest="project_tag",
                     help="프롬프트 첫 줄 표기 [프로젝트: slug] 를 훅이 넘기는 자리 — "
                          "자동 신호라 권한이 없으면 거부하지 않고 빈 값으로 둔다 "

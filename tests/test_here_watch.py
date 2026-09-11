@@ -50,6 +50,7 @@ class HereWatch(unittest.TestCase):
             priority=None, user="hong", assignee=None, tag_list=[], parent=None, derived_from=None,
             relates=None, why="", ref_doc=None, ref_link=None, ref_file=None, needs_os=needs_os,
             needs_machine=needs_machine,
+            any_machine=not needs_machine and not needs_os,   # 어느 컴퓨터에서나 (REQ-20260911-004-2n7g)
             from_chat="", project="pay", project_tag=None, body="b", body_file=None,
             origin="human", agent="")
         out = io.StringIO()

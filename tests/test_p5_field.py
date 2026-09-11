@@ -218,7 +218,7 @@ class TestS3Derived(unittest.TestCase):
         cls.fx = TwoMachine()
         cast(cls.fx)
         cls.X = cls.fx.new_request("alpha", "본줄기 일", sess=A_SESS, user=ALICE)
-        out = cls.fx.cli("alpha", "new", "request", "--title", "파생된 일",
+        out = cls.fx.cli("alpha", "new", "request", "--any-machine", "--title", "파생된 일",
                          "--summary", "s", "--size", "S", "--goal", "g",
                          "--parent", cls.X, "--body", "b",
                          sess=A_SESS, user=ALICE)
@@ -291,7 +291,7 @@ class TestS4Viewer(unittest.TestCase):
 
     def test_viewer_cannot_write_documents(self):
         """만들기·전이·노트가 전부 같은 문장으로 막힌다 — 경로는 write_doc 한 곳이다."""
-        self._denied("new", "request", "--title", "뷰어의 일", "--summary", "s",
+        self._denied("new", "request", "--any-machine", "--title", "뷰어의 일", "--summary", "s",
                      "--size", "S", "--goal", "g", "--body", "b")
         self._denied("status", self.X, "in-progress", "--note", "n")
         self._denied("note", self.X, "메모")
