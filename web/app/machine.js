@@ -29,7 +29,48 @@ function waitingMachine(r){
      안 실어 준 회차에는 수를 말하지 않는다: 모르는 것을 0 이라고 적는 것은
      「방금부터 기다린다」는 거짓이다. */
   const q = r.quiet_mins == null ? null : +r.quiet_mins;
-  return {machine: want, mins: q};
+  /* 그 컴퓨터가 지금 어느 갈래인가는 **서버가 판정해 실어 준다**
+     (machine_wait_verdict, REQ-20260911-004-62x6). 안 실어 준 회차·모르는
+     컴퓨터에는 갈래가 없고, 그때는 아래 말도 서지 않는다. */
+  const w = r.machine_wait || null;
+  return {machine: want, mins: q,
+          kind: w ? String(w.kind || "") : "",
+          recvMins: w && w.recv_mins != null ? +w.recv_mins : null};
+}
+
+/* 기다림의 까닭 셋 — 한 문장이 덮고 있던 것을 가른다 (REQ-20260911-004-62x6).
+
+   주인 물음 2026-09-11 08:54: 「그래서 저 작업을 맥에서 지금 하고 있는건지
+   안하는건지는 알 수 없는거지?」 그때 그 맥은 5분 전에도 받고 있었고 맡기기만
+   꺼져 있었는데, 카드는 8시간 51분째 「… 을 기다리는 중」이라고만 적었다 —
+   꺼진 컴퓨터와 **같은 문장**이었다. 기다리는 까닭이 셋이면 줄도 셋이어야 한다.
+
+   갈래를 정하는 것은 서버 한 곳이고 여기서는 그 갈래의 말을 고른다. 임계(분)를
+   여기 두지 않는 이유도 같다 — 두 자리에서 재면 한 자리에서 고친 수가 다른
+   자리에서 어긋난다. 갈래가 없으면(모른다) 지금까지의 문장 그대로다. */
+function waitingWords(w){
+  const m = esc(w.machine);
+  const ago = w.recvMins == null ? "" : fmtStall(w.recvMins);
+  if (w.kind === "quiet")
+    return {tail: "그 컴퓨터가 조용합니다",
+            title: `${m} 이 마지막으로 받은 지 ${ago}입니다 — 꺼져 있거나 받지`
+              + ` 못하고 있습니다. 그 컴퓨터를 켜거나 담당 컴퓨터를 바꾸면 시작합니다`};
+  if (w.kind === "off")
+    return {tail: "맡기기가 꺼져 있습니다",
+            /* 「켜져 있다」고 단정하지 않는다 — 받은 적이 적힌 적 없는 컴퓨터도
+               이 갈래로 온다. 대신 마지막으로 받은 때를 곁들여, 켜져 있는데 안
+               집는 것인지 읽는 사람이 스스로 가릴 수 있게 한다. */
+            title: `${m} 은 맡기기가 꺼져 있어 저절로 시작하지 않습니다`
+              + (ago ? ` (마지막으로 받은 지 ${ago})` : "")
+              + ` — 그 컴퓨터의 Settings › 백그라운드 작업에서 켜거나,`
+              + ` 사람이 직접 엽니다`};
+  if (w.kind === "soon")
+    return {tail: "곧 집습니다",
+            title: `${m} 이 받고 있고 맡기기도 켜져 있습니다`
+              + (ago ? ` (마지막으로 받은 지 ${ago})` : "")
+              + ` — 그 컴퓨터가 곧 시작합니다`};
+  return {tail: "", title: `이 요청은 ${m} 에서만 진행합니다`
+            + ` — 그 컴퓨터에서 section9 가 열리면 시작합니다`};
 }
 
 /* 「이 컴퓨터로 바꾸기」는 담당자 본인과 admin 에게만 선다 — 「이 컴퓨터에서
@@ -39,10 +80,11 @@ function waitingMachine(r){
 function waitingRowHTML(r){
   const w = waitingMachine(r);
   if (!w) return "";
-  const row = `<div class="rvpt elsew" title="이 요청은 ${esc(w.machine)} 에서만 진행합니다`
-    + ` — 그 컴퓨터에서 section9 가 열리면 시작합니다">`
+  const say = waitingWords(w);
+  const row = `<div class="rvpt elsew" title="${say.title}">`
     + `<span class="rvcap">담당 컴퓨터</span>${esc(w.machine)} 을 기다리는 중`
-    + (w.mins == null ? "" : ` · ${fmtStall(w.mins)}`) + `</div>`;
+    + (w.mins == null ? "" : ` · ${fmtStall(w.mins)}`)
+    + (say.tail ? ` · ${say.tail}` : "") + `</div>`;
   if (!canTakeover(r)) return row;
   return `<div class="deedrow wordy">` + row
     + `<div class="acts"><button type="button" class="deed"`
@@ -52,12 +94,12 @@ function waitingRowHTML(r){
 }
 
 /* 담당 컴퓨터를 기다리는 점의 툴팁 — 얼굴은 기존 「모름(○)」 그대로이고
-   문장만 참으로 바꾼다. 이 컴퓨터가 아는 것은 「저기서만 한다」뿐이다. */
+   문장만 참으로 바꾼다. 문장은 줄과 **한 벌**이다(waitingWords) — 점과 줄이
+   서로 다른 말을 하면 사람은 둘 중 무엇을 믿을지부터 정해야 한다. */
 function waitingDotHTML(r){
   const w = waitingMachine(r);
   if (!w) return "";
-  return `<span class="livedot off" title="이 요청은 ${esc(w.machine)} 에서만`
-    + ` 진행합니다 — 그 컴퓨터에서 section9 가 열리면 시작합니다"></span>`;
+  return `<span class="livedot off" title="${waitingWords(w).title}"></span>`;
 }
 
 /* 담당 컴퓨터 바꾸기 손잡이 — 문서 화면의 행동 띠, 「담당 바꾸기」 옆에 선다.

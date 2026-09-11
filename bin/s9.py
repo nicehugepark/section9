@@ -21209,6 +21209,52 @@ def machine_recv_level(last_recv, now=None):
     return ""
 
 
+def machine_wait_verdict(machine, user=None, now=None, table=None):
+    """담당 컴퓨터를 기다리는 요청 — 그 컴퓨터는 지금 어느 갈래인가
+    (REQ-20260911-004-62x6).
+
+    「기다리는 중」한 마디는 세 경우를 한 문장으로 덮었다. 실측 2026-09-11:
+    맥미니는 5분 전에도 받고 있었고(켜져 있다) 맡기기만 꺼져 있어 배정된 요청을
+    영영 집지 않았는데, 화면은 8시간 51분째 「기다리는 중」이라고만 적었다 —
+    읽는 사람에게는 컴퓨터가 꺼진 것으로 보였다. 기다림의 까닭이 셋이면 줄도
+    셋이어야 한다.
+
+      "quiet" — 오래 못 받고 있다. 꺼져 있거나 받는 길이 끊겼다.
+      "off"   — 맡기기가 꺼져 있어 저절로 시작하지 않는다. 사람이 직접 연다.
+      "soon"  — 받고 있고 맡기기도 켜져 있다 — 그 컴퓨터가 집는다.
+
+    적힌 것이 없으면 None — **모르는 것을 갈래로 만들지 않는다**. 그때 화면은
+    지금까지처럼 「… 을 기다리는 중」만 적는다.
+
+    갈래를 정하는 것은 여기 하나뿐이고 문장은 화면이 짓는다. 임계(분)를 화면에
+    베껴 두면 한 자리에서 고친 수가 다른 자리에서 어긋난다 — `recv_mins` 를
+    함께 실어 보내는 이유다.
+
+    못 받는 것이 맡기기보다 앞선다: 문서가 그 컴퓨터에 닿지 않으면 맡기기가
+    켜져 있어도 집을 것이 없다."""
+    import time as _time
+    mv = str(machine or "").strip()
+    if not mv:
+        return None
+    v = (table if table is not None else machine_table(user)).get(mv)
+    if not v:
+        return None
+    now = now or _time.time()
+    lr = v.get("last_recv") or ""
+    got = _epoch(lr)
+    mins = int(max(0, now - got) // 60) if got else None
+    takes = v.get("takes")
+    if machine_recv_level(lr, now):
+        kind = "quiet"
+    elif takes is False:
+        kind = "off"
+    elif takes is True and got:
+        kind = "soon"
+    else:
+        return None
+    return {"kind": kind, "recv_mins": mins, "takes": takes}
+
+
 def machine_recv_lines(user=None, now=None):
     """컴퓨터마다 「이름 — 마지막 받음 N분 전」 한 줄씩 (CLI 표시용).
 
@@ -28479,6 +28525,23 @@ def catalog_with_live(stall_win=None):
             r["wait_kind"] = v["wait"]["kind"]
             r["wait_why"] = v["wait"]["why"]
             r["wait_mins"] = v["wait"]["mins"]
+    # 담당 컴퓨터를 기다리는 행에는 **그 컴퓨터의 지금**을 함께 싣는다
+    # (REQ-20260911-004-62x6). 「기다리는 중」만으로는 조용한 컴퓨터와 맡기기가
+    # 꺼진 컴퓨터가 같은 문장으로 보인다 — 뒤쪽은 켜져 있어도 영영 집지 않는다.
+    # 표는 사람마다 한 번만 읽는다(행마다 읽으면 프로필을 폴마다 n번 연다).
+    _here, _tables = current_machine(), {}
+    for r in rows:
+        if r.get("status") != "in-progress":
+            continue
+        _want = str(r.get("needs_machine") or "").strip()
+        if not _want or _want == _here:
+            continue
+        _u = str(r.get("user") or "")
+        if _u not in _tables:
+            _tables[_u] = machine_table(_u or None)
+        _mw = machine_wait_verdict(_want, now=now, table=_tables[_u])
+        if _mw:
+            r["machine_wait"] = _mw
     # 판정 큐 파생 (REQ-20260831-015) — 재료는 위의 행뿐이라 디스크를 다시
     # 열지 않고, 이 함수가 스냅샷 검사 안이라 폭풍에도 세대당 한 번이다.
     review_family(rows)

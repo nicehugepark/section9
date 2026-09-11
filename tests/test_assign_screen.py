@@ -99,13 +99,14 @@ class Screen(unittest.TestCase):
             "assignDoc", "assignPick", "takeoverDoc", "stallHTML",
             "cardHTML",
             # 담당 컴퓨터 (REQ-20260910-017-62x6)
-            "waitingMachine", "waitingRowHTML", "machineBtnHTML", "machineDoc")}
+            "waitingMachine", "waitingWords", "waitingRowHTML",
+            "machineBtnHTML", "machineDoc")}
         cls.mine = "\n".join(cls.parts[n] for n in (
             "originWho", "originBits", "lineageChip", "lineageTell",
             "lineageRowHTML", "leaseElsewhere", "canTakeover",
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
             "assignDoc", "takeoverDoc",
-            "waitingRowHTML", "machineBtnHTML", "machineDoc"))
+            "waitingWords", "waitingRowHTML", "machineBtnHTML", "machineDoc"))
 
     # ---- ① 화면은 내부어를 모른다 ------------------------------------------
     def test_screen(self):
