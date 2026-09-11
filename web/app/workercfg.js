@@ -131,6 +131,12 @@ const WCFG_CAPS = [
   {key: "auto_resume_global_per_hour", name: "모든 요청을 한 시간에 띄우는 횟수", def: "6", unit: "번"},
   {key: "auto_resume_global_per_day", name: "모든 요청을 하루에 띄우는 횟수", def: "20", unit: "번"},
   {key: "auto_resume_rush_reserve", name: "급한 요청에 남겨 둘 자리", def: "2", unit: "개"},
+  // 맡던 손이 사라진 뒤 이어받기까지 (REQ-20260911-005) — 반려의 30초보다 훨씬
+  // 길다. 반려는 방금 사람이 되돌린 자리라 아무도 안 붙어 있는 것이 확실하지만,
+  // 여기는 그 확실함이 없다: 스위트를 15분째 돌리는 세션은 조용하고, 조용한 것과
+  // 사라진 것은 밖에서 같아 보인다.
+  {key: "auto_resume_abandon_sec", name: "맡던 손이 사라진 뒤 기다리는 시간",
+   def: "900", unit: "초"},
 ];
 
 // 이 판이 자리를 내준 키 — `기타: {…}` 와 두 번 서지 않게 userform 이 이 목록을 뺀다.
