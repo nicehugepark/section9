@@ -44,6 +44,14 @@ finally:
 # 시험까지 물들므로, 이 모듈 안에서만 머신을 못박는다.
 mod.current_machine = lambda: "testbox"
 
+# 사용량 캐시는 **이 컴퓨터의 것**이다 (REQ-20260911-012 중 발견).
+# `~/.cache/s9/usage-*.json` 은 머신 공유 파일이고 재시작 판정이 그것을 900초까지
+# 신선한 값으로 받아들인다. 그래서 사람이 방금 계정 창을 연 컴퓨터에서는 기본
+# 계정이 100% 라는 **진짜 사실**이 시험에 새어 들어와, 아무것도 안 바꾼 재시작
+# 시험이 「대상 계정의 한도를 다 썼다」로 실패했다(2026-09-11 실측). 시험은
+# 바깥 사실에 기대면 안 된다 — 이 모듈 안에서는 모른다고 답하게 한다.
+mod.claude_usage = lambda *a, **k: {"ok": False, "error": "test-isolated"}
+
 
 def write_jsonl(entries, name):
     path = os.path.join(TMP, name)

@@ -349,7 +349,11 @@ SECRET_LOCATION_KEYS = ("external_secrets_path",)
 # 인스턴스 저장소에 push 권한이 있는 누구나 남의 머신 워커 권한(편집 자동승인·gh)
 # 과 `s9 code` 기동 인자를 켤 수 있다 — 원격이 값을 밀어 넣을 수 있는 스위치는
 # 원격 코드 실행 스위치다. 그래서 비밀 위치 키와 같은 칸(local.json)으로 간다.
-LOCAL_ONLY_KEYS = ("s9code_args", "worker_worktree")
+LOCAL_ONLY_KEYS = ("s9code_args", "worker_worktree",
+                   # 계정 프로필은 **그 컴퓨터에만** 있다 (REQ-20260911-012):
+                   # 여기서 고른 계정을 추적 파일에 실으면 프로필이 없는 다른
+                   # 컴퓨터가 그 이름으로 뜨려다 빈 자리를 만든다.
+                   "last_account_choice")
 LOCAL_ONLY_PREFIXES = ("auto_resume",)
 
 
@@ -4712,6 +4716,50 @@ def _record_model_choice(owner, model):
     except Exception:
         return done
     return done
+
+
+def _record_account_choice(owner, account):
+    """고른 계정을 **이 컴퓨터의** 최근 선택 칸에 남긴다 (REQ-20260911-012).
+
+    까닭은 실사고다: 계정은 `CLAUDE_CONFIG_DIR` 환경변수로만 정해지는데, 그
+    값을 아는 것은 `s9 code` 래퍼 프로세스의 지역 변수뿐이었다. 창을 닫거나
+    컴퓨터를 껐다 켜면 그 변수와 함께 사라져, 다음 기동이 언제나 기본 계정
+    (`~/.claude`)으로 떨어졌다 — 사람은 토큰을 남겨 두려고 옮겨 둔 계정이
+    아니라 옛 계정에서 다시 쓰게 된다.
+
+    `last_model_choice` 와 같은 갈래다: 정책 칸(`s9 user config`)이 아니라
+    **창 하나의 선택**이 사는 자리이고, 읽는 쪽은 `code_account_choice` 한
+    곳뿐이다. 기본 계정으로 되돌린 것(@home)도 선택이라 그대로 적는다 —
+    안 적으면 복귀가 다음 기동에서 조용히 무효가 된다.
+
+    프로필은 컴퓨터마다 다르므로 이 키는 추적되지 않는 local.json 에 산다
+    (LOCAL_ONLY_KEYS). best-effort: 실패해도 재시작 자체는 진행한다.
+    """
+    if not account or not owner:
+        return []
+    done = []
+    try:
+        cur = user_config(owner) or {}
+        if str(cur.get("last_account_choice") or "") != account:
+            do_user_config_set(owner, "last_account_choice", account,
+                               actor="dashboard account change")
+            done.append("last_account_choice")
+    except Exception:
+        return done
+    return done
+
+
+def code_account_choice(owner=None):
+    """이 컴퓨터에서 마지막으로 고른 계정 — 없으면 빈 문자열.
+
+    읽는 자리를 하나로 둔다(`cmd_code`). 값이 `@home` 이면 기본 계정이라는
+    뜻이고, 그것도 「고른 것」이라 빈 값과 다르다.
+    """
+    try:
+        owner = owner or resolve_user(None)
+        return str((user_config(owner) or {}).get("last_account_choice") or "")
+    except Exception:
+        return ""
 
 
 def _restart_cmd(base_cmd, m):
@@ -9435,6 +9483,9 @@ def wake_session(account=""):
             r["reason"] = (f"{account} 계정으로 새 터미널 창에서 세션을 "
                            f"시작했다 — 창이 뜨면 몇 초 뒤 live")
     r["account"] = account or ACCOUNT_HOME_KEY
+    # 창 띄우기로 고른 계정도 다음 기동까지 간다 (REQ-20260911-012)
+    if r.get("mode") == "spawned" and account:
+        _record_account_choice(resolve_user(None), account)
     return r
 
 
@@ -9636,7 +9687,11 @@ def restart_session(sid8, model="", effort="", account="", stop_workers=False,
             + (["--effort", effort] if effort else [])
         # 고른 모델은 **최근 선택 칸**에 남는다 (REQ-20260901-012) — 종전처럼
         # 사용자 정책(auto_resume_model·s9code_args)을 덮지 않는다.
-        saved = _record_model_choice(b.get("user") or resolve_user(None), model)
+        _owner = b.get("user") or resolve_user(None)
+        saved = _record_model_choice(_owner, model)
+        # 계정도 같이 남긴다 (REQ-20260911-012) — 래퍼의 지역 변수는 창이
+        # 닫히면 사라져, 다음 기동이 기본 계정으로 되돌아갔다.
+        saved += _record_account_choice(_owner, account)
         # 수동 명령도 s9 code 래퍼 경유 — 이 1회 이후로는 재시작 루프가 생겨
         # 대시보드 자동 재시작이 가능해진다 (claude 직접 실행이면 다음에도 수동)
         resume_flag = f" --resume {full}" if resumable else ""
@@ -23904,6 +23959,72 @@ CODE_BOOTSTRAP = (
 )
 
 
+def account_key_of_dir(cfg_dir):
+    """설정 디렉토리 → 계정 키 (REQ-20260911-012).
+
+    키는 `~/.claude-profiles/<이름>` 의 그 **디렉토리 이름**이다 — 재시작·창
+    띄우기가 계정을 부르는 이름이 그것이라, 여기서 다른 이름을 지어내면 두
+    자리가 갈린다. 프로필 밖(기본 자리 등)이면 `@home`.
+    """
+    try:
+        p = os.path.abspath(cfg_dir)
+        base = os.path.abspath(profiles_base())
+        if os.path.dirname(p) == base:
+            return os.path.basename(p)
+    except Exception:
+        pass
+    return ACCOUNT_HOME_KEY
+
+
+def code_account_line(info):
+    """기동 줄에 쓸 계정 한 줄 (REQ-20260911-012) — 없으면 빈 문자열.
+
+    함수로 떼어 둔 까닭은 시험이다: 화면에 그 사실이 보이는가가 이 요청의
+    완료 기준인데, `cmd_code` 를 통째로 돌리면 대시보드까지 뜬다.
+    """
+    src, acct = info.get("source"), info.get("account") or ""
+    if src == "missing":
+        return (f"◌ 직전에 고른 계정 {acct} 의 프로필이 이 컴퓨터에 없다 — "
+                f"기본 계정으로 띄운다")
+    if src == "last":
+        return f"◌ 이 세션의 계정: {acct} (직전에 고른 계정)"
+    if src == "env" and acct != ACCOUNT_HOME_KEY:
+        return f"◌ 이 세션의 계정: {acct}"
+    return ""
+
+
+def code_account_apply(env=None, owner=None):
+    """기동할 계정을 정해 환경에 건다 (REQ-20260911-012) — 판정을 한 자리에 모은다.
+
+    차례는 셋이고 위가 언제나 이긴다:
+      1. 사람이 직접 준 `CLAUDE_CONFIG_DIR` — 손으로 적은 것을 덮지 않는다.
+      2. 이 컴퓨터에서 마지막으로 고른 계정(`last_account_choice`).
+      3. 기본 계정(`~/.claude`).
+
+    2 에 적힌 프로필이 이 컴퓨터에 없으면 **막지 않는다**: 기본 계정으로 뜨되
+    그 사실을 돌려줘 기동 줄이 말하게 한다. 다른 컴퓨터에서 고른 값이 동기화로
+    흘러들어도 여기서는 없는 자리이기 때문이다.
+
+    반환: {"account": 표시할 이름, "source": "env"|"last"|"home"|"missing",
+           "cfg_dir": 실제 걸린 경로}
+    """
+    env = os.environ if env is None else env
+    cur = (env.get("CLAUDE_CONFIG_DIR") or "").strip()
+    if cur:
+        return {"account": account_key_of_dir(cur),
+                "source": "env", "cfg_dir": cur}
+    want = code_account_choice(owner)
+    if not want or want == ACCOUNT_HOME_KEY:
+        return {"account": ACCOUNT_HOME_KEY, "source": "home",
+                "cfg_dir": account_home_dir()}
+    prof = _profile_dir(want)
+    if not os.path.isdir(prof):
+        return {"account": want, "source": "missing",
+                "cfg_dir": account_home_dir()}
+    env["CLAUDE_CONFIG_DIR"] = prof
+    return {"account": want, "source": "last", "cfg_dir": prof}
+
+
 def code_base_cmd(claude_args):
     """지금 정책으로 만든 claude 기동 인자 (REQ-20260901-017 R2a).
 
@@ -24731,6 +24852,10 @@ def cmd_code(args):
         # 정식 진입 마커 (REQ-032): 훅이 바인딩에 entry=code 기록 → 채팅 자동
         # 대상 선택에서 이 세션이 최우선이 된다
         os.environ["S9_ENTRY"] = "code"
+        # 어느 계정으로 뜨는가 (REQ-20260911-012) — 직전에 고른 계정을 들고
+        # 간다. 여기서 os.environ 을 고치므로 아래 첫 실행(env=None)이 그대로
+        # 물려받는다.
+        _acct = code_account_apply()
         # 세션의 프로젝트 (REQ-20260906-052): 세션 id 는 claude 가 만들므로 여기서는
         # 환경으로 넘기고, SessionStart 훅(s9-audit-session)이 바인딩 project 로 옮긴다.
         _proj = code_project(getattr(args, "project", None))
@@ -24741,6 +24866,9 @@ def cmd_code(args):
             return
         if _proj:
             print(f"◌ 이 세션의 프로젝트: {_proj} — 프롬프트가 요청 문서가 되면 여기에 붙는다")
+        _aline = code_account_line(_acct)
+        if _aline:
+            print(_aline)
         # 이 래퍼가 든 코드의 나이를 남긴다 (REQ-20260901-017 R3) — 서버가
         # 그 지문으로 「창 다시 열기 필요」를 화면에 실을 수 있다.
         wrapper_stamp_sweep()
@@ -24753,7 +24881,12 @@ def cmd_code(args):
         # exec 시 기본값으로 복원되어 claude의 Ctrl+C 처리에 영향 없음).
         import signal as _signal
         _signal.signal(_signal.SIGINT, lambda *_a: None)
-        cmd, env, acct = list(base_cmd), None, ""
+        # `acct` 를 빈 값이 아니라 **지금 떠 있는 계정**으로 시작한다
+        # (REQ-20260911-012) — 모델만 바꾸는 재시작이 계정을 잃지 않게.
+        cmd, env = list(base_cmd), None
+        acct = _acct["account"] \
+            if (_acct["source"] in ("env", "last")
+                and _acct["account"] != ACCOUNT_HOME_KEY) else ""
         while True:
             subprocess.run(cmd, env=env)
             m = _consume_restart_marker()
