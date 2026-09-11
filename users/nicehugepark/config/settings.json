@@ -4,7 +4,7 @@
  "stream_mirror": "on",
  "timezone": "Asia/Seoul",
  "last_model_choice": "fable",
- "machine_fp": "t8rc",
+ "machine_fp": "2n7g",
  "jira_site": "https://nicehugepark.atlassian.net",
  "jira_email": "nicehugepark@gmail.com",
  "pref_review": "리드가 스스로 판정할 수 있는 review(설계 권고 채택·기계 검증 끝난 구현·정책 기본값)는 사람에게 넘기지 말고 리드가 직접 done/반려로 닫는다 — 사람에게 남기는 것은 취향·방향·외부 사실뿐 (주인 지시 2026-09-09 13:03)",
