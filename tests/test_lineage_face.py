@@ -91,18 +91,21 @@ class TheCreatorHasOneName(unittest.TestCase):
     # A4 — 같은 말을 두 번 하지 않는다
     def test_a4_the_tooltip_does_not_repeat_the_face(self):
         tell = self.body("lineageTell")
-        self.assertIn("만든이", tell, "손 위의 글의 낱말이 카드와 다르다")
+        self.assertIn("만든 사람", tell, "손 위의 글의 낱말이 카드와 다르다")
         self.assertNotIn("originBits(", tell,
                          "꼬리에 기원을 통째로 붙이면 "
                          "「만든이 에이전트 designer (에이전트 designer)」가 된다")
 
-    # A5 — 라벨은 두 화면에서 같은 한 낱말이다
+    # A5 — 라벨은 두 화면에서 같은 한 낱말이고, 「맡은 사람」과 짝이다
+    #      (2차 반려 2026-09-11: "만든이, 맡은 사람 같은 사람을 표현하는게
+    #       두 가지인게 이상하지 않나?")
     def test_a5_one_word_on_both_screens(self):
         for fn in ("lineageChip", "lineageRowHTML"):
             b = self.body(fn)
-            self.assertIn("만든이", b, f"{fn} 의 라벨이 「만든이」가 아니다")
-            self.assertNotIn("만든 사람", b,
-                             f"{fn} 가 같은 것을 다른 낱말로 부른다")
+            self.assertIn("만든 사람", b,
+                          f"{fn} 의 라벨이 「맡은 사람」과 짝이 아니다")
+        row = self.body("lineageRowHTML")
+        self.assertIn("맡은 사람", row, "짝이 되는 낱말이 사라졌다")
 
     # A6 — 잘린 채로 남지 않는다: 재서 빼는 자리가 있다
     def test_a6_whole_or_absent_is_measured(self):

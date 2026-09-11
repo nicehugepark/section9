@@ -42,7 +42,7 @@ CSS = os.path.join(os.path.dirname(HERE), "web", "css", "actions.css")
 INNER = ("lease", "claim", "takeover", "assignee", "리스", "클레임")
 
 # 화면에 **서야 하는** 낱말 (ux-writer·tech-writer·translator 판정본).
-WORDS = ("만든이", "맡은 사람", "사람이 직접", "에이전트",
+WORDS = ("만든 사람", "맡은 사람", "사람이 직접", "에이전트",
          "다른 컴퓨터", "에서 진행 중", "이 컴퓨터에서 이어서 하기", "담당 바꾸기",
          "백그라운드 작업", "리드")
 

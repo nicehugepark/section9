@@ -390,7 +390,7 @@ function stallState(r){
    `assignee` 는 사람이 터미널에 치는 낱말이 아니라 이 코드가 자기끼리 쓰는
    말이다 — 화면을 닫고 그 일을 하려면 사람이 치는 것은 `s9 assign` 하나뿐이고,
    그것마저 이 제품이 스스로 지은 이름이라 원어 보존 조항(pull·push)이 걸리지
-   않는다. 그래서 화면에는 「담당」·「만든이」·「이 컴퓨터에서 이어서 하기」가 선다.
+   않는다. 그래서 화면에는 「담당」·「만든 사람」·「이 컴퓨터에서 이어서 하기」가 선다.
 
    **역할 이름은 그대로 둔다** — `designer`·`ux-writer` 는 이 저장소의 문서
    앞머리(`agents:`)와 위임 지시문에 같은 글자로 박힌 이름이라, 화면에서만
@@ -467,10 +467,14 @@ function lineageChip(r){
      걸려 「만…」 한 글자만 남았다 — 라벨의 부스러기라 아무 뜻이 없고, 사람 눈에는
      고장으로 보인다(4배 캡처로 잡았다). */
   return `<span class="lin" title="${esc(lineageTell(r))}">`
-    /* 라벨은 남기고 **줄인다** (REQ-20260911-016, ux-writer): 없애면 배지의
-       이름과 나란히 선 이름 하나가 "같은 사람의 딴 이름인가"로 읽힌다. 다섯
-       글자(「만든 사람」)가 먹던 고정 폭이 잘림의 절반이었다. */
-    + `<span class="lincap">만든이</span>`
+    /* 라벨은 남긴다 (REQ-20260911-016, ux-writer): 없애면 배지의 이름과 나란히
+       선 이름 하나가 "같은 사람의 딴 이름인가"로 읽힌다.
+       **낱말은 「맡은 사람」과 짝이다** (같은 요청 2차, 주인 지적 2026-09-11
+       22:38: "만든이, 맡은 사람 같은 사람을 표현하는게 두 가지인게 이상하지
+       않나?"). 한 번은 폭을 벌려 보려고 「만든이」로 줄였는데, 같은 갈래(사람)를
+       두 꼴로 부르는 값이 그 폭보다 컸다 — 폭은 라벨을 깎아서가 아니라 재서
+       푼다(`fitLineage`). */
+    + `<span class="lincap">만든 사람</span>`
     + `<span class="linv">${esc(who)}</span></span>`;
 }
 // 손 위의 글과 낭독기가 함께 읽는 한 문장 — 조각이 줄인 것을 여기서 다 말한다.
@@ -482,7 +486,7 @@ function lineageTell(r){
      두 이름으로 불렸다. 사람이 만든 문서에서는 그 계정이 곧 만든이다. */
   const face = (o && o !== "human") ? originFace(r) : docCreator(r);
   const bits = [];
-  if (face) bits.push(`만든이 ${face}`);
+  if (face) bits.push(`만든 사람 ${face}`);
   if (owner) bits.push(`맡은 사람 ${owner}`);
   /* 꼬리는 **얼굴이 아직 말하지 않은 것**만 붙인다 (REQ-20260911-016).
      종전에는 `originBits` 를 통째로 붙여, 얼굴을 한 자리에서 짓게 된 뒤로는
@@ -501,9 +505,10 @@ function lineageRowHTML(r){
   if (!r || r.type !== "request") return "";
   const creator = docCreator(r), owner = String(r.user || "");
   const cells = [];
-  /* 낱말은 카드와 **같은 하나**다 (REQ-20260911-016): 같은 것을 두 화면이
-     「만든 사람」과 「만든이」로 나눠 부르면 사람이 둘을 다른 것으로 읽는다. */
-  if (creator) cells.push(`<span class="lincap">만든이</span>`
+  /* 낱말은 카드와 **같은 하나**이고, 「맡은 사람」과 **짝**이다
+     (REQ-20260911-016). 한 화면에서 같은 갈래를 「만든이」와 「맡은 사람」으로
+     나눠 부르면 사람이 둘을 다른 것으로 읽는다. */
+  if (creator) cells.push(`<span class="lincap">만든 사람</span>`
     + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
   if (owner) cells.push(`<span class="lincap">맡은 사람</span>`
     + `<span class="badge" style="--ah:${tagHue(owner)}">${badgeFace(owner)}</span>`);
@@ -511,12 +516,11 @@ function lineageRowHTML(r){
      따로 세우면 라벨 없는 조각(「리드 · REQ-014 처리 중」)이 줄 끝에 떠서,
      그것이 누구의 무엇인지 말해 주는 것이 사라진다. 만든 계정과 그것을 쥔
      손은 한 사실의 두 겹이니 한 칸이 맞다. 계정이 없는 옛 문서에서만 카드가
-     쓰는 그 낱말(「만든이」)로 홀로 선다 — 두 화면이 같은 값을 다르게 부르지
-     않게 한다. 그 낱말은 이제 두 화면 모두의 낱말이다(REQ-20260911-016). */
+     쓰는 그 낱말로 홀로 선다 — 두 화면이 같은 값을 다르게 부르지 않게 한다. */
   const ob = originBits(r, true);
   if (ob.length){
     if (creator) cells[0] += ` <span class="linorg">(${ob.join(" · ")})</span>`;
-    else cells.push(`<span class="lincap">만든이</span>${ob.join(" · ")}`);
+    else cells.push(`<span class="lincap">만든 사람</span>${ob.join(" · ")}`);
   }
   if (!cells.length) return "";
   return `<div class="lineage">`
