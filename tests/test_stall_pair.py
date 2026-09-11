@@ -287,6 +287,25 @@ function liveBlockers(r){
 """
 
 
+def _now_stamps(rows):
+    """픽스처의 `@-N` 을 지금으로부터 N초 전의 ISO 로 — 리스 갈래를 재려면
+    벽시계와의 거리가 뜻이지 날짜가 뜻이 아니다."""
+    import copy
+    import datetime
+    out = copy.deepcopy(rows)
+    now = datetime.datetime.now().astimezone()
+    for r in out:
+        l = r.get("lease")
+        if not isinstance(l, dict):
+            continue
+        for k in ("since", "renewed"):
+            v = str(l.get(k) or "")
+            if v.startswith("@-"):
+                l[k] = (now - datetime.timedelta(seconds=int(v[2:]))).isoformat(
+                    timespec="seconds")
+    return out
+
+
 def _const(src, name):
     """`const NAME = …;` 선언 한 덩어리를 원문 그대로 떠 온다 (여러 줄 허용)."""
     m = re.search(r"^const %s\s*=[\s\S]*?;\n" % re.escape(name), src, re.M)
@@ -365,7 +384,9 @@ class StallRendersTheSame(unittest.TestCase):
             g("tokensLineHTML"),   # REQ-20260907-009 — cardHTML 이 부른다
             g("xrefRowHTML"),      # REQ-20260909-064 — 제목 아래의 밖의 서비스 참조 줄, 없으면 render 가 멎는다
             g("cardHTML"),
-            "CAT = %s;" % json.dumps(rows),
+            # 리스는 벽시계를 본다 — `@-N`(N초 전)을 렌더 직전에 실제 시각으로
+            # 바꾼다. 고정 문자열로 적으면 내일 이 시험이 다른 갈래를 본다.
+            "CAT = %s;" % json.dumps(_now_stamps(rows)),
             # 눌린 직후의 기억 상태를 세우는 자리 — 서버 왕복 없이 그 얼굴만 본다
             pre,
             # 문서 화면이 짓는 자리와 **같은 표현식** — 조각이 둘이 된 뒤로도
@@ -437,6 +458,17 @@ class StallRendersTheSame(unittest.TestCase):
          "title": "중단해 뒀다", "user": "u",
          "stopped": {"at": 0, "by": "u", "age": 600},
          "stoppable": {"kind": "idle"}},
+        # 저쪽이 쥐고 **도는** 것 — 「진행 중」이 참인 자리 (REQ-20260911-006)
+        {"id": "REQ-Q", "type": "request", "status": "in-progress",
+         "title": "저쪽이 돈다", "user": "u",
+         "lease": {"machine": "OTHER-PC", "user": "u",
+                   "since": "@-120", "renewed": "@-120"}},
+        # 저쪽이 **잡아만 두고 식은** 것 — 「진행 중」이 거짓인 자리
+        {"id": "REQ-R", "type": "request", "status": "in-progress",
+         "title": "저쪽이 잡아만 뒀다", "user": "u", "stalled_mins": 19,
+         "updated": "2026-08-29T16:45:00+09:00",
+         "lease": {"machine": "OTHER-PC", "user": "u",
+                   "since": "@-1140", "renewed": "@-1140"}},
         # 붙어 있으나 조용한 것 — 손길 사실은 줄이 아니라 신원 문장으로 간다
         {"id": "REQ-N", "type": "request", "status": "in-progress",
          "title": "붙어 있는데 조용하다", "user": "u", "stall_state": "attached",
@@ -517,13 +549,36 @@ class StallRendersTheSame(unittest.TestCase):
         self.assertIn("data-restart=", out["REQ-M"]["belt"],
                       "중단해 둔 카드의 ↻ 까지 걷었다")
 
+
+    # ---------- 식은 리스를 「진행 중」이라 부르지 않는다 (REQ-20260911-006) ----------
+    def test_a_cold_lease_is_not_called_running(self):
+        """주인 물음 2026-09-11 10:26: 「멈춤 1이 있는데 진짜인가?」
+
+        그때 카드는 「다른 컴퓨터 … 에서 진행 중 · 19분 전」이라 적었는데 열
+        머리는 같은 카드를 「멈춤 1」로 셌다 — 한 카드가 두 말을 했다. 실제로는
+        그 세션이 리스를 잡기만 하고 한 번도 갱신하지 않은 채 사라진 자리였다.
+        잡은 것은 사실이지만 진행 중은 사실이 아니다.
+        """
+        out = self.render(self.ROWS)
+        warm, cold = out["REQ-Q"]["row"], out["REQ-R"]["row"]
+        self.assertIn("에서 진행 중", warm, "도는 쪽에서 「진행 중」이 사라졌다")
+        self.assertNotIn("에서 진행 중", cold,
+                         "잡아만 두고 식은 리스를 「진행 중」이라 부른다 — "
+                         "열 머리는 같은 카드를 「멈춤」으로 센다")
+        self.assertIn("진전 없음", cold, "식었다는 사실을 말하지 않는다")
+        self.assertIn("OTHER-PC", cold, "누가 잡아 두었는지 말하지 않는다")
+
+
     # 진행 축이 세울 수 있는 캡션은 넷뿐이다 (규칙 1·2). 「진행 중」·「담당」·
     # 「손길」 캡션이 이 목록에 없는 것이 이 개정의 전부다.
     # 「담당 컴퓨터」는 REQ-20260910-017 이 세운 넷째 갈래다 — 그때 이 목록에
     # 못 들어온 것은 픽스처에 needs_machine 행이 없어 한 번도 안 그려졌기
     # 때문이고, REQ-20260911-002 가 그 행을 세우며 드러났다. 다른 축이 아니라
     # 같은 축의 넷째 얼굴이라(사다리 안에서 자기 차례에 선다) 자격이 있다.
-    AXIS_CAPS = ("중단", "멈춤", "오래 걸림", "담당 컴퓨터")
+    # 「다른 컴퓨터」는 사다리 맨 위(elsewhereRowHTML)다 — 저쪽이 리스를 쥔
+    # 카드. 이것도 픽스처에 리스 행이 없어 한 번도 안 그려졌고,
+    # REQ-20260911-006 이 그 행을 세우며 드러났다.
+    AXIS_CAPS = ("중단", "멈춤", "오래 걸림", "담당 컴퓨터", "다른 컴퓨터")
     DEAD_CAPS = ("진행 중", "담당", "손길", "맡은 손")
 
     @staticmethod

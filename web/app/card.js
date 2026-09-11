@@ -549,10 +549,24 @@ function elsewhereRowHTML(r){
   const e = leaseElsewhere(r);
   if (!e) return handoffPendingHTML(r);
   const when = e.mins < 1 ? "방금" : `${e.mins}분 전`;
-  const row = `<div class="rvpt elsew" title="이 요청은 ${esc(e.machine)} 에서`
-    + ` ${esc(when)}까지 움직였습니다 — 이 컴퓨터에서는 진행을 볼 수 없습니다">`
-    + `<span class="rvcap">다른 컴퓨터</span>${esc(e.machine)} 에서 진행 중`
-    + ` · ${esc(when)}</div>`;
+  /* **식은 리스를 「진행 중」이라 부르지 않는다** (REQ-20260911-006, 주인 물음
+     2026-09-11 10:26: 「멈춤 1이 있는데 진짜인가?」). 그때 카드는 「다른 컴퓨터
+     … 에서 진행 중 · 19분 전」이라 적었는데 열 머리는 같은 카드를 「멈춤 1」로
+     셌다 — 한 카드가 두 말을 했다. 실제로는 그 세션이 리스를 잡기만 하고 한 번도
+     갱신하지 않은 채 사라진 자리였다(since == renewed). 잡은 것은 사실이지만
+     **진행 중은 사실이 아니다**: 일하는 세션은 진전을 쓸 때마다 갱신한다.
+     그래서 말을 갈래에 맞춘다 — 진전이 있으면 「진행 중」, 없으면 「잡아 둔 채
+     N분째 진전이 없습니다」. 그 둘을 가르는 초는 열 머리의 멈춤 수가 쓰는
+     그 초(SLOW_WIN ↔ 서버 STALLED_WIN)라, 이제 둘이 같은 말을 한다. */
+  const row = e.working
+    ? `<div class="rvpt elsew" title="이 요청은 ${esc(e.machine)} 에서`
+      + ` ${esc(when)}까지 움직였습니다 — 이 컴퓨터에서는 진행을 볼 수 없습니다">`
+      + `<span class="rvcap">다른 컴퓨터</span>${esc(e.machine)} 에서 진행 중`
+      + ` · ${esc(when)}</div>`
+    : `<div class="rvpt elsew" title="${esc(e.machine)} 가 이 요청을 잡아 두었지만`
+      + ` ${esc(when)} 이후로 진전이 없습니다 — 이 컴퓨터로 가져올 수 있습니다">`
+      + `<span class="rvcap">다른 컴퓨터</span>${esc(e.machine)} 가 잡아 둔 채`
+      + ` ${esc(when)}부터 진전 없음</div>`;
   if (!canTakeover(r)) return row;
   /* 저쪽이 아직 진전을 내는 중이면 손잡이 대신 사실 한 줄 (REQ-20260909-010).
      서버(/api/claim_takeover)도 같은 초로 409 를 낸다 — 화면이 숨기는 것이
