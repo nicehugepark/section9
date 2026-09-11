@@ -135,7 +135,8 @@ function repoPanelHTML(){
       ${gitHandRowHTML("pull")}${gitHandRowHTML("push")}</table>
     <div class="gafter" id="g-after"></div>
     <div class="cfg-h gname">문서 동기화</div>
-    <table class="metatbl wtbl grepo">${gitSyncModeRowHTML()}</table>`;
+    <table class="metatbl wtbl grepo">${gitSyncModeRowHTML()}</table>
+    ${syncCapsHTML()}`;
 }
 
 /* 문서 동기화 모드 (REQ-20260908-068) — 값은 이 저장소 하나의 것(`.s9-sync`)이라
@@ -165,6 +166,86 @@ function gitSyncModeRowHTML(){
         <div class="wmsg hid" role="status" aria-live="polite"
              id="g-syncmode-msg"></div></div>
       <div class="wfact" id="g-syncmode-fact"></div></td></tr>`;
+}
+
+/* 동기화가 잇달아 실패할 때 (REQ-20260911-005) — 자리는 모드 바로 아래다.
+   사람이 이 값을 찾을 때 떠올리는 것은 「계정」이 아니라 「동기화」이고,
+   찾는 자리에 없는 설정은 없는 것과 같다(이 요청이 없애려는 증상 그 자체다).
+
+   **다만 저장되는 자리가 위 행과 다르다.** 모드는 이 저장소 하나의 값
+   (`.s9-sync`)이고 이 둘은 내 계정의 값(`user config`)이다 — 한 표에 저장
+   자리가 둘이면 그것을 안 적는 쪽이 거짓말이라, 뜻 줄이 행마다 말한다.
+   부품·손버릇은 「백그라운드 작업」의 한도 행 그대로다: 숫자 칸 하나,
+   빈 칸 = 기본값, 즉시 저장, 결과는 그 행에서. */
+const SYNC_CAPS = [
+  {key: "sync_alert_after", name: "잇달아 실패하면 알리기", def: "3", unit: "번",
+   mean: "동기화가 이만큼 잇달아 실패하면 수신함과 화면의 칩으로 한 번 알립니다. "
+       + "이 값은 내 계정에만 적용됩니다."},
+  {key: "sync_request_after", name: "잇달아 실패하면 요청으로 세우기",
+   def: "10", unit: "번",
+   mean: "알림만으로 고쳐지지 않을 때, 이만큼 잇달아 실패하면 요청 문서를 하나 "
+       + "세워 사람이 놓치지 않게 합니다. 이 값은 내 계정에만 적용됩니다."},
+];
+
+// 이 판이 자리를 내준 user config 키 — 「내 계정」의 `그 밖의 값` 이 이 목록을 뺀다.
+const SYNC_CAP_KEYS = SYNC_CAPS.map(r => r.key);
+
+// 값을 적을 계정 — admin 이 남의 것을 볼 때는 그 이름이다(`as`).
+const syncCapUser = () => (typeof asUser !== "undefined" && asUser) || getMe();
+const syncCapCfg = () => {
+  const n = syncCapUser();
+  const u = n ? (window.__users || []).find(x => x.name === n) : null;
+  return (u && u.config) || null;      // null = 계정을 못 찾았다 (미등록 포함)
+};
+
+function syncCapsHTML(){
+  const cfg = syncCapCfg();
+  if (!cfg)
+    return `<div class="path secnote">이 OS 계정은 미등록이라 알림 횟수를 `
+      + `정할 자리가 없습니다 — 계정을 등록하면 여기에 섭니다.</div>`;
+  return `<table class="metatbl wtbl grepo">${SYNC_CAPS.map(r => `
+    <tr class="wrow grow" data-gcap="${esc(r.key)}">
+      <td><label class="wlab" for="g-${esc(r.key)}">${esc(r.name)}</label>
+          <span class="wkey">${esc(r.key)}</span></td>
+      <td><div class="wctl"><input class="uf" id="g-${esc(r.key)}" style="width:80px"
+             inputmode="numeric" placeholder="${esc(r.def)}"
+             value="${esc(cfg[r.key] ?? "")}"> ${esc(r.unit)}</div>
+        <div class="wsay">
+          <div class="wmean" id="g-${esc(r.key)}-why">${esc(r.mean)} 비우면 ${
+            esc(r.def)}${esc(r.unit)}입니다.</div>
+          <div class="wmsg hid" role="status" aria-live="polite"
+               id="g-${esc(r.key)}-msg"></div></div>
+        <div class="wfact"></div></td></tr>`).join("")}</table>`;
+}
+
+/* 저장은 **즉시, 그 행에서** — 일괄 저장 버튼을 두지 않는 까닭은 workercfg.js
+   가 적은 그대로다(렌더 시점의 낡은 값이 방금 고른 값을 덮는 사고). 서버가
+   거절하면 손잡이를 이전 값으로 되돌린다. */
+async function syncCapSet(el){
+  const key = el.closest("[data-gcap]").dataset.gcap;
+  const r = SYNC_CAPS.find(x => x.key === key);
+  const cfg = syncCapCfg();
+  if (!r || !cfg) return;
+  const was = String(cfg[key] ?? "");
+  const val = el.value.trim();
+  if (val === was) return;
+  // 숫자만 받는다 — 조용히 기본값으로 되돌리지 않고 그 자리에서 말한다.
+  if (val && !/^\d+$/.test(val)){
+    el.value = was;
+    gitSay(key, "✕ 숫자만 적어 주세요. 예: " + r.def, "bad");
+    return;
+  }
+  gitSay(key, "저장하는 중…");
+  const res = await postJSONRaw("/api/user/config",
+    {name: syncCapUser(), key, value: val});
+  if (!res.ok){
+    el.value = was;                   // 화면이 바뀌었는데 서버는 아니면 거짓말이다
+    gitSay(key, "✕ " + res.error, "bad");
+    return;
+  }
+  if (val === "") delete cfg[key]; else cfg[key] = val;
+  gitSay(key, val ? `${val}${r.unit} 로 바꿨습니다.`
+                  : `기본값(${r.def}${r.unit})으로 되돌렸습니다.`);
 }
 
 function gitSyncModePaint(sc){
@@ -512,8 +593,10 @@ function wireRepoPanel(host){
   // 방금 오간 것). 손잡이를 조각마다 다시 물리면 한 벌이 남는다 — 위임 하나로
   // 받는다.
   host.addEventListener("change", ev => {
-    const sel = evEl(ev.target)?.closest("#g-syncmode");
-    if (sel) gitSyncModeSet(sel);
+    const el = evEl(ev.target);
+    const sel = el?.closest("#g-syncmode");
+    if (sel) return void gitSyncModeSet(sel);
+    if (el?.closest("[data-gcap]")) syncCapSet(el);
   });
   host.addEventListener("click", async ev => {
     // 대상에게 직접 묻지 않는다 — 텍스트 노드가 오면 `.closest` 가 없어 이

@@ -202,7 +202,10 @@ class WorkerSettings(unittest.TestCase):
                 self.assertIn(f'"{word}"', self.wc[i:i + 300],
                               f"화면이 {word} 를 켜짐으로 읽지 않는다")
         with self.subTest("fact_line_stands_only_while_it_is_on"):
-            self.assertIn("r.fact && wcfgOn(cfg[r.key])", self.wc,
+            # 켜짐 판정은 `wcfgRowOn` 한 자리를 지난다 (REQ-20260911-005) —
+            # 끄는 스위치(`defOn`)가 생기면서 「빈 값 = 끔」이 모든 행의 규칙이
+            # 아니게 됐다. 사실 줄도 그 한 자리를 물어야 한다.
+            self.assertIn("r.fact && wcfgRowOn(r, cfg)", self.wc,
                           "사실 줄은 켜져 있는 동안에만 선다")
             self.assertIn("지금 켜져 있습니다", self.words)
         with self.subTest("weight_is_ink_not_a_colour_field"):

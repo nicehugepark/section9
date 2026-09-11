@@ -83,6 +83,14 @@ const JIRA_SWITCH = {
          off: "껐습니다 — 이제 Jira 와 주고받지 않습니다. 적어 둔 값은 지우지 않습니다."},
 };
 
+/* 이 판이 자리를 내준 user config 키 — 「내 계정」의 `그 밖의 값` 이 이 목록을
+   뺀다 (REQ-20260911-005). 손으로 적은 목록이 아니라 **행 목록에서 받아 온다**:
+   여기 행이 늘면 제외도 저절로 는다(「백그라운드 작업」의 `WCFG_KEYS` 와 같은 길).
+   안 빼면 같은 값이 제 행과 그 표에 두 번 서고, 어느 쪽이 참인지 화면이 말하지
+   못한다 — 이 목록이 생기기 전에는 넷이 실제로 두 번 서 있었다. */
+const JIRA_CFG_KEYS = JIRA_ROWS.filter(r => r.kind === "config")
+  .map(r => r.key).concat(JIRA_SWITCH.key);
+
 /* 프로젝트 연동 절의 뜻 한 줄 — 행이 아니라 절이 되었으므로 뜻도 절의 머리에 선다. */
 const JIRA_LINK_MEAN =
   "우리 프로젝트 하나에 Jira 프로젝트 하나(project key, 예: ABC)를 짝짓습니다. "

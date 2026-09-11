@@ -102,7 +102,25 @@ const WCFG_SWITCHES = [
        + "나누지 않고 여기서 함께 일합니다.",
    said: {on: "켰습니다 — 고친 내용은 작업이 끝난 뒤에 보입니다.",
           off: "껐습니다 — 고친 내용이 바로 보입니다."}},
+  /* `free` = **맡기기 스위치에 딸리지 않는다** (REQ-20260911-005). 백그라운드
+     작업을 안 맡겨도 `s9 code` 로 여는 창은 이 값을 쓴다 — 잠그면 멀쩡한
+     설정을 못 고친다(`s9code_args` 가 `needs` 를 안 단 그 까닭 그대로).
+     자리는 그래서 「일하는 범위」가 아니라 「내 창」이다. */
+  {key: "code_autoupdate", name: "창을 열 때 claude 새로 받기", free: true,
+   /* **비어 있으면 켬이다** — 이 키는 끄는 스위치(opt-out)라 값이 없을 때 코드는
+      받으러 간다. 다른 행의 규칙(`비어 있으면 끔`)을 그대로 쓰면 화면은 「끔」이라
+      적는데 창을 열 때마다 업데이트를 확인한다 — 화면이 거짓말을 한다. */
+   defOn: true,
+   on: "켬 — 하루 한 번 확인하고 새 것이 있으면 받습니다",
+   off: "끔 — 지금 깔린 것을 그대로 씁니다",
+   mean: "s9 code 로 창을 열 때 claude 명령의 새 판이 있는지 하루 한 번 "
+       + "물어봅니다. 못 받아도 창은 그대로 열립니다.",
+   said: {on: "켰습니다 — 창을 열 때 하루 한 번 확인합니다.",
+          off: "껐습니다 — 지금 깔린 claude 를 그대로 씁니다."}},
 ];
+
+// 맡기기에 딸리는 스위치만 — 머리(맡기기)와 `free` 는 빠진다.
+const wcfgGated = WCFG_SWITCHES.filter(r => !r.master && !r.free);
 
 /* 자유 문자열 둘. 값 자체가 기계 글자라 한국어 이름만으로는 무엇을 넣을지
    알 수 없다 — 키 이름이 곧 설명의 절반이다. */
@@ -154,6 +172,14 @@ let wcfgCapsOpen = false;   // 한도 여덟을 폈나 (판을 다시 그려도 
 const wcfgOn = v => v === true
   || ["on", "true", "1", "yes"].includes(String(v ?? "").trim().toLowerCase());
 
+/* 끄는 스위치(`defOn`)의 판정 — **서버와 같은 목록**이다(`_maybe_update_claude`
+   가 보는 `off`·`0`·`false`). 값이 없으면 켬이다. 이것을 `wcfgOn` 의 반대로
+   적으면 값이 없는 계정에서 화면은 「끔」, 코드는 켬이 된다. */
+const wcfgOff = v => v === false
+  || ["off", "0", "false"].includes(String(v ?? "").trim().toLowerCase());
+const wcfgRowOn = (r, cfg) =>
+  r.defOn ? !wcfgOff(cfg[r.key]) : wcfgOn(cfg[r.key]);
+
 /* 한 행 — 첫 칸은 **사람 이름 + 실제 키 이름**이다. 키를 지우면 터미널에서
    `auto_resume_gh` 를 켠 사람이 화면에서 그 글자를 눈으로 찾지 못한다(Ctrl+F
    로도 안 걸린다). 그게 이 요청이 없애려는 증상 그 자체다. */
@@ -169,7 +195,7 @@ function wcfgRow(key, name, ctlHTML, mean){
 }
 
 function wcfgSwitchHTML(r, cfg){
-  const on = wcfgOn(cfg[r.key]);
+  const on = wcfgRowOn(r, cfg);
   return wcfgRow(r.key, r.name,
     `<select class="uf" id="w-${esc(r.key)}" style="width:auto">
        <option value="on"${on ? " selected" : ""}>${esc(r.on)}</option>
@@ -220,12 +246,13 @@ function workerCfgHTML(u){
     <div class="path secnote wnote" id="w-offnote" hidden>맡기기를 끄면 `
     + `아래 값은 쓰이지 않습니다 — 지우지는 않습니다.</div>
     <table class="metatbl wtbl">
-      ${WCFG_SWITCHES.slice(1).map(r => wcfgSwitchHTML(r, cfg)).join("")}</table>
+      ${wcfgGated.map(r => wcfgSwitchHTML(r, cfg)).join("")}</table>
     <div class="cfg-h">모델</div>
     <table class="metatbl wtbl">
       ${WCFG_TEXTS.filter(r => r.needs).map(r => wcfgTextHTML(r, cfg)).join("")}</table>
     <div class="cfg-h">내 창</div>
     <table class="metatbl wtbl">
+      ${WCFG_SWITCHES.filter(r => r.free).map(r => wcfgSwitchHTML(r, cfg)).join("")}
       ${WCFG_TEXTS.filter(r => !r.needs).map(r => wcfgTextHTML(r, cfg)).join("")}</table>
     <div class="cfg-h">한도</div>
     <div class="path wnote" id="w-capsfact">${esc(wcfgCapsSay(cfg))}</div>
@@ -309,7 +336,7 @@ function wireWorkerCfg(host, u){
     /* `s9code_args` 는 이 스위치에 딸리지 않는다 — 백그라운드 작업을 안 맡겨도
        `s9 code` 로 여는 창은 그 인자를 쓴다. 잠그면 멀쩡한 설정을 못 고친다.
        그래서 「맡기기에 딸린 행」만 `needs` 로 표시해 물린다. */
-    WCFG_SWITCHES.slice(1).concat(WCFG_TEXTS.filter(r => r.needs)).forEach(r => {
+    wcfgGated.concat(WCFG_TEXTS.filter(r => r.needs)).forEach(r => {
       const row = rowOf(r.key);
       if (!row) return;
       row.classList.toggle("woff", !on);
@@ -320,7 +347,7 @@ function wireWorkerCfg(host, u){
       const row = rowOf(r.key);
       const box = row && row.querySelector(".wfact");
       if (!box) return;
-      box.textContent = (r.fact && wcfgOn(cfg[r.key])) ? r.fact(u.name) : "";
+      box.textContent = (r.fact && wcfgRowOn(r, cfg)) ? r.fact(u.name) : "";
     });
     // 접힌 머리도 사실을 말한다 — 값이 바뀌면 그 줄도 함께 바뀐다.
     const cf = q("#w-capsfact");

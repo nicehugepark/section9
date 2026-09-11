@@ -9,12 +9,17 @@ function showUserForm(u, host, isAdminEdit){
      이 목록에 두 번 서고, 어느 쪽이 참인지 화면이 말하지 못한다. 그래서 목록을
      손으로 늘리지 않고 `WCFG_KEYS`(백그라운드 작업 판이 세우는 행의 키)와
      `wcfgMine`(그 판이 데려가는 접두사)에서 받아 온다: 그 판에 행이 늘면 이
-     제외도 저절로 는다. */
+     제외도 저절로 는다.
+     **판이 넷으로 늘었다** (REQ-20260911-005) — 「외부 서비스」(`JIRA_CFG_KEYS`)와
+     「저장소 → 문서 동기화」(`SYNC_CAP_KEYS`)도 제 행을 세우는데 여기서 빠지지
+     않아, jira 넷이 제 행과 이 표에 **두 번 서 있었다**. 목록을 네 판에서
+     모두 받아 온다. */
   const extraCfg = Object.entries(cfg).filter(([k]) =>
     !["timezone","digest_budget","ui_skin","ui_tone","ui_density",
       "stream_mirror","stream_keep_days",
       "external_secrets_path"].includes(k) && !k.startsWith("pref_")
-    && !WCFG_KEYS.includes(k) && !wcfgMine(k));
+    && !WCFG_KEYS.includes(k) && !wcfgMine(k)
+    && !JIRA_CFG_KEYS.includes(k) && !SYNC_CAP_KEYS.includes(k));
   // 비밀은 **내 계정 판에서만** 다룬다. 서버의 /api/secrets 는 admin 대리(as)를
   // 받지 않아 내 키를 주는데, 넣고 지우는 쪽은 대리를 받는다 — 남의 이름표를 달고
   // 내 키 목록을 보여 주면 그 화면은 거짓말이다. 그럴 바엔 자리를 내지 않는다.
