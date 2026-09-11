@@ -77,6 +77,7 @@ def run_shot(present):
 
     err, code = io.StringIO(), None
     with mock.patch.object(mod, "os_platform", lambda: "macOS"), \
+         mock.patch.object(mod, "_playwright_available", lambda: False), \
          mock.patch.object(subprocess, "run", fake_run), \
          mock.patch.object(mod.os.path, "exists", exists), \
          mock.patch.object(mod.shutil, "which", lambda n: None), \

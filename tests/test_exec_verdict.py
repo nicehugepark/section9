@@ -123,7 +123,7 @@ class Verdict(unittest.TestCase):
                 env.pop("S9_SESSION", None)
                 out = subprocess.run([S9, "new", "request", "--title", "남의 일",
                                       "--summary", "s", "--size", "S", "--goal", "g",
-                                      "--body", "b", "--user", "other"],
+                                      "--body", "b", "--user", "other", "--any-machine"],
                                      capture_output=True, text=True, env=env,
                                      stdin=subprocess.DEVNULL)
                 rid = out.stdout.split()[0]
@@ -181,7 +181,7 @@ class ForeignBindings(unittest.TestCase):
         os.makedirs(cls.m.STATE, exist_ok=True)
         out = subprocess.run([S9, "new", "request", "--title", "내 일",
                               "--summary", "s", "--size", "S", "--goal", "g",
-                              "--body", "b", "--user", "me"],
+                              "--body", "b", "--user", "me", "--any-machine"],
                              capture_output=True, text=True, env=env,
                              stdin=subprocess.DEVNULL)
         cls.rid = out.stdout.split()[0]

@@ -91,6 +91,7 @@ def run_shot(alive=0, run_side_effect=None, args=None, make_out=True):
 
     code = None
     with mock.patch.object(subprocess, "run", fake_run), \
+         mock.patch.object(mod, "_playwright_available", lambda: False), \
          mock.patch.object(mod.os.path, "exists", no_win_browser), \
          mock.patch.object(mod.shutil, "which",
                            lambda n: "/usr/bin/chromium" if n == "chromium" else None), \
@@ -155,6 +156,7 @@ class TestShotProfile(unittest.TestCase):
             return mock.Mock(returncode=0)
 
         with mock.patch.object(subprocess, "run", fake_run), \
+         mock.patch.object(mod, "_playwright_available", lambda: False), \
              mock.patch.object(mod.os.path, "exists", no_win_browser), \
              mock.patch.object(mod.shutil, "which",
                                lambda n: "/usr/bin/chromium" if n == "chromium" else None), \
@@ -204,6 +206,7 @@ class TestShotCap(unittest.TestCase):
             return mock.Mock(returncode=0)
 
         with mock.patch.object(subprocess, "run", fake_run), \
+         mock.patch.object(mod, "_playwright_available", lambda: False), \
              mock.patch.object(mod.os.path, "exists", no_win_browser), \
              mock.patch.object(mod.shutil, "which",
                                lambda n: "/usr/bin/chromium" if n == "chromium" else None), \
@@ -227,6 +230,7 @@ class TestShotCap(unittest.TestCase):
 
         with mock.patch.object(subprocess, "run",
                                lambda *a, **kw: mock.Mock(returncode=0)), \
+             mock.patch.object(mod, "_playwright_available", lambda: False), \
              mock.patch.object(mod.os.path, "exists", no_win_browser), \
              mock.patch.object(mod.shutil, "which",
                                lambda n: "/usr/bin/chromium" if n == "chromium" else None), \

@@ -26179,6 +26179,9 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
         tmpname = f"s9-shot-wk-{os.getpid()}.png"
         win_out = "C:\\Temp\\" + tmpname
         mid = "/mnt/c/Temp/" + tmpname
+    elif plat == "macOS":
+        # 맥은 npx 러너가 아니라 이 파이썬의 playwright 로 찍는다 (REQ-20260911-002-2n7g)
+        return _shot_mac_playwright(url, size, wait, out, browser=browser)
     else:
         print(f"s9 shot: 이 환경({plat})에는 WebKit 경로가 없다 — WebKit 캡처는 "
               "Windows 또는 WSL 에서만 된다(리눅스 WebKit 은 root 권한의 시스템 "
@@ -26239,6 +26242,73 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
               f"마라: {out}", file=sys.stderr)
         sys.exit(5)
     shot_shrink(out)      # 판정은 원본으로 끝났다 — 남기는 것만 줄인다
+    print(out)
+
+
+def _playwright_available():
+    """이 파이썬에 playwright 가 있는가 — 맥 캡처 갈래의 전제 (REQ-20260911-002-2n7g)."""
+    try:
+        import importlib.util as _iu
+        return _iu.find_spec("playwright") is not None
+    except Exception:
+        return False
+
+
+_SHOT_MAC_PW_SCRIPT = r"""
+import sys, time
+from playwright.sync_api import sync_playwright
+url, size, wait, out, browser = sys.argv[1:6]
+w, h = [int(x) for x in size.split(",")]
+with sync_playwright() as p:
+    if browser == "webkit":
+        b = p.webkit.launch()
+    else:
+        try:
+            b = p.chromium.launch(channel="chrome")     # 실제 Google Chrome
+        except Exception as e:
+            print("channel=chrome 실패, 내장 chromium 으로: %s" % str(e).splitlines()[0], file=sys.stderr)
+            b = p.chromium.launch()
+    pg = b.new_page(viewport={"width": w, "height": h})
+    try:
+        pg.goto(url, wait_until="networkidle", timeout=30000)
+    except Exception:
+        pg.goto(url, wait_until="load", timeout=30000)   # SSE 가 열려 있으면 idle 이 안 온다
+    time.sleep(max(0.0, int(wait) / 1000.0))
+    pg.screenshot(path=out)
+    b.close()
+"""
+
+
+def _shot_mac_playwright(url, size, wait, out, browser="chromium"):
+    """맥의 캡처 갈래 (REQ-20260911-002-2n7g, 맥미니 실측 2026-09-11 10:31): Google
+    Chrome 의 `--headless --screenshot` 은 이 맥에서 data: URL 조차 60초 안에 끝나지
+    않았다(옛·새 headless, GPU 플래그 유무 모두). Playwright 는 같은 Chrome 을
+    channel=chrome 으로 띄워 곧바로 찍는다 — 검증 에이전트들이 밤새 그렇게 찍었다.
+    WSL·Windows 의 `_shot_webkit` 과 같은 계약: 성공이면 PNG 경로 한 줄, 아니면 비-0."""
+    if not _playwright_available():
+        print("s9 shot: 이 맥의 파이썬에 playwright 가 없다 — `python3 -m pip install "
+              "playwright && python3 -m playwright install chromium` 뒤 다시 찍어라. "
+              + _shot_manual_hint(url), file=sys.stderr)
+        sys.exit(3)
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+    cmd = [sys.executable, "-c", _SHOT_MAC_PW_SCRIPT, url, size, str(wait), out, browser]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=SHOT_WEBKIT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print(f"s9 shot: {browser} 캡처가 {SHOT_WEBKIT_TIMEOUT}초 안에 끝나지 않았다 (맥 Playwright)",
+              file=sys.stderr)
+        sys.exit(3)
+    if r.returncode != 0 or not os.path.exists(out):
+        tail = (r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()[-800:]
+        print(f"s9 shot: {browser} 캡처 실패 (exit {r.returncode}, 맥 Playwright)\n{tail}\n"
+              + _shot_manual_hint(url), file=sys.stderr)
+        sys.exit(3)
+    blank = _png_blank_rows(out)
+    if blank is not None and blank >= SHOT_BLANK_ROWS:
+        print(f"s9 shot: 화면이 거의 비어 있다(균일한 가로줄 {blank:.0%}) — "
+              f"--wait 를 늘려 다시 찍어라: {out}", file=sys.stderr)
+        sys.exit(5)
+    shot_shrink(out)
     print(out)
 
 
@@ -26307,6 +26377,11 @@ def cmd_shot(args):
         # 맞는다(REQ-20260906-096). 없으면 종전 Chrome --screenshot 경로.
         runner = {"Windows": SHOT_WEBKIT_RUNNER_WIN, "WSL": SHOT_WEBKIT_RUNNER_WSL}.get(os_platform())
         engine = "chromium" if runner and os.path.exists(runner) else "chrome"
+    if engine == "chrome" and os_platform() == "macOS" and _playwright_available():
+        # 맥의 Chrome `--headless --screenshot` 은 끝나지 않는다(REQ-20260911-002-2n7g
+        # 실측: data: URL 조차 60초) — 같은 Google Chrome 을 이 파이썬의 Playwright
+        # (channel=chrome)로 띄워 찍는다. playwright 가 없을 때만 Chrome 자체 경로다.
+        engine = "chromium"
     if engine in ("webkit", "chromium"):
         return _shot_webkit(url, args.size, args.wait, out, browser=engine)
 
@@ -26398,6 +26473,11 @@ def cmd_shot(args):
                         f"--window-size={args.size}",
                         f"--virtual-time-budget={args.wait}", url],
                        capture_output=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        # 추적 정보 열 줄이 아니라 사실 한 줄 (REQ-20260911-002-2n7g 실측: 맥에서 60초)
+        print(f"s9 shot: {candidates[0]} 의 headless 캡처가 60초 안에 끝나지 않았다. "
+              + _shot_manual_hint(url), file=sys.stderr)
+        sys.exit(3)            # 회수·정리는 아래 finally 가 한 번 한다
     finally:
         # 성공·실패·타임아웃 어느 경로로 나가든 회수한다
         _reclaim_shot_procs(marker, win=win_mode)
