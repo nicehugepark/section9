@@ -2328,6 +2328,36 @@ def set_doc_priority(doc_id, value, user=None, via=""):
             "message": f"{cid}: 우선순위 {old} → {new}"}
 
 
+def machines_of(user):
+    """그 사람이 쓴 컴퓨터들 — [(머신, 마지막으로 쓴 때)] (REQ-20260911-007).
+
+    **그 사람의 프로필만 본다.** `machine_table()` 은 세션 문서·peers 까지 겹쳐
+    읽어 남이 쓴 컴퓨터도 담는데, 여기서 묻는 것은 「이 사람이 거기서 일한 적이
+    있나」다 — 남의 자취로 그 답을 내면 아무도 못 집는 자리에 요청을 남긴다."""
+    out = []
+    for r in (user_profile(user) or {}).get("machine_accounts") or []:
+        if not isinstance(r, dict):
+            continue
+        mv = str(r.get("machine") or "").strip()
+        if mv:
+            out.append((mv, str(r.get("last") or "")))
+    return out
+
+
+def last_machine_of(user):
+    """그 사람이 **마지막으로 쓴** 컴퓨터 — 쓴 적이 없으면 "" (REQ-20260911-007).
+
+    등록부(`machine_accounts`)의 `last` 가 그 자리다. 세션이 열릴 때마다 그
+    컴퓨터가 제 줄에 적으므로, 가장 나중 것이 곧 그 사람이 지금 앉아 있을
+    자리다. 「기본 컴퓨터」를 따로 두지 않는 까닭은 그것이 또 하나의 손으로
+    맞춰야 하는 값이기 때문이다 — 마지막으로 쓴 자리는 저절로 맞는다."""
+    best, when = "", ""
+    for mv, ts in machines_of(user):
+        if ts and ts > when:
+            best, when = mv, ts
+    return best
+
+
 def do_assign(doc_id, new_user, actor="", why="", via=""):
     """담당자를 바꾼다 — CLI(`s9 assign`)와 화면(`POST /api/assign`)이 지나는 한 경로
     (REQ-20260902-019, DOC-20260902-001 D1·D2).
@@ -2386,9 +2416,32 @@ def do_assign(doc_id, new_user, actor="", why="", via=""):
         meta["assignee"] = new_user
     meta.pop("lease", None)              # 옛 자리의 실행권은 여기서 끝난다
     meta["updated"] = ts
+    # 담당 컴퓨터도 함께 간다 (REQ-20260911-007, 주인 물음 2026-09-11 12:31).
+    # 요청은 세운 컴퓨터에 못박히는데(REQ-20260911-004-2n7g) 그 못이 그대로
+    # 남으면, 넘겨받은 사람이 안 쓰는 컴퓨터에 요청이 갇힌다 — 집는 규칙은
+    # 담당 컴퓨터와 담당자를 **둘 다** 보므로(here_requests ①) 그 조합을
+    # 만족하는 세션이 세상에 없어진다. 그래서 못도 함께 옮긴다:
+    #   · 새 담당자가 마지막으로 쓴 컴퓨터로 — 세션이 열릴 때마다 등록부에
+    #     적히므로 그 자리가 지금 그 사람이 앉아 있을 자리다.
+    #   · 그가 쓴 컴퓨터가 하나도 없으면 **못을 뽑는다**(어느 컴퓨터에서나).
+    #     아무도 못 집는 자리에 두는 것보다 낫다.
+    #   · 이미 그가 쓰는 컴퓨터면 그대로 둔다 — 옮길 이유가 없다.
+    # 애초에 못이 없던 요청에는 새로 박지 않는다: 넘기는 일이 범위를 좁힐
+    # 까닭이 없다.
+    machine_line = ""
+    want_m = str(meta.get("needs_machine") or "").strip()
+    if want_m:
+        if want_m not in {mv for mv, _ in machines_of(new_user)}:
+            nxt = last_machine_of(new_user)
+            meta["needs_machine"] = nxt
+            machine_line = (
+                f"- {ts} needs_machine: {want_m} -> "
+                f"{nxt or '(어느 컴퓨터에서나)'} (by {actor}) — 담당자가 바뀌어 "
+                f"{'그가 마지막으로 쓴 컴퓨터로 옮겼다' if nxt else '쓴 컴퓨터가 없어 못을 뽑았다'}\n")
     line = (f"- {ts} assignee: {old or '(없음)'} -> {new_user} (by {actor}"
             + (f" via {via}" if via else "") + ")"
             + (f" — {why.strip()}" if (why or "").strip() else "") + "\n")
+    line = line + machine_line
     if "## History" in body:
         body = body.rstrip("\n") + "\n" + line
     else:

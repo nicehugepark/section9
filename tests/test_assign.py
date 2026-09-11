@@ -198,5 +198,124 @@ class Assign(unittest.TestCase):
             self.cli("assign", rid, "carol", user="alice")
             self.assertEqual(self.meta(rid)[0]["user"], "carol")
 
+
+class TheMachineGoesWithTheAssignee(unittest.TestCase):
+    """담당자를 바꾸면 담당 컴퓨터도 함께 간다 (REQ-20260911-007-62x6).
+
+    주인 물음 2026-09-11 12:31: 「담당자를 바꾸게 되면 어떻게 되는거지? … 아니면
+    담당자를 바꾸었는데도, 담당 머신은 내 머신으로 되는건가?」 — 그때 답은
+    후자였다. 요청은 세운 컴퓨터에 못박히는데(REQ-20260911-004-2n7g) 그 못이
+    그대로 남아, 넘겨받은 사람이 안 쓰는 컴퓨터에 요청이 갇혔다: 집는 규칙은
+    담당 컴퓨터와 담당자를 **둘 다** 보므로 그 조합을 만족하는 세션이 세상에
+    없어진다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = tempfile.mkdtemp(prefix="s9asgm-")
+        cls.base = {**os.environ, "S9_ROOT": cls.root, "S9_MACHINE": "alice-pc"}
+        for k in ("S9_SESSION", "S9_AUTO_RESUME", "S9_JOB_REQ", "S9_USER"):
+            cls.base.pop(k, None)
+        subprocess.run([S9, "init"], capture_output=True, env=cls.base)
+        for u in ("alice", "bob", "dave"):
+            subprocess.run([S9, "user", "add", u], capture_output=True,
+                           env=cls.base, stdin=subprocess.DEVNULL)
+        os.environ["S9_ROOT"] = cls.root
+        os.environ["S9_MACHINE"] = "alice-pc"
+        spec = importlib.util.spec_from_loader(
+            "s9_asgm", importlib.machinery.SourceFileLoader("s9_asgm", S9))
+        cls.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.m)
+        # bob 은 두 컴퓨터를 썼고 bob-new 가 더 나중이다. dave 는 쓴 적이 없다.
+        cls._seen("bob", [("bob-old", "2026-09-01T10:00:00+09:00"),
+                          ("bob-new", "2026-09-10T22:00:00+09:00")])
+        cls._seen("alice", [("alice-pc", "2026-09-11T09:00:00+09:00")])
+
+    @classmethod
+    def _seen(cls, user, pairs):
+        pp = os.path.join(cls.root, "users", user, "profile.md")
+        meta, body = cls.m.read_doc(pp)
+        meta["machine_accounts"] = [
+            {"machine": mv, "os": "Linux", "account": user,
+             "first": ts, "last": ts} for mv, ts in pairs]
+        cls.m.write_doc(pp, meta, body)
+
+    @classmethod
+    def tearDownClass(cls):
+        os.environ.pop("S9_ROOT", None)
+        os.environ.pop("S9_MACHINE", None)
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def cli(self, *argv, user=None, expect=0):
+        env = dict(self.base)
+        if user:
+            env["S9_USER"] = user
+        r = subprocess.run([S9, *argv], capture_output=True, text=True, env=env,
+                           stdin=subprocess.DEVNULL)
+        if expect is not None:
+            self.assertEqual(r.returncode, expect, r.stdout + r.stderr)
+        return r
+
+    def new(self, user="alice", *extra):
+        r = self.cli("new", "request", "--title", "t", "--summary", "s", "--size", "S",
+                     "--goal", "g", "--body", "b", "--origin", "human",
+                     "--user", user, *extra)
+        return r.stdout.split()[0]
+
+    def meta(self, rid):
+        return self.m.read_doc(self.m.locate(rid))[0]
+
+    def test_a1_the_nail_moves_to_the_new_assignees_last_machine(self):
+        rid = self.new("alice")
+        self.assertEqual("alice-pc", self.meta(rid).get("needs_machine"),
+                         "세운 컴퓨터에 못이 안 박혔다 — 전제가 무너졌다")
+        self.cli("assign", rid, "bob", user="alice")
+        self.assertEqual("bob-new", self.meta(rid).get("needs_machine"),
+                         "담당자만 바뀌고 못은 옛 컴퓨터에 남았다 — 아무도 못 집는다")
+
+    def test_a2_no_machine_of_their_own_pulls_the_nail(self):
+        """쓴 컴퓨터가 없으면 못을 뽑는다 — 아무도 못 집는 자리에 두지 않는다."""
+        rid = self.new("alice")
+        self.cli("assign", rid, "dave", user="alice")
+        self.assertEqual("", self.meta(rid).get("needs_machine") or "",
+                         "쓴 적 없는 사람의 자리에 못을 남겼다")
+
+    def test_a3_a_machine_they_already_use_stays(self):
+        rid = self.new("alice")
+        # 못을 직접 박는다 — `do_set` 은 **지금 담당자**가 아는 컴퓨터만 받으므로
+        # (alice 는 bob-old 를 모른다) 여기서는 그 검사를 지나지 않는다.
+        # 재는 것은 do_assign 의 판정이지 do_set 의 검사가 아니다.
+        path = self.m.locate(rid)
+        meta, body = self.m.read_doc(path)
+        meta["needs_machine"] = "bob-old"
+        self.m.write_doc(path, meta, body)
+        self.cli("assign", rid, "bob", user="alice")
+        self.assertEqual("bob-old", self.meta(rid).get("needs_machine"),
+                         "이미 그가 쓰는 컴퓨터인데 옮겼다 — 옮길 이유가 없다")
+
+    def test_a4_a_request_with_no_nail_gets_none(self):
+        """못이 없던 요청에는 새로 박지 않는다 — 넘기는 일이 범위를 좁힐 까닭이 없다."""
+        rid = self.new("alice", "--any-machine")
+        self.assertEqual("", self.meta(rid).get("needs_machine") or "")
+        self.cli("assign", rid, "bob", user="alice")
+        self.assertEqual("", self.meta(rid).get("needs_machine") or "")
+
+    def test_a5_the_history_says_what_moved_and_why(self):
+        rid = self.new("alice")
+        self.cli("assign", rid, "bob", user="alice")
+        body = self.m.read_doc(self.m.locate(rid))[1]
+        self.assertIn("needs_machine: alice-pc -> bob-new", body)
+        self.assertIn("담당자가 바뀌어", body, "왜 옮겼는지가 없다")
+
+    def test_r1_the_rest_of_the_handover_is_unchanged(self):
+        rid = self.new("alice")
+        self.m.do_set(rid, {"needs_machine": "alice-pc"}, actor="alice")
+        self.cli("assign", rid, "bob", user="alice")
+        meta = self.meta(rid)
+        self.assertEqual("bob", meta["user"])
+        self.assertEqual("alice", meta.get("creator"))
+        self.assertNotIn("lease", meta, "옛 자리의 실행권이 남았다")
+
+
 if __name__ == "__main__":
     unittest.main()
