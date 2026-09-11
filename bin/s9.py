@@ -26188,8 +26188,50 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
     print(out)
 
 
+# 맥의 Chrome 계열 후보 (REQ-20260911-002-2n7g). 종전 후보는 윈도우 디스크
+# (/mnt/c)와 리눅스 PATH 이름뿐이라 **맥에서는 후보가 0개**였다 — 규약 19조가
+# 요구하는 맥 Chrome 검증을 하네스 도구가 못 했다. tests/cdpreal.py 의
+# MAC_CANDIDATES 는 이 목록(/Applications 기준)의 부분집합이어야 한다 —
+# test_shot_mac 이 그 어긋남을 잡는다.
+SHOT_MAC_APPS = (
+    "Google Chrome.app/Contents/MacOS/Google Chrome",
+    "Chromium.app/Contents/MacOS/Chromium",
+    "Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+)
+
+
+def _shot_mac_candidates():
+    """맥에서 찾을 브라우저 실행 파일 — /Applications 다음 ~/Applications 순."""
+    out = []
+    for base in ("/Applications", os.path.expanduser("~/Applications")):
+        for rel in SHOT_MAC_APPS:
+            p = os.path.join(base, rel)
+            if os.path.exists(p):
+                out.append(p)
+    return out
+
+
+def _shot_manual_hint(url):
+    """브라우저를 못 찾았거나 캡처가 실패했을 때 사람이 손으로 열어 볼 명령.
+
+    판별은 os_platform() 이 한다 — 종전에는 어느 판에서 돌든 「WSL이면 …」이라
+    말해, 맥에서 실패한 사람이 있지도 않은 Windows Chrome 을 찾게 했다."""
+    plat = os_platform()
+    if plat == "macOS":
+        return ("/Applications 에 Google Chrome(또는 Chromium·Microsoft Edge)이 "
+                f"있는지 확인하세요. 수동 확인: `open {url}`")
+    if plat == "WSL":
+        return ("Windows에 Chrome/Edge 설치를 확인하세요. "
+                f"수동 확인: `cmd.exe /c start {url}`")
+    if plat == "Windows":
+        return f"Chrome/Edge 설치를 확인하세요. 수동 확인: `start {url}`"
+    return ("PATH 에 google-chrome·chromium 이 있는지 확인하세요. "
+            f"수동 확인: `xdg-open {url}`")
+
+
 def cmd_shot(args):
-    """UI 검증용 스크린샷 — WSL이면 Windows Chrome을 headless로 구동해 PNG 생성.
+    """UI 검증용 스크린샷 — WSL 이면 Windows Chrome, 맥이면 /Applications 의
+    Chrome 을 headless 로 구동해 PNG 생성.
 
     browser-verify 스킬이 호출하는 진입점. 어떤 브라우저 경로도 없으면 안내와
     함께 비-0 종료해 '미검증'을 명시하게 한다.
@@ -26242,10 +26284,17 @@ def cmd_shot(args):
         p = shutil.which(name)
         if p:
             candidates.append(p)
+    # 맥 후보는 **PATH 이름 뒤**에 둔다 (REQ-20260911-002-2n7g): test_shot_hygiene
+    # 이 shutil.which 로 /usr/bin/chromium 을 고정하고 os.path.exists 는 /mnt/c 만
+    # 막으므로, 앞에 두면 그 시험이 보는 candidates[0] 이 바뀐다.
+    if os_platform() == "macOS":
+        for p in _shot_mac_candidates():
+            if p not in candidates:
+                candidates.append(p)
 
     if not candidates:
-        print("s9 shot: 브라우저를 찾지 못했습니다. WSL이면 Windows에 Chrome/Edge 설치를 "
-              "확인하세요. 수동 확인: `cmd.exe /c start " + url + "`", file=sys.stderr)
+        print(f"s9 shot: 브라우저를 찾지 못했습니다({os_platform()}). "
+              + _shot_manual_hint(url), file=sys.stderr)
         sys.exit(3)
 
     win_out = out
@@ -26304,7 +26353,7 @@ def cmd_shot(args):
     if mid is not None:
         if not os.path.exists(mid):
             print(f"s9 shot: 스크린샷 생성 실패 ({candidates[0]}). "
-                  f"수동 확인: cmd.exe /c start {url}", file=sys.stderr)
+                  + _shot_manual_hint(url), file=sys.stderr)
             sys.exit(3)
         try:
             os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
@@ -26336,7 +26385,7 @@ def cmd_shot(args):
         print(out)
     else:
         print(f"s9 shot: 스크린샷 생성 실패 ({candidates[0]}). "
-              f"수동 확인: cmd.exe /c start {url}", file=sys.stderr)
+              + _shot_manual_hint(url), file=sys.stderr)
         sys.exit(3)
 
 
