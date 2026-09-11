@@ -265,6 +265,37 @@ const ccPathRules = (escaped, keep) => escaped
 const CCBCP = '<button class="ccbcp" type="button" ' +
   'title="이 블록을 클립보드로 복사합니다">' + mk("copy") + ' 복사</button>';
 
+/* 복사본은 **붙여 넣어 그대로 쓸 수 있는 것**이어야 한다 (REQ-20260911-003,
+   주인 지적 2026-09-11 08:57: 「편하자고 복사를했는데 찌꺼기가 같이 복사되면
+   지워야하니까 더 불편해지잖아」).
+
+   블록 **안**의 들여쓰기는 뜻이다 — 코드의 구조이고, 셸의 여러 줄 명령에서도
+   이어짐을 보인다. 그러나 블록이 통째로 밀려 있는 **앞머리**는 이 화면이 그
+   블록을 어디에 놓았는가일 뿐이고, 붙여 넣으면 찌꺼기가 된다. 그래서 걷는
+   것은 모든 줄이 함께 가진 앞머리 하나뿐이고, 상대 들여쓰기는 남는다.
+
+   앞뒤 빈 줄과 줄 끝 공백도 걷는다 — 셸에 붙일 때 끝의 빈 줄 하나가 곧 한 번의
+   실행이고, 줄 끝 공백은 보이지 않는 채로 따라다닌다. */
+function ccCopyText(s){
+  const lines = String(s ?? "").replace(/\r\n?/g, "\n").split("\n")
+    .map(l => l.replace(/[ \t]+$/, ""));
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  // 공통 앞머리는 **글자로** 센다 — 길이로 세면 탭과 공백이 섞인 블록에서
+  // 엉뚱한 자리를 자른다.
+  let pre = null;
+  for (const l of lines){
+    if (!l.trim()) continue;
+    const w = l.match(/^[ \t]*/)[0];
+    if (pre === null){ pre = w; continue; }
+    let i = 0;
+    while (i < pre.length && i < w.length && pre[i] === w[i]) i++;
+    pre = pre.slice(0, i);
+  }
+  const n = (pre || "").length;
+  return lines.map(l => l.slice(n)).join("\n");
+}
+
 /* 복사본에서 손잡이 글자를 걷어낸 뒤 준다 — 안 걷으면 붙여넣은 명령 첫 줄이
    "⧉ 복사" 로 시작한다. 실행은 화면의 몫이 아니다: 복사까지가 끝이다. */
 function ccBlockCopy(btn){
@@ -277,7 +308,7 @@ function ccBlockCopy(btn){
     setTimeout(() => { btn.innerHTML = mk("copy") + " 복사"; }, 1400);
   };
   try{
-    navigator.clipboard.writeText(cl.textContent).then(() => say(true),
+    navigator.clipboard.writeText(ccCopyText(cl.textContent)).then(() => say(true),
       () => say(false));
   }catch(err){ say(false); }
 }

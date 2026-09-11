@@ -12,7 +12,29 @@ r"""web 원문 계약 시험의 공용 도우미 (REQ-20260830-029).
 함수·메서드를 떼는 시험(`\n  \}` 변형)은 제 정규식을 그대로 가진다 —
 그 변형까지 삼키면 매칭 범위가 달라져 시험이 조용히 다른 원문을 보게 된다.
 """
+import glob
 import re
+import shutil
+
+
+def find_node():
+    """실행으로 재는 web 시험이 쓸 node — 없으면 None (REQ-20260911-003).
+
+    `shutil.which` 만으로는 못 찾는 환경이 흔하다(이 저장소의 WSL 은 node 가
+    .vscode-server 아래에만 있다). 그 자리를 시험 파일마다 다시 적으면
+    한 파일만 고쳐지고 나머지는 조용히 건너뛴다 — 건너뛴 시험은 통과로
+    보인다. 이 모듈의 규칙 그대로 **방법만** 여기 둔다.
+    """
+    n = shutil.which("node") or shutil.which("nodejs")
+    if n:
+        return n
+    for pat in ("/home/*/.vscode-server/bin/*/node",
+                "/root/.vscode-server/bin/*/node",
+                "/mnt/c/Temp/s9-webkit/node-*/node.exe"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
 
 # 최상위 function <name>(...){ ... }  (async 포함) — 16개 시험 파일이 쓰던
 # 바로 그 정규식. 바꾸면 16개 시험이 보는 원문 범위가 한꺼번에 바뀐다.

@@ -26,9 +26,12 @@
 
 실행: python3 tests/ code_block_look
 """
+import json
 import os
 import re
+import subprocess
 import unittest
+import websrc                     # 공용 원문 도우미 (REQ-20260830-029)
 from webasset import index_path   # 화면은 조각이다 — 계약은 이어 붙인 한 장을 본다 (REQ-20260829-027)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -181,6 +184,43 @@ class CodeBlockLook(unittest.TestCase):
         self.assertIn("clipboard", f, "클립보드에 쓰지 않는다")
         self.assertRegex(f, r"복사됨|복사 실패",
                          "눌렀는데 아무 말이 없다 — 성공/실패를 말해야 한다")
+
+    def test_copy_gives_only_what_can_be_pasted(self):
+        """복사본에 찌꺼기가 없다 — **실행해서** 잰다 (REQ-20260911-003).
+
+        주인 지적 2026-09-11 08:57: 「편하자고 복사를했는데 찌꺼기가 같이
+        복사되면 지워야하니까 더 불편해지잖아」. 블록 **안**의 들여쓰기는
+        뜻이므로 남기고, 블록이 통째로 밀려 있는 앞머리와 앞뒤 빈 줄·줄 끝
+        공백만 걷는다. 글자 검사가 아니라 함수를 불러 결과를 본다.
+        """
+        node = websrc.find_node()
+        if not node:
+            self.skipTest("node 가 없다 — 실행으로 재는 갈래")
+        fn = js_func(self.src, "ccCopyText")
+        cases = [
+            ("    cd ~/section9\n    bin/s9 sync",
+             "cd ~/section9\nbin/s9 sync", "공통 앞머리를 안 걷었다"),
+            ("  a\n    b\n  c", "a\n  b\nc",
+             "상대 들여쓰기까지 걷었다 — 그건 뜻이다"),
+            ("\n\n  x  \n\n", "x", "앞뒤 빈 줄이나 줄 끝 공백이 남았다"),
+            ("\tif x:\n\t    y", "if x:\n    y",
+             "탭 앞머리를 글자로 세지 않았다"),
+            ("no indent\nhere", "no indent\nhere", "멀쩡한 것을 건드렸다"),
+        ]
+        prog = fn + "\nconst C = " + json.dumps([[a, b] for a, b, _ in cases]) \
+            + ";\nconsole.log(JSON.stringify(C.map(([s]) => ccCopyText(s))));"
+        r = subprocess.run([node, "-e", prog], capture_output=True, text=True,
+                           timeout=30)
+        self.assertEqual(0, r.returncode, r.stderr[-500:])
+        got = json.loads(r.stdout.strip().splitlines()[-1])
+        for (src, want, why), g in zip(cases, got):
+            self.assertEqual(want, g, f"{why}: {src!r} → {g!r}")
+
+    def test_copy_runs_the_text_through_that_one_place(self):
+        """손잡이가 주는 것은 그 함수를 지난 글자다 — 두 벌로 만들지 않는다."""
+        f = js_func(self.src, "ccBlockCopy")
+        self.assertRegex(f, r"writeText\(ccCopyText\(",
+                         "블록의 글자를 다듬지 않고 그대로 클립보드에 넣는다")
 
     def test_copy_is_delegated_not_per_element(self):
         """스트림은 통째로 다시 그려진다 — 리스너는 위임 하나로 둔다."""
