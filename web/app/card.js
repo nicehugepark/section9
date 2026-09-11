@@ -410,6 +410,25 @@ function originWho(r){
   if (a.startsWith("worker")) return "백그라운드 작업";
   return a;
 }
+/* 사람이 아닌 것이 만들었을 때의 **한 이름** (REQ-20260911-016).
+
+   카드 칩과 손 위의 글이 각자 이 이름을 지어서 같은 문서가 두 글자로 불렸다:
+   칩은 `originWho` 를 날것으로 써서 「designer」 한 낱말만 냈고, 손 위의 글은
+   「에이전트 designer」를 냈다. 게다가 `who === "리드"` 비교는 **참이 될 수 없는
+   조건**이었다 — `originWho` 는 리드를 「타치코마」로 돌려주므로(REQ-20260906-022)
+   그 자리에서 「에이전트 타치코마」라는 없는 말이 나왔다.
+
+   그래서 짓는 자리를 하나로 둔다. 그리고 리드에게도 **갈래를 붙인다**: 옆
+   카드가 「에이전트 designer」로 서는데 리드만 이름 하나로 서면, 처음 보는
+   사람은 둘을 딴 종류로 읽는다(주인 물음 2026-09-11: "타치코마가 있고
+   에이전트가 있는데 무슨 차이야"). 둘 다 사람이 아닌 것이고, 다른 것은 갈래다. */
+function originFace(r){
+  const who = originWho(r);
+  if (!who) return "에이전트";
+  if (who === "타치코마") return "리드 타치코마";
+  if (who === "백그라운드 작업") return who;
+  return `에이전트 ${who}`;
+}
 /* 기원 한 조각 — 「사람이 직접」 · 「에이전트 designer」 · 「REQ-… 처리 중」.
    **옛 문서는 아무것도 그리지 않는다**: origin 이 빈 값인 것은 "사람이 직접이
    아니다"가 아니라 **모른다**이고, 모르는 것을 「기록 없음」이라고 적으면
@@ -417,10 +436,8 @@ function originWho(r){
 function originBits(r, link){
   const o = String((r && r.origin) || "");
   if (!o) return [];
-  const who = originWho(r);
   if (o === "human") return ["사람이 직접"];
-  const bits = [who ? (who === "리드" || who === "백그라운드 작업"
-                        ? who : `에이전트 ${who}`) : "에이전트"];
+  const bits = [originFace(r)];
   if (o === "derived" && r.origin_req)
     bits.push(link ? `${dlink(r.origin_req, esc(shortId(r.origin_req)))} 처리 중`
                    : `${esc(shortId(r.origin_req))} 처리 중`);
@@ -442,7 +459,7 @@ function lineageChip(r){
   const creator = docCreator(r);
   const owner = String((r && r.user) || "");
   const o = String((r && r.origin) || "");
-  const who = (o && o !== "human") ? (originWho(r) || "에이전트")
+  const who = (o && o !== "human") ? originFace(r)
             : (creator && creator !== owner) ? creator : "";
   if (!who) return "";
   /* 값을 span 으로 싼다 (REQ-20260910-009 4차): 이 칩이 좁은 줄에서 줄어들 때
@@ -450,22 +467,32 @@ function lineageChip(r){
      걸려 「만…」 한 글자만 남았다 — 라벨의 부스러기라 아무 뜻이 없고, 사람 눈에는
      고장으로 보인다(4배 캡처로 잡았다). */
   return `<span class="lin" title="${esc(lineageTell(r))}">`
-    + `<span class="lincap">만든 사람</span>`
+    /* 라벨은 남기고 **줄인다** (REQ-20260911-016, ux-writer): 없애면 배지의
+       이름과 나란히 선 이름 하나가 "같은 사람의 딴 이름인가"로 읽힌다. 다섯
+       글자(「만든 사람」)가 먹던 고정 폭이 잘림의 절반이었다. */
+    + `<span class="lincap">만든이</span>`
     + `<span class="linv">${esc(who)}</span></span>`;
 }
 // 손 위의 글과 낭독기가 함께 읽는 한 문장 — 조각이 줄인 것을 여기서 다 말한다.
 function lineageTell(r){
-  const creator = docCreator(r);
+  const o = String((r && r.origin) || "");
   const owner = String((r && r.user) || "");
+  /* 손 위의 글은 칩과 **같은 얼굴**을 쓴다 (REQ-20260911-016) — 종전에는 칩이
+     「designer」, 손 위의 글이 「nicehugepark … (에이전트 designer)」라 한 문서가
+     두 이름으로 불렸다. 사람이 만든 문서에서는 그 계정이 곧 만든이다. */
+  const face = (o && o !== "human") ? originFace(r) : docCreator(r);
   const bits = [];
-  if (creator) bits.push(`만든 사람 ${creator}`);
+  if (face) bits.push(`만든이 ${face}`);
   if (owner) bits.push(`맡은 사람 ${owner}`);
-  const ob = originBits(r, false).map(x => x.replace(/<[^>]*>/g, ""));
-  /* 기원은 「만든 사람」의 꼬리다 — 괄호 없이 값 뒤에 붙이면 「만든 사람이
-     직접」이라는 없는 문장이 된다(REQ-20260907-012 검수 상-2). 손 위의 글과
-     낭독기가 같은 자리·같은 괄호를 쓴다. */
-  if (ob.length && bits.length) bits[0] += ` (${ob.join(" · ")})`;
-  else if (ob.length) bits.push(`(${ob.join(" · ")})`);
+  /* 꼬리는 **얼굴이 아직 말하지 않은 것**만 붙인다 (REQ-20260911-016).
+     종전에는 `originBits` 를 통째로 붙여, 얼굴을 한 자리에서 짓게 된 뒤로는
+     「만든이 에이전트 designer (에이전트 designer)」로 같은 말을 두 번 했다.
+     괄호 없이 값 뒤에 붙이지 않는 규율은 그대로다(REQ-20260907-012 검수 상-2). */
+  const tail = [];
+  if (o === "human") tail.push("사람이 직접");
+  if (o === "derived" && r.origin_req) tail.push(`${shortId(r.origin_req)} 처리 중`);
+  if (tail.length && bits.length) bits[0] += ` (${tail.join(" · ")})`;
+  else if (tail.length) bits.push(`(${tail.join(" · ")})`);
   return bits.join(" · ");
 }
 /* 문서 머리의 온전한 한 줄. 카드와 **같은 재료**(originBits)를 쓰므로 두 화면이
@@ -474,7 +501,9 @@ function lineageRowHTML(r){
   if (!r || r.type !== "request") return "";
   const creator = docCreator(r), owner = String(r.user || "");
   const cells = [];
-  if (creator) cells.push(`<span class="lincap">만든 사람</span>`
+  /* 낱말은 카드와 **같은 하나**다 (REQ-20260911-016): 같은 것을 두 화면이
+     「만든 사람」과 「만든이」로 나눠 부르면 사람이 둘을 다른 것으로 읽는다. */
+  if (creator) cells.push(`<span class="lincap">만든이</span>`
     + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
   if (owner) cells.push(`<span class="lincap">맡은 사람</span>`
     + `<span class="badge" style="--ah:${tagHue(owner)}">${badgeFace(owner)}</span>`);
@@ -483,11 +512,11 @@ function lineageRowHTML(r){
      그것이 누구의 무엇인지 말해 주는 것이 사라진다. 만든 계정과 그것을 쥔
      손은 한 사실의 두 겹이니 한 칸이 맞다. 계정이 없는 옛 문서에서만 카드가
      쓰는 그 낱말(「만든이」)로 홀로 선다 — 두 화면이 같은 값을 다르게 부르지
-     않게 한다. */
+     않게 한다. 그 낱말은 이제 두 화면 모두의 낱말이다(REQ-20260911-016). */
   const ob = originBits(r, true);
   if (ob.length){
     if (creator) cells[0] += ` <span class="linorg">(${ob.join(" · ")})</span>`;
-    else cells.push(`<span class="lincap">만든 사람</span>${ob.join(" · ")}`);
+    else cells.push(`<span class="lincap">만든이</span>${ob.join(" · ")}`);
   }
   if (!cells.length) return "";
   return `<div class="lineage">`
@@ -2833,7 +2862,7 @@ function renderBoard(rows){
   markPicked();   // 집어 둔 카드 표시 복원 (REQ-20260827-064)
   // 세 줄에서 잘린 카드에만 "전문 보기"를 연다 — 잘림은 재서 안다 (REQ-20260829-009).
   // 그림이 붙은 다음 프레임에 잰다: innerHTML 직후에는 아직 레이아웃이 없다.
-  requestAnimationFrame(() => { markClamped($("#view")); fitBoard(); });
+  requestAnimationFrame(() => { markClamped($("#view")); fitLineage($("#view")); fitBoard(); });
   watchBoardFit();
   elapsedTimer = setInterval(tickElapsed, 1000);  // 카드 경과시간 실시간 갱신
 }
@@ -2913,9 +2942,35 @@ function markClamped(root){
     el.classList.toggle("iscut", box.scrollHeight - box.clientHeight > lh * 0.5);
   });
 }
+/* **계보 칩은 온전히 서거나 통째로 빠진다 — 이제는 재서 안다** (REQ-20260911-016).
+
+   CSS 의 문턱(@container 243px)은 배지 폭을 87.8px 로 **가정하고** 역산한 수다
+   (REQ-20260910-047). 그 가정보다 긴 계정 이름이 오면 카드는 243px 을 넘는데도
+   칩에 남는 폭은 그보다 좁아, 값이 「에…」 한 글자로 뭉개진다 — 주인이 2026-09-11
+   에 보낸 캡처가 그 모습이다. 이름은 계정마다 다르므로 정적 산식으로는 못 잡는다.
+
+   그래서 **렌더 뒤에 실제로 잰다**: 값이 제 상자에 안 들어가면 그 칩을 뺀다.
+   먼저 다 세우고(한 번의 쓰기) → 다 재고(한 번의 읽기) → 뺄 것만 뺀다(쓰기).
+   읽기와 쓰기를 섞지 않아 레이아웃을 카드 수만큼 다시 잡지 않는다.
+   문턱 1px 은 소수점 반올림 몫이다(markClamped 의 그 자리와 같은 까닭).
+   빠진 사실은 사라지지 않는다 — 손 위의 글과 문서 머리의 계보 줄이 온전히 말한다. */
+function fitLineage(root){
+  const els = [...(root || document).querySelectorAll(".card .m.mwho>.lin")];
+  if (!els.length) return;
+  els.forEach(el => el.classList.remove("linhide"));
+  const cut = els.filter(el => {
+    const v = el.querySelector(".linv");
+    return el.scrollWidth - el.clientWidth > 1
+        || (v && v.scrollWidth - v.clientWidth > 1);
+  });
+  cut.forEach(el => el.classList.add("linhide"));
+}
 // 열 폭이 바뀌면 몇 줄인지도 바뀐다 — 창을 줄였는데 손잡이가 그대로면 거짓말이다.
 let clampResizeT;
-function markClampedSoon(){ clearTimeout(clampResizeT); clampResizeT = setTimeout(markClamped, 60); }
+function markClampedSoon(){
+  clearTimeout(clampResizeT);
+  clampResizeT = setTimeout(() => { markClamped(); fitLineage(); }, 60);
+}
 window.addEventListener("resize", markClampedSoon);
 
 /* ---------------- docs ---------------- */

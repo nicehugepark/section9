@@ -42,7 +42,7 @@ CSS = os.path.join(os.path.dirname(HERE), "web", "css", "actions.css")
 INNER = ("lease", "claim", "takeover", "assignee", "리스", "클레임")
 
 # 화면에 **서야 하는** 낱말 (ux-writer·tech-writer·translator 판정본).
-WORDS = ("만든 사람", "맡은 사람", "사람이 직접", "에이전트",
+WORDS = ("만든이", "맡은 사람", "사람이 직접", "에이전트",
          "다른 컴퓨터", "에서 진행 중", "이 컴퓨터에서 이어서 하기", "담당 바꾸기",
          "백그라운드 작업", "리드")
 
@@ -92,7 +92,9 @@ class Screen(unittest.TestCase):
         with open(CSS, encoding="utf-8") as f:
             cls.css = f.read()
         cls.parts = {n: _grab(cls.src, n) for n in (
-            "originWho", "originBits", "lineageChip", "lineageTell",
+            # `originFace` 는 사람이 아닌 것이 만들었을 때의 **이름**을 짓는 한
+            # 자리다 (REQ-20260911-016) — 「에이전트 …」가 이제 여기 산다.
+            "originWho", "originFace", "originBits", "lineageChip", "lineageTell",
             "lineageRowHTML", "leaseElsewhere", "canTakeover",
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
             "badgeFace",
@@ -102,7 +104,7 @@ class Screen(unittest.TestCase):
             "waitingMachine", "waitingWords", "waitingRowHTML",
             "machineBtnHTML", "machineDoc")}
         cls.mine = "\n".join(cls.parts[n] for n in (
-            "originWho", "originBits", "lineageChip", "lineageTell",
+            "originWho", "originFace", "originBits", "lineageChip", "lineageTell",
             "lineageRowHTML", "leaseElsewhere", "canTakeover",
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
             "assignDoc", "takeoverDoc",
@@ -148,7 +150,7 @@ class Screen(unittest.TestCase):
             self.assertIn('"needs_machine": req.get("needs_machine")', self.s9)
 
         with self.subTest("a3_role_names_are_not_translated"):
-                who = self.parts["originWho"]
+                who = self.parts["originWho"] + self.parts["originFace"]
                 self.assertIn('a.slice(4)', who, "sub:<역할> 은 역할 이름 그대로여야 한다")
                 self.assertIn("리드", who)
                 self.assertIn("백그라운드 작업", who)
@@ -278,9 +280,14 @@ class Screen(unittest.TestCase):
             # 카드의 담당 배지는 배지 그대로다 — 새 배지를 만들지 않는다.
             self.assertIn('class="badge asgnb"', self.parts["ownerBadgeHTML"])
         with self.subTest("f3_one_function_builds_both_screens"):
-            for name in ("lineageChip", "lineageRowHTML", "lineageTell"):
-                self.assertIn("originBits(r", self.parts[name] if name != "lineageChip"
-                              else self.parts["lineageChip"] + self.parts["lineageTell"])
+            # 재료를 나눠 갖는 자리가 바뀌었다 (REQ-20260911-016): 사람이 아닌
+            # 것이 만들었을 때의 **이름**은 `originFace` 하나가 짓고, 카드 칩과
+            # 손 위의 글이 그것을 쓴다. 문서 머리는 기원 조각(`originBits`)까지
+            # 함께 쓴다 — 그 줄만 「REQ-… 처리 중」을 링크로 세우기 때문이다.
+            for name in ("lineageChip", "lineageTell"):
+                self.assertIn("originFace(r", self.parts[name],
+                              f"{name} 가 제 손으로 이름을 짓는다")
+            self.assertIn("originBits(r", self.parts["lineageRowHTML"])
             self.assertIn("lineageRowHTML(", self.src)
             self.assertIn("${lineage}", self.src, "문서 머리에 그 줄이 서야 한다")
             self.assertIn("ownerBadgeHTML(r)", self.parts["cardHTML"])
