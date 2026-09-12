@@ -630,7 +630,9 @@ span.proj{cursor:default}
    그래서 바닥을 없애고 **칩과 값 둘 다 제 상자에 가둔다**: 줄어드는 것은 값
    (라벨은 제 폭을 지킨다), 그래도 모자라면 칩의 상자가 잘라 낸다. 어느
    경우에도 이웃의 잉크 위에 글자가 앉지 않는다. 온전한 값은 손 위의 글이 말한다. */
-.card .m.mwho .lin{flex:0 3 auto;min-width:0;display:inline-flex;
+/* 3차: 조각은 줄지 않는다 — 온전히 서거나(라벨 없이 「…가 만듦」 한 덩어리)
+   실측(fitLineage)에서 통째로 빠진다. 줄어드는 것은 프로젝트다. */
+.card .m.mwho .lin{flex:none;min-width:0;display:inline-flex;
   align-items:baseline;white-space:nowrap;max-width:100%;overflow:hidden}
 .card .m.mwho .lincap{flex:none}
 .card .m.mwho .linv{min-width:0;overflow:hidden;text-overflow:ellipsis;
@@ -662,8 +664,34 @@ span.proj{cursor:default}
    달라도 한 자다. 이 줄의 몫(맡은 사람은 안 줄고 · 계보가 먼저 줄고 · 프로젝트가
    9ch 까지)은 그대로다 — 계보가 「먼저 줄고」의 끝이 이제 0 일 뿐이다.
    회귀는 tests/test_card_corner.py 의 `the_lineage_label_is_whole_or_absent`. */
-@container (max-width:243px){
-  .card .m.mwho>.lin{display:none}
+/* 3차 (REQ-20260911-016, designer ②·③): 위 문턱은 **칩이 아니라 이름**을 접는다.
+   줄이 안 들어간 진짜 까닭은 계보 조각이 아니라 모든 카드에 같은 계정 이름이
+   87.8px 씩 서 있는 것이었다 — 맡은 사람은 머리글자 원(18px)으로 접히고 이름은
+   손 위의 글(계보 한 문장)이 말한다. 그러면 176px 카드에서도 원 18 + 틈 10 +
+   조각 ≈80 + 틈 10 + 프로젝트 58 = 176 이라 셋이 다 선다. 빠지는 순서도 뒤집혔다:
+   조각(예외 신호)은 통째로 서고, 마지막에 접히는 것은 프로젝트(상시 정보)다.
+   원의 꼴은 calm 스킨의 것을 그대로 쓴다(면이 아니라 윤곽) — 다른 스킨의 @ 접두는
+   이 폭에서 원이 대신한다. */
+/* 태블릿 폭의 드문 카드(조각이 선 것)에서는 프로젝트가 조각보다 먼저 빠진다 —
+   프로젝트는 상시 정보라 문서 머리·필터가 다시 말하고, 조각은 그 카드에만 있다. */
+.card .m.mwho.projhide .proj{display:none}
+.card .m.mwho.namefold .badge .bnm{display:none}
+.card .m.mwho.namefold .badge::before{content:none}
+.card .m.mwho.namefold .badge .av{flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:18px;height:18px;border-radius:50%;background:none;
+  border:1.5px solid hsl(var(--ah) var(--av-s,55%) var(--av-bl,48%));
+  color:hsl(var(--ah) var(--av-s,55%) var(--av-l,38%));
+  font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:0;line-height:1}
+/* 태블릿·폰 폭(카드 176~180px)에서는 조각이 없어도 이름을 접는다 — 같은 열의 카드가
+   같은 꼴로 서야 훑힌다. 그 위 폭에서는 조각이 선 줄만 재서(fitLineage) 접는다. */
+@container (max-width:200px){
+  .card .m.mwho .badge .bnm{display:none}
+  .card .m.mwho .badge::before{content:none}
+  .card .m.mwho .badge .av{flex:none;display:inline-flex;align-items:center;
+    justify-content:center;width:18px;height:18px;border-radius:50%;background:none;
+    border:1.5px solid hsl(var(--ah) var(--av-s,55%) var(--av-bl,48%));
+    color:hsl(var(--ah) var(--av-s,55%) var(--av-l,38%));
+    font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:0;line-height:1}
 }
 /* 문턱은 **바닥**이고, 진짜 판정은 재서 한다 (REQ-20260911-016). 위 문턱은
    배지 폭을 가정하고 역산한 수라, 그 가정보다 긴 계정 이름이 오면 카드는

@@ -42,7 +42,7 @@ CSS = os.path.join(os.path.dirname(HERE), "web", "css", "actions.css")
 INNER = ("lease", "claim", "takeover", "assignee", "리스", "클레임")
 
 # 화면에 **서야 하는** 낱말 (ux-writer·tech-writer·translator 판정본).
-WORDS = ("만든 사람", "맡은 사람", "사람이 직접", "에이전트",
+WORDS = ("만든 사람", "맡은 사람", "만듦", "에이전트",   # 「사람이 직접」은 겹말이라 뺐다 (REQ-20260911-016 3차)
          "다른 컴퓨터", "에서 진행 중", "이 컴퓨터에서 이어서 하기", "담당 바꾸기",
          "백그라운드 작업", "리드")
 
@@ -94,7 +94,7 @@ class Screen(unittest.TestCase):
         cls.parts = {n: _grab(cls.src, n) for n in (
             # `originFace` 는 사람이 아닌 것이 만들었을 때의 **이름**을 짓는 한
             # 자리다 (REQ-20260911-016) — 「에이전트 …」가 이제 여기 산다.
-            "originWho", "originFace", "originBits", "lineageChip", "lineageTell",
+            "originWho", "originFace", "originBits", "madeBy", "lineageChip", "lineageTell",
             "lineageRowHTML", "leaseElsewhere", "canTakeover",
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
             "badgeFace",
@@ -104,7 +104,7 @@ class Screen(unittest.TestCase):
             "waitingMachine", "waitingWords", "waitingRowHTML",
             "machineBtnHTML", "machineDoc")}
         cls.mine = "\n".join(cls.parts[n] for n in (
-            "originWho", "originFace", "originBits", "lineageChip", "lineageTell",
+            "originWho", "originFace", "originBits", "madeBy", "lineageChip", "lineageTell",
             "lineageRowHTML", "leaseElsewhere", "canTakeover",
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
             "assignDoc", "takeoverDoc",

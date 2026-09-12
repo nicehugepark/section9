@@ -100,12 +100,17 @@ class TheCreatorHasOneName(unittest.TestCase):
     #      (2차 반려 2026-09-11: "만든이, 맡은 사람 같은 사람을 표현하는게
     #       두 가지인게 이상하지 않나?")
     def test_a5_one_word_on_both_screens(self):
-        for fn in ("lineageChip", "lineageRowHTML"):
-            b = self.body(fn)
-            self.assertIn("만든 사람", b,
-                          f"{fn} 의 라벨이 「맡은 사람」과 짝이 아니다")
+        # 3차(REQ-20260911-016): 카드 조각은 라벨 없이 「…가 만듦」 한 덩어리이고,
+        # 문서 머리는 「만든 사람 / 맡은 사람」 짝 — 같은 사람이면 「만들고 맡은 사람」 한 칸.
+        chip = self.body("lineageChip")
+        self.assertIn("madeBy(", chip, "카드 조각이 「…가 만듦」 꼴이 아니다")
+        self.assertNotIn("lincap", chip, "카드 조각에 라벨이 되살아났다 — 폭 문제의 뿌리다")
         row = self.body("lineageRowHTML")
-        self.assertIn("맡은 사람", row, "짝이 되는 낱말이 사라졌다")
+        for w in ("만든 사람", "맡은 사람", "만들고 맡은 사람"):
+            self.assertIn(w, row, f"문서 머리에 「{w}」 칸이 없다")
+        made = self.body("madeBy")
+        self.assertIn("만듦", made)
+        self.assertIn("0xAC00", made, "한글 받침으로 조사(이/가)를 고르지 않는다")
 
     # A6 — 잘린 채로 남지 않는다: 재서 빼는 자리가 있다
     def test_a6_whole_or_absent_is_measured(self):

@@ -405,9 +405,9 @@ const docCreator = r => String((r && (r.creator || r.user)) || "");
 function originWho(r){
   const a = String((r && r.origin_actor) || "");
   if (!a) return "";
-  if (a.startsWith("sub:")) return a.slice(4);
+  if (a.startsWith("sub:")) return a.slice(4).split(":")[0];   // 「sub:<역할>:<id>」의 역할만 — id 꼬리는 사람 말이 아니다 (3차)
   if (a.startsWith("lead")) return "타치코마";   // 리드의 이름 (REQ-20260906-022)
-  if (a.startsWith("worker")) return "백그라운드 작업";
+  if (a.startsWith("worker")) return "백그라운드 작업자";   // 용어표의 확정어 (tech-writer, REQ-20260911-016 3차)
   return a;
 }
 /* 사람이 아닌 것이 만들었을 때의 **한 이름** (REQ-20260911-016).
@@ -422,11 +422,17 @@ function originWho(r){
    카드가 「에이전트 designer」로 서는데 리드만 이름 하나로 서면, 처음 보는
    사람은 둘을 딴 종류로 읽는다(주인 물음 2026-09-11: "타치코마가 있고
    에이전트가 있는데 무슨 차이야"). 둘 다 사람이 아닌 것이고, 다른 것은 갈래다. */
-function originFace(r){
+function originFace(r, short){
   const who = originWho(r);
+  /* 카드의 짧은 얼굴 (3차): 갈래 접두 없이 이름만 — 「designer」·「백그라운드 작업자」.
+     리드(「타치코마」)는 빈 값이다: 사람의 말을 리드가 세운 것은 카드가 알릴 새
+     사실이 아니다(designer 실측: 조각 조건의 93% 가 이 값이었다). 짓는 자리는
+     여전히 여기 하나다 — 긴 얼굴(손 위의 글·문서 머리)과 짧은 얼굴(카드)이 같은
+     originWho 를 읽는다. */
+  if (short) return (!who || who === "타치코마") ? "" : who;
   if (!who) return "에이전트";
   if (who === "타치코마") return "리드 타치코마";
-  if (who === "백그라운드 작업") return who;
+  if (who === "백그라운드 작업자") return who;
   return `에이전트 ${who}`;
 }
 /* 기원 한 조각 — 「사람이 직접」 · 「에이전트 designer」 · 「REQ-… 처리 중」.
@@ -436,7 +442,9 @@ function originFace(r){
 function originBits(r, link){
   const o = String((r && r.origin) || "");
   if (!o) return [];
-  if (o === "human") return ["사람이 직접"];
+  /* 「사람이 직접」은 적지 않는다 (REQ-20260911-016 3차, translator): 값이 사람
+     계정이면 이미 사람이 직접이라 새 사실이 0 인 겹말이다. */
+  if (o === "human") return [];
   const bits = [originFace(r)];
   if (o === "derived" && r.origin_req)
     bits.push(link ? `${dlink(r.origin_req, esc(shortId(r.origin_req)))} 처리 중`
@@ -455,27 +463,37 @@ function originBits(r, link){
 
    배지가 못 하는 말은 둘뿐이다: 만든 사람이 담당자와 다르다 · 사람이 아닌
    것이 만들었다. 둘 다 아니면 조각도 없다. */
+/* 카드의 조각은 **「…가 만듦」 한 덩어리**다 (REQ-20260911-016 3차 — 넷의 판정을
+   리드가 맞춘 것).
+   · 서는 조건이 좁아졌다(designer 실측: 요청 1187건 중 칩 조건 384건의 93% 가
+     「타치코마」였다 — 세 카드 중 하나에 같은 값이 서면 신호가 아니라 배경이고,
+     리드가 세운 요청은 사람이 말한 것이라 알릴 새 사실도 아니다). 카드는
+     **사람이 시키지 않은 것**(위임 에이전트·백그라운드 작업자)과 **맡은 사람과
+     다른 사람이 만든 것**만 세운다. 주인 물음 ③의 답이 여기 있다: 「타치코마」는
+     사람의 말을 리드가 문서로 세운 것이라 카드에 안 서고, 「에이전트/백그라운드
+     작업자」는 기계가 스스로 세운 것이라 선다.
+   · 라벨이 없다(물음 ①). 「designer 가 만듦」·「백그라운드 작업자가 만듦」·「@bob 이
+     만듦」은 그 조각만 읽어도 뜻이 서고(translator), 「만든 사람/맡은 사람」과 어근이
+     같아 새 낱말이 아니다. 라벨(46.9px)이 값보다 넓던 것이 폭 문제의 뿌리였다.
+     괄호 이름은 배지 옆에서 「같은 사람의 딴 이름」으로 읽혀 버렸고, 마크만 두는
+     안은 마크 사전이 둘이 되고 배율 1.25/1.5 에서 반화소에 걸려 버렸다(designer).
+   · 갈래 접두(「에이전트」)는 카드에서 뗀다(ux-writer) — 사람은 @ 로 갈리고 역할명은
+     소문자 원어라 눈에 갈린다. 갈래는 손 위의 글(lineageTell)이 나란히 말한다. */
+function madeBy(face){
+  const last = face.charCodeAt(face.length - 1);
+  if (last >= 0xAC00 && last <= 0xD7A3)          // 한글이면 받침으로 조사를 고른다
+    return face + (((last - 0xAC00) % 28) ? "이" : "가") + " 만듦";
+  return face + " 가 만듦";                       // 원어·@계정은 띄어 쓴다 (translator)
+}
 function lineageChip(r){
   const creator = docCreator(r);
   const owner = String((r && r.user) || "");
   const o = String((r && r.origin) || "");
-  const who = (o && o !== "human") ? originFace(r)
-            : (creator && creator !== owner) ? creator : "";
-  if (!who) return "";
-  /* 값을 span 으로 싼다 (REQ-20260910-009 4차): 이 칩이 좁은 줄에서 줄어들 때
-     **라벨이 아니라 값이** 줄어야 한다. 맨 텍스트로 두었더니 말줄임이 칩 전체에
-     걸려 「만…」 한 글자만 남았다 — 라벨의 부스러기라 아무 뜻이 없고, 사람 눈에는
-     고장으로 보인다(4배 캡처로 잡았다). */
+  let face = (o && o !== "human") ? originFace(r, true) : "";
+  if (!face && creator && creator !== owner) face = "@" + creator;
+  if (!face) return "";
   return `<span class="lin" title="${esc(lineageTell(r))}">`
-    /* 라벨은 남긴다 (REQ-20260911-016, ux-writer): 없애면 배지의 이름과 나란히
-       선 이름 하나가 "같은 사람의 딴 이름인가"로 읽힌다.
-       **낱말은 「맡은 사람」과 짝이다** (같은 요청 2차, 주인 지적 2026-09-11
-       22:38: "만든이, 맡은 사람 같은 사람을 표현하는게 두 가지인게 이상하지
-       않나?"). 한 번은 폭을 벌려 보려고 「만든이」로 줄였는데, 같은 갈래(사람)를
-       두 꼴로 부르는 값이 그 폭보다 컸다 — 폭은 라벨을 깎아서가 아니라 재서
-       푼다(`fitLineage`). */
-    + `<span class="lincap">만든 사람</span>`
-    + `<span class="linv">${esc(who)}</span></span>`;
+    + `<span class="linv">${esc(madeBy(face))}</span></span>`;
 }
 // 손 위의 글과 낭독기가 함께 읽는 한 문장 — 조각이 줄인 것을 여기서 다 말한다.
 function lineageTell(r){
@@ -492,8 +510,7 @@ function lineageTell(r){
      종전에는 `originBits` 를 통째로 붙여, 얼굴을 한 자리에서 짓게 된 뒤로는
      「만든이 에이전트 designer (에이전트 designer)」로 같은 말을 두 번 했다.
      괄호 없이 값 뒤에 붙이지 않는 규율은 그대로다(REQ-20260907-012 검수 상-2). */
-  const tail = [];
-  if (o === "human") tail.push("사람이 직접");
+  const tail = [];   // 「사람이 직접」은 겹말이라 적지 않는다 (3차, translator)
   if (o === "derived" && r.origin_req) tail.push(`${shortId(r.origin_req)} 처리 중`);
   if (tail.length && bits.length) bits[0] += ` (${tail.join(" · ")})`;
   else if (tail.length) bits.push(`(${tail.join(" · ")})`);
@@ -508,10 +525,18 @@ function lineageRowHTML(r){
   /* 낱말은 카드와 **같은 하나**이고, 「맡은 사람」과 **짝**이다
      (REQ-20260911-016). 한 화면에서 같은 갈래를 「만든이」와 「맡은 사람」으로
      나눠 부르면 사람이 둘을 다른 것으로 읽는다. */
-  if (creator) cells.push(`<span class="lincap">만든 사람</span>`
-    + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
-  if (owner) cells.push(`<span class="lincap">맡은 사람</span>`
-    + `<span class="badge" style="--ah:${tagHue(owner)}">${badgeFace(owner)}</span>`);
+  /* 같은 사람이면 **한 칸**이다 (3차, ux-writer·translator): 「만든 사람 @x · 맡은
+     사람 @x」는 같은 글자를 두 번 읽히는 칸이라 정보가 0 이다 — 「만들고 맡은 사람
+     @x」. 다르면 두 칸, 카드 조각과 한 규칙이다. */
+  if (creator && creator === owner)
+    cells.push(`<span class="lincap">만들고 맡은 사람</span>`
+      + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
+  else {
+    if (creator) cells.push(`<span class="lincap">만든 사람</span>`
+      + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
+    if (owner) cells.push(`<span class="lincap">맡은 사람</span>`
+      + `<span class="badge" style="--ah:${tagHue(owner)}">${badgeFace(owner)}</span>`);
+  }
   /* 기원은 **제 칸을 갖지 않는다** — 「만든 사람」 칸의 뒤에 붙는다.
      따로 세우면 라벨 없는 조각(「리드 · REQ-014 처리 중」)이 줄 끝에 떠서,
      그것이 누구의 무엇인지 말해 주는 것이 사라진다. 만든 계정과 그것을 쥔
@@ -651,11 +676,15 @@ function ownerBadgeHTML(r){
   const u = (r && r.user) || "?";
   const face = badgeFace(u);
   const st = ` style="--ah:${tagHue(u)}"`;
+  /* 손 위의 글은 계보 한 문장이다 (REQ-20260911-016 3차, designer ④): 좁은 카드에서
+     이름이 머리글자 원으로 접히고(board.css @container 243px) 조각이 없는 92% 의
+     카드에서도 「누가 만들고 누가 맡았나」가 여기서 읽힌다. */
+  const tell = (r && r.type === "request") ? lineageTell(r) : `맡은 사람 ${u}`;
   if (!r || r.type !== "request" || TERMINAL.has(r.status))
-    return `<span class="badge"${st}>${face}</span>`;
+    return `<span class="badge"${st} title="${esc(tell)}">${face}</span>`;
   return `<button type="button" class="badge asgnb"${st}`
     + ` data-assign="${esc(r.id)}"`
-    + ` title="맡은 사람 ${esc(u)} — 눌러서 담당을 바꿉니다">${face}</button>`;
+    + ` title="${esc(tell)} — 눌러서 담당을 바꿉니다">${face}</button>`;
 }
 /* 카드의 프로젝트 표기도 **그 자체가 손잡이**다 (REQ-20260906-053) — 담당
    배지가 세운 그 문법이고, 새 색·새 버튼을 만들지 않는다. 표기가 없던 자리에
@@ -2961,13 +2990,24 @@ function markClamped(root){
 function fitLineage(root){
   const els = [...(root || document).querySelectorAll(".card .m.mwho>.lin")];
   if (!els.length) return;
+  /* 3차 (REQ-20260911-016): 재서 **먼저 이름을 접고**, 그래도 모자라면 조각을 뺀다.
+     조각이 선 카드는 드물다(사람이 시키지 않은 것·다른 사람이 만든 것) — 그 카드에서
+     맡은 사람의 이름(87.8px)이 원으로 접히는 것이 조각(예외 신호)이 사라지는 것보다
+     싸다. 이름은 손 위의 글(계보 한 문장)이 말한다. 접는 것은 줄(.mwho) 단위라
+     같은 카드 안에서만 달라지고, 조각 없는 카드는 이름을 그대로 둔다. */
+  const rows = els.map(el => el.parentElement);
+  rows.forEach(m => m.classList.remove("namefold", "projhide"));
   els.forEach(el => el.classList.remove("linhide"));
-  const cut = els.filter(el => {
-    const v = el.querySelector(".linv");
-    return el.scrollWidth - el.clientWidth > 1
-        || (v && v.scrollWidth - v.clientWidth > 1);
-  });
-  cut.forEach(el => el.classList.add("linhide"));
+  const over = el => {
+    const v = el.querySelector(".linv"), m = el.parentElement;
+    return el.scrollWidth - el.clientWidth > 1 || (v && v.scrollWidth - v.clientWidth > 1)
+        || (m && m.scrollWidth - m.clientWidth > 1);
+  };
+  // 빠지는 순서 (designer ③): 맡은 사람의 이름 → 프로젝트 → 조각. 예외 신호가
+  // 상시 정보에 밀려 사라지면 신호가 아니다. 각 단계는 다시 잰 뒤에 간다.
+  els.filter(over).forEach(el => el.parentElement.classList.add("namefold"));
+  els.filter(over).forEach(el => el.parentElement.classList.add("projhide"));
+  els.filter(over).forEach(el => el.classList.add("linhide"));
 }
 // 열 폭이 바뀌면 몇 줄인지도 바뀐다 — 창을 줄였는데 손잡이가 그대로면 거짓말이다.
 let clampResizeT;

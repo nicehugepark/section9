@@ -206,20 +206,31 @@ class TheCardHasOneRuler(unittest.TestCase):
             # (라벨 46.9 + 여백 4 + 값 26.4)을 못 받는 카드에서는 계보 칩이
             # 서지 않는다. 문턱 243 = 배지 87.8 + 틈 10 + 계보 77.3 + 틈 10 +
             # 프로젝트 9ch 58. 이 수를 내리면 반 글자가 돌아온다.
+            # 3차 (REQ-20260911-016): 좁은 카드에서 빠지는 것은 **칩이 아니라 이름**이다.
+            # 조각은 라벨 없이 「…가 만듦」 한 덩어리라 반 글자가 남을 라벨이 없고,
+            # 맡은 사람은 머리글자 원으로 접힌다(이름은 손 위의 글). 조각은 줄지 않고
+            # (flex:none) 실측(fitLineage)에서만 통째로 빠진다.
             m = re.search(
                 r"@container\s*\(\s*max-width\s*:\s*(\d+)px\s*\)\s*\{"
-                r"[^{}]*\.card\s+\.m\.mwho>\.lin\s*\{([^{}]*)\}",
+                r"[^{}]*\.card\s+\.m\.mwho\s+\.badge\s+\.bnm\s*\{([^{}]*)\}",
                 self.src)
             self.assertIsNotNone(
-                m, "좁은 카드에서 계보 칩을 빼는 규칙이 없다 — 라벨이 "
-                   "`overflow:hidden` 에 잘려 반 글자로 남는다")
+                m, "좁은 카드에서 맡은 사람의 이름을 접는 규칙이 없다 — 이름 87.8px 이 "
+                   "조각과 프로젝트의 자리를 먹는다")
             self.assertEqual("none", _decl(m.group(2), "display"),
-                             "좁은 카드에서 계보 칩이 사라지지 않는다")
+                             "좁은 카드에서 이름이 접히지 않는다")
             self.assertGreaterEqual(
-                int(m.group(1)), 243,
-                "문턱이 잰 값(243px) 아래다 — 배지 87.8 + 틈 10 + 계보 77.3 + "
-                "틈 10 + 프로젝트 58 이 안 들어가는 폭에서 칩이 서면 라벨이 "
-                "다시 잘린다")
+                int(m.group(1)), 180,
+                "문턱이 태블릿·폰의 카드 폭(176~180px) 아래다 — 거기서는 조각이 없어도 "
+                "이름 87.8 + 프로젝트 58 이 한 줄에 안 선다")
+            self.assertIn(".card .m.mwho.namefold .badge .bnm", self.src,
+                          "조각이 선 넓은 카드에서 재서 이름을 접는 규칙이 없다")
+            lin = [d for s2, d in self.rules if s2 == ".card .m.mwho .lin"]
+            self.assertTrue(lin, "조각 규칙이 없다")
+            self.assertEqual("none", _decl(lin[0], "flex"),
+                             "조각이 줄어든다 — 온전히 서거나 통째로 빠져야 한다")
+            self.assertIn(".card .m.mwho>.lin.linhide", self.src,
+                          "실측으로 빼는 자리가 없다")
         with self.subTest("the_judgement_word_never_breaks"):
             # `반려 in-progress` 가 `반려 in-` / `progress` 로 갈라졌다
             # (실서버 review 열). 상태 값은 사람이 CLI 에 그대로 치는 글자라
