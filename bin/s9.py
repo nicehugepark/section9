@@ -3942,7 +3942,12 @@ def release_doc_session(doc_id, session, user="", reason=""):
             f"클레임 도장은 요청 문서에만 있다 ({meta.get('type') or '타입 미상'})")
     cid = meta.get("id") or canon_id(doc_id)
     changed, owners = _release_session_stamp(meta, session)
-    if not changed:
+    # 리스도 이 세션의 것이면 함께 푼다 (REQ-20260912-002) — 도장이 없고 리스만
+    # 남은 자리에서도 풀려야 한다. 그 자리가 실제 사고였다: 담당 컴퓨터를 옮긴
+    # 뒤 도장은 지워졌는데 리스가 남아, 새 담당이 30분을 기다렸다.
+    _ls = doc_lease(meta)
+    _ls_mine = bool(_ls and str(_ls.get("session") or "")[:8] == session)
+    if not changed and not _ls_mine:
         return {"ok": False, "id": cid, "released": "", "session": session,
                 "owners": owners,
                 "message": f"{cid}: {session or '(세션 미지정)'} 의 클레임이 없다 "
@@ -3952,6 +3957,16 @@ def release_doc_session(doc_id, session, user="", reason=""):
     suffix = f"; 사유: {reason}" if reason else ""
     entry = (f"- {ts} claim release {session} (by {user}) — 남은 소유자: "
              f"{', '.join(owners) or '(없음)'}{suffix}\n")
+    # **리스도 함께 푼다** (REQ-20260912-002, 실사고 2026-09-12 09:23).
+    # 도장과 바인딩만 걷으면 절반만 풀린다: 문서의 `lease` 는 그대로라 다른
+    # 컴퓨터의 `exec_verdict` 가 30분(DOC_LEASE_TTL) 동안 busy-elsewhere 로
+    # 거부한다. 그날 담당 컴퓨터를 맥으로 옮겼는데 맥이 시작하지 않은 까닭이
+    # 이것이었다 — 옮긴 사람에게는 「그냥 안 되는」 자리였다.
+    # 푸는 것은 **그 세션의 것**뿐이다: 남의 컴퓨터가 쥔 리스는 건드리지 않는다.
+    if _ls_mine:
+        meta.pop("lease", None)
+        entry += (f"- {ts} lease release {_ls.get('user')}@{_ls.get('machine')} "
+                  f"(by {user}) — 클레임 해제와 함께 걷었다\n")
     if "## History" in body:
         body = body.rstrip("\n") + "\n" + entry
     else:
@@ -30396,7 +30411,8 @@ def jira_pending_sweep(now=None, force=False):
             # 95건 중 6건). 문서가 적어 둔 이름·카테고리로 대보고, 어긋나면 싣는다.
             pj = project_jira(str(row.get("project") or ""))
             if not j.get("key") or not pj or jira_status_matches(
-                    row.get("status"), pj, j.get("status"), j.get("status_category")):
+                    row.get("status"), pj, j.get("status"), j.get("status_category"),
+                    str(j.get("status_fit") or "")):
                 continue
             kind = "push"
         if (row.get("id"), kind) in have:
@@ -30413,15 +30429,58 @@ def jira_pending_sweep(now=None, force=False):
 # 워처가 보낸다. pull 이 일으킨 전이는 되쏘지 않는다(note 가 「jira:」로 시작).
 JIRA_CATEGORY = {"open": "new", "in-progress": "indeterminate", "blocked": "indeterminate",
                  "review": "indeterminate", "done": "done", "cancelled": "done"}
+# **카테고리는 셋뿐이라 우리 상태 여섯을 못 가른다** (REQ-20260912-001, 실사고 2026-09-12).
+# Jira 의 statusCategory 는 new · indeterminate · done 셋이고, 우리의 in-progress ·
+# review · blocked 는 전부 indeterminate 다. 그래서 이슈가 이미 In Progress 면 우리가
+# review 로 옮겨도 「이미 같다」가 되어 아무 일도 안 났다 — 주인이 본 그 모습이다
+# (MP1-99 는 In Progress, 우리는 review, In Review 칸은 0건).
+#
+# 프로젝트가 `status_map` 으로 이름을 못박으면 그것이 언제나 먼저다. 안 적어 둔
+# 설치를 위해 **흔한 이름의 사전**을 둔다 — 맞는 이름이 그 보드에 있으면 그리로
+# 옮기고, 없으면 종전처럼 카테고리로 물러선다(그 사실을 문서에 `status_fit` 로
+# 적어, 쓸기가 10분마다 같은 것을 다시 밀지 않게).
+JIRA_STATUS_NAMES = {
+    "open": ("to do", "todo", "open", "backlog", "new", "할 일", "대기"),
+    "in-progress": ("in progress", "inprogress", "doing", "진행 중", "진행중"),
+    "review": ("in review", "review", "code review", "peer review", "검토",
+               "검토 중", "리뷰", "확인 대기"),
+    "blocked": ("blocked", "on hold", "waiting", "보류", "막힘"),
+    "done": ("done", "closed", "resolved", "complete", "completed", "완료"),
+    "cancelled": ("cancelled", "canceled", "won't do", "wont do", "rejected",
+                  "취소", "반려"),
+}
 
 
-def jira_status_matches(our, j, name, cat):
-    """이 이름/카테고리가 우리 상태와 같은가 — 이름(status_map)이 먼저, 없으면 카테고리.
-    판정은 여기 하나다: push 가 「이미 같다」를 보는 자리와 쓸기가 「어긋났다」를 보는
-    자리가 갈리면, 한쪽이 부르고 다른 쪽이 되돌리는 왕복이 10분마다 돈다."""
+def jira_status_wanted(our, j):
+    """그 상태로 옮길 때 **노리는 이름들** — status_map 이 먼저, 없으면 사전.
+    빈 튜플이면 이름으로는 못 고른다는 뜻이고, 그때는 카테고리가 판정한다."""
     want = str(((j or {}).get("status_map") or {}).get(our) or "").strip().lower()
     if want:
-        return str(name or "").strip().lower() == want
+        return (want,)
+    return JIRA_STATUS_NAMES.get(our, ())
+
+
+def jira_status_matches(our, j, name, cat, fit=""):
+    """이 이름/카테고리가 우리 상태와 같은가 — 이름이 먼저, 없으면 카테고리.
+
+    판정은 여기 하나다: push 가 「이미 같다」를 보는 자리와 쓸기가 「어긋났다」를 보는
+    자리가 갈리면, 한쪽이 부르고 다른 쪽이 되돌리는 왕복이 10분마다 돈다.
+
+    `fit` 은 **지난번에 무엇으로 맞췄나**다 (REQ-20260912-001). 노리는 이름이 그
+    보드에 없어 카테고리로 물러섰다면(`fit="category"`) 그것이 이 이슈의 정답이다 —
+    그 자리를 계속 「어긋났다」로 세면 10분마다 같은 실패를 되풀이한다.
+    """
+    nm = str(name or "").strip().lower()
+    want = jira_status_wanted(our, j)
+    if want and nm in want:
+        return True
+    if str(((j or {}).get("status_map") or {}).get(our) or "").strip():
+        return False              # 사람이 이름을 못박았으면 그 이름만이 같다
+    if want and fit != "category":
+        # 그 이름이 **다른 우리 상태**의 이름이면 어긋난 것이다(같은 카테고리여도).
+        for other, names in JIRA_STATUS_NAMES.items():
+            if other != our and nm in names:
+                return False
     return str(cat or "") == JIRA_CATEGORY.get(our, "")
 
 
@@ -30712,8 +30771,9 @@ def jira_after_transition(doc_id, meta, note="", auto=False):
             return False
         patch = {"pending": "push"}
         if meta.get("status") in JIRA_RESULT_VERB:
-            # 닫는 전이의 시각이 처리 결과 코멘트의 멱등 키다 (REQ-20260909-092) —
-            # 본문은 History 의 그 줄에서 읽는다(두 곳에 적지 않는다).
+            # 그 전이의 시각이 코멘트의 멱등 키다 (REQ-20260909-092) — 본문은
+            # History 의 그 줄에서 읽는다(두 곳에 적지 않는다). 닫는 전이만이던
+            # 것을 **모든 전이**로 넓혔다 (REQ-20260912-001).
             patch["result_ts"] = str(meta.get("updated") or now_iso())
         _jira_write(doc_id, patch, "")
         jira_outbox_add(doc_id, "push")       # 상태가 먼저, 처리 결과가 다음 — outbox 순서
@@ -30726,11 +30786,18 @@ def jira_after_transition(doc_id, meta, note="", auto=False):
 
 # ── 닫는 전이의 처리 결과 → Jira 코멘트 (REQ-20260909-092) ─────────────────────
 # 주인(2026-09-09): 「Jira 의 상태가 done 으로 변경될 때는 처리 결과 역시 Jira 에
-# 업데이트되어야 한다.」 상태 동기화의 일부라 content(card/notes)와 무관하다 — notes
-# 코멘트(jira_comment_push)와 갈라 둔 까닭. 본문은 done(--note, goal 대비 근거)·
-# cancelled 의 전이 노트 한 줄, 멱등 키는 그 전이의 시각(jira.result_ts →
-# result_sent_ts). 비밀 모양·첨부 줄·상한·서명은 notes 코멘트와 같은 함수를 쓴다.
-JIRA_RESULT_VERB = {"done": "완료", "cancelled": "취소"}
+# 업데이트되어야 한다.」 → 넓힘(2026-09-12, REQ-20260912-001): 「상태마다 코멘트도
+# 같이 남겨야하고」. 상태 동기화의 일부라 content(card/notes)와 무관하다 — notes
+# 코멘트(jira_comment_push)와 갈라 둔 까닭. 본문은 그 전이의 노트 한 줄(done 이면
+# goal 대비 근거, review 면 확인 포인트, blocked 면 사유와 여는 조건), 멱등 키는 그
+# 전이의 시각(jira.result_ts → result_sent_ts). 비밀 모양·첨부 줄·상한·서명은 notes
+# 코멘트와 같은 함수를 쓴다.
+# **코멘트는 닫는 전이만이 아니다** (REQ-20260912-001, 주인 지시 2026-09-12:
+# 「상태마다 코멘트도 같이 남겨야하고」). 상태 칸만 옮기면 Jira 쪽 사람은 **왜**
+# 옮겼는지를 못 본다 — 전이 노트가 그 까닭이고, 그것은 우리 문서에만 있었다.
+# 이름은 화면의 상태 값과 같은 뜻의 우리말 한 낱말이다.
+JIRA_RESULT_VERB = {"done": "완료", "cancelled": "취소", "in-progress": "착수",
+                    "review": "판정 대기", "blocked": "막힘", "open": "다시 엶"}
 JIRA_HISTORY_STATUS_RE = re.compile(r"^- (\S+) status: \S+ -> (\S+) \(by [^)]*\)(?: — (.*))?$")
 
 
@@ -30751,7 +30818,11 @@ def jira_result_note(body, ts):
 
 
 def jira_result_push(doc_id, actor="", **kw):
-    """jira.result_ts 의 닫는 전이를 코멘트 한 건으로 — {ok, skipped, error}."""
+    """jira.result_ts 의 전이를 코멘트 한 건으로 — {ok, skipped, error}.
+
+    닫는 전이(done·cancelled)만 보내다가 **모든 상태 전이**로 넓혔다
+    (REQ-20260912-001): 칸만 옮기면 Jira 쪽 사람은 왜 옮겼는지를 못 본다.
+    """
     # locate 는 없으면 None 을 준다 — find_path 는 die() 라 이 가드가 죽은 코드였고, outbox 에
     # 실린 뒤 휴지통으로 간 문서 하나가 tick 전체를 죽였다(REQ-20260910-021 실측: 죽은 create
     # 항목 하나에 outbox 66건이 막힘). 없는 문서는 skipped 로 흘려보내 outbox 에서 빠지게 한다.
@@ -30798,31 +30869,40 @@ def jira_result_push(doc_id, actor="", **kw):
         _jira_write(doc_id, {"last_error": msg}, "")
         return {"ok": False, "error": msg, "skipped": False}
     cid = str((d or {}).get("id") or "") if isinstance(d, dict) else ""
-    _jira_write(doc_id, {"result_sent_ts": ts, "synced_at": now_iso(), "synced_by": "s9",
-                         "last_error": ""}, f"{key} 처리 결과 코멘트 ({verb}, ts {ts})")
+    patch = {"result_sent_ts": ts, "synced_at": now_iso(), "synced_by": "s9"}
+    # **남의 실패를 지우지 않는다** (REQ-20260912-001): 코멘트와 상태는 따로 가는데,
+    # 코멘트가 성공했다고 `last_error` 를 비우면 아직 못 간 상태 push 의 사유가
+    # 화면에서 사라진다 — 「보낼 것이 남았는데 아무 문제 없어 보이는」 자리가 된다.
+    if str(cur.get("pending") or "") != "push":
+        patch["last_error"] = ""
+    _jira_write(doc_id, patch, f"{key} 처리 결과 코멘트 ({verb}, ts {ts})")
     _jira_outbound_log({"ts": now_iso(), "doc": doc_id, "key": key, "kind": "result",
                         "note_ts": ts, "comment_id": cid, "by": actor or user})
     return {"ok": True, "skipped": False, "error": ""}
 
 
 def jira_pick_transition(transitions, our_status, j):
-    """(transition dict 또는 None, 까닭). 이름(status_map) → 카테고리 순."""
-    want_name = str((j.get("status_map") or {}).get(our_status) or "").strip().lower()
+    """(transition dict 또는 None, 까닭, 무엇으로 골랐나). 이름 → 카테고리 순.
+
+    셋째 값이 `"name"` 이면 노린 이름으로 골랐고, `"category"` 면 그 이름이 이 보드에
+    없어 물러선 것이다 (REQ-20260912-001) — 문서에 적어 두어야 쓸기가 같은 것을
+    10분마다 다시 밀지 않는다.
+    """
+    want = jira_status_wanted(our_status, j)
     cat = JIRA_CATEGORY.get(our_status, "")
-    if want_name:
-        for t in transitions:
-            to = t.get("to") or {}
-            if str(to.get("name") or "").strip().lower() == want_name \
-                    or str(t.get("name") or "").strip().lower() == want_name:
-                return t, ""
+    for t in transitions:
+        to = t.get("to") or {}
+        if str(to.get("name") or "").strip().lower() in want \
+                or str(t.get("name") or "").strip().lower() in want:
+            return t, "", "name"
     for t in transitions:
         to = t.get("to") or {}
         if str(((to.get("statusCategory") or {}).get("key")) or "") == cat:
-            return t, ""
+            return t, "", "category"
     names = ", ".join(str((t.get("to") or {}).get("name") or t.get("name") or "?")
                       for t in transitions) or "(없음)"
     return None, (f"우리 상태 {our_status} 에 맞는 transition 이 없다 — 고를 수 있는 것: {names}. "
-                  f"프로젝트 status_map 으로 이름을 정해 주십시오")
+                  f"프로젝트 status_map 으로 이름을 정해 주십시오"), ""
 
 
 def jira_status_push(doc_id, actor="", **kw):
@@ -30853,7 +30933,7 @@ def jira_status_push(doc_id, actor="", **kw):
     now_st = (d.get("fields") or {}).get("status") or {}
     now_name = str(now_st.get("name") or "")
     now_cat = str(((now_st.get("statusCategory") or {}).get("key")) or "")
-    if jira_status_matches(our, j, now_name, now_cat):
+    if jira_status_matches(our, j, now_name, now_cat, str(cur.get("status_fit") or "")):
         _jira_write(doc_id, {"status": now_name, "status_category": now_cat,
                              "synced_at": now_iso(), "synced_by": "s9",
                              "pending": "", "last_error": ""}, "")
@@ -30861,10 +30941,21 @@ def jira_status_push(doc_id, actor="", **kw):
     st, d, err = jira_http(user, "GET", f"/rest/api/3/issue/{key}/transitions", **kw)
     if st != 200 or not isinstance(d, dict):
         return _jira_push_failed(doc_id, err or f"transition 목록을 읽지 못했다({st})", cur)
-    t, why = jira_pick_transition(d.get("transitions") or [], our, j)
+    t, why, fit = jira_pick_transition(d.get("transitions") or [], our, j)
     if not t:
         _jira_write(doc_id, {"pending": "", "last_error": why}, f"push 못 함 — {why}")
         return {"ok": False, "error": why, "skipped": True}
+    # 노린 이름이 이 보드에 없어 카테고리로 물러섰고, 지금 자리가 이미 그 카테고리면
+    # **옮길 것이 없다** (REQ-20260912-001). 그 사실을 `status_fit` 로 적어 두어야
+    # 쓸기가 10분마다 같은 것을 다시 밀지 않는다.
+    if fit == "category" and now_cat == JIRA_CATEGORY.get(our, ""):
+        want = " · ".join(jira_status_wanted(our, j)) or "(없음)"
+        _jira_write(doc_id, {"status": now_name, "status_category": now_cat,
+                             "status_fit": "category", "synced_at": now_iso(),
+                             "synced_by": "s9", "pending": "", "last_error": ""},
+                    f"{key} 는 우리 {our} 에 맞는 칸이 없어 {now_name} 에 둔다 "
+                    f"(찾은 이름: {want})")
+        return {"ok": True, "status": now_name, "skipped": True, "error": ""}
     st, d2, err = jira_http(user, "POST", f"/rest/api/3/issue/{key}/transitions",
                             body={"transition": {"id": str(t.get("id"))}}, **kw)
     if st not in (200, 204):
@@ -30872,7 +30963,7 @@ def jira_status_push(doc_id, actor="", **kw):
     new_name = str((t.get("to") or {}).get("name") or "")
     new_cat = str((((t.get("to") or {}).get("statusCategory") or {}).get("key")) or "")
     _jira_write(doc_id, {"status": new_name, "status_category": new_cat,
-                         "synced_at": now_iso(), "synced_by": "s9",
+                         "status_fit": fit, "synced_at": now_iso(), "synced_by": "s9",
                          "pending": "", "last_error": "", "actor": actor or user},
                 f"{key} → {new_name} (우리 {our}) by {actor or user}")
     return {"ok": True, "status": new_name, "skipped": False, "error": ""}

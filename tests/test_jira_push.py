@@ -61,6 +61,10 @@ class Stub(http.server.BaseHTTPRequestHandler):
         if Stub.fail_post > 0:
             Stub.fail_post -= 1
             return self._send(503, {"errorMessages": ["down"]})
+        # 코멘트는 201 + 본문, 전이는 204 — Jira 가 그렇게 답한다. 전이마다 코멘트가
+        # 함께 가게 된 뒤로(REQ-20260912-001) 이 갈림이 필요해졌다.
+        if urlsplit(self.path).path.endswith("/comment"):
+            return self._send(201, {"id": "10001"})
         return self._send(204, None)
 
     def log_message(self, *a):
@@ -138,9 +142,16 @@ class JiraPush(unittest.TestCase):
         self.m.do_transition(self.rid, "in-progress", note="착수", user="hong")
         self.assertEqual(Stub.log, [], "전이가 Jira 를 불렀다")
         self.assertEqual(self.jira()["pending"], "push")
-        self.assertEqual([(r["id"], r["kind"]) for r in self.m.jira_outbox_read()], [(self.rid, "push")])
-        self.assertEqual(self.tick(), [(self.rid, True)])
-        self.assertEqual(Stub.posts[-1], {"transition": {"id": "21"}})
+        # 상태가 먼저, 그 까닭(코멘트)이 다음 — 전이마다 둘이 실린다
+        # (REQ-20260912-001: 「상태마다 코멘트도 같이 남겨야하고」).
+        self.assertEqual([(r["id"], r["kind"]) for r in self.m.jira_outbox_read()],
+                         [(self.rid, "push"), (self.rid, "result")])
+        self.assertEqual(self.tick(), [(self.rid, True), (self.rid, True)])
+        posts = [p for p in Stub.posts if "transition" in p]
+        self.assertEqual(posts[-1], {"transition": {"id": "21"}})
+        said = " ".join(json.dumps(p, ensure_ascii=False) for p in Stub.posts
+                        if "body" in p)
+        self.assertIn("착수", said, "전이의 까닭이 코멘트로 안 갔다")
         j = self.jira()
         self.assertEqual((j["status"], j["pending"], j["synced_by"]), ("In Progress", "", "s9"))
         self.assertEqual(self.m.jira_outbox_read(), [])
@@ -160,11 +171,14 @@ class JiraPush(unittest.TestCase):
         self.assertTrue(res["ok"], res)
         self.assertEqual(Stub.posts[-1], {"transition": {"id": "22"}}, "이름 매핑을 무시했다")
 
-    def test_t3_same_category_means_no_post(self):
+    def test_t3_already_there_means_no_transition(self):
+        # 코멘트는 전이마다 가므로(REQ-20260912-001) 「POST 가 하나도 없다」가
+        # 아니라 **상태를 옮기는 POST 가 없다**가 계약이다.
         Stub.status = {"name": "In Progress", "statusCategory": {"key": "indeterminate"}}
         self.m.do_transition(self.rid, "in-progress", note="착수", user="hong")
-        self.assertEqual(self.tick(), [(self.rid, True)])
-        self.assertEqual([p for p in Stub.log if p[0] == "POST"], [])
+        self.assertEqual(self.tick(), [(self.rid, True), (self.rid, True)])
+        self.assertEqual([p for p in Stub.log
+                          if p[0] == "POST" and p[1].endswith("/transitions")], [])
         self.assertEqual(self.jira()["status"], "In Progress")
 
     def test_t4_a_pull_made_transition_is_not_echoed(self):
@@ -173,16 +187,19 @@ class JiraPush(unittest.TestCase):
         self.assertEqual(self.jira().get("pending", ""), "")
 
     def test_t5_failure_backs_off_and_then_succeeds(self):
-        Stub.fail_post = 3
+        Stub.fail_post = 3      # jira_http 가 스스로 몇 번 다시 걸어 본다
         self.m.do_transition(self.rid, "in-progress", note="착수", user="hong")
-        self.assertEqual(self.tick(), [(self.rid, False)])
+        # 상태와 코멘트는 **따로 간다** (REQ-20260912-001) — 하나가 넘어져도
+        # 다른 하나는 간다. 넘어진 것만 물러났다 다시 온다.
+        res = self.tick()
+        self.assertEqual(res[0], (self.rid, False), res)
         j = self.jira()
         self.assertEqual(j["pending"], "push")
         self.assertTrue(j["last_error"])
-        rows = self.m.jira_outbox_read()
+        rows = [r for r in self.m.jira_outbox_read() if r["kind"] == "push"]
         self.assertEqual((rows[0]["kind"], rows[0]["attempts"]), ("push", 1))
         done = self.m.jira_outbox_tick(now=rows[0]["next_at"] + 1, _sleep=self.slept.append)
-        self.assertEqual(done, [(self.rid, True)])
+        self.assertIn((self.rid, True), done)
         self.assertEqual(self.jira()["status"], "In Progress")
 
     def test_t6_direction_pull_no_key_and_no_matching_transition(self):

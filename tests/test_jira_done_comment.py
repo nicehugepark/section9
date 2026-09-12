@@ -199,11 +199,16 @@ class JiraDoneComment(unittest.TestCase):
     def test_d5_pull_direction_sends_nothing(self):
         rid, key = self.issued()
         self.m.do_project_jira_set("pay", actor="hong", direction="pull")
+        # 앞선(push 이던) 전이가 남긴 표는 그대로다 — 여기서 보는 것은 **이번
+        # 전이가 아무것도 싣지 않는다**이다 (REQ-20260912-001: 코멘트가 모든
+        # 전이로 넓어진 뒤로 이 칸은 처음부터 비어 있지 않다).
+        was = (self.doc(rid)[0].get("jira") or {}).get("result_ts", "")
         self.go(rid, "done", "pull 인 프로젝트의 완료")
         self.assertEqual(self.m.jira_outbox_read(), [])
         self.assertEqual(self.tick(), [])
         self.assertEqual(Stub.comments, [])
-        self.assertNotIn("result_ts", self.doc(rid)[0].get("jira") or {})
+        self.assertEqual((self.doc(rid)[0].get("jira") or {}).get("result_ts", ""),
+                         was, "pull 인데 이번 전이가 보낼 것을 실었다")
 
     def test_d6_a_secret_shape_is_held_back_with_a_reason(self):
         rid, key = self.issued()

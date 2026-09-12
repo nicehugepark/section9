@@ -58,6 +58,10 @@ class Stub(http.server.BaseHTTPRequestHandler):
         if urlsplit(self.path).path.rstrip("/") == "/rest/api/3/issue":
             return self._send(201, {"key": "MP1-9"})
         Stub.posts.append(body)
+        # 코멘트는 201 + 본문, 전이는 204 — Jira 가 그렇게 답한다. 전이마다
+        # 코멘트가 함께 가게 된 뒤로(REQ-20260912-001) 이 갈림이 필요해졌다.
+        if urlsplit(self.path).path.endswith("/comment"):
+            return self._send(201, {"id": "10001"})
         return self._send(204, None)
 
     def log_message(self, *a):
@@ -144,12 +148,14 @@ class JiraPendingSweep(unittest.TestCase):
     # ── 정상 ─────────────────────────────────────────────────────────────
     def test_t1_missing_token_keeps_the_push_in_the_outbox(self):
         """준비물이 없어 실패한 push 는 건너뜀이 아니라 다시 시도할 실패다."""
+        # 전이마다 상태와 코멘트가 함께 실린다 (REQ-20260912-001) — 여기서
+        # 보는 것은 **준비물이 없을 때 push 가 남는가**다.
         self.m.do_transition(self.rid, "in-progress", note="착수", user="hong")
-        self.assertEqual(self.outbox(), [(self.rid, "push")])
+        self.assertEqual(self.outbox(), [(self.rid, "push"), (self.rid, "result")])
         self.token_off()
-        self.assertEqual(self.tick(), [(self.rid, False)])
-        self.assertEqual(self.outbox(), [(self.rid, "push")], "준비물 공백에 outbox 에서 빠졌다")
-        row = self.m.jira_outbox_read()[0]
+        self.assertEqual(self.tick()[0], (self.rid, False))
+        self.assertIn((self.rid, "push"), self.outbox(), "준비물 공백에 outbox 에서 빠졌다")
+        row = [r for r in self.m.jira_outbox_read() if r["kind"] == "push"][0]
         self.assertEqual(int(row["attempts"]), 1)
         self.assertIn("준비물", row.get("last_error", ""))
         self.assertEqual(self.jira_of()["pending"], "push")
@@ -160,9 +166,9 @@ class JiraPendingSweep(unittest.TestCase):
         self.token_off()
         self.tick()
         self.token_on()
-        later = self.m.jira_outbox_read()[0]["next_at"] + 1
-        self.assertEqual(self.tick(at=later), [(self.rid, True)])
-        self.assertEqual(Stub.posts[-1], {"transition": {"id": "21"}})
+        later = max(r["next_at"] for r in self.m.jira_outbox_read()) + 1
+        self.assertIn((self.rid, True), self.tick(at=later))
+        self.assertIn({"transition": {"id": "21"}}, Stub.posts)
         self.assertEqual(self.jira_of()["pending"], "")
         self.assertEqual(self.outbox(), [])
 
