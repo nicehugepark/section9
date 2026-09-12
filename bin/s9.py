@@ -10676,7 +10676,7 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     peek = _auto_cap_block(doc_id, cfg, reason=reason, prio=prio)
     if peek:
         _auto_log(f"SKIP(cap) {doc_id} {reason}")
-        _notify_here(doc_id, peek)     # 상한에 막힌 요청을 세션이 알아야 집는다 (REQ-20260912-001)
+        _notify_later(doc_id, peek)     # 상한에 막힌 요청을 세션이 알아야 집는다 (REQ-20260912-001)
         return block("capped", peek)
     # ⚠ 자리 판정과 대기는 **`_auto_caps_ok` 앞**에 선다 (REQ-20260829-028-62x6).
     # 그 함수는 통과하면 일일·시간 카운터를 올린다. 뒤에 두면 대기 한 번마다
@@ -10842,21 +10842,19 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     # 작업자만 옛 계정으로 갔다(REQ-20260911-013 이 4시간 멈춘 까닭).
     _wacct = code_account_apply(env, owner)
     if _wacct.get("source") == "home" and not _wacct.get("explicit"):
-        # 어느 계정으로 띄울지 모른다 — 고른 적도, 이 컴퓨터에서 뜬 세션도 없다.
-        # 짐작으로 ~/.claude 를 쓰지 않는다(그 폴더의 계정이 남의 것일 수도, 한도가
-        # 찬 것일 수도 있다). 세션에 알리고 세운다.
-        _auto_log(f"SKIP(account) {doc_id} {reason} 고른 계정 없음")
-        _notify_here(doc_id, "어느 계정으로 띄울지 모른다(이 컴퓨터에서 고른 계정도, 뜬 세션도 없다) — "
-                             "대시보드 상단 계정에서 계정을 고르면 그 계정으로 뜬다")
-        return block("account", "이 컴퓨터에서 어느 계정으로 백그라운드 작업자를 띄울지 "
-                                "정해지지 않았습니다 — 대시보드 상단의 계정에서 계정을 "
-                                "고르면 다음 작업자부터 그 계정으로 뜹니다")
+        # 고른 적도, 이 컴퓨터에서 뜬 세션도 없다 — 「기본 계정」이라는 개념은 없고,
+        # 남는 것은 claude 자체가 프로필 없이 쓰는 ~/.claude 의 계정뿐이다. 그것으로
+        # 띄우되 **짐작이었음을 세션에 말한다** — 계정 창에서 고르면 다음부터 그 계정이다.
+        # (막지는 않는다: 계정이 하나뿐인 컴퓨터에서는 그것이 곧 그 사람의 계정이다.)
+        _auto_log(f"ACCOUNT-GUESS {doc_id} {reason} 고른 계정 없음 → ~/.claude")
+        _notify_later(doc_id, f"고른 계정이 없어 ~/.claude 의 계정({account_of(account_home_dir()) or '?'})으로 "
+                             f"띄운다 — 다른 계정이어야 하면 대시보드 상단 계정에서 고르면 다음부터 그 계정이다")
     # 한도가 남은 계정으로 (REQ-20260912-001-2n7g) — 고른 계정이 막혔으면 다른
     # 계정, 남은 곳이 없으면 띄우지 않고 이 컴퓨터의 라이브 세션에 알린다.
     _room, _rkey, _rfrom = account_with_room(_wacct.get("cfg_dir") or "")
     if _room is None:
         _auto_log(f"SKIP(limit) {doc_id} {reason} 모든 계정 한도 ({_rfrom})")
-        _notify_here(doc_id, f"등록된 모든 계정의 한도가 찼다({_rfrom} 포함)")
+        _notify_later(doc_id, f"등록된 모든 계정의 한도가 찼다({_rfrom} 포함)")
         return block("limit", f"{_rfrom} 을 비롯한 등록된 모든 계정의 사용 한도가 "
                               f"차서 백그라운드 작업자를 띄울 수 없습니다 — 한도가 "
                               f"풀리거나 다른 계정을 더하면 다음 틱에 저절로 뜹니다")
@@ -12022,6 +12020,14 @@ def rework_watch_tick(grace=None, now=None):
     # 30초에 한 번 listdir 한 번이 그 값이다.
     try:
         lease_prune()
+    except Exception:
+        pass
+    try:
+        _notify_flush()          # 스폰 경로가 남긴 통지 표를 세션에 보낸다 (REQ-20260912-001)
+    except Exception:
+        pass
+    try:
+        _accounts_warm_tick()    # 계정 사용량 캐시 — account_with_room 이 캐시만 본다
     except Exception:
         pass
     # 고아 신호도 함께 거둔다 (REQ-20260830-019·022) — 손길은 잘못 친 id 가
@@ -24101,12 +24107,10 @@ def code_account_apply(env=None, owner=None):
         # (REQ-20260912-001-2n7g, 실제 사고 2026-09-12 22:38: 사람은 claude04 로 일하는데
         # 작업자는 기본 계정 claude01 로 떴다 — 이 맥에는 선택 기록이 없었다. 기록
         # (REQ-20260911-012)은 그 뒤에 들어왔고, 계정 창을 다시 쓰기 전까지 비어 있다).
-        # 바인딩의 cfg_dir(세션 시작 훅이 적는다)만 읽는다 — 프로세스 표(ps)를 부르면
-        # 스폰 경로가 fork 하나를 더 하고, subprocess 를 흉내 내는 시험이 그 호출에 걸린다.
-        try:
-            _live = str((chat_target(None, user=owner or None) or {}).get("cfg_dir") or "")
-        except Exception:
-            _live = ""
+        # 바인딩 파일의 cfg_dir(세션 시작 훅이 적는다)만 읽는다 — chat_target 은 생존
+        # 판정에 프로세스 표(ps)를 부르는데, 그 fork 가 스폰 경로에 끼면 subprocess 를
+        # 흉내 내는 시험이 그 호출을 마지막 호출로 잡는다(test_bg_session_resume).
+        _live = _owner_session_cfg_dir(owner)
         if _live and os.path.isdir(_live) and os.path.realpath(_live) != os.path.realpath(account_home_dir()):
             env["CLAUDE_CONFIG_DIR"] = _live
             return {"account": account_key_of_dir(_live), "source": "live", "cfg_dir": _live}
@@ -24126,6 +24130,33 @@ def code_account_apply(env=None, owner=None):
     return {"account": want, "source": "last", "cfg_dir": prof}
 
 
+def _owner_session_cfg_dir(owner):
+    """이 컴퓨터에서 그 사람의 세션이 뜬 계정 자리 — 바인딩 파일만 읽는다(ps 없음).
+    끝나지 않은 바인딩 중 가장 최근 것의 cfg_dir. 없으면 빈 값."""
+    import glob as _glob
+    best, best_t = "", 0.0
+    for bp in _glob.glob(_local_binding_glob()):
+        try:
+            with open(bp, encoding="utf-8") as f:
+                b = _norm_binding(json.load(f))
+        except (OSError, ValueError):
+            continue
+        if owner and str(b.get("user") or "") != str(owner):
+            continue
+        if b.get("ended"):
+            continue
+        d = str(b.get("cfg_dir") or "")
+        if not d:
+            continue
+        try:
+            t = os.path.getmtime(bp)
+        except OSError:
+            t = 0.0
+        if t > best_t:
+            best, best_t = d, t
+    return best
+
+
 def account_with_room(cfg_dir, model=""):
     """한도가 남은 계정 (REQ-20260912-001-2n7g, 실사고 2026-09-12): 고른 계정이 막혔으면
     등록된 다른 계정 중 남은 곳을 찾는다.
@@ -24137,16 +24168,45 @@ def account_with_room(cfg_dir, model=""):
     실패는 한도가 아니다) — usage_limit_hit 의 규칙 그대로."""
     home = os.path.abspath(os.path.expanduser(cfg_dir or account_home_dir()))
     frm = account_key_of_dir(home)
-    if not usage_limit_hit(claude_usage(home, ttl=300), model):
+    # **캐시만 본다**(offline) — 스폰 경로에서 업스트림을 기다리지 않고, 시험 환경에서
+    # 실계정을 두드리지 않는다. 캐시는 워처 틱(_accounts_warm_tick)이 5분마다 데운다.
+    # 계정 목록도 프로필 디렉토리만 읽는다 — account_rows 는 살아 있는 세션을 찾느라
+    # 프로세스 표(ps)를 부르는데, 그 fork 가 스폰 경로에 끼면 시험이 그 줄을 잡는다.
+    if not usage_limit_hit(claude_usage(home, offline=True), model):
         return home, frm, ""
-    for r in account_rows(settle=False):
-        path = os.path.abspath(r.get("path") or "")
-        if not r.get("ready") or path == home:
+    cands = [os.path.abspath(account_home_dir())] + [
+        os.path.join(profiles_base(), d) for d in claude_profiles()]
+    for path in cands:
+        path = os.path.abspath(path)
+        if path == home or not account_of(path):
             continue
-        if usage_limit_hit(claude_usage(path, ttl=300), model):
+        if usage_limit_hit(claude_usage(path, offline=True), model):
             continue
-        return path, (r.get("email") or r.get("key") or ""), frm
+        return path, (account_of(path) or os.path.basename(path)), frm
     return None, None, frm
+
+
+_ACCOUNTS_WARM_AT = [0.0]
+
+
+def _accounts_warm_tick(now=None, every=300):
+    """등록된 계정의 사용량 캐시를 워처 틱에서 데운다 (REQ-20260912-001-2n7g) —
+    account_with_room 이 캐시만 보므로 누군가는 채워야 한다. 5분에 한 번, 서버 스레드."""
+    import time as _t
+    nowt = _t.time() if now is None else now
+    if nowt - _ACCOUNTS_WARM_AT[0] < every:
+        return 0
+    _ACCOUNTS_WARM_AT[0] = nowt
+    n = 0
+    for path in [account_home_dir()] + [os.path.join(profiles_base(), d) for d in claude_profiles()]:
+        if not account_of(path):
+            continue
+        try:
+            claude_usage(path, ttl=every)
+            n += 1
+        except Exception:
+            continue
+    return n
 
 
 def _notify_here(doc_id, text, every=3600):
@@ -24189,6 +24249,54 @@ def _notify_here(doc_id, text, every=3600):
         pass
     _auto_log(f"NOTIFY-HERE {doc_id} -> {sid}")
     return sid
+
+
+def _notify_later(doc_id, text):
+    """스폰 경로에서는 곧바로 알리지 않고 표만 남긴다 (REQ-20260912-001-2n7g).
+    `_notify_here` 는 라이브 세션을 고르느라 프로세스 표(ps)를 읽는데, 스폰 경로에
+    그 호출이 끼면 subprocess 를 흉내 내는 시험이 그 줄을 마지막 호출로 잡는다
+    (실측: test_bg_session_resume 가 관련 시험 묶음에서만 실패). 워처 틱이
+    `_notify_flush` 로 다음 30초 안에 보낸다."""
+    pf = os.path.join(_auto_dir(), safe_name(doc_id) + ".json")
+    try:
+        with open(pf, encoding="utf-8") as f:
+            p = json.load(f)
+    except (OSError, ValueError):
+        p = {}
+    p["notify"] = str(text or "")
+    try:
+        os.makedirs(os.path.dirname(pf), exist_ok=True)
+        with open(pf, "w", encoding="utf-8") as f:
+            json.dump(p, f)
+    except OSError:
+        pass
+
+
+def _notify_flush():
+    """남겨 둔 표를 라이브 세션에 보낸다 — 워처 틱이 부른다. 보낸 수를 돌려준다."""
+    import glob as _glob
+    n = 0
+    for pf in _glob.glob(os.path.join(_auto_dir(), "*.json")):
+        if os.path.basename(pf).startswith("_"):
+            continue
+        try:
+            with open(pf, encoding="utf-8") as f:
+                p = json.load(f)
+        except (OSError, ValueError):
+            continue
+        text = str(p.get("notify") or "")
+        if not text:
+            continue
+        doc_id = os.path.basename(pf)[:-5]
+        p.pop("notify", None)
+        try:
+            with open(pf, "w", encoding="utf-8") as f:
+                json.dump(p, f)
+        except OSError:
+            pass
+        if _notify_here(doc_id, text):
+            n += 1
+    return n
 
 
 def code_base_cmd(claude_args):

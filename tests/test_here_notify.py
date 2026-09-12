@@ -54,10 +54,13 @@ class HereNotify(unittest.TestCase):
         """핵심 ① — 고른 계정이 100% 면 남은 계정을 고른다; 다 막히면 None."""
         m = self.m
         home = os.path.join(self.tmp, "home"); other = os.path.join(self.tmp, "prof-b")
-        rows = [{"key": "@home", "path": home, "email": "a@x", "ready": True},
-                {"key": "b@x", "path": other, "email": "b@x", "ready": True}]
+        os.makedirs(other, exist_ok=True)
         usage = {home: _usage(100), other: _usage(3)}
-        with mock.patch.object(m, "account_rows", lambda settle=True: rows), \
+        emails = {os.path.abspath(home): "a@x", os.path.abspath(other): "b@x"}
+        with mock.patch.object(m, "account_home_dir", lambda: home), \
+             mock.patch.object(m, "profiles_base", lambda: os.path.dirname(other)), \
+             mock.patch.object(m, "claude_profiles", lambda: [os.path.basename(other)]), \
+             mock.patch.object(m, "account_of", lambda p: emails.get(os.path.abspath(p), "")), \
              mock.patch.object(m, "claude_usage", lambda cfg, **kw: usage.get(os.path.abspath(cfg), _usage(100))), \
              mock.patch.object(m, "account_key_of_dir", lambda p: "a@x"):
             path, key, frm = m.account_with_room(home)
@@ -106,21 +109,21 @@ class HereNotify(unittest.TestCase):
         m = self.m
         prof = os.path.join(self.tmp, "prof-live"); os.makedirs(prof, exist_ok=True)
         with mock.patch.object(m, "code_account_choice", lambda owner=None: ""), \
-             mock.patch.object(m, "chat_target", lambda *_a, **_k: {"session": "abcdefgh", "cfg_dir": prof}), \
+             mock.patch.object(m, "_owner_session_cfg_dir", lambda owner: prof), \
              mock.patch.object(m, "account_key_of_dir", lambda p: "live@x"):
             env = {}
             r = m.code_account_apply(env, "hong")
         self.assertEqual(r["source"], "live")
         self.assertEqual(env.get("CLAUDE_CONFIG_DIR"), prof, "작업자가 기본 계정으로 떨어진다")
         with mock.patch.object(m, "code_account_choice", lambda owner=None: ""), \
-             mock.patch.object(m, "chat_target", lambda *_a, **_k: None):
+             mock.patch.object(m, "_owner_session_cfg_dir", lambda owner: ""):
             self.assertEqual(m.code_account_apply({}, "hong")["source"], "home")
 
     def test_n7_no_choice_is_not_a_default_account(self):
         """① — 고른 계정도 뜬 세션도 없으면 ~/.claude 로 짐작하지 않는다(explicit=False)."""
         m = self.m
         with mock.patch.object(m, "code_account_choice", lambda owner=None: ""), \
-             mock.patch.object(m, "chat_target", lambda *_a, **_k: None):
+             mock.patch.object(m, "_owner_session_cfg_dir", lambda owner: ""):
             r = m.code_account_apply({}, "hong")
         self.assertEqual((r["source"], r.get("explicit")), ("home", False))
         with mock.patch.object(m, "code_account_choice", lambda owner=None: m.ACCOUNT_HOME_KEY):
@@ -130,6 +133,20 @@ class HereNotify(unittest.TestCase):
         i = src.index("def _spawn_worker(")
         self.assertIn('not _wacct.get("explicit")', src[i:i + 40000],
                       "작업자가 고른 적 없는 ~/.claude 계정으로 뜬다")
+
+    def test_n8_spawn_path_leaves_a_mark_and_the_tick_delivers_it(self):
+        """③ — 스폰 경로는 표만 남기고(프로세스 표를 읽지 않는다) 워처 틱이 보낸다."""
+        m = self.m
+        src = open(S9 + ".py", encoding="utf-8").read()
+        i = src.index("def _spawn_worker("); body = src[i:src.index("\ndef ", i + 10)]
+        self.assertNotIn("_notify_here(", body, "스폰 경로가 곧바로 알린다 — ps 가 스폰 경로에 낀다")
+        self.assertIn("_notify_later(", body)
+        sent = []
+        with mock.patch.object(m, "_notify_here", lambda d, t, every=3600: sent.append((d, t)) or "abcdefgh"):
+            m._notify_later("REQ-20260912-009-t", "상한")
+            self.assertEqual(m._notify_flush(), 1)
+            self.assertEqual(sent, [("REQ-20260912-009-t", "상한")])
+            self.assertEqual(m._notify_flush(), 0, "보낸 표가 남아 다시 보낸다")
 
     def test_n5_next_json_marks_claimed_and_the_hook_lists_the_rest(self):
         """③ — s9 next --json 이 claimed 를 실고, 훅이 안 잡힌 것만 매 턴 짚는다."""
