@@ -101,6 +101,23 @@ class HereNotify(unittest.TestCase):
                         "상한 판정이 전이 뒤에 있다 — 못 띄우는 요청을 진행 중으로 바꾼다")
         self.assertIn("_notify_here(", body)
 
+    def test_n6_without_a_recorded_choice_the_worker_follows_the_live_session(self):
+        """① — 선택 기록이 없으면 이 컴퓨터에서 그 사람이 쓰는 세션의 계정으로 뜬다."""
+        m = self.m
+        prof = os.path.join(self.tmp, "prof-live"); os.makedirs(prof, exist_ok=True)
+        with mock.patch.object(m, "code_account_choice", lambda owner=None: ""), \
+             mock.patch.object(m, "chat_target", lambda *_a, **_k: {"session": "abcdefgh"}), \
+             mock.patch.object(m, "session_cfg_dir", lambda _b: prof), \
+             mock.patch.object(m, "account_key_of_dir", lambda p: "live@x"):
+            env = {}
+            r = m.code_account_apply(env, "hong")
+        self.assertEqual(r["source"], "live")
+        self.assertEqual(env.get("CLAUDE_CONFIG_DIR"), prof, "작업자가 기본 계정으로 떨어진다")
+        with mock.patch.object(m, "code_account_choice", lambda owner=None: ""), \
+             mock.patch.object(m, "chat_target", lambda *_a, **_k: None), \
+             mock.patch.object(m, "session_cfg_dir", lambda _b: ""):
+            self.assertEqual(m.code_account_apply({}, "hong")["source"], "home")
+
     def test_n5_next_json_marks_claimed_and_the_hook_lists_the_rest(self):
         """③ — s9 next --json 이 claimed 를 실고, 훅이 안 잡힌 것만 매 턴 짚는다."""
         src = open(S9 + ".py", encoding="utf-8").read()

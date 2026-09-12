@@ -24077,7 +24077,7 @@ def code_account_apply(env=None, owner=None):
     그 사실을 돌려줘 기동 줄이 말하게 한다. 다른 컴퓨터에서 고른 값이 동기화로
     흘러들어도 여기서는 없는 자리이기 때문이다.
 
-    반환: {"account": 표시할 이름, "source": "env"|"last"|"home"|"missing",
+    반환: {"account": 표시할 이름, "source": "env"|"last"|"live"|"home"|"missing",
            "cfg_dir": 실제 걸린 경로}
     """
     env = os.environ if env is None else env
@@ -24086,6 +24086,18 @@ def code_account_apply(env=None, owner=None):
         return {"account": account_key_of_dir(cur),
                 "source": "env", "cfg_dir": cur}
     want = code_account_choice(owner)
+    if not want:
+        # 기록이 없으면 **지금 이 컴퓨터에서 그 사람이 쓰는 세션의 계정**을 따른다
+        # (REQ-20260912-001-2n7g, 실제 사고 2026-09-12 22:38: 사람은 claude04 로 일하는데
+        # 작업자는 기본 계정 claude01 로 떴다 — 이 맥에는 선택 기록이 없었다. 기록
+        # (REQ-20260911-012)은 그 뒤에 들어왔고, 계정 창을 다시 쓰기 전까지 비어 있다).
+        try:
+            _live = session_cfg_dir(chat_target(None, user=owner or None))
+        except Exception:
+            _live = ""
+        if _live and os.path.isdir(_live) and os.path.realpath(_live) != os.path.realpath(account_home_dir()):
+            env["CLAUDE_CONFIG_DIR"] = _live
+            return {"account": account_key_of_dir(_live), "source": "live", "cfg_dir": _live}
     if not want or want == ACCOUNT_HOME_KEY:
         return {"account": ACCOUNT_HOME_KEY, "source": "home",
                 "cfg_dir": account_home_dir()}
