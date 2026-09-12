@@ -10841,6 +10841,16 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     # 한 줄만 남기고 죽었다 — 사람은 토큰을 아끼려고 계정을 옮겨 두었는데
     # 작업자만 옛 계정으로 갔다(REQ-20260911-013 이 4시간 멈춘 까닭).
     _wacct = code_account_apply(env, owner)
+    if _wacct.get("source") == "home" and not _wacct.get("explicit"):
+        # 어느 계정으로 띄울지 모른다 — 고른 적도, 이 컴퓨터에서 뜬 세션도 없다.
+        # 짐작으로 ~/.claude 를 쓰지 않는다(그 폴더의 계정이 남의 것일 수도, 한도가
+        # 찬 것일 수도 있다). 세션에 알리고 세운다.
+        _auto_log(f"SKIP(account) {doc_id} {reason} 고른 계정 없음")
+        _notify_here(doc_id, "어느 계정으로 띄울지 모른다(이 컴퓨터에서 고른 계정도, 뜬 세션도 없다) — "
+                             "대시보드 상단 계정에서 계정을 고르면 그 계정으로 뜬다")
+        return block("account", "이 컴퓨터에서 어느 계정으로 백그라운드 작업자를 띄울지 "
+                                "정해지지 않았습니다 — 대시보드 상단의 계정에서 계정을 "
+                                "고르면 다음 작업자부터 그 계정으로 뜹니다")
     # 한도가 남은 계정으로 (REQ-20260912-001-2n7g) — 고른 계정이 막혔으면 다른
     # 계정, 남은 곳이 없으면 띄우지 않고 이 컴퓨터의 라이브 세션에 알린다.
     _room, _rkey, _rfrom = account_with_room(_wacct.get("cfg_dir") or "")
@@ -24091,16 +24101,23 @@ def code_account_apply(env=None, owner=None):
         # (REQ-20260912-001-2n7g, 실제 사고 2026-09-12 22:38: 사람은 claude04 로 일하는데
         # 작업자는 기본 계정 claude01 로 떴다 — 이 맥에는 선택 기록이 없었다. 기록
         # (REQ-20260911-012)은 그 뒤에 들어왔고, 계정 창을 다시 쓰기 전까지 비어 있다).
+        # 바인딩의 cfg_dir(세션 시작 훅이 적는다)만 읽는다 — 프로세스 표(ps)를 부르면
+        # 스폰 경로가 fork 하나를 더 하고, subprocess 를 흉내 내는 시험이 그 호출에 걸린다.
         try:
-            _live = session_cfg_dir(chat_target(None, user=owner or None))
+            _live = str((chat_target(None, user=owner or None) or {}).get("cfg_dir") or "")
         except Exception:
             _live = ""
         if _live and os.path.isdir(_live) and os.path.realpath(_live) != os.path.realpath(account_home_dir()):
             env["CLAUDE_CONFIG_DIR"] = _live
             return {"account": account_key_of_dir(_live), "source": "live", "cfg_dir": _live}
     if not want or want == ACCOUNT_HOME_KEY:
+        # `explicit`: 사람이 ~/.claude 의 계정을 **골라서** 온 것인가(True), 아무 기록도
+        # 없어 거기로 떨어진 것인가(False). 작업자는 뒤의 경우 뜨지 않는다 — 「기본
+        # 계정」은 하네스의 개념이 아니라 Claude Code 가 프로필 없이 쓰는 폴더일 뿐이고,
+        # 사람이 고르지 않은 계정으로 남의 몫의 한도를 쓰면 안 된다 (주인 지적 2026-09-12
+        # 22:46 「기본 계정이라는 개념은 뭐야?」, REQ-20260912-001-2n7g).
         return {"account": ACCOUNT_HOME_KEY, "source": "home",
-                "cfg_dir": account_home_dir()}
+                "cfg_dir": account_home_dir(), "explicit": want == ACCOUNT_HOME_KEY}
     prof = _profile_dir(want)
     if not os.path.isdir(prof):
         return {"account": want, "source": "missing",

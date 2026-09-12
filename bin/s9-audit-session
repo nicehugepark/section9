@@ -397,6 +397,10 @@ def main():
                        capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
         subprocess.run([*S9_ARGV, "bind", "cwd", data.get("cwd", "")],
                        capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
+    # 이 세션이 뜬 계정 자리 (REQ-20260912-001-2n7g): 작업자가 사람의 계정을 따를 때
+    # 프로세스 표를 뒤지지 않고 이 값을 읽는다. 기본 자리면 빈 값이다.
+    subprocess.run([*S9_ARGV, "bind", "cfg_dir", os.environ.get("CLAUDE_CONFIG_DIR", "")],
+                   capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
     if tp and os.path.exists(tp):
         # 세션 시작/종료 시 스트림 미러링 — 파일명=원본 basename(전체SID.jsonl).
         # 끄기 스위치와 증분 쓰기는 mirror() 안쪽(=매 턴 미러와 같은 코드)이 본다.
