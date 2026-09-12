@@ -1025,6 +1025,19 @@ def main():
                   f" ⚑ 이 세션이 착수한 parent 없는 요청 {len(pl_ids)}건: {pl_shown} — "
                   f"파생이면 `s9 link <id> --parent <REQ>`, 새 주제면 `s9 set <id> --root` "
                   f"(전부: `s9 linkcheck --parents --session {session}`). ")
+    # 이 컴퓨터 몫인데 아무 세션도 집지 않은 요청 (REQ-20260912-001-2n7g) — 워처가
+    # 상한·한도로 못 띄우면 요청이 몇 시간 서 있어도 세션은 몰랐다(016 6시간·001 7시간).
+    # 매 턴 이 줄이 짚는다. 수신함 통지(kind=event)는 유휴 세션의 몫이고 이 줄은 말하는 세션의 몫이다.
+    nx = run(env, "next", "--json")
+    try:
+        here_ids = [h["id"] for h in (json.loads(nx.stdout or "{}").get("here") or [])
+                    if not h.get("claimed")] if nx.returncode == 0 else []
+    except (ValueError, TypeError, AttributeError):
+        here_ids = []
+    here_txt = ("" if not here_ids else
+                f" ⚑ 이 컴퓨터 몫인데 아무 세션도 집지 않은 요청 {len(here_ids)}건: "
+                f"{', '.join(here_ids[:6])}{' 외 %d건' % (len(here_ids) - 6) if len(here_ids) > 6 else ''} — "
+                f"`s9 last <id> --add` 로 집어 착수하거나, 남의 일이면 담당 컴퓨터를 바꿔라. ")
     rv = run(env, "review", "--quiet")
     review = ("" if rv.returncode != 0 or not rv.stdout.strip() else
               f" ⏳ 확인 대기(review) 요청:\n{rv.stdout.strip()}\n"
@@ -1048,7 +1061,7 @@ def main():
     attnote = (f"첨부 {len(atts)}건이 body에 기록되었다. " if atts else "")
     emit(pend +
         f"[section9 audit] 이 프롬프트는 {doc_id} 로 자동 기록되었다 (Request 분류). {attnote}{projhint}"
-        f"현재 요청 주체: {who}.{warn}{untitled}{parentless}{approvals}{reopened}{handoff}{loose}{stalled}{stale_serve}{sync_late}{blocked}{review}{wkwarn} "
+        f"현재 요청 주체: {who}.{warn}{untitled}{parentless}{here_txt}{approvals}{reopened}{handoff}{loose}{stalled}{stale_serve}{sync_late}{blocked}{review}{wkwarn} "
         f"이 세션에서 s9 를 호출할 때는 반드시 `S9_SESSION={session}` 을 앞에 붙여라. 규약: "
         f"(1) 제목은 원문 복사가 아니라 20자 이내의 이해하기 쉬운 명사구로 교체하라 — "
         f"`s9 set {doc_id} --title '...' --summary '...' --size S|M|L "

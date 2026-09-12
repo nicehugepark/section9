@@ -10676,6 +10676,7 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     peek = _auto_cap_block(doc_id, cfg, reason=reason, prio=prio)
     if peek:
         _auto_log(f"SKIP(cap) {doc_id} {reason}")
+        _notify_here(doc_id, peek)     # 상한에 막힌 요청을 세션이 알아야 집는다 (REQ-20260912-001)
         return block("capped", peek)
     # ⚠ 자리 판정과 대기는 **`_auto_caps_ok` 앞**에 선다 (REQ-20260829-028-62x6).
     # 그 함수는 통과하면 일일·시간 카운터를 올린다. 뒤에 두면 대기 한 번마다
@@ -10840,6 +10841,19 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     # 한 줄만 남기고 죽었다 — 사람은 토큰을 아끼려고 계정을 옮겨 두었는데
     # 작업자만 옛 계정으로 갔다(REQ-20260911-013 이 4시간 멈춘 까닭).
     _wacct = code_account_apply(env, owner)
+    # 한도가 남은 계정으로 (REQ-20260912-001-2n7g) — 고른 계정이 막혔으면 다른
+    # 계정, 남은 곳이 없으면 띄우지 않고 이 컴퓨터의 라이브 세션에 알린다.
+    _room, _rkey, _rfrom = account_with_room(_wacct.get("cfg_dir") or "")
+    if _room is None:
+        _auto_log(f"SKIP(limit) {doc_id} {reason} 모든 계정 한도 ({_rfrom})")
+        _notify_here(doc_id, f"등록된 모든 계정의 한도가 찼다({_rfrom} 포함)")
+        return block("limit", f"{_rfrom} 을 비롯한 등록된 모든 계정의 사용 한도가 "
+                              f"차서 백그라운드 작업자를 띄울 수 없습니다 — 한도가 "
+                              f"풀리거나 다른 계정을 더하면 다음 틱에 저절로 뜹니다")
+    if _rfrom:
+        env["CLAUDE_CONFIG_DIR"] = _room
+        _auto_log(f"ACCOUNT {doc_id} {_rfrom} 한도 → {_rkey}")
+        _wacct = {"account": _rkey, "source": "room", "cfg_dir": _room}
     # 워커가 돌리는 긴 잡(테스트 러너)의 선언 귀속 (REQ-20260830-026):
     # S9_SESSION 은 아래서 걷히므로(세션 의미론), 잡 전용 선언을 따로 싣는다.
     # jobfile 이 이 값을 req 필드로 적고, 카탈로그가 그 카드에 붙인다.
@@ -11936,6 +11950,15 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
         _ok, _code, _why = exec_verdict(meta, local, want="spawn")
         if not _ok:
             _auto_log(f"HERE-SKIP({_code}) {r['id']} {_why}")
+            continue
+        # **띄울 수 없으면 집지도 않는다** (REQ-20260912-001-2n7g, 실사고 2026-09-12):
+        # 상한에 막힌 채 in-progress 로만 바꿔 두면 카드는 「진행 중」인데 아무도
+        # 없다 — 001 이 그렇게 7시간을 섰다. 판정은 스폰이 쓰는 그 함수(peek)이고,
+        # 막혔으면 open 인 채 이 컴퓨터의 라이브 세션에 알린다.
+        _peek = _auto_cap_block(r["id"], cfg, reason="resume", prio=doc_priority(meta))
+        if _peek:
+            _auto_log(f"HERE-SKIP(capped) {r['id']} {_peek[:60]}")
+            _notify_here(r["id"], _peek)
             continue
         by_machine = bool(str(meta.get("needs_machine") or "").strip())
         by_os = bool(str(meta.get("needs_os") or "").strip())
@@ -18109,7 +18132,8 @@ def cmd_next(args):
     here = here_requests()
     if getattr(args, "json", False):
         d = dict(p or {"id": None})
-        d["here"] = [{"id": r["id"], "title": r.get("title", ""), "status": r.get("status", "")} for r in here]
+        d["here"] = [{"id": r["id"], "title": r.get("title", ""), "status": r.get("status", ""),
+                      "claimed": bool(rework_claimed(r["id"]))} for r in here]   # 훅 주입이 안 잡힌 것만 세게 (REQ-20260912-001)
         print(json.dumps(d, ensure_ascii=False))
         return
     if here:
@@ -24071,6 +24095,71 @@ def code_account_apply(env=None, owner=None):
                 "cfg_dir": account_home_dir()}
     env["CLAUDE_CONFIG_DIR"] = prof
     return {"account": want, "source": "last", "cfg_dir": prof}
+
+
+def account_with_room(cfg_dir, model=""):
+    """한도가 남은 계정 (REQ-20260912-001-2n7g, 실사고 2026-09-12): 고른 계정이 막혔으면
+    등록된 다른 계정 중 남은 곳을 찾는다.
+
+    실측 22:28: 작업자는 기본 계정(claude01, 주간 한도 100%)으로 떠서 「You've hit your
+    weekly limit」 한 줄만 남기고 죽었고, 옆 프로필(claude04)은 3% 였다. 계정이 둘인
+    까닭이 이것인데 작업자는 막힌 쪽만 두드렸다. 반환 (cfg_dir, 계정 이름, 바꾼 원래
+    계정) — 남은 곳이 없으면 (None, None, 원래 계정). **모르면 막지 않는다**(조회
+    실패는 한도가 아니다) — usage_limit_hit 의 규칙 그대로."""
+    home = os.path.abspath(os.path.expanduser(cfg_dir or account_home_dir()))
+    frm = account_key_of_dir(home)
+    if not usage_limit_hit(claude_usage(home, ttl=300), model):
+        return home, frm, ""
+    for r in account_rows(settle=False):
+        path = os.path.abspath(r.get("path") or "")
+        if not r.get("ready") or path == home:
+            continue
+        if usage_limit_hit(claude_usage(path, ttl=300), model):
+            continue
+        return path, (r.get("email") or r.get("key") or ""), frm
+    return None, None, frm
+
+
+def _notify_here(doc_id, text, every=3600):
+    """이 컴퓨터에서 이 요청을 집을 수 있는 라이브 세션의 수신함에 kind=event 로
+    알린다 (REQ-20260912-001-2n7g). 워처가 못 띄울 때(상한·한도) 요청이 in-progress
+    인 채 몇 시간 서 있어도 사람도 세션도 몰랐다 — 016 은 6시간, 001 은 7시간.
+    같은 요청은 `every` 초에 한 번만 — 30초 틱마다 같은 줄을 쌓지 않는다.
+    반환: 보낸 세션 id 또는 ""."""
+    import time as _t
+    pf = os.path.join(_auto_dir(), safe_name(doc_id) + ".json")
+    try:
+        with open(pf, encoding="utf-8") as f:
+            p = json.load(f)
+    except (OSError, ValueError):
+        p = {}
+    nowt = _t.time()
+    if nowt - float(p.get("notified_at") or 0) < every:
+        return ""
+    try:
+        path = locate(doc_id)
+        owner = doc_owner(read_doc(path)[0]) if path else ""
+        b = chat_target(None, user=owner or None)
+        sid = (b or {}).get("session", "")
+        if not sid or not _inbox_watch_alive(sid):
+            return ""
+        line = {"ts": now_iso(), "from": "dashboard", "kind": "event",
+                "text": (f"[전이 통지] {doc_id} 이 컴퓨터 몫인데 백그라운드 작업자가 "
+                         f"못 뜬다 — {text}. 지금 `s9 last {doc_id} --add` 로 집어 "
+                         f"직접 착수하거나, 남의 일이면 담당 컴퓨터를 바꿔라.")}
+        with open(chat_inbox_path(sid, make=True), "a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    except Exception:
+        return ""
+    p["notified_at"] = nowt
+    try:
+        os.makedirs(os.path.dirname(pf), exist_ok=True)
+        with open(pf, "w", encoding="utf-8") as f:
+            json.dump(p, f)
+    except OSError:
+        pass
+    _auto_log(f"NOTIFY-HERE {doc_id} -> {sid}")
+    return sid
 
 
 def code_base_cmd(claude_args):
