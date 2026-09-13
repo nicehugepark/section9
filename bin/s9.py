@@ -31750,8 +31750,23 @@ def _forget_auto_port(root=None):
     return True
 
 
+def port_record_kind(given, pin, supervise, env_port):
+    """`--port` 를 어떻게 적을 것인가 (REQ-20260913-004) — 규칙은 하나다:
+    **9909 우선 · 남이 쓰면 +1 · 내 서버가 답하면 재사용**, 그리고 못박는 것은
+    사람이 `--pin` 이라고 말했을 때뿐이다.
+
+      "pin"   사람의 결정(`--pin`) — state/port + port.pinned, --stop 도 잊지 않는다
+      "auto"  이번 기동이 앉은 자리 — state/port + port.auto, 서버가 내려가거나
+              9909 가 비면 잊힌다(다음 기동이 9909 부터 다시 잰다)
+      ""      적지 않는다 — 기계가 고른 값(--port-auto)·S9_PORT·감시자 없는 1회 실행
+    """
+    if not given or not supervise or env_port:
+        return ""
+    return "pin" if pin else "auto"
+
+
 def _pin_port(port, root=None):
-    """사람이 `--port` 로 정한 포트를 state/port 에 적는다 — 그 뒤의 훅·링크·s9 code 가 같은
+    """사람이 `--port --pin` 으로 정한 포트를 state/port 에 적는다 — 그 뒤의 훅·링크·s9 code 가 같은
     포트를 본다 (REQ-20260906-083). 자동 이동 표식은 지운다: 사람의 결정이 자동 판정 위다."""
     root = root or ROOT
     try:
@@ -32214,8 +32229,22 @@ def cmd_serve(args):
     if _why in ("other", "busy", "windows"):
         print(f"포트 {_base} 는 남이 쓰고 있다 — {args.port} 로 띄운다 (state/port)",
               file=sys.stderr)
-    if _given and getattr(args, "supervise", False) and not os.environ.get("S9_PORT"):
+    # **못박는 것은 사람이 `--pin` 이라고 말했을 때뿐이다** (REQ-20260913-004, 주인
+    # 지적 2026-09-13 17:26: 「9912로 고정하라고 한적없다. 처음부터 9909였고, 이미
+    # 사용 중인 포트라면 +1을 하고 같은 사용자가 9909를 사용하고 있다면 이미 실행
+    # 중이니 다시 서버를 띄울 필요가 없는게 규칙」). 전날 리드가 `--restart --port
+    # 9912` 로 옮긴 것이 사람의 결정으로 굳어 다음 기동이 9909 로 돌아오지 못했다 —
+    # `--port` 를 친 것이 사람인지 에이전트인지 이 자리는 가를 수 없으니, 플래그
+    # 하나로 뜻을 밝히게 한다. `--pin` 없는 `--port` 는 「이번 기동이 앉은 자리」로만
+    # 적혀 훅·링크가 따라오되, 서버가 내려가거나 9909 가 비면 잊힌다.
+    _rec = port_record_kind(_given, getattr(args, "pin", False),
+                            getattr(args, "supervise", False),
+                            bool(os.environ.get("S9_PORT")))
+    if _rec == "pin":
         _pin_port(args.port)              # 사람의 결정은 다음 기동·훅·링크에도 이어진다
+    elif _rec == "auto":
+        _port_remember(args.port, "given", ROOT,
+                       os.path.join(ROOT, "state", "port.auto"))
     # 감시자 (REQ-20260825-096) — 이 프로세스는 감시자를 떼어 놓고 곧 돌아간다.
     if getattr(args, "stop_guard", False):
         if _guard_alive(args.port) is None:
@@ -36494,6 +36523,10 @@ def main():
     sv.add_argument("--port-auto", action="store_true",
                     help="이 포트는 **기계가 골랐다** — 사람의 결정으로 못박지 "
                          "않는다 (REQ-20260907-033, 내부 호출용)")
+    sv.add_argument("--pin", action="store_true",
+                    help="--port 를 사람의 결정으로 못박는다 — 다음 기동·훅·링크가 "
+                         "계속 그 포트를 본다 (없으면 9909 가 비는 대로 돌아온다, "
+                         "REQ-20260913-004)")
     sv.add_argument("--guard-run", action="store_true",
                     help="감시 루프를 이 프로세스에서 실행한다 (떼어 낸 자식이 "
                          "들어오는 진입점 — 사람이 직접 쓸 일은 없다)")
