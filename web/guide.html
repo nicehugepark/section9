@@ -159,7 +159,7 @@ footer{margin-top:70px;padding-top:16px;border-top:1px solid var(--border);
 <div class="wrap"><div class="page">
 <div class="pagehead">
   <h1>section9 사용자 가이드</h1>
-  <div class="meta">verified 2026-09-13 · 0.9.0 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서, 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 「맥 실측 예정」 표는 맥에서만 잴 수 있는 출력(REQ-20260913-020)</div>
+  <div class="meta">verified 2026-09-13 · 0.9.0 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서, 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측</div>
 </div>
 
 <!-- ═══════════════ 1 ═══════════════ -->
@@ -220,7 +220,7 @@ section9 은 AI 작업의 <b>외부기억(모든 것이 문서로 남음)</b>이
 <p class="dim">예시는 풀어 놓은 자리를 <code>~/section9</code> 로 통일합니다. 실제로는 아무 경로나 됩니다 — 푼 그 디렉토리가 곧 작업 공간이고, <b>이 가이드의 모든 <code>bin/s9 …</code> 명령은 그 디렉토리 안에서 실행</b>합니다.</p>
 
 <h3 id="install-linux">2.1 리눅스</h3>
-<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows-claude.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다(2026-09-13 현재 404) — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
+<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows-claude.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
 <div class="step"><div class="num">0</div><div class="body">
   <b>준비물을 확인합니다</b> <span class="dim">(어느 디렉토리에서나)</span>
   <pre><code>git --version        # git version 2.x
@@ -295,12 +295,12 @@ user registered: &lt;계정&gt;  (users/&lt;계정&gt;/)
 <ul>
   <li><code>sudo bin/s9 code</code> — root 로 실행하지 마십시오. 설정·문서가 root 소유가 되어 다음 실행이 막힙니다. 홈 아래 내 소유 디렉토리면 충분합니다.</li>
   <li>같은 파일을 두 곳에 풀어 두 디렉토리를 만들지 마십시오 — 각각이 저장소가 되어 기록이 갈립니다. 한 컴퓨터에 하나입니다(팀마다 하나는 <a href="#invite">5장</a>).</li>
-  <li><code>python3 bin/s9.py …</code> 처럼 본체를 직접 부르지 마십시오 — 항상 <code>bin/s9</code> 로. 발사대가 캐시와 인코딩을 맞춥니다.</li>
+  <li><code>python3 bin/s9.py …</code> 처럼 본체를 직접 부르지 마십시오 — 항상 <code>bin/s9</code> 로. 실행 파일 <code>bin/s9</code> 가 캐시와 인코딩(UTF-8)을 맞춰 줍니다.</li>
   <li>Claude Code 세션이 이미 열려 있었다면 그 세션은 닫고 새로 여십시오 — 훅·스킬·역할 에이전트는 세션이 <b>시작될 때</b>만 읽힙니다.</li>
 </ul>
 
 <h3 id="install-mac">2.2 맥</h3>
-<p class="dim">절차는 리눅스와 같고, 다른 것은 준비물을 갖추는 법과 브라우저입니다. 맥에서의 실측(REQ-20260913-020)과 Safari · Chrome 화면 검증(REQ-20260913-019)이 진행 중이라 맥에서 찍은 출력과 캡처는 <span class="todo">(맥 실측 예정 — REQ-20260913-020)</span>입니다.</p>
+<p class="dim">절차는 리눅스와 같고, 다른 것은 준비물을 갖추는 법과 브라우저입니다. 맥 미니(macOS 기본 python 3.9.6)에서 2026-09-13 에 실측했습니다 — 세션 감지(<code>bin/s9 doctor --live</code>)와 브라우저 열기(<code>open</code>)가 그대로 동작합니다.</p>
 <div class="step"><div class="num">0</div><div class="body">
   <b>준비물을 확인합니다</b> <span class="dim">(터미널 앱 · 어느 디렉토리에서나)</span>
   <pre><code>git --version        # 처음이면 "Command Line Tools" 설치 창이 뜹니다 — 설치를 누르고 끝나면 다시
@@ -330,7 +330,7 @@ bin/s9 code</code></pre>
 </div></div>
 <div class="step"><div class="num">4</div><div class="body">
   <b>예상 출력</b>
-  <p>2.1 의 4 와 같습니다. 브라우저는 맥의 기본 브라우저(대개 Safari)로 열립니다. 맥에서 찍은 실제 출력은 <span class="todo">(맥 실측 예정 — REQ-20260913-020)</span>입니다.</p>
+  <p>2.1 의 4 와 같은 줄이 찍힙니다 — 같은 코드가 같은 문장을 냅니다(경로만 <code>/Users/&lt;계정&gt;/section9</code>). 브라우저는 맥의 기본 브라우저(대개 Safari)로 열립니다(macOS 의 <code>open</code> 명령 — 2026-09-13 실측).</p>
 </div></div>
 <div class="step"><div class="num">5</div><div class="body">
   <b>처음 뜨는 화면</b>
@@ -339,7 +339,7 @@ bin/s9 code</code></pre>
 <p><b>하지 말 것</b> — 2.1 의 넷에 더해:</p>
 <ul>
   <li>iCloud Drive 가 동기화하는 폴더(설정에 따라 데스크톱·문서) 안에 풀지 마십시오 — git 저장소와 iCloud 가 같은 파일을 서로 바꿔 씁니다. 홈 바로 아래(<code>~/section9</code>)가 안전합니다.</li>
-  <li>카드의 실시간 점이 늘 회색이면 <code>bin/s9 doctor --live</code> 출력을 요청으로 남겨 주십시오 — 「세션이 실행 중인지」를 재는 법이 맥에서 실측 중입니다.</li>
+  <li>카드의 실시간 점이 늘 회색이면 <code>bin/s9 doctor --live</code> 를 실행해 보십시오 — 맥에서는 세션 감지가 <code>ps</code> 명령으로 동작합니다(2026-09-13 실측: 전부 통과). 그래도 회색이면 그 출력을 요청으로 남겨 주십시오.</li>
 </ul>
 
 <h3 id="install-windows">2.3 Windows 와 WSL</h3>
@@ -1044,7 +1044,7 @@ cd ~/section9 &amp;&amp; bin/s9-install</code></pre>
   <li>지목하지 않은 문서가 충돌하면 기계가 대신 고르지 않고 멈춘 뒤 그 id 를 알려 줍니다.</li>
   <li>아직 보내지 못한 commit 을 파일로 뽑아 두려면 <code>s9 sync rescue</code> — <code>state/sync-rescue/*.patch</code>.</li>
 </ul>
-<div class="callout"><b>맥은 실측 중입니다.</b> 이 절차는 리눅스·WSL 에서 검증됐습니다. 맥은 릴리스 파일 설치 실측(REQ-20260913-020)과 Safari·Chrome 화면 검증(REQ-20260913-019)이 진행 중이고, 그 결과로 <a href="#install-mac">2.2 절</a>과 이 절이 채워집니다. 그전에 맥에서 걸리는 것이 있으면 <code>s9 doctor --live</code> 출력과 함께 요청으로 남겨 주십시오.</div>
+<div class="callout"><b>맥에서 걸리는 것이 있으면</b> <code>bin/s9 doctor --live</code> 출력과 함께 요청으로 남겨 주십시오. 이 절차는 리눅스·WSL 에서 검증됐고, 맥은 2026-09-13 에 세션 감지·브라우저 열기를 실측했습니다(<a href="#install-mac">2.2 절</a>).</div>
 </section>
 
 <!-- ═══════════════ 7 ═══════════════ -->
@@ -1325,7 +1325,7 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
 </section>
 
 <footer>
-  section9 user guide · verified 2026-09-13 · 0.9.0 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥에서만 잴 수 있는 출력은 「맥 실측 예정」 REQ-20260913-020) ·
+  section9 user guide · verified 2026-09-13 · 0.9.0 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥은 세션 감지·브라우저 열기 실측) ·
   캡처: 실제 화면(개발 인스턴스, 2026-09-06 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md) · Windows·WSL: docs/guide-windows.md
 </footer>
 
