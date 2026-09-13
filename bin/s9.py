@@ -27271,6 +27271,20 @@ def _shot_manual_hint(url):
             f"수동 확인: `xdg-open {url}`")
 
 
+def _shot_size(raw):
+    """`--size` 를 쉼표꼴 "W,H" 하나로 세운다 (REQ-20260913-005-2n7g).
+
+    브라우저 도구의 관례는 768x1024 이고 스킬 본보기도 그 꼴인데, 받는 쪽
+    (Chrome --window-size · Playwright 러너)은 쉼표꼴만 안다 — x 꼴이 들어가면
+    러너가 int 변환에서 추적 정보를 그대로 냈다. 알 수 없는 꼴은 한 줄로 끝낸다."""
+    parts = re.split(r"\s*[xX,]\s*", (raw or "").strip())
+    if len(parts) == 2 and all(p.isdigit() and int(p) > 0 for p in parts):
+        return f"{int(parts[0])},{int(parts[1])}"
+    print(f"s9 shot: --size 는 너비x높이 꼴이다(예: 768x1024 또는 768,1024) — 받은 값: {raw!r}",
+          file=sys.stderr)
+    sys.exit(2)
+
+
 def cmd_shot(args):
     """UI 검증용 스크린샷 — WSL 이면 Windows Chrome, 맥이면 /Applications 의
     Chrome 을 headless 로 구동해 PNG 생성.
@@ -27279,6 +27293,7 @@ def cmd_shot(args):
     함께 비-0 종료해 '미검증'을 명시하게 한다.
     """
     import subprocess
+    args.size = _shot_size(args.size)
     url, args.wait, tuned_size, why = _shot_tune(args.url, args.wait)
     # 사용자가 --size 를 명시했으면 그 뜻이 먼저다 — 도구의 기본값만 덮는다.
     if tuned_size and args.size == SHOT_SIZE_DEFAULT:
@@ -36743,7 +36758,8 @@ def main():
     sh = sub.add_parser("shot", help="headless 스크린샷 (WSL=Windows Chrome) — UI 검증용")
     sh.add_argument("url")
     sh.add_argument("--out")
-    sh.add_argument("--size", default=SHOT_SIZE_DEFAULT)
+    sh.add_argument("--size", default=SHOT_SIZE_DEFAULT,
+                    help="뷰포트 너비x높이 — 768x1024 또는 768,1024 (기본 1440,900)")
     sh.add_argument("--wait", default="3000",
                     help="캡처 전 대기 ms (async 렌더용, 기본 3000)")
     sh.add_argument("--engine", choices=("auto", "chrome", "chromium", "webkit"),
