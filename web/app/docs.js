@@ -106,6 +106,31 @@ function docWaitArm(id){
   }, DOC_WAIT_MS);
 }
 
+/* ---- 문서 열기 계측 (REQ-20260913-034-62x6) ----
+
+   「문서 조회가 느리다」는 불평은 그때까지 숫자를 갖지 못했다 — 서버의
+   `/api/doc` 은 5~10ms 로 상수인데 사람이 기다린 것은 그보다 훨씬 길었고,
+   그 사이의 시간이 어디로 갔는지는 밖에서 못 쟀다(REQ-20260913-031-62x6).
+   그래서 **누른 순간부터 문서가 판에 서기까지**를 화면이 직접 재서 서버의
+   perf 로그에 같은 자로 실어 보낸다. 함께 싣는 셋이 증폭 요인을 가른다:
+   목록 행 수(강제 레이아웃) · s9Fetch 재시도 수(끊긴 왕복) · 창이 보이는지
+   (가려진 창의 타이머는 1초로 정렬된다). 읽기는 `s9 perf`. */
+let docOpenT0 = 0, docOpenId = "", docOpenRetry0 = 0;
+function docOpenStart(id){
+  docOpenT0 = performance.now();
+  docOpenId = id;
+  docOpenRetry0 = s9Retries();
+}
+function docOpenMark(id){
+  if (!docOpenT0 || docOpenId !== id) return;   // 배경 되읽기·다른 문서는 세지 않는다
+  const ms = performance.now() - docOpenT0;
+  docOpenT0 = 0; docOpenId = "";
+  s9PerfMark("docopen", ms, {
+    rows: document.querySelectorAll("#view .doclist .row").length,
+    retries: s9Retries() - docOpenRetry0,
+    vis: document.visibilityState});
+}
+
 /* 응답은 **지금 살아 있는 판**에 그린다 (REQ-20260908-003 갈래 ②).
    `loadDoc` 은 fetch 전에 판을 잡아 두는데, 기다리는 사이 판이 새로 서면 그 손에
    들린 것은 이미 떼어진 노드다 — 거기 그리면 아무 데도 안 그린 것과 같다. */
@@ -141,6 +166,39 @@ function docDeselect(){
    카드가 각자 그리고, 목록 글자가 한 자라도 바뀌면 서명이 달라져 그대로 다시
    그린다 — 갱신을 줄이려다 화면을 멈춰 세우지 않는다. */
 function docListStale(wrap, list){ return wrap.__s9list !== list; }
+
+/* 바뀐 **줄만** 갈아 끼운다 (REQ-20260913-034-62x6).
+
+   실측(Windows Chrome, CDP): 1,274줄을 편 목록에서 줄 하나를 누르면 클릭→문서
+   표시가 549ms 였고, 그중 대부분이 목록 전체 innerHTML 재파싱과 그 뒤의 강제
+   레이아웃이었다(CPU 프로파일: 파싱 143ms · scrollIntoView 79ms). 그런데 그때
+   실제로 달라진 글자는 **두 줄**뿐이다 — 고르기를 놓은 줄과 새로 고른 줄.
+
+   그래서 조각 이름(k)의 차례가 같고 달라진 조각이 전부 줄(row:<id>)이면 그
+   줄만 outerHTML 로 바꾼다. 차례가 다르면(무리를 폈다·걸렀다·순서가 바뀌었다)
+   통째로 칠한다 — 반쯤 고친 목록을 남기느니 한 번 더 파싱하는 편이 옳다.
+   한도(DOC_PATCH_MAX)를 넘겨 바뀌었으면 그때도 통째로가 싸다.
+
+   덤: 통째 칠하기는 목록의 스크롤 위치를 0 으로 되돌린다 — 15초 폴이 읽던
+   자리를 되감던 그 자리도 이 경로에서는 그대로 남는다. */
+const DOC_PATCH_MAX = 12;
+function docPatchRows(wrap, parts){
+  const old = wrap.__s9parts;
+  if (!old || old.length !== parts.length) return false;
+  const hit = [];
+  for (let i = 0; i < parts.length; i++){
+    if (old[i].k !== parts[i].k) return false;
+    if (old[i].h === parts[i].h) continue;
+    if (!parts[i].k.startsWith("row:") || hit.length >= DOC_PATCH_MAX) return false;
+    hit.push(parts[i]);
+  }
+  // 먼저 전부 찾고 나서 바꾼다 — 중간에 못 찾아 되돌아가면 반만 새 목록이 된다.
+  const els = hit.map(p => wrap.querySelector(
+    `.row[data-doc="${cssq(p.k.slice(4))}"]`));
+  if (els.some(el => !el)) return false;
+  els.forEach((el, i) => { el.outerHTML = hit[i].h; });
+  return true;
+}
 
 async function renderDocs(rows){
   const gen = renderGen;
@@ -286,8 +344,13 @@ async function renderDocs(rows){
         <span class="st${r.type === "question" ? " ko" : ""}">${esc(statusLabel(r))}</span>
         <div class="id">${esc(shortId(r.id))}${prioHTML(r)}${off}</div><div>${esc(r.title)}</div>${snips}</div>`;
   };
-  let list = `<div class="typebar">${bar}</div>`
-           + loadingAllHTML() + staleHandleHTML();
+  /* 목록은 **조각으로** 짓는다 (REQ-20260913-034-62x6). 지어내는 글자는 전과
+     같고 이음매만 생긴다 — 조각의 이름(`k`)이 그 자리가 무엇인지 말하므로,
+     고른 줄이 옮겨 갔을 뿐인 재그리기에서 `docPatchRows` 가 바뀐 줄만 찾아
+     갈아 끼운다. 조각을 모르면 줄 하나 때문에 1270줄을 다시 파싱해야 한다
+     (실측: innerHTML 파싱 143ms + 그 뒤 강제 레이아웃). */
+  const parts = [{k: "head", h: `<div class="typebar">${bar}</div>`
+                                + loadingAllHTML() + staleHandleHTML()}];
   for (const [g, grp] of Object.entries(groups)){
     if (!grp.length) continue;
     const open = expanded.has("grp:"+g) || !!matchMap;
@@ -309,11 +372,12 @@ async function renderDocs(rows){
        남긴다. */
     const qh = g === "question" ? unansHandleHTML(qTotal, qLeftInGrp) : "";
     if (!curType || qh)
-      list += `<div class="grp">${curType ? "" : g}${qh}</div>`;
-    list += shown.map(rowHTML).join("");
+      parts.push({k: "grp:" + g, h: `<div class="grp">${curType ? "" : g}${qh}</div>`});
+    for (const r of shown) parts.push({k: "row:" + r.id, h: rowHTML(r)});
     if (grp.length > shown.length)
-      list += `<button class="more" data-expand="grp:${g}">${grp.length - shown.length}개 더 보기</button>`;
+      parts.push({k: "more:" + g, h: `<button class="more" data-expand="grp:${g}">${grp.length - shown.length}개 더 보기</button>`});
   }
+  const list = parts.map(p => p.h).join("");
   // 백그라운드 catalog 갱신(15s 폴링)이 뷰어를 파괴하지 않도록 doclist만 교체 —
   // 열려 있는 reqstream 터미널·스크롤·live 폴링이 그대로 산다 (REQ-20260823-071)
   /* 판에는 **주인 이름**이 붙는다 (REQ-20260831-026 G0′). Projects 탭이 같은 2단
@@ -321,7 +385,7 @@ async function renderDocs(rows){
      이미 서 있다"에 걸려 남의 판에 이쪽 목록만 갈아 끼운다 — 오른쪽에는 아까 보던
      문서가 그대로 남는다. Settings 는 오른쪽 판 id 가 달라 우연히 비껴갔을 뿐이다. */
   const wrap = $('#view .docs[data-pane="docs"] .doclist');
-  let painted = true;
+  let painted = true, built = false;
   if (wrap && $("#viewer")){
     // 15초 폴링이 목록을 통째로 갈아끼운다 — 키보드로 짚어 둔 자리를 여기서
     // 놓치면 방향키로 훑던 일이 15초마다 처음으로 돌아간다 (REQ-20260827-013).
@@ -329,17 +393,20 @@ async function renderDocs(rows){
     if (painted){
       const af = document.activeElement;
       const keepRow = af && af.closest && af.closest(ROVE_ITEM) ? af.dataset.doc : null;
-      wrap.innerHTML = list;
-      wrap.__s9list = list;
+      if (!docPatchRows(wrap, parts)) wrap.innerHTML = list;
+      wrap.__s9list = list; wrap.__s9parts = parts;
       if (keepRow){
         const t = wrap.querySelector(`[data-doc="${cssq(keepRow)}"]`);
         if (t){ t.tabIndex = 0; t.focus({preventScroll: true}); }
       }
     }
   }
-  else $("#view").innerHTML = `<div class="docs" data-pane="docs"><div class="doclist" data-rove
+  else {
+    $("#view").innerHTML = `<div class="docs" data-pane="docs"><div class="doclist" data-rove
       role="group" aria-label="문서 목록 — 방향키로 이동, Enter 로 열기">${list}</div>
     <div class="viewer" id="viewer">${docBlankHTML()}</div></div>`;
+    built = true;     // 판을 막 세웠다 — 높이는 그 자리에서 재야 첫 프레임이 안 흔들린다
+  }
   if (painted) roveSync();
   /* 고른 줄을 **보이게** 한다 (REQ-20260831-007). 자리를 위로 옮기는 대신 눈을
      그 자리로 옮긴다 — 다른 탭의 카드·본문 링크·주소로 들어와 그 줄이 목록
@@ -351,14 +418,17 @@ async function renderDocs(rows){
   if (selectedDoc && (fresh || refreeze)){
     const selEl = document.querySelector(
       `#view .doclist .row[data-doc="${cssq(selectedDoc)}"]`);
-    if (selEl) selEl.scrollIntoView({block: "nearest"});
+    /* 재는 일은 **그린 뒤**에, 그리고 필요할 때만 (REQ-20260913-034-62x6).
+       `block:"nearest"` 는 이미 보이는 줄에는 아무 일도 하지 않지만, 그것을
+       알아내려고 스크롤 사슬 전체의 레이아웃을 계산한다 — 1,274줄에서 79ms
+       였다. 보이는지부터 묻고, 그 물음도 다음 프레임으로 미룬다: 사람이
+       기다리는 것은 문서 판이지 목록의 스크롤이 아니다. */
+    if (selEl) requestAnimationFrame(() => {
+      if (selEl.isConnected && !docRowVisible(selEl))
+        selEl.scrollIntoView({block: "nearest"});
+    });
   }
-  // 그룹 헤더가 붙을 위치 = 타입바의 실제 높이. 좁은 목록에서 타입바가 두 줄로
-  // 접히면 30px 고정값은 헤더를 타입바 아래에 숨긴다.
-  const tbEl = $("#view .typebar"), dlEl = $("#view .doclist");
-  if (tbEl && dlEl) dlEl.style.setProperty("--tbh", tbEl.offsetHeight + "px");
-  sizeDocs();
-  requestAnimationFrame(sizeDocs);   // 헤더가 자란 뒤(사용량 줄 등) 다시 잰다
+  docMeasureSoon(built);
   /* 사람이 고른 것이면 위에서부터 새로, 그 밖에는 배경 갱신(읽던 자리 보존).
 
      **적고 있는 손은 배경 갱신이 밀어내지 않는다** (REQ-20260831-028 · REQ-055 E7
@@ -368,6 +438,44 @@ async function renderDocs(rows){
      이 경로를 지나지 않는다. 그래야 편집 중이라고 갱신까지 멈추는 일이 없다. */
   if (selectedDoc && !(!fresh && prjEditing($("#viewer"))))
     loadDoc(selectedDoc, !fresh);
+}
+
+/* 고른 줄이 목록 창 안에 온전히 보이는가 (REQ-20260913-034-62x6).
+   붙박이 타입바(--tbh)가 위를 가리므로 그 두께만큼 안쪽에서 잰다 — 줄의 CSS
+   에 있는 scroll-margin-top 과 같은 자다. 읽기 둘로 끝난다(레이아웃 한 번). */
+function docRowVisible(el){
+  const box = el.closest(".doclist");
+  if (!box) return false;
+  const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+  const tb = parseFloat(getComputedStyle(box).getPropertyValue("--tbh")) || 0;
+  return r.top >= b.top + tb && r.bottom <= b.bottom;
+}
+
+/* 재는 일은 한 프레임에 **한 번** 모은다 (REQ-20260913-034-62x6).
+   종전에는 렌더 끝에서 sizeDocs 를 그 자리에서 한 번, rAF 로 또 한 번 불렀다 —
+   목록을 막 갈아 끼운 직후의 동기 측정은 그 자리에서 레이아웃을 강제하므로,
+   1,274줄에서는 사람이 기다리는 시간에 그대로 얹힌다. 값은 그리기 뒤에 재도
+   같고(헤더가 자란 뒤를 노리던 두 번째 호출이 원래 그 자리였다), 겹쳐 걸린
+   측정은 하나로 접힌다. */
+let docMeasureRaf = 0;
+function docMeasure(){
+  // 그룹 헤더가 붙을 위치 = 타입바의 실제 높이. 좁은 목록에서 타입바가 두 줄로
+  // 접히면 30px 고정값은 헤더를 타입바 아래에 숨긴다.
+  const tbEl = $("#view .typebar"), dlEl = $("#view .doclist");
+  if (tbEl && dlEl) dlEl.style.setProperty("--tbh", tbEl.offsetHeight + "px");
+  sizeDocs();
+}
+/* `now` 는 판을 **막 세운** 때다 — 그때는 높이가 아직 CSS 의 어림값이라 한 프레임
+   미루면 목록이 눈에 보이게 한 번 늘었다 줄어든다. 판이 이미 서 있으면 값은
+   그대로이니 미뤄도 흔들릴 것이 없다. */
+function docMeasureSoon(now){
+  if (now){
+    if (docMeasureRaf){ cancelAnimationFrame(docMeasureRaf); docMeasureRaf = 0; }
+    docMeasure();
+    return;
+  }
+  if (docMeasureRaf) return;
+  docMeasureRaf = requestAnimationFrame(() => { docMeasureRaf = 0; docMeasure(); });
 }
 
 // 목록/뷰어의 높이를 판이 실제로 시작하는 위치에서 잰다 — 헤더 높이는 skin·density·
@@ -424,12 +532,18 @@ function prjViewOpt(){
 async function loadDoc(id, bg, force){
   const gen = docLoadStart();          // 이 열기의 표 — 늦은 응답을 가른다 (REQ-20260907-067)
   selectedDoc = id;
-  document.querySelectorAll(".doclist .row").forEach(el => {
-    const on = el.dataset.doc === id;
-    el.classList.toggle("sel", on);
-    // 배경 틴트와 왼쪽 잉크 바는 눈에만 있다 — 열려 있다는 사실을 속성으로도 남긴다
-    on ? el.setAttribute("aria-current", "true") : el.removeAttribute("aria-current");
-  });
+  /* 고르기 표시는 **놓은 줄과 잡은 줄**에만 손댄다 (REQ-20260913-034-62x6).
+     전에는 줄 전수를 돌며 classList.toggle 과 aria-current 를 다시 썼다 —
+     1,274줄이면 열 때마다 2,548번의 속성 쓰기이고, 그중 옳게 달라지는 것은
+     둘뿐이다. 배경 틴트와 왼쪽 잉크 바는 눈에만 있으니 열려 있다는 사실을
+     속성으로도 남긴다(aria-current). */
+  document.querySelectorAll('.doclist .row.sel, .doclist .row[aria-current]')
+    .forEach(el => {
+      if (el.dataset.doc === id) return;
+      el.classList.remove("sel"); el.removeAttribute("aria-current");
+    });
+  const selRow = document.querySelector(`.doclist .row[data-doc="${cssq(id)}"]`);
+  if (selRow){ selRow.classList.add("sel"); selRow.setAttribute("aria-current", "true"); }
   roveSync();
   let viewer = $("#viewer");
   if (!viewer) return;
@@ -860,6 +974,7 @@ async function loadDoc(id, bg, force){
   viewer.dataset.showing = id;
   viewer.dataset.updated = m.updated || "";
   docWaitClear();                     // 판이 섰다 — 기다림의 시계를 걷는다
+  docOpenMark(id);                    // 누른 순간부터 여기까지가 사람이 기다린 시간이다
   // 다른 탭에서 눌려 문서에 사실이 적힌 채로 열린 경우에도 초가 흘러야 한다 —
   // 시계는 그린 뒤에 건다(그리는 함수가 시계를 알 이유가 없다).
   answerClock();

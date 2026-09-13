@@ -155,6 +155,7 @@ let docFresh = false;
 function docOpen(id){
   selectedDoc = id;
   docFresh = true;
+  docOpenStart(id);   // 계측의 시작점은 **누른 순간**이다 (REQ-20260913-034-62x6)
   const to = docTab(id);   // 주소를 만드는 곳(docHash)과 같은 판정 (REQ-20260909-094)
   if (tab !== to){ tab = to; tabSync(); }
   pushRoute();

@@ -71,6 +71,7 @@ async function s9Fetch(url, opts){
       if (res) return s9Resp(res, body);   // 502 를 끝내 받았으면 그대로 돌려준다
       throw err;
     }
+    S9_PERF.retries++;                     // 다시 거는 횟수 — 계측이 이 수를 싣는다
     await s9Sleep(back[i] + Math.random() * S9_JITTER);
   }
 }
@@ -148,3 +149,57 @@ if (typeof document !== "undefined" && document.addEventListener)
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) s9PollsResume();
   });
+
+
+/* ---- 화면 쪽 계측 — 있는 길에 kind=client 로 싣는다 (REQ-20260913-034-62x6) ----
+
+   서버는 이미 제 일을 `perf_mark` 로 적고 `s9 perf` 가 그것을 요약한다. 화면의
+   숫자를 위해 저장 규칙을 새로 만들면 같은 것을 세는 자가 둘이 되므로, 화면도
+   그 길에 실어 보낸다 — `/api/perf` 는 받은 줄을 그대로 `perf_mark("client", …)`
+   에 넣고 끝난다.
+
+   규칙 셋:
+   ① **모아서 한 번에 보낸다.** 문서를 열 때마다 왕복을 하나 더 만들면 계측이
+      곧 느림이 된다(이 환경의 중계는 병행 왕복에서 30~55% 를 끊는다).
+      첫 줄이 쌓이면 S9_PERF_WAIT 뒤에 한 번, 창을 떠날 때 한 번 보낸다.
+   ② **다시 걸지 않는다.** 못 보낸 계측은 버린다 — 계측의 재시도는 재려던 그
+      느림을 스스로 만든다. 그래서 s9Fetch 가 아니라 sendBeacon 이 기본이다.
+   ③ **막지 않는다.** 어느 단계가 터져도 조용히 버린다: 숫자 한 줄 때문에
+      문서가 안 열리는 화면은 고장이다. */
+const S9_PERF_WAIT = 2000;     // ms — 첫 줄이 쌓이고 보내기까지
+const S9_PERF_MAX = 50;        // 한 번에 싣는 줄 수(넘치면 오래된 것부터 버린다)
+const S9_PERF = {q: [], t: 0, retries: 0};
+
+/* s9Fetch 가 지금까지 다시 건 횟수 — 두 시점의 차가 그 사이의 재시도 수다. */
+function s9Retries(){ return S9_PERF.retries; }
+
+function s9PerfMark(name, ms, extra){
+  try{
+    const rec = {name: String(name).slice(0, 40), ms: Math.round(ms * 10) / 10};
+    if (extra) Object.assign(rec, extra);
+    S9_PERF.q.push(rec);
+    if (S9_PERF.q.length > S9_PERF_MAX) S9_PERF.q.shift();
+    if (!S9_PERF.t) S9_PERF.t = setTimeout(s9PerfFlush, S9_PERF_WAIT);
+  }catch(e){}
+}
+
+function s9PerfFlush(){
+  if (S9_PERF.t){ clearTimeout(S9_PERF.t); S9_PERF.t = 0; }
+  if (!S9_PERF.q.length) return;          // 빈 줄은 보내지 않는다
+  const body = JSON.stringify({marks: S9_PERF.q.splice(0, S9_PERF.q.length)});
+  try{
+    if (navigator.sendBeacon
+        && navigator.sendBeacon("/api/perf", new Blob([body], {type: "application/json"})))
+      return;
+    fetch("/api/perf", {method: "POST", body, keepalive: true,
+                        headers: {"Content-Type": "application/json"}}).catch(() => {});
+  }catch(e){}
+}
+
+if (typeof document !== "undefined" && document.addEventListener){
+  // 창을 떠날 때는 남은 줄을 마저 보낸다 — pagehide 는 탭을 닫을 때도 온다.
+  window.addEventListener("pagehide", s9PerfFlush);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) s9PerfFlush();
+  });
+}
