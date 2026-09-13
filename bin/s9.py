@@ -6371,6 +6371,8 @@ def _pull_if_stale():
     import time as _time
     if sync_mode() != "remote":
         return
+    if _sync_commit_busy():
+        return          # commit 이 훅을 도는 중 — rebase 로 HEAD 를 옮기지 않는다 (REQ-20260913-022-62x6)
     try:
         if _time.time() - float(open(_SYNC_PULL_TS, encoding="utf-8").read().strip()) < LEASE_PULL_FRESH_SEC:
             return
@@ -13200,6 +13202,9 @@ def _serve_owner_alive():
 
 SYNC_COMMIT_BUSY_STALE_SEC = 300   # 이보다 오래된 진행 중 표식·index.lock 은 죽은 커밋이다
 _COMMIT_MARK = os.path.join(ROOT, "state", "commit-in-progress")
+# `s9 commit` 의 표식 (REQ-20260913-022-62x6) — 임시 index 로 도는 commit 은 .git/index.lock
+# 을 잡지 않아 위 둘로는 보이지 않는다. bin/s9_commit.py 가 commit 앞뒤로 만들고 지운다.
+_S9_COMMIT_MARK = os.path.join(ROOT, "state", "s9-commit-in-progress")
 
 
 def _sync_commit_busy():
@@ -13210,17 +13215,27 @@ def _sync_commit_busy():
     'HEAD': is at X but expected Y` 로 실패한다(실측 2026-09-06 09:2x·09:43).
     표식은 s9-guard 가 시작에 만들고 post-commit 훅이 지운다; .git/index.lock 은
     git 이 commit 동안 잡는다. 어느 쪽이든 5분을 넘긴 것은 죽은 커밋의 잔재라
-    무시한다 — 그 잔재에 sync 가 영영 서 있지 않도록. 반환: 사유 문자열 또는 ""."""
+    무시한다 — 그 잔재에 sync 가 영영 서 있지 않도록. 반환: 사유 문자열 또는 "".
+
+    셋째 항목 `s9-commit` (REQ-20260913-022-62x6): `s9 commit` 은 임시 index 로 commit
+    하므로 index.lock 이 안 잡히고, 표식이 생기기 전에 시작된 회차도 있다 — 그 명령이
+    sync 잠금을 쥔 채 commit 앞에 이 표식(pid)을 두고 뒤에 지운다. pid 가 죽은 표식은
+    남은 파일이라 무시한다(실측 2026-09-13: 훅이 도는 40초 사이 sync commit 이 HEAD 를
+    옮겨 `cannot lock ref HEAD` 두 번)."""
     import time as _time
     now = _time.time()
     for path, why in ((_COMMIT_MARK, "commit-in-progress"),
-                      (os.path.join(ROOT, ".git", "index.lock"), "index.lock")):
+                      (os.path.join(ROOT, ".git", "index.lock"), "index.lock"),
+                      (_S9_COMMIT_MARK, "s9-commit")):
         try:
             age = now - os.path.getmtime(path)
         except OSError:
             continue
-        if age < SYNC_COMMIT_BUSY_STALE_SEC:
-            return why
+        if age >= SYNC_COMMIT_BUSY_STALE_SEC:
+            continue
+        if why == "s9-commit" and not commit_module().mark_pid_alive(path):
+            continue        # 죽은 s9 commit 이 남긴 표식 — 회차를 세우지 않는다
+        return why
     return ""
 
 
@@ -13548,6 +13563,10 @@ def sync_poll(timeout=8):
     import time as _time
     if sync_mode() != "remote":
         return "none"          # 받을 곳이 없으면 기록할 일도 없다
+    if _sync_commit_busy():
+        # 이 저장소에서 commit 이 훅을 도는 중이다 — ff pull 도 HEAD 를 옮기므로 이
+        # 회차는 받지 않는다 (REQ-20260913-022-62x6). 다음 차례에 받는다.
+        return "none"
     t0 = _time.time()
     result = _sync_poll_once(timeout)
     try:
@@ -14726,6 +14745,28 @@ def cmd_merge_doc(args):
     with open(args.ours, "w", encoding="utf-8") as f:
         f.write(merged)
     sys.exit(0)
+
+
+def commit_module():
+    """bin/s9_commit.py — 한 working tree 에서 여럿이 commit 하는 정식 길 (REQ-20260913-022-62x6).
+    잠금(_sync_lock_take)·표식(_S9_COMMIT_MARK)·pid 판정은 이 이름공간의 것을 bind 로 받아
+    두 벌이 되지 않는다. 한 번만 싣는다."""
+    m = globals().get("_COMMIT_MODULE")
+    if m is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "s9_commit", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_commit.py"))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        m.bind(globals())
+        globals()["_COMMIT_MODULE"] = m
+    return m
+
+
+def cmd_commit(argv):
+    """`s9 commit [-m|-F] [--hunks patch] [--wait 초] -- <경로…>` — main 이 argparse 앞에서
+    넘긴다(`--` 뒤의 옵션도 받아야 하므로). 종료 코드는 모듈이 정한다."""
+    return commit_module().main(list(argv or []))
 
 
 def cmd_sync(args):
@@ -36995,6 +37036,14 @@ def main():
     rl.add_argument("--keep", action="store_true", help="try: 푼 자리를 지우지 않는다")
     rl.set_defaults(fn=cmd_release)
 
+    # `s9 -h` 목록용 — 실제 인자는 main 이 argparse 앞에서 cmd_commit 에 넘긴다.
+    cm = sub.add_parser("commit", add_help=False,
+                        help="한 working tree 에서 여럿이 commit — 지정한 경로의 HEAD 대비 변경만, "
+                             "sync 회차와 겹치지 않게 (REQ-20260913-022-62x6). "
+                             "s9 commit -m '…' [--hunks patch] -- <경로…>")
+    cm.add_argument("rest", nargs=argparse.REMAINDER)
+    cm.set_defaults(fn=lambda a: sys.exit(cmd_commit(a.rest)))
+
     sy = sub.add_parser("sync", help="문서 이벤트 git 동기화 — 수동 실행/상태 (REQ-048)")
     sy.add_argument("--on", action="store_true",
                     help="바깥과 오간다 (commit→pull→push)")
@@ -37257,6 +37306,10 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "code":
         cmd_code(code_argv(sys.argv[2:]))
         return
+    if len(sys.argv) > 1 and sys.argv[1] == "commit":
+        # `s9 commit -- <경로…> -m …` — argparse 는 `--` 뒤를 전부 위치 인자로 읽어 그 뒤의
+        # 옵션을 못 받는다. 모듈이 직접 가른다 (REQ-20260913-022-62x6).
+        sys.exit(cmd_commit(sys.argv[2:]))
     args = p.parse_args()
     # 손길 도장 (REQ-20260830-019) — 문서를 고치는 명령만, 실패 무해(C9).
     # 대시보드 서버·워처는 in-process 호출이라 여기를 지나지 않는다(C1).
