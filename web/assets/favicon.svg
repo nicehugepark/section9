@@ -1,9 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="section9">
   <title>section9</title>
-  <!-- 탭 크기(16~32px)용 — 획을 10 으로 굵혀 흐림을 줄인다. 큰 마크는 mark.svg(획 8) -->
+  <!-- 탭 크기(16~32)용 광학 새김 — 획을 굵히고 캐치라이트를 뺐다 -->
   <rect width="64" height="64" fill="#141518"/>
-  <circle cx="32" cy="25" r="14" fill="none" stroke="#fafaf8" stroke-width="10"/>
-  <path d="M46 25 Q46 45 31 54" fill="none" stroke="#fafaf8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="32" cy="25" r="7.5" fill="#5b8def"/>
-  <circle cx="29.6" cy="22.6" r="1.8" fill="#fafaf8" fill-opacity="0.9"/>
+  <path d="M40.5 24 Q40.5 44 28 51" fill="none" stroke="#fafaf8" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="32" cy="24" r="17" fill="#5b8def"/>
+  <circle cx="32" cy="24" r="10" fill="#141518"/>
 </svg>
