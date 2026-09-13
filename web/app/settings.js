@@ -199,6 +199,7 @@ function renderSettingsSection(meAdmin){
       if(r.type==="request") byStatus[r.status]=(byStatus[r.status]||0)+1; });
     v.innerHTML = `<h1 style="margin:0 0 10px">시스템</h1>
       <table class="metatbl">
+        <tr><td>버전</td><td>${esc((window.__whoami||{}).version || "—")}</td></tr>
         <tr><td>저장소</td><td class="path">~/section9 (이 컴퓨터의 md 파일 + git 동기화)</td></tr>
         <tr><td>문서 수</td><td>${c.length} — request ${byType.request||0}, knowledge ${byType.knowledge||0}, session ${byType.session||0}</td></tr>
         <tr><td>요청 상태</td><td>${Object.entries(byStatus).map(([k,n])=>`${k} ${n}`).join(" · ")||"(없음)"}</td></tr>

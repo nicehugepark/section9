@@ -469,6 +469,38 @@ def os_identity():
     return os.environ.get("S9_USER") or getpass.getuser()
 
 
+# 버전 (REQ-20260913-006-62x6) — `s9 --version` 과 화면 Settings › 시스템의 「버전」 줄이
+# 같은 함수를 읽는다. VERSION 은 **코드** 루트의 것이다: ROOT(S9_ROOT)는 데이터 루트라
+# 시험에서는 빈 임시 디렉토리다. 배포판(tar.gz·zip)에는 .git 이 없으니 그때는 해시를
+# 생략한다. git 은 프로세스라 60초 캐시로 — 서버가 /api/boot 마다 부르지 않게.
+S9_CODE_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_VERSION_CACHE = {"at": 0.0, "val": ""}
+
+
+def s9_version():
+    """`0.9.0 (cef1fb01)` — VERSION 파일 + git 짧은 해시(없으면 생략)."""
+    now = time.time()
+    if _VERSION_CACHE["val"] and now - _VERSION_CACHE["at"] < 60:
+        return _VERSION_CACHE["val"]
+    try:
+        with open(os.path.join(S9_CODE_ROOT, "VERSION"), encoding="utf-8") as f:
+            ver = f.read().strip() or "0.0.0"
+    except OSError:
+        ver = "0.0.0"
+    sha = ""
+    if os.path.exists(os.path.join(S9_CODE_ROOT, ".git")):
+        try:
+            r = subprocess.run(["git", "-C", S9_CODE_ROOT, "rev-parse", "--short", "HEAD"],
+                               capture_output=True, text=True, timeout=5)
+            if r.returncode == 0:
+                sha = r.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            sha = ""
+    val = f"{ver} ({sha})" if sha else ver
+    _VERSION_CACHE.update(at=now, val=val)
+    return val
+
+
 def whoami_info():
     """서버 파생 신원 (REQ-20260824-027): resolve_user() 폴백(세션 바인딩 →
     $S9_USER → OS 계정)을 users/ 프로필과 매칭한다 — 이름 직접 일치가 우선,
@@ -493,7 +525,7 @@ def whoami_info():
         st_on = True
     # 같은 이름의 저장소가 한 노트북에 둘(윈도우 네이티브·WSL)이면 화면만 보고는 어느
     # 쪽인지 못 가른다 — root 경로와 OS 를 함께 준다 (REQ-20260906-055).
-    where = {"root": ROOT, "os": os_platform()}
+    where = {"root": ROOT, "os": os_platform(), "version": s9_version()}
     if name:
         return {"workspace": workspace, "user": name, "display": user_profile(name).get("display", ""),
                 "role": user_role(name), "machine": current_machine(),
@@ -35827,6 +35859,14 @@ def cmd_init(_args):
 
 def main():
     p = argparse.ArgumentParser(prog="s9", description=__doc__)
+
+    class _Version(argparse.Action):
+        # 게으르다 — git 을 부르는 것은 --version 을 실제로 받았을 때뿐이다
+        def __call__(self, parser, ns, values, option_string=None):
+            print("section9 " + s9_version())
+            parser.exit()
+    p.add_argument("--version", action=_Version, nargs=0,
+                   help="버전과 commit — 예: section9 0.9.0 (cef1fb01)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     np = sub.add_parser("new", help="create a document")
