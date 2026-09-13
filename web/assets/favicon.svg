@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="section9">
   <title>section9</title>
-  <!-- 탭 크기(16~32)용 광학 새김 — 획을 굵히고 반사를 뺐다 -->
-  <rect width="64" height="64" fill="#141518"/>
-  <circle cx="32" cy="24" r="17.5" fill="#fafaf8"/>
-  <path d="M42.5 24 Q42.5 44 26 51" fill="none" stroke="#fafaf8" stroke-width="14" stroke-linecap="round"/>
-  <circle cx="32" cy="25" r="10" fill="#5b8def"/>
+  <!-- 탭 크기(16~32)용 광학 새김 — 다리 둘·민 렌즈·굵은 획 --><rect width="64" height="64" fill="#141518"/>
+  <path d="M18 42 L13 51" fill="none" stroke="#5b8def" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="13" cy="51" r="4.2" fill="#5b8def"/>
+  <path d="M46 42 L51 51" fill="none" stroke="#5b8def" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="51" cy="51" r="4.2" fill="#5b8def"/>
+  <path d="M11 25 A21 16.5 0 0 1 53 25 L53 34 Q53 45 41 45 L23 45 Q11 45 11 34 Z" fill="#5b8def"/>
+  <circle cx="22.8" cy="25" r="8.8" fill="#fafaf8"/>
+  <circle cx="41.2" cy="25" r="8.8" fill="#fafaf8"/>
 </svg>
