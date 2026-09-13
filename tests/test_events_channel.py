@@ -203,8 +203,11 @@ class EventsChannel(unittest.TestCase):
             self.assertIsNone(
                 until_catalog_changes(ch, catalog_of(first), 3.0),
                 "문서를 안 고쳤는데 catalog 가 바뀐 알림이 왔다")
-            # 문서 하나를 고치면 catalog 조각이 바뀐다
-            self.cli("note", self.doc, "채널이 이것을 알린다")
+            # 문서의 **상태**를 바꾸면 catalog 조각이 바뀐다. 노트·리스 시각처럼
+            # 행의 상태가 그대로인 쓰기에는 조용하다 — catalog 조각은 파일 지문이
+            # 아니라 휘발 필드를 뺀 안정 서명이다 (REQ-20260913-033,
+            # tests/test_catalog_hold S5). 그 쓰기의 결과는 안전 폴(60초)이 받는다.
+            self.cli("status", self.doc, "in-progress", "--note", "채널이 이것을 알린다")
             got = until_catalog_changes(ch, catalog_of(first), 8.0)
             self.assertIsNotNone(got, "문서를 고쳤는데 알림이 안 왔다")
             self.assertGreater(got["id"], first["id"])

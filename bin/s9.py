@@ -1264,10 +1264,21 @@ def _envnum(name, default, cast=float):
 # 대시보드 서버는 연결 하나에 스레드 하나다. 놓아 주지 않는 연결은 곧 놓아
 # 주지 않는 스레드이고, 스레드가 쌓이면 새 연결이 리셋된다.
 #   KEEPALIVE_IDLE  요청과 요청 사이 **노는** 시간의 상한. 처리 시간은 안 잰다.
+#                   330초인 이유 (REQ-20260913-033): 서버가 먼저 닫은 keep-alive
+#                   소켓을 WSL 중계는 Windows 쪽에 CLOSE_WAIT 로 남긴다 — 브라우저는
+#                   그 소켓이 산 줄 알고 다음 fetch 에 다시 써서 4~8ms 만에 실패하고,
+#                   s9Fetch 가 150~460ms 뒤에 다시 건다(deep-diver 실측, 20초이던
+#                   때 REQ-20260913-031). 그래서 **서버가 먼저 닫는 일이 없어야**
+#                   한다: Chrome 은 한 번 쓴 유휴 소켓을 300초(used-idle timeout,
+#                   BROWSER_USED_IDLE_SEC)에 제 쪽에서 닫고, 화면의 안전 폴
+#                   (events_ch.js EV_POLL_MS 60초)은 가장 최근 소켓을 그 전에 다시
+#                   쓴다. 이 값은 둘보다 길어야 한다(tests/test_catalog_hold S6).
+#                   버려진 연결이 스레드를 쥐는 상한이기도 하다 — 그 위의 그물은
+#                   MAX_CONNS 다. 맥(중계 없음)에서는 FIN 이 오므로 이 값에 안 걸린다.
 #   CLOSE_LAST_WAIT 닫기로 한 연결에서 상대의 FIN 을 기다리는 상한 — 우리가
 #                   먼저 닫으면 WSL 중계가 그 자리를 영영 쥔다 (REQ-20260905-002).
-#                   화면의 가장 느린 폴은 2.5초(터미널 폴백)라, 20초면
-#                   정상 폴링은 한 번도 안 걸리고 버려진 연결만 걷힌다.
+#                   화면의 가장 느린 폴은 2.5초(터미널 폴백)라, 유휴 상한
+#                   안에서는 정상 폴링이 한 번도 안 걸리고 버려진 연결만 걷힌다.
 #   MAX_CONNS       동시 연결 상한. 넘으면 조용히 리셋되게 두지 않고 503 으로
 #                   답한다. **상한은 폭주를 막는 마지막 그물이지 평시의 목줄이
 #                   아니다** — 64로 잡았다가 대시보드가 통째로 503 을 받았다:
@@ -1276,7 +1287,8 @@ def _envnum(name, default, cast=float):
 #                   95연결이다. 그 위에 여유를 두어야 상한이 병이 되지 않는다.
 #   SERVE_BACKLOG   받아들이기 큐. 32는 재접속 폭풍(브라우저 F5·SSE 재연결)
 #                   에서 넘쳐, 커널이 SYN 을 버리면 화면이 「죽은」 것으로 보인다.
-KEEPALIVE_IDLE = _envnum("S9_KEEPALIVE_IDLE", 20.0)
+BROWSER_USED_IDLE_SEC = 300.0   # Chrome 이 한 번 쓴 유휴 소켓을 스스로 닫는 시간
+KEEPALIVE_IDLE = _envnum("S9_KEEPALIVE_IDLE", 330.0)
 CLOSE_LAST_WAIT_SEC = _envnum("S9_CLOSE_LAST_WAIT", 3.0)   # 상대가 먼저 닫을 틈 — urllib 은 수 ms 안에 닫지만 8샤드 부하에선 1초를 넘긴 실측(close_last t1 1/10)이 있다
 MAX_CONNS = int(_envnum("S9_MAX_CONNS", 256, int))
 SERVE_BACKLOG = int(_envnum("S9_SERVE_BACKLOG", 128, int))
@@ -1382,10 +1394,11 @@ def events_vector(port=None):
     """지금의 버전 벡터 — 조각마다 「바뀌었나」에만 답하면 되는 값이다.
 
     비싼 계산은 없다: 이미 도는 카운터 하나와 stat 몇 번. catalog 조각은
-    catalog_response 가 신선도를 판정할 때 쓰는 그 지문(_poll_fingerprint)이라,
-    화면이 받는 답과 알림이 갈리지 않는다."""
+    catalog_response 의 캐시 키와 같은 (안정 서명, 구간) 이라(catalog_change_key,
+    REQ-20260913-033) 화면이 받는 답과 알림이 갈리지 않는다 — 지문만 바뀌고
+    본문은 안 바뀌는 쓰기(리스 갱신·노트 시각)에는 화면을 깨우지 않는다."""
     return {
-        "catalog": str(_poll_fingerprint()),
+        "catalog": catalog_change_key(),
         "code": json.dumps(running_code_stamp(), sort_keys=True),
         "guard": _events_sig(_guard_paths(port or s9_port())["log"]),
         "agents": _events_watch_sigs("agents"),
@@ -1447,6 +1460,81 @@ def events_conn_close():
 # 슬롯은 키마다다 (REQ-20260909-086). 하나뿐이던 때는 보드 폴(window=board)과
 # Docs 탭(window=all)이 서로를 밀어내 요청마다 다시 구웠다 — 2026-09-09 실측:
 # all 29ms·board 10ms 를 매번, 동시 2건이면 잠금에 줄을 서 각 1.19s.
+# 휘발 필드 (REQ-20260913-033): 값이 바뀌어도 행의 **상태**는 그대로인 것 — 쓰기
+# 시각·리스 시각·분 계수·초 계수. 실측 2026-09-13(주인 서버, 11초 간격 3회): 세
+# 응답이 세 ETag 였고 달라진 것은 quiet_mins·stall_why·updated·lease.renewed 뿐
+# 이었다 — 10분에 54회, 11.6MB 를 이것 때문에 다시 받았다. 응답 캐시 키가 이
+# 필드를 뺀 서명(catalog_stable_sig)이라, 이것만 바뀐 쓰기는 CATALOG_HOLD_SEC
+# 구간이 넘어갈 때 한 번만 새 본문이 된다. 상태(status·live·stall_state·제목…)는
+# 즉시다. **새 필드의 기본은 상태다** — 여기 안 적으면 즉시 다시 보낸다(낡지 않는
+# 쪽으로 기운다). None 은 키 통째로, 튜플은 dict 안의 그 키만.
+CATALOG_VOLATILE = {
+    "updated": None, "live_age": None, "quiet_mins": None, "hand_mins": None,
+    "stalled_mins": None, "stall_why": None, "tokens": None,
+    "lease": ("since", "renewed"), "stopped": ("age",), "worker": ("age",),
+    "jira": ("synced_at",), "machine_wait": ("recv_mins",),
+}
+# 휘발 필드만 바뀐 본문을 다시 보내는 주기(초). 화면의 안전 폴(events_ch.js
+# EV_POLL_MS 60초)과 같은 시계다 — 분 계수는 어차피 분 단위이고 화면은 어차피 이
+# 주기로 한 번 묻는다. 시험은 S9_CATALOG_HOLD 로 줄이지 않고 _catalog_bucket 을
+# 바꿔 끼운다.
+CATALOG_HOLD_SEC = _envnum("S9_CATALOG_HOLD", 60.0)
+# 응답 행에서 빼는 키 (REQ-20260913-033): 화면이 읽지 않는 것(인덱스 행에는 그대로
+# 있다 — CLI·권한 판정 creator_field() 가 읽는다)과, 비어 있을 때 화면이
+# `r.x || []` 로 받는 것. 실측 1,927행: 원문 2.13MB → 1.40MB(행당 1,104B → 728B,
+# 빈 값 키가 36%), gzip 238KB → 223KB. 화면 코드(web/app)는 그대로다.
+CATALOG_WIRE_DROP = frozenset(("assignee", "needs_os", "creator_raw", "agent_state"))
+CATALOG_WIRE_SPARSE = frozenset((
+    "lease", "tags", "blocked_by", "relates", "derived_from", "needs_machine",
+    "jira", "review_point", "block_reason", "tdd", "tokens", "answered",
+    "agent_answer", "archived", "origin", "origin_req", "origin_actor",
+    "parent", "root", "slug"))
+
+
+def _catalog_bucket(now=None):
+    """지금이 속한 재전송 구간 — 시험은 이 함수를 바꿔 끼워 구간을 넘긴다."""
+    return int((now if now is not None else time.time()) // CATALOG_HOLD_SEC)
+
+
+def catalog_stable_sig(rows):
+    """휘발 필드(CATALOG_VOLATILE)를 뺀 행 전체의 서명 — 검사 세대마다 한 번
+    (_share_default_pass 가 계산 직후 st["sig"] 에 둔다)."""
+    import hashlib
+
+    def proj(r):
+        out = {}
+        for k, v in r.items():
+            sub = CATALOG_VOLATILE.get(k, 0)
+            if sub is None:
+                continue
+            if sub and isinstance(v, dict):
+                v = {a: b for a, b in v.items() if a not in sub}
+            out[k] = v
+        return out
+    return hashlib.md5(json.dumps([proj(r) for r in rows], ensure_ascii=False,
+                                  sort_keys=True, default=str).encode()).hexdigest()
+
+
+def catalog_wire_row(r):
+    """응답 경계에서 행을 깎는다 — 인덱스 행은 그대로다."""
+    return {k: v for k, v in r.items()
+            if k not in CATALOG_WIRE_DROP
+            and not (k in CATALOG_WIRE_SPARSE
+                     and (v is None or v == "" or v == [] or v == {}))}
+
+
+def catalog_change_key():
+    """이벤트 벡터의 catalog 조각 — 행의 **상태**가 바뀔 때만 바뀐다(안정 서명).
+    지문(_poll_fingerprint)이 달라진 때만 검사를 부른다 — 신선도 판정 자체는
+    gate 한 곳이다; 그 밖에는 마지막 세대의 서명을 그대로 쓴다. 재전송 구간은
+    여기 안 싣는다: 휘발 필드의 갱신은 화면의 안전 폴(60초)이 어차피 받아 가고,
+    구간을 실으면 아무 일 없는 60초마다 채널이 화면을 깨운다."""
+    st = catalog_with_live._state
+    if st.get("result") is None or st.get("fp") != _poll_fingerprint():
+        catalog_with_live()
+    return str(st.get("sig") or "")
+
+
 _CATALOG_RESP = {}
 _CATALOG_RESP_LOCK = threading.Lock()
 # 문서 색인 응답 (REQ-20260908-034) — 카탈로그와 같은 세대·같은 뷰어면 재사용.
@@ -1551,10 +1639,24 @@ def _poll_fingerprint():
     return (_stat_key(CATALOG), _stat_key(CATALOG_DELTA), _POLL_EPOCH[0])
 
 
+class _SharedRows(list):
+    """gate 가 돌려주는 행 목록 — 그 행이 나온 세대(seq)와 안정 서명(sig)을
+    함께 진다. 따로 읽으면 두 스레드 사이에서 행은 N세대, 서명은 N+1세대가 되어
+    응답 캐시가 옛 본문을 새 서명 아래 둔다 (REQ-20260913-033)."""
+    seq = 0
+    sig = None
+
+
 def _share_default_pass(fn):
     cond = threading.Condition()
     st = {"busy": False, "seq": 0, "result": None, "t": 0.0, "fp": None,
           "dur": 0.0}
+
+    def snap():
+        # cond 안에서만 부른다 — 행·세대·서명이 같은 스냅샷이다
+        out = _SharedRows(dict(r) for r in st["result"])
+        out.seq, out.sig = st["seq"], st.get("sig")
+        return out
 
     def gate(*a, **k):
         if a or k:
@@ -1574,14 +1676,14 @@ def _share_default_pass(fn):
                     and st["fp"] == fp):
                 # 스냅샷도, 공유 결과도 응답끼리 dict 를 나누지 않는다 —
                 # 한 응답의 장식이 다른 응답에 배면 두 화면이 같은 거짓을 그린다
-                return [dict(r) for r in st["result"]]
+                return snap()
             if st["busy"]:
                 seq = st["seq"]
                 while st["busy"] and st["seq"] == seq:
                     # 상한은 계산자가 죽었을 때의 탈출구 — 평시엔 notify 로 깬다
                     cond.wait(timeout=30)
                 if st["seq"] != seq and st["result"] is not None:
-                    return [dict(r) for r in st["result"]]
+                    return snap()
                 # 계산자가 죽었거나 결과가 없다 — 직접 돈다
             st["busy"] = True
         rows, t0 = None, _time.monotonic()
@@ -1597,12 +1699,16 @@ def _share_default_pass(fn):
                     st["t"] = _time.monotonic()
                     st["dur"] = st["t"] - t0
                     st["seq"] += 1
+                    # 안정 서명은 세대와 같은 자리에서 — 응답 캐시 키가 이것이다
+                    st["sig"] = gate._sig(rows) if gate._sig else None
                     perf_mark("catalog", fn.__name__, st["dur"] * 1000.0,
                               rows=len(rows))
                 cond.notify_all()
-        return [dict(r) for r in rows]
+        with cond:
+            return snap()
     gate._compute = fn      # 시험이 계산부를 바꿔 끼우는 이음매
     gate._state = st        # 시험 관측용 (seq = 계산 세대, dur = 계산 소요)
+    gate._sig = None        # 세대마다 계산할 서명 (catalog_with_live 만 쓴다)
     gate.__name__, gate.__doc__ = fn.__name__, fn.__doc__
     return gate
 
@@ -29713,6 +29819,10 @@ def catalog_with_live(stall_win=None):
     return rows
 
 
+
+
+catalog_with_live._sig = catalog_stable_sig   # 세대마다 안정 서명 (REQ-20260913-033)
+
 def display_tz(user=None):
     """표시 시간대 — $S9_TZ > 사용자 설정 timezone > 시스템 로컬 (REQ-20260828-030).
 
@@ -32491,7 +32601,12 @@ def catalog_response(me, want, window):
     유효하고, 뷰어마다 본문이 다르므로 교차 뷰어 304 오염도 원천 차단된다.
     """
     rows = catalog_with_live()
-    key = (catalog_with_live._state["seq"], me, want, window)
+    # 키는 검사 세대(seq)가 아니라 (안정 서명, 재전송 구간) 이다 (REQ-20260913-033)
+    # — 휘발 필드(CATALOG_VOLATILE)만 바뀐 세대는 같은 구간 안에서 같은 본문을
+    # 다시 쓴다. ETag 는 여전히 본문 md5 라 304·뷰어 분리 계약은 그대로다.
+    # 서명은 행과 한 벌로 온다(_SharedRows) — 따로 읽으면 세대가 어긋난다.
+    sig = getattr(rows, "sig", None) or catalog_with_live._state["seq"]
+    key = (sig, _catalog_bucket(), me, want, window)
 
     def _coarse(r):
         # 초 단위 나이(live_age·stopped.age·worker.age)는 화면 문구용이다 —
@@ -32511,7 +32626,7 @@ def catalog_response(me, want, window):
         seen = [r for r in rows
                 if bool(r.get("archived")) == want and doc_visible(r, me)]
         sent = catalog_window(seen, window)
-        body = json.dumps([_coarse(r) for r in sent],
+        body = json.dumps([catalog_wire_row(_coarse(r)) for r in sent],
                           ensure_ascii=False).encode()
         # 응답은 배열 그대로다 — 클라이언트의 Array.isArray 계약을 깨지
         # 않는다. 창을 씌웠다는 사실은 헤더로 말한다(sent/total).

@@ -254,7 +254,9 @@ function anyShortRef(kind, num, atMs){
    닫힌 것이라 전량의 부분집합이다(mergeNarrow 머리말). 좁은 판을 「신선하다」는
    이유로 Docs 에 쓰면 문서 수가 405장으로 서고 사람은 문서가 줄었다고 읽는다.
    그래서 **전량을 원하는데 전량을 받아 본 적이 없으면** 신선도와 무관하게 받는다. */
-const CATALOG_TTL = 12000;   // 벨트(15초)보다 짧다 — 벨트를 굶기지 않는다
+const CATALOG_TTL = 45000;   // 벨트(events_ch.js EV_POLL_MS 60초)보다 짧다 — 벨트를 굶기지 않는다.
+                             // 그 사이의 변경은 이벤트 채널이 알려 받게 하므로 탭 전환은 손에 든
+                             // 것으로 답한다 (REQ-20260913-033 · 대조: tests/test_catalog_hold S6)
 function catalogFresh(){
   if (!catalog.length) return false;
   if (catalogWantsAll() && !catalogAll) return false;
