@@ -146,10 +146,23 @@ function smtpSummary(s){
     : "아직 보낼 수 없습니다 — 위의 값을 다시 확인해 주십시오.";
 }
 
+/* 계정·비밀번호 칸의 사실 줄 — 값은 오지 않으니 「넣어 두었습니다」/「아직 없습니다」
+   둘 중 하나다(Jira 의 API token 행과 같은 말). 포트는 값이 그대로 보인다. */
+function smtpFact(r, s){
+  const has = r.key === "smtp_user" ? !!(s && s.smtp.has_user)
+    : r.kind === "secret" ? !!(s && s.smtp.has_pass) : null;
+  if (has === null) return "";
+  return has
+    ? `<span class="path">넣어 두었습니다 — 값은 다시 보이지 않습니다.</span>`
+    : `<span class="path">아직 없습니다 — 넣은 값은 다시 보이지 않습니다.</span>`;
+}
+
 function smtpRowHTML(r, s){
-  // 되돌아오는 값은 주소 둘뿐이다 — 나머지는 넣는 자리로만 서고 사실 줄이 그 까닭을 말한다
+  // 되돌아오는 값은 주소 둘과 포트뿐이다 — 계정·비밀번호는 넣어 두었는지(has_*)만
+  // 온다(REQ-20260913-025). 값 없는 사실은 사실 줄이 말한다.
   const val = s && r.key === "smtp_host" ? s.smtp.host
-    : s && r.key === "smtp_from" ? s.smtp.from : "";
+    : s && r.key === "smtp_from" ? s.smtp.from
+    : s && r.key === "smtp_port" && s.smtp.port > 0 ? String(s.smtp.port) : "";
   const ctl = r.kind === "secret"
     ? `<input class="uf" type="password" id="s-${esc(r.key)}" style="width:${r.w}"
          placeholder="${esc(r.ph)}" autocomplete="off" aria-label="${esc(r.name)}">
@@ -157,8 +170,7 @@ function smtpRowHTML(r, s){
     : `<input class="uf" type="text" id="s-${esc(r.key)}" style="width:${r.w}"
          value="${esc(val)}" placeholder="${esc(r.ph)}" autocomplete="off"
          aria-label="${esc(r.name)}">`;
-  const fact = (r.key === "smtp_user" || r.key === "smtp_port" || r.kind === "secret")
-    ? `<span class="path">넣은 값은 다시 보이지 않습니다.</span>` : "";
+  const fact = smtpFact(r, s);
   return `<tr class="wrow grow" data-sk="${esc(r.key)}">
     <td><span class="wlab">${esc(r.name)}</span>
         <span class="wkey">${esc(r.key)}</span></td>
@@ -200,6 +212,10 @@ async function smtpPut(key, value){
      바뀐 사실은 준비 줄 하나뿐이므로 그 한 줄만 고친다. */
   const sum = document.getElementById("s-summary");
   if (sum) sum.textContent = smtpSummary(smtpState);
+  // 넣은 칸의 사실 줄도 그 자리에서 바뀐다 — 「아직 없습니다」가 남으면 사람은 안 들어간 줄 안다
+  const row = SMTP_ROWS.find(r => r.key === key);
+  const fact = row && document.getElementById(`s-${key}-fact`);
+  if (fact) fact.innerHTML = smtpFact(row, smtpState);
   smtpSay(key, "넣었습니다.");
   return true;
 }

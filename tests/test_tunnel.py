@@ -286,7 +286,10 @@ class KeepAndCode(_Base):
         # (`tunnel --autostart`)를 직접 부르고, code 가 그 갈래를 지나는지는
         # 원문 계약으로 잰다 — 실서버를 띄우지 않는다(빠른 테스트 규칙).
         src = read(os.path.join(REPO, "bin", "s9.py"))
-        body = src[src.index("def cmd_code("):src.index("def cmd_code(") + 4000]
+        # 함수 **전체**를 본다 — 4000자 창은 첫 실행·합류 갈래(REQ-20260913-007·013)가
+        # 앞에 서면서 터널 줄이 창 밖으로 밀렸다(실측 2026-09-13).
+        _s = src.index("def cmd_code(")
+        body = src[_s:src.index("\ndef ", _s + 1)]
         self.assertIn("tunnel_autostart(", body, "s9 code 가 터널 자동 기동을 지나지 않는다")
         r = subprocess.run([S9, "tunnel", "--autostart"], capture_output=True, text=True,
                            env=self.env, timeout=60, stdin=subprocess.DEVNULL)

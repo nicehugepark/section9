@@ -285,7 +285,8 @@ class TestProjectInvite(unittest.TestCase):
         self.assertNotIn("초대: gina@x.co", self.doc_text())
         self.assertNotIn("gina@x.co", self.members())
         self.assertEqual(self.inv.invite_state(self.tmp, "bob")["smtp"],
-                         {"ready": False, "from": "", "host": ""})
+                         {"ready": False, "from": "", "host": "", "port": 587,
+                          "has_user": False, "has_pass": False})
 
     # ── S6 정상: 스텁으로 발송 ───────────────────────────────────────────
     def test_s6_send_ok(self):
@@ -308,8 +309,12 @@ class TestProjectInvite(unittest.TestCase):
         self.assertIn("To: hana@x.co", s["data"])
         self.assertIn("초대: hana@x.co (contributor, by alice)", self.doc_text())
         self.assertEqual(self.members()["hana@x.co"]["position"], "개발자")
-        self.assertEqual(self.inv.invite_state(self.tmp, "alice")["smtp"],
-                         {"ready": True, "from": "alice@x.co", "host": "127.0.0.1"})
+        st = self.inv.invite_state(self.tmp, "alice")["smtp"]
+        self.assertEqual(st, {"ready": True, "from": "alice@x.co", "host": "127.0.0.1",
+                              "port": st["port"], "has_user": True, "has_pass": True})
+        self.assertGreater(st["port"], 0)
+        # 값은 새지 않는다 — 있다/없다 만 (REQ-20260913-025)
+        self.assertNotIn("pw", json.dumps(st))
 
     # ── S7 실패: 입력 거부 ───────────────────────────────────────────────
     def test_s7_rejects(self):
@@ -343,7 +348,7 @@ class TestProjectInvite(unittest.TestCase):
         _c, body = self._open(f"http://127.0.0.1:{self.port}/api/invite/state")
         st = json.loads(body)
         self.assertEqual(set(st), {"smtp", "repo"})
-        self.assertEqual(set(st["smtp"]), {"ready", "from", "host"})
+        self.assertEqual(set(st["smtp"]), {"ready", "from", "host", "port", "has_user", "has_pass"})
         self.assertEqual(st["repo"], {"origin": ORIGIN, "linked": True})
         self.assertNotIn("pw", body)
 

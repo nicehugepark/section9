@@ -915,7 +915,7 @@ function prjInviteWire(root, p, v, c, st, o){
     el.addEventListener("change", on);
   });
   root.addEventListener("click", async ev => {
-    const b = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+    const b = evEl(ev.target)?.closest("button") ?? null;   // 텍스트 노드가 와도 조각이 죽지 않는다
     if (!b) return;
     if (b.hasAttribute("data-pjiedit")){ fold(false); if (out) out.hidden = true; return; }
     if (b.hasAttribute("data-pjiprev")){

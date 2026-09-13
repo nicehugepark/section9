@@ -232,8 +232,12 @@ def smtp_config(root, user):
 
 
 def smtp_public(cfg):
+    """화면·API 에 주는 준비물 — 값은 주소 둘뿐이고 나머지는 **있다/없다** 만
+    (REQ-20260913-025: 계정·비밀번호는 값을 흘리지 않되 넣어 두었는지는 말해야
+    Settings 의 그 칸이 Jira 의 API token 행처럼 「넣어 두었습니다」를 말한다)."""
     return {"ready": bool(cfg.get("ready")), "from": cfg.get("smtp_from", ""),
-            "host": cfg.get("smtp_host", "")}
+            "host": cfg.get("smtp_host", ""), "port": int(cfg.get("port") or 0),
+            "has_user": bool(cfg.get("smtp_user")), "has_pass": bool(cfg.get("smtp_pass"))}
 
 
 def invite_state(root, user):
