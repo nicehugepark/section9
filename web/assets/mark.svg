@@ -1,9 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="section9">
   <title>section9</title>
-  <!-- 눈 9 — 큰 판(48 이상). 작은 판은 favicon.svg -->
+  <!-- 통통한 9 — 큰 판(48 이상). 작은 판은 favicon.svg -->
   <rect width="64" height="64" fill="#141518"/>
-  <path d="M42.5 24 Q42.5 44 25.5 51.5" fill="none" stroke="#fafaf8" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="32" cy="24" r="17" fill="#5b8def"/>
-  <circle cx="32" cy="24" r="9" fill="#141518"/>
-  <circle cx="28.9" cy="20.9" r="2.6" fill="#fafaf8"/>
+  <circle cx="32" cy="24" r="17.5" fill="#fafaf8"/>
+  <path d="M43.25 24 Q43.25 44 24 52" fill="none" stroke="#fafaf8" stroke-width="12.5" stroke-linecap="round"/>
+  <circle cx="32" cy="25" r="9.5" fill="#5b8def"/>
+  <circle cx="28.6" cy="21.6" r="3.2" fill="#fafaf8"/>
+  <circle cx="35.0" cy="27.6" r="1.5" fill="#fafaf8"/>
 </svg>
