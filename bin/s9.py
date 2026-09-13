@@ -3555,7 +3555,19 @@ def update_active_reqs(doc_id, new_status):
         try:
             _p = locate(doc_id)
             if _p:
-                _ok, _code, _why = exec_verdict(read_doc(_p)[0], want="claim")
+                _meta = read_doc(_p)[0]
+                # 담당 컴퓨터가 다른 요청은 전이해도 이 세션이 쥐지 않는다
+                # (REQ-20260913-028, 실제 사고 2026-09-13 18:17): 리드가 WSL 에서 맥
+                # 담당 요청을 in-progress 로 열자 WSL 세션의 점유가 생겨, 맥 보드가
+                # 「DESKTOP 이 잡아 둔 채 진전 없음」으로 보였다. 전이는 지시이지
+                # 착수가 아니다 — 착수는 그 컴퓨터의 세션·워처가 한다.
+                _want = str(_meta.get("needs_machine") or "").strip()
+                if _want and _want != current_machine():
+                    print(f"◌ 담당 컴퓨터가 {_want} 라 이 세션은 쥐지 않는다 — 그 컴퓨터의 "
+                          f"워처가 집으려면 open 이어야 한다", file=sys.stderr)
+                    return {"registered": False, "lease": "other-machine",
+                            "why": f"담당 컴퓨터 {_want}"}
+                _ok, _code, _why = exec_verdict(_meta, want="claim")
                 if not _ok:
                     return {"registered": False, "lease": _code, "why": _why}
         except Exception:
@@ -3748,8 +3760,15 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
     meta["status_since"] = ts   # 현재 상태가 시작된 시각 (경과시간 표시용)
     meta["updated"] = ts
     # 리스: 진전 쓰기가 곧 하트비트, 종결은 실행권의 끝 (REQ-20260902-020)
+    _dropped_lease = None
     if new_status in TERMINAL_STATUSES:
         meta.pop("lease", None)
+    elif new_status == "open":
+        # open 은 「아무도 쥐지 않았다」는 뜻이다 (REQ-20260913-028, 실제 사고
+        # 2026-09-13 18:43): 되돌린 자리에 점유가 남아 다른 컴퓨터의 보드에는
+        # 「저쪽이 잡아 둔 채 진전 없음」, 이쪽에는 「담당 컴퓨터를 기다리는 중」이
+        # 함께 섰다 — 한 요청을 두 컴퓨터가 쥔 꼴. 점유는 여기서 걷고 이력에 남긴다.
+        _dropped_lease = meta.pop("lease", None)
     else:
         doc_lease_touch(meta)
     # 세션 승계: 다른(새) 세션이 REQ를 이어받아 착수하면 session 스탬프를 현재
@@ -3831,6 +3850,9 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
         note = (note + f" [via {via}]").strip()
     suffix = f" — {note}" if note else ""
     entry = f"- {ts} status: {old} -> {new_status} (by {user}){suffix}\n"
+    if _dropped_lease:
+        entry += (f"- {ts} lease release {_dropped_lease.get('user')}@{_dropped_lease.get('machine')} "
+                  f"(by {user}) — open 으로 되돌려 점유를 걷었다\n")
     # done 인데 토큰이 어디에도 없으면 그 사실을 남긴다 (REQ-20260909-082) — 막지
     # 않는다. 원인은 대개 이 세션 밖에서 닫힌 것이다(다른 머신·CLI 전이만·자동
     # 생성 후속). 적어 두지 않으면 나중에 「왜 없나」를 문서에서 알 길이 없다.
@@ -24431,6 +24453,15 @@ def _notify_flush():
     return n
 
 
+def claude_exe(which=None):
+    """`s9 code` 가 띄울 claude — PATH 에 있으면 이름 그대로(OS 가 PATHEXT 로 고른다), 없으면
+    native 설치기의 자리(agent_cli_path — LOGIN_MARKS 의 dirs)의 전체 경로. 어디에도 없으면 이름
+    그대로 두어 실행 자리의 「claude 명령을 찾을 수 없다」 가 말하게 한다 (REQ-20260913-024)."""
+    m = LOGIN_MARKS["claude"]
+    path, on_path = agent_cli_path(m["exe"], m.get("dirs") or (), which)
+    return m["exe"] if (on_path or not path) else path
+
+
 def code_base_cmd(claude_args):
     """지금 정책으로 만든 claude 기동 인자 (REQ-20260901-017 R2a).
 
@@ -24441,7 +24472,7 @@ def code_base_cmd(claude_args):
     래퍼는 몇 시간을 도는 프로세스라, 기동 시점에 한 번 만든 인자를 재시작마다
     재사용하면 그 사이의 정책 변경이 영영 안 실린다 (아래 cmd_code 참조)."""
     args = list(claude_args or [])
-    cmd = ["claude"] + code_launch_args() + args
+    cmd = [claude_exe()] + code_launch_args() + args
     # 세션을 스스로 깨운다 (REQ-20260827-025) — CODE_BOOTSTRAP 주석 참조.
     # 사람이 자기 프롬프트를 줬으면 붙이지 않는다: 위치 인자가 둘이면
     # claude 가 받지 않고, 무엇보다 사람의 말이 우선이다.
@@ -24484,12 +24515,36 @@ def _has_user_prompt(argv):
 # 여기다: 설치 안내만으로는 부족하다 — 실제로 막히는 자리는 첫 `s9 code` 다.
 LOGIN_MARKS = {
     "claude": {"exe": "claude", "mark": ".credentials.json", "home_env": "CLAUDE_CONFIG_DIR",
-               "home": "~/.claude", "how": "터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인"},
+               "home": "~/.claude", "how": "터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인",
+               # native 설치기가 놓는 자리 — PATH 에 아직 안 보여도 여기서 찾는다 (agent_cli_path)
+               "dirs": ["~/.local/bin"]},
     "codex": {"exe": "codex", "mark": "auth.json", "home_env": "CODEX_HOME",
               "home": "~/.codex", "how": "`codex login`"},
     "gemini": {"exe": "gemini", "mark": "oauth_creds.json", "home_env": "",
                "home": "~/.gemini", "how": "터미널에서 `gemini` 를 한 번 띄워 로그인"},
 }
+
+
+def agent_cli_path(exe, dirs=(), which=None):
+    """에이전트 CLI 실행 파일의 자리 → (경로 또는 None, PATH 에 있었는가).
+
+    PATH 에 없으면 표(LOGIN_MARKS)의 `dirs` — native 설치기가 놓는 `~/.local/bin` — 를 본다.
+    Windows 실측 2026-09-13 (REQ-20260913-024): 공식 설치기는 `%USERPROFILE%\\.local\\bin\\claude.exe`
+    에 놓고 사용자 PATH 에 그 폴더를 더하지만 그 PATH 는 **새 프로세스부터** 보인다 — 설치한
+    그 터미널과 WSL 이 띄운 cmd.exe 는 옛 PATH 라 `shutil.which("claude")` 가 None 이었고, 설치
+    안내는 「에이전트 CLI 가 없다」, `s9 code` 는 「claude 명령을 찾을 수 없다」로 끝났다.
+    리눅스·맥의 native 설치기도 같은 폴더에 놓으므로 판을 묻지 않고 두 이름(맨 이름·`.exe`)을 본다.
+    세 벌(s9·s9-install·s9-doctor)은 같은 코드다 — tests/test_login_check.py L10 이 대조한다.
+    """
+    found = (which or shutil.which)(exe)
+    if found:
+        return found, True
+    for d in dirs or ():
+        base = os.path.normpath(os.path.join(os.path.expanduser(d), exe))
+        for cand in (base, base + ".exe"):
+            if os.path.isfile(cand):
+                return cand, False
+    return None, False
 
 
 def login_second_signal(name, home, platform=None, run=None):
@@ -24532,11 +24587,15 @@ def login_state(marks=None, which=None, second=None):
     which = which or shutil.which
     out = {}
     for name, m in marks.items():
-        exe = bool(which(m["exe"]))
+        path, on_path = agent_cli_path(m["exe"], m.get("dirs") or (), which)
+        exe = bool(path)
         home = (os.environ.get(m["home_env"]) if m.get("home_env") else "") or m["home"]
         mark = os.path.exists(os.path.join(os.path.expanduser(home), m["mark"]))
         logged = exe and (mark or (second or login_second_signal)(name, home))
-        out[name] = {"installed": exe, "logged_in": logged, "how": m["how"]}
+        out[name] = {"installed": exe, "logged_in": logged, "how": m["how"], "path": path,
+                     "on_path": on_path,
+                     "hint": ("" if (on_path or not path) else
+                              f"{name} 는 PATH 밖에 있다({path}) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라")}
     return out
 
 
@@ -24551,6 +24610,9 @@ def ensure_claude_login(run=None, state=None):
     c = st.get("claude") or {}
     if not c.get("installed"):
         return "not-installed"
+    if c.get("hint"):
+        # PATH 반영 전의 native 설치 (REQ-20260913-024) — 세션은 claude_exe() 가 그 경로로 띄운다
+        print("◌ " + c["hint"] + " — 이 세션은 그 경로로 띄운다")
     if c.get("logged_in"):
         return "ok"
     # 로그인은 Claude Code 본 화면에 맡긴다 (REQ-20260906-072). 예전엔 여기서
