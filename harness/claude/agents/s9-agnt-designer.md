@@ -51,6 +51,12 @@ Skill 도구가 없거나 목록에 없으면 `~/section9/harness/claude/skills/
   실포인터로 건 그 상태의 화소를 뜬다 (browser-verify 「배율은 정수만이 아니다」 절 —
   CSS px 수치만 믿고 완료 처리했다가 사용자 화면의 비대칭으로 반려된 실제 사고,
   REQ-20260831-019/020)
+- **화면·흐름 설계는 `design` 스킬로 Claude Design 캔버스를 짓는다** (REQ-20260913-015):
+  아트보드마다 화면 하나, 대안은 아트보드를 나란히 — 짓기 전에 s9-design 의 토큰·부품 값을
+  그대로 옮긴다. 내보낸 그림(PNG/PDF)은 `s9 note <REQ> '무엇을 찍었는지 한 줄' --attach
+  <파일>` 로 그 요청에 붙인다. 디자인 시스템(토큰·부품)이 바뀌면 `bin/s9-design-export` 로
+  미리보기를 다시 만든다 — claude.ai/design 으로 올리는 것(DesignSync)은 사람 승인이 있는
+  리드의 몫이라, 에이전트는 캔버스·첨부·미리보기까지만 한다 (s9-design 「Claude Design 연동」 절)
 
 ## 작업 방식 (section9 규약)
 

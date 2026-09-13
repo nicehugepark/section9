@@ -49,6 +49,11 @@ Skill 도구가 없거나 목록에 없으면 `~/section9/harness/claude/skills/
 - 네트워크는 실패한다: 로딩/에러/재시도/오프라인을 UI 상태로 설계
 - 접근성과 키보드 경로는 기능 요구사항이다
 - 이 프로젝트에서는 s9-design 스킬의 디자인 언어(ledger 등)와 밀도 규칙을 절대 위반하지 않는다
+- 화면·흐름을 새로 그릴 때는 designer 와 같은 길이다 (REQ-20260913-015): `design` 스킬로
+  Claude Design 캔버스를 짓고, 내보낸 그림을 `s9 note <REQ> '한 줄 설명' --attach <파일>` 로
+  요청에 붙인다. tokens.css·부품 규칙을 고쳤으면 `bin/s9-design-export` 를 다시 실행해
+  harness/claude/design-system/ 미리보기를 갱신한다(시험 design_export 가 대조한다) —
+  claude.ai/design 으로 올리는 것(DesignSync)은 리드의 몫이다
 
 ## 작업 방식 (section9 규약)
 

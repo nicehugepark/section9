@@ -1,0 +1,127 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>Components</title>
+<style>
+.tone-light{--bg:#fafaf8;--panel:#ffffff;--border:#d8d8d3;--hairline:#e9e9e5;--text:#141518;--muted:#5c6470;--faint:#6e7583;--accent:#141518;--accent-soft:#f0f0ec;--accent-line:#141518;--r:0;--c-draft:#868c96;--c-open:#1d4ed8;--c-inprogress:#b45309;--c-blocked:#b91c1c;--c-review:#6d28d9;--c-done:#047857;--c-cancelled:#868c96;--c-published:#0f766e;--t-request:#1d4ed8;--t-knowledge:#0f766e;--t-session:#92400e;--t-question:#9d174d;--t-article:#6b21a8;--mono:ui-monospace,"Cascadia Code",Consolas,monospace;--sans:"Noto Sans KR",system-ui,sans-serif;--ctl-lg:36px;--ctl-md:27px;--ctl-sm:20px;--ctl-lg-fs:13px;--ctl-md-fs:11.5px;--ctl-sm-fs:10.5px;}
+.tone-dark{--bg:#111214;--panel:#17181b;--border:#33353a;--hairline:#232529;--text:#e8e8e4;--muted:#9aa0aa;--faint:#7b8089;--accent:#e8e8e4;--accent-soft:#222327;--accent-line:#e8e8e4;--r:0;--c-draft:#868c96;--c-open:#5b8def;--c-inprogress:#d99537;--c-blocked:#e05d5d;--c-review:#a582e8;--c-done:#3fa583;--c-cancelled:#868c96;--c-published:#3d9d96;--t-request:#5b8def;--t-knowledge:#3d9d96;--t-session:#c08a4e;--t-question:#e07a9f;--t-article:#b18cf0;--mono:ui-monospace,"Cascadia Code",Consolas,monospace;--sans:"Noto Sans KR",system-ui,sans-serif;--ctl-lg:36px;--ctl-md:27px;--ctl-sm:20px;--ctl-lg-fs:13px;--ctl-md-fs:11.5px;--ctl-sm-fs:10.5px;}
+
+body{margin:0;font-family:var(--sans,system-ui,sans-serif);font-size:13px}
+.tones{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
+.tone{background:var(--bg);color:var(--text);padding:16px 18px 20px;min-height:100%}
+.tone h2{margin:0 0 12px;font:600 10.5px/1 var(--mono);letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint)}
+.tone table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11px}
+.tone td{padding:4px 6px 4px 0;border-bottom:1px solid var(--hairline);vertical-align:middle}
+.tone td.v{color:var(--muted);white-space:nowrap}
+.tone .sw{display:inline-block;width:18px;height:18px;border:1px solid var(--border);
+  vertical-align:middle}
+.tone .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--faint);margin:14px 0 6px}
+.tone .lab:first-of-type{margin-top:0}
+.tone .box{background:var(--panel);border:1px solid var(--border);display:flex;
+  align-items:center;padding:0 10px;font-family:var(--mono);font-size:10.5px;
+  color:var(--muted);margin-bottom:6px}
+.tone .line{height:0;border-top:1px solid var(--border);margin:6px 0}
+.tone .line.hair{border-top-color:var(--hairline)}
+.tone .row2{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.tone button,.tone input,.tone select{font-family:inherit;color:inherit;
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--r)}
+.tone .cdot{display:inline-block;vertical-align:middle;margin-right:6px}
+.tone .stat{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tone .col{border-top:1px solid var(--border)}
+.tone .more{background:none;border:0;font-family:var(--mono);font-size:11px;
+  color:var(--muted);cursor:pointer;padding:6px 0;text-align:left;width:100%}
+.tone .more:hover{text-decoration:underline}
+.tone .doclist{border:1px solid var(--border);background:var(--panel)}
+.tone .card{background:var(--panel);border:1px solid var(--border)}
+.tone .sample{margin:0 0 10px;line-height:1.45}
+
+/* header.css */ .tone .tabs button{border:0;background:none;padding:4px 12px 13px;cursor:pointer;
+  font-size:13px;color:var(--muted);font-family:inherit;letter-spacing:.01em;
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+/* header.css */ .tone .tabs button:hover{color:var(--text)}
+/* header.css */ .tone .tabs button.active{color:var(--text);font-weight:600;border-bottom-color:var(--text)}
+/* header.css */ .tone .svchip button{border:0;background:none;cursor:pointer;font:inherit;font-size:11.5px;
+  color:var(--muted);padding:3px 2px;white-space:nowrap;max-width:40ch;
+  overflow:hidden;text-overflow:ellipsis}
+/* header.css */ .tone .svchip button:hover{color:var(--text);text-decoration:underline}
+/* header.css */ .tone .hrow2 input[type="text"], .tone .hrow2 select{border:1px solid var(--border);
+  padding:5px 9px;font-size:12.5px;background:var(--panel);color:var(--text);font-family:inherit}
+/* header.css */ .tone .hrow2 input[type="text"]{width:190px;font-family:var(--mono)}
+/* header.css */ .tone .usagechip{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+  white-space:nowrap;letter-spacing:.02em}
+/* header.css */ .tone .count{color:var(--muted);font-size:11px;margin:0 0 14px;font-family:var(--mono);
+  text-transform:uppercase;letter-spacing:.06em}
+/* control.css */ .tone .tabs button, .tone .hrow2 select, .tone .hrow2 input[type="text"], .tone .hrow2 input[type="search"], .tone .audit > details > summary{min-height:var(--ctl-lg)}
+/* control.css */ .tone .tabs button{display:inline-flex;align-items:center}
+/* control.css */ .tone .acts button.deed:not(.ico), .tone .more, .tone .oc-cmd{min-height:var(--ctl-md)}
+/* actions.css */ .tone .acts button.deed{font-family:inherit;font-size:11.5px;letter-spacing:0;font-weight:600;
+  white-space:nowrap}
+/* board.css */ .tone .stat .cdot{width:7px;height:7px;background:var(--sc)}
+/* board.css */ .tone .card{--card-pt:11px;--card-pb:var(--card-pt);--card-px:14px;--card-edge:12px;
+  padding:var(--card-pt) var(--card-px) var(--card-pb);
+  cursor:pointer;border-bottom:1px solid var(--hairline);position:relative}
+/* board.css */ .tone .card:hover{background:var(--accent-soft)}
+/* board.css */ .tone .card .id{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.02em;
+  line-height:var(--card-edge);min-height:var(--card-edge);
+  display:flex;flex-wrap:wrap;align-items:center}
+/* board.css */ .tone .card{container-type:inline-size}
+/* board.css */ .tone .card .t{margin:3px 0 8px;font-weight:600;line-height:1.45;font-size:13.5px;letter-spacing:-.01em;
+  word-break:keep-all;overflow-wrap:break-word}
+/* board.css */ .tone .card .m{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);
+  font-family:var(--mono);align-items:baseline;word-break:keep-all}
+/* board.css */ .tone .badge{color:var(--text);font-family:var(--mono);font-size:11px}
+/* board.css */ .tone .col .more{padding-left:14px}
+/* docs.css */ .tone .doclist .grp{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+  padding:13px 14px 6px;font-weight:600;position:sticky;top:0;background:var(--panel);
+  font-family:var(--mono);border-bottom:1px solid var(--hairline)}
+/* docs.css */ .tone .doclist .row{padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--hairline);
+  scroll-margin-top:calc(var(--tbh,30px) + 34px);scroll-margin-bottom:8px}
+/* docs.css */ .tone .doclist .row:hover{background:var(--accent-soft)}
+/* docs.css */ .tone .doclist .row .id{font-family:var(--mono);font-size:10px;color:var(--faint)}
+/* docs.css */ .tone .doclist .row .st{float:right;font-size:10px;color:var(--sc,var(--muted));
+  font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em}
+/* docs.css */ .tone .doclist .row>div:nth-child(3){font-size:13px;margin-top:1px;
+  word-break:keep-all;overflow-wrap:break-word}
+/* docs.css */ .tone .doclist .grp{display:flex;align-items:baseline;gap:10px}
+</style>
+</head>
+<body><div class="tones">
+<section class="tone tone-light"><h2>Components · light (paper)</h2>
+<div class="lab">탭 (.tabs button) — lg</div>
+<div class="tabs"><button class="active">Board</button><button>Docs</button><button>Graph</button></div>
+<div class="lab">입력·선택 (.hrow2 input · select) — lg</div>
+<div class="hrow2 row2"><input type="text" value="검색어"><select><option>전체</option><option>request</option></select></div>
+<div class="lab">행위 버튼 (.acts button.deed) — md</div>
+<div class="acts row2"><button class="deed">승인</button><button class="deed">반려</button><button class="deed">잠금</button></div>
+<div class="lab">칩 (.svchip · .usagechip · .badge · .count)</div>
+<div class="row2"><span class="svchip"><button><span class="sv-m">↻</span> 전체 테스트 2분째 · 120/3,120건</button></span><span class="usagechip">5h 42% · 7d 12%</span><span class="badge">@nicehugepark</span></div>
+<div class="count">요청 12 · 지식 3</div>
+<div class="lab">상태 점 (.stat .cdot) — 7px 사각, 색은 글자와 점에만</div>
+<div class="row2"><span class="stat"><span class="cdot" style="--sc:var(--c-open)"></span>open</span><span class="stat"><span class="cdot" style="--sc:var(--c-inprogress)"></span>in-progress</span><span class="stat"><span class="cdot" style="--sc:var(--c-review)"></span>review</span><span class="stat"><span class="cdot" style="--sc:var(--c-done)"></span>done</span><span class="stat"><span class="cdot" style="--sc:var(--c-blocked)"></span>blocked</span></div>
+<div class="lab">카드 (.card) — 리스트 행, border-bottom, hover 는 배경 틴트만</div>
+<div class="card"><div class="id">REQ-20260913-015 · 17:35</div><div class="t">Claude Design 연동</div><div class="m"><span class="badge">@nicehugepark</span><span>section9</span><span>size M</span></div></div>
+<div class="lab">표 행 (.doclist .row) · 무리 머리 (.grp)</div>
+<div class="doclist"><div class="grp">requests</div><div class="row"><div class="id">REQ-20260913-015</div><div class="st">in-progress</div><div>Claude Design 연동</div></div><div class="row"><div class="id">REQ-20260913-003</div><div class="st">review</div><div>Claude 도구 자동 연동</div></div></div>
+<div class="lab">더 보기 (.col .more)</div>
+<div class="col"><button class="more">+ 3개 더 보기</button></div></section>
+<section class="tone tone-dark"><h2>Components · dark (carbon)</h2>
+<div class="lab">탭 (.tabs button) — lg</div>
+<div class="tabs"><button class="active">Board</button><button>Docs</button><button>Graph</button></div>
+<div class="lab">입력·선택 (.hrow2 input · select) — lg</div>
+<div class="hrow2 row2"><input type="text" value="검색어"><select><option>전체</option><option>request</option></select></div>
+<div class="lab">행위 버튼 (.acts button.deed) — md</div>
+<div class="acts row2"><button class="deed">승인</button><button class="deed">반려</button><button class="deed">잠금</button></div>
+<div class="lab">칩 (.svchip · .usagechip · .badge · .count)</div>
+<div class="row2"><span class="svchip"><button><span class="sv-m">↻</span> 전체 테스트 2분째 · 120/3,120건</button></span><span class="usagechip">5h 42% · 7d 12%</span><span class="badge">@nicehugepark</span></div>
+<div class="count">요청 12 · 지식 3</div>
+<div class="lab">상태 점 (.stat .cdot) — 7px 사각, 색은 글자와 점에만</div>
+<div class="row2"><span class="stat"><span class="cdot" style="--sc:var(--c-open)"></span>open</span><span class="stat"><span class="cdot" style="--sc:var(--c-inprogress)"></span>in-progress</span><span class="stat"><span class="cdot" style="--sc:var(--c-review)"></span>review</span><span class="stat"><span class="cdot" style="--sc:var(--c-done)"></span>done</span><span class="stat"><span class="cdot" style="--sc:var(--c-blocked)"></span>blocked</span></div>
+<div class="lab">카드 (.card) — 리스트 행, border-bottom, hover 는 배경 틴트만</div>
+<div class="card"><div class="id">REQ-20260913-015 · 17:35</div><div class="t">Claude Design 연동</div><div class="m"><span class="badge">@nicehugepark</span><span>section9</span><span>size M</span></div></div>
+<div class="lab">표 행 (.doclist .row) · 무리 머리 (.grp)</div>
+<div class="doclist"><div class="grp">requests</div><div class="row"><div class="id">REQ-20260913-015</div><div class="st">in-progress</div><div>Claude Design 연동</div></div><div class="row"><div class="id">REQ-20260913-003</div><div class="st">review</div><div>Claude 도구 자동 연동</div></div></div>
+<div class="lab">더 보기 (.col .more)</div>
+<div class="col"><button class="more">+ 3개 더 보기</button></div></section>
+</div></body></html>

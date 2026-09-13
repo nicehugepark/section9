@@ -65,6 +65,21 @@ class TestUxAgents(unittest.TestCase):
                         "동사+목적", "자가 점검", "디자인 언어", "토큰"):
                 self.assertIn(key, s, key)
 
+    # U4. Claude Design 연동 (REQ-20260913-015-62x6): 화면·흐름 설계는 `design` 스킬로 캔버스를
+    #     짓고 내보낸 그림을 요청에 --attach 한다; 디자인 시스템이 바뀌면 s9-design-export 로
+    #     미리보기를 다시 만들고, DesignSync 로 올리는 것은 리드다. 생성물 셋과 스킬 원천이 같이 간다.
+    def test_u4_claude_design_canvas_and_attach(self):
+        for a in VISUAL:
+            txt = self._read(a)
+            for word in ("`design` 스킬", "Claude Design", "--attach", "s9-design-export"):
+                self.assertIn(word, txt, f"{a}: {word}")
+        with open(SKILL, encoding="utf-8") as f:
+            skill = f.read()
+        for word in ("`design` 스킬", "Claude Design", "--attach", "s9-design-export",
+                     "DesignSync", "design-system/README.md"):
+            self.assertIn(word, skill, word)
+
+
 class TestNewSkin(unittest.TestCase):
     """새 스킨·톤 (REQ-20260825-062 재작업): 기존 화면을 손대는 대신 선택
     가능한 스킨/톤으로 제공한다 — Apple·토스 계보(여백·카드·라운드·단일 강조)."""

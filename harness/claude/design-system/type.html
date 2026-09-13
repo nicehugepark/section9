@@ -1,0 +1,68 @@
+<!-- @dsCard group="Type" -->
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>Type</title>
+<style>
+.tone-light{--bg:#fafaf8;--panel:#ffffff;--border:#d8d8d3;--hairline:#e9e9e5;--text:#141518;--muted:#5c6470;--faint:#6e7583;--accent:#141518;--accent-soft:#f0f0ec;--accent-line:#141518;--r:0;--c-draft:#868c96;--c-open:#1d4ed8;--c-inprogress:#b45309;--c-blocked:#b91c1c;--c-review:#6d28d9;--c-done:#047857;--c-cancelled:#868c96;--c-published:#0f766e;--t-request:#1d4ed8;--t-knowledge:#0f766e;--t-session:#92400e;--t-question:#9d174d;--t-article:#6b21a8;--mono:ui-monospace,"Cascadia Code",Consolas,monospace;--sans:"Noto Sans KR",system-ui,sans-serif;--ctl-lg:36px;--ctl-md:27px;--ctl-sm:20px;--ctl-lg-fs:13px;--ctl-md-fs:11.5px;--ctl-sm-fs:10.5px;}
+.tone-dark{--bg:#111214;--panel:#17181b;--border:#33353a;--hairline:#232529;--text:#e8e8e4;--muted:#9aa0aa;--faint:#7b8089;--accent:#e8e8e4;--accent-soft:#222327;--accent-line:#e8e8e4;--r:0;--c-draft:#868c96;--c-open:#5b8def;--c-inprogress:#d99537;--c-blocked:#e05d5d;--c-review:#a582e8;--c-done:#3fa583;--c-cancelled:#868c96;--c-published:#3d9d96;--t-request:#5b8def;--t-knowledge:#3d9d96;--t-session:#c08a4e;--t-question:#e07a9f;--t-article:#b18cf0;--mono:ui-monospace,"Cascadia Code",Consolas,monospace;--sans:"Noto Sans KR",system-ui,sans-serif;--ctl-lg:36px;--ctl-md:27px;--ctl-sm:20px;--ctl-lg-fs:13px;--ctl-md-fs:11.5px;--ctl-sm-fs:10.5px;}
+
+body{margin:0;font-family:var(--sans,system-ui,sans-serif);font-size:13px}
+.tones{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
+.tone{background:var(--bg);color:var(--text);padding:16px 18px 20px;min-height:100%}
+.tone h2{margin:0 0 12px;font:600 10.5px/1 var(--mono);letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint)}
+.tone table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11px}
+.tone td{padding:4px 6px 4px 0;border-bottom:1px solid var(--hairline);vertical-align:middle}
+.tone td.v{color:var(--muted);white-space:nowrap}
+.tone .sw{display:inline-block;width:18px;height:18px;border:1px solid var(--border);
+  vertical-align:middle}
+.tone .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--faint);margin:14px 0 6px}
+.tone .lab:first-of-type{margin-top:0}
+.tone .box{background:var(--panel);border:1px solid var(--border);display:flex;
+  align-items:center;padding:0 10px;font-family:var(--mono);font-size:10.5px;
+  color:var(--muted);margin-bottom:6px}
+.tone .line{height:0;border-top:1px solid var(--border);margin:6px 0}
+.tone .line.hair{border-top-color:var(--hairline)}
+.tone .row2{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.tone button,.tone input,.tone select{font-family:inherit;color:inherit;
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--r)}
+.tone .cdot{display:inline-block;vertical-align:middle;margin-right:6px}
+.tone .stat{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tone .col{border-top:1px solid var(--border)}
+.tone .more{background:none;border:0;font-family:var(--mono);font-size:11px;
+  color:var(--muted);cursor:pointer;padding:6px 0;text-align:left;width:100%}
+.tone .more:hover{text-decoration:underline}
+.tone .doclist{border:1px solid var(--border);background:var(--panel)}
+.tone .card{background:var(--panel);border:1px solid var(--border)}
+.tone .sample{margin:0 0 10px;line-height:1.45}
+
+
+</style>
+</head>
+<body><div class="tones">
+<section class="tone tone-light"><h2>Type · light (paper)</h2>
+<div class="lab">--sans</div>
+<p class="sample" style="font-family:&quot;Noto Sans KR&quot;,system-ui,sans-serif">요청 문서와 카드 제목의 본문체 — Noto Sans KR, system-ui. 0123456789</p>
+<p class="sample" style="font-family:&quot;Noto Sans KR&quot;,system-ui,sans-serif;font-weight:600;font-size:13.5px;letter-spacing:-.01em">카드 제목 13.5px · 600 (.card .t)</p>
+<div class="lab">--mono</div>
+<p class="sample" style="font-family:ui-monospace,&quot;Cascadia Code&quot;,Consolas,monospace;font-size:11px;letter-spacing:.02em;color:var(--muted)">REQ-20260913-015 · 17:35 · @nicehugepark (메타는 mono 10~11px)</p>
+<p class="sample" style="font-family:ui-monospace,&quot;Cascadia Code&quot;,Consolas,monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">group label · uppercase · letter-spacing .1em</p>
+<div class="lab">손잡이 글자 크기</div>
+<p class="sample" style="font-size:13px">--ctl-lg-fs = 13px — 승인 · 반려 · 더 보기</p>
+<p class="sample" style="font-size:11.5px">--ctl-md-fs = 11.5px — 승인 · 반려 · 더 보기</p>
+<p class="sample" style="font-size:10.5px">--ctl-sm-fs = 10.5px — 승인 · 반려 · 더 보기</p>
+<table><tr><td>--mono</td><td class="v">ui-monospace,&quot;Cascadia Code&quot;,Consolas,monospace</td></tr><tr><td>--sans</td><td class="v">&quot;Noto Sans KR&quot;,system-ui,sans-serif</td></tr><tr><td>--ctl-lg-fs</td><td class="v">13px</td></tr><tr><td>--ctl-md-fs</td><td class="v">11.5px</td></tr><tr><td>--ctl-sm-fs</td><td class="v">10.5px</td></tr></table></section>
+<section class="tone tone-dark"><h2>Type · dark (carbon)</h2>
+<div class="lab">--sans</div>
+<p class="sample" style="font-family:&quot;Noto Sans KR&quot;,system-ui,sans-serif">요청 문서와 카드 제목의 본문체 — Noto Sans KR, system-ui. 0123456789</p>
+<p class="sample" style="font-family:&quot;Noto Sans KR&quot;,system-ui,sans-serif;font-weight:600;font-size:13.5px;letter-spacing:-.01em">카드 제목 13.5px · 600 (.card .t)</p>
+<div class="lab">--mono</div>
+<p class="sample" style="font-family:ui-monospace,&quot;Cascadia Code&quot;,Consolas,monospace;font-size:11px;letter-spacing:.02em;color:var(--muted)">REQ-20260913-015 · 17:35 · @nicehugepark (메타는 mono 10~11px)</p>
+<p class="sample" style="font-family:ui-monospace,&quot;Cascadia Code&quot;,Consolas,monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">group label · uppercase · letter-spacing .1em</p>
+<div class="lab">손잡이 글자 크기</div>
+<p class="sample" style="font-size:13px">--ctl-lg-fs = 13px — 승인 · 반려 · 더 보기</p>
+<p class="sample" style="font-size:11.5px">--ctl-md-fs = 11.5px — 승인 · 반려 · 더 보기</p>
+<p class="sample" style="font-size:10.5px">--ctl-sm-fs = 10.5px — 승인 · 반려 · 더 보기</p>
+<table><tr><td>--mono</td><td class="v">ui-monospace,&quot;Cascadia Code&quot;,Consolas,monospace</td></tr><tr><td>--sans</td><td class="v">&quot;Noto Sans KR&quot;,system-ui,sans-serif</td></tr><tr><td>--ctl-lg-fs</td><td class="v">13px</td></tr><tr><td>--ctl-md-fs</td><td class="v">11.5px</td></tr><tr><td>--ctl-sm-fs</td><td class="v">10.5px</td></tr></table></section>
+</div></body></html>

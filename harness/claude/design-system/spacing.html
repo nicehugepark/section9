@@ -1,0 +1,68 @@
+<!-- @dsCard group="Spacing" -->
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>Spacing</title>
+<style>
+.tone-light{--bg:#fafaf8;--panel:#ffffff;--border:#d8d8d3;--hairline:#e9e9e5;--text:#141518;--muted:#5c6470;--faint:#6e7583;--accent:#141518;--accent-soft:#f0f0ec;--accent-line:#141518;--r:0;--c-draft:#868c96;--c-open:#1d4ed8;--c-inprogress:#b45309;--c-blocked:#b91c1c;--c-review:#6d28d9;--c-done:#047857;--c-cancelled:#868c96;--c-published:#0f766e;--t-request:#1d4ed8;--t-knowledge:#0f766e;--t-session:#92400e;--t-question:#9d174d;--t-article:#6b21a8;--mono:ui-monospace,"Cascadia Code",Consolas,monospace;--sans:"Noto Sans KR",system-ui,sans-serif;--ctl-lg:36px;--ctl-md:27px;--ctl-sm:20px;--ctl-lg-fs:13px;--ctl-md-fs:11.5px;--ctl-sm-fs:10.5px;}
+.tone-dark{--bg:#111214;--panel:#17181b;--border:#33353a;--hairline:#232529;--text:#e8e8e4;--muted:#9aa0aa;--faint:#7b8089;--accent:#e8e8e4;--accent-soft:#222327;--accent-line:#e8e8e4;--r:0;--c-draft:#868c96;--c-open:#5b8def;--c-inprogress:#d99537;--c-blocked:#e05d5d;--c-review:#a582e8;--c-done:#3fa583;--c-cancelled:#868c96;--c-published:#3d9d96;--t-request:#5b8def;--t-knowledge:#3d9d96;--t-session:#c08a4e;--t-question:#e07a9f;--t-article:#b18cf0;--mono:ui-monospace,"Cascadia Code",Consolas,monospace;--sans:"Noto Sans KR",system-ui,sans-serif;--ctl-lg:36px;--ctl-md:27px;--ctl-sm:20px;--ctl-lg-fs:13px;--ctl-md-fs:11.5px;--ctl-sm-fs:10.5px;}
+
+body{margin:0;font-family:var(--sans,system-ui,sans-serif);font-size:13px}
+.tones{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
+.tone{background:var(--bg);color:var(--text);padding:16px 18px 20px;min-height:100%}
+.tone h2{margin:0 0 12px;font:600 10.5px/1 var(--mono);letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint)}
+.tone table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11px}
+.tone td{padding:4px 6px 4px 0;border-bottom:1px solid var(--hairline);vertical-align:middle}
+.tone td.v{color:var(--muted);white-space:nowrap}
+.tone .sw{display:inline-block;width:18px;height:18px;border:1px solid var(--border);
+  vertical-align:middle}
+.tone .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--faint);margin:14px 0 6px}
+.tone .lab:first-of-type{margin-top:0}
+.tone .box{background:var(--panel);border:1px solid var(--border);display:flex;
+  align-items:center;padding:0 10px;font-family:var(--mono);font-size:10.5px;
+  color:var(--muted);margin-bottom:6px}
+.tone .line{height:0;border-top:1px solid var(--border);margin:6px 0}
+.tone .line.hair{border-top-color:var(--hairline)}
+.tone .row2{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.tone button,.tone input,.tone select{font-family:inherit;color:inherit;
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--r)}
+.tone .cdot{display:inline-block;vertical-align:middle;margin-right:6px}
+.tone .stat{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tone .col{border-top:1px solid var(--border)}
+.tone .more{background:none;border:0;font-family:var(--mono);font-size:11px;
+  color:var(--muted);cursor:pointer;padding:6px 0;text-align:left;width:100%}
+.tone .more:hover{text-decoration:underline}
+.tone .doclist{border:1px solid var(--border);background:var(--panel)}
+.tone .card{background:var(--panel);border:1px solid var(--border)}
+.tone .sample{margin:0 0 10px;line-height:1.45}
+
+
+</style>
+</head>
+<body><div class="tones">
+<section class="tone tone-light"><h2>Spacing · light (paper)</h2>
+<div class="lab">손잡이 세 급 (min-height)</div>
+<div class="box" style="height:36px">--ctl-lg = 36px</div>
+<div class="box" style="height:27px">--ctl-md = 27px</div>
+<div class="box" style="height:20px">--ctl-sm = 20px</div>
+<div class="lab">구획은 선으로 — border 1px / hairline 1px</div>
+<div class="line"></div><div class="line hair"></div>
+<div class="lab">모서리 --r = 0 · 그림자 0</div>
+<div class="box" style="height:36px;border-radius:0">radius var(--r) · shadow none</div>
+<div class="lab">카드 안여백 (.card)</div>
+<div class="card"><div class="id">--card-pt 11px · --card-px 14px · --card-edge 12px</div><div class="t">위아래 11 · 좌우 14 · id 줄 12</div></div>
+<table><tr><td>--r</td><td class="v">0</td></tr><tr><td>--ctl-lg</td><td class="v">36px</td></tr><tr><td>--ctl-md</td><td class="v">27px</td></tr><tr><td>--ctl-sm</td><td class="v">20px</td></tr></table></section>
+<section class="tone tone-dark"><h2>Spacing · dark (carbon)</h2>
+<div class="lab">손잡이 세 급 (min-height)</div>
+<div class="box" style="height:36px">--ctl-lg = 36px</div>
+<div class="box" style="height:27px">--ctl-md = 27px</div>
+<div class="box" style="height:20px">--ctl-sm = 20px</div>
+<div class="lab">구획은 선으로 — border 1px / hairline 1px</div>
+<div class="line"></div><div class="line hair"></div>
+<div class="lab">모서리 --r = 0 · 그림자 0</div>
+<div class="box" style="height:36px;border-radius:0">radius var(--r) · shadow none</div>
+<div class="lab">카드 안여백 (.card)</div>
+<div class="card"><div class="id">--card-pt 11px · --card-px 14px · --card-edge 12px</div><div class="t">위아래 11 · 좌우 14 · id 줄 12</div></div>
+<table><tr><td>--r</td><td class="v">0</td></tr><tr><td>--ctl-lg</td><td class="v">36px</td></tr><tr><td>--ctl-md</td><td class="v">27px</td></tr><tr><td>--ctl-sm</td><td class="v">20px</td></tr></table></section>
+</div></body></html>

@@ -475,6 +475,31 @@ R7. 부호는 한 벌 — 늘고 줄어드는 짝은 `+` 와 `−`(U+2212), 닫�
 ### 용어 (tech-writer) — 규약 2조 ⑤ 와 용어표 DOC-20260906-002 를 본다
 문서 키·CLI 옵션 이름은 화면에서도 그 글자 그대로, 그 밖의 표시어는 우리 말로.
 
+## Claude Design 연동 (REQ-20260913-015, 주인 지시 2026-09-13)
+
+주인의 말: 「클로드 디자인의 경우에도 자동으로 연동이 되게 해서 문서와 아티팩트 생성도
+할 수 있도록 해야한다」. 길은 둘이고, 어디까지 자동인지는 정직하게 가른다 — 캔버스·첨부·
+미리보기는 에이전트가, claude.ai/design 으로 올리는 것은 사람 승인이 있는 리드가.
+
+- **화면·흐름 설계는 `design` 스킬로 Claude Design 캔버스를 짓는다.** designer 가 기본이고
+  frontend-developer·ux-writer 도 같은 길이다. Skill 도구로 `design` 을 로드하면 절차가
+  보인다 — 아트보드(`*.dc.html`)마다 화면 하나, 대안은 아트보드를 나란히, `canvas.json` 이
+  배치, Artifact 로 낸다. 짓기 전에 이 문서의 토큰·부품 값을 그대로 옮긴다(`design` 스킬
+  0단계: 기존 앱을 화소 단위로 맞춘다 — 4/8px 격자로 반올림하지 않는다).
+- **내보낸 그림(PNG/PDF)·문서는 요청에 첨부한다**: `s9 note <REQ> '무엇을 찍은 그림인지
+  한 줄' --attach <파일>`. 캔버스 링크는 그 노트 본문에 적는다. png 에는 글자가 없어 나중에
+  찾을 실마리는 그 한 줄뿐이다(규약 4조). `projects/<slug>/assets/` 에 직접 두지 않는다.
+- **디자인 시스템(토큰·부품)이 바뀌면 미리보기를 다시 만든다**: `bin/s9-design-export` 가
+  `web/css/tokens.css` 와 부품 규칙(web/css 의 실제 선택자)에서 `harness/claude/design-system/`
+  아래 카드 네 장(Colors·Type·Spacing·Components, 첫 줄 `<!-- @dsCard group="…" -->`)을
+  낸다. 라이트·다크가 한 장에 나란히 있다. 값을 손으로 적지 않는다 — 원천은 CSS 다.
+- **claude.ai/design 으로 올리는 것(DesignSync)은 리드의 몫이다** — 도구 호출마다 권한
+  프롬프트가 뜨므로 사람이 보고 있는 자리에서만 한다. 순서와 파일 목록은
+  `harness/claude/design-system/README.md` 에 있다(list_projects → create_project 'section9'
+  → finalize_plan → write_files). 에이전트는 파일을 만들고 첨부까지 한다 — push 는 하지 않는다.
+- 회귀: `tests/test_design_export.py`(내보내기) · `test_ux_agents.py` U4(이 절과 세 역할
+  정의가 같이 간다).
+
 ## 자가 점검 (제출 전)
 
 1. 이 화면의 결정은 하나인가? 없앨 수 있는 요소는?
@@ -484,3 +509,4 @@ R7. 부호는 한 벌 — 늘고 줄어드는 짝은 `+` 와 `−`(U+2212), 닫�
 5. 문구가 사용자 언어인가? 버튼이 동사+목적인가?
 6. 키보드·대비·터치 타깃을 확인했나?
 7. 실브라우저 캡처로 확인했나?
+8. 화면·흐름을 새로 그렸으면 Claude Design 캔버스와 내보낸 그림을 요청에 첨부했나?
