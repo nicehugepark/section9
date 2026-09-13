@@ -10,5 +10,6 @@
  "pref_review": "리드가 스스로 판정할 수 있는 review(설계 권고 채택·기계 검증 끝난 구현·정책 기본값)는 사람에게 넘기지 말고 리드가 직접 done/반려로 닫는다 — 사람에게 남기는 것은 취향·방향·외부 사실뿐 (주인 지시 2026-09-09 13:03)",
  "jira_account_id": "712020:20721d1f-fa88-4ff7-9fb3-c65194db0fac",
  "jira_enabled": "on",
- "jira_token_expires": "2026-09-12"
+ "jira_token_expires": "2026-09-12",
+ "auto_resume_model": "opus"
 }

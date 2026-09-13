@@ -266,3 +266,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-11T10:29:58+09:00 config worker_worktree=on (by nicehugepark via dashboard)
 - 2026-09-11T15:34:52+09:00 config last_account_choice=claude04.pfe@dev.itcen.com (by dashboard account change)
 - 2026-09-12T22:39:41+09:00 config last_account_choice=claude04.pfe@dev.itcen.com (by nicehugepark)
+- 2026-09-13T09:33:28+09:00 config auto_resume_model=opus (by nicehugepark)
