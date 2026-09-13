@@ -196,8 +196,10 @@ function s9PerfFlush(){
   }catch(e){}
 }
 
-if (typeof document !== "undefined" && document.addEventListener){
-  // 창을 떠날 때는 남은 줄을 마저 보낸다 — pagehide 는 탭을 닫을 때도 온다.
+// 창을 떠날 때는 남은 줄을 마저 보낸다 — pagehide 는 탭을 닫을 때도 온다.
+// node 로 이 파일을 평가하는 시험(dash_roundtrips·serve_guard_ui)에는 window 가 없다 —
+// 브라우저에서만 건다.
+if (typeof window !== "undefined" && typeof document !== "undefined" && document.addEventListener){
   window.addEventListener("pagehide", s9PerfFlush);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) s9PerfFlush();
