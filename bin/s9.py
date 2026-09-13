@@ -23583,8 +23583,41 @@ def do_project_rename(old, new, actor=None, via=""):
     return {"old": src, "new": new, "docs": len(edits), "assets": moved_dir}
 
 
+def invite_module():
+    """bin/s9_invite.py — 프로젝트 초대의 본문·발송·기록 (REQ-20260913-010-62x6).
+    s9 의 헬퍼를 bind 로 넘겨 문서 쓰기·시크릿 읽기 경로를 한 벌로 둔다. 한 번만 싣는다."""
+    m = globals().get("_INVITE_MODULE")
+    if m is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "s9_invite", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_invite.py"))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        m.bind(globals())
+        globals()["_INVITE_MODULE"] = m
+    return m
+
+
 def cmd_project(args):
     action = args.action
+
+    if action == "invite":
+        # s9 project invite <slug> --to <email> [--role r] [--position p] [--send] [--print]
+        # (REQ-20260913-010-62x6) — 판정·본문·발송·기록은 전부 s9_invite.do_project_invite
+        inv = invite_module()
+        if not args.slug or not args.to:
+            die("usage: s9 project invite <slug> --to <email> [--role R] [--position P] [--send] [--print]")
+        try:
+            res = inv.do_project_invite(
+                ROOT, args.slug, args.to, role=args.role, position=args.position,
+                actor=resolve_user(args.user), send=args.send,
+                record=True if args.print_body else None)
+        except ValueError as e:
+            die(str(e))
+        if not res["ok"]:
+            die(res["error"])
+        print(inv.cli_report(res, print_body=args.print_body))
+        return
 
     if action == "add":
         user = resolve_user(args.user)
@@ -30219,6 +30252,115 @@ def sync_mode_do(mode, actor="", proxy_for=""):
             "state": sync_panel_state(actor=actor, proxy_for=proxy_for)}
 
 
+# ── Settings 「저장소」 판의 GitHub 연동 (REQ-20260913-008-62x6) ──────────────
+# 판정·문장·git 은 bin/s9_github.py 가 맡는다. 여기는 배선이다 — 마커 읽기·쓰기는
+# sync_mode/sync_set_mode 한 경로를 넘기고, 토큰은 secret 저장소에서 찾아 넘기며,
+# 신원 규율(진짜 나 · admin · 대리면 잠김)은 sync_mode_do 와 같은 문장을 쓴다.
+
+def _github_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "s9_github", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_github.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def _github_kwargs(g, user):
+    """s9_github 에 넘기는 살림 — 토큰 키 이름은 대소문자를 가리지 않는다(GITHUB_TOKEN)."""
+    def token():
+        for k in (secret_keys(user) if user else {}):
+            if k.upper() == g.GITHUB_SECRET_KEY:
+                return secret_value(user, k) or ""
+        return ""
+    return {"mode_get": sync_mode, "mode_set": sync_set_mode, "token": token}
+
+
+def github_deny_why(actor="", proxy_for=""):
+    if proxy_for:
+        return SYNC_CFG_WHY["proxy"]
+    if not (actor and user_role(actor) == "admin"):
+        return SYNC_CFG_WHY["not_admin"]
+    return ""
+
+
+def github_state_for(actor="", proxy_for=""):
+    g = _github_module()
+    kw = _github_kwargs(g, actor)
+    return g.github_state(ROOT, mode_get=kw["mode_get"], token=kw["token"],
+                          deny_why=github_deny_why(actor, proxy_for))
+
+
+def github_do(what, req, actor="", proxy_for=""):
+    """화면의 link·create·unlink — 누른 순간 다시 판정한다. 거부는 {ok:false, error}."""
+    why = github_deny_why(actor, proxy_for)
+    if why:
+        return {"ok": False, "error": why}
+    g = _github_module()
+    kw = _github_kwargs(g, actor)
+    if what == "link":
+        res = g.github_link(ROOT, str(req.get("url") or ""),
+                            mode_set=kw["mode_set"], token=kw["token"])
+    elif what == "create":
+        res = g.github_create(ROOT, str(req.get("name") or ""),
+                              private=bool(req.get("private", True)),
+                              org=str(req.get("org") or ""),
+                              mode_set=kw["mode_set"], token=kw["token"])
+    elif what == "unlink":
+        res = g.github_unlink(ROOT, mode_set=kw["mode_set"])
+    else:
+        return {"ok": False, "error": f"모르는 동작입니다: {what}"}
+    if res.get("ok"):
+        _sync_log(f"github {what}: {actor} 이 화면에서 — origin={res.get('origin') or '(없음)'} "
+                  f"mode={res.get('sync_mode') or '-'} (REQ-20260913-008-62x6)")
+    return res
+
+
+def cmd_github(args):
+    """`s9 github status|link <url>|create <name> [--private|--public] [--org X]|unlink`."""
+    g = _github_module()
+    user = resolve_user(getattr(args, "user", None))
+    kw = _github_kwargs(g, user)
+    if args.action == "status":
+        st = g.github_state(ROOT, mode_get=kw["mode_get"], token=kw["token"])
+        if getattr(args, "json", False):
+            print(json.dumps(st, ensure_ascii=False, indent=1))
+            return
+        a = st["auth"]
+        print(f"origin: {st['origin'] or '(없음)'}"
+              + (f"  → {st['web_url']}" if st["web_url"] else ""))
+        print(f"sync:   {st['sync_mode'] or '(마커 없음)'}  branch: {st['branch'] or '-'}")
+        print(f"auth:   gh={'로그인' if a['gh'] else '없음'}  "
+              f"{g.GITHUB_SECRET_KEY}={'있음' if a['token'] else '없음'}"
+              + (f"  login={a['login']}" if a["login"] else ""))
+        for k in ("link", "create"):
+            c = st["can"][k]
+            print(f"{k:7s} {'가능' if c['ok'] else '불가 — ' + c['why']}")
+        return
+    if args.action == "link":
+        if not (args.target or "").strip():
+            die("usage: s9 github link <저장소 URL>")
+        res = g.github_link(ROOT, args.target, mode_set=kw["mode_set"], token=kw["token"])
+    elif args.action == "create":
+        if not (args.target or "").strip():
+            die("usage: s9 github create <저장소 이름> [--private|--public] [--org <조직>]")
+        res = g.github_create(ROOT, args.target, private=not getattr(args, "public", False),
+                              org=getattr(args, "org", "") or "",
+                              mode_set=kw["mode_set"], token=kw["token"])
+    else:
+        res = g.github_unlink(ROOT, mode_set=kw["mode_set"])
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=1))
+        if not res.get("ok"):
+            sys.exit(1)
+        return
+    if not res.get("ok"):
+        die(res.get("error") or "실패")
+    _sync_log(f"github {args.action}: {user} 이 CLI 에서 — origin={res.get('origin') or '(없음)'} "
+              f"mode={res.get('sync_mode') or '-'} (REQ-20260913-008-62x6)")
+    print(res.get("said") or "완료")
+
+
 # ── Settings 「Jira 연동」 판 (REQ-20260908-079) ───────────────────────────────
 # 주인 지시 2026-09-08 21:30: 「테스트를 위해서 내가 준비해야할 것을 알려주고, 그
 # 항목들을 세팅스탭의 적당한 위치에 jira 연동을 위한 공간을 확보하고 준비 시켜라.
@@ -33397,6 +33539,28 @@ def cmd_serve(args):
                         self._send(200, ctype + "; charset=utf-8", f.read())
                 else:
                     self._send(404, "text/plain", b"not found")
+            elif (parsed.path == "/favicon.ico"
+                  or re.fullmatch(r"/assets/[\w.-]+\.(?:svg|png|ico)",
+                                  parsed.path or "")):
+                # 이 제품의 얼굴 — 마크·파비콘·앱 아이콘 (REQ-20260913-014-62x6).
+                # 브라우저는 링크를 안 걸어도 `/favicon.ico` 를 제 발로 부른다.
+                # 그 자리가 비어 있으면 기록에 404 가 방문마다 쌓이므로, 주소
+                # 하나를 `web/assets/favicon.ico` 로 이어 준다. 길 규율은 위
+                # 조각 길과 같다 — realpath 로 보고 그 폴더 밖이면 안 낸다
+                # (접두 검사만으로는 심링크가 새 나간다, REQ-20260828-028).
+                home = os.path.realpath(os.path.join(ROOT, "web", "assets"))
+                name = ("favicon.ico" if parsed.path == "/favicon.ico"
+                        else os.path.basename(parsed.path))
+                fp = os.path.realpath(os.path.join(home, name))
+                ctype = {".svg": "image/svg+xml", ".png": "image/png",
+                         ".ico": "image/x-icon"}.get(
+                             os.path.splitext(fp)[1].lower(),
+                             "application/octet-stream")
+                if os.path.dirname(fp) == home and os.path.isfile(fp):
+                    with open(fp, "rb") as f:
+                        self._send(200, ctype, f.read())
+                else:
+                    self._send(404, "text/plain", b"not found")
             # 가시성 필터는 응답 직전에만 — 내부 함수(catalog_with_live 등)의
             # 반환은 무필터 원본 유지 (워처·live 판정이 그 데이터로 동작)
             elif parsed.path == "/api/serveinfo":
@@ -33521,6 +33685,9 @@ def cmd_serve(args):
                 self._json(g)
             elif parsed.path == "/api/projects":
                 self._json(projects_for(viewer_of(qs)))
+            elif parsed.path == "/api/invite/state":
+                # 초대 화면의 준비 상태 (REQ-20260913-010-62x6) — SMTP 는 host·from 만, 값은 안 나간다
+                self._json(invite_module().invite_state(ROOT, whoami_info().get("user", "")))
             elif parsed.path == "/api/search":
                 me = viewer_of(qs)
                 d = search_data(qs.get("q", [""])[0])
@@ -33898,6 +34065,15 @@ def cmd_serve(args):
                 # 토큰은 있는지만 실린다.
                 w = whoami_info()
                 self._json(jira_state(w["user"] if w.get("registered") else ""))
+            elif parsed.path == "/api/github/state":
+                # Settings 「저장소」 판의 GitHub 연동 (REQ-20260913-008-62x6, 계약 A) —
+                # 신원은 pull·push 와 같은 축(진짜 나, 대리면 잠김). 판정은 github_state_for.
+                w = whoami_info()
+                me = w["user"] if w.get("registered") else ""
+                a = (qs.get("as", [""])[0] or "").strip()
+                proxy = a if (a and w.get("role") == "admin"
+                              and a in registered_users() and a != me) else ""
+                self._json(github_state_for(me, proxy))
             elif parsed.path == "/api/roster":
                 # Settings 의 에이전트·스킬 절 (REQ-20260906-021)
                 self._json({"rows": roster_list(viewer_of(qs) or "")})
@@ -34424,6 +34600,15 @@ def cmd_serve(args):
                         contact_org=req.get("contact_org"),
                         actor=actor, via=" via dashboard")
                     self._json({"ok": True, **res})
+                elif parsed.path == "/api/project/invite":
+                    # 프로젝트 초대 (REQ-20260913-010-62x6) — CLI 와 같은 경로
+                    # (s9_invite.do_project_invite): manage 인가·이메일 검사·본문·발송·기록.
+                    # 상태 문제(origin 없음·SMTP 준비물 없음)는 200 ok:false + mail, 입력 거부는 400.
+                    self._json(invite_module().do_project_invite(
+                        ROOT, str(req.get("slug") or ""),
+                        str(req.get("email") or "").strip(),
+                        role=req.get("role"), position=req.get("position"),
+                        actor=actor, send=bool(req.get("send")), via=" via dashboard"))
                 elif parsed.path == "/api/project/jira":
                     # Projects 정보 패널의 Jira 세 행 (REQ-20260908-074) —
                     # do_project_jira_set 한 경로(manage 인가·비밀 거부·History).
@@ -34581,6 +34766,14 @@ def cmd_serve(args):
                     # 신원의 준비물로만 부르고 대리(as)를 받지 않는다.
                     res = jira_ping(w["user"] if w.get("registered") else "")
                     self._json(res, 200 if res.get("ok") else 409)
+                elif parsed.path in ("/api/github/link", "/api/github/create",
+                                     "/api/github/unlink"):
+                    # GitHub 연동 (REQ-20260913-008-62x6, 계약 A) — 거부는 400
+                    # {ok:false, error}. 신원은 pull·push 와 같은 축: 진짜 나, 대리면 잠김.
+                    res = github_do(parsed.path.rsplit("/", 1)[-1], req,
+                                    actor=(w["user"] if w.get("registered") else ""),
+                                    proxy_for=(proxy if proxy != w.get("user") else ""))
+                    self._json(res, 200 if res.get("ok") else 400)
                 elif parsed.path == "/api/sync/mode":
                     # Settings 「저장소」 판의 문서 동기화 모드 (REQ-20260908-068).
                     # pull·push 와 같은 신원 규율 — 진짜 나, 대리 중이면 잠김.
@@ -36320,7 +36513,8 @@ def main():
     pj = sub.add_parser("project", help="프로젝트 관리 (문서·멤버·역할·만료)")
     pj.add_argument("action",
                     choices=["add", "ls", "show", "set", "member", "authz",
-                             "scaffold", "agents", "default", "rename", "jira"])
+                             "scaffold", "agents", "default", "rename", "jira",
+                             "invite"])
     pj.add_argument("slug", nargs="?", help="프로젝트 slug 또는 id")
     pj.add_argument("member_action", nargs="?",
                     help="member: add|rm|ls (authz: 대상 사용자, rename: 새 slug)")
@@ -36352,6 +36546,12 @@ def main():
     pj.add_argument("--mark", help="jira set: on(기본 — 라벨 s9-<id>·「section9 요청」 줄·코멘트 서명을 "
                     "남긴다)|off(Jira 쪽에 section9 의 표를 하나도 남기지 않는다)")
     pj.add_argument("--user", help="행위 주체 (기본: 세션/OS 사용자)")
+    # invite <slug> --to <email> (REQ-20260913-010-62x6) — 본문·발송·기록은 bin/s9_invite.py
+    pj.add_argument("--to", help="invite: 초대할 이메일")
+    pj.add_argument("--send", action="store_true",
+                    help="invite: SMTP 로 보낸다 (준비물: s9 secret smtp_host·smtp_port·smtp_user·smtp_pass·smtp_from)")
+    pj.add_argument("--print", dest="print_body", action="store_true",
+                    help="invite: 메일 본문을 stdout 으로 (직접 보내는 길 — 초대로 기록한다)")
     pj.set_defaults(fn=cmd_project)
 
     sh = sub.add_parser("shot", help="headless 스크린샷 (WSL=Windows Chrome) — UI 검증용")
@@ -36400,6 +36600,17 @@ def main():
     ji.add_argument("--json", action="store_true")
     ji.add_argument("--run", action="store_true", help="outbox: 지금 한 틱 처리")
     ji.set_defaults(fn=cmd_jira)
+
+    gh_ = sub.add_parser("github", help="GitHub 저장소 잇기 (REQ-20260913-008-62x6) — "
+                                        "status · link <url> · create <name> · unlink")
+    gh_.add_argument("action", choices=["status", "link", "create", "unlink"])
+    gh_.add_argument("target", nargs="?", help="link: 저장소 URL(https·ssh) · create: 저장소 이름")
+    gh_.add_argument("--private", action="store_true", help="create: 비공개(기본)")
+    gh_.add_argument("--public", action="store_true", help="create: 공개")
+    gh_.add_argument("--org", default="", help="create: 조직 이름(없으면 내 계정)")
+    gh_.add_argument("--user", help="누구의 준비물(secret)로 (기본: 나)")
+    gh_.add_argument("--json", action="store_true")
+    gh_.set_defaults(fn=cmd_github)
 
     sy = sub.add_parser("sync", help="문서 이벤트 git 동기화 — 수동 실행/상태 (REQ-048)")
     sy.add_argument("--on", action="store_true",
