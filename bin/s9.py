@@ -355,11 +355,20 @@ LOCAL_ONLY_KEYS = ("s9code_args", "worker_worktree",
                    # 컴퓨터가 그 이름으로 뜨려다 빈 자리를 만든다.
                    "last_account_choice")
 LOCAL_ONLY_PREFIXES = ("auto_resume",)
+# 접두 규칙이 **정책까지** 컴퓨터에 가둔 자리 (REQ-20260913-002, 실제 사고 2026-09-13):
+# `auto_resume_model` 은 무엇을 실행해도 되는가가 아니라 **어떤 모델로** 띄우는가 —
+# 사람의 선언이라 컴퓨터를 따라가야 한다. WSL 에서 정한 opus 가 local.json 에만
+# 남아 맥에는 오지 않았고, 추적 파일로 동기화된 `last_model_choice=fable` 이
+# 그 빈자리를 채워 무인 워커가 fable 로 떴다 — resolved_model 이 막으려던 바로
+# 그 조건이 컴퓨터 경계에서 되살아났다. 정책은 추적 파일에 산다.
+TRACKED_POLICY_KEYS = ("auto_resume_model",)
 
 
 def _local_only_key(key):
     """추적되지 않는 자리(config/local.json)에만 살아야 하는 키인가."""
     k = str(key or "")
+    if k in TRACKED_POLICY_KEYS:
+        return False
     return (k in SECRET_LOCATION_KEYS or k in LOCAL_ONLY_KEYS
             or any(k.startswith(pfx) for pfx in LOCAL_ONLY_PREFIXES))
 
@@ -10899,6 +10908,9 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
         return block(_lc, _spawn_block_ko(_lc, doc_lease(meta)))
     try:
         lf = open(os.path.join(_auto_dir(), safe_name(doc_id) + ".log"), "a", encoding="utf-8")
+        # 모델과 그 출처를 로그에 적는다 (REQ-20260913-002): 워커가 정책과 다른
+        # 모델로 떴을 때 transcript 를 열지 않고 spawn.log 한 줄로 읽히게.
+        _mdl, _msrc = resolved_model(owner)
         argv = ["claude", "-p", prompt, *_spawn_model_args(owner), *perm]
         if sid:
             argv[3:3] = ["--resume", sid]
@@ -10918,7 +10930,8 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
         # 기존 테스트가 이 형태를 읽는다. 사유는 뒤에 덧붙인다.
         _auto_log(f"SPAWN({'resume' if sid else 'fresh'}) {doc_id} "
                   f"reason={reason}" + (f" sid={sid[:8]}" if sid else "")
-                  + f" acct={_wacct['account']}")
+                  + f" acct={_wacct['account']}"
+                  + f" model={_mdl or '-'}({_msrc or 'none'})")
         return True
     except FileNotFoundError:
         _auto_log(f"claude not found — skip {doc_id} {reason}")
