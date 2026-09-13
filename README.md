@@ -5,8 +5,8 @@ Claude Code 로 일하는 사람의 **외부기억(external memory)**. 프롬프
 머신·여러 세션이 같은 기록을 이어서 쓰게 한다. 컨텍스트는 사라지지만 문서는 남는다.
 
 > 검증: 2026-09-13 · 0.9.0 · Linux(WSL2) · python 3 · Claude Code CLI. 맥은 실측 중이다(§10).
-> 릴리스 파일·GitHub 잇기·초대는 0.9.0 에서 새로 서는 흐름이라, 아직 착지하지 않은 화면·출력에는
-> **(실측 예정)** 표를 남겼다 — 착지하면 실측해 채운다.
+> 릴리스 파일·GitHub 잇기·초대·합류는 0.9.0 에서 새로 선 흐름이다 — 화면 글자는 그 화면의 문구 표에서, 출력은
+> 릴리스 모양으로 푼 임시 자리에서 실행해 옮겼다(2026-09-13). 맥에서만 잴 수 있는 출력은 REQ-20260913-020 이 채운다.
 > 화면별 사용법과 운영 절차는 [docs/guide.md](docs/guide.md), Windows·WSL 은
 > [docs/guide-windows.md](docs/guide-windows.md), 설계는 [docs/00~11](docs/00-overview.md).
 
@@ -51,7 +51,7 @@ bin/s9 code
 ```
 
 첫 실행이 순서대로 하는 일 — `.git` 이 없으면 `git init` · `.gitignore` · `.s9-sync`(내용 `local`) ·
-첫 commit(실측 예정, REQ-20260913-007) → 대시보드 기동 → 로그인 안내 → 훅·스킬·에이전트 설치
+첫 commit 「section9 첫 실행」(출력 `◌ 저장소를 새로 세웠다 — 혼자 쓰는 상태 …`) → 대시보드 기동 → 로그인 안내 → 훅·스킬·에이전트 설치
 (`s9-install` 을 몰라도 된다) → 이름 등록 → 기본 프로젝트 `general`. 끝난 상태는 **혼자 쓰는
 상태**다: GitHub 과 이어져 있지 않고 문서는 이 컴퓨터 안에만 남는다. 잇는 일은 §6.
 
@@ -147,18 +147,17 @@ s9 serve --restart                         # 대시보드 재시작 (코드를 �
 
 ## 6. GitHub 잇기와 초대 (0.9.0)
 
-혼자 쓰는 상태에서 나가는 길은 화면에 있다. 화면 글자와 출력은 착지 뒤 실측해 채운다(실측 예정,
-REQ-20260913-008·009·010·012·013) — 절차와 하지 말 것은 [docs/guide.md 4·5장](docs/guide.md).
+혼자 쓰는 상태에서 나가는 길은 화면에 있다 — 절차·화면 글자·거절 문장·하지 말 것은 [docs/guide.md 4·5장](docs/guide.md).
 
 | 하고 싶은 일 | 어디서 | 준비물 |
 |---|---|---|
-| GitHub 저장소를 새로 만들어 잇는다(public/private) | Settings › 저장소 › **GitHub 잇기 › 새로 만들기** | `gh auth status` 가 로그인 상태이거나, `printf %s '<token>' \| s9 secret set github_token` |
-| 이미 있는 **빈** 저장소를 잇는다 | Settings › 저장소 › **GitHub 잇기 › 이미 있는 저장소** | 이 기계의 git 이 그 저장소에 닿을 것(`ssh -T git@github.com`) |
-| 동료를 초대한다 | Projects › 프로젝트 › **초대하기** (이메일·역할·직무 → 보내기 또는 복사) | 메일을 보내려면 시크릿 `smtp_host·smtp_port·smtp_user·smtp_pass·smtp_from`. 없으면 복사해 직접 전달 |
+| GitHub 저장소를 새로 만들어 잇는다(public/private) | Settings › 저장소 › GitHub 연동 › **새 저장소 만들기**(이름 · private/public · 조직 → 만들기) | `gh auth status` 가 로그인 상태이거나, `printf %s '<token>' \| s9 secret set GITHUB_TOKEN` |
+| 이미 있는 **빈** 저장소를 잇는다 | Settings › 저장소 › GitHub 연동 › **이미 있는 저장소 잇기**(URL → 잇기) | 이 기계의 git 이 그 저장소에 닿을 것(`ssh -T git@github.com`) |
+| 동료를 초대한다 | Projects › 프로젝트 › **+ 초대하기** (이메일·권한·직무 → 미리 보기 → 보내기) | 메일을 보내려면 Settings › 외부 서비스 › 이메일 보내기(SMTP 주소·보내는 주소가 필수). 없으면 본문을 복사해 직접 전달 — 기록까지 하려면 `s9 project invite <slug> --to <주소> --print` |
 | 초대받아 합류한다 | 새 디렉토리에 릴리스 파일을 풀고 초대장의 명령 한 줄 | 그 저장소의 접근 권한(private 이면 collaborator) |
 
 ```bash
-bin/s9 code --join git@github.com:<계정>/<저장소>.git --project <slug>   # 초대장에 실린 그대로 (실측 예정)
+bin/s9 code --join git@github.com:<계정>/<저장소>.git --project <slug>   # 초대 이메일에 실린 그대로 — 새로 푼 디렉토리에서
 ```
 
 잇거나 합류한 뒤에는 `.s9-sync` 가 `remote` 가 되어 문서 이벤트마다 저절로 commit → pull → push 한다.
@@ -185,7 +184,7 @@ s9 code
 
 `s9 user attach` 의 예상 출력: `<이름>: attached <OS 계정>@<기계명>`. git 의 `user.name` 이 그 이름과
 같으면 attach 없이도 같은 사용자로 해석된다. 릴리스 파일로 시작한 사람은 §6 의 합류 명령으로도
-붙을 수 있다(`--project general`, 실측 예정).
+붙을 수 있다 — 이름 물음에 첫 기계에서 쓰던 이름을 친다(`--project` 는 붙일 프로젝트가 있을 때만).
 
 확인: 첫 기계의 Board 에 있던 카드가 두 번째 기계의 Board 에도 보이면 된다. 안 보이면
 `s9 sync --status` 로 아직 보내지 못한 commit 이 있는지, `git push` 가 권한 오류를 내는지 본다 —
