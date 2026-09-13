@@ -6,7 +6,7 @@ role: admin
 emails: ["claude01.pfe@example.invalid"]
 github: nicehugepark
 os_accounts: ["sjpark1", "sjpark", "seongjinpark"]
-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-13T19:42:45+09:00", "last_recv": "2026-09-13T20:37:58+09:00", "takes": true, "uncommitted": 3}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-13T20:38:59+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-13T20:43:46+09:00", "takes": true, "last_recv": "2026-09-13T20:44:12+09:00", "uncommitted": 1}]
+machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-13T19:42:45+09:00", "last_recv": "2026-09-13T20:37:58+09:00", "takes": true, "uncommitted": 3}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-13T20:38:59+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-13T20:44:36+09:00", "takes": true, "last_recv": "2026-09-13T20:44:12+09:00", "uncommitted": 1}]
 machines: ["eek-p620", "Seongjinui-Macmini.local"]
 ---
 
