@@ -222,3 +222,52 @@ select.pjc{padding-right:4px}
 /* 머리의 손잡이는 **줄이** 안여백을 갖는다(`.pjtail`) — 낱개에 또 주면 두 겹이 되어
    손잡이만 세는 라벨보다 10px 안으로 들어간다(compact 768 캡처에서 잡았다). */
 [data-density="compact"] .pjlist .pjhead .more{padding-left:0}
+
+/* ── 초대 (REQ-20260913-012) ───────────────────────────────────────────
+   멤버 표 아래 한 줄 + 창 안의 미리 보기. 라운드·그림자 없음, 구획은 1px 보더
+   하나 — 본문 상자도 예외가 아니다(designer 판정 ④). 색면 하이라이트 없음:
+   상태는 글자와 자리가 말한다. */
+.pjinvline{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  margin:8px 0 0}
+/* `.more` 의 바탕은 제 줄을 통째로 쓰는 블록이다(header.css: display:block;
+   width:100%) — 그대로 두면 곁의 한 줄이 다음 줄로 밀려난다(실캡처에서 밀렸다).
+   여기서는 줄 안에 서는 손잡이라 폭을 글자만큼만 쓴다. 앞머리 「+ 」는 그대로다. */
+.pjinvline .more{flex:0 0 auto;display:inline-block;width:auto;padding:0}
+.pjinvhint{font-size:11.5px;color:var(--muted);word-break:keep-all}
+/* 창 본문 — 적는 칸 셋과 접힌 요약은 **같은 자리**를 번갈아 쓴다(높이 요동 방지) */
+.pjinvform{margin:10px 0 0}
+.pjinvform[hidden],.pjinvsum[hidden],.pjinvout[hidden],
+.pjinvwhy[hidden]{display:none}
+.pjinvsum{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:10px 0 0;padding:6px 0;border-bottom:1px solid var(--hairline)}
+.pjinvsumv{font-family:var(--mono);font-size:11.5px;color:var(--text);
+  letter-spacing:.01em;min-width:0;overflow-wrap:anywhere}
+.pjinvact{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0}
+.pjinvsay{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+  letter-spacing:.02em}
+/* 실패는 실패 줄의 잉크를 쓴다 — 규칙이 `.pjerr` 한 이름 아래 선다 */
+.pjinvsay.pjerr{color:var(--c-blocked)}
+/* 준비물이 없는 것은 경고가 아니라 아직 안 채운 것이다 — 읽는 줄의 잉크로 */
+.pjinvwhy{font-size:11.5px;line-height:1.6;color:var(--muted);
+  word-break:keep-all;margin:8px 0 0;padding:8px 0 0;
+  border-top:1px solid var(--hairline)}
+.pjinvout{margin:12px 0 0}
+.pjinvh{font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;margin:12px 0 4px}
+.pjinvout>.pjinvh:first-child{margin-top:0}
+.pjinvbody{margin:0;padding:8px 10px;border:1px solid var(--hairline);
+  background:var(--panel);font-family:var(--mono);font-size:11px;line-height:1.6;
+  color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:168px;overflow:auto}
+.pjinvbody:focus-visible{outline:2px solid var(--text);outline-offset:-2px}
+.pjinvcmd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:4px 0;border-bottom:1px solid var(--hairline)}
+.pjinvlab{font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+  color:var(--faint);flex:0 0 auto}
+.pjinvcmd code{font-family:var(--mono);font-size:11px;color:var(--text);
+  min-width:0;overflow-wrap:anywhere;flex:1 1 auto}
+.pjinvfoot{display:flex;align-items:center;gap:10px;margin:10px 0 0}
+/* 끝난 일을 알리는 줄 — 실패 줄(.pjerr)과 다른 그릇·다른 잉크 */
+.pjsay{font-size:11.5px;color:var(--c-done);margin:10px 0 0;word-break:keep-all}
+.pjsay[hidden]{display:none}
+[data-density="compact"] .pjinvbody{max-height:132px}

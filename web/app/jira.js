@@ -97,6 +97,113 @@ const JIRA_LINK_MEAN =
   + "방향·내보내는 것·section9 표시는 그 줄에서 고르면 그때 저장되고, 같은 값이 "
   + "Projects 정보 패널에도 보입니다. 내가 관리(maintainer 이상)하는 프로젝트만 고칠 수 있습니다.";
 
+/* ── 이메일 보내기 (SMTP) — REQ-20260913-012 ───────────────────────────
+   초대 이메일이 나가는 자리. **Jira 스위치와 무관하게 선다** — 이 판의 두 번째
+   서비스이지 Jira 의 부속이 아니다. 다섯 값은 전부 내 계정의 시크릿(`s9 secret`)에
+   들어가고, 서버는 그중 주소 둘(host·from)만 돌려준다 — 계정·비밀번호·포트는
+   넣은 뒤 다시 보이지 않는다(Jira 의 API token 과 같은 길). 준비가 됐나는 서버
+   (`/api/invite/state` 의 `smtp.ready`)가 한 곳에서 판정하고 화면은 그린다. */
+let smtpState = null;
+
+const SMTP_ROWS = [
+  {key: "smtp_host", name: "SMTP 주소", w: "330px", ph: "smtp.gmail.com",
+   mean: "이메일을 보낼 서버 주소입니다. 회사 메일이면 전산 담당자에게 받고, "
+       + "Gmail 이면 smtp.gmail.com 입니다."},
+  {key: "smtp_port", name: "포트", w: "110px", ph: "587",
+   mean: "비워 두면 587 로 봅니다. 465 를 쓰는 서버면 465 를 넣으십시오."},
+  {key: "smtp_user", name: "계정", w: "330px", ph: "로그인 계정(대개 이메일)",
+   mean: "서버가 로그인을 요구할 때만 필요합니다. 넣은 값은 다시 보이지 않습니다."},
+  {key: "smtp_pass", name: "비밀번호", kind: "secret", w: "330px",
+   ph: "메일 서버 비밀번호를 붙여 넣기",
+   mean: "Gmail 은 계정 비밀번호가 아니라 앱 비밀번호입니다. 넣은 값은 내 계정 › "
+       + "시크릿에 smtp_pass 로 남고, 다시 보이지 않습니다."},
+  {key: "smtp_from", name: "보내는 주소", w: "330px", ph: "section9@example.com",
+   mean: "받는 사람에게 보이는 주소입니다."},
+];
+
+const SMTP_MEAN = "초대 이메일을 보낼 때만 씁니다. 비워 두면 초대 창에서 본문을 "
+  + "복사해 직접 보냅니다.";
+
+/* 준비 상태를 묻는 자리는 **하나다** — 이 판과 Projects 의 초대 창이 같은 답을
+   본다. 못 물어봤으면 null 을 돌려주고 모르는 채로 둔다: 화면이 준비 여부를
+   지어내면 서버의 판정과 갈린다. */
+async function inviteStateLoad(){
+  try{
+    const r = await s9Fetch("/api/invite/state");
+    const d = await r.json();
+    if (d && d.smtp){ smtpState = d; return d; }
+  }catch(e){ /* 모르는 채로 둔다 */ }
+  return null;
+}
+async function smtpLoad(){ await inviteStateLoad(); }
+
+function smtpSummary(s){
+  if (!s) return "준비 상태를 받아오지 못했습니다.";
+  if (s.smtp.ready) return `보낼 수 있습니다 — ${s.smtp.from} (${s.smtp.host})`;
+  const left = [!s.smtp.host && "SMTP 주소", !s.smtp.from && "보내는 주소"].filter(Boolean);
+  return left.length
+    ? `남은 것: ${left.join(" · ")} — 둘이 있어야 보냅니다.`
+    : "아직 보낼 수 없습니다 — 위의 값을 다시 확인해 주십시오.";
+}
+
+function smtpRowHTML(r, s){
+  // 되돌아오는 값은 주소 둘뿐이다 — 나머지는 넣는 자리로만 서고 사실 줄이 그 까닭을 말한다
+  const val = s && r.key === "smtp_host" ? s.smtp.host
+    : s && r.key === "smtp_from" ? s.smtp.from : "";
+  const ctl = r.kind === "secret"
+    ? `<input class="uf" type="password" id="s-${esc(r.key)}" style="width:${r.w}"
+         placeholder="${esc(r.ph)}" autocomplete="off" aria-label="${esc(r.name)}">
+       <button type="button" class="more wmore" id="s-pass-put">넣기</button>`
+    : `<input class="uf" type="text" id="s-${esc(r.key)}" style="width:${r.w}"
+         value="${esc(val)}" placeholder="${esc(r.ph)}" autocomplete="off"
+         aria-label="${esc(r.name)}">`;
+  const fact = (r.key === "smtp_user" || r.key === "smtp_port" || r.kind === "secret")
+    ? `<span class="path">넣은 값은 다시 보이지 않습니다.</span>` : "";
+  return `<tr class="wrow grow" data-sk="${esc(r.key)}">
+    <td><span class="wlab">${esc(r.name)}</span>
+        <span class="wkey">${esc(r.key)}</span></td>
+    <td><div class="wctl">${ctl}</div>
+      <div class="wsay"><div class="wmean" id="s-${esc(r.key)}-why">${esc(r.mean)}</div>
+        <div class="wmsg hid" role="status" aria-live="polite" id="s-${esc(r.key)}-msg"></div></div>
+      <div class="wfact" id="s-${esc(r.key)}-fact">${fact}</div></td></tr>`;
+}
+
+function smtpSectionHTML(){
+  const s = smtpState;
+  return `<div class="cfg-h gname">이메일 보내기</div>
+    <div class="path secnote">${esc(SMTP_MEAN)}</div>
+    <div class="path wnote" id="s-summary">${esc(smtpSummary(s))}</div>
+    <table class="metatbl wtbl grepo">${SMTP_ROWS.map(r => smtpRowHTML(r, s)).join("")}</table>`;
+}
+
+function smtpSay(key, text, cls){
+  const mean = document.getElementById(`s-${key}-why`);
+  const msg = document.getElementById(`s-${key}-msg`);
+  if (!msg) return;
+  const back = !text;
+  msg.className = "wmsg" + (cls ? " " + cls : "") + (back ? " hid" : "");
+  if (mean) mean.classList.toggle("hid", !back);
+  msg.textContent = text;
+  if (text && cls !== "bad") setTimeout(() => smtpSay(key, ""), 3000);
+}
+
+/* 값 하나를 시크릿에 넣는다 — **값은 응답에도 화면에도 남지 않는다**(서버의
+   /api/secret/set 이 그 경계를 진다). 비운 채로 손을 떼면 아무 일도 하지 않는다:
+   지우는 것은 내 계정 › 시크릿의 몫이라, 여기서 빈 값으로 덮어쓰지 않는다. */
+async function smtpPut(key, value){
+  smtpSay(key, "저장하는 중…");
+  const res = await postJSONRaw("/api/secret/set", {key, value, where: "internal"});
+  if (!res.ok){ smtpSay(key, "✕ " + res.error, "bad"); return false; }
+  await smtpLoad();
+  /* 판을 통째로 다시 그리지 않는다 — 손은 이미 다음 칸에 가 있고, 적다 만 값이
+     렌더로 지워지면 사람은 제가 지운 줄 안다(workercfg.js 머리말과 같은 판단).
+     바뀐 사실은 준비 줄 하나뿐이므로 그 한 줄만 고친다. */
+  const sum = document.getElementById("s-summary");
+  if (sum) sum.textContent = smtpSummary(smtpState);
+  smtpSay(key, "넣었습니다.");
+  return true;
+}
+
 /* 켜짐 판정은 서버가 한 곳에서 한다(`enabled`). 서버가 아직 그 값을 주지 않는
    동안에만 같은 규칙으로 파생한다 — 두 벌이 남지 않게 여기 한 줄뿐이다. */
 const jiraIsOn = s => (s && s.enabled !== undefined)
@@ -280,18 +387,20 @@ function jiraProjectsHTML(s){
 function jiraPanelHTML(s){
   const head = `<h1 style="margin:0 0 4px">외부 서비스</h1>
     <div class="path secnote"><b>선택 사항입니다.</b> 켜지 않으면 아무것도 달라지지 않습니다. `
-    + `바깥 서비스와 주고받는 자리이고, 지금은 Jira 하나입니다.</div>
+    + `바깥 서비스와 주고받는 자리이고, 지금은 Jira 와 이메일 보내기 둘입니다.</div>
     <div class="cfg-h gname">Jira</div>
     <table class="metatbl wtbl grepo">${jiraRowHTML(JIRA_SWITCH, s)}</table>`;
   // 꺼져 있으면 여기서 끝난다 — 준비 항목도 프로젝트 연동도 서지 않는다.
   // 한 줄은 「지금 무엇이 없다」가 아니라 **켜면 무엇이 되는지**를 말한다.
-  if (!jiraIsOn(s))
-    return head + `<div class="path secnote wnote">켜면 요청을 Jira 이슈로 내보내고 `
-      + `상태를 주고받습니다.</div>`;
-  return head + `<div class="cfg-h">준비</div>
+  const jira = !jiraIsOn(s)
+    ? `<div class="path secnote wnote">켜면 요청을 Jira 이슈로 내보내고 `
+      + `상태를 주고받습니다.</div>`
+    : `<div class="cfg-h">준비</div>
     <div class="path wnote" id="j-summary">${esc(jiraSummary(s))}</div>
     <table class="metatbl wtbl grepo">${JIRA_ROWS.map(r => jiraRowHTML(r, s)).join("")}</table>
     ${jiraProjectsHTML(s)}`;
+  // 이메일 보내기는 Jira 스위치 **밖**이다 — 다른 서비스라 제 준비 줄을 따로 갖는다
+  return head + jira + smtpSectionHTML();
 }
 
 function jiraSay(key, text, cls){
@@ -319,6 +428,7 @@ function showJiraPanel(host, me){
   };
   paint();
   jiraLoad().then(paint);
+  smtpLoad().then(paint);      // 이메일 보내기의 준비 상태 (REQ-20260913-012)
   if (host.dataset.jwired) return;
   host.dataset.jwired = "1";
   // 주소·이메일은 손을 떼는 순간 저장한다(다른 설정과 같은 길 /api/user/config).
@@ -326,6 +436,17 @@ function showJiraPanel(host, me){
   host.addEventListener("change", async ev => {
     const el = evEl(ev.target);
     if (!el || !el.closest || !me) return;
+    /* 이메일 보내기의 네 값 — Jira 의 주소·이메일과 같은 손맛으로 손을 떼는 순간
+       저장한다. 다만 가는 곳은 user config 가 아니라 시크릿이다(값이 응답에도
+       화면에도 남지 않는다). **비운 채로 떼면 아무 일도 하지 않는다** — 지우는
+       것은 내 계정 › 시크릿의 몫이라, 여기서 빈 값으로 덮어쓰지 않는다. */
+    const srow = el.closest("[data-sk]");
+    if (srow && el.tagName === "INPUT" && el.type !== "password"){
+      const val = String(el.value || "").trim();
+      if (!val) return;
+      await smtpPut(srow.dataset.sk, val);
+      return;
+    }
     /* 이은 프로젝트 행의 셋 — 고른 그 자리에서 저장한다. **다시 그리지 않는다**:
        방금 손댄 select 가 사라지면 포커스도 결과 문장도 함께 사라지고, 렌더
        시점의 낡은 값이 방금 고른 값을 덮는 사고(workercfg.js 머리말)로 이어진다.
@@ -377,6 +498,21 @@ function showJiraPanel(host, me){
     if (sum && jiraState) sum.textContent = jiraSummary(jiraState);
   });
   host.addEventListener("click", async ev => {
+    // 비밀번호는 Jira 의 API token 과 같은 길 — 넣기로만 들어가고 칸은 곧 비운다
+    const put = evEl(ev.target)?.closest("#s-pass-put");
+    if (put && me){
+      const inp = host.querySelector("#s-smtp_pass");
+      if (!inp || !inp.value){
+        smtpSay("smtp_pass", "값을 넣어 주세요 — 빈 값은 저장하지 않습니다.", "bad");
+        return;
+      }
+      put.disabled = true;
+      const okd = await smtpPut("smtp_pass", inp.value);
+      inp.value = "";                  // 성공이든 실패든 화면에는 남기지 않는다
+      put.disabled = false;
+      if (okd) smtpSay("smtp_pass", "넣었습니다 — 값은 다시 보이지 않습니다.");
+      return;
+    }
     const open = evEl(ev.target)?.closest("#j-linkopen");
     if (open){
       jiraFormOpen = !jiraFormOpen;

@@ -123,8 +123,10 @@ class TheSaveHasOneGate(unittest.TestCase):
             edit = between('querySelectorAll("[data-pjset]")', "const stSel")
             self.assertNotIn("s9dlg(", edit, "값 하나 고치는데 창을 띄운다")
             self.assertIn('post("/api/project/set"', edit, "값 편집이 저장을 안 한다")
-            # 창은 셋뿐 — 만들기 하나, 멤버 둘(제거·나가기)
-            self.assertEqual(len(re.findall(r"s9dlg\(\{", src)), 3)
+            # 창은 넷뿐 — 만들기 하나, 멤버 둘(제거·나가기), 초대 하나
+            # (REQ-20260913-012-62x6: 계정이 없는 사람은 이메일로 부른다. 값 하나를
+            #  고치는 자리가 아니라 밖으로 나가는 자리라 창을 갖는다.)
+            self.assertEqual(len(re.findall(r"s9dlg\(\{", src)), 4)
         with self.subTest("only_the_changed_field_goes_out"):
             src = strip_comments(read(JS))
             for line in [ln for ln in src.splitlines()

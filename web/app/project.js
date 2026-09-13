@@ -192,6 +192,36 @@ const PRJ_TEXT = {
   leaveDesc: "나가면 이 프로젝트의 요청·문서를 더 볼 수 없습니다. "
     + "다시 들어오려면 남은 maintainer 이상이 넣어 주어야 합니다.",
   leaveOk: "나가기",
+  /* ── 초대 (REQ-20260913-012) — 아직 계정이 없는 사람을 이메일로 부른다 ──
+     멤버 표의 `+ 추가` 는 **이미 등록된 사람**을 넣는 자리다. 계정이 없는 사람에게는
+     고를 이름이 없으니 길이 하나 더 있어야 하고, 그 길이 이메일이다. 창의 결정은
+     하나다 — 「이 사람을 부른다」. 미리 보기와 복사는 그 결정을 돕는 손이지 또
+     하나의 결정이 아니라, 창을 떠나지 않고 그 자리에서 끝난다. */
+  invBtn: "초대하기",                    // `.more` 가 앞에 "+ " 를 붙인다
+  invAria: slug => `${slug} 에 이메일로 초대하기`,
+  invHint: "아직 계정이 없는 사람은 이메일로 초대합니다.",
+  invCap: "초대",
+  invTitle: slug => `${slug} 에 초대합니다`,
+  invDesc: "초대 이메일을 보냅니다. 받는 사람은 거기 적힌 합류 명령 한 줄만 "
+    + "실행하면 들어옵니다.",
+  fEmail: "이메일", fRole: "권한", fPos: "직무(선택)",
+  phEmail: "name@example.com", phPos: "백엔드 개발",
+  errEmail: "이메일 형식이 아닙니다. 예: name@example.com",
+  invPrev: "미리 보기", invEdit: "고치기",
+  invOk: "보내기", invCancel: "닫기",
+  invMailH: "이메일 본문", invCmdH: "합류 명령",
+  invCmdPosix: "Linux · macOS — 터미널", invCmdWin: "Windows — PowerShell",
+  invCopy: "복사", invCopyBody: "본문 복사",
+  invCopied: "복사했습니다",
+  invCopyFail: "복사하지 못했습니다 — 본문을 직접 골라서 복사해 주세요",
+  /* 준비물이 없는 것은 고장이 아니라 **아직 안 채운 것**이다 — 붉은 실패 줄이
+     아니라 설명 한 줄로 서고, 그동안 쓸 수 있는 길(본문 복사)을 같이 준다. */
+  invNoSmtp: "SMTP 준비 항목이 없어 아직 보낼 수 없습니다 — Settings › 외부 서비스 › "
+    + "이메일 보내기에서 채우면 여기서 바로 보냅니다. 그동안은 본문을 복사해 직접 "
+    + "보내 주세요.",
+  invPrevFail: "미리 보기를 받지 못했습니다",
+  invSent: email => `${email} 주소로 초대 이메일을 보냈습니다.`,
+  invFail: msg => `초대 이메일을 보내지 못했습니다 — ${msg}`,
   /* 실패 줄은 「…하지 못했습니다 — 까닭」 한 틀이다. 종전의 `거부: ` 접두는
      사람을 나무라는 말이었다(ux-writer). */
   errNew: msg => `프로젝트를 만들지 못했습니다 — ${msg}`,
@@ -214,6 +244,13 @@ const PRJ_TEXT = {
      + "바꿔 주세요."],
     [/멤버를 변경할 수 없다/,
      "멤버를 바꾸려면 maintainer 이상이어야 합니다."],
+    // 초대의 상태 둘 — 서버가 판정하고 화면은 **어투만** 옮긴다(짓지 않는다)
+    [/아직 GitHub 과 이어지지 않음/,
+     "먼저 Settings › 저장소에서 GitHub 을 이어 주세요 — 합류 명령에 저장소 "
+     + "주소가 들어갑니다."],
+    [/SMTP 준비물 없음/,
+     "SMTP 준비 항목이 없어 보내지 못했습니다 — Settings › 외부 서비스 › 이메일 "
+     + "보내기에서 채워 주세요."],
   ],
   // 문맥 띠 — 화살표 없음(doclink 의 점선 밑줄이 이미 한 약속이라 겹말이다)
   stripMeta: (mem, open) => `멤버 ${mem} · 열린 요청 ${open}`,
@@ -620,14 +657,18 @@ function prjMembersHTML(p, c){
   const cand = (c.users || []).map(u => u.name || u).filter(n => !has.has(n));
   /* 멤버가 0명인데 후보도 0명이면 **다른 문구**다 — 추가 폼을 보여 주면 막다른
      길이 된다(설계 판정). 등록부터 하러 갈 자리를 준다. */
+  /* 초대 줄은 **표의 부속**이라 표를 따라다닌다 — 등록된 사람이 하나도 없어
+     추가 행이 설 수 없는 자리에서도 선다. 계정이 없는 사람을 부르는 길이야말로
+     그 막다른 자리에서 필요한 길이다(designer 판정 ①). */
+  const inv = c.canManage ? prjInviteLineHTML(p) : "";
   if (!mem.length && (!c.canManage || !cand.length))
-    return c.canManage
+    return (c.canManage
       // 주소 한 줄이면 된다 — `data-goto` 는 **탭 이름 하나**만 아는 손잡이라
       // 절(section)까지 실으면 그 핸들러가 탭을 못 찾고 조용히 삼킨다.
       ? `<p class="pjnote">${esc(PRJ_TEXT.memNoUsersPre)}`
         + `<a class="doclink" href="#settings/users">${esc(PRJ_TEXT.memNoUsersGo)}</a>`
         + `${esc(PRJ_TEXT.memNoUsersPost)}</p>`
-      : `<p class="pjnote">${esc(PRJ_TEXT.memNone)}</p>`;
+      : `<p class="pjnote">${esc(PRJ_TEXT.memNone)}</p>`) + inv;
   const addRow = c.canManage ? `<tr class="pjadd">`
     + `<td>${cand.length
         ? `<select class="pjc" data-pjnew="user">`
@@ -664,6 +705,7 @@ function prjMembersHTML(p, c){
     + `${addRow}</tbody></table></div>`
     /* 넷의 위계는 비개발자가 짐작할 수 없다 — 뜻은 그 자리에서 준다(tech-writer).
        권한 셀렉트를 볼 수 있는 사람에게만: 못 바꾸는 사람에게는 알 필요가 없다. */
+    + inv
     + (c.canManage
       ? `<p class="pjlegend">${esc(PRJ_TEXT.roleLegend)}</p>`
       : `<p class="pjnote">${esc(c.role ? PRJ_TEXT.roleNote(c.role)
@@ -680,6 +722,11 @@ function prjPanelHTML(p, o){
     /* 표의 이름은 **캡션**이 진다 — 그 위에 「멤버」 머리글을 또 세우면 한 자리에서
        같은 낱말을 두 번 읽는다(실캡처에서 「멤버」 / 「멤버 5명 — …」로 겹쳤다).
        caption 은 읽어 주는 도구에도 표의 이름으로 전해지는 자리라 이쪽이 남는다. */
+    /* 끝난 일을 알리는 줄은 **실패 줄과 다른 그릇**이다 (designer 판정 ③) —
+       `.pjerr` 는 이름도 문장 틀도 실패 전용이라, 거기에 성공을 담으면 다음에
+       읽는 사람이 어느 쪽인지 모른다. 자리는 표 바로 위, 잠깐 섰다 사라진다. */
+    + `<div class="pjsay"${prjSayText(p.slug) ? "" : " hidden"} role="status"`
+      + ` aria-live="polite">${esc(prjSayText(p.slug))}</div>`
     + `<div class="pjmem">${prjMembersHTML(p, c)}</div>`
     + `<h2 class="pjh">${esc(PRJ_TEXT.hSummary)}</h2>`
     + `<p class="pjsum">${esc(PRJ_TEXT.sumLine(st.open, st.when))}</p>`
@@ -704,6 +751,234 @@ function prjStripHTML(p, o){
     // 하나이고, 목적지는 문서의 종류가 정한다.
     + `<a class="doclink pjs-open" href="#projects/${esc(p.id)}" data-doc="${esc(p.id)}">`
       + `${esc(PRJ_TEXT.stripOpen)}</a></div>`;
+}
+
+/* ── 초대 창 (REQ-20260913-012) ─────────────────────────────────────────
+   계약 B 를 **그대로 그린다.** send:false 는 미리 보기라 아무것도 기록하지 않고,
+   준비물 없음·origin 없음·발송 실패는 400 이 아니라 200 ok:false 로 온다 — 즉
+   **고장이 아니라 상태다.** 그래서 이 셋은 붉은 실패 줄이 아니라 창 안의 설명
+   한 줄로 서고, 그동안 쓸 수 있는 길(본문 복사)이 그 옆에 남는다. 400 만이
+   거부이고, 거부 문장은 `prjWhy` 를 지나 화면 어투를 입는다. */
+const PRJ_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;   // 서버 EMAIL_RE 와 같은 잣대
+
+/* 끝난 줄은 **판이 다시 그려져도 살아남아야 한다.** 보낸 직후에 문서 갱신이 한 번
+   더 오면 방금 쓴 글자가 그 렌더에 지워진다 — WebKit 에서 실측했다(Chromium 은
+   때가 맞아 보였다: 「때에 따라 보인다」는 보이는 것이 아니다). 자리가 하나이므로
+   기억도 하나다: 어느 프로젝트에 · 무슨 말을 · 언제. 파생값이 아니라 **한 번
+   지나가는 말**이라 카탈로그에서 계산할 수 없는 자리다. */
+let prjSaid = null;                    // {slug, text, at}
+const PRJ_SAY_MS = 6000;
+function prjSayText(slug){
+  if (!prjSaid || prjSaid.slug !== slug) return "";
+  if (Date.now() - prjSaid.at > PRJ_SAY_MS){ prjSaid = null; return ""; }
+  return prjSaid.text;
+}
+function prjSayPut(slug, text){
+  prjSaid = {slug, text, at: Date.now()};
+  const box = document.querySelector(`.pjpanel[data-pjslug="${slug}"] .pjsay`);
+  if (box){ box.textContent = text; box.hidden = false; }
+  setTimeout(() => {
+    if (prjSaid && prjSaid.slug === slug && prjSaid.text === text) prjSaid = null;
+    const el = document.querySelector(`.pjpanel[data-pjslug="${slug}"] .pjsay`);
+    if (el && el.textContent === text) el.hidden = true;
+  }, PRJ_SAY_MS);
+}
+
+function prjInviteLineHTML(p){
+  return `<p class="pjinvline">`
+    + `<button class="more pjnew" type="button" data-pjinvite="${esc(p.slug)}"`
+    + ` aria-label="${esc(PRJ_TEXT.invAria(p.slug))}">${esc(PRJ_TEXT.invBtn)}</button>`
+    + `<span class="pjinvhint">${esc(PRJ_TEXT.invHint)}</span></p>`;
+}
+
+/* 준비물이 있나 — **서버가 센다**(GET /api/invite/state). 못 물어봤으면 잠그지
+   않는다: 모르는 채로 손잡이를 잠그면 화면이 없는 사유를 지어내는 셈이고, 그때는
+   서버가 거부하며 제 문장을 준다. */
+async function prjInviteState(){
+  // 묻는 자리는 jira.js 의 `inviteStateLoad` 하나다 — Settings 의 「이메일 보내기」
+  // 판과 이 창이 서로 다른 사실을 말하면 사람은 어느 쪽을 믿을지 알 수 없다.
+  // (이 파일이 서버로 나가는 자리는 저장 경로 하나뿐이라는 규율도 그대로 지킨다.)
+  return typeof inviteStateLoad === "function" ? await inviteStateLoad() : null;
+}
+
+/* 복사는 화면의 몫이고 실행은 사람의 몫이다(notice.js 의 명령 복사와 같은 길).
+   클립보드가 막힌 브라우저에서는 숨긴 칸을 골라 두는 옛 길로 물러선다. */
+async function prjCopy(text){
+  try{ await navigator.clipboard.writeText(text); return true; }catch(e){}
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }catch(e){ return false; }
+}
+
+/* 창의 본문. 미리 보기 전에는 **적는 칸 셋**이고, 미리 보기가 오면 그 셋이 한 줄
+   요약으로 접히고 그 자리를 본문이 받는다 — 칸과 본문이 함께 쌓이면 창 높이가
+   요동친다(designer 판정 ②). 접힌 줄의 「고치기」가 다시 편다. */
+function prjInviteFormHTML(v, c){
+  const roles = PRJ_ROLES.filter(r => c.canOwn || r !== "owner");
+  return `<div class="pjform pjinvform">`
+    + `<label for="pji-email">${esc(PRJ_TEXT.fEmail)}</label>`
+    + `<input class="pjc" id="pji-email" data-pjif="email" type="email"`
+    + ` value="${esc(v.email || "")}" placeholder="${esc(PRJ_TEXT.phEmail)}"`
+    + ` autocomplete="off" spellcheck="false">`
+    + `<label for="pji-role">${esc(PRJ_TEXT.fRole)}</label>`
+    + `<select class="pjc" id="pji-role" data-pjif="role">`
+    + roles.map(r => `<option value="${r}"${r === v.role ? " selected" : ""}>${r}</option>`).join("")
+    + `</select>`
+    + `<label for="pji-pos">${esc(PRJ_TEXT.fPos)}</label>`
+    + `<input class="pjc" id="pji-pos" data-pjif="position" type="text"`
+    + ` value="${esc(v.position || "")}" placeholder="${esc(PRJ_TEXT.phPos)}">`
+    + `<div class="pjerr pjinverr" hidden></div></div>`;
+}
+
+function prjInviteBodyHTML(v, c, st){
+  /* 준비물 없음은 **창을 열 때 이미 아는 사실**이다 — 눌러 보고 나서 다그치지
+     않으려고 여기서 먼저 말하고 「보내기」를 잠근다(s9dlg 의 required 와 같은 규율). */
+  const noSmtp = !!(st && st.smtp && !st.smtp.ready);
+  return `<div>${esc(PRJ_TEXT.invDesc)}</div>`
+    + prjInviteFormHTML(v, c)
+    + `<div class="pjinvsum" hidden></div>`
+    + `<div class="pjinvact"><span class="acts pjcell">`
+    + `<button type="button" data-pjiprev>${esc(PRJ_TEXT.invPrev)}</button></span>`
+    + `<span class="pjinvsay" role="status" aria-live="polite"></span></div>`
+    + `<div class="pjinvwhy"${noSmtp ? "" : " hidden"}>${noSmtp ? esc(PRJ_TEXT.invNoSmtp) : ""}</div>`
+    + `<div class="pjinvout" hidden></div>`;
+}
+
+/* 미리 보기 한 벌 — 본문·합류 명령 두 줄·본문 복사. 명령이 비어 있으면(origin 이
+   없으면) 그 자리에 빈 칸을 세우지 않는다: 서버가 준 사유(`said`)가 그 줄을 대신
+   받고, 사람은 무엇을 해야 하는지를 읽는다. */
+function prjInvitePrevHTML(d){
+  const cmd = (d && d.command) || {};
+  const rows = [[PRJ_TEXT.invCmdPosix, cmd.posix, "posix"],
+                [PRJ_TEXT.invCmdWin, cmd.windows, "windows"]];
+  const has = !!(cmd.posix || cmd.windows);
+  return `<div class="pjinvh">${esc(PRJ_TEXT.invMailH)}</div>`
+    + `<pre class="pjinvbody" tabindex="0">${esc((d.mail || {}).text || "")}</pre>`
+    + `<div class="pjinvh">${esc(PRJ_TEXT.invCmdH)}</div>`
+    + (has
+      ? rows.map(([lab, line, k]) => `<div class="pjinvcmd">`
+          + `<span class="pjinvlab">${esc(lab)}</span>`
+          + `<code>${esc(line || "")}</code>`
+          + `<span class="acts pjcell"><button type="button" data-pjicopy="${k}"`
+          + ` aria-label="${esc(lab)} ${esc(PRJ_TEXT.invCopy)}">${esc(PRJ_TEXT.invCopy)}</button>`
+          + `</span></div>`).join("")
+      : `<p class="pjnote">${esc(prjWhy(d.said || ""))}</p>`)
+    + `<div class="pjinvfoot"><span class="acts pjcell">`
+    + `<button type="button" data-pjicopy="body">${esc(PRJ_TEXT.invCopyBody)}</button>`
+    + `</span></div>`;
+}
+
+function prjInviteWire(root, p, v, c, st, o){
+  const $ = sel => root.querySelector(sel);
+  const yes = $(".dlgyes"), err = $(".pjinverr"), say = $(".pjinvsay");
+  const form = $(".pjinvform"), sum = $(".pjinvsum"), out = $(".pjinvout");
+  const why = $(".pjinvwhy"), prev = $("[data-pjiprev]");
+  const ready = !st || !st.smtp || st.smtp.ready !== false;
+  let seen = null;                       // 마지막으로 받아 온 미리 보기
+  let sayT = 0;
+  const tell = (text, bad) => {
+    if (!say) return;
+    say.textContent = text || "";
+    say.classList.toggle("pjerr", !!bad);
+    clearTimeout(sayT);
+    if (text && !bad) sayT = setTimeout(() => { say.textContent = ""; }, 3000);
+  };
+  const ok = () => PRJ_EMAIL_RE.test(String(v.email || "").trim());
+  const sync = () => {
+    // 손이 닿기 전에는 꾸짖지 않는다 — 생성 창과 같은 규율
+    const said = !!String(v.email || "").trim();
+    if (err){
+      err.hidden = ok() || !said;
+      err.textContent = ok() || !said ? "" : PRJ_TEXT.errEmail;
+    }
+    if (yes) yes.disabled = !ok() || !ready;
+    if (prev) prev.disabled = !ok();
+  };
+  const fold = on => {
+    // 접힌 줄에는 고친 값이 그대로 보인다 — 무엇을 보내는지 눈으로 확인하는 자리
+    if (!form || !sum) return;
+    form.hidden = on;
+    sum.hidden = !on;
+    if (on) sum.innerHTML = `<span class="pjinvsumv">${esc(v.email)}`
+      + ` · ${esc(v.role)}${v.position ? " · " + esc(v.position) : ""}</span>`
+      + `<span class="acts pjcell"><button type="button" data-pjiedit>${esc(PRJ_TEXT.invEdit)}</button></span>`;
+  };
+  root.querySelectorAll("[data-pjif]").forEach(el => {
+    const k = el.dataset.pjif;
+    const on = () => { v[k] = el.value; sync(); };
+    el.addEventListener("input", on);
+    el.addEventListener("change", on);
+  });
+  root.addEventListener("click", async ev => {
+    const b = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+    if (!b) return;
+    if (b.hasAttribute("data-pjiedit")){ fold(false); if (out) out.hidden = true; return; }
+    if (b.hasAttribute("data-pjiprev")){
+      if (!ok()) return;
+      b.disabled = true;
+      tell(PRJ_TEXT.invPrev + "…");
+      /* 미리 보기는 **저장이 아니다** — 기록도 발송도 없다. 그래도 같은 경로(prjPost)를
+         지난다: 거부 문장을 옮기는 자도, 서버에 신원을 싣는 자도 하나여야 한다.
+         다만 다시 읽지 않는다(`reload` 없음) — 문서가 바뀐 것이 없다. */
+      const d = await prjPost("/api/project/invite",
+        {slug: p.slug, email: v.email.trim(), role: v.role,
+         position: (v.position || "").trim(), send: false},
+        {as: o && o.as, fail: m => `${PRJ_TEXT.invPrevFail} — ${m}`,
+         say: t => { tell(t, true); }});
+      b.disabled = false;
+      if (!d) return;
+      seen = d;
+      tell("");
+      fold(true);
+      if (out){ out.innerHTML = prjInvitePrevHTML(d); out.hidden = false; }
+      // origin 이 없으면 그 사유는 미리 보기 안에 이미 섰다 — 위의 줄은 준비물 몫
+      return;
+    }
+    const k = b.dataset ? b.dataset.pjicopy : "";
+    if (!k || !seen) return;
+    const text = k === "body" ? (seen.mail || {}).text || ""
+      : ((seen.command || {})[k] || "");
+    if (!text) return;
+    tell(await prjCopy(text) ? PRJ_TEXT.invCopied : PRJ_TEXT.invCopyFail,
+         !text ? true : false);
+  });
+  if (why && !why.hidden && yes) yes.title = PRJ_TEXT.invNoSmtp;
+  sync();
+  const first = $('[data-pjif="email"]');
+  if (first) first.focus();
+}
+
+/* 창 하나에 결정 하나 — 「이 사람을 부른다」. 확인은 보내고, 그만두면 아무 일도
+   일어나지 않는다(미리 보기는 기록하지 않으므로 되돌릴 것이 없다). */
+async function prjInviteDlg(p, c, o){
+  o = o || {};
+  const v = {email: "", role: "contributor", position: ""};
+  const st = await prjInviteState();
+  const {invOk, invCancel} = PRJ_TEXT;
+  /* 나간 이메일은 되돌릴 수 없다 — 받는 사람의 편지함에 이미 있다. 그래서 맨
+     Enter 는 「보내기」에 닿지 않는다(`safe`, repo.js 의 push 와 같은 판정).
+     손은 그 뒤 첫 칸으로 옮긴다 — 적으러 온 창이라 Tab 부터 누르게 하지 않는다. */
+  const pr = s9dlg({kind: "confirm", cap: PRJ_TEXT.invCap,
+    title: PRJ_TEXT.invTitle(p.slug), doc: p.slug, safe: true,
+    descHtml: prjInviteBodyHTML(v, c, st), ok: invOk, cancel: invCancel});
+  const root = document.querySelector(".dlg");
+  if (root) prjInviteWire(root, p, v, c, st, o);
+  if (!await pr) return null;
+  const email = String(v.email || "").trim();
+  const d = await prjPost("/api/project/invite",
+    {slug: p.slug, email, role: v.role, position: (v.position || "").trim(), send: true},
+    {...o, fail: PRJ_TEXT.invFail,
+     errSel: `.pjpanel[data-pjslug="${p.slug}"] .pjerr`});
+  if (!d) return null;
+  /* 끝난 줄은 **다시 그린 뒤의 자리**에 쓴다 — 성공하면 그 사람이 멤버 표에 들어온
+     채로 판이 갈아 끼워지므로, 미리 잡아 둔 노드에 쓰면 화면 밖에 남는다. */
+  prjSayPut(p.slug, PRJ_TEXT.invSent(email));
+  return d;
 }
 
 /* ── 저장 경로 하나 ───────────────────────────────────────────────────
@@ -900,6 +1175,10 @@ function prjWire(root, p, o){
     post("/api/project/member", {member: v("user"), role: v("role"),
       position: v("position"), until: v("until")}, PRJ_TEXT.errMem);
   });
+  // 초대 — 계정이 없는 사람을 부르는 길. 창이 제 손으로 보내고(같은 prjPost),
+  // 끝난 줄은 다시 그린 뒤의 자리에 선다.
+  const invite = root.querySelector("[data-pjinvite]");
+  if (invite) invite.addEventListener("click", () => prjInviteDlg(p, c, o));
 }
 
 /* ── ④ Projects 탭 — 판을 세우는 자리 (REQ-20260831-026 G0′) ─────────────
