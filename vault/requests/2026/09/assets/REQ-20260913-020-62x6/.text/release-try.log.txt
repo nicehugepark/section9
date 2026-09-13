@@ -1,0 +1,81 @@
+① 배포판 만들기 (ref HEAD)
+  scratchpad/release-try/dist/section9-0.9.0-linux-macos.tar.gz  6212781 bytes  sha256 0785d1aa80dac06ee60da871cd063fdae4d74ca603cbf3ea70d658f19ac5d3ad
+  scratchpad/release-try/dist/section9-0.9.0-windows-claude.zip  6874408 bytes  sha256 16903d22c9ea33f906b622f957a85171de7a46c44788a3132c93b40154988b1a
+  scratchpad/release-try/dist/SHA256SUMS
+✓ tar.gz 가 만들어졌다 — /Users/seongjinpark/section9/scratchpad/release-try/dist/section9-0.9.0-linux-macos.tar.gz
+✓ 배포판에 문서·사용자·상태가 없다
+② 풀기 → /Users/seongjinpark/section9/scratchpad/release-try/unpacked
+✓ 최상위 폴더가 section9/ 이다
+③ 그 자리에서 bin/s9 code --no-open (포트 9960, claude 실행 직전까지)
+  │ dirs OK: /Users/seongjinpark/section9/scratchpad/release-try/unpacked/section9
+  │ git hooks OK: post-merge, post-checkout, pre-commit(guard), post-commit(기록)
+  │ merge driver OK: merge.s9doc → s9 merge-doc
+  │ git config OK: core.quotepath=false (유니코드 이름 첨부 sync)
+  │ 설치 표식 state/installed_at — 이 시각 이전의 옛 대화는 section9 이 집지 않는다
+  │ 백업할 예전 설정이 없다 — 새 환경이다
+  │ claude hooks 갱신됨: /Users/seongjinpark/section9/scratchpad/release-try/claude/settings.json (세션 재시작 또는 /hooks 리로드 필요할 수 있음)
+  │   skill(공용): s9-design -> ~/.claude/skills/
+  │   skill(공용): s9-protocol -> ~/.claude/skills/
+  │   skill(공용): s9-skl-browser-verify -> ~/.claude/skills/
+  │   skill(공용): s9-skl-data-practice -> ~/.claude/skills/
+  │   skill(공용): s9-skl-eng-principles -> ~/.claude/skills/
+  │   skill(공용): s9-skl-ops-practice -> ~/.claude/skills/
+  │   skill(공용): s9-skl-product-discovery -> ~/.claude/skills/
+  │   skill(공용): s9-skl-research-method -> ~/.claude/skills/
+  │   skill(공용): s9-skl-review-discipline -> ~/.claude/skills/
+  │   skill(공용): s9-skl-security-practice -> ~/.claude/skills/
+  │   skill(공용): s9-skl-tdd -> ~/.claude/skills/
+  │   skill(공용): s9-skl-testing-discipline -> ~/.claude/skills/
+  │   skill(공용): s9-skl-writing-clarity -> ~/.claude/skills/
+  │   agent(공용): s9-agnt-ai-engineer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-android-developer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-architect.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-backend-developer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-cloud-engineer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-code-executor.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-code-reviewer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-data-analyst.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-data-engineer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-database-administrator.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-deep-diver.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-designer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-devops-engineer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-document-reader.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-document-writer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-frontend-developer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-ios-developer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-ml-engineer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-product-owner.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-project-manager.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-quality-assurance.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-security-engineer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-staff-engineer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-tech-writer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-test-executor.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-translator.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-ux-writer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-web-surfer.md -> ~/.claude/agents/
+  │   agent(공용): s9-agnt-white-hacker.md -> ~/.claude/agents/
+  │ claude: 최신 상태 (/Users/seongjinpark/section9/scratchpad/release-try/unpacked/section9/CLAUDE.md)
+  │ gemini: 미설치 감지 (/Users/seongjinpark/section9/scratchpad/release-try/home/.gemini 없음) — 생략
+  │ codex: 미설치 감지 (/Users/seongjinpark/section9/scratchpad/release-try/home/.codex 없음) — 생략
+  │ 대시보드 이미 실행 중: http://127.0.0.1:9960/
+  │ section9 install 완료
+  │ claude 는 설치됐지만 로그인이 없다 — 터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인. 그다음 `s9 code`
+  │ ◌ 저장소를 새로 세웠다 — 혼자 쓰는 상태(GitHub 연동은 대시보드 Settings › 저장소에서)
+  │ 대시보드 기동: http://127.0.0.1:9960/
+  │ ◌ Claude Code 로그인이 없다 — 이어서 뜨는 Claude Code 화면의 안내대로 로그인하면 그대로 세션이 시작된다(붙여넣은 코드는 끝 몇 자만 보이게 가려진다).
+  │ ◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…
+  │ ◌ 설치 완료 — 지금 시작하는 세션부터 자동 audit이 적용된다.
+  │ ◌ 이 컴퓨터의 계정(seongjinpark)은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 잇는다: s9 user attach <이름> · 새 사람이면: s9 user add seongjinpark
+  │ ["claude", "[section9 bootstrap] 세션 기동 — 사람이 친 말이 아니라 `s9 code` 가 넣은 줄이다.\n이 턴에서 할 일은 하나다: 대시보드 채팅 수신함(state/terminal/inbox-<이 세션>.jsonl)의 Monitor tail 을 arm 해 이 세션을 수신 대기 상태로 만들어라. 그래야 대시보드 터미널이 idle 이 아니라 live 가 되고, 거기서 보낸 말이 곧바로 닿는다.\narm 이 끝나면 `s9 next` 를 실행하라. 이어받을 것이 나오면 `s9 claim <id>` 로 집고 그 작업을 이어서 하라 — 아무도 붙어 있지 않은 미완이 세션이 새로 떴다는 이유만으로 계속 멈춰 있을 이유는 없다. 한 번에 한 건만 집는다.\nreview(확인 대기) 건은 건드리지 마라 — 사람의 판정을 기다리는 자리다.\n답은 규약대로 시각 한 줄 뒤에: 집은 것이 있으면 무엇을 이어받는지 한 문장, 없으면 준비됐다는 한 문장."]
+✓ 첫 실행이 끝났다 (3초) — exit 0
+✓ 저장소를 새로 세웠다는 줄이 있다
+✓ .git 이 생겼다
+✓ 가지가 main 이다 — ref: refs/heads/main
+✓ .s9-sync 가 local(혼자 쓰는 상태)이다 — local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)
+✓ Claude 훅이 임시 설정에 이 자리의 경로로 들어갔다 — /Users/seongjinpark/section9/scratchpad/release-try/claude/settings.json
+✓ 대시보드가 그 자리에서 답한다 — root=/Users/seongjinpark/section9/scratchpad/release-try/unpacked/section9
+⑤ 서버 내리기
+남겨 둠: /Users/seongjinpark/section9/scratchpad/release-try
+전부 통과 — 10/10
