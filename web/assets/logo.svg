@@ -1,25 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 32" width="150" height="32" role="img" aria-label="section9">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 302 64" width="302" height="64" role="img" aria-label="section9">
   <title>section9</title>
   <style>
-    .wm{fill:#141518}
-    @media (prefers-color-scheme:dark){.wm{fill:#e8e8e4}}
+    svg{color:#141518}
+    @media (prefers-color-scheme:dark){svg{color:#e8e8e4}}
   </style>
-  <g transform="scale(0.5)"><rect width="64" height="64" fill="#141518"/>
-    <path d="M17 29 L9 25 L12 50" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="12" cy="50" r="3.5" fill="#5b8def"/>
-    <path d="M25 35 L20 32 L22 53" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="22" cy="53" r="3.5" fill="#5b8def"/>
-    <path d="M39 35 L44 32 L42 53" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="42" cy="53" r="3.5" fill="#5b8def"/>
-    <path d="M47 29 L55 25 L52 50" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="52" cy="50" r="3.5" fill="#5b8def"/>
-    <path d="M12 23 A20 15.5 0 0 1 52 23 L52 30 Q52 37 45 37 L19 37 Q12 37 12 30 Z" fill="#5b8def"/>
-    <circle cx="23.2" cy="23" r="8.2" fill="#fafaf8"/>
-    <circle cx="23.2" cy="23" r="4.4" fill="#3f6cc4"/>
-    <circle cx="21.69" cy="21.49" r="1.7" fill="#fafaf8"/>
-    <circle cx="40.8" cy="23" r="8.2" fill="#fafaf8"/>
-    <circle cx="40.8" cy="23" r="4.4" fill="#3f6cc4"/>
-    <circle cx="39.29" cy="21.49" r="1.7" fill="#fafaf8"/>
+  <g>
+  <rect width="64" height="64" rx="6" fill="#141518"/>
+  <circle cx="32" cy="32" r="23" fill="#fafaf8"/>
+  <circle cx="24.4" cy="34.25" r="4.4" fill="#141518"/>
+  <circle cx="39.6" cy="34.25" r="4.4" fill="#141518"/>
+  <circle cx="32" cy="42.49" r="4.4" fill="#141518"/>
   </g>
-  <text class="wm" x="40" y="23" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="21" font-weight="700" letter-spacing="0.3">section<tspan fill="#5b8def">9</tspan></text>
+  <g class="wm" fill="currentColor">
+    <text x="80" y="46" textLength="94" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="42"
+          font-weight="700" letter-spacing="0.4">secti</text>
+    <text x="218" y="46" textLength="26" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="42"
+          font-weight="700">n</text>
+  </g>
+  <!-- o — 속을 눈으로 -->
+  <circle cx="196" cy="31" r="9.8" fill="#fafaf8"/>
+  <circle cx="191.6" cy="32.31" r="2.5" fill="#141518"/>
+  <circle cx="200.4" cy="32.31" r="2.5" fill="#141518"/>
+  <circle cx="196" cy="37.08" r="2.5" fill="#141518"/>
+  <circle cx="196" cy="31" r="12.9" fill="none"
+          stroke="currentColor" stroke-width="6.2"/>
+  <!-- 9 — 고리의 속을 눈으로, 꼬리는 밑선까지 -->
+  <path d="M282.9 25 Q282.9 41 266 47"
+        fill="none" stroke="currentColor" stroke-width="6.2" stroke-linecap="round"/>
+  
+  <circle cx="270" cy="25" r="9.8" fill="#fafaf8"/>
+  <circle cx="265.6" cy="26.31" r="2.5" fill="#141518"/>
+  <circle cx="274.4" cy="26.31" r="2.5" fill="#141518"/>
+  <circle cx="270" cy="31.08" r="2.5" fill="#141518"/>
+  <circle cx="270" cy="25" r="12.9" fill="none"
+          stroke="currentColor" stroke-width="6.2"/>
 </svg>

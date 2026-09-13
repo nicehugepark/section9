@@ -1,19 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="section9">
   <title>section9</title>
-  <!-- 마스코트 「전신」 — 큰 판(48 이상). 작은 판은 favicon.svg --><rect width="64" height="64" fill="#141518"/>
-  <path d="M17 29 L9 25 L12 50" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="12" cy="50" r="3.5" fill="#5b8def"/>
-  <path d="M25 35 L20 32 L22 53" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="22" cy="53" r="3.5" fill="#5b8def"/>
-  <path d="M39 35 L44 32 L42 53" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="42" cy="53" r="3.5" fill="#5b8def"/>
-  <path d="M47 29 L55 25 L52 50" fill="none" stroke="#5b8def" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="52" cy="50" r="3.5" fill="#5b8def"/>
-  <path d="M12 23 A20 15.5 0 0 1 52 23 L52 30 Q52 37 45 37 L19 37 Q12 37 12 30 Z" fill="#5b8def"/>
-  <circle cx="23.2" cy="23" r="8.2" fill="#fafaf8"/>
-  <circle cx="23.2" cy="23" r="4.4" fill="#3f6cc4"/>
-  <circle cx="21.69" cy="21.49" r="1.7" fill="#fafaf8"/>
-  <circle cx="40.8" cy="23" r="8.2" fill="#fafaf8"/>
-  <circle cx="40.8" cy="23" r="4.4" fill="#3f6cc4"/>
-  <circle cx="39.29" cy="21.49" r="1.7" fill="#fafaf8"/>
+  <!-- 눈 — 종이 원 + 잉크 점 셋(중앙보다 아래). 큰 판(48 이상) -->
+  <rect width="64" height="64" fill="#141518"/>
+  <circle cx="32" cy="32" r="23" fill="#fafaf8"/>
+  <circle cx="24.4" cy="34.25" r="4.4" fill="#141518"/>
+  <circle cx="39.6" cy="34.25" r="4.4" fill="#141518"/>
+  <circle cx="32" cy="42.49" r="4.4" fill="#141518"/>
 </svg>
