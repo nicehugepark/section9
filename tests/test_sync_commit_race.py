@@ -182,6 +182,23 @@ class SyncCommitRace(unittest.TestCase):
         self.assertIn("index.lock", txt, "제거 사실이 기록에 없다")
 
 
+    # S10. 받기(poll)도 같은 잠금에 막힌다 — 5분 넘은 index.lock 은 pull 전에 제거한다
+    def test_s10_poll_clears_stale_index_lock(self):
+        lock = self.idx_lock(age_sec=self.m.SYNC_COMMIT_BUSY_STALE_SEC + 60)
+        seen = []
+
+        def fake_pull(argv, timeout=8):
+            seen.append(os.path.exists(lock))
+            return CP(out="Already up to date.\n")
+        with mock.patch.object(self.m, "_sync_git",
+                               lambda *a, timeout=6: CP(out="abc\n")), \
+                mock.patch.object(self.m, "sync_mode", lambda: "remote"), \
+                mock.patch.object(self.m, "git_run", fake_pull):
+            self.m._sync_poll_once()
+        self.assertEqual(seen, [False],
+                         "pull 을 걸 때까지 5분 넘은 index.lock 이 남아 있었다")
+
+
 class CommitMarkHooks(unittest.TestCase):
     """S5. 훅이 표식을 만들고 지운다."""
 

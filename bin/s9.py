@@ -13472,6 +13472,10 @@ def _sync_poll_once(timeout=8):
     if sync_mode() != "remote":
         return "none"
     _SYNC_POLL_LAST["error"], _SYNC_POLL_LAST["paths"] = "", []
+    # 받기도 같은 잠금에 막힌다 — 중단된 commit 이 남긴 index.lock 이 있으면
+    # pull 부터 진다 (REQ-20260912-004-62x6, 실측 2026-09-13: poll 139회 연속
+    # 실패로 174 commit 을 못 받았다). 5분 넘은 것만 제거한다.
+    _sync_clear_stale_index_lock()
     try:
         before = _sync_git("rev-parse", "HEAD").stdout.strip()
         r = git_run(["pull", "--ff-only"], timeout=timeout)
