@@ -442,6 +442,18 @@ function s9dlg(o){
       // 줄바꿈일 자리는 없다. 다만 손이 '그만두기' 위에 있으면 그 버튼이 눌린다:
       // 포커스가 가 있는 것을 제치고 확인을 누르면 키보드 사용자에게는 오작동이다.
       if (no && e.target === no) return;
+      /* `safe` 창(되돌릴 수 없는 실행)은 맨 Enter 가 실행 쪽에 닿지 않는다 — 처음
+         초점을 물러나는 버튼에 두는 것만으로는 모자랐다. 본문에 상자를 품은 창은
+         연 뒤 초점을 상자로 옮기고, 거기서의 Enter 가 곧 실행이었다(초대 창:
+         이메일을 치고 Enter → 메일 발송, 맥 Safari·Chrome 실측 2026-09-13,
+         REQ-20260913-003-2n7g). 손이 실행 버튼 위에 있을 때만 그 버튼이 받고,
+         그 밖의 Enter 는 바닥 힌트가 적은 대로 물러나는 쪽이다. */
+      if (o.safe){
+        if (e.target === yes) return;
+        e.preventDefault();
+        if (no) no.click(); else done(false);
+        return;
+      }
       if (yes.disabled) return;
       e.preventDefault(); yes.click();
     };
