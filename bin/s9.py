@@ -24609,6 +24609,22 @@ def port_bindable(port, host="127.0.0.1"):
         s.close()
 
 
+def _port_remember(new, why, root, auto):
+    """옮겨 앉은 포트를 적는다 — `state/port` 와 「자동으로 적었다」는 표식 하나.
+
+    자리를 옮기는 길이 둘이 되면서(남이 쓰는 포트 · 아픈 포트) 같은 쓰기가 두
+    벌이 됐다. 한 벌로 둔다 — 한쪽만 고쳐지면 화면과 훅이 다른 포트를 본다.
+    """
+    try:
+        os.makedirs(os.path.join(root, "state"), exist_ok=True)
+        with open(os.path.join(root, "state", "port"), "w", encoding="utf-8") as f:
+            f.write(str(new))
+        with open(auto, "w", encoding="utf-8") as f:
+            f.write(f"{why} {now_iso()}\n")
+    except OSError:
+        pass
+
+
 def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=None,
                       _foreign=None):
     """(포트, 사유) — 남이 쓰는 포트는 피한다 (REQ-20260905-016).
@@ -24641,6 +24657,11 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
             return "root" not in info or os.path.realpath(
                 str(info.get("root") or "")) == os.path.realpath(root)
 
+        # **아픈 포트로는 돌아가지 않는다** (REQ-20260912-003). 기본 포트가
+        # 비어 보여도 그 자리가 붙은 뒤 끊는 자리면 돌아가는 순간 어제의 사고가
+        # 되풀이된다 — 기록이 살아 있는 동안(PORT_SICK_TTL)은 지금 자리를 지킨다.
+        if port_sick_recent(9909, root):
+            return s9_port(root), "sick-base"
         if base_info is not None and _mine(base_info):
             _forget()
             return 9909, "mine"
@@ -24657,6 +24678,13 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
                     _forget()
                     return 9909, "free"
     port = port or s9_port(root)
+    # 고르려는 그 자리가 아프면 답을 묻지도 않는다 (REQ-20260912-003) — 아픈
+    # 포트에서는 답이 오다 말다 하므로, 물어서 얻는 답이 곧 동전 던지기다.
+    if port_sick_recent(port, root) and not os.environ.get("S9_PORT"):
+        new_sick = (_next or next_free_port)()
+        if new_sick and new_sick != port:
+            _port_remember(new_sick, "sick", root, auto)
+            return new_sick, "sick"
     info = serveinfo_at(port) if _info is None else _info(port)
     if info is not None:
         if "root" in info:
@@ -24689,14 +24717,7 @@ def pick_dashboard_port(port=None, root=None, _info=None, _bindable=None, _next=
     new = (_next or next_free_port)()
     if not new:
         return port, why
-    try:
-        os.makedirs(os.path.join(root, "state"), exist_ok=True)
-        with open(os.path.join(root, "state", "port"), "w", encoding="utf-8") as f:
-            f.write(str(new))
-        with open(auto, "w", encoding="utf-8") as f:      # 자동으로 적었다는 표식
-            f.write(f"{why} {now_iso()}\n")
-    except OSError:
-        pass
+    _port_remember(new, why, root, auto)
     return new, why
 
 
@@ -28616,6 +28637,22 @@ def cmd_metrics(args):
 #    (REQ-20260826-011). 감시자를 그 수단으로 쓰면 사용자의 SSE 가 말없이 끊긴다.
 #  - 포트를 남이 쥐고 있으면 죽이지 않고 지켜보기만 한다.
 GUARD_BACKOFF = (1, 2, 5, 15, 30, 60, 120, 300)  # 연속 실패 n회째 대기(초)
+# **듣는다고 답하는 것은 아니다** (REQ-20260912-003, 실사고 2026-09-12).
+#
+# 주인: 「9909 포트로 대시보드가 왜 자꾸 접속이 끊기는거지? 브라우저 새로 고침을 하면
+# 한참을 실패하다가 연결이 되기도 하고.」 잰 결과는 **포트 하나가 아픈 것**이었다 —
+# 같은 코드가 9931 에서는 20/20 답하는데 9909 는 2/20 이었고(나머지는 붙자마자 리셋),
+# 맨살 stdlib 서버도 다른 포트에서는 멀쩡했다. `s9 serve --restart` 로도 안 고쳐졌다.
+# DOC-20260906-003 이 적은 「닫힌 리스너의 공개가 남아 붙은 뒤 끊는다」의 만성판이다.
+#
+# 감시자는 그동안 `_port_busy` 만 봤다 — 누군가 **듣고만** 있으면 건강하다고 여겼다.
+# 그래서 아픈 포트 위에서 열세 시간을 자고, 사람이 물어서야 알았다. 이제 주기적으로
+# **왕복**을 재고(dashboard_ready), 잇달아 두 번 「리셋·가짜 연결」이면 그 포트를 아픈
+# 것으로 적고 스스로 다른 포트로 옮긴다. 한 번에 옮기지 않는 까닭: 재기동 직후 62초 창
+# 에도 같은 지문이 나오는데(그때는 우리 유령이다) 그건 사고가 아니다.
+GUARD_ANSWER_SEC = 60      # 왕복을 다시 재기까지의 최소 간격
+GUARD_SICK_STRIKES = 2     # 잇달아 이만큼이면 그 포트를 아픈 것으로 본다
+PORT_SICK_TTL = 24 * 3600  # 아프다고 적은 포트를 피하는 기간
 GUARD_HEALTHY_SEC = 60     # 이만큼 살았으면 건강한 실행 — 실패 카운터 리셋
 GUARD_POLL_SEC = 5         # 남의 서버가 포트를 쥐고 있을 때 다시 재는 주기
 GUARD_TERM_MIN_SEC = 5     # 의도적 SIGTERM 뒤 최소 대기 (재기동 경합 회피)
@@ -28631,6 +28668,53 @@ def _guard_paths(port, root=None):
             "stop": os.path.join(st, f"serve-guard.{port}.stop"),
             "log": os.path.join(st, "serve-guard.log"),
             "serve_log": os.path.join(st, "serve.log")}
+
+
+def _port_sick_path(root=None):
+    return os.path.join(root or ROOT, "state", "port-sick.json")
+
+
+def port_sick_read(root=None):
+    try:
+        with open(_port_sick_path(root), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def port_sick_mark(port, why, root=None, now=None):
+    """그 포트는 붙은 뒤 끊긴다 — 사실 한 줄을 적어 둔다 (REQ-20260912-003).
+
+    적는 자리는 `state/port-sick.json` 이고 기계 상태라 동기화되지 않는다:
+    아픈 것은 **이 컴퓨터의 그 포트**이지 저장소의 사실이 아니다. 값은 언제·왜
+    였나 둘뿐이고, 고르는 자리(`pick_dashboard_port`)와 감시자가 그것을 읽는다.
+    """
+    import time as _t
+    d = port_sick_read(root)
+    d[str(int(port))] = {"at": now or _t.time(), "why": str(why or ""),
+                         "when": now_iso()}
+    try:
+        os.makedirs(os.path.dirname(_port_sick_path(root)), exist_ok=True)
+        with open(_port_sick_path(root), "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+    except OSError:
+        pass
+    return d[str(int(port))]
+
+
+def port_sick_recent(port, root=None, within=None, now=None):
+    """그 포트가 최근에 아팠나 — 기록(dict) 또는 None.
+
+    기간을 두는 까닭: 낡은 공개는 언젠가 걷힌다. 영영 피하면 쓸 수 있는 포트가
+    하나씩 줄어들고, 사람이 기억하는 주소(9909)로 영영 못 돌아간다.
+    """
+    import time as _t
+    rec = port_sick_read(root).get(str(int(port)))
+    if not rec:
+        return None
+    age = (now or _t.time()) - float(rec.get("at") or 0)
+    return rec if 0 <= age < (PORT_SICK_TTL if within is None else within) else None
 
 
 def _guard_backoff(fails):
@@ -28785,16 +28869,38 @@ def _guard_stop_signal(port, root=None):
             pass          # 주 스레드가 아니면(테스트) 신호를 걸 수 없다
 
 
+def _guard_sick_why(res):
+    """이 왕복 결과가 **포트가 아프다**는 지문인가 — 아니면 빈 문자열.
+
+    가르는 것은 둘이다: 붙은 뒤 끊기는 것(리셋)과 붙었는데 HTTP 가 아닌 것
+    (중계가 받아 준 가짜 연결). 거부(아무도 안 듣는다)는 여기가 아니라 되살리기
+    경로의 몫이고, 「내 것이 아니다」(점거)는 남이 그 자리에 있다는 뜻이라
+    포트를 옮기는 것이 맞다 — 셋 다 사람이 기다려서 풀릴 일이 아니다.
+    """
+    if not isinstance(res, dict) or res.get("ready"):
+        return ""
+    why = str(res.get("why") or "")
+    for mark in ("리셋", "가짜 연결", "점거"):
+        if mark in why:
+            return why
+    return ""
+
+
 def serve_guard_loop(port, host="127.0.0.1", root=None, spawn=None,
-                     sleep=None, clock=None, max_rounds=None):
+                     sleep=None, clock=None, max_rounds=None, _ready=None,
+                     _pick=None):
     """감시 루프. 반환값은 종료 사유 문자열.
 
     spawn/sleep/clock 은 테스트 주입점이다 — 실제 시간을 쓰지 않고 백오프·
-    사망 기록·정상 종료 판정을 고정할 수 있어야 한다."""
+    사망 기록·정상 종료 판정을 고정할 수 있어야 한다. `_ready`·`_pick` 도 같은
+    자리다(왕복 판정·옮겨 갈 포트 고르기)."""
     import time as _t
     _guard_stop_signal(port, root)
     sleep = sleep or _t.sleep
     clock = clock or _t.monotonic
+    ready = _ready or (lambda h, p: dashboard_ready(h, p))
+    pick = _pick or (lambda: next_free_port())
+    strikes, last_probe = 0, None
     spawn = spawn or (lambda: _guard_spawn_child(port, host, root))
     p = _guard_paths(port, root)
     fails = 0
@@ -28812,6 +28918,39 @@ def serve_guard_loop(port, host="127.0.0.1", root=None, spawn=None,
         if _port_busy(host, port):
             # 살아 있는 서버가 있다. 그게 내 자식이 아니어도 죽이지 않는다 —
             # 중복 기동도, 개입도 하지 않고 죽을 때까지 지켜본다.
+            #
+            # **다만 듣는 것과 답하는 것은 다르다** (REQ-20260912-003). 여기서
+            # 왕복을 재지 않던 동안, 붙자마자 끊는 포트 위에서 감시자가 열세
+            # 시간을 잤다. 간격을 두고(GUARD_ANSWER_SEC) 재고, 잇달아 두 번
+            # 아프면 그 포트를 적어 두고 다른 자리로 옮긴다.
+            nowt = clock()
+            if last_probe is None or nowt - last_probe >= GUARD_ANSWER_SEC:
+                last_probe = nowt
+                try:
+                    sick = _guard_sick_why(ready(host, port))
+                except Exception as e:        # 재다가 넘어져도 감시는 계속된다
+                    sick = ""
+                    _guard_record(port, "probe-error",
+                                  f"{port} 왕복을 재지 못했다: {e!r}", root=root)
+                strikes = strikes + 1 if sick else 0
+                if sick and strikes >= GUARD_SICK_STRIKES:
+                    new_port = pick()
+                    port_sick_mark(port, sick, root)
+                    if new_port and new_port != port:
+                        _port_remember(new_port, "sick", root,
+                                       os.path.join(p["state"], "port.auto"))
+                        _guard_record(port, "port-sick",
+                                      f"{port} 는 듣기만 하고 답하지 않는다 "
+                                      f"({sick}) — {new_port} 로 옮겨 다시 띄운다",
+                                      {"why": sick, "moved_to": new_port}, root)
+                        port = new_port
+                        p = _guard_paths(port, root)
+                        strikes, last_probe = 0, None
+                        continue
+                    _guard_record(port, "port-sick",
+                                  f"{port} 는 듣기만 하고 답하지 않는데 옮겨 갈 "
+                                  f"빈 포트가 없다 ({sick}) — 사람이 봐야 한다",
+                                  {"why": sick}, root)
             sleep(GUARD_POLL_SEC)
             continue
         try:
