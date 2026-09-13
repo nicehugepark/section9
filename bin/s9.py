@@ -1061,7 +1061,8 @@ def cmd_perf(args):
             print(line)
         return
     rep = perf_read_metrics(perf_since_sec(args.since))
-    kinds = {"endpoint": ["api"], "tick": ["tick"]}.get(args.by)
+    kinds = {"endpoint": ["api"], "tick": ["tick"],
+             "client": ["client"]}.get(args.by)
     if kinds:
         rep["by"] = {k: v for k, v in rep["by"].items() if k in kinds}
     if args.json:
@@ -34712,8 +34713,52 @@ def cmd_serve(args):
             else:
                 self._send(404, "text/plain", b"not found")
 
+        def _perf_client(self):
+            """화면이 보낸 계측 줄을 perf 로그에 싣는다 (REQ-20260913-034-62x6).
+
+            받는 값은 전부 **남의 말**이라 이름·수·딸린 값을 여기서 자른다.
+            저장 규칙을 새로 만들지 않는다: 서버가 제 일을 적는 그 길
+            (`perf_mark`)에 kind=client 로 실으므로 `s9 perf` 가 그대로 센다.
+            어느 줄이 이상해도 조용히 버린다 — 계측 한 줄 때문에 화면이 오류를
+            받는 것은 계측의 값이 아니다."""
+            try:
+                n = min(int(self.headers.get("Content-Length", 0) or 0), 64 * 1024)
+                req = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                marks = req.get("marks")
+                for mk in (marks if isinstance(marks, list) else [])[:50]:
+                    if not isinstance(mk, dict):
+                        continue
+                    name = re.sub(r"[^A-Za-z0-9_.:-]", "",
+                                  str(mk.get("name") or ""))[:40]
+                    try:
+                        ms = float(mk.get("ms"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not name or not 0.0 <= ms <= 600000.0:
+                        continue
+                    extra = {}
+                    for k in ("rows", "retries", "req"):
+                        try:
+                            extra[k] = int(mk[k])
+                        except (KeyError, TypeError, ValueError):
+                            pass
+                    vis = re.sub(r"[^a-z]", "", str(mk.get("vis") or ""))[:10]
+                    if vis:
+                        extra["vis"] = vis
+                    perf_mark("client", name, ms, **extra)
+            except Exception:
+                pass
+            self._json({"ok": True})
+
         def do_POST(self):
             if self._host_guard():
+                return
+            # 화면의 계측은 **행동이 아니다** (REQ-20260913-034-62x6). 바로 아래
+            # 한 줄이 폴링 지문을 굴리므로, 계측이 그 줄을 지나면 문서를 열
+            # 때마다 카탈로그 스냅샷이 깨진다 — 재려던 느림을 계측이 스스로
+            # 만든다. 그래서 여기서 먼저 받아 끝낸다.
+            if urllib.parse.urlparse(self.path).path == "/api/perf":
+                self._perf_client()
                 return
             # 행동이 들어왔다 — 폴링 스냅샷의 세계가 바뀐다 (REQ-20260831-002).
             # 전이·세우기·깨우기 직후의 조회가 낡은 화면을 받지 않게, 지문을
@@ -37019,8 +37064,8 @@ def main():
                         help="성능 로그·메트릭 요약 (state/local/log, 1시간 보존)")
     pf.add_argument("action", nargs="?", choices=["show", "tail"], default="show")
     pf.add_argument("--since", default="10m", help="요약 창 — 10m·2h (기본 10m)")
-    pf.add_argument("--by", choices=["endpoint", "tick"],
-                    help="끝점(api)만 / 워처 틱만")
+    pf.add_argument("--by", choices=["endpoint", "tick", "client"],
+                    help="끝점(api)만 / 워처 틱만 / 화면이 보낸 것만")
     pf.add_argument("-n", type=int, default=20, help="tail: 줄 수")
     pf.add_argument("--json", action="store_true")
     pf.set_defaults(fn=cmd_perf)
