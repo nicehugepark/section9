@@ -10,6 +10,9 @@ Claude Code 세션의 프롬프트를 훅으로 자동 audit해 요청 문서(RE
 CLI(bin/s9)·대시보드(web/)·자동 재작업(auto-resume) 워커로 구성된다.
 
 ## 용어
+- 이름의 뜻 (주인 2026-09-13, REQ-20260913-014): **section9 은 「공각기동대」의 공안9과(Public Security
+  Section 9)** 를 뜻하고, 리드 에이전트 이름 **타치코마는 그 작품의 마스코트(9과의 AI 다족 전차)** 다.
+  로고·마크·문구는 이 정체성의 특징·단서를 지니되 원작의 이미지를 노골적으로 쓰지 않는다.
 
 - vault: 문서 원본 저장소 (requests/knowledge/sessions/projects)
 - catalog: index/catalog.jsonl — vault의 파생 인덱스 (커밋 금지, rebuild로 재생성)
