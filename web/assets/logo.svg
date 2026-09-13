@@ -6,10 +6,10 @@
   </style>
   <g transform="scale(0.5)">
   <rect width="64" height="64" fill="#141518"/>
-  <circle cx="32" cy="23" r="13" fill="none" stroke="#fafaf8" stroke-width="8"/>
-  <path d="M45 23 V38 A17 17 0 0 1 28 55" fill="none" stroke="#fafaf8" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="32" cy="23" r="6.5" fill="#5b8def"/>
-  <circle cx="29.6" cy="20.6" r="1.8" fill="#fafaf8" fill-opacity="0.9"/>
+  <circle cx="32" cy="25" r="14" fill="none" stroke="#fafaf8" stroke-width="8"/>
+  <path d="M46 25 V32 L34 54" fill="none" stroke="#fafaf8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="25" r="8.5" fill="#5b8def"/>
+  <circle cx="29.6" cy="22.6" r="1.8" fill="#fafaf8" fill-opacity="0.9"/>
   </g>
   <text class="wm" x="40" y="23" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="21" font-weight="700" letter-spacing="0.3">section<tspan fill="#5b8def">9</tspan></text>
 </svg>
