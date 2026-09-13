@@ -102,6 +102,13 @@ class InviteScreen(unittest.TestCase):
         self.assertIn("PRJ_EMAIL_RE.test", wire, "형식 검사 없이 서버에 400 을 받으러 간다")
 
     # ── S6. Settings 의 다섯 칸 = 서버가 읽는 시크릿 키 ─────────────────────
+    # ── S7. 헤드리스 검증의 딥링크 — `?invite` 가 초대 창을 한 번 연다 (REQ-20260913-019) ──
+    def test_s7_the_invite_query_opens_the_dialog_once(self):
+        body = self.prj.split("[data-pjinvite]")[1].split("\n}")[0]
+        self.assertIn("/[?&]invite\\b/.test(location.search)", body)
+        self.assertIn("window.__inviteAuto", body, "두 번 열리지 않게 하는 표식이 없다")
+        self.assertIn("prjInviteDlg(p, c, o)", body)
+
     def test_s6_the_settings_rows_are_the_keys_the_server_reads(self):
         rows = self.jira.split("const SMTP_ROWS = [")[1].split("\n];")[0]
         keys = re.findall(r'key: "([^"]+)"', rows)

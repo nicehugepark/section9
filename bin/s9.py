@@ -24848,6 +24848,24 @@ def _env_module():
     return m
 
 
+def cmd_release(args):
+    """`s9 release build|try` — 배포판 만들기와 자가 시험 (REQ-20260913-020).
+    본체는 bin/s9-release(build)와 bin/s9_reltry.py(try). 백그라운드 작업자의
+    허용 목록이 `bin/s9 …` 뿐이라 이 명령으로 열어 둔다."""
+    import importlib.util
+    bindir = os.path.dirname(os.path.realpath(__file__))
+    if args.action == "build":
+        argv = [sys.executable, os.path.join(bindir, "s9-release"), "--ref", args.ref]
+        if args.out:
+            argv += ["--out", args.out]
+        sys.exit(subprocess.run(argv, cwd=ROOT).returncode)
+    spec = importlib.util.spec_from_file_location("s9_reltry", os.path.join(bindir, "s9_reltry.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    ok, _checks = m.release_try(ROOT, ref=args.ref, keep=args.keep)
+    sys.exit(0 if ok else 1)
+
+
 def _firstrun_module():
     """압축을 푼 자리의 첫 실행 — 저장소 세우기 (REQ-20260913-007). 곁의 bin/s9_firstrun.py."""
     import importlib.util
@@ -36717,6 +36735,14 @@ def main():
     gh_.add_argument("--user", help="누구의 준비물(secret)로 (기본: 나)")
     gh_.add_argument("--json", action="store_true")
     gh_.set_defaults(fn=cmd_github)
+
+    rl = sub.add_parser("release", help="배포판 — build: tar.gz·zip 만들기 · try: 만들어 풀고 "
+                                         "첫 실행까지 스스로 시험 (REQ-20260913-020)")
+    rl.add_argument("action", choices=["build", "try"])
+    rl.add_argument("--ref", default="HEAD", help="git ref (기본 HEAD, 태그 v0.9.0 등)")
+    rl.add_argument("--out", default="", help="build: 산출 디렉토리 (기본 dist/)")
+    rl.add_argument("--keep", action="store_true", help="try: 푼 자리를 지우지 않는다")
+    rl.set_defaults(fn=cmd_release)
 
     sy = sub.add_parser("sync", help="문서 이벤트 git 동기화 — 수동 실행/상태 (REQ-048)")
     sy.add_argument("--on", action="store_true",

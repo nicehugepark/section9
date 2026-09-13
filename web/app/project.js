@@ -1179,6 +1179,12 @@ function prjWire(root, p, o){
   // 끝난 줄은 다시 그린 뒤의 자리에 선다.
   const invite = root.querySelector("[data-pjinvite]");
   if (invite) invite.addEventListener("click", () => prjInviteDlg(p, c, o));
+  // 헤드리스 검증의 딥링크 (REQ-20260913-019): `?invite` 가 붙어 있으면 이 판이 처음 서는
+  // 순간 초대 창을 연다 — 눌러야만 열리는 창에 캡처 도구가 닿게 하는 시험용 손잡이. 한 번만.
+  if (invite && /[?&]invite\b/.test(location.search) && !window.__inviteAuto){
+    window.__inviteAuto = true;
+    prjInviteDlg(p, c, o);
+  }
 }
 
 /* ── ④ Projects 탭 — 판을 세우는 자리 (REQ-20260831-026 G0′) ─────────────
