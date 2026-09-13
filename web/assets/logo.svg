@@ -7,7 +7,7 @@
   <g transform="scale(0.5)">
   <rect width="64" height="64" fill="#141518"/>
   <circle cx="32" cy="25" r="14" fill="none" stroke="#fafaf8" stroke-width="8"/>
-  <path d="M46 25 Q46 46 32 55" fill="none" stroke="#fafaf8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M46 25 Q46 45 31 54" fill="none" stroke="#fafaf8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="32" cy="25" r="8.5" fill="#5b8def"/>
   <circle cx="29.6" cy="22.6" r="1.8" fill="#fafaf8" fill-opacity="0.9"/>
   </g>
