@@ -133,6 +133,55 @@ class SyncCommitRace(unittest.TestCase):
         self.assertEqual(self.sleeps, [])
 
 
+    def idx_lock(self, age_sec=0):
+        p = os.path.join(self.root, ".git", "index.lock")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("x")
+        if age_sec:
+            t = time.time() - age_sec
+            os.utime(p, (t, t))
+        return p
+
+    # S6. 5분 넘은 index.lock 은 중단된 commit 의 잔재다 — 제거하고 평소대로 간다
+    #     (REQ-20260912-004-62x6: 이 파일 하나에 자동 commit 이 79회 연속 졌다)
+    def test_s6_stale_index_lock_is_removed(self):
+        lock = self.idx_lock(age_sec=self.m.SYNC_COMMIT_BUSY_STALE_SEC + 60)
+        r = self.run_sync()
+        self.assertEqual(r, "ok")
+        self.assertEqual(len(self.commits()), 1)
+        self.assertFalse(os.path.exists(lock),
+                         "5분 넘은 index.lock 이 그대로 남아 다음 회차도 진다")
+
+    # S7. 5분이 안 된 index.lock 은 진행 중인 commit 의 것이다 — 건드리지 않는다
+    def test_s7_fresh_index_lock_is_kept(self):
+        lock = self.idx_lock()
+        r = self.run_sync()
+        self.assertEqual(r, "busy")
+        self.assertEqual(self.commits(), [])
+        self.assertTrue(os.path.exists(lock),
+                        "진행 중인 commit 의 index.lock 을 sync 가 제거했다")
+
+    # S8. index.lock 이 오래됐어도 commit-in-progress 표식이 신선하면 두 파일 다 둔다
+    #     — 사람의 commit 이 pre-commit 훅 안에서 오래 도는 중일 수 있다
+    def test_s8_fresh_marker_protects_old_lock(self):
+        lock = self.idx_lock(age_sec=self.m.SYNC_COMMIT_BUSY_STALE_SEC + 60)
+        self.mark()
+        r = self.run_sync()
+        self.assertEqual(r, "busy")
+        self.assertTrue(os.path.exists(lock),
+                        "진행 중인 commit 표식이 있는데 index.lock 을 제거했다")
+
+    # S9. 제거한 사실이 state/sync.log 에 남는다 — 조용히 지우지 않는다
+    def test_s9_removal_is_logged(self):
+        self.idx_lock(age_sec=self.m.SYNC_COMMIT_BUSY_STALE_SEC + 60)
+        self.run_sync()
+        log = os.path.join(self.root, "state", "sync.log")
+        self.assertTrue(os.path.exists(log), "sync.log 가 없다")
+        with open(log, encoding="utf-8") as f:
+            txt = f.read()
+        self.assertIn("index.lock", txt, "제거 사실이 기록에 없다")
+
+
 class CommitMarkHooks(unittest.TestCase):
     """S5. 훅이 표식을 만들고 지운다."""
 

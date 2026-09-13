@@ -13036,6 +13036,44 @@ def _sync_commit_busy():
     return ""
 
 
+def _sync_clear_stale_index_lock():
+    """죽은 commit 이 남긴 `.git/index.lock` 을 제거한다 (REQ-20260912-004-62x6).
+
+    실제 사고 2026-09-13: 전날 21:14 에 중단된 git 이 index.lock 을 남겼고, 그 뒤
+    12시간 동안 자동 commit 이 79회 연속 졌다 — 실패 사유는 늘 같은 `Unable to
+    create index.lock: File exists` 였는데 아무도 그 파일을 제거하지 않아, 이
+    컴퓨터의 문서가 하나도 origin 으로 가지 못했다(맥에는 있는 요청이 WSL 에는
+    없는 상태로 갈렸다, REQ-20260913-001-62x6). `_sync_commit_busy` 는 이미
+    5분 넘은 index.lock 을 「죽은 commit 의 잔재」로 보고 건너뛰지 않는데,
+    정작 그 다음 `git add`·`git commit` 은 같은 파일에 막혀 늘 진다 — 무시만
+    하고 제거하지 않은 것이 되풀이 실패의 자리였다.
+
+    git 은 이 파일에 pid 를 적지 않으므로 판정은 나이로 한다 — 선은 이 모듈이
+    이미 정한 `SYNC_COMMIT_BUSY_STALE_SEC`(5분) 그대로다. commit-in-progress
+    표식이 신선하면 제거하지 않는다: 그때는 사람의 commit 이 pre-commit(s9-guard)
+    안에서 실제로 진행 중이다. 반환: 제거했으면 True."""
+    import time as _time
+    lock = os.path.join(ROOT, ".git", "index.lock")
+    try:
+        age = _time.time() - os.path.getmtime(lock)
+    except OSError:
+        return False
+    if age < SYNC_COMMIT_BUSY_STALE_SEC:
+        return False
+    try:
+        if _time.time() - os.path.getmtime(_COMMIT_MARK) < SYNC_COMMIT_BUSY_STALE_SEC:
+            return False        # 진행 중인 commit 이 있다 — 그 잠금은 산 것이다
+    except OSError:
+        pass
+    try:
+        os.remove(lock)
+    except OSError:
+        return False
+    _sync_log(f"↺ 중단된 commit 이 남긴 .git/index.lock 을 제거했다 "
+              f"({int(age)}초 전 것) — 이 잠금이 자동 commit 을 계속 막고 있었다")
+    return True
+
+
 def _sync_commit_lock_failed(stderr):
     """commit 이 잠금 경합으로 진 것인가 — ref 잠금(HEAD 가 그 사이 움직임) 또는
     index.lock. 이 둘만 0.5초 뒤 한 번 다시 한다; 훅 거부 같은 실패는 다시 해도 같다."""
@@ -13089,6 +13127,10 @@ def sync_run(reason="", transport=True):
                 machine_recv_beat()
             except Exception:
                 pass
+            # 여기까지 왔는데 index.lock 이 남아 있다면 그것은 5분을 넘긴
+            # 잔재다(신선한 것은 위 busy 검사가 이미 걸렀다) — add·commit 이
+            # 그 파일에 막히기 전에 제거한다 (REQ-20260912-004-62x6).
+            _sync_clear_stale_index_lock()
             # 커밋 범위를 데이터 경로로 못 박는다 (REQ-20260826-003).
             # 종전엔 데이터만 add 한 뒤 pathspec 없이 commit 해서 **인덱스
             # 전체**가 실렸다. 결과가 둘이었다: (A) admin 이 stage 해둔 WIP
@@ -30666,7 +30708,8 @@ JIRA_CATEGORY = {"open": "new", "in-progress": "indeterminate", "blocked": "inde
 # 옮기고, 없으면 종전처럼 카테고리로 물러선다(그 사실을 문서에 `status_fit` 로
 # 적어, 쓸기가 10분마다 같은 것을 다시 밀지 않게).
 JIRA_STATUS_NAMES = {
-    "open": ("to do", "todo", "open", "backlog", "new", "할 일", "대기"),
+    "open": ("to do", "todo", "open", "backlog", "new", "할 일", "해야 할 일",
+             "대기"),
     "in-progress": ("in progress", "inprogress", "doing", "진행 중", "진행중"),
     "review": ("in review", "review", "code review", "peer review", "검토",
                "검토 중", "리뷰", "확인 대기"),
