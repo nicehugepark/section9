@@ -18,13 +18,14 @@ import tempfile
 import threading
 import time
 import unittest
+
 import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
 
-from portpool import free_port, wait_server  # noqa: E402
+from portpool import free_port, pool_socket, wait_server  # noqa: E402
 
 ORIGIN = "https://github.com/acme/team.git"
 
@@ -34,10 +35,9 @@ class SmtpStub(threading.Thread):
 
     def __init__(self):
         super().__init__(daemon=True)
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(("127.0.0.1", 0))
-        self.sock.listen(5)
+        # 시험 포트는 풀에서 받는다 — 임시 포트(bind 0)는 test_port_pool 이 막는다
+        # (윈도우 중계가 붙든 자리를 피하고, 풀 밖의 포트를 열지 않기 위해).
+        self.sock = pool_socket()
         self.port = self.sock.getsockname()[1]
         self.sessions = []
         self.connections = 0
