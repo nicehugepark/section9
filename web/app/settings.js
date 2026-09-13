@@ -31,7 +31,7 @@ async function postJSON(url, body){
   return res.ok;
 }
 
-let settingsSection = "display";  // display | account | worker | users | repo | about
+let settingsSection = "account";  // account | display | worker | users | repo | about — 첫 항목이 기본 판이다 (REQ-20260913-026)
 
 async function renderSettings(){
   const gen = renderGen;
@@ -45,10 +45,12 @@ async function renderSettings(){
   const meAdmin = isAdmin();
   const myMiss = me ? profileMissing((data.users || []).find(x => x.name === me)) : [];
   const SECTIONS = [
-    ["display", "디스플레이", "skin·tone·density (내 계정에 저장)"],
+    // 「내 계정」이 맨 위다 (주인 지시 2026-09-13 19:05, REQ-20260913-026): 나 → 나 → 남 → 전체
+    // 순서에서 「내가 누구인가」가 「어떻게 보이나」보다 앞이다.
     ["account", "내 계정", me
       ? `@${me} 프로필·개인화${myMiss.length ? ` ⚠ 미기재 ${myMiss.length}` : ""}`
       : "미등록 계정"],
+    ["display", "디스플레이", "skin·tone·density (내 계정에 저장)"],
     /* 「백그라운드 작업」은 나 → 나 → 남 → 전체 순서의 둘째 자리다 (REQ-20260901-022;
        이름은 REQ-20260902-005 에서 「무인 작업」을 내리고 갈아 세웠다).
        「내 계정」 안에 아홉째 덩이로 얹지 않는 이유는 캡처가 근거다: 그 판은
