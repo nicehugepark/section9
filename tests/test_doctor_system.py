@@ -16,6 +16,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -171,6 +172,52 @@ class RepoVerdict(unittest.TestCase):
                                      "branch": "main", "worktrees": 3})
             self.assertEqual(v["level"], "ok")
             self.assertIn("main", v["line"])
+
+class HooksConfigDir(unittest.TestCase):
+    """D5-2. 훅 검사는 설치가 쓰는 설정 디렉토리를 본다 (REQ-20260913-002-2n7g).
+
+    맥 tar.gz 실측(REQ-20260913-020)에서 CLAUDE_CONFIG_DIR 로 깐 자리의 doctor 가
+    「훅 8개 없음」이라 했다 — 훅은 그 디렉토리의 settings.json 에 다 있었다.
+    설치(s9-install claude_home)와 검사가 보는 자리는 하나여야 한다."""
+
+    def setUp(self):
+        self._env = {k: os.environ.get(k) for k in ("CLAUDE_CONFIG_DIR", "HOME")}
+        self.tmp = tempfile.mkdtemp(prefix="s9run-doctor-cfg-")
+        self.home = os.path.join(self.tmp, "home")
+        os.makedirs(self.home)
+        os.environ["HOME"] = self.home
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _settings_with_hooks(self, d):
+        os.makedirs(d, exist_ok=True)
+        hooks = {ev: [{"hooks": [{"type": "command", "command": "s9-audit-prompt"}]}]
+                 for ev in doctor.S9_HOOK_EVENTS}
+        with open(os.path.join(d, "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"hooks": hooks}, f)
+
+    def test_hooks_are_read_from_config_dir(self):
+        """D5-2. 훅 검사는 설치가 쓰는 설정 디렉토리를 본다."""
+        cfg = os.path.join(self.tmp, "claude")
+        with self.subTest("config_dir_hooks_are_seen"):
+            os.environ["CLAUDE_CONFIG_DIR"] = cfg
+            self._settings_with_hooks(cfg)
+            self.assertEqual(doctor.hooks_info()["claude_missing"], [])
+        with self.subTest("empty_config_dir_is_all_missing_even_if_home_has_hooks"):
+            os.environ["CLAUDE_CONFIG_DIR"] = os.path.join(self.tmp, "empty")
+            self._settings_with_hooks(os.path.join(self.home, ".claude"))
+            self.assertEqual(sorted(doctor.hooks_info()["claude_missing"]),
+                             sorted(doctor.S9_HOOK_EVENTS))
+        with self.subTest("no_config_dir_falls_back_to_home_claude"):
+            os.environ.pop("CLAUDE_CONFIG_DIR", None)
+            self.assertEqual(doctor.hooks_info()["claude_missing"], [])
+
 
 class DepsVerdict(unittest.TestCase):
     """D6. 없으면 죽는 것과 그 기능만 죽는 것을 가른다."""
