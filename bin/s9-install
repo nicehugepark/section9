@@ -674,12 +674,36 @@ def uninstall(home=None, root=None, bring_back=True, dry_run=False, out=None):
 # 두 벌이 갈리는지는 tests/test_login_check.py 가 본다 (REQ-20260905-014).
 LOGIN_MARKS = {
     "claude": {"exe": "claude", "mark": ".credentials.json", "home_env": "CLAUDE_CONFIG_DIR",
-               "home": "~/.claude", "how": "터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인"},
+               "home": "~/.claude", "how": "터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인",
+               # native 설치기가 놓는 자리 — PATH 에 아직 안 보여도 여기서 찾는다 (agent_cli_path)
+               "dirs": ["~/.local/bin"]},
     "codex": {"exe": "codex", "mark": "auth.json", "home_env": "CODEX_HOME",
               "home": "~/.codex", "how": "`codex login`"},
     "gemini": {"exe": "gemini", "mark": "oauth_creds.json", "home_env": "",
                "home": "~/.gemini", "how": "터미널에서 `gemini` 를 한 번 띄워 로그인"},
 }
+
+
+def agent_cli_path(exe, dirs=(), which=None):
+    """에이전트 CLI 실행 파일의 자리 → (경로 또는 None, PATH 에 있었는가).
+
+    PATH 에 없으면 표(LOGIN_MARKS)의 `dirs` — native 설치기가 놓는 `~/.local/bin` — 를 본다.
+    Windows 실측 2026-09-13 (REQ-20260913-024): 공식 설치기는 `%USERPROFILE%\\.local\\bin\\claude.exe`
+    에 놓고 사용자 PATH 에 그 폴더를 더하지만 그 PATH 는 **새 프로세스부터** 보인다 — 설치한
+    그 터미널과 WSL 이 띄운 cmd.exe 는 옛 PATH 라 `shutil.which("claude")` 가 None 이었고, 설치
+    안내는 「에이전트 CLI 가 없다」, `s9 code` 는 「claude 명령을 찾을 수 없다」로 끝났다.
+    리눅스·맥의 native 설치기도 같은 폴더에 놓으므로 판을 묻지 않고 두 이름(맨 이름·`.exe`)을 본다.
+    세 벌(s9·s9-install·s9-doctor)은 같은 코드다 — tests/test_login_check.py L10 이 대조한다.
+    """
+    found = (which or shutil.which)(exe)
+    if found:
+        return found, True
+    for d in dirs or ():
+        base = os.path.normpath(os.path.join(os.path.expanduser(d), exe))
+        for cand in (base, base + ".exe"):
+            if os.path.isfile(cand):
+                return cand, False
+    return None, False
 
 
 def login_second_signal(name, home, platform=None, run=None):
@@ -722,11 +746,15 @@ def login_state(marks=None, which=None, second=None):
     which = which or shutil.which
     out = {}
     for name, m in marks.items():
-        exe = bool(which(m["exe"]))
+        path, on_path = agent_cli_path(m["exe"], m.get("dirs") or (), which)
+        exe = bool(path)
         home = (os.environ.get(m["home_env"]) if m.get("home_env") else "") or m["home"]
         mark = os.path.exists(os.path.join(os.path.expanduser(home), m["mark"]))
         logged = exe and (mark or (second or login_second_signal)(name, home))
-        out[name] = {"installed": exe, "logged_in": logged, "how": m["how"]}
+        out[name] = {"installed": exe, "logged_in": logged, "how": m["how"], "path": path,
+                     "on_path": on_path,
+                     "hint": ("" if (on_path or not path) else
+                              f"{name} 는 PATH 밖에 있다({path}) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라")}
     return out
 
 
@@ -831,8 +859,13 @@ def login_guide(state=None):
     if not logged:
         for k in installed:
             say(f"{k} 는 설치됐지만 로그인이 없다 — {st[k]['how']}. 그다음 `s9 code`")
+            if st[k].get("hint"):
+                say(st[k]["hint"] + " — `s9 code` 는 이 경로로 띄운다")
         return "not-logged-in"
     say("로그인 확인: " + " · ".join(logged))
+    for k in logged:
+        if st[k].get("hint"):
+            say(st[k]["hint"])
     return "ok"
 
 

@@ -166,3 +166,67 @@ class LoginCheck(unittest.TestCase):
                 f.write('{"claudeAiOauth": {"accessToken": "f", "subscriptionType": "pro"}}')
             self.assertEqual(s.read_claude_oauth(home, platform="darwin", run=run).get("subscriptionType"), "pro")
 
+
+    def test_l9_native_install_folder_counts_before_path_catches_up(self):
+        """L9. PATH 에 없어도 native 설치기의 자리(~/.local/bin/claude 또는 claude.exe)에 있으면
+        설치된 것이고, 안내는 그 경로와 PATH 를 말한다 — Windows 실측 2026-09-13 (REQ-20260913-024):
+        install.ps1 이 놓은 claude.exe 를 옛 PATH 의 cmd.exe 가 못 봐 「에이전트 CLI 가 없다」였다."""
+        s = _load("s9_login9", S9)
+        fake_home = tempfile.mkdtemp(prefix="s9login9-")
+        cfg = tempfile.mkdtemp(prefix="s9login9c-")
+        old = os.environ.get("CLAUDE_CONFIG_DIR")
+        os.environ["CLAUDE_CONFIG_DIR"] = cfg          # 로그인 표식은 보지 않는 자리
+        nowhere = lambda exe: None
+        try:
+            with mock.patch("os.path.expanduser",
+                            lambda p: p.replace("~", fake_home, 1) if p.startswith("~") else p):
+                st = s.login_state(which=nowhere)["claude"]
+                self.assertFalse(st["installed"]); self.assertIsNone(st["path"]); self.assertEqual(st["hint"], "")
+                os.makedirs(os.path.join(fake_home, ".local", "bin"))
+                exe = os.path.join(fake_home, ".local", "bin", "claude.exe")
+                open(exe, "w").close()
+                st = s.login_state(which=nowhere)["claude"]
+                self.assertTrue(st["installed"]); self.assertFalse(st["logged_in"])
+                self.assertEqual(st["path"], exe); self.assertFalse(st["on_path"])
+                self.assertIn("PATH", st["hint"]); self.assertIn(exe, st["hint"])
+                on = s.login_state(which=lambda e: "/usr/bin/claude" if e == "claude" else None)["claude"]
+                self.assertTrue(on["on_path"]); self.assertEqual(on["hint"], "", "PATH 에 있는데 PATH 를 말한다")
+        finally:
+            if old is None:
+                os.environ.pop("CLAUDE_CONFIG_DIR", None)
+            else:
+                os.environ["CLAUDE_CONFIG_DIR"] = old
+
+    def test_l10_the_three_cli_lookups_are_one(self):
+        """L10. 세 벌(s9·install·doctor)의 agent_cli_path 가 같은 코드다 — L6 과 같은 결."""
+        import inspect
+        srcs = [inspect.getsource(_load(n, p).agent_cli_path)
+                for n, p in (("s9_l10", S9), ("s9i_l10", INSTALL), ("s9d_l10", DOCTOR))]
+        self.assertEqual(srcs[0], srcs[1]); self.assertEqual(srcs[0], srcs[2])
+        d = _load("s9d_l10v", DOCTOR)
+        li = {"claude": {"installed": True, "logged_in": False, "how": "/login",
+                         "hint": "claude 는 PATH 밖에 있다(X)"}}
+        self.assertIn("PATH 밖", d.login_verdict(li).get("advice") or "")
+
+    def test_l11_s9_code_launches_the_found_path_when_it_is_off_path(self):
+        """L11. PATH 밖에서 찾은 claude 는 s9 code 가 그 전체 경로로 띄우고 안내에 경로를 말한다;
+        PATH 에 있으면 이름 그대로다(OS 가 PATHEXT 로 고른다)."""
+        import io, sys as _sys
+        s = _load("s9_login11", S9)
+        fake_home = tempfile.mkdtemp(prefix="s9login11-")
+        exe = os.path.join(fake_home, ".local", "bin", "claude")
+        os.makedirs(os.path.dirname(exe)); open(exe, "w").close()
+        with mock.patch("os.path.expanduser",
+                        lambda p: p.replace("~", fake_home, 1) if p.startswith("~") else p):
+            self.assertEqual(s.claude_exe(which=lambda e: None), exe)
+            self.assertEqual(s.claude_exe(which=lambda e: "/usr/bin/claude"), "claude")
+            os.remove(exe)
+            self.assertEqual(s.claude_exe(which=lambda e: None), "claude", "없으면 이름 그대로 — 실행 자리가 말한다")
+        st = lambda: {"claude": {"installed": True, "logged_in": True, "how": "",
+                                 "hint": f"claude 는 PATH 밖에 있다({exe})"}}
+        out = io.StringIO(); old = _sys.stdout; _sys.stdout = out
+        try:
+            r = s.ensure_claude_login(state=st)
+        finally:
+            _sys.stdout = old
+        self.assertEqual(r, "ok"); self.assertIn(exe, out.getvalue()); self.assertIn("PATH", out.getvalue())

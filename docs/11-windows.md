@@ -56,6 +56,7 @@ cmd.exe 는 배치 파일을 **콘솔 코드페이지로** 읽는다. UTF-8 한�
 | `_ps_lines()` | 바깥 도구 출력의 인코딩 | **프로세스 표가 통째로 빈다** (아래) |
 | `tests/s9cli.py` | 시험이 `bin/s9` 를 부르는 법 | 스위트가 첫 setUpClass 에서 선다 |
 | `bind_probe_opt()` | bind 로 「비어 있나」를 잴 때의 소켓 옵션 — POSIX `SO_REUSEADDR` · Windows `SO_EXCLUSIVEADDRUSE` | **듣고 있는 포트를 비어 있다고 읽는다** — `--stop` 이 「내릴 서버가 없다」, 같은 포트에 서버 둘 (아래) |
+| `agent_cli_path()` → `claude_exe()` | PATH 에 아직 안 보이는 native 설치 — `LOGIN_MARKS` 의 `dirs`(`~/.local/bin`)에서 맨 이름과 `.exe` 둘을 본다(판은 묻지 않는다) | 설치 직후의 터미널에서 「에이전트 CLI 가 없다」·「claude 명령을 찾을 수 없다」 (아래) |
 
 ### 가장 조용했던 결함 — 바깥 도구의 인코딩
 
@@ -95,10 +96,35 @@ PowerShell 은 기본적으로 **콘솔 코드페이지**로 쓰므로, UTF-8 �
    부모 pid 도 빼고, `_guard_alive` 는 fcntl 이 없는 판에서 잠금 파일의 pid 로 감시자를
    알아본다. 고친 뒤 `--stop` 은 「감시자에 중지를 알렸다 … 감시자 종료됨 … 서버 1개」 rc=0.
 
-재지 못한 것: `claude.exe` 로그인 흐름(이 컴퓨터에 없다 — 설치는 주인의 결정) · 콘솔 창을
+재지 못한 것(로그인 흐름은 아래 절에서 쟀다): 콘솔 창을
 닫았을 때 대시보드가 남는지(interop 에는 콘솔 창이 없다). 그리고 두 번째 설치에서 예전 설정
 백업(`bin/s9_env.py`)이 `[Errno 9] Bad file descriptor` 로 실패했다 — 설치는 계속되고 훅은
 들어가지만, 그 판의 백업은 별도 요청감이다.
+
+## Claude 로그인 실측이 고친 하나 (REQ-20260913-024, 2026-09-13)
+
+주인 허가로 공식 설치기(`irm https://claude.ai/install.ps1 | iex`)를 돌렸다. 실행 파일은
+`%USERPROFILE%\.local\bin\claude.exe`(2.1.270)이고 설치기는 「Native installation exists but
+C:\Users\<이름>\.local\bin is not in your PATH」라고 했다 — 사용자 PATH 에 그 폴더를 더해도 **새
+프로세스부터** 보이므로, 설치한 그 터미널과 WSL 이 띄운 cmd.exe(WSL 부팅 때의 PATH)에서는
+`shutil.which("claude")` 가 None 이다. 같은 zip·같은 `bin\s9 code --no-open`(DRYRUN·임시
+`CLAUDE_CONFIG_DIR`)을 두 환경에서 쳤다.
+
+- ① PATH 에 없음(옛 코드): 설치 줄 `에이전트 CLI 가 없다 — 기본은 Claude Code: 설치 뒤 `claude` 를 한 번
+  띄워 로그인하라`, 실행 줄은 아무 안내 없이 base_cmd `["claude", …]` — 실제 실행이면
+  `FileNotFoundError` → `claude 명령을 찾을 수 없다 — Claude Code 설치 확인`. 설치돼 있는데 없다고 읽었다.
+- ② PATH 앞에 `.local\bin`: `claude 는 설치됐지만 로그인이 없다 — 터미널에서 `claude` 를 한 번 띄워 /login
+  으로 로그인. 그다음 `s9 code`` · `◌ Claude Code 로그인이 없다 — 이어서 뜨는 Claude Code 화면의 안내대로
+  로그인하면 그대로 세션이 시작된다(…)` · base_cmd `["claude", …]`. 맞다.
+- 고친 뒤 ①: `agent_cli_path()` 가 `C:\Users\박성진\.local\bin\claude.exe` 를 찾아 ② 의 두 줄에
+  `claude 는 PATH 밖에 있다(C:\Users\박성진\.local\bin\claude.exe) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라 — `s9 code` 는 이 경로로 띄운다` 가 더해지고 base_cmd[0] 이 그 전체 경로다. 표(`LOGIN_MARKS`)는
+  세 벌(s9·s9-install·s9-doctor)이 같아야 하므로 `dirs` 도 셋에 넣었고 `tests/test_login_check.py` L9·L10·L11 이 지킨다.
+- 로그인 없는 `claude.exe -p hi`(임시 `CLAUDE_CONFIG_DIR`) 는 `Not logged in · Please run /login` 한 줄, rc=1.
+  브라우저 인증은 사람 몫이라 그 뒤(첫 세션 화면·훅 발화)는 재지 않았다. 주인의 `%USERPROFILE%\.claude` 는
+  손대지 않았다(전후 목록·크기·mtime 동일).
+
+남은 것: `s9.py` 의 다른 `["claude", …]` 자리(백그라운드 워커 `-p` 스폰 · 계정 추가 로그인 · `claude update`)는
+아직 이름 그대로다 — 대시보드 서버가 옛 PATH 프로세스에서 떴으면 그 자리도 같은 이유로 못 찾는다. 별도 요청감.
 
 ## 플랫폼 분기 (s9-install 이 자동 처리)
 

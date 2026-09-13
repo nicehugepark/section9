@@ -1,6 +1,6 @@
 # section9 Windows 가이드 — 순수 Windows 와 WSL
 
-verified 2026-09-13 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행) · 아직 확인하지 못한 출력은 **(실측 예정 — REQ-20260913-016)** 으로 표시했고 그 목록은 맨 뒤 D장에 있습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
+verified 2026-09-13 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행), 그리고 Claude Code native 로그인 실측 REQ-20260913-024(2026-09-13, 공식 설치기 `install.ps1` · `claude.exe` 2.1.270 · 같은 컴퓨터) · 아직 확인하지 못한 출력은 **(실측 예정 — REQ-20260913-016)** 으로 표시했고 그 목록은 맨 뒤 D장에 있습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
 
 이 문서는 **Windows 컴퓨터에 section9 을 처음 설치해 첫 실행까지 가는 사람**을 위한 절차서입니다. 터미널(cmd.exe 또는 PowerShell)을 열 줄 알면 됩니다. GitHub 계정은 나중에 이어도 되고(C장), Claude 구독(Pro·Max·Team·Enterprise 중 하나)은 첫 세션을 열 때 필요합니다.
 
@@ -27,7 +27,7 @@ verified 2026-09-13 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`)
 | --- | --- | --- | --- |
 | **Python 3.9 이상** | `py -3 --version` (안 되면 `python --version`) | `Python 3.12.10` 처럼 버전 한 줄 | `winget install Python.Python.3.12` |
 | **Git for Windows** | `git --version` | `git version 2.xx.x.windows.1` | `winget install Git.Git` |
-| **Claude Code (Windows 판)** | `claude --version` | `2.1.211 (Claude Code)` 처럼 버전 한 줄 | 아래 표 |
+| **Claude Code (Windows 판)** | `claude --version` | `2.1.270 (Claude Code)` 처럼 버전 한 줄 (실측 2026-09-13) | 아래 표 |
 
 Claude Code 설치 명령은 **어느 터미널에서 치느냐에 따라 다릅니다** (공식 문서 2026-09-13 확인: code.claude.com/docs/en/setup). 프롬프트가 `PS C:\Users\…>` 로 시작하면 PowerShell, `C:\Users\…>` 면 cmd.exe 입니다.
 
@@ -40,6 +40,7 @@ Claude Code 설치 명령은 **어느 터미널에서 치느냐에 따라 다릅
 - PowerShell 에서 cmd.exe 용 명령을 치면 `The token '&&' is not a valid statement separator`, cmd.exe 에서 PowerShell 용을 치면 `'irm' is not recognized …` 가 납니다 — 오류가 아니라 터미널을 바꾸라는 뜻입니다.
 - 관리자 권한은 필요 없습니다. 세 설치 모두 일반 사용자 터미널에서 합니다.
 - **설치가 끝나면 터미널을 닫고 새로 엽니다.** 설치가 PATH 에 넣은 경로는 **다음 터미널부터** 보입니다. 새 터미널에서 위 확인 명령을 다시 쳐서 세 줄이 다 나오면 다음으로 갑니다.
+- Claude Code 의 실행 파일 자리는 `%USERPROFILE%\.local\bin\claude.exe` 입니다(실측 2026-09-13, `install.ps1`). 설치기가 `Native installation exists but C:\Users\<이름>\.local\bin is not in your PATH` 라고 하면 그 폴더가 사용자 PATH 에 없는 것입니다 — PowerShell 한 줄로 더합니다(사용자 PATH 에만, 그다음 새 터미널): `[Environment]::SetEnvironmentVariable("Path", "$env:USERPROFILE\.local\bin;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")`. 더하기 전의 터미널에서도 `s9 code` 는 그 자리에서 `claude.exe` 를 찾아 띄우고 「claude 는 PATH 밖에 있다(…) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라」 한 줄을 남깁니다(A-3 6번).
 - Claude 로그인은 지금 하지 않아도 됩니다. A-3 에서 뜨는 Claude Code 화면이 `/login` 을 안내합니다. 미리 하려면 아무 곳에서 `claude` 를 한 번 실행하면 브라우저 로그인이 뜹니다.
 
 **하지 말 것**
@@ -116,7 +117,7 @@ bin\s9 code
 3. **포트를 고르고 대시보드를 띄웁니다** — `대시보드 실행 중: http://127.0.0.1:9909/`. 9909 를 다른 프로그램이 쓰면 9910~9949 에서 고릅니다(A-7 ⑤).
 4. **기본 브라우저를 엽니다** — ``◌ 브라우저에서 열었다: http://127.0.0.1:9909/  (끄려면 `s9 code --no-open` 또는 S9_NO_OPEN=1)``. Windows 에서는 `cmd /c start <url>` 로 엽니다.
 5. **미등록이면 이름을 묻습니다** — `◌ 미등록 사용자다. 등록할 이름(Enter=<OS 계정>):`. Enter 만 치면 Windows 계정 이름으로 **member** 역할로 등록됩니다(`user add` 의 기본 역할). **첫 사람은 admin 이어야** 사용자 관리와 저장소 pull·push 를 할 수 있습니다. Enter 를 치기 전에 다른 터미널에서 `bin\s9 user add <이름> --role admin` 을 먼저 실행하면 그 이름이 admin 으로 등록되고, 돌아와서 그 이름을 넣으면 됩니다(`docs/guide.md` 3장 「계정 등록과 연결」).
-6. **Claude Code 를 이 폴더 기준으로 띄웁니다.** 로그인이 없으면 Claude Code 화면이 `/login` 을 안내합니다.
+6. **Claude Code 를 이 폴더 기준으로 띄웁니다.** 로그인이 없으면 Claude Code 화면이 `/login` 을 안내합니다. (실측 2026-09-13, REQ-20260913-024: 로그인 전의 `claude.exe -p hi` 는 `Not logged in · Please run /login` 한 줄로 끝납니다, rc=1 — 브라우저 로그인 자체는 사람이 합니다.)
 
 Windows 첫 실행의 **출력 전문** (실측 2026-09-13, REQ-20260913-016 — zip 을 푼 자리에서 `bin\s9 code --no-open`; Claude Code 실행 직전에서 멈추는 시험용 환경 `S9_CODE_DRYRUN=1` 과 임시 `CLAUDE_CONFIG_DIR` 로 쟀고, 이 컴퓨터에는 `claude.exe` 가 없었으며 다른 폴더의 section9 이 9909 를 쓰고 있었습니다. 출력을 파이프로 받아 설치(`s9-install`) 줄이 먼저 보이는데, 콘솔에서는 「저장소를 새로 세웠다」줄부터 순서대로 보입니다):
 
@@ -144,7 +145,7 @@ section9 install 완료
 ◌ 이 컴퓨터의 계정(박성진)은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 잇는다: s9 user attach <이름> · 새 사람이면: s9 user add 박성진
 ```
 
-위 5번(이름을 묻는 줄)은 터미널이 사람의 입력을 받을 수 있을 때만 나옵니다 — 시험은 파이프라 대신 `s9 user attach/add` 안내 한 줄이 나왔습니다. 6번은 `claude.exe` 가 없어 재지 못했습니다(`claude 명령을 찾을 수 없다 — Claude Code 설치 확인` 한 줄로 끝납니다 — A-0 표대로 먼저 설치합니다). 훅은 `settings.json` 에 `"C:\Users\박성진\section9-test-0913\sp ace\section9\bin\s9-audit-prompt.cmd"` 처럼 **`.cmd` 경로**로 9개 이벤트에 들어갔고, 출력은 UTF-8, `bin\*.cmd` 는 CRLF 였습니다.
+위 5번(이름을 묻는 줄)은 터미널이 사람의 입력을 받을 수 있을 때만 나옵니다 — 시험은 파이프라 대신 `s9 user attach/add` 안내 한 줄이 나왔습니다. 6번은 `claude.exe`(2.1.270) 를 설치한 뒤 다시 쟀습니다(REQ-20260913-024). PATH 에 `claude` 가 있으면 설치 줄에 `claude 는 설치됐지만 로그인이 없다 — 터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인. 그다음 `s9 code`` 가, 실행 줄에 `◌ Claude Code 로그인이 없다 — 이어서 뜨는 Claude Code 화면의 안내대로 로그인하면 그대로 세션이 시작된다(붙여넣은 코드는 끝 몇 자만 보이게 가려진다).` 가 나옵니다. 설치 직후라 PATH 에 아직 없으면(WSL 이 띄운 cmd.exe 도 그렇습니다) `claude 는 PATH 밖에 있다(C:\Users\박성진\.local\bin\claude.exe) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라 — `s9 code` 는 이 경로로 띄운다` 가 더해지고 실제로 그 경로로 띄웁니다 — 고치기 전에는 「에이전트 CLI 가 없다」로 잘못 읽고 `claude 명령을 찾을 수 없다 — Claude Code 설치 확인` 으로 끝났습니다. `claude.exe` 가 아예 없으면 그 한 줄이 맞는 안내입니다 — A-0 표대로 먼저 설치합니다. 훅은 `settings.json` 에 `"C:\Users\박성진\section9-test-0913\sp ace\section9\bin\s9-audit-prompt.cmd"` 처럼 **`.cmd` 경로**로 9개 이벤트에 들어갔고, 출력은 UTF-8, `bin\*.cmd` 는 CRLF 였습니다.
 
 **처음 뜨는 화면**
 
@@ -398,7 +399,7 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 | 1 | A-1 · B-1 | v0.9.0 릴리스 페이지와 받는 링크가 실제로 열리는지, `SHA256SUMS` 대조 | REQ-20260913-021 |
 | 2 | A-2 | 공백이 든 경로에서의 첫 실행 | **실측 완료 2026-09-13** (REQ-20260913-016) — A-2 에 반영 |
 | 3 | A-3 | zip 첫 실행이 `git init`·첫 commit·`.s9-sync local` 을 만드는지와 그 출력 전문(Windows) | **실측 완료 2026-09-13** (REQ-20260913-007 · 016) — A-3 에 전문 |
-| 4 | A-3 | 훅 경로가 `.cmd` 로 settings.json 에 들어가는지 · 로그인 상태 · UTF-8 · CRLF | **훅·UTF-8·CRLF 실측 완료 2026-09-13**; 로그인 상태는 이 컴퓨터에 `claude.exe` 가 없어 못 쟀다(설치는 주인의 결정) |
+| 4 | A-3 | 훅 경로가 `.cmd` 로 settings.json 에 들어가는지 · 로그인 상태 · UTF-8 · CRLF | **훅·UTF-8·CRLF 실측 완료 2026-09-13**; 로그인 상태 **실측 완료 2026-09-13** (REQ-20260913-024, `claude.exe` 2.1.270 — A-3 6번 · A-0 PATH 줄). 브라우저 로그인 뒤의 첫 세션 화면은 사람의 인증이 필요해 재지 않았다 |
 | 5 | A-4 | `bin\s9 --version` 의 Windows 출력 | **실측 완료 2026-09-13** — A-4 표 |
 | 6 | A-7 ⑤ | 9909 를 **다른 프로그램**이 쓸 때의 Windows 문구 | **실측 완료 2026-09-13** — A-7 ⑤ |
 | 7 | C-1 | Settings › 저장소의 GitHub 연동 판 — 라벨·버튼 이름·잠김 사유 | REQ-20260913-009 · 008 |
