@@ -188,8 +188,6 @@
 [data-skin="terminal"] .doclist .row:hover:focus-visible{outline-color:var(--bg)}
 [data-skin="terminal"] .stat.on{background:var(--text);color:var(--bg);box-shadow:none}
 [data-skin="terminal"] .stat.on b{color:var(--bg)}
-[data-skin="terminal"] .brand .dot{width:9px;height:14px;animation:s9blink 1.1s steps(1) infinite}
-@keyframes s9blink{50%{opacity:0}}
 /* density: compact — skin 이 못박은 자리마다 그 skin 의 compact 값을 세운다
    (REQ-20260830-034). 이 파일은 density.css 보다 **앞**에 실리므로 calm 처럼
    손잡이가 죽지는 않았다 — 대신 반대 사고가 났다: compact 를 켜면 ledger 의
@@ -371,7 +369,6 @@
 [data-skin="cobalt"] header{background:var(--cb-band);border-bottom:0}
 [data-skin="cobalt"] .hrow1{padding:16px 24px 0}
 [data-skin="cobalt"] .brand{color:var(--cb-ink);font-size:16px}
-[data-skin="cobalt"] .brand .dot{background:var(--cb-ink)}
 [data-skin="cobalt"] .tabs button{color:var(--cb-ink-dim);border-bottom-width:3px;
   padding:6px 13px 13px}
 [data-skin="cobalt"] .tabs button:hover{color:var(--cb-ink)}
@@ -527,7 +524,6 @@
 [data-skin="slate"] .tabs button{padding:4px 12px 12px;border-bottom-width:3px}
 [data-skin="slate"] .tabs button:hover{color:var(--sl-blue)}
 [data-skin="slate"] .tabs button.active{color:var(--sl-blue);border-bottom-color:var(--sl-blue)}
-[data-skin="slate"] .brand .dot{background:var(--sl-blue);border-radius:2px}
 [data-skin="slate"] .hrow2{background:var(--panel)}
 [data-skin="slate"] .hrow2 input[type="text"],[data-skin="slate"] .hrow2 select,
 [data-skin="slate"] .settings-panel select,[data-skin="slate"] .uform input,
