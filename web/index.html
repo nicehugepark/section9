@@ -214,6 +214,9 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
 <script src="app/userform.js"></script>
 <script src="app/workercfg.js"></script>
 <script src="app/repo.js"></script>
+<!-- GitHub 연동은 「저장소」 판 **안에** 서는 절이라 그 판(repo.js) 뒤에 놓는다
+     — 판이 제 표를 세울 때 이 조각의 함수를 부른다 (REQ-20260913-009-62x6). -->
+<script src="app/github.js"></script>
 <script src="app/jira.js"></script>
 <!-- 치우기(보관·삭제·소거)는 Docs 목록·뷰어에 **덧붙는다** — 그 둘을 고치지
      않고 손질만 얹으므로, 얹을 대상(docs.js)과 쓰는 것(dialog.js·settings.js의

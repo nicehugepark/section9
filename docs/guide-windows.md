@@ -1,6 +1,6 @@
 # section9 Windows 가이드 — 순수 Windows 와 WSL
 
-verified 2026-09-13 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13) · 아직 확인하지 못한 출력은 **(실측 예정 — REQ-20260913-016)** 으로 표시했고 그 목록은 맨 뒤 D장에 있습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
+verified 2026-09-13 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행) · 아직 확인하지 못한 출력은 **(실측 예정 — REQ-20260913-016)** 으로 표시했고 그 목록은 맨 뒤 D장에 있습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
 
 이 문서는 **Windows 컴퓨터에 section9 을 처음 설치해 첫 실행까지 가는 사람**을 위한 절차서입니다. 터미널(cmd.exe 또는 PowerShell)을 열 줄 알면 됩니다. GitHub 계정은 나중에 이어도 되고(C장), Claude 구독(Pro·Max·Team·Enterprise 중 하나)은 첫 세션을 열 때 필요합니다.
 
@@ -93,7 +93,7 @@ dir %USERPROFILE%\section9\bin\s9.cmd
 **경로에 대해 알아 둘 것**
 
 - **계정 이름에 한글이 있어도 됩니다.** `C:\Users\박성진\…` 같은 경로에서 문서 쓰기·읽기·목록이 전부 실측됐습니다(REQ-20260903-005).
-- 경로에 **공백**이 있어도 실행은 됩니다 — `s9.cmd` 는 자기 경로를 따옴표로 감싸 넘깁니다. 다만 공백·한글 없는 `%USERPROFILE%\section9` 가 가장 문제가 적은 자리이고, 이 문서의 모든 예시가 그 자리를 전제합니다. **(실측 예정 — REQ-20260913-016: 공백이 든 경로에서의 첫 실행)**
+- 경로에 **공백**이 있어도 됩니다 — 실측 2026-09-13(REQ-20260913-016): `…\section9-test-0913\sp ace\section9` 에서 `bin\s9 --version` 과 `bin\s9 code` 첫 실행(git init · 훅 · 대시보드)이 그대로 됐습니다. 그날 고친 결함 하나: 그 전 코드는 훅 명령을 경로 안의 공백에서 갈라 `"…\sp" ace\section9/bin/s9-audit-session` 처럼 없는 파일을 가리켰습니다 — 0.9.0 배포판을 그 commit 전에 받았다면 `bin\s9-install.cmd` 를 한 번 더 실행합니다. 다만 공백·한글 없는 `%USERPROFILE%\section9` 가 가장 문제가 적은 자리이고, 이 문서의 모든 예시가 그 자리를 전제합니다.
 - **OneDrive 가 동기화하는 폴더(바탕 화면·문서)에는 두지 마십시오.** `state\` 아래 파일이 실행 중에 계속 바뀌어 동기화가 그때마다 다시 올리고, 잠금 파일이 충돌합니다.
 - `C:\Program Files` 아래에는 두지 마십시오. 쓰기에 관리자 권한이 필요한 자리입니다.
 
@@ -111,14 +111,40 @@ bin\s9 code
 
 **`s9 code` 가 순서대로 하는 일** (리눅스에서 확인한 흐름은 `docs/guide.md` 3장과 같고, zip 첫 실행에 더해지는 ①은 계약이 정해진 상태입니다)
 
-1. **이 자리를 git 저장소로 만듭니다.** zip 을 푼 폴더에는 `.git` 이 없으므로, 처음 한 번 `git init` 과 첫 commit(「section9 첫 실행」)을 하고 동기화 표식 `.s9-sync` 를 `local`(이 컴퓨터 안에서만 commit) 로 둡니다. GitHub 과는 아직 아무 관계도 없습니다 — 혼자 쓰는 상태입니다. **(실측 예정 — REQ-20260913-007 구현 · REQ-20260913-016 Windows 확인)**
+1. **이 자리를 git 저장소로 만듭니다.** zip 을 푼 폴더에는 `.git` 이 없으므로, 처음 한 번 `git init` 과 첫 commit(「section9 첫 실행」)을 하고 동기화 표식 `.s9-sync` 를 `local`(이 컴퓨터 안에서만 commit) 로 둡니다. GitHub 과는 아직 아무 관계도 없습니다 — 혼자 쓰는 상태입니다. (Windows 실측 2026-09-13: 가지 `main`, 첫 commit 「section9 첫 실행」, git 신원이 없으면 저장소 로컬에 임시 신원 `s9 <계정>` / `<계정>@local`, `.s9-sync` 첫 줄 `local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)`)
 2. **훅·스킬·역할 에이전트를 설치합니다** (`bin\s9-install.cmd` 과 같은 일). `%USERPROFILE%\.claude\settings.json` 에 section9 훅이 들어가고, `~\.claude\skills\`·`~\.claude\agents\` 에 스킬 13·에이전트 29 가 놓입니다. Windows 에서는 symlink 를 시도하고 권한이 없으면 **복사**합니다(`.section9-copy` 표식).
 3. **포트를 고르고 대시보드를 띄웁니다** — `대시보드 실행 중: http://127.0.0.1:9909/`. 9909 를 다른 프로그램이 쓰면 9910~9949 에서 고릅니다(A-7 ⑤).
 4. **기본 브라우저를 엽니다** — ``◌ 브라우저에서 열었다: http://127.0.0.1:9909/  (끄려면 `s9 code --no-open` 또는 S9_NO_OPEN=1)``. Windows 에서는 `cmd /c start <url>` 로 엽니다.
 5. **미등록이면 이름을 묻습니다** — `◌ 미등록 사용자다. 등록할 이름(Enter=<OS 계정>):`. Enter 만 치면 Windows 계정 이름으로 **member** 역할로 등록됩니다(`user add` 의 기본 역할). **첫 사람은 admin 이어야** 사용자 관리와 저장소 pull·push 를 할 수 있습니다. Enter 를 치기 전에 다른 터미널에서 `bin\s9 user add <이름> --role admin` 을 먼저 실행하면 그 이름이 admin 으로 등록되고, 돌아와서 그 이름을 넣으면 됩니다(`docs/guide.md` 3장 「계정 등록과 연결」).
 6. **Claude Code 를 이 폴더 기준으로 띄웁니다.** 로그인이 없으면 Claude Code 화면이 `/login` 을 안내합니다.
 
-Windows 첫 실행의 **출력 전문은 (실측 예정 — REQ-20260913-016)** 입니다. 위 여섯 줄은 리눅스에서 확인한 문구와 코드에서 읽은 문구이며, Windows 에서 글자가 다르면 REQ-016 의 실측이 이 자리를 고칩니다.
+Windows 첫 실행의 **출력 전문** (실측 2026-09-13, REQ-20260913-016 — zip 을 푼 자리에서 `bin\s9 code --no-open`; Claude Code 실행 직전에서 멈추는 시험용 환경 `S9_CODE_DRYRUN=1` 과 임시 `CLAUDE_CONFIG_DIR` 로 쟀고, 이 컴퓨터에는 `claude.exe` 가 없었으며 다른 폴더의 section9 이 9909 를 쓰고 있었습니다. 출력을 파이프로 받아 설치(`s9-install`) 줄이 먼저 보이는데, 콘솔에서는 「저장소를 새로 세웠다」줄부터 순서대로 보입니다):
+
+```
+dirs OK: C:\Users\박성진\section9-test-0913\sp ace\section9
+git hooks OK: post-merge, post-checkout, pre-commit(guard), post-commit(기록)
+merge driver OK: merge.s9doc → s9 merge-doc
+git config OK: core.quotepath=false (유니코드 이름 첨부 sync)
+설치 표식 state/installed_at — 이 시각 이전의 옛 대화는 section9 이 집지 않는다
+백업할 예전 설정이 없다 — 새 환경이다
+claude hooks 갱신됨: C:\Users\박성진\AppData\Local\Temp\s9-cfg-0913-sp\settings.json (세션 재시작 또는 /hooks 리로드 필요할 수 있음)
+  skill(공용): s9-design (copy fallback) -> …\skills\s9-design
+  … (스킬 13 · 에이전트 29 줄 — 전부 `copy fallback`: symlink 권한이 없어 복사)
+claude: 최신 상태 (C:\Users\박성진\section9-test-0913\sp ace\section9\CLAUDE.md)
+gemini: 미설치 감지 (C:\Users\박성진/.gemini 없음) — 생략
+codex: 미설치 감지 (C:\Users\박성진/.codex 없음) — 생략
+대시보드 이미 실행 중: http://127.0.0.1:9910/
+section9 install 완료
+에이전트 CLI 가 없다 — 기본은 Claude Code: 설치 뒤 `claude` 를 한 번 띄워 로그인하라
+◌ 저장소를 새로 세웠다 — 혼자 쓰는 상태(GitHub 연동은 대시보드 Settings › 저장소에서)
+포트 9909 는 다른 저장소의 section9 이 쓰고 있다 — 9910 로 띄운다 (state/port 에 적어 두었다)
+대시보드 기동: http://127.0.0.1:9910/
+◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…
+◌ 설치 완료 — 지금 시작하는 세션부터 자동 audit이 적용된다.
+◌ 이 컴퓨터의 계정(박성진)은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 잇는다: s9 user attach <이름> · 새 사람이면: s9 user add 박성진
+```
+
+위 5번(이름을 묻는 줄)은 터미널이 사람의 입력을 받을 수 있을 때만 나옵니다 — 시험은 파이프라 대신 `s9 user attach/add` 안내 한 줄이 나왔습니다. 6번은 `claude.exe` 가 없어 재지 못했습니다(`claude 명령을 찾을 수 없다 — Claude Code 설치 확인` 한 줄로 끝납니다 — A-0 표대로 먼저 설치합니다). 훅은 `settings.json` 에 `"C:\Users\박성진\section9-test-0913\sp ace\section9\bin\s9-audit-prompt.cmd"` 처럼 **`.cmd` 경로**로 9개 이벤트에 들어갔고, 출력은 UTF-8, `bin\*.cmd` 는 CRLF 였습니다.
 
 **처음 뜨는 화면**
 
@@ -137,7 +163,7 @@ Windows 첫 실행의 **출력 전문은 (실측 예정 — REQ-20260913-016)** 
 
 | 명령 | 이렇게 나오면 됩니다 |
 | --- | --- |
-| `bin\s9 --version` | `section9 0.9.0 (<commit 해시 8자>)` — 리눅스 실측, **Windows 는 실측 예정(REQ-20260913-016)** |
+| `bin\s9 --version` | 첫 실행 전(`.git` 없음): `section9 0.9.0` · 첫 실행 뒤: `section9 0.9.0 (177eb7f)` — 괄호 안은 **이 폴더의 첫 commit** 해시라 컴퓨터마다 다릅니다 (Windows 실측 2026-09-13) |
 | `bin\s9 doctor` | `✓ s9 serve: 포트 9909 응답 …` · `✓ 훅: claude 훅 · git pre-commit 모두 설치됨` · `✓ claude 로그인` 줄들. `✗` 가 있으면 그 줄이 할 일을 말합니다 |
 | `bin\s9 ls` | 문서 목록. 한글 제목이 깨지지 않고 그대로 보여야 합니다(2026-09-03 실측: `bin\s9.cmd ls` 한글 그대로) |
 
@@ -200,11 +226,14 @@ s9: Python 3 not found. Install it, then run this again.
 
 **⑤ `포트 9909 …` 줄이 뜨고 대시보드가 다른 포트에 뜬다**
 
-- 원인: 9909 를 다른 프로그램(또는 다른 폴더의 section9)이 쓰고 있습니다. `s9 code` 는 9910~9949 에서 빈 포트를 골라 `state\port` 에 적고 이렇게 알립니다(리눅스 실측 문구; Windows 문구는 실측 예정):
+- 원인: 9909 를 다른 프로그램(또는 다른 폴더의 section9)이 쓰고 있습니다. `s9 code` 는 9910~9949 에서 빈 포트를 골라 `state\port` 에 적고 이렇게 알립니다 (Windows 실측 2026-09-13 — 첫 줄은 WSL 의 section9 이 9909 를 쓰는 노트북, 둘째 줄은 `state\port` 를 Windows 의 RPC 서비스 포트 135 로 두어 「다른 프로그램」갈래를 재현한 것):
 
 ```
 포트 9909 는 다른 저장소의 section9 이 쓰고 있다 — 9910 로 띄운다 (state/port 에 적어 두었다)
+포트 135 는 다른 프로그램이 쓰고 있다 — 9910 로 띄운다 (state/port 에 적어 두었다)
 ```
+
+  같은 노트북에 WSL 의 section9 이 떠 있으면 Windows 판은 늘 첫 줄로 시작합니다 — WSL 의 9909 가 Windows 의 `127.0.0.1:9909` 로 중계되기 때문입니다(B-4). 내리는 것은 `bin\s9 serve --stop` 한 줄입니다 — `감시자에 중지를 알렸다 (pid …) — 종료를 기다린다… / 감시자 종료됨 / 대시보드 정지: 포트 9910 (서버 1개, …)` 로 끝나고 종료코드 0 입니다(실측 2026-09-13).
 
 - 그 뒤의 링크·훅·화면은 전부 그 포트를 따릅니다. 브라우저는 `http://127.0.0.1:9910`. 9909 가 다시 비면 자동으로 9909 로 돌아옵니다.
 - 누가 쓰는지 보려면: `netstat -ano | findstr :9909` → 마지막 열이 PID → `tasklist /FI "PID eq <PID>"`.
@@ -367,13 +396,13 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 | # | 자리 | 무엇을 재나 | 채우는 요청 |
 | --- | --- | --- | --- |
 | 1 | A-1 · B-1 | v0.9.0 릴리스 페이지와 받는 링크가 실제로 열리는지, `SHA256SUMS` 대조 | REQ-20260913-021 |
-| 2 | A-2 | 공백이 든 경로에서의 첫 실행 | REQ-20260913-016 |
-| 3 | A-3 | zip 첫 실행이 `git init`·첫 commit·`.s9-sync local` 을 만드는지와 그 출력 전문(Windows) | REQ-20260913-007 · 016 |
-| 4 | A-3 | 훅 경로가 `.cmd` 로 `%USERPROFILE%\.claude\settings.json` 에 들어가는지 · 로그인 상태 · UTF-8 · CRLF | REQ-20260913-016 |
-| 5 | A-4 | `bin\s9 --version` 의 Windows 출력 | REQ-20260913-016 |
-| 6 | A-7 ⑤ | 9909 를 **다른 프로그램**이 쓸 때의 Windows 문구(리눅스 문구는 「다른 저장소의 section9」 경우) | REQ-20260913-016 |
+| 2 | A-2 | 공백이 든 경로에서의 첫 실행 | **실측 완료 2026-09-13** (REQ-20260913-016) — A-2 에 반영 |
+| 3 | A-3 | zip 첫 실행이 `git init`·첫 commit·`.s9-sync local` 을 만드는지와 그 출력 전문(Windows) | **실측 완료 2026-09-13** (REQ-20260913-007 · 016) — A-3 에 전문 |
+| 4 | A-3 | 훅 경로가 `.cmd` 로 settings.json 에 들어가는지 · 로그인 상태 · UTF-8 · CRLF | **훅·UTF-8·CRLF 실측 완료 2026-09-13**; 로그인 상태는 이 컴퓨터에 `claude.exe` 가 없어 못 쟀다(설치는 주인의 결정) |
+| 5 | A-4 | `bin\s9 --version` 의 Windows 출력 | **실측 완료 2026-09-13** — A-4 표 |
+| 6 | A-7 ⑤ | 9909 를 **다른 프로그램**이 쓸 때의 Windows 문구 | **실측 완료 2026-09-13** — A-7 ⑤ |
 | 7 | C-1 | Settings › 저장소의 GitHub 연동 판 — 라벨·버튼 이름·잠김 사유 | REQ-20260913-009 · 008 |
-| 8 | C-1 | `winget install GitHub.cli` 와 `gh auth login` 의 Windows 흐름 | REQ-20260913-016 |
+| 8 | C-1 | `winget install GitHub.cli` 와 `gh auth login` 의 Windows 흐름 | 못 쟀다 — 이 컴퓨터에 `gh` 가 없고 설치는 주인의 컴퓨터라 하지 않았다(REQ-20260913-016 노트) |
 | 9 | C-2 | `bin\s9 code --join …` 의 Windows 출력과 합류 뒤 첫 화면 | REQ-20260913-013 · 016 |
 
 ## 부록. 리눅스 명령 ↔ Windows 명령 대조표

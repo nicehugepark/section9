@@ -130,6 +130,11 @@ function repoPanelHTML(){
         <div class="gfiles" id="g-files"></div>
         <div class="wfact" id="g-fact"></div>
         <div class="wfact gsync" id="g-sync"></div></td></tr></table>
+    ${/* GitHub 연동 (REQ-20260913-009-62x6) — 이 자리인 까닭은 의존이다:
+          이 저장소의 지금(위) → GitHub 과 어떻게 이어졌나(여기) → 그래서
+          주고받기(아래). 이어지지 않은 자리에서는 아래 두 절이 통째로 할
+          일이 없으므로, 그 사실을 아래보다 먼저 말한다. 조각은 github.js. */
+      ghSectionHTML()}
     <div class="cfg-h gname">GitHub 과 주고받기</div>
     <table class="metatbl wtbl grepo">
       ${gitHandRowHTML("pull")}${gitHandRowHTML("push")}</table>
@@ -625,6 +630,7 @@ function showRepoPanel(host){
   if (!host) return;
   host.innerHTML = repoPanelHTML();
   wireRepoPanel(host);
+  ghMount(host);                      // GitHub 연동 절 (REQ-20260913-009-62x6)
   gitPaint();
   gitLoad(false);
   gitStartPoll();

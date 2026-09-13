@@ -13,6 +13,7 @@
 """
 import importlib.machinery
 import importlib.util
+import json
 import os
 import re
 import signal
@@ -491,6 +492,114 @@ class TestFileEncodingIsExplicit(unittest.TestCase):
                     bad, [],
                     f"{name}: 인코딩을 안 적은 텍스트 open() 줄 {bad} — "
                     f"한국어 윈도우에서는 cp949 로 열린다")
+
+
+
+
+class TestSelfInvocationEntry(unittest.TestCase):
+    """자기 호출은 인터프리터를 앞에 세운다 (REQ-20260913-016).
+
+    윈도우에는 shebang 이 없다 — 확장자 없는 `bin/s9`·`bin/s9-install` 을 그대로
+    `subprocess` 의 argv[0] 으로 넘기면 CreateProcess 가 `WinError 193` 으로 거부한다.
+    실측 2026-09-13(Windows 11 · Python 3.12.10): zip 을 푼 자리의 첫 `s9 code` 가
+    저장소는 세우고 감시자를 띄우는 자리에서 그렇게 죽었다 — 대시보드·설치·계정
+    등록이 전부 그 뒤에 있었다. 리눅스에서는 shebang 이 가려 주므로 실행 시험으로는
+    잡히지 않는다; 소스를 훑어 `[sys.executable, <스크립트>, …]` 꼴만 남았는지 본다.
+    """
+    PATTERNS = (
+        re.compile(r'\[\s*os\.path\.(?:abs|real)path\(__file__\)\s*,'),
+        re.compile(r'\[\s*me\s*,'),
+        re.compile(r'\[\s*os\.path\.join\([^\]\n]*?"s9(?:-[a-z-]+)?"\)\s*[,\]]'),
+    )
+
+    def test_w12_no_sibling_script_as_bare_argv0(self):
+        bad = []
+        for name in sorted(os.listdir(BIN)):
+            path = os.path.join(BIN, name)
+            if not name.startswith("s9") or name.endswith(".cmd") or os.path.isdir(path):
+                continue
+            with open(path, encoding="utf-8", errors="replace") as f:
+                src = f.read()
+            for rx in self.PATTERNS:
+                for m in rx.finditer(src):
+                    ln = src.count("\n", 0, m.start()) + 1
+                    bad.append(f"{name}:{ln}: {src.splitlines()[ln - 1].strip()[:90]}")
+        self.assertEqual(bad, [], "인터프리터 없이 곁의 스크립트를 argv[0] 으로 넘긴다:\n"
+                         + "\n".join(bad))
+
+
+class TestInstallHooksEntry(unittest.TestCase):
+    """훅 명령의 `{ROOT}` 치환은 JSON 이스케이프를 지난다 (REQ-20260913-016).
+
+    실측 2026-09-13(Windows 11 · `C:\\Users\\<한글>\\…`): s9-install 이 JSON 문자열
+    안에 윈도우 경로의 백슬래시를 그대로 넣어 `json.loads` 가 「Invalid \\escape」로
+    죽었고, 첫 `s9 code` 가 「s9-install 실패」로 끝났다. 리눅스에서도 ROOT 만 그
+    모양이면 같은 자리에서 죽으므로 여기서 잡는다.
+    """
+
+    def test_w13_backslash_root_survives_hook_install(self):
+        # 리눅스 파일 이름에는 백슬래시가 허용된다 — ROOT 를 윈도우 경로 **모양**으로
+        # 만들고 그 아래에 실제 hooks.json 을 둔다(없으면 설치가 조용히 돌아가 시험이 헛돈다).
+        base = tempfile.mkdtemp(prefix="s9w13-")
+        root = os.path.join(base, "C:\\Users\\박성진\\section9")
+        home = os.path.join(base, "cfg")
+        try:
+            os.makedirs(os.path.join(root, "harness", "claude"))
+            import shutil
+            shutil.copy(os.path.join(REPO, "harness", "claude", "hooks.json"),
+                        os.path.join(root, "harness", "claude", "hooks.json"))
+            inst = _load(os.path.join(BIN, "s9-install"), "s9_install_w13")
+            with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": home}), \
+                    mock.patch.object(inst, "ROOT", root), \
+                    mock.patch.object(inst, "say", lambda *a, **k: None):
+                inst.install_claude_hooks()      # 옛 코드: ValueError: Invalid \escape
+            with open(os.path.join(home, "settings.json"), encoding="utf-8") as f:
+                settings = json.load(f)
+            cmds = [h["command"] for es in settings["hooks"].values()
+                    for e in es for h in e["hooks"]]
+            self.assertTrue(cmds)
+            self.assertTrue(all("\\Users\\박성진\\section9" in c for c in cmds), cmds)
+        finally:
+            import shutil
+            shutil.rmtree(base, ignore_errors=True)
+
+
+    def test_w13b_nt_branch_keeps_a_path_with_spaces_whole(self):
+        """윈도우 갈래: 경로에 공백이 있어도 훅은 `"<ROOT>\\bin\\<도구>.cmd" <인자>` 하나다.
+
+        실측 2026-09-13 `…\\sp ace\\section9`: `{ROOT}` 를 넣은 뒤 첫 공백에서 갈라
+        `"…\\sp" ace\\section9/bin/s9-audit-session start` 가 됐다 — 훅이 없는 파일을 가리켰다.
+        """
+        base = tempfile.mkdtemp(prefix="s9w13b-")
+        root = os.path.join(base, "C:\\Users\\박 성진\\sp ace\\section9")
+        home = os.path.join(base, "cfg")
+        try:
+            os.makedirs(os.path.join(root, "harness", "claude"))
+            import shutil
+            shutil.copy(os.path.join(REPO, "harness", "claude", "hooks.json"),
+                        os.path.join(root, "harness", "claude", "hooks.json"))
+            with open(os.path.join(REPO, "harness", "claude", "hooks.json"), encoding="utf-8") as f:
+                tools = sorted(set(re.findall(r"\{ROOT\}/bin/(s9[a-z-]*)", f.read())))
+            self.assertTrue(tools)
+            for t in tools:      # 래퍼가 있어야 `.cmd` 갈래로 간다 — 리눅스 파일 이름의 백슬래시는 글자다
+                open(root + "\\bin\\" + t + ".cmd", "w").close()
+            inst = _load(os.path.join(BIN, "s9-install"), "s9_install_w13b")
+            with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": home}), \
+                    mock.patch.object(inst, "ROOT", root), \
+                    mock.patch.object(inst.os, "name", "nt"), \
+                    mock.patch.object(inst, "say", lambda *a, **k: None):
+                inst.install_claude_hooks()
+            with open(os.path.join(home, "settings.json"), encoding="utf-8") as f:
+                cmds = [h["command"] for es in json.load(f)["hooks"].values()
+                        for e in es for h in e["hooks"]]
+            self.assertTrue(cmds)
+            for c in cmds:
+                self.assertTrue(c.startswith('"' + root + "\\bin\\s9"), c)
+                self.assertIn('.cmd"', c)
+                self.assertNotIn('sp" ace', c)
+        finally:
+            import shutil
+            shutil.rmtree(base, ignore_errors=True)
 
 
 if __name__ == "__main__":

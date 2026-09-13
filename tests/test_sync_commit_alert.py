@@ -282,7 +282,10 @@ class SyncCommitAlert(unittest.TestCase):
             rid = m._sync_streak_request(alert, pending=46)
         self.assertEqual(rid, "REQ-20260910-999-zzzz")
         argv, kw = calls[0]
-        self.assertEqual(argv[1:3], ["new", "request"])
+        # 자기 호출은 `sys.executable bin/s9 …` 다 (REQ-20260913-016: 윈도우에서
+        # 셔뱅이 없어 WinError 193) — s9 진입점 다음 두 마디가 명령이다.
+        i = next(k for k, a in enumerate(argv) if str(a).replace("\\", "/").endswith("/bin/s9"))
+        self.assertEqual(argv[i + 1:i + 3], ["new", "request"])
         self.assertIn("--goal", argv)            # goal 없는 request 는 done 이 거부된다
         self.assertIn("--summary", argv)
         self.assertLessEqual(len(argv[argv.index("--title") + 1]), 24)

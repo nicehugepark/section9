@@ -8992,7 +8992,8 @@ def _account_env(acct):
         if not hooks_installed():
             print(f"◌ 계정 {acct} 프로필에 section9 하네스를 설치한다…")
             subprocess.run(
-                [os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                [sys.executable,
+                 os.path.join(os.path.dirname(os.path.realpath(__file__)),
                               "s9-install"), "--quiet"],
                 env=env, stdin=subprocess.DEVNULL)
     finally:
@@ -9960,7 +9961,7 @@ def chat_new_article(text, sender, sid8):
     env["S9_SESSION"] = sid8
     first = (text.splitlines() or [""])[0].strip()
     title = first[:24] + ("\u2026" if len(first) > 24 else "")
-    r = subprocess.run([os.path.realpath(__file__), "new", "article",
+    r = subprocess.run([sys.executable, os.path.realpath(__file__), "new", "article",
                         "--title", title or "제목 없는 글",
                         "--summary", first[:80], "--user", sender,
                         "--tag", "auto-audit"],
@@ -10030,7 +10031,7 @@ def chat_append_doc(doc_id, text, sender, sid8, anchor="", label="ask"):
     env = dict(os.environ)
     env["S9_SESSION"] = sid8
     me = os.path.realpath(__file__)
-    argv = [me, "note", doc_id, text, "--label", label, "--user", sender]
+    argv = [sys.executable, me, "note", doc_id, text, "--label", label, "--user", sender]
     if anchor:
         argv += ["--anchor", anchor]
     subprocess.run(argv, capture_output=True,
@@ -10105,7 +10106,7 @@ def chat_audit(text, sender, sid8, doc="", anchor="", as_type=""):
             # 대시보드로 말하므로 화면의 질문은 영영 한 장이었다.
             # 판정자는 훅이 소유한다(단일 출처): 같은 `is_durable_question`.
             _chat_question(me, env, t, first, sender)
-            subprocess.run([me, "log", f"chat: {first[:60]}"],
+            subprocess.run([sys.executable, me, "log", f"chat: {first[:60]}"],
                            capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=15)
             return None   # 반환은 REQ 전용 — 수신함 `req` 필드의 뜻을 흐리지
                           # 않는다(그 줄을 받은 세션은 그 id로 상태를 관리한다).
@@ -10119,7 +10120,7 @@ def chat_audit(text, sender, sid8, doc="", anchor="", as_type=""):
                 + " ".join((l.get("text") or "").split())
                 for l in quoted) + "\n\n" + t)
         out = subprocess.run(
-            [me, "new", "request", "--title", title, "--tag", "auto-audit",
+            [sys.executable, me, "new", "request", "--title", title, "--tag", "auto-audit",
              "--user", sender or "dashboard", "--origin", "human"],
             input=body, capture_output=True,
                 encoding="utf-8", errors="replace", env=env, timeout=15)
@@ -10148,7 +10149,7 @@ def chat_audit(text, sender, sid8, doc="", anchor="", as_type=""):
             #     링크가 아니라 본문이라 따로 걸 것이 없다.
             rel = [r for r in _review_refs(t) if r != doc_id][:5]
             if rel:
-                subprocess.run([me, "link", doc_id] +
+                subprocess.run([sys.executable, me, "link", doc_id] +
                                [x for r in rel for x in ("--relates", r)] +
                                ["--why", "이 메시지가 판정 대기 문서를 이름으로 "
                                          "지목했다 (대시보드 채팅 audit)"],
@@ -10157,7 +10158,7 @@ def chat_audit(text, sender, sid8, doc="", anchor="", as_type=""):
                                timeout=15)
         except Exception:
             pass
-        subprocess.run([me, "log", f"dashboard chat {doc_id} 기록: {title}"],
+        subprocess.run([sys.executable, me, "log", f"dashboard chat {doc_id} 기록: {title}"],
                        capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=15)
         return doc_id
     except Exception:
@@ -13906,7 +13907,7 @@ def _sync_streak_request(alert, pending=0):
             + "\n\n`s9 sync --stats` 로 단계별 실패 수를 본다.")
     try:
         out = subprocess.run(
-            [os.path.realpath(__file__), "new", "request",
+            [sys.executable, os.path.realpath(__file__), "new", "request",
              "--title", f"sync {stage} 이 되풀이 실패한다"[:24],
              "--summary", (f"sync 의 자동 {stage} 이 "
                            f"{int(alert.get('count') or 0)}회 연속 실패했다 — "
@@ -20032,7 +20033,7 @@ def cmd_commit_note(args):
         row = rows.get(i)
         if not row or row.get("status") in ("done", "cancelled"):
             continue
-        subprocess.run([me, "note", i, f"commit {sha} — {subject}",
+        subprocess.run([sys.executable, me, "note", i, f"commit {sha} — {subject}",
                         "--label", "commit"],
                        capture_output=True,
                            encoding="utf-8", errors="replace", timeout=20)
@@ -24020,7 +24021,7 @@ def cmd_instance(args):
     with open(os.path.join(target, ".gitignore"), "w", encoding="utf-8") as f:
         f.write(INSTANCE_TRACK_GITIGNORE)
     # 데이터 디렉토리 뼈대 — s9 init 상당 (인스턴스 ROOT 기준)
-    subprocess.run([os.path.join(target, "bin", "s9"), "init"],
+    subprocess.run([sys.executable, os.path.join(target, "bin", "s9"), "init"],
                    env={**os.environ, "S9_ROOT": target},
                    capture_output=True, encoding="utf-8", errors="replace")
     # 이벤트 동기화 마커 (REQ-048): 인스턴스는 문서 이벤트마다 commit→pull→push.
@@ -24689,7 +24690,7 @@ def port_bindable(port, host="127.0.0.1"):
     import socket as _sock
     s = _sock.socket()
     try:
-        s.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
+        s.setsockopt(_sock.SOL_SOCKET, bind_probe_opt(), 1)   # 판마다 다르다 (REQ-20260913-016)
         s.bind((host, int(port)))
         return True
     except OSError:
@@ -25065,6 +25066,17 @@ def code_project(explicit):
         if not load_project(slug):
             die(f"등록되지 않은 프로젝트: {explicit} — 목록은 `s9 project ls`")
         return slug
+    # 합류한 사람의 기본 프로젝트 (REQ-20260913-013-62x6): `s9 code --join … --project <slug>`
+    # 가 그 사람의 config 에 default_project 로 적어 둔 것 — 다음 `s9 code` 부터 여기서
+    # 읽어 세션의 프로젝트로 삼는다(프로젝트 문서의 is_default 는 저장소 전체의 기본이라
+    # 한 사람의 합류가 옮길 값이 아니다).
+    try:
+        cfg = user_config(resolve_user(None)) or {}
+        mine = _project_ref_to_slug(str(cfg.get("default_project") or "").strip())
+        if mine and load_project(mine):
+            return mine
+    except Exception:
+        pass
     try:
         names = sorted(os.listdir(PROJECT_SPACE))
     except OSError:
@@ -25147,18 +25159,40 @@ def browser_open(url, out=print):
 # 하는 일이 되는데, 그 판정을 인라인에 두면 시험이 소스 글자를 대조할 수밖에 없다
 # (DOC-20260907-002). 함수로 두면 불러서 값을 확인하면 된다.
 CODE_OWN_FLAGS = ("--no-claude", "--no-open")
+# 값을 받는 우리 스위치 (REQ-20260913-013-62x6): `--join <url>` 은 초대 메일의 합류 명령,
+# `--project <slug>` 는 이 세션(합류 때는 그 사람의 기본)의 프로젝트. `--join=<url>` 꼴도 받는다.
+CODE_OWN_VALUED = ("--join", "--project")
 
 
 def code_argv(argv):
     """`s9 code` 의 잔여 인자 → (우리 스위치, claude 에 넘길 것).
 
     우리 것은 **떼어 낸다** — 그대로 넘기면 claude 가 모르는 옵션으로 죽는다.
+    값을 받는 것은 값까지 떼어 내고 나머지의 순서는 그대로 둔다.
     """
     argv = list(argv)
+    own = {"join": "", "project": ""}
+    rest = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        key = a.split("=", 1)[0]
+        if key in CODE_OWN_VALUED:
+            if "=" in a:
+                own[key[2:]] = a.split("=", 1)[1]
+            elif i + 1 < len(argv):
+                i += 1
+                own[key[2:]] = argv[i]
+            i += 1
+            continue
+        rest.append(a)
+        i += 1
     return argparse.Namespace(
-        no_claude="--no-claude" in argv,
-        no_open="--no-open" in argv,
-        claude_args=[a for a in argv if a not in CODE_OWN_FLAGS])
+        no_claude="--no-claude" in rest,
+        no_open="--no-open" in rest,
+        join=own["join"].strip(),
+        project=own["project"].strip(),
+        claude_args=[a for a in rest if a not in CODE_OWN_FLAGS])
 
 
 def cmd_code(args):
@@ -25171,22 +25205,49 @@ def cmd_code(args):
     # 대시보드·훅·sync 가 전부 git 저장소를 전제하므로 **그것들보다 먼저** 세운다 —
     # 혼자 쓰는 상태(local). 이미 저장소면 아무 일도 없다. 기계는 bin/s9_firstrun.py,
     # 모양(.gitignore·.s9-sync 본문)은 여기 것을 넘긴다.
-    _fr = _firstrun_module().ensure_repo(ROOT, INSTANCE_TRACK_GITIGNORE,
-                                         sync_marker_body("local", chosen=False))
-    if _fr.get("created"):
-        print("◌ 저장소를 새로 세웠다 — 혼자 쓰는 상태(GitHub 연동은 대시보드 Settings › 저장소에서)")
-    elif _fr.get("error"):
-        print(f"◌ 저장소를 세우지 못했다({_fr['error']}) — 문서 commit 없이 계속한다; "
-              f"git 을 설치한 뒤 다시 `s9 code`")
+    # 초대 명령의 첫 실행 (REQ-20260913-013-62x6): `s9 code --join <url>` 은 이 자리를
+    # 팀 저장소에 잇고 문서·사람·프로젝트를 받는다 — 혼자 쓰는 저장소를 세우는 대신이다.
+    # 실패면 여기서 선다: 합류하려던 자리에 혼자 쓰는 저장소가 서면 다음 --join 이 거부된다.
+    _join = (getattr(args, "join", "") or "").strip()
+    if _join:
+        _fr = _firstrun_module().join_repo(ROOT, _join, INSTANCE_TRACK_GITIGNORE,
+                                           sync_marker_body("remote"))
+        if _fr.get("error"):
+            die(f"합류하지 못했다: {_fr['error']}")
+        if _fr.get("skipped") == "no-code":
+            die("여기는 section9 코드가 있는 자리가 아니다 — 압축을 푼 디렉토리에서 친다")
+        if _fr.get("created"):
+            print(f"◌ 팀 저장소에 합류했다 — origin {_fr['origin']} 의 {_fr['branch']} 을 받았다"
+                  f"(문서·사람·프로젝트 포함)")
+        elif _fr.get("skipped") == "joined":
+            print("◌ 이미 합류한 자리다 — 그대로 계속한다")
+        try:
+            if sync_autoraise():
+                print("◌ 문서 동기화: remote — 문서 이벤트마다 commit→pull→push")
+        except Exception:
+            pass
+        if getattr(args, "project", ""):
+            code_project(args.project)      # 없는 slug 면 설치 전에 여기서 선다
+    else:
+        _fr = _firstrun_module().ensure_repo(ROOT, INSTANCE_TRACK_GITIGNORE,
+                                             sync_marker_body("local", chosen=False))
+        if _fr.get("created"):
+            print("◌ 저장소를 새로 세웠다 — 혼자 쓰는 상태(GitHub 연동은 대시보드 Settings › 저장소에서)")
+        elif _fr.get("error"):
+            print(f"◌ 저장소를 세우지 못했다({_fr['error']}) — 문서 commit 없이 계속한다; "
+                  f"git 을 설치한 뒤 다시 `s9 code`")
+    # 옮기기 **전**의 포트를 먼저 읽는다 — pick 이 state/port 를 고쳐 쓴 뒤에 s9_port() 를
+    # 읽으면 옮긴 포트가 나온다 (실측 2026-09-13: 「포트 9910 는 … 9910 로 띄운다」).
+    _base = s9_port()
     port, why = pick_dashboard_port()
     if why == "other":
-        print(f"포트 {s9_port()} 는 다른 저장소의 section9 이 쓰고 있다 — {port} 로 띄운다 "
+        print(f"포트 {_base} 는 다른 저장소의 section9 이 쓰고 있다 — {port} 로 띄운다 "
               f"(state/port 에 적어 두었다)")
     elif why == "busy":
-        print(f"포트 {s9_port()} 는 다른 프로그램이 쓰고 있다 — {port} 로 띄운다 "
+        print(f"포트 {_base} 는 다른 프로그램이 쓰고 있다 — {port} 로 띄운다 "
               f"(state/port 에 적어 두었다)")
     elif why == "windows":
-        print(f"포트 {s9_port()} 는 윈도우 쪽 프로그램이 듣고 있다(WSL 에서는 bind 가 "
+        print(f"포트 {_base} 는 윈도우 쪽 프로그램이 듣고 있다(WSL 에서는 bind 가 "
               f"되지만 브라우저는 그쪽으로 간다) — {port} 로 띄운다 (state/port 에 적어 두었다)")
     # 연결됨 ≠ 준비됨 (REQ-20260904-015). 예전엔 connect 한 번 성공이면 「실행
     # 중」을 찍었는데, WSL 중계는 아무도 안 듣는 포트에도 connect 를 받아 준다.
@@ -25207,8 +25268,10 @@ def cmd_code(args):
         # 프로필 계정으로 연 세션이 대시보드를 처음 띄우면 그 환경이 상속돼,
         # 서버가 아는 `@home` 이 그 프로필로 조용히 옮겨 간다 — 그러면 서버는
         # 대화를 프로필 X 로 복사하고 래퍼는 ~/.claude 로 띄운다.
-        subprocess.Popen([os.path.abspath(__file__), "serve", "--supervise",
-                          "--port-auto", "--port", str(port)],
+        # 인터프리터를 앞에 세운다 — 윈도우에는 shebang 이 없어 확장자 없는 bin/s9 를
+        # 그대로 넘기면 WinError 193 이다 (실측 2026-09-13, REQ-20260913-016; docs/11-windows.md).
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "serve",
+                          "--supervise", "--port-auto", "--port", str(port)],
                          env={k: v for k, v in os.environ.items()
                               if k != "CLAUDE_CONFIG_DIR"},
                          stdin=subprocess.DEVNULL, stdout=lf, stderr=lf,
@@ -25246,7 +25309,7 @@ def cmd_code(args):
         print("◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…" if not hooked
               else "◌ 저장소를 새로 세웠으니 s9-install 을 다시 실행한다(git 훅)…")
         bindir = os.path.dirname(os.path.realpath(__file__))
-        r = subprocess.run([os.path.join(bindir, "s9-install")],
+        r = subprocess.run([sys.executable, os.path.join(bindir, "s9-install")],
                            stdin=subprocess.DEVNULL)
         if r.returncode != 0:
             die("s9-install 실패 — 수동 실행 후 다시 시도하라: bin/s9-install")
@@ -25260,7 +25323,8 @@ def cmd_code(args):
         if src_kind == "os-account" and not user_role(u):
             if sys.stdin.isatty():
                 verb, name = first_run_identity(u, registered_users(), input)
-                subprocess.run([os.path.realpath(__file__), "user", verb, name],
+                subprocess.run([sys.executable, os.path.realpath(__file__),
+                                "user", verb, name],
                                stdin=subprocess.DEVNULL)
                 # 사람이 생겼으니 이제 기본 프로젝트가 설 수 있다 (REQ-20260908-031).
                 # `s9-install` 은 `s9 init` 을 부르지만 그때는 등록된 사람이 없어
@@ -25285,6 +25349,20 @@ def cmd_code(args):
                       + f" · 새 사람이면: s9 user add {u}")
     except Exception:
         pass
+    # 초대받은 프로젝트에 선다 (REQ-20260913-013-62x6) — 신원이 정해진 뒤라야 초대
+    # (REQ-20260913-010)가 이메일로 적어 둔 멤버 키를 사용자명으로 바꿀 수 있다. 판정과
+    # 쓰기는 bin/s9_firstrun.py 의 join_project 가 하고 문서 헬퍼는 여기 것을 쓴다.
+    if _join and getattr(args, "project", ""):
+        try:
+            _jp = _firstrun_module().join_project(
+                globals(), args.project, resolve_user(None), _git_identity().get("email", ""))
+            for _line in _jp["lines"]:
+                print(_line)
+        except ValueError as e:
+            die(str(e))
+        except Exception as e:
+            print(f"◌ 프로젝트 참여를 마치지 못했다({e}) — 나중에 `s9 project member "
+                  f"{args.project} add <이름>`")
     # 추적 파일에 남은 자율 실행 키를 이 머신의 local.json 으로 (REQ-20260902-031)
     try:
         _moved = migrate_local_only_config(resolve_user(None))
@@ -27436,6 +27514,21 @@ def serve_handshake(srv, probe, poll=0.2):
         t.join(poll + 2.0)
 
 
+def bind_probe_opt():
+    """bind 로 「비어 있나」를 잴 때 켜는 소켓 옵션 — 판을 가르는 자리 (REQ-20260913-016).
+
+    POSIX 는 SO_REUSEADDR: 서버(HTTPServer.allow_reuse_address)와 같은 조건이라 TIME_WAIT
+    만 남은 포트를 비어 있다고 읽는다(맥 실측 2026-09-06, REQ-20260906-085). 윈도우의
+    SO_REUSEADDR 은 뜻이 다르다 — 상대도 그 옵션을 켰으면 **듣고 있는 포트에도 bind 가
+    된다.** 실측 2026-09-13: 서버가 9910 을 듣는데 SO_REUSEADDR bind 가 OK 라 `--stop` 이
+    「내릴 서버가 없다」로 끝났고, 같은 포트에 서버 둘이 앉을 수 있었다. 그 판의
+    SO_EXCLUSIVEADDRUSE 는 듣는 소켓이 있으면 실패(10048)하고 TIME_WAIT 만 남은 포트에는
+    앉는다(같은 날 실측) — 뜻이 POSIX 의 SO_REUSEADDR 과 같다.
+    """
+    import socket as _s
+    return getattr(_s, "SO_EXCLUSIVEADDRUSE", None) or _s.SO_REUSEADDR
+
+
 def _port_busy(host, port, timeout=0.4):
     """포트 점유 판정 — **bind 시도**로 확인한다 (REQ-20260825-075).
     connect() 기반 판정은 WSL2 미러 네트워킹에서 아무도 듣지 않는 포트에도
@@ -27444,8 +27537,9 @@ def _port_busy(host, port, timeout=0.4):
     import socket as _s
     sock = _s.socket()
     # 서버와 같은 조건으로 본다 — SO_REUSEADDR 없이 재면 TIME_WAIT 소켓까지
-    # '사용 중'으로 잡혀, 방금 내린 서버 때문에 재기동이 막힌다.
-    sock.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
+    # '사용 중'으로 잡혀, 방금 내린 서버 때문에 재기동이 막힌다. 옵션은 판마다
+    # 다르다(bind_probe_opt).
+    sock.setsockopt(_s.SOL_SOCKET, bind_probe_opt(), 1)
     try:
         sock.bind(("127.0.0.1" if host in ("0.0.0.0", "") else host, port))
         return False          # 바인딩 성공 = 비어 있다
@@ -27494,6 +27588,10 @@ def _root_serve_pids(root=None):
     남은 것을 거둘 때의 목록이다 (REQ-20260906-077·078). 다른 clone 의 것은 경로가 달라
     잡히지 않는다."""
     tag = os.path.join(os.path.realpath(root or ROOT), "bin", "s9")
+    # 부모도 뺀다 — 윈도우의 .cmd 래퍼는 py.exe 런처가 부모이고 그 명령줄도
+    # `"…\bin\s9" serve --stop` 이라, 빼지 않으면 `--stop` 이 제 런처를 죽여 rc=15 로
+    # 끝난다 (실측 2026-09-13, REQ-20260913-016).
+    mine = {os.getpid(), os.getppid()}
     out = []
     for pid, cmd in (proc_table() or {}).items():
         try:
@@ -27501,8 +27599,8 @@ def _root_serve_pids(root=None):
         except (TypeError, ValueError):
             continue
         c = str(cmd)
-        if pid != os.getpid() and tag in c and (" serve" in c or " metrics run" in c
-                                                 or " tunnel --run" in c):
+        if pid not in mine and tag in c and (" serve" in c or " metrics run" in c
+                                             or " tunnel --run" in c):
             out.append(pid)
     return sorted(out)
 
@@ -28948,7 +29046,7 @@ def _guard_spawn_child(port, host, root=None):
     lf = open(p["serve_log"], "a", encoding="utf-8")
     try:
         return subprocess.Popen(
-            [os.path.abspath(__file__), "serve", "--host", host,
+            [sys.executable, os.path.abspath(__file__), "serve", "--host", host,
              "--port", str(port)],
             stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, env=env)
     finally:
@@ -29176,7 +29274,15 @@ def _guard_alive(port, root=None):
     try:
         import fcntl
     except ImportError:
-        return None
+        # 파일 잠금이 없는 판(윈도우 — docs/11-windows.md 제약 3): 잠금 파일에 적힌 pid 가
+        # 살아 있으면 그것이 감시자다. 실측 2026-09-13: 여기서 None 을 돌려 `--stop` 이
+        # 감시자를 못 보고 마지막 청소로만 죽였다 (REQ-20260913-016).
+        try:
+            with open(p["lock"], encoding="utf-8") as f:
+                pid = int(f.read().split()[0])
+        except (OSError, ValueError, IndexError):
+            return None
+        return pid if pid_alive(pid) else None
     try:
         f = open(p["lock"], "a+", encoding="utf-8")
     except OSError:

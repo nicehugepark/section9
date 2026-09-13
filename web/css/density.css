@@ -323,6 +323,18 @@ tr.woff .wlab,tr.woff .wkey,tr.woff .wctl,tr.woff .wsay{opacity:.45}
 .grepo .wsay code{color:var(--text);font-weight:600}
 .gpath,.ghash{font-family:var(--mono);color:var(--faint)}
 .ghash{color:var(--muted)}
+/* GitHub 연동 (REQ-20260913-009-62x6) — 이어진 origin 의 URL 은 손잡이다:
+   누르면 그 저장소가 열린다. 새 부품을 만들지 않고 문서 링크(.doclink)의 어휘를
+   그대로 쓴다 — 점선 밑줄 하나, 면도 색도 없다. 읽어야 하는 글자라 `.gpath` 의
+   `--faint` 를 거둔다(s9-design: --faint 는 선·자리 표시에만). */
+/* **감춘 것은 감춰진다.** `.acts`(flex)·`.wmore`(inline-block)가 제 `display` 를
+   들고 있어 브라우저 기본값 `[hidden]{display:none}` 을 이긴다 — 실측
+   2026-09-13: 이어지지 않은 자리에 「끊기」가 서 있었다. 표 안의 행도 같다. */
+.grepo [hidden]{display:none}
+a.ghlink{color:inherit;text-decoration:none;
+  border-bottom:1px dotted var(--faint)}
+a.ghlink:hover{border-bottom-color:var(--text)}
+a.ghlink:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 /* 버튼은 `.acts` 를 그대로 입되 그 기본 여백만 이 칸에서 접는다 — `.wctl` 이
    이미 한 줄을 이루고 있어 위 여백이 겹치면 행이 어긋난다. */
 .wctl>.acts{margin-top:0}

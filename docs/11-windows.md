@@ -55,6 +55,7 @@ cmd.exe 는 배치 파일을 **콘솔 코드페이지로** 읽는다. UTF-8 한�
 | `tmp_dir()` | `TMPDIR` · `TEMP`/`TMP` | 캡처 출력과 프로필 자리 |
 | `_ps_lines()` | 바깥 도구 출력의 인코딩 | **프로세스 표가 통째로 빈다** (아래) |
 | `tests/s9cli.py` | 시험이 `bin/s9` 를 부르는 법 | 스위트가 첫 setUpClass 에서 선다 |
+| `bind_probe_opt()` | bind 로 「비어 있나」를 잴 때의 소켓 옵션 — POSIX `SO_REUSEADDR` · Windows `SO_EXCLUSIVEADDRUSE` | **듣고 있는 포트를 비어 있다고 읽는다** — `--stop` 이 「내릴 서버가 없다」, 같은 포트에 서버 둘 (아래) |
 
 ### 가장 조용했던 결함 — 바깥 도구의 인코딩
 
@@ -68,6 +69,36 @@ PowerShell 은 기본적으로 **콘솔 코드페이지**로 쓰므로, UTF-8 �
 (`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`), 이쪽은 무슨
 바이트가 와도 죽지 않게 `encoding="utf-8", errors="replace"` 로 푼다.
 한 글자가 깨지는 것과 표가 통째로 비는 것은 무게가 다르다.
+
+## zip 첫 실행 실측이 고친 넷 (REQ-20260913-016, 2026-09-13)
+
+배포판 zip 을 풀고 `bin\s9 code` 만 치는 길을 이 노트북의 Windows 쪽(cmd.exe, Windows 11
+10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로)에서 처음부터 끝까지
+쟀다. 저장소(main · 첫 commit · `.s9-sync` local)는 섰는데 그 다음 줄에서 죽었다. 넷 다
+원천에서 고쳤고 시험이 지킨다(`python3 tests/ windows_entry`).
+
+1. **자기 호출은 인터프리터를 앞에 세운다** (w12). `subprocess.Popen([bin/s9, "serve", …])`
+   처럼 확장자 없는 스크립트를 argv[0] 으로 넘기면 CreateProcess 가 `WinError 193` 으로
+   거부한다 — `s9 code` 가 감시자를 띄우는 자리·`s9-install` 을 부르는 자리·`user add` 를
+   부르는 자리 등 열한 곳이 그랬다. 전부 `[sys.executable, <스크립트>, …]` 다.
+   리눅스에서는 shebang 이 가려 실행 시험으로는 안 잡히므로 소스를 훑는 시험이 지킨다.
+2. **훅 명령의 `{ROOT}` 치환은 JSON 이스케이프를 지난다** (w13). `json.dumps(...).replace("{ROOT}", ROOT)`
+   에 윈도우 경로의 백슬래시가 그대로 들어가 `json.loads` 가 「Invalid \escape」로 죽었다
+   (`C:\Users\<한글>\…` 의 `\U`). 값은 `json.dumps(ROOT)[1:-1]` 로 넣는다.
+3. **훅 명령은 `{ROOT}` 를 넣기 전에 가른다** (w13b). 넣은 뒤 첫 공백에서 가르면 `…\sp ace\section9`
+   에서 갈려 훅이 없는 파일을 가리켰다.
+4. **포트 점유는 그 판의 옵션으로 잰다** (`bind_probe_opt`, 위 표). 윈도우의 `SO_REUSEADDR` 은 상대도
+   켰으면 듣고 있는 포트에도 bind 가 된다 — 실측: 서버가 9910 을 듣는데 `SO_REUSEADDR` bind OK,
+   `SO_EXCLUSIVEADDRUSE` 는 10048, 서버를 내린 직후(TIME_WAIT 만 남음)에는 셋 다 OK. 그래서
+   `--stop` 이 「내릴 서버가 없다 … 남은 serve 프로세스 3개 정리」로 끝나며 **제 런처(py.exe,
+   명령줄이 `"…\bin\s9" serve --stop`)까지 죽여 rc=15** 였다. 함께 고친 둘: `_root_serve_pids` 는
+   부모 pid 도 빼고, `_guard_alive` 는 fcntl 이 없는 판에서 잠금 파일의 pid 로 감시자를
+   알아본다. 고친 뒤 `--stop` 은 「감시자에 중지를 알렸다 … 감시자 종료됨 … 서버 1개」 rc=0.
+
+재지 못한 것: `claude.exe` 로그인 흐름(이 컴퓨터에 없다 — 설치는 주인의 결정) · 콘솔 창을
+닫았을 때 대시보드가 남는지(interop 에는 콘솔 창이 없다). 그리고 두 번째 설치에서 예전 설정
+백업(`bin/s9_env.py`)이 `[Errno 9] Bad file descriptor` 로 실패했다 — 설치는 계속되고 훅은
+들어가지만, 그 판의 백업은 별도 요청감이다.
 
 ## 플랫폼 분기 (s9-install 이 자동 처리)
 
@@ -142,6 +173,10 @@ git clone <repo-url> %USERPROFILE%\section9
 - 한국어 출력이 UTF-8 로 나온다.
 - 프로세스 표 279행 · `pid_alive(자기 자신)` 참 · 명령줄에 한글 경로가 온전하다.
 - 전체 스위트 실행 결과는 REQ-20260903-005 문서의 노트에 수치로 남는다.
+- **zip 첫 실행 실측** (2026-09-13, REQ-20260913-016): Windows 11 10.0.26200 · Python 3.12.10 ·
+  git 2.55.0.windows.4 · 한글 계정, 공백 든 경로 포함. `bin\s9 --version` → `section9 0.9.0` ·
+  `bin\s9 code` → 저장소·훅(`.cmd` 경로)·스킬/에이전트(복사 fallback)·대시보드(9910, WSL 의
+  9909 를 비켜) · `serve --stop` rc=0. 위 「zip 첫 실행 실측이 고친 넷」이 그 기록이다.
 
 다음에 이 판에서 무엇이 깨지든, 고치기 전에 **재는 것**부터 한다 — 이 문서에
 적힌 것은 전부 그렇게 나왔다.

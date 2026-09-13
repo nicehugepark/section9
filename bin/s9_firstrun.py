@@ -30,6 +30,7 @@ git 훅이 영영 없었다.
 """
 import getpass
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -106,28 +107,12 @@ def ensure_repo(root, gitignore, sync_marker, env=None, account=None, git="git",
     if not is_code_root(root):
         out["skipped"] = "no-code"
         return out
-    base = dict(os.environ if env is None else env)
-    for k in GIT_SCOPE_VARS:
-        base.pop(k, None)
-    run = run or subprocess.run
-
-    def _git(*argv, check=True):
-        r = run([git, "-C", root, *argv], capture_output=True, encoding="utf-8",
-                errors="replace", env=base, timeout=120)
-        if check and r.returncode != 0:
-            lines = (r.stderr or r.stdout or "").strip().splitlines()
-            raise RuntimeError(f"git {argv[0]}: {lines[-1] if lines else 'rc=' + str(r.returncode)}")
-        return r
-
+    _git = _git_runner(root, env=env, git=git, run=run)
     git_dir = os.path.join(root, ".git")
     made_marker = ""
     try:
-        # ① init — 가지는 언제나 main. init.defaultBranch 가 없는 머신은 master 를
-        #    만들고, 옛 git(< 2.28)에는 -b 가 없다.
-        r = _git("init", "-q", "-b", DEFAULT_BRANCH, check=False)
-        if r.returncode != 0:
-            _git("init", "-q")
-            _git("symbolic-ref", "HEAD", "refs/heads/" + DEFAULT_BRANCH)
+        # ① init — 가지는 언제나 main (_init_main)
+        _init_main(_git)
         out["did"].append("init")
         # ② 인스턴스 .gitignore — 배포판에 실린 것은 업스트림 개발용이다
         _write(os.path.join(root, ".gitignore"), gitignore)
@@ -140,12 +125,7 @@ def ensure_repo(root, gitignore, sync_marker, env=None, account=None, git="git",
             out["did"].append("sync-marker")
         # ④ 신원 — 전역·시스템에 없으면 저장소 로컬에 임시 신원: 첫 commit 도, 그 뒤
         #    sync 가 거는 commit 도 신원 부재로 거부되지 않게
-        have = all(_git("config", k, check=False).stdout.strip()
-                   for k in ("user.name", "user.email"))
-        if not have:
-            name, mail = temp_identity(account)
-            _git("config", "user.name", name)
-            _git("config", "user.email", mail)
+        if _ensure_identity(_git, account):
             out["did"].append("identity")
         # ⑤ 첫 commit — 갓 세운 저장소라 담을 것은 이 자리 전부이고, 담기지 않을 것은
         #    방금 쓴 .gitignore 가 가른다(state/·index/·.claude/ …). 서명은 이 한 번만
@@ -165,4 +145,264 @@ def ensure_repo(root, gitignore, sync_marker, env=None, account=None, git="git",
             except OSError:
                 pass
         out["did"].append("rolled-back")
+    return out
+
+
+def _git_runner(root, env=None, git="git", run=None):
+    """이 자리(root)를 향한 git 호출 하나 — ensure_repo 와 join_repo 가 같은 것을 쓴다.
+
+    실패는 RuntimeError 한 줄(마지막 stderr 줄)이다. 훅이 물려주는 GIT_DIR 류는 벗긴다."""
+    base = dict(os.environ if env is None else env)
+    for k in GIT_SCOPE_VARS:
+        base.pop(k, None)
+    run = run or subprocess.run
+
+    def _git(*argv, check=True, timeout=120):
+        r = run([git, "-C", root, *argv], capture_output=True, encoding="utf-8",
+                errors="replace", env=base, timeout=timeout)
+        if check and r.returncode != 0:
+            lines = (r.stderr or r.stdout or "").strip().splitlines()
+            raise RuntimeError(f"git {argv[0]}: {lines[-1] if lines else 'rc=' + str(r.returncode)}")
+        return r
+    return _git
+
+
+def _init_main(_git):
+    """가지는 언제나 main. init.defaultBranch 가 없는 머신은 master 를 만들고,
+    옛 git(< 2.28)에는 -b 가 없다."""
+    r = _git("init", "-q", "-b", DEFAULT_BRANCH, check=False)
+    if r.returncode != 0:
+        _git("init", "-q")
+        _git("symbolic-ref", "HEAD", "refs/heads/" + DEFAULT_BRANCH)
+
+
+def _ensure_identity(_git, account=None):
+    """전역·시스템에 신원이 없으면 저장소 로컬에 임시 신원 — 했으면 True."""
+    have = all(_git("config", k, check=False).stdout.strip()
+               for k in ("user.name", "user.email"))
+    if have:
+        return False
+    name, mail = temp_identity(account)
+    _git("config", "user.name", name)
+    _git("config", "user.email", mail)
+    return True
+
+
+# ── 초대 명령의 첫 실행 (REQ-20260913-013-62x6) ──────────────────────────────
+# 초대 메일의 한 줄 `bin/s9 code --join <url> --project <slug>` 은 압축을 푼 자리를
+# **팀 저장소**에 잇는다 — ensure_repo 가 세우는 혼자 쓰는 저장소 대신이다. 받는 것은
+# 문서(vault/)·사람(users/)·프로젝트·`.s9-sync` 전부이고, 코드가 원격과 다르면(배포판
+# 판이 다름) 원격 코드가 이긴다.
+#
+# 작업 트리를 원격으로 맞추는 길은 `git read-tree -u --reset origin/<가지>` +
+# `update-ref` + `symbolic-ref` 다. `git checkout -B`/`-f` 나 `reset --hard` 를 쓰지
+# 않는 까닭: 이 저장소의 gate(bin/s9-git-gate)가 작업 트리를 되돌리는 명령으로 막는
+# 꼴이고, 그 규율의 뜻(남의 미commit 작업을 지우지 않는다)은 여기서도 지킨다 — 그래서
+# **사람의 문서가 있는 자리는 거부한다**(has_documents). 코드만 있는 새 자리에서는
+# 지울 것이 없고, 원격에 없는 파일(새 배포판이 더 실은 것)은 미추적으로 남는다.
+
+DOC_DIRS = ("vault", "users")
+
+
+def has_documents(root):
+    """사람의 문서가 있나 — vault/·users/ 아래 파일 하나라도(빈 디렉토리는 아니다).
+
+    `s9 init` 은 빈 디렉토리를 먼저 만든다 — 그것만으로 「문서가 있다」고 읽으면
+    설치만 하고 아직 아무것도 안 적은 자리가 합류를 거부당한다."""
+    for d in DOC_DIRS:
+        for _dp, _dirs, files in os.walk(os.path.join(root, d)):
+            if files:
+                return True
+    return False
+
+
+def norm_url(url):
+    """같은 저장소인가를 재는 꼴 — 끝의 `/` 와 `.git` 은 같은 곳이다."""
+    u = (url or "").strip().rstrip("/")
+    if u.endswith(".git"):
+        u = u[:-4]
+    return u
+
+
+def join_repo(root, url, gitignore="", sync_marker="", env=None, account=None,
+              git="git", run=None):
+    """이 자리를 팀 저장소 `url` 에 잇는다. ensure_repo 와 같은 dict 에 둘을 더한다.
+
+        created   True 면 이번 호출이 합류했다(origin·가지·작업 트리가 원격과 같다)
+        did       "init" "remote" "fetch" "checkout" "gitignore" "sync-marker" "identity"
+        commit    받은 가지 끝의 sha
+        skipped   "joined"(같은 origin 이 이미 있다 — 아무 일도 없다) · "no-code"
+        error     사유 한 줄 — 문서가 있는 자리 · origin 이 다른 곳 · fetch 실패 …
+        origin    잇고 난 origin URL
+        branch    받은 가지 이름(main, 없으면 master)
+
+    순서: 코드만 있는 자리인지 → .git 없으면 init(main) → remote add origin → fetch →
+    원격 가지를 이 자리의 가지로(작업 트리 포함) → .gitignore·.s9-sync 는 원격 것이
+    있으면 그대로, 없으면 넘겨받은 본문 → 신원. commit 은 하지 않는다(HEAD 가 곧 원격).
+    실패하면 이번에 만든 .git(또는 이번에 더한 origin)과 표식을 되돌린다."""
+    root = os.path.abspath(root)
+    out = {"created": False, "did": [], "commit": "", "skipped": "", "error": "",
+           "origin": "", "branch": ""}
+    url = (url or "").strip()
+    if not url:
+        out["error"] = "합류할 저장소 주소가 비어 있다 — s9 code --join <url>"
+        return out
+    if not is_code_root(root):
+        out["skipped"] = "no-code"
+        return out
+    _git = _git_runner(root, env=env, git=git, run=run)
+    git_dir = os.path.join(root, ".git")
+    had_git = os.path.exists(git_dir)
+    if had_git:
+        cur = _git("remote", "get-url", "origin", check=False)
+        cur_url = cur.stdout.strip() if cur.returncode == 0 else ""
+        if cur_url:
+            if norm_url(cur_url) == norm_url(url):
+                out["skipped"] = "joined"
+                out["origin"] = cur_url
+                out["branch"] = _git("symbolic-ref", "--short", "HEAD", check=False).stdout.strip()
+                return out
+            out["error"] = (f"origin 이 이미 다른 저장소를 가리킨다({cur_url}) — "
+                            f"이 자리에서는 바꾸지 않는다; 새로 압축을 푼 자리에서 --join")
+            return out
+    if has_documents(root):
+        out["error"] = ("이 자리에 이미 문서가 있다(vault/·users/) — 합류는 새로 압축을 푼 "
+                        "자리에서 한다(있는 문서를 원격으로 덮지 않는다)")
+        return out
+    made_remote = False
+    made_marker = ""
+    try:
+        if not had_git:
+            _init_main(_git)
+            out["did"].append("init")
+        _git("remote", "add", "origin", url)
+        made_remote = True
+        out["did"].append("remote")
+        _git("fetch", "-q", "origin", timeout=600)
+        out["did"].append("fetch")
+        branch = ""
+        for cand in (DEFAULT_BRANCH, "master"):
+            if _git("rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{cand}",
+                    check=False).returncode == 0:
+                branch = cand
+                break
+        if not branch:
+            raise RuntimeError(f"원격에 {DEFAULT_BRANCH} 가지가 없다: {url}")
+        remote_ref = f"refs/remotes/origin/{branch}"
+        _git("read-tree", "-u", "--reset", remote_ref)
+        _git("update-ref", f"refs/heads/{branch}", remote_ref)
+        _git("symbolic-ref", "HEAD", f"refs/heads/{branch}")
+        _git("config", f"branch.{branch}.remote", "origin")
+        _git("config", f"branch.{branch}.merge", f"refs/heads/{branch}")
+        out["did"].append("checkout")
+        if gitignore and not os.path.exists(os.path.join(root, ".gitignore")):
+            _write(os.path.join(root, ".gitignore"), gitignore)
+            out["did"].append("gitignore")
+        marker = os.path.join(root, ".s9-sync")
+        if sync_marker and not os.path.exists(marker):
+            _write(marker, sync_marker)
+            made_marker = marker
+            out["did"].append("sync-marker")
+        if _ensure_identity(_git, account):
+            out["did"].append("identity")
+        out["commit"] = _git("rev-parse", "HEAD").stdout.strip()
+        out["origin"] = url
+        out["branch"] = branch
+        out["created"] = True
+    except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+        out["error"] = str(e) or e.__class__.__name__
+        if not had_git and os.path.isdir(git_dir):
+            _rmtree(git_dir)
+        elif made_remote:
+            _git("remote", "remove", "origin", check=False)
+        if made_marker:
+            try:
+                os.remove(made_marker)
+            except OSError:
+                pass
+        out["did"].append("rolled-back")
+    return out
+
+
+def join_project(ns, slug, user, email="", via=" (s9 code --join)"):
+    """합류한 사람을 초대받은 프로젝트에 세운다 — 한 일과 화면 줄을 dict 로.
+
+    ns 는 bin/s9.py 의 globals() 다 — 문서를 읽고 쓰는 헬퍼(load_project·write_doc·
+    do_user_attach·do_user_update·do_user_config_set …)는 그쪽 한 벌만 쓴다.
+
+        attached  이 컴퓨터의 OS 계정·이름이 프로필에 붙었다(do_user_attach)
+        renamed   초대(REQ-20260913-010)가 이메일로 적어 둔 멤버 키를 사용자명으로 바꿨다
+        added     멤버가 아니어서 contributor 로 넣었다
+        emails    초대 이메일(git user.email)을 프로필 emails 에 더했다
+        default   이 사람의 기본 프로젝트(config default_project)를 slug 로 두었다
+        lines     사람에게 낼 줄
+
+    거부는 ValueError(없는 프로젝트). 신원이 등록되지 않은 사람이면 아무것도 쓰지 않고
+    안내 한 줄만 돌려준다 — 멤버 키를 누구로 바꿔야 할지 모른다."""
+    h = ns.__getitem__
+    out = {"member": "", "role": "", "attached": False, "renamed": False, "added": False,
+           "emails": False, "default": False, "lines": []}
+    slug = (slug or "").strip()
+    if not slug:
+        return out
+    pr = h("load_project")(slug)
+    if not pr:
+        raise ValueError(f"등록되지 않은 프로젝트: {slug} — 초대 명령의 --project 를 확인한다 "
+                         f"(목록: s9 project ls)")
+    meta, body, path = pr
+    slug = meta.get("slug") or slug
+    if not (user and h("user_role")(user)):
+        out["lines"].append(
+            f"◌ 이 컴퓨터의 계정을 section9 의 사람에 잇지 못해 프로젝트 {slug} 참여를 미뤘다 — "
+            f"`s9 user attach <이름>` 뒤 다시 `s9 code --join <url> --project {slug}`")
+        return out
+    _acct, _machine, out["attached"] = h("do_user_attach")(user)
+    email = (email or "").strip().lower()
+    valid_email = bool(email) and bool(re.fullmatch(h("EMAIL_RE"), email))
+    prof = h("user_profile")(user) or {}
+    have = prof.get("emails") or []
+    have = [str(e) for e in (have if isinstance(have, list) else [have]) if e]
+    mine = {e.strip().lower() for e in have}
+    if prof.get("email"):
+        mine.add(str(prof["email"]).strip().lower())
+    if valid_email:
+        mine.add(email)
+    members = list(meta.get("members") or [])
+    now = h("now_iso")()
+    me = next((m for m in members if m.get("user") == user), None)
+    if me is None:
+        keyed = next((m for m in members
+                      if "@" in str(m.get("user") or "")
+                      and str(m["user"]).strip().lower() in mine), None)
+        if keyed is not None:
+            old = keyed["user"]
+            keyed["user"] = user
+            me = keyed
+            out["renamed"] = True
+            body = body.rstrip("\n") + f"\n- {now} member {old} → {user} (초대 이메일로 합류{via})\n"
+        else:
+            me = {"user": user, "role": "contributor", "since": h("today_date")(),
+                  "until": "", "position": ""}
+            members.append(me)
+            out["added"] = True
+            body = body.rstrip("\n") + f"\n- {now} member add {user} role=contributor (초대 명령으로 합류{via})\n"
+        meta["members"] = members
+        meta["updated"] = now
+        h("acquire_lock")()
+        try:
+            h("write_doc")(path, meta, body)
+            h("rebuild_index")(quiet=True)
+        finally:
+            h("release_lock")()
+    out["member"] = user
+    out["role"] = me.get("role", "")
+    if valid_email and email not in {e.strip().lower() for e in have}:
+        h("do_user_update")(user, emails=have + [email], actor=user)
+        out["emails"] = True
+    cfg = h("user_config")(user) or {}
+    if str(cfg.get("default_project") or "").strip() != slug:
+        h("do_user_config_set")(user, "default_project", slug, actor=user)
+        out["default"] = True
+    if out["renamed"] or out["added"] or out["default"]:
+        out["lines"].append(f"◌ 프로젝트 {slug} 에 참여했다 — 요청·문서가 그 프로젝트에 붙는다")
     return out
