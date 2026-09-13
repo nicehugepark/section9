@@ -735,6 +735,40 @@ def _load_env_module():
     return m
 
 
+def _load_sibling(name, filename):
+    """설치자와 같은 디렉토리의 모듈 — 둘은 함께 실려 간다 (_load_env_module 과 같은 이유)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(os.path.dirname(os.path.realpath(__file__)), filename))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def first_run_repo():
+    """`.git` 이 없는 자리(압축을 푼 배포판)에 저장소를 세운다 (REQ-20260913-007).
+
+    기계는 bin/s9_firstrun.py 한 곳 — `s9 code` 도 같은 함수를 부르므로 어느 쪽을 먼저
+    쳐도 같은 결과다. 저장소의 모양(.gitignore·.s9-sync 본문)의 원천은 bin/s9.py 라
+    그 파일을 모듈로 실어 값만 꺼낸다 — 첫 실행 한 번뿐이다. 이미 저장소면 아무 일도 없다.
+    실측 2026-09-13: 그 전에는 .git 이 없어도 실패하지 않고 「git hooks 생략」으로 지나갔다.
+    """
+    if os.path.exists(os.path.join(ROOT, ".git")):
+        return None
+    fr = _load_sibling("s9_firstrun", "s9_firstrun.py")
+    if not fr.is_code_root(ROOT):
+        return None
+    body = _load_sibling("s9_body_for_install", "s9.py")
+    res = fr.ensure_repo(ROOT, body.INSTANCE_TRACK_GITIGNORE,
+                         body.sync_marker_body("local", chosen=False))
+    if res.get("created"):
+        say("저장소를 새로 세웠다 — 혼자 쓰는 상태(GitHub 연동은 대시보드 Settings › 저장소에서)")
+    elif res.get("error"):
+        say(f"⚠ 저장소를 세우지 못했다({res['error']}) — git 훅 없이 계속한다; "
+            f"git 을 설치한 뒤 다시 bin/s9-install")
+    return res
+
+
 def env_backup_mode():
     argv = sys.argv[1:]
     if "--backup" in argv:
@@ -821,6 +855,9 @@ def main():
         print((r.stderr or r.stdout).strip() or "s9-install: 두 OS 가 함께 쓰는 clone 이다",
               file=sys.stderr)
         return 2
+    # 압축을 풀어 처음 실행한 자리면 저장소부터 세운다 (REQ-20260913-007) — 아래의
+    # git 훅과 sync 가 전부 저장소를 전제한다.
+    first_run_repo()
     install_dirs()
     install_git_hooks()
     # 기존 환경 백업 (REQ-20260905-025) — settings.json 을 병합하기 **전에**. 모드 셋을

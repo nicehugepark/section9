@@ -12442,8 +12442,9 @@ def sync_mode_chosen():
         return True
 
 
-def sync_set_mode(mode, chosen=True):
-    """모드를 바꾼다 — "파일을 지우세요" 를 사람이 외우지 않게."""
+def sync_marker_body(mode, chosen=True):
+    """`.s9-sync` 의 본문 — 첫 낱말이 모드다. 쓰는 자리가 둘이라(여기의 sync_set_mode ·
+    압축을 푼 자리의 첫 실행 bin/s9_firstrun.py, REQ-20260913-007) 본문은 한 곳에서 짓는다."""
     if mode not in SYNC_MODES:
         raise ValueError(f"모드는 {' | '.join(SYNC_MODES)} 다")
     body = ("local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)\n"
@@ -12451,6 +12452,12 @@ def sync_set_mode(mode, chosen=True):
             "remote — 문서 이벤트마다 commit→pull→push (여럿이 쓰는 자리)\n")
     if not chosen:
         body += SYNC_UNCHOSEN_LINE
+    return body
+
+
+def sync_set_mode(mode, chosen=True):
+    """모드를 바꾼다 — "파일을 지우세요" 를 사람이 외우지 않게."""
+    body = sync_marker_body(mode, chosen)
     with open(SYNC_MARKER, "w", encoding="utf-8") as f:
         f.write(body)
     return mode
@@ -24775,6 +24782,16 @@ def _env_module():
     return m
 
 
+def _firstrun_module():
+    """압축을 푼 자리의 첫 실행 — 저장소 세우기 (REQ-20260913-007). 곁의 bin/s9_firstrun.py."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "s9_firstrun", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_firstrun.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
 def cmd_uninstall(args):
     """설치가 놓은 것만 걷는다 (REQ-20260905-027) — 본체는 bin/s9-install --uninstall."""
     import subprocess
@@ -25085,6 +25102,17 @@ def cmd_code(args):
     대시보드 채팅은 이 터미널 세션으로 cross-session 메시지를 전달한다."""
     import socket
     import subprocess
+    # 압축을 풀어 처음 실행한 자리 (REQ-20260913-007): `.git` 도 state/ 도 없다.
+    # 대시보드·훅·sync 가 전부 git 저장소를 전제하므로 **그것들보다 먼저** 세운다 —
+    # 혼자 쓰는 상태(local). 이미 저장소면 아무 일도 없다. 기계는 bin/s9_firstrun.py,
+    # 모양(.gitignore·.s9-sync 본문)은 여기 것을 넘긴다.
+    _fr = _firstrun_module().ensure_repo(ROOT, INSTANCE_TRACK_GITIGNORE,
+                                         sync_marker_body("local", chosen=False))
+    if _fr.get("created"):
+        print("◌ 저장소를 새로 세웠다 — 혼자 쓰는 상태(GitHub 연동은 대시보드 Settings › 저장소에서)")
+    elif _fr.get("error"):
+        print(f"◌ 저장소를 세우지 못했다({_fr['error']}) — 문서 commit 없이 계속한다; "
+              f"git 을 설치한 뒤 다시 `s9 code`")
     port, why = pick_dashboard_port()
     if why == "other":
         print(f"포트 {s9_port()} 는 다른 저장소의 section9 이 쓰고 있다 — {port} 로 띄운다 "
@@ -25146,8 +25174,12 @@ def cmd_code(args):
     # 로그인 (REQ-20260905-014): 없으면 여기서 로그인시킨다 — 끝나지 않으면 안 들어간다
     ensure_claude_login()      # 없으면 안내만 — 로그인 화면은 claude 의 것이다 (REQ-20260906-072)
     hooked = hooks_installed()
-    if not hooked:
-        print("◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…")
+    # 저장소를 방금 세웠으면 설치도 다시 (REQ-20260913-007) — git 훅은 그 저장소 안
+    # (.git/hooks)에 놓인다. claude 훅만 보고 「설치됨」으로 읽으면 같은 경로에 다시
+    # 푼 자리가 git 훅 없이 돈다.
+    if not hooked or _fr.get("created"):
+        print("◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…" if not hooked
+              else "◌ 저장소를 새로 세웠으니 s9-install 을 다시 실행한다(git 훅)…")
         bindir = os.path.dirname(os.path.realpath(__file__))
         r = subprocess.run([os.path.join(bindir, "s9-install")],
                            stdin=subprocess.DEVNULL)
