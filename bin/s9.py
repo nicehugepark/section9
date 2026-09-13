@@ -7354,8 +7354,12 @@ def chat_target(sid8=None, user=None):
 
 
 def chat_send(text, sid8=None, sender="", kind="chat", req="",
-              agent="", agent_type="", anchor=""):
+              agent="", agent_type="", anchor="", doc=""):
     """수신함에 한 줄 append — 대상 세션의 Monitor가 즉시 깨어난다.
+    doc: 사용자가 카드에서 「이어 말하기」로 **눌러 고른** 문서 (REQ-20260913-032).
+    req 와 같은 값이 되지만 뜻이 다르다 — req 는 "이 말이 남은 문서"이고 doc 은
+    "사람이 고른 문서"다. 둘을 한 필드로 뭉치면 화면이 새 요청을 만든 줄과
+    이어 붙인 줄을 가릴 수 없다.
     req: 서버측 audit(chat_audit)이 만든 REQ id — 수신 세션이 중복 생성 없이
     그 id로 상태를 관리하도록 줄에 동봉한다 (REQ-20260825-001).
     review_refs: 메시지가 지목한 판정 대기 문서 (REQ-20260825-041).
@@ -7383,6 +7387,8 @@ def chat_send(text, sid8=None, sender="", kind="chat", req="",
             "text": text}
     if req:
         line["req"] = req
+    if doc:
+        line["doc"] = doc
     if anchor:
         # 화면에서 끌어 고른 글 (REQ-20260827-072) — 무엇을 대고 한 말인지 없이
         # "이거 무슨 뜻이냐"만 오면 답할 수 없다.
@@ -34927,20 +34933,27 @@ def cmd_serve(args):
                         # 대상 해석은 여기서 끝 — audit·수신함이 같은 세션을
                         # 쓰도록 아래로 넘긴다(세 번 따로 고르면 갈릴 수 있다)
                         sid_arg = btgt["session"] if btgt else sid_arg
+                    picked = str(req.get("doc") or "").strip()
                     if kind == "chat":
                         b = btgt or chat_target(sid_arg)
                         if b:
                             req_id = chat_audit(
-                                text, actor, b["session"],
-                                doc=str(req.get("doc") or "").strip(),
+                                text, actor, b["session"], doc=picked,
                                 anchor=str(req.get("anchor") or "").strip(),
                                 as_type=str(req.get("as_type")
                                             or "").strip())
                     # kind=interrupt 는 수신함 큐잉만 — 프로세스 신호 금지
                     # (REQ-20260830-047: SIGINT 는 턴 취소가 아니라 세션
                     # 종료였다). Monitor 가 도구 경계에서 줄을 실어 준다.
+                    #
+                    # 고른 문서는 **그 문서에 실제로 남았을 때만** 줄에 적는다
+                    # (REQ-20260913-032): 본문이 아티클 표기로 시작하면 audit 은
+                    # 고른 문서가 아니라 ART- 를 만든다 — 그때 고른 값을 적으면
+                    # 화면이 가지 않은 자리를 가리킨다.
                     sid = chat_send(text, sid8=sid_arg, sender=actor,
                                     kind=kind, req=req_id or "",
+                                    doc=(picked if picked
+                                         and req_id == picked else ""),
                                     agent=agent_id, agent_type=agent_type,
                                     anchor=str(req.get("anchor")
                                                or "").strip())

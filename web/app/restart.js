@@ -345,9 +345,12 @@ async function sendChat(){
   if (out && w){
     const clip = atts.length
       ? ` <span style="color:var(--cc-dim)">📎${atts.length}</span>` : "";
+    /* 문서 마크는 **다시 그릴 때와 같은 손**으로 짓는다 (REQ-20260913-032-62x6) —
+       이 낙관 줄은 곧 수신함 echo 로 갈리는데, 두 손이 서로 다른 모양을 지으면
+       갈리는 순간 줄의 모양이 달라져 표시가 사라진 것처럼 보인다. */
     const to = tgt
       ? ` <span style="color:var(--cc-green)">→ ${esc(tgt.type || tgt.id)}</span>`
-      : dt ? ` <span style="color:var(--cc-cyan)">→ ${esc(shortId(dt.id))}</span>` : "";
+      : ccChatMark({doc: dt ? dt.id : ""});
     w.insertAdjacentHTML("beforebegin",
       `<div class="ln pending"><span class="g" style="color:var(--cc-dim)">❯</span><span class="b">${ccText(disp || "(첨부)")}${clip}${to}</span></div>`);
     pend = w.previousElementSibling;

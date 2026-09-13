@@ -12,6 +12,7 @@
 실행: python3 tests/ chat_doc_target
 """
 import importlib.machinery
+import json
 import importlib.util
 import os
 import subprocess
@@ -129,6 +130,31 @@ class ChatDocTarget(unittest.TestCase):
                 seg = src[i:i + 1600]
                 self.assertIn("if doc:", seg)
                 self.assertIn("chat_doc_target", seg)
+
+            # N6. 수신함 줄이 「고른 문서」를 싣는다 (REQ-20260913-032-62x6).
+            #     화면은 다시 그릴 때 이 필드만 보고 표시를 세운다 — 줄에 없으면
+            #     보낸 직후의 낙관 줄과 함께 표시도 사라진다. `req`(이 말이 남은
+            #     문서)와 한 필드로 뭉치면 새 요청을 만든 줄과 이어 붙인 줄을
+            #     가릴 수 없으므로 둘을 따로 적는다.
+        with self.subTest("n6_inbox_line_carries_the_picked_doc"):
+                real = self.m.chat_target
+                self.m.chat_target = lambda *a, **k: {"session": "abcd1234"}
+                try:
+                    self.m.chat_send("이것도 같이", sid8="abcd1234",
+                                     sender="alice", req=self.A, doc=self.A)
+                    self.m.chat_send("새로 하나", sid8="abcd1234",
+                                     sender="alice", req=self.DONE)
+                finally:
+                    self.m.chat_target = real
+                with open(self.m.chat_inbox_path("abcd1234"),
+                          encoding="utf-8") as f:
+                    got = [json.loads(x) for x in f if x.strip()]
+                self.assertEqual(got[0].get("doc"), self.A,
+                                 "눌러 고른 문서를 줄에 적지 않는다")
+                self.assertIsNone(got[1].get("doc"),
+                                  "고르지 않은 줄에까지 문서를 적는다")
+                self.assertEqual(got[1].get("req"), self.DONE,
+                                 "이 말이 남은 문서까지 사라졌다")
 
             # R1. 커맨드·경로로 시작하는 줄은 예전 그대로 audit 를 건너뛴다
         with self.subTest("r1_command_untouched"):

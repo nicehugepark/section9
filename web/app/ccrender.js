@@ -432,10 +432,44 @@ function ccLine(glyph, gcolor, bodyHtml, cls){
 function ccFold(preview, full){                 // 긴 본문은 CC처럼 접는다
   return `<details><summary>${preview}</summary><div class="full">${full}</div></details>`;
 }
+/* 이 줄이 어느 문서에 남았나 (REQ-20260913-032-62x6).
+
+   표시는 **기록에서** 나와야 한다. 종전에는 보낸 직후의 낙관 줄(sendChat)에만
+   `→ REQ-…` 가 붙었는데, 수신함 echo 가 그 줄을 갈아치우는 순간 사라졌다 —
+   탭을 옮겼다 오거나 새로 고치면 남는 것은 `❯ 본문` 뿐이었다. 수신함 줄은
+   `doc`(눌러 고른 문서)과 `req`(이 말이 남은 문서)를 이미 싣고 온다.
+
+   말을 가른다: 눌러 고른 것(`doc`)만 「이어 말함」이라 적는다. 옛 줄에는 `req`
+   밖에 없어 새로 만든 요청인지 이어 붙인 문서인지 가릴 수 없으므로 「기록됨」
+   이라고만 적는다 — 모르는 것을 단정하지 않는다.
+
+   글자는 짧은 id 다. 이 마크는 에이전트가 뱉은 글의 사본이 아니라 화면이
+   얹는 표시라, 카드·문서와 같은 사전을 쓴다(`ccDocLink` 의 "줄이지 않는다"는
+   본문 안의 언급을 위한 규칙이다). 전체 id 는 귀띔에 적는다. */
+const ccChatMark = l => {
+  const id = String((l && (l.doc || l.req)) || "");
+  if (!id) return "";
+  const r = anyDoc(id);
+  const say = (l && l.doc) ? "에 이어 말함" : "에 기록됨";
+  const tip = (l && l.doc) ? "「이어 말하기」로 이 문서에 남긴 메시지입니다"
+                           : "이 메시지가 남은 문서입니다";
+  const txt = esc(r ? shortId(r.id) : id);
+  // 한 덩어리로 줄바꿈한다 — 조사가 앞말에서 떨어지면 조각으로 읽힌다
+  // (target.js 의 `.tsent` 와 같은 규칙). 좁아지면 마크가 통째로 다음 줄로 간다.
+  return ` <span style="color:var(--cc-dim);white-space:nowrap">`
+    + `<span style="color:var(--cc-cyan)">→</span> `
+    + (r ? `<a class="doclink" href="#docs/${esc(r.id)}" data-doc="${esc(r.id)}"`
+           + ` data-tdoc="${esc(r.id)}" draggable="false"`
+           + ` title="${esc(id)} — ${tip} · 눌러서 이 자리에서 미리보기">${txt}</a>`
+         : `<span title="${esc(id)} — ${tip}">${txt}</span>`)
+    + ` ${say}</span>`;
+};
 function ccChatLine(l){                          // /api/chat/log 한 줄
   if (l.kind === "chat")
-    return ccLine("❯", "var(--cc-dim)", ccText(l.text || "", l.at || l.ts));
-  return ccLine("●", "var(--cc-faint)",          // 전이 통지 등 kind=event
+    return ccLine("❯", "var(--cc-dim)",
+      ccText(l.text || "", l.at || l.ts) + ccChatMark(l));
+  // 전이 통지(kind=event)에는 마크를 붙이지 않는다 — 사람이 한 말이 아니다
+  return ccLine("●", "var(--cc-faint)",
     ccText(l.text || "", l.at || l.ts) +
     ` <span style="color:var(--cc-faint)">· ${esc((l.ts || "").slice(11,16))}</span>`,
     "ccdim");

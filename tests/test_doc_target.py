@@ -114,6 +114,23 @@ class DocTarget(unittest.TestCase):
             send = self._fn("sendChat")
             self.assertIn("에 노트로 남았다", send, "어디에 붙었는지 말하지 않는다")
             self.assertIn('"로 기록됨"', send, "새 요청일 때의 말이 사라졌다")
+        # ---------- ⑦ 보낸 뒤에도 남는 표시 (REQ-20260913-032-62x6) ----------
+        with self.subTest("the_mark_survives_a_redraw"):
+            # 낙관 줄은 곧 수신함 echo 로 갈린다 — 다시 그리는 손(ccChatLine)이
+            # 마크를 짓지 않으면 표시는 한 호흡 만에 사라진다.
+            m = re.search(r"const ccChatMark = l => \{[\s\S]*?\n\};", self.src)
+            self.assertIsNotNone(m, "다시 그릴 때 쓸 문서 마크가 없다")
+            mark = m.group(0)
+            self.assertIn("l.doc || l.req", mark, "기록에 실려 온 문서를 보지 않는다")
+            self.assertIn("data-tdoc=", mark, "마크에서 문서를 미리볼 수 없다")
+            # 눌러 고른 것만 「이어 말함」 — 옛 줄은 req 밖에 없어 가릴 수 없다
+            self.assertIn("에 이어 말함", mark, "이어 말한 줄인지 말하지 않는다")
+            self.assertIn("에 기록됨", mark, "고르지 않은 줄까지 이어 말했다고 단정한다")
+            line = websrc.fn(self, self.src, "ccChatLine")
+            self.assertIn("ccChatMark(l)", line, "다시 그린 줄에는 마크가 없다")
+            # 낙관 줄과 다시 그린 줄이 **같은 손**으로 지어져야 모양이 갈리지 않는다
+            self.assertIn("ccChatMark({doc: dt ? dt.id : \"\"})",
+                          self._fn("sendChat"), "보낸 직후의 줄이 딴 모양을 짓는다")
         with self.subTest("it_can_be_opened_without_hands"):
                 self.assertIn("[?&]pick=", self.src, "진단 파라미터가 없다")
                 self.assertIn("docPick(m[1], pjump)", self.src,
