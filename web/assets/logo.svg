@@ -1,37 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 302 64" width="302" height="64" role="img" aria-label="section9">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 70" width="290" height="70" role="img" aria-label="section9">
   <title>section9</title>
   <style>
-    svg{color:#141518}
-    @media (prefers-color-scheme:dark){svg{color:#e8e8e4}}
+    /* 밝은 쪽 색은 presentation attribute 로 둔다 — 인라인 SVG 의 style 은 문서
+       전체에 걸려, 한 쪽에 여러 벌이 실리면 마지막 것이 앞의 것을 덮는다. */
+    @media (prefers-color-scheme:dark){.s9logo{color:#e8e8e4}}
   </style>
-  <g>
-  <rect width="64" height="64" rx="6" fill="#141518"/>
-  <circle cx="32" cy="32" r="23" fill="#fafaf8"/>
-  <circle cx="24.4" cy="34.25" r="4.4" fill="#141518"/>
-  <circle cx="39.6" cy="34.25" r="4.4" fill="#141518"/>
-  <circle cx="32" cy="42.49" r="4.4" fill="#141518"/>
+  <g class="s9logo" color="#141518">
+  <g transform="translate(8 7) scale(0.875)">
+    <rect width="64" height="64" fill="#141518"/>
+    <circle cx="32" cy="32" r="23" fill="#fafaf8"/>
+    <circle cx="29.2" cy="37.38" r="1.85" fill="#141518"/>
+    <circle cx="34.8" cy="37.38" r="1.85" fill="#141518"/>
+    <circle cx="32" cy="42.23" r="1.85" fill="#141518"/>
   </g>
-  <g class="wm" fill="currentColor">
-    <text x="80" y="46" textLength="94" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="42"
-          font-weight="700" letter-spacing="0.4">secti</text>
-    <text x="218" y="46" textLength="26" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="42"
-          font-weight="700">n</text>
+  <text x="88" y="50" textLength="190" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="48"
+        font-weight="700" fill="currentColor">section<tspan>9</tspan></text>
+  <!-- o 의 속을 눈으로 — 글자는 건드리지 않는다 -->
+  <circle cx="209.0" cy="39.0" r="5.6" fill="#fafaf8"/>
+  <circle cx="207.32" cy="39.71" r="0.45" fill="#141518"/>
+  <circle cx="210.68" cy="39.71" r="0.45" fill="#141518"/>
+  <circle cx="209.0" cy="42.62" r="0.45" fill="#141518"/>
+  <!-- 9 의 고리 속을 눈으로 -->
+  <circle cx="265.2" cy="30.0" r="5.2" fill="#fafaf8"/>
+  <circle cx="263.64" cy="30.66" r="0.42" fill="#141518"/>
+  <circle cx="266.76" cy="30.66" r="0.42" fill="#141518"/>
+  <circle cx="265.2" cy="33.36" r="0.42" fill="#141518"/>
   </g>
-  <!-- o — 속을 눈으로 -->
-  <circle cx="196" cy="31" r="9.8" fill="#fafaf8"/>
-  <circle cx="191.6" cy="32.31" r="2.5" fill="#141518"/>
-  <circle cx="200.4" cy="32.31" r="2.5" fill="#141518"/>
-  <circle cx="196" cy="37.08" r="2.5" fill="#141518"/>
-  <circle cx="196" cy="31" r="12.9" fill="none"
-          stroke="currentColor" stroke-width="6.2"/>
-  <!-- 9 — 고리의 속을 눈으로, 꼬리는 밑선까지 -->
-  <path d="M282.9 25 Q282.9 41 266 47"
-        fill="none" stroke="currentColor" stroke-width="6.2" stroke-linecap="round"/>
-  
-  <circle cx="270" cy="25" r="9.8" fill="#fafaf8"/>
-  <circle cx="265.6" cy="26.31" r="2.5" fill="#141518"/>
-  <circle cx="274.4" cy="26.31" r="2.5" fill="#141518"/>
-  <circle cx="270" cy="31.08" r="2.5" fill="#141518"/>
-  <circle cx="270" cy="25" r="12.9" fill="none"
-          stroke="currentColor" stroke-width="6.2"/>
 </svg>
