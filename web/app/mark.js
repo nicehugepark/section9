@@ -473,7 +473,8 @@
 
   /* 검토 보조 — 재주를 표 순서대로 한 번씩. 제품의 길이 아니다. */
   function showAll() {
-    var i = 0;
+    var m = /[?&]from=(\d+)/.exec(location.search);
+    var i = m ? +m[1] : 0;      // 띠를 두 장으로 나눠 찍을 때 쓰는 시작 자리
     window.__S9_TRICKS = TRICKS.map(function (t) { return t.name; });
     (function next() {
       if (i >= TRICKS.length) { window.__S9_TRICK = "(끝)"; return; }
