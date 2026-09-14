@@ -15,8 +15,11 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
    다른 얼굴이 된다(REQ-20260913-004-2n7g). 그림 파일 대신 껍데기에 펼쳐 놓은
    인라인 SVG 인 것은 눈(점 셋)을 움직이기 위해서다(REQ-20260914-001-62x6) —
    크기는 정수 화소로 두어 배율 1 에서 가장자리가 반 화소에 걸리지 않게 하고,
-   세로는 글자의 대문자 높이 중심에 맞춘다(종전 값 그대로). */
-.brand .mark{display:inline-block;width:18px;height:18px;margin-right:8px;vertical-align:-4px}
+   세로는 글자의 대문자 높이 중심에 맞춘다. 18 → 20px 로 키운 것은 20 이 Windows
+   배율 125%·150% 에서 25·30 화소로 **정수**가 되기 때문이다(18 은 22.5 라 반
+   화소에 걸린다, REQ-20260914-002-62x6). 마크의 한가운데가 제자리에 남도록
+   vertical-align 을 -4 에서 -5px 로 함께 옮겼다. */
+.brand .mark{display:inline-block;width:20px;height:20px;margin-right:8px;vertical-align:-5px}
 /* 눈 — 옮겨 갈 자리는 web/app/mark.js 가 주고, 그 자리에 이르는 시간과 감속은
    여기서 정한다. 바꾸는 것이 `transform` 뿐이라 글자 배치가 다시 계산되지 않는다.
    기준점은 점 무리의 무게중심(viewBox 32, 38.8)이다 — 렌즈가 잠깐 줄었다 돌아올

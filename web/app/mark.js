@@ -48,6 +48,25 @@
   var dots = [svg.querySelector(".d0"), svg.querySelector(".d1"), svg.querySelector(".d2")];
   if (!dots[0]) { dots = []; }
 
+  /* 점의 제자리를 **조각에서 읽는다** — 좌표를 코드에도 적으면 새김이 바뀔 때마다
+     두 곳을 고쳐야 하고, 한 곳을 잊으면 점이 테를 넘는다. 읽어 두면 상한도
+     자리 바꾸기도 여기서 나온다. */
+  var BASE = [], CENTER = [32, 32], REACH = 0, MID = [32, 32];
+  (function () {
+    var i, c, sx = 0, sy = 0;
+    for (i = 0; i < dots.length; i++) {
+      c = dots[i].querySelector("circle");
+      BASE.push([+c.getAttribute("cx"), +c.getAttribute("cy"), +c.getAttribute("r")]);
+      sx += BASE[i][0]; sy += BASE[i][1];
+    }
+    if (!BASE.length) { return; }
+    MID = [sx / BASE.length, sy / BASE.length];               // 무리의 무게중심
+    for (i = 0; i < BASE.length; i++) {                        // 무게중심에서 가장 먼 잉크
+      REACH = Math.max(REACH, Math.sqrt(Math.pow(BASE[i][0] - MID[0], 2)
+              + Math.pow(BASE[i][1] - MID[1], 2)) + BASE[i][2]);
+    }
+  })();
+
   var LENS_R = 28.2;               // 돔 반지름 (viewBox 눈금) — 테 안쪽이다
   var MAX = LENS_R * 0.30;         // **이동 상한** — 돔 반지름의 30%
   var MAX_DOWN = LENS_R * 0.18;    // 아래쪽만 좁다 — 무리가 이미 중심보다 아래다
@@ -85,10 +104,19 @@
 
   /* 상한 — 재주가 어떤 값을 주어도 렌즈 밖으로는 못 나간다(뒤로 도는 재주는
      제 손으로 `slide()` 를 쓰므로 이 길을 지나지 않는다). */
-  function capped(x, y) {
+  function capped(x, y, s) {
     var d = Math.sqrt(x * x + y * y);
     if (d > MAX) { x = x * MAX / d; y = y * MAX / d; }
     if (y > MAX_DOWN) { y = MAX_DOWN; }
+    /* 커지는 재주까지 셈에 넣는다 — 무리가 s 배면 잉크의 가장 먼 끝도 s 배다.
+       무게중심이 렌즈 중심보다 아래에 앉아 있으므로 그 치우침도 함께 뺀다. */
+    var lim = LENS_R - REACH * (s || 1) - 0.4;
+    var ox = MID[0] - CENTER[0] + x, oy = MID[1] - CENTER[1] + y;
+    var m = Math.sqrt(ox * ox + oy * oy);
+    if (lim > 0 && m > lim) {
+      ox = ox * lim / m; oy = oy * lim / m;
+      x = ox - (MID[0] - CENTER[0]); y = oy - (MID[1] - CENTER[1]);
+    }
     return [x, y];
   }
 
@@ -102,8 +130,8 @@
   /* 무리 — 자리(x,y)·크기(s)·가로 눌림(sx)·기울기(rot). 자리는 늘 상한 안이다. */
   function P(x, y, ms, o) {
     o = o || {};
-    var p = capped(x, y);
     var s = o.s === undefined ? 1 : o.s;
+    var p = capped(x, y, s);
     var sx = (o.sx === undefined ? 1 : o.sx) * s;
     var sy = (o.sy === undefined ? 1 : o.sy) * s;
     css(pupil, "translate(" + p[0].toFixed(2) + "px," + p[1].toFixed(2) + "px) scale("
@@ -127,8 +155,21 @@
   }
 
   function S(deg, ms, ease) { css(spinner, "rotate(" + deg + "deg)", ms, ease); }
+
+  /* 점 하나 — 옮긴 **자리**가 돔 안인지로 잰다. 옮긴 거리로 재면 이미 가장자리에
+     앉은 점(아래 하나)이 같은 거리에 테를 넘는다. */
+  function dcap(i, x, y) {
+    var b = BASE[i];
+    if (!b) { return [x, y]; }
+    var ox = b[0] - CENTER[0] + x, oy = b[1] - CENTER[1] + y;
+    var lim = LENS_R - b[2] - 0.4, m = Math.sqrt(ox * ox + oy * oy);
+    if (m > lim) { ox = ox * lim / m; oy = oy * lim / m; }
+    return [ox - (b[0] - CENTER[0]), oy - (b[1] - CENTER[1])];
+  }
+
   function D(i, x, y, ms, o) {
     o = o || {};
+    var q = dcap(i, x, y); x = q[0]; y = q[1];
     css(dots[i], "translate(" + x.toFixed(2) + "px," + y.toFixed(2) + "px)"
         + (o.s === undefined ? "" : " scale(" + o.s.toFixed(3) + ")")
         + (o.rot ? " rotate(" + o.rot.toFixed(1) + "deg)" : ""), ms, o.ease);
@@ -333,13 +374,13 @@
 
     {name: "자리 바꾸기", rare: "아주 드묾", ms: 1650, run: function (done) {
       if (!dots.length) { return done(); }
-      /* 점 셋의 자리를 서로 옮긴다 — 위 둘은 12 눈금 떨어져 있고 아래 하나는
-         무게중심보다 6.9 아래, 위 둘은 3.4 위다(header.svg 의 좌표에서 나온 값). */
-      var dx = 12.26, up = 3.54, dn = 7.08;
+      /* 점 셋이 서로의 자리로 간다 — 옮길 거리는 조각에서 읽은 제자리끼리의
+         차이다(0→1, 1→2, 2→0). 좌표를 코드에 적지 않으니 새김이 바뀌어도 맞는다. */
       seq([[700, function () {
-             D(0, dx, 0, 660, {ease: EASE_IO});
-             D(1, -dx / 2, up + dn, 660, {ease: EASE_IO});
-             D(2, -dx / 2, -(up + dn), 660, {ease: EASE_IO});
+             for (var k = 0; k < 3; k++) {
+               var a = BASE[k], b = BASE[(k + 1) % 3];
+               D(k, b[0] - a[0], b[1] - a[1], 660, {ease: EASE_IO});
+             }
            }],
            [740, function () {
              D(0, 0, 0, 700, {ease: EASE_IO}); D(1, 0, 0, 700, {ease: EASE_IO});
@@ -390,6 +431,127 @@
         });
       });
   }
+
+
+  /* ---- 재주 짓는 틀 ---------------------------------------------------
+     손으로 스물여덟을 적고 나니 다음 요구는 「네 배」였다. 표를 손으로 네 배
+     늘리면 다섯 배 요구가 왔을 때 또 손으로 늘려야 하고, 그 사이에 같은 재주가
+     이름만 달리 두 번 들어간다. 그래서 **원소를 정의하고 곱한다**.
+
+       경로(12) × 속도(3) × 대상(4) = 144 가지.
+
+     각도·폭·어느 점이 움직이는지는 **표가 아니라 실행 때** 뽑는다 — 그것까지
+     표에 올리면 같은 그림이 각도만 달리 수십 줄로 늘어난다(줄 수는 늘지만 보는
+     사람에게는 같은 재주다). 희귀도는 원소의 크기에서 나온다: 요란한 속도는
+     드묾, 점을 따로 놀리는 대상은 가끔. */
+
+  var PATHS = [
+    {n: "직선", f: function (t) { return [Math.sin(t * Math.PI), 0]; }},
+    {n: "호", f: function (t) { var a = (t - 0.5) * Math.PI; return [Math.sin(a), -Math.cos(a) * 0.5]; }},
+    {n: "원", f: function (t) { var a = t * Math.PI * 2; return [Math.sin(a), -Math.cos(a)]; }},
+    {n: "8자", f: function (t) { var a = t * Math.PI * 2; return [Math.sin(a), Math.sin(a * 2) * 0.5]; }},
+    {n: "나선", f: function (t) { var a = t * Math.PI * 4, r = t < 0.5 ? t * 2 : (1 - t) * 2; return [Math.cos(a) * r, Math.sin(a) * r]; }},
+    {n: "지그재그", f: function (t) { return [(Math.floor(t * 6) % 2 ? -1 : 1) * 0.9, (t - 0.5) * 2]; }},
+    {n: "리사주", f: function (t) { var a = t * Math.PI * 2; return [Math.sin(a * 3), Math.sin(a * 2)]; }},
+    {n: "무작위 걸음", f: function (t) { return [Math.sin(t * 37.7) * 0.9, Math.cos(t * 29.3) * 0.7]; }},
+    {n: "별", f: function (t) { var a = t * Math.PI * 4, r = 0.45 + 0.55 * Math.abs(Math.cos(a * 2.5)); return [Math.sin(a) * r, -Math.cos(a) * r]; }},
+    {n: "사각", f: function (t) { return corner(t, [[-1, -1], [1, -1], [1, 1], [-1, 1]]); }},
+    {n: "삼각", f: function (t) { return corner(t, [[0, -1], [0.95, 0.6], [-0.95, 0.6]]); }},
+    {n: "물결", f: function (t) { return [t * 2 - 1, Math.sin(t * Math.PI * 3) * 0.5]; }}
+  ];
+
+  function corner(t, pts) {
+    var s = t * pts.length, i = Math.floor(s) % pts.length, u = s - Math.floor(s);
+    var a = pts[i], b = pts[(i + 1) % pts.length];
+    return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+  }
+
+  var SPEEDS = [
+    {n: "느리게", steps: 10, gap: 190, ease: EASE_IO, rare: "흔함"},
+    {n: "보통", steps: 9, gap: 120, ease: EASE_IO, rare: "가끔"},
+    {n: "요란하게", steps: 12, gap: 60, ease: LINEAR, rare: "드묾"}
+  ];
+
+  var TARGETS = [
+    {n: "무리", k: 1}, {n: "점 하나", k: 2}, {n: "점 셋 따로", k: 3}, {n: "짝", k: 4}
+  ];
+
+  function combo(path, sp, tg) {
+    return {
+      name: path.n + "·" + sp.n + "·" + tg.n,
+      rare: sp.rare === "드묾" ? "드묾" : (tg.k > 2 ? "가끔" : sp.rare),
+      ms: sp.steps * sp.gap + 340,
+      run: function (done) {
+        if (tg.k > 1 && !dots.length) { return done(); }
+        var ang = Math.random() * Math.PI * 2;      // 각도는 실행 때 뽑는다
+        var ca = Math.cos(ang), sa = Math.sin(ang);
+        var A = (tg.k === 1 ? MAX : DOT_MAX) * rnd(0.55, 1);
+        var one = Math.floor(Math.random() * 3);
+        var ph = [0, 0.2, 0.4];
+        function at(t) {
+          var q = path.f(t % 1);
+          return [(q[0] * ca - q[1] * sa) * A, (q[0] * sa + q[1] * ca) * A];
+        }
+        ramp(sp.steps, sp.gap, function (t) {
+          var q = at(t), i;
+          if (tg.k === 1) { P(q[0], q[1], sp.gap, {ease: sp.ease}); }
+          else if (tg.k === 2) { D(one, q[0], q[1], sp.gap, {ease: sp.ease}); }
+          else if (tg.k === 3) {
+            for (i = 0; i < dots.length; i++) {
+              var r = at(t + ph[i]);
+              D(i, r[0], r[1], sp.gap, {ease: sp.ease});
+            }
+          } else {
+            D(one, q[0], q[1], sp.gap, {ease: sp.ease});
+            D((one + 1) % 3, -q[0], -q[1], sp.gap, {ease: sp.ease});
+          }
+        }, function () { rest(180); wait(200, done); });
+      }
+    };
+  }
+
+  (function () {
+    var i, j, k;
+    for (i = 0; i < PATHS.length; i++) {
+      for (j = 0; j < SPEEDS.length; j++) {
+        for (k = 0; k < TARGETS.length; k++) { TRICKS.push(combo(PATHS[i], SPEEDS[j], TARGETS[k])); }
+      }
+    }
+  })();
+
+  /* 연쇄 재주 — 손으로 지은 것 둘·셋을 잇는다. 하나로는 못 내는 **이야기**가
+     나온다(두리번거리다 놀라고 한참 바라본다). 아주 드물게만 나온다. */
+  var CHAINS = [
+    ["두리번", "놀람", "응시"], ["곁눈질", "뱅그르르"], ["스캔", "툭 벌어짐"],
+    ["졸음", "놀람"], ["부르르", "흩어졌다 모이기"], ["8자", "느린 깜빡"],
+    ["다다닥 두리번", "두 바퀴"], ["나선", "삼각형 뒤집기"],
+    ["물결", "자리 바꾸기"], ["지그재그", "세로축 돌기"],
+    ["응시", "반 바퀴만", "두 번 깜빡"], ["작은 원 궤도", "가로축 돌기", "졸음"]
+  ];
+
+  (function () {
+    var byName = {}, i, j;
+    for (i = 0; i < TRICKS.length; i++) { byName[TRICKS[i].name] = TRICKS[i]; }
+    for (i = 0; i < CHAINS.length; i++) {
+      (function (parts) {
+        var got = [], ms = 0;
+        for (j = 0; j < parts.length; j++) {
+          if (!byName[parts[j]]) { return; }
+          got.push(byName[parts[j]]); ms += byName[parts[j]].ms;
+        }
+        TRICKS.push({
+          name: parts.join(" → "), rare: "아주 드묾", ms: ms + 240,
+          run: function (done) {
+            var n = 0;
+            (function step() {
+              if (n >= got.length) { return done(); }
+              got[n++].run(function () { wait(120, step); });
+            })();
+          }
+        });
+      })(CHAINS[i]);
+    }
+  })();
 
   /* ---- 시계 ----------------------------------------------------------- */
 

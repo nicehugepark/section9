@@ -16,9 +16,9 @@
      「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
-  N6 재주 표가 온전하다 — 열여덟보다 많고 항목마다 이름·희귀도·길이·하는 일이
-     있으며, 시계가 가드(움직임 줄이기·안 보이는 탭)를 보고 커서를 좇는 중에는
-     끼어들지 않는다. 가장 멀리 가는 값들이 돔 안에 남는지도 기하로 잰다.
+  N6 재주 표가 온전하다 — 손으로 지은 것과 틀이 곱해 낸 것을 합쳐 **110 을 넘고**
+     항목마다 넷이 있으며, 시계가 가드(움직임 줄이기·안 보이는 탭)를 보고 커서를
+     좇는 중에는 끼어들지 않는다. 붓이 제 손으로 돔에서 자르는 것도 여기서 본다.
   N5 정지 파일 셋(mark·favicon·logo)의 렌즈에 음영(radialGradient)과 반사가 있고,
      점 셋이 주인이 고른 비율(지름의 8~14% · 무게중심 13~17% 아래 · 정삼각)을 지킨다.
 
@@ -35,7 +35,7 @@ sys.path.insert(0, HERE)
 import webasset  # noqa: E402
 
 WEB = os.path.normpath(os.path.join(HERE, "..", "web"))
-DOT = re.compile(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="#141518"/>')
+DOT = re.compile(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="#(?:141518|000000)"/>')
 DOME = re.compile(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="url\(#s9dome\)"/>')
 
 
@@ -203,54 +203,80 @@ class TheStillFacesHaveDepth(unittest.TestCase):
 
 
 class TheTrickTableIsWhole(unittest.TestCase):
-    """N6. 재주 표 — 열여덟보다 많고, 항목마다 넷을 갖추고, 가드를 지키고,
-    어떤 재주도 점을 돔 밖에 두고 끝나지 않는다.
+    """N6. 재주 표 — 손으로 지은 것과 **틀이 곱해 낸 것**을 합쳐 110 을 넘고, 시계가
+    가드를 지키며, 어떤 재주도 점을 돔 밖에 두지 않는다.
 
-    재주가 스물여덟이라 「하나씩 눈으로 본다」로는 지킬 수 없다. 그래서 시험이 재는
-    것은 그림이 아니라 **표의 꼴과 경계**다 — 표에 넷(이름·희귀도·길이·하는 일)이
-    다 있는가 · 시계가 가드를 보는가 · 사람이 커서를 움직이는 중에 끼어들지 않는가 ·
-    가장 멀리 가는 값들이 돔 안에 남는가. 재주가 예쁜지는 사람이 띠를 보고 판정한다.
+    표가 백 줄을 넘으면 「하나씩 눈으로 본다」로도, 「줄마다 시험을 쓴다」로도 못
+    지킨다. 그래서 재는 자리를 둘로 잡는다.
+      · **수와 꼴** — 손으로 지은 줄은 글자로 세고, 곱해 낸 것은 원소의 수로 센다
+        (경로 × 속도 × 대상). 틀이 넷(이름·희귀도·길이·하는 일)을 채우는지는
+        틀 하나만 보면 전부에 대해 참이다.
+      · **경계** — 붓이 **제 손으로** 자른다. 무리를 옮기는 붓(capped)은 배율까지
+        셈에 넣고, 점을 옮기는 붓(dcap)은 옮긴 거리가 아니라 **옮긴 자리**로 잰다.
+        재주가 어떤 값을 주어도 그 둘을 지나야 화면에 닿으므로, 재주를 하나씩
+        흉내 내지 않고도 「돔 밖으로 못 나간다」가 참이다.
     """
 
-    ENTRY = re.compile(r'\{name: "([^"]+)", rare: "([^"]+)", ms: (\d+)'
-                       r'(, hides: (true))?, run: function')
+    ENTRY = re.compile(r'\{name: "([^"]+)", rare: "([^"]+)", ms: (\d+)')
     RARE = ("흔함", "가끔", "드묾", "아주 드묾")
 
-    def tricks(self, src):
-        return self.ENTRY.findall(src)
+    def counts(self, src):
+        hand = self.ENTRY.findall(src)
+        def arr(name):
+            i = src.index("var %s = [" % name)
+            return src[i:src.index("\n  ];", i)].count('{n: "')
+        chains = src[src.index("var CHAINS = ["):src.index("\n  ];", src.index("var CHAINS = ["))]
+        return hand, arr("PATHS"), arr("SPEEDS"), arr("TARGETS"), chains.count("[\"")
 
-    def test_n6_the_table_has_eighteen_or_more_well_formed_tricks(self):
+    def test_n6_the_table_passes_a_hundred_and_ten_and_is_well_formed(self):
         src = read("app", "mark.js")
-        got = self.tricks(src)
-        self.assertGreaterEqual(len(got), 18,
-                                "재주가 %d 개뿐이다 — 열여덟 이상이어야 한다" % len(got))
-        names = [g[0] for g in got]
+        hand, paths, speeds, targets, chains = self.counts(src)
+        made = paths * speeds * targets
+        total = len(hand) + made + chains
+        self.assertGreaterEqual(paths, 10, "경로가 열 가지도 안 된다")
+        self.assertGreaterEqual(total, 110,
+                                "재주가 %d 개다 — 손 %d + 곱해 낸 것 %d + 연쇄 %d"
+                                % (total, len(hand), made, chains))
+        names = [g[0] for g in hand]
         self.assertEqual(len(names), len(set(names)), "같은 이름의 재주가 둘이다")
-        for name, rare, ms, _, _ in got:
+        for name, rare, ms in hand:
             with self.subTest(name):
                 self.assertIn(rare, self.RARE, "희귀도가 넷 중 하나가 아니다: %r" % rare)
-                self.assertTrue(200 <= int(ms) <= 3000,
-                                "길이가 0.2~3초 밖이다: %sms" % ms)
-        # 주인이 예시로 든 넷이 각각 있는가 (이름이 아니라 갈래로 센다)
+                self.assertTrue(200 <= int(ms) <= 3000, "길이가 0.2~3초 밖이다: %sms" % ms)
+        # 틀이 내는 줄도 넷을 채운다 — 틀 하나를 보면 곱해 낸 것 전부가 참이다
+        cb = src[src.index("function combo("):src.index("\n  }", src.index("function combo("))]
+        for want in ("name:", "rare:", "ms:", "run:"):
+            with self.subTest(want):
+                self.assertIn(want, cb, "틀이 %s 를 안 채운다" % want)
+        self.assertIn("Math.random()", cb, "각도를 실행 때 뽑지 않는다 — 표가 각도만 다른 "
+                                           "줄로 부풀어도 보는 사람에게는 같은 재주다")
+        # 주인이 예시로 든 넷 (손으로 지은 줄에서)
         joined = " ".join(names)
         for want, why in ((("부르르", "지그재그", "다다닥"), "요란하게 움직이는 재주"),
                           (("숨 쉬기", "툭 벌어짐"), "무리가 벌어졌다 좁아지는 재주"),
                           (("홀로", "흩어", "자리 바꾸기", "물결"), "점 셋이 따로 노는 재주"),
                           (("세로축", "가로축", "비스듬한"), "축이 다른 회전")):
             with self.subTest(why):
-                self.assertTrue(any(w in joined for w in want),
-                                "%s 가 표에 없다" % why)
-        # 축이 자유로운 회전은 렌즈 중심 회전(뱅그르르)과 **다른** 재주여야 한다
-        self.assertTrue(any("뱅그르르" in n for n in names), "렌즈 중심 회전이 없다")
+                self.assertTrue(any(w in joined for w in want), "%s 가 표에 없다" % why)
+        self.assertGreaterEqual(chains, 6, "연쇄 재주가 여섯도 안 된다")
 
-    def test_n6b_the_clock_yields_and_nothing_ends_outside_the_dome(self):
+    def test_n6b_the_clock_yields_and_the_brushes_cut_at_the_dome(self):
         src = read("app", "mark.js")
         stage = src[src.index("function stage()"):src.index("\n  }", src.index("function stage()"))]
-        self.assertIn("unseen() || still()", stage,
-                      "시계가 안 보이는 탭·움직임 줄이기를 안 본다")
+        self.assertIn("unseen() || still()", stage, "시계가 안 보이는 탭·움직임 줄이기를 안 본다")
         self.assertIn("handsOn()", stage, "시계가 커서를 좇는 중에 끼어든다")
         self.assertIn("lastPick", src, "같은 재주를 연달아 뽑지 않는 장치가 없다")
         self.assertIn("rest()", stage, "재주 끝에 쉼 자세로 돌려놓지 않는다")
+
+        # 붓이 제 손으로 자르는가 — 여기가 참이면 재주를 하나씩 흉내 내지 않아도 된다
+        cap = src[src.index("function capped("):src.index("\n  }", src.index("function capped("))]
+        self.assertIn("LENS_R - REACH", cap, "무리의 상한이 배율을 셈에 안 넣는다")
+        dc = src[src.index("function dcap("):src.index("\n  }", src.index("function dcap("))]
+        self.assertIn("LENS_R - b[2]", dc, "점의 상한이 옮긴 자리로 재지 않는다")
+        dfn = src[src.index("  function D(i,"):src.index("\n  }", src.index("  function D(i,"))]
+        self.assertIn("dcap(i, x, y)", dfn, "점을 옮기는 붓이 상한을 지나지 않는다")
+        self.assertIn('BASE.push([+c.getAttribute("cx")', src,
+                      "점의 제자리를 조각에서 읽지 않는다 — 좌표를 두 곳에 적으면 갈린다")
 
         css = read("css", "header.css").replace(" ", "").replace("\n", "")
         for sel in (".pupil", ".spin", ".d0", ".d1", ".d2"):
@@ -266,30 +292,22 @@ class TheTrickTableIsWhole(unittest.TestCase):
             with self.subTest(want):
                 self.assertIn(want, snippet, "머리 조각에 %s 가 없다" % want)
 
-        # 가장 멀리 가는 값 둘이 돔 안에 남는가 — 무리의 상한과 점 하나의 상한
+        # 상한이 실제 좌표에서 돔 안에 남는가
         c = {}
         for key, pat in (("LENS_R", r"var\s+LENS_R\s*=\s*([\d.]+)"),
                          ("MAXF", r"var\s+MAX\s*=\s*LENS_R\s*\*\s*([\d.]+)"),
-                         ("DOTF", r"var\s+DOT_MAX\s*=\s*MAX\s*\*\s*([\d.]+)"),
                          ("HIDE", r"var\s+HIDE\s*=\s*([\d.]+)")):
             m = re.search(pat, src)
             self.assertIsNotNone(m, "%s 가 상수로 없다" % key)
             c[key] = float(m.group(1))
         R = c["LENS_R"]
-        MAXV = R * c["MAXF"]
-        DOTV = MAXV * c["DOTF"]
         m = DOME.search(snippet)
-        cx, cy, _ = (float(v) for v in m.groups())
+        cx, cy, domeR = (float(v) for v in m.groups())
+        self.assertAlmostEqual(R, domeR, delta=0.05,
+                               msg="코드의 돔 반지름이 조각의 것과 다르다")
         d3 = [tuple(float(v) for v in g) for g in DOT.findall(snippet[m.end():])][:3]
         far = max(math.hypot(x - cx, y - cy) + r for x, y, r in d3)
-        self.assertLess(far + DOTV, R,
-                        "점 하나가 홀로 갈 수 있는 거리(%.2f)가 돔을 넘는다" % DOTV)
-        self.assertLess(far + MAXV, R,
-                        "무리의 이동 상한(%.2f)이 돔을 넘는다" % MAXV)
-        # 커지는 재주 — 어떤 배율도 무리를 돔 밖으로 밀지 않아야 한다
-        big = max([float(x) for x in re.findall(r"\{s: ([\d.]+)", src)] or [1])
-        self.assertLessEqual(big, 1.25, "무리를 %.2f 배까지 키운다 — 테를 넘는다" % big)
-        # 뒤로 도는 재주는 **반쯤** 걸치면 안 된다 — 아예 밖이어야 테가 가린다
+        self.assertLess(far, R, "쉼 자세에서 이미 점이 테를 넘는다")
         self.assertGreater(c["HIDE"] - far, 0,
                            "뒤로 밀어내는 거리(%.1f)가 모자라 점이 테에 걸친다" % c["HIDE"])
 
