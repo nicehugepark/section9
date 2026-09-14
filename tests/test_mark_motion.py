@@ -15,7 +15,8 @@
      기하로 잰다. 「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
-  N6 재주 표가 온전하다 — 합쳐 **80 을 넘고**(구르기만 스물 넘게), 점이 따로 노는
+  N6 재주 표가 온전하다 — 합쳐 **80 을 넘고**(구르기만 마흔 넘게, 그리고 뽑는 몫의
+     30퍼센트 이상), 점이 따로 노는
      재주는 **10%% 이하**이며, 비슷한 것을 표에 두 줄로 두지 않으며
      항목마다 넷이 있으며, 시계가 가드(움직임 줄이기·안 보이는 탭)를 보고 커서를
      좇는 중에는 끼어들지 않는다. 붓이 제 손으로 돔에서 자르는 것도 여기서 본다.
@@ -217,17 +218,19 @@ class TheTrickTableIsWhole(unittest.TestCase):
         흉내 내지 않고도 「돔 밖으로 못 나간다」가 참이다.
     """
 
-    ENTRY = re.compile(r'\{name: "([^"]+)", rare: "([^"]+)", ms: (\d+)(, solo: true)?')
+    ENTRY = re.compile(r'\{name: "([^"]+)", fam: "([^"]+)", rare: "([^"]+)", ms: (\d+)(, solo: true)?')
     RARE = ("흔함", "가끔", "드묾", "아주 드묾")
 
     def counts(self, src):
-        hand = self.ENTRY.findall(src)
+        hand = [e for e in self.ENTRY.findall(src) if e[1] == "표정"]
         def arr(name):
             i = src.index("var %s = [" % name)
             return src[i:src.index("\n  ];", i)].count('{n: "')
         chains = src[src.index("var CHAINS = ["):src.index("\n  ];", src.index("var CHAINS = ["))]
         rolls = src[src.index("var ROLLS = ["):src.index("\n  ];", src.index("var ROLLS = ["))]
-        return (hand, arr("PATHS"), arr("SPEEDS"), rolls.count("[") - 1,
+        # 구르기 = 표에서 곱아 낸 것(ROLLS) + 이름으로 지은 것(빙그르르·데구르르 …)
+        named = len(re.findall(r'fam: "구르기", rare:', src))
+        return (hand, arr("PATHS"), arr("SPEEDS"), rolls.count("[") - 1 + named,
                 chains.count("[\""))
 
     def test_n6_the_table_is_big_and_the_three_dots_stay_one_gaze(self):
@@ -239,9 +242,30 @@ class TheTrickTableIsWhole(unittest.TestCase):
         self.assertGreaterEqual(total, 80,
                                 "재주가 %d 개다 — 손 %d + 곱해 낸 것 %d + 구르기 %d + 연쇄 %d"
                                 % (total, len(hand), made, rolls, chains))
-        self.assertGreaterEqual(rolls, 20,
-                                "구르기가 %d 가지뿐이다 — 이 마크에서 가장 「타치코마」다운 "
-                                "움직임이라 스물은 넘어야 한다" % rolls)
+        self.assertGreaterEqual(rolls, 40,
+                                "구르기가 %d 가지뿐이다 — 주인이 보고 싶어 하는 갈래라 "
+                                "마흔은 넘어야 한다(주인 2026-09-14 17:35)" % rolls)
+        # 의성어 넷은 이름 그대로 표에 있어야 한다
+        for w in ("빙그르르", "데구르르", "데굴데굴", "휘리리릭"):
+            with self.subTest(w):
+                self.assertIn('{name: "%s", fam: "구르기"' % w, src,
+                              "%s 가 그 이름으로 표에 없다" % w)
+        # 가족 몫 — 구르기가 세 번에 한 번은 나와야 한다
+        fm = src[src.index("var FAMS = ["):src.index("\n  ];", src.index("var FAMS = ["))]
+        ws = dict((a, int(b)) for a, b in re.findall(r'\{n: "([^"]+)", w: (\d+)\}', fm))
+        self.assertEqual(sorted(ws), sorted(["구르기", "곱", "연쇄", "표정"]),
+                         "가족이 넷이 아니다: %r" % sorted(ws))
+        share = 100.0 * ws["구르기"] / sum(ws.values())
+        self.assertGreaterEqual(share, 30.0,
+                                "구르기 몫이 %.0f퍼센트다 — 서른은 넘어야 10초에 한 번쯤 "
+                                "구른다" % share)
+        # 몫 밖으로 새는 재주가 없어야 한다 — 손으로 적은 줄도, 틀이 내는 줄도
+        self.assertEqual(src.count('{name: "'),
+                         len(re.findall(r'\{name: "[^"]+", fam: "', src)),
+                         "가족표(fam)가 없는 줄이 있다 — 그것은 몫 밖에서 돈다")
+        for fam in ("곱", "연쇄", "구르기"):
+            with self.subTest(fam):
+                self.assertIn('fam: "%s"' % fam, src, "%s 을 내는 틀에 가족표가 없다" % fam)
         # 비슷한 것을 표에 두지 않는다 — 속도는 둘, 결은 경로마다 하나
         self.assertLessEqual(speeds, 2,
                              "속도가 %d 갈래다 — 「보통」은 어느 경로에서도 「느리게」와 "
@@ -260,7 +284,7 @@ class TheTrickTableIsWhole(unittest.TestCase):
                          "태반이 그것이 된다")
         names = [g[0] for g in hand]
         self.assertEqual(len(names), len(set(names)), "같은 이름의 재주가 둘이다")
-        for name, rare, ms, _solo in hand:
+        for name, _fam, rare, ms, _solo in hand:
             with self.subTest(name):
                 self.assertIn(rare, self.RARE, "희귀도가 넷 중 하나가 아니다: %r" % rare)
                 self.assertTrue(200 <= int(ms) <= 3000, "길이가 0.2~3초 밖이다: %sms" % ms)
@@ -291,8 +315,8 @@ class TheTrickTableIsWhole(unittest.TestCase):
         self.assertIn("following", stage, "시계가 커서를 좇는 중에 끼어든다")
         self.assertIn("lastPick", src, "같은 재주를 연달아 뽑지 않는 장치가 없다")
         # 뽑기는 섞은 주머니다 — 순서가 표 순서를 드러내면 안 된다
-        self.assertIn("function refill()", src, "섞은 주머니가 없다")
-        rf = src[src.index("function refill()"):src.index("\n  }", src.index("function refill()"))]
+        self.assertIn("function refill(fam)", src, "가족별 섞은 주머니가 없다")
+        rf = src[src.index("function refill(fam)"):src.index("\n  }", src.index("function refill(fam)"))]
         self.assertIn("Math.floor(Math.random() * (i + 1))", rf,
                       "주머니를 섞지 않는다 — 피셔–예이츠가 없다")
         self.assertIn("WEIGHT[TRICKS[i].rare]", rf, "희귀도만큼 담지 않는다")

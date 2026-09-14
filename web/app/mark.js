@@ -81,7 +81,7 @@
   var CALM_MS = 1500;              // 커서가 멎은 뒤 이만큼 지나면 재주가 다시 돈다
   var TRACK_MS = 190;              // 커서를 좇아가는 시간
   var TRACK_GAP = 60;              // 커서를 다시 보는 최소 간격(ms)
-  var IDLE_MS = [1400, 4200];      // 재주와 재주 사이
+  var IDLE_MS = [800, 2500];       // 재주와 재주 사이 — 짧게(주인 17:35)
   var LINEAR = "linear";
   var EASE_IN = "cubic-bezier(.55,.06,.68,.19)";
   var EASE_IO = "cubic-bezier(.45,.05,.25,1)";
@@ -218,19 +218,19 @@
   var TRICKS = [
     /* --- 함께 움직이는 표정 ------------------------------------------ */
 
-    {name: "곁눈질", rare: "흔함", ms: 620, run: function (done) {
+    {name: "곁눈질", fam: "표정", rare: "흔함", ms: 620, run: function (done) {
       var a = Math.random() * Math.PI * 2, m = MAX * rnd(0.5, 0.85);
       seq([[300, function () { P(Math.cos(a) * m, Math.sin(a) * m, 170); }],
            [200, function () { rest(220); }]], done);
     }},
 
-    {name: "응시", rare: "흔함", ms: 1900, run: function (done) {
+    {name: "응시", fam: "표정", rare: "흔함", ms: 1900, run: function (done) {
       var a = Math.random() * Math.PI * 2, m = MAX * rnd(0.6, 1);
       seq([[1500, function () { P(Math.cos(a) * m, Math.sin(a) * m, 200); }],
            [260, function () { rest(240); }]], done);
     }},
 
-    {name: "두리번", rare: "흔함", ms: 1100, run: function (done) {
+    {name: "두리번", fam: "표정", rare: "흔함", ms: 1100, run: function (done) {
       var s = sign();
       seq([[240, function () { P(MAX * 0.8 * s, -MAX * 0.3, 150); }],
            [240, function () { P(-MAX * 0.8 * s, -MAX * 0.2, 150); }],
@@ -238,14 +238,14 @@
            [240, function () { rest(200); }]], done);
     }},
 
-    {name: "끄덕임", rare: "흔함", ms: 1150, run: function (done) {
+    {name: "끄덕임", fam: "표정", rare: "흔함", ms: 1150, run: function (done) {
       seq([[200, function () { P(0, MAX_DOWN, 180, {ease: EASE_IO}); }],
            [200, function () { P(0, -MAX * 0.45, 180, {ease: EASE_IO}); }],
            [200, function () { P(0, MAX_DOWN * 0.8, 180, {ease: EASE_IO}); }],
            [280, function () { rest(260); }]], done);
     }},
 
-    {name: "도리도리", rare: "흔함", ms: 1250, run: function (done) {
+    {name: "도리도리", fam: "표정", rare: "흔함", ms: 1250, run: function (done) {
       var s = sign();
       seq([[200, function () { P(MAX * 0.8 * s, 0, 180, {ease: EASE_IO}); }],
            [200, function () { P(-MAX * 0.8 * s, 0, 180, {ease: EASE_IO}); }],
@@ -254,14 +254,14 @@
            [280, function () { rest(260); }]], done);
     }},
 
-    {name: "갸웃", rare: "흔함", ms: 1500, run: function (done) {
+    {name: "갸웃", fam: "표정", rare: "흔함", ms: 1500, run: function (done) {
       var s = sign();
       seq([[800, function () { P(MAX * 0.35 * s, -MAX * 0.15, 420,
                                 {rot: 15 * s, ease: EASE_IO}); }],
            [420, function () { P(aimX, aimY, 400, {rot: 0, ease: EASE_IO}); }]], done);
     }},
 
-    {name: "힐끗힐끗", rare: "흔함", ms: 1450, run: function (done) {
+    {name: "힐끗힐끗", fam: "표정", rare: "흔함", ms: 1450, run: function (done) {
       var s = sign();
       seq([[130, function () { P(MAX * 0.9 * s, -MAX * 0.2, 110); }],
            [330, function () { P(aimX, aimY, 150); }],
@@ -269,32 +269,32 @@
            [420, function () { rest(200); }]], done);
     }},
 
-    {name: "숨 쉬기", rare: "흔함", ms: 2100, run: function (done) {
+    {name: "숨 쉬기", fam: "표정", rare: "흔함", ms: 2100, run: function (done) {
       seq([[700, function () { P(aimX, aimY, 680, {s: 1.14, ease: EASE_IO}); }],
            [700, function () { P(aimX, aimY, 680, {s: 0.94, ease: EASE_IO}); }],
            [600, function () { rest(560); }]], done);
     }},
 
-    {name: "느린 깜빡", rare: "흔함", ms: 760, run: function (done) {
+    {name: "느린 깜빡", fam: "표정", rare: "흔함", ms: 760, run: function (done) {
       seq([[340, function () { P(aimX, aimY, 320, {s: 0.72, ease: EASE_IO}); }],
            [340, function () { rest(320); }]], done);
     }},
 
-    {name: "두 번 깜빡", rare: "가끔", ms: 660, run: function (done) {
+    {name: "두 번 깜빡", fam: "표정", rare: "가끔", ms: 660, run: function (done) {
       seq([[120, function () { P(aimX, aimY, 110, {s: 0.78}); }],
            [120, function () { P(aimX, aimY, 110, {s: 1}); }],
            [120, function () { P(aimX, aimY, 110, {s: 0.78}); }],
            [200, function () { rest(150); }]], done);
     }},
 
-    {name: "스캔", rare: "가끔", ms: 1350, run: function (done) {
+    {name: "스캔", fam: "표정", rare: "가끔", ms: 1350, run: function (done) {
       var s = sign();
       seq([[420, function () { P(-MAX * s, 0, 400, {ease: EASE_IO}); }],
            [520, function () { P(MAX * s, 0, 500, {ease: LINEAR}); }],
            [300, function () { rest(280); }]], done);
     }},
 
-    {name: "빙 둘러보기", rare: "가끔", ms: 2000, run: function (done) {
+    {name: "빙 둘러보기", fam: "표정", rare: "가끔", ms: 2000, run: function (done) {
       var dir = sign();
       ramp(12, 140, function (t) {
         var a = t * Math.PI * 2 * dir;
@@ -302,14 +302,14 @@
       }, function () { rest(240); wait(250, done); });
     }},
 
-    {name: "흔들흔들", rare: "가끔", ms: 2200, run: function (done) {
+    {name: "흔들흔들", fam: "표정", rare: "가끔", ms: 2200, run: function (done) {
       ramp(10, 190, function (t) {
         var a = Math.sin(t * Math.PI * 4) * (1 - t * 0.5);
         P(MAX * 0.85 * a, 0, 195, {rot: 9 * a, ease: LINEAR});
       }, function () { rest(280); wait(290, done); });
     }},
 
-    {name: "깡충깡충", rare: "가끔", ms: 1350, run: function (done) {
+    {name: "깡충깡충", fam: "표정", rare: "가끔", ms: 1350, run: function (done) {
       seq([[190, function () { P(0, -MAX * 0.9, 170, {ease: BOUNCE}); }],
            [190, function () { P(0, MAX_DOWN * 0.7, 170, {ease: EASE_IO}); }],
            [190, function () { P(0, -MAX * 0.7, 170, {ease: BOUNCE}); }],
@@ -317,7 +317,7 @@
            [280, function () { rest(260); }]], done);
     }},
 
-    {name: "신나서 통통", rare: "가끔", ms: 1500, run: function (done) {
+    {name: "신나서 통통", fam: "표정", rare: "가끔", ms: 1500, run: function (done) {
       var s = sign();
       seq([[170, function () { P(MAX * 0.5 * s, -MAX * 0.8, 150, {s: 1.08, ease: BOUNCE}); }],
            [170, function () { P(MAX * 0.7 * s, MAX_DOWN * 0.6, 150, {ease: EASE_IO}); }],
@@ -326,47 +326,47 @@
            [380, function () { rest(340); }]], done);
     }},
 
-    {name: "기지개", rare: "가끔", ms: 2200, run: function (done) {
+    {name: "기지개", fam: "표정", rare: "가끔", ms: 2200, run: function (done) {
       seq([[900, function () { P(0, -MAX * 0.35, 860, {s: 1.18, ease: EASE_IO}); }],
            [500, function () { P(0, -MAX * 0.2, 460, {s: 1.1, ease: EASE_IO}); }],
            [600, function () { rest(560); }]], done);
     }},
 
-    {name: "궁금해 다가감", rare: "가끔", ms: 1800, run: function (done) {
+    {name: "궁금해 다가감", fam: "표정", rare: "가끔", ms: 1800, run: function (done) {
       seq([[420, function () { P(0, -MAX * 0.3, 380, {s: 1.2, ease: EASE_IO}); }],
            [760, function () { P(MAX * 0.25 * sign(), -MAX * 0.3, 300, {s: 1.2, ease: EASE_IO}); }],
            [500, function () { rest(460); }]], done);
     }},
 
-    {name: "멀어짐", rare: "가끔", ms: 1700, run: function (done) {
+    {name: "멀어짐", fam: "표정", rare: "가끔", ms: 1700, run: function (done) {
       seq([[520, function () { P(0, MAX_DOWN * 0.5, 480, {s: 0.8, ease: EASE_IO}); }],
            [700, function () { P(0, MAX_DOWN * 0.5, 300, {s: 0.8, ease: EASE_IO}); }],
            [420, function () { rest(400); }]], done);
     }},
 
-    {name: "무리 회전", rare: "가끔", ms: 1000, run: function (done) {
+    {name: "무리 회전", fam: "표정", rare: "가끔", ms: 1000, run: function (done) {
       seq([[880, function () { P(aimX, aimY, 860, {rot: 360 * sign(), ease: EASE_IO}); }],
            [60, function () { P(aimX, aimY, 0); }]], done);
     }},
 
-    {name: "졸음", rare: "가끔", ms: 2100, run: function (done) {
+    {name: "졸음", fam: "표정", rare: "가끔", ms: 2100, run: function (done) {
       seq([[1100, function () { P(0, MAX_DOWN, 1050, {s: 0.88, ease: EASE_IO}); }],
            [260, function () { P(0, -MAX * 0.6, 130, {s: 1.12}); }],
            [420, function () { rest(300); }]], done);
     }},
 
-    {name: "툭 벌어짐", rare: "드묾", ms: 560, run: function (done) {
+    {name: "툭 벌어짐", fam: "표정", rare: "드묾", ms: 560, run: function (done) {
       seq([[130, function () { P(aimX, aimY, 110, {s: 1.22}); }],
            [380, function () { rest(360); }]], done);
     }},
 
-    {name: "놀람", rare: "드묾", ms: 900, run: function (done) {
+    {name: "놀람", fam: "표정", rare: "드묾", ms: 900, run: function (done) {
       seq([[110, function () { P(0, -MAX * 0.5, 90, {s: 1.22}); }],
            [180, function () { P(0, -MAX * 0.2, 160, {s: 1.05}); }],
            [520, function () { rest(480); }]], done);
     }},
 
-    {name: "부르르", rare: "드묾", ms: 800, run: function (done) {
+    {name: "부르르", fam: "표정", rare: "드묾", ms: 800, run: function (done) {
       var n = 8, list = [], i;
       for (i = 0; i < n; i++) {
         list.push([70, (function () {
@@ -377,7 +377,7 @@
       seq(list, done);
     }},
 
-    {name: "다다닥 두리번", rare: "드묾", ms: 1150, run: function (done) {
+    {name: "다다닥 두리번", fam: "표정", rare: "드묾", ms: 1150, run: function (done) {
       var n = 7, list = [], i;
       for (i = 0; i < n; i++) {
         list.push([120, (function () {
@@ -396,7 +396,7 @@
        제각각 기어 다니면 벌레가 된다. 그래서 `solo: true` 는 둘뿐이고, 둘 다
        흩어지자마자 곧 모인다. */
 
-    {name: "물결", rare: "드묾", ms: 1250, solo: true, run: function (done) {
+    {name: "물결", fam: "표정", rare: "드묾", ms: 1250, solo: true, run: function (done) {
       if (!dots.length) { return done(); }
       var d = DOT_MAX * 0.45;
       seq([[150, function () { D(0, 0, -d, 150, {ease: EASE_IO}); }],
@@ -406,7 +406,7 @@
            [300, function () { rest(200); }]], done);
     }},
 
-    {name: "흩어졌다 곧 모이기", rare: "아주 드묾", ms: 1100, solo: true, run: function (done) {
+    {name: "흩어졌다 곧 모이기", fam: "표정", rare: "아주 드묾", ms: 1100, solo: true, run: function (done) {
       if (!dots.length) { return done(); }
       var d = DOT_MAX * 0.8;
       seq([[380, function () {
@@ -436,23 +436,35 @@
     {n: "오른쪽 비스듬히", d: 35}, {n: "왼쪽 비스듬히", d: -35}
   ];
   var ROLL_TURNS = [
-    {n: "반 바퀴", t: 0.5, ms: 1300, rare: "드묾"},
-    {n: "한 바퀴", t: 1, ms: 1600, rare: "드묾"},
-    {n: "두 바퀴", t: 2, ms: 2800, rare: "아주 드묾"}
+    {n: "반 바퀴", t: 0.5}, {n: "한 바퀴", t: 1},
+    {n: "두 바퀴", t: 2}, {n: "세 바퀴", t: 3}
+  ];
+  /* 속도를 되살렸다 (주인 2026-09-14 17:35). 무리가 그냥 옮겨 다닐 때는 「보통」이
+     「느리게」와 눈으로 안 갈렸지만(v8), **구르기에서는 갈린다** — 같은 한 바퀴라도
+     느리면 굴러가는 것이고 빠르면 휙 도는 것이다. 걸음 수와 간격이 함께 바뀐다. */
+  var ROLL_SPEEDS = [
+    {n: "느리게", steps: 8, gap: 110}, {n: "보통", steps: 6, gap: 70},
+    {n: "빠르게", steps: 5, gap: 38}
   ];
   var ROLL_FINS = [
     {n: "부드럽게", ease: EASE_IO, end: "제자리"},
     {n: "툭", ease: LINEAR, end: "제자리"},
     {n: "튕겨 멈춤", ease: EASE_IO, end: "흔들리며"},
-    {n: "천천히 굴러 빨라짐", ease: EASE_IN, end: "제자리"},
+    {n: "감속", ease: EASE_IN, end: "제자리"},
     {n: "반대편에서 멈춤", ease: EASE_IO, end: "반대편"}
   ];
-  /* 축·바퀴마다 고른 맺음 둘 — 손으로 골랐다(같은 축에서 같은 맺음이 겹치지 않게). */
+  /* 축·바퀴마다 (속도, 맺음) 셋씩 — 축 4 × 바퀴 4 × 3 = 48. 240 가지를 다 넣으면
+     같은 축·같은 바퀴에서 맺음만 다른 것이 대부분이라, 축·바퀴마다 **속도가 서로
+     다른** 셋을 골라 느림·보통·빠름이 어느 자리에서도 한 번씩 나오게 했다. */
   var ROLLS = [
-    [0, 0, 0], [0, 0, 2], [0, 1, 1], [0, 1, 4], [0, 2, 3], [0, 2, 0],
-    [1, 0, 1], [1, 0, 3], [1, 1, 0], [1, 1, 2], [1, 2, 4], [1, 2, 1],
-    [2, 0, 2], [2, 0, 4], [2, 1, 3], [2, 1, 0], [2, 2, 1], [2, 2, 2],
-    [3, 0, 3], [3, 0, 0], [3, 1, 4], [3, 1, 2], [3, 2, 0], [3, 2, 3]
+    [0,0,0,0],[0,0,1,2],[0,0,2,1], [0,1,1,1],[0,1,2,4],[0,1,0,3],
+    [0,2,2,3],[0,2,0,0],[0,2,1,2], [0,3,0,4],[0,3,2,2],[0,3,1,0],
+    [1,0,1,1],[1,0,2,3],[1,0,0,0], [1,1,0,0],[1,1,2,2],[1,1,1,4],
+    [1,2,2,4],[1,2,1,1],[1,2,0,3], [1,3,1,3],[1,3,0,2],[1,3,2,0],
+    [2,0,2,2],[2,0,0,4],[2,0,1,3], [2,1,1,3],[2,1,0,0],[2,1,2,1],
+    [2,2,0,1],[2,2,2,0],[2,2,1,2], [2,3,2,1],[2,3,1,4],[2,3,0,3],
+    [3,0,0,3],[3,0,1,0],[3,0,2,4], [3,1,2,0],[3,1,1,2],[3,1,0,1],
+    [3,2,1,0],[3,2,0,2],[3,2,2,3], [3,3,1,1],[3,3,0,4],[3,3,2,2]
   ];
 
   function landing(end, done) {
@@ -469,17 +481,18 @@
   }
 
   /* 한 「지나감」 — 납작해지며 테 뒤로 갔다가, 반 바퀴면 같은 쪽에서 한 바퀴면
-     반대쪽에서 펴지며 돌아온다. 두 바퀴는 이것을 두 번 한다. */
-  function roll(deg, turns, ease, end, done) {
-    var same = turns === 0.5, left = turns === 2 ? 2 : 1, a = deg;
+     반대쪽에서 펴지며 돌아온다. 두·세 바퀴는 이것을 거듭한다.
+     숨는 시간은 한 장면 안팎(80~180ms)이다 — 길면 눈이 사라진 것으로 보인다. */
+  function roll(deg, turns, sp, ease, end, done) {
+    var same = turns === 0.5, left = Math.max(1, Math.round(turns)), a = deg;
     (function next() {
       if (left-- <= 0) { return landing(end, done); }
       var b = same ? a : a + 180;
-      ramp(6, 70, function (t) { slide(a, t, 70, ease); }, function () {
-        wait(pick([140, 320]), function () {
+      ramp(sp.steps, sp.gap, function (t) { slide(a, t, sp.gap, ease); }, function () {
+        wait(pick([80, 180]), function () {
           slide(b, 1, 0);
-          wait(40, function () {
-            ramp(6, 70, function (t) { slide(b, 1 - t, 70, LINEAR); },
+          wait(30, function () {
+            ramp(sp.steps, sp.gap, function (t) { slide(b, 1 - t, sp.gap, LINEAR); },
               function () { a = b; next(); });
           });
         });
@@ -487,37 +500,46 @@
     })();
   }
 
+  function rollMs(tn, sp) {
+    return Math.max(1, Math.round(tn.t)) * (sp.steps * sp.gap * 2 + 260) + 520;
+  }
+
   (function () {
-    var i, ax, tn, fi;
+    var i, ax, tn, sp, fi;
     for (i = 0; i < ROLLS.length; i++) {
-      ax = ROLL_AXES[ROLLS[i][0]]; tn = ROLL_TURNS[ROLLS[i][1]]; fi = ROLL_FINS[ROLLS[i][2]];
-      (function (ax, tn, fi) {
+      ax = ROLL_AXES[ROLLS[i][0]]; tn = ROLL_TURNS[ROLLS[i][1]];
+      sp = ROLL_SPEEDS[ROLLS[i][2]]; fi = ROLL_FINS[ROLLS[i][3]];
+      (function (ax, tn, sp, fi) {
         TRICKS.push({
-          name: ax.n + " " + tn.n + "·" + fi.n, rare: tn.rare, ms: tn.ms, hides: true,
-          run: function (done) { roll(ax.d * sign(), tn.t, fi.ease, fi.end, done); }
+          name: ax.n + " " + tn.n + "·" + sp.n + "·" + fi.n,
+          fam: "구르기", rare: tn.t >= 2 ? "드묾" : "가끔", ms: rollMs(tn, sp), hides: true,
+          run: function (done) { roll(ax.d * sign(), tn.t, sp, fi.ease, fi.end, done); }
         });
-      })(ax, tn, fi);
+      })(ax, tn, sp, fi);
     }
   })();
 
-
-
-  /* 구체가 한 바퀴(또는 반 바퀴) 도는 것 — 나갈 때는 납작해지며 테 뒤로,
-     들어올 때는 반대쪽(반 바퀴면 같은 쪽)에서 펴지며 돌아온다. */
-  function turn(deg, done, half) {
-    var back = half ? deg : deg + 180;
-    ramp(6, 70, function (t) { slide(deg, t, 70, LINEAR); },
-      function () {
-        wait(pick([160, 420]), function () {
-          slide(back, 1, 0);                     // 테 뒤라 옮겨도 안 보인다
-          wait(40, function () {
-            ramp(6, 70, function (t) { slide(back, 1 - t, 70, LINEAR); },
-              function () { rest(150); wait(160, done); });
-          });
-        });
-      });
-  }
-
+  /* 주인이 이름으로 부른 넷 — 표에 그 이름 그대로 둔다 (2026-09-14 17:35). */
+  (function () {
+    var S0 = ROLL_SPEEDS[0], S1 = ROLL_SPEEDS[1], S2 = ROLL_SPEEDS[2];
+    TRICKS.push({name: "빙그르르", fam: "구르기", rare: "흔함", ms: 1100,
+      run: function (done) {            // 제자리 회전 한 바퀴 — 렌즈 중심이 축이다
+        seq([[900, function () { S(360 * sign(), 860, EASE_IO); }],
+             [140, function () { S(0, 0); }]], done);
+      }});
+    TRICKS.push({name: "데구르르", fam: "구르기", rare: "흔함", ms: rollMs(ROLL_TURNS[2], S0),
+      run: function (done) {            // 느리게 두 바퀴 굴러가며 감속
+        roll(rnd(-20, 20), 2, S0, EASE_IN, "제자리", done);
+      }});
+    TRICKS.push({name: "데굴데굴", fam: "구르기", rare: "흔함", ms: rollMs(ROLL_TURNS[3], S1),
+      run: function (done) {            // 통통 튀며 세 바퀴
+        roll(rnd(-25, 25), 3, S1, BOUNCE, "흔들리며", done);
+      }});
+    TRICKS.push({name: "휘리리릭", fam: "구르기", rare: "흔함", ms: rollMs(ROLL_TURNS[3], S2),
+      run: function (done) {            // 빠르게 세 바퀴 돌고 탁 멈춤
+        roll(rnd(-40, 40) + 90 * (Math.random() < 0.5 ? 0 : 1), 3, S2, LINEAR, "제자리", done);
+      }});
+  })();
 
   /* ---- 재주 짓는 틀 ---------------------------------------------------
      손으로 스물여덟을 적고 나니 다음 요구는 「네 배」였다. 표를 손으로 네 배
@@ -579,7 +601,7 @@
 
   function combo(path, sp, md) {
     return {
-      name: path.n + "·" + sp.n + "·" + md.n,
+      name: path.n + "·" + sp.n + "·" + md.n, fam: "곱",
       rare: sp.rare === "드묾" ? "드묾" : (md.n === "작게" ? "흔함" : sp.rare),
       ms: sp.steps * md.rep * sp.gap + 340,
       run: function (done) {
@@ -608,10 +630,12 @@
   /* 연쇄 재주 — 손으로 지은 것 둘·셋을 잇는다. 하나로는 못 내는 **이야기**가
      나온다(두리번거리다 놀라고 한참 바라본다). 아주 드물게만 나온다. */
   var CHAINS = [
-    ["두리번", "놀람", "응시"], ["곁눈질", "세로축 한 바퀴·툭"], ["스캔", "툭 벌어짐"],
+    ["두리번", "놀람", "응시"], ["곁눈질", "빙그르르"], ["스캔", "툭 벌어짐"],
     ["졸음", "놀람"], ["끄덕임", "기지개"], ["도리도리", "갸웃"],
     ["힐끗힐끗", "두 번 깜빡"], ["깡충깡충", "느린 깜빡"], ["빙 둘러보기", "응시"],
-    ["흔들흔들", "졸음"], ["궁금해 다가감", "멀어짐"], ["다다닥 두리번", "가로축 한 바퀴·부드럽게"]
+    ["흔들흔들", "졸음"], ["궁금해 다가감", "멀어짐"],
+    ["데굴데굴", "휘리리릭"], ["데구르르", "빙그르르"],
+    ["휘리리릭", "빙그르르", "느린 깜빡"], ["놀람", "데굴데굴"]
   ];
 
   (function () {
@@ -625,7 +649,7 @@
           got.push(byName[parts[j]]); ms += byName[parts[j]].ms;
         }
         TRICKS.push({
-          name: parts.join(" → "), rare: "아주 드묾", ms: ms + 240,
+          name: parts.join(" → "), fam: "연쇄", rare: "아주 드묾", ms: ms + 240,
           run: function (done) {
             var n = 0;
             (function step() {
@@ -642,31 +666,57 @@
 
   var WEIGHT = {"흔함": 8, "가끔": 4, "드묾": 2, "아주 드묾": 1};
 
-  /* 뽑기는 **섞은 주머니**다 (주인 16:49 「순서가 고정이라면 랜덤으로 바꿔줘」).
-     매번 난수로 고르면 같은 재주가 연달아 나오기도 하고 어떤 것은 한참 안 나온다.
-     주머니는 희귀도만큼 표를 넣고 섞어 하나씩 꺼내므로, 한 바퀴 도는 동안 모든
-     재주가 제 몫만큼 나오고 순서는 매번 다르다. 바닥나면 다시 채워 섞는다. */
-  function refill() {
-    var i, k, w;
-    bag = [];
+  /* 뽑기는 **가족 몫 + 섞은 주머니**다 (주인 2026-09-14 17:35: 「구르기 … 여전히
+     너무 부족해서 아무리 기다려도 몇 번 노출되지 않는다」).
+
+     종전에는 표 전체를 한 주머니에 넣고 희귀도로만 섞었다. 그러면 구르기가 쉰둘
+     있어도 표정·곱·연쇄에 섞여 제 몫이 보장되지 않는다 — 희귀도는 「이 재주가
+     얼마나 드문가」를 말하지 「이 갈래가 얼마나 자주 나오는가」를 말하지 않는다.
+     그래서 **먼저 가족을 몫으로 뽑고, 그 가족 안에서 섞은 주머니를 쓴다.**
+
+     몫: 구르기 35 · 표정 35 · 곱 20 · 연쇄 10.
+       · 구르기 35 — 주인이 보고 싶다고 한 것이다. 재주 하나가 1~3초이고 사이가
+         0.8~2.5초이니 평균 세 번에 한 번, **10초 안팎에 한 번**은 구른다.
+       · 표정 35 — 구르기만 나오면 기계 체조가 된다. 끄덕임·갸웃 같은 잔잔한 것이
+         같은 몫으로 섞여야 「가끔 구르는 눈」으로 읽힌다.
+       · 곱 20 — 경로가 주는 변주. 눈에 띄지 않게 바탕을 채운다.
+       · 연쇄 10 — 가장 긴 것(3~5초)이라 자주 나오면 다른 것이 밀린다. */
+  var FAMS = [
+    {n: "구르기", w: 35}, {n: "표정", w: 35}, {n: "곱", w: 20}, {n: "연쇄", w: 10}
+  ];
+  var bags = {};
+
+  function refill(fam) {
+    var i, k, w, b = [];
     for (i = 0; i < TRICKS.length; i++) {
+      if (TRICKS[i].fam !== fam) { continue; }
       w = WEIGHT[TRICKS[i].rare] || 1;
-      for (k = 0; k < w; k++) { bag.push(i); }
+      for (k = 0; k < w; k++) { b.push(i); }
     }
-    for (i = bag.length - 1; i > 0; i--) {        // 피셔–예이츠
+    for (i = b.length - 1; i > 0; i--) {          // 피셔–예이츠
       k = Math.floor(Math.random() * (i + 1));
-      w = bag[i]; bag[i] = bag[k]; bag[k] = w;
+      w = b[i]; b[i] = b[k]; b[k] = w;
     }
+    bags[fam] = b;
   }
 
   function choose() {
-    if (!bag.length) { refill(); }
-    var i = bag.pop();
-    if (i === lastPick && bag.length) {           // 바로 앞엣것은 다시 안 뽑는다
-      var k = Math.floor(Math.random() * bag.length);
-      var j = bag[k]; bag[k] = i; i = j;
+    var total = 0, i, r;
+    for (i = 0; i < FAMS.length; i++) { total += FAMS[i].w; }
+    r = Math.random() * total;
+    var fam = FAMS[FAMS.length - 1].n;
+    for (i = 0; i < FAMS.length; i++) {
+      r -= FAMS[i].w;
+      if (r <= 0) { fam = FAMS[i].n; break; }
     }
-    return i;
+    if (!bags[fam] || !bags[fam].length) { refill(fam); }
+    if (!bags[fam].length) { return 0; }
+    var k = bags[fam].pop();
+    if (k === lastPick && bags[fam].length) {     // 바로 앞엣것은 다시 안 뽑는다
+      var j = Math.floor(Math.random() * bags[fam].length);
+      var t = bags[fam][j]; bags[fam][j] = k; k = t;
+    }
+    return k;
   }
 
   function stage() {
@@ -675,6 +725,7 @@
       if (busy) { stage(); return; }
       var i = choose(), t = TRICKS[i];
       lastPick = i;
+      window.__S9_LAST = t.name + "|" + t.fam + "|" + Date.now();   // 검토 보조
       busy = true;
       var ended = false;
       var end = function () {
