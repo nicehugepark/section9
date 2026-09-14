@@ -6,7 +6,7 @@ role: admin
 emails: ["claude01.pfe@example.invalid"]
 github: nicehugepark
 os_accounts: ["sjpark1", "sjpark", "seongjinpark"]
-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-14T12:08:01+09:00", "last_recv": "2026-09-14T14:14:49+09:00", "takes": true, "uncommitted": 12}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-14T14:19:45+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-14T09:52:13+09:00", "takes": true, "last_recv": "2026-09-14T14:14:20+09:00", "uncommitted": 1}]
+machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-14T14:19:55+09:00", "last_recv": "2026-09-14T14:14:49+09:00", "takes": true, "uncommitted": 12}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-14T14:19:45+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-14T09:52:13+09:00", "takes": true, "last_recv": "2026-09-14T14:14:20+09:00", "uncommitted": 1}]
 machines: ["eek-p620", "Seongjinui-Macmini.local"]
 ---
 
@@ -285,3 +285,5 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-14T11:14:36+09:00 config ui_skin=field (by nicehugepark via dashboard)
 - 2026-09-14T11:14:39+09:00 config ui_skin=cork (by nicehugepark via dashboard)
 - 2026-09-14T11:14:43+09:00 config ui_skin=grid (by nicehugepark via dashboard)
+- 2026-09-14T14:19:49+09:00 config ui_tone=system (by nicehugepark via dashboard)
+- 2026-09-14T14:19:57+09:00 config pref_직접실행=git 명령을 포함해 리드가 할 수 있는 일은 사람에게 시키지 않는다(주인 지시 2026-09-14 14:00·14:19 「이런 건 제발 직접 좀 해」). 도구·분류기가 막으면 우회하지 말고 막힌 사실과 그것을 여는 설정 한 줄만 알린다. (by nicehugepark)
