@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="section9">
+  <title>section9</title>
+  <!-- 렌즈만 — 18px 에서 테가 1 화소, 점이 1.63 화소인 작은 새김 -->
+  <defs>
+    <radialGradient id="s9dome" cx="50%" cy="32%" r="74%">
+      <stop offset="0" stop-color="#fdfcf8"/><stop offset=".44" stop-color="#f6f4ee"/>
+      <stop offset=".76" stop-color="#dcd8ca"/><stop offset="1" stop-color="#a59e8a"/>
+    </radialGradient>
+    <radialGradient id="s9lit" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".85"/>
+      <stop offset=".55" stop-color="#ffffff" stop-opacity=".30"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="31" fill="#141518"/>
+  <circle cx="32" cy="32" r="27.4" fill="url(#s9dome)"/>
+  <ellipse cx="24.33" cy="21.04" rx="10.96" ry="7.12" fill="url(#s9lit)" transform="rotate(-22 24.33 21.04)"/>
+  <circle cx="26.04" cy="36.67" r="2.9" fill="#141518"/>
+  <circle cx="37.96" cy="36.67" r="2.9" fill="#141518"/>
+  <circle cx="32" cy="46.99" r="2.9" fill="#141518"/>
+</svg>

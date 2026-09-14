@@ -11,9 +11,9 @@
      (`<img>` 안의 요소는 문서의 것이 아니라 붙잡아 움직일 수 없다.)
   N2 mark.js 가 `prefers-reduced-motion`·`document.hidden` 을 둘 다 보고,
      안 보이는 창에서는 타이머를 끈다.
-  N3 이동 상한이 코드에 있다 — 렌즈 반지름의 20%, 그리고 그 상한을 넘는 값이
-     들어와도 잘라 낸다. 같은 시험이 「움직이는 것은 transform 뿐」도 함께 본다
-     (cx/cy 를 고치면 그림이 매번 다시 계산되고, 자리를 읽으면 레이아웃이 다시 돈다).
+  N3 눈은 렌즈 안에서만 움직인다 — 상한까지 밀어도 점 셋이 테에 닿지 않는 것을
+     기하로 재고, 커서는 거리로 자르지 않는 것(NEAR_MIN > 0)을 함께 본다.
+     「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
   N5 정지 파일 셋(mark·favicon·logo)의 렌즈에 음영(radialGradient)과 반사가 있고,
@@ -21,6 +21,7 @@
 
 실행: python3 tests/ mark_motion
 """
+import math
 import os
 import re
 import sys
@@ -82,25 +83,64 @@ class TheMotionRespectsThePerson(unittest.TestCase):
 
 
 class TheMoveHasACeiling(unittest.TestCase):
-    """N3. 이동 상한이 코드에 있고, 움직이는 것은 transform 뿐이다."""
+    """N3. 눈은 렌즈 안에서만 움직이고, 커서는 거리로 자르지 않는다.
+
+    상한을 숫자로만 재면 렌즈가 커지거나 점이 굵어질 때 그 숫자가 거짓말을 한다.
+    그래서 **기하로** 잰다 — 상한만큼 밀었을 때 점 셋의 바깥 테두리가 돔 안에
+    남는가. 아래쪽에 따로 상한이 있는 까닭도 이 계산에서 나온다: 점 무리가 이미
+    중심보다 아래에 앉아 있어, 옆으로 갈 만큼 아래로 가면 테를 파고든다.
+    """
+
+    def consts(self, src):
+        """`var 이름 = 숫자` 또는 `var 이름 = 앞선이름 * 숫자` 를 읽는다."""
+        out = {}
+        for key in ("LENS_R", "MAX", "MAX_DOWN", "FAR", "NEAR_MIN"):
+            m = re.search(r"var\s+%s\s*=\s*(?:([A-Z_]+)\s*\*\s*)?([\d.]+)" % key, src)
+            self.assertIsNotNone(m, "%s 가 상수로 없다" % key)
+            v = float(m.group(2))
+            if m.group(1):
+                self.assertIn(m.group(1), out, "%s 가 아직 없는 값을 곱한다" % key)
+                v *= out[m.group(1)]
+            out[key] = v
+        return out
 
     def test_n3_the_offset_is_capped_and_only_transform_moves(self):
         src = read("app", "mark.js")
-        m = re.search(r"var\s+LENS_R\s*=\s*([\d.]+)", src)
-        self.assertIsNotNone(m, "렌즈 반지름이 상수로 없다")
-        cap = re.search(r"var\s+MAX\s*=\s*LENS_R\s*\*\s*([\d.]+)", src)
-        self.assertIsNotNone(cap, "이동 상한이 반지름에서 나오지 않는다")
-        self.assertLessEqual(float(cap.group(1)), 0.2,
-                             "이동 상한이 반지름의 20% 를 넘는다 — 점 셋이 렌즈 밖으로 밀린다")
-        self.assertIn("if (d > MAX)", src,
-                      "상한을 넘는 값을 잘라 내지 않는다 — 상수만 있고 지키는 곳이 없다")
+        c = self.consts(src)
+        self.assertTrue(0.2 < c["MAX"] / c["LENS_R"] <= 0.35,
+                        "이동 상한이 돔 반지름의 20~35%% 밖이다: %.3f"
+                        % (c["MAX"] / c["LENS_R"]))
+        self.assertLess(c["MAX_DOWN"], c["MAX"],
+                        "아래쪽 상한이 옆·위와 같다 — 점 무리가 이미 아래에 앉아 있다")
+        self.assertGreater(c["NEAR_MIN"], 0,
+                           "아무리 멀어도 커서를 좇는 몫(NEAR_MIN)이 0 이다 "
+                           "— 화면 어디에 있든 그쪽을 봐야 한다")
+        self.assertNotIn("d > NEAR", src,
+                         "커서를 거리로 잘라 낸다 — 그 밖에서는 눈이 죽는다")
+
+        # 상한까지 밀어도 점 셋이 돔 안에 남는가 — 옆·위·아래 셋을 실제로 재 본다
+        head = re.search(r'<div class="brand">(.*?)</svg>', read("index.html"), re.S)
+        snippet = head.group(1) + "</svg>"
+        m = DOME.search(snippet)
+        cx, cy, R = (float(v) for v in m.groups())
+        dots3 = [tuple(float(v) for v in g) for g in DOT.findall(snippet[m.end():])][:3]
+        self.assertEqual(len(dots3), 3)
+        for name, ox, oy in (("오른쪽", c["MAX"], 0), ("위", 0, -c["MAX"]),
+                             ("아래", 0, c["MAX_DOWN"])):
+            for dx, dy, r in dots3:
+                reach = math.hypot(dx + ox - cx, dy + oy - cy) + r
+                with self.subTest(name):
+                    self.assertLess(reach, R - 1.0,
+                                    "%s 끝까지 밀면 점이 테에 닿는다 (%.2f / %.2f)"
+                                    % (name, reach, R))
+
         self.assertIn("pupil.style.transform", src, "transform 으로 옮기지 않는다")
         for banned in ('setAttribute("cx"', 'setAttribute("cy"',
                        "style.left", "style.top"):
             self.assertNotIn(banned, src,
                              "%s 로 옮긴다 — 그림·배치가 매번 다시 계산된다" % banned)
         self.assertEqual(src.count("svg.getBoundingClientRect()"), 1,
-                         "자리를 여러 곳에서 읽는다 — 포인터를 따라가며 읽으면 "
+                         "자리를 여러 곳에서 읽는다 — 커서를 좇으며 읽으면 "
                          "움직일 때마다 레이아웃이 다시 돈다")
 
 

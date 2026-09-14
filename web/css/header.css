@@ -22,8 +22,8 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
    기준점은 점 무리의 무게중심(viewBox 32, 38.8)이다 — 렌즈가 잠깐 줄었다 돌아올
    때 한쪽으로 쏠리지 않게. `transform-box:view-box` 를 적는 것은 기준점을 그림의
    눈금으로 읽히게 하려는 것이다(엔진마다 기본값이 갈린 적이 있다). */
-.brand .mark .pupil{transform-box:view-box;transform-origin:32px 38.8px;
-  transition:transform 300ms cubic-bezier(.22,.61,.36,1)}
+.brand .mark .pupil{transform-box:view-box;transform-origin:32px 40.11px;
+  transition:transform 190ms cubic-bezier(.22,.61,.36,1)}
 @media (prefers-reduced-motion:reduce){
   /* 움직임을 줄이라고 한 화면에서는 눈도 가만히 있는다 — mark.js 도 같은 것을 보고
      타이머를 걸지 않는다. 두 곳이 같은 말을 해야 한쪽이 늦게 와도 안 흔들린다. */
