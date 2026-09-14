@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 70" width="290" height="70" role="img" aria-label="section9">
+  <title>section9</title>
+  <style>
+    /* 밝은 쪽 색은 presentation attribute 로 둔다 — 인라인 SVG 의 style 은
+       문서 전체에 걸려, 한 쪽에 여러 벌이 실리면 마지막 것이 앞을 덮는다. */
+    @media (prefers-color-scheme:dark){.s9logo{color:#e8e8e4}}
+  </style>
+  <defs>
+    <radialGradient id="s9dome" cx="50%" cy="32%" r="74%">
+      <stop offset="0" stop-color="#fdfcf8"/><stop offset=".44" stop-color="#f7f5ef"/>
+      <stop offset=".76" stop-color="#dad4c3"/><stop offset=".93" stop-color="#b5ad96"/>
+      <stop offset="1" stop-color="#978f77"/>
+    </radialGradient>
+    <radialGradient id="s9lit" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".92"/>
+      <stop offset=".5" stop-color="#ffffff" stop-opacity=".38"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g class="s9logo" color="#141518">
+  <g transform="translate(8 7) scale(0.875)">
+    <circle cx="32" cy="32" r="30" fill="#141518"/>
+    <circle cx="32" cy="32" r="28.56" fill="url(#s9dome)"/>
+    <ellipse cx="24.0" cy="20.58" rx="11.42" ry="7.43" fill="url(#s9lit)" transform="rotate(-22 24.0 20.58)"/>
+    <circle cx="28.37" cy="38.98" r="2.4" fill="#141518"/>
+    <circle cx="35.63" cy="38.98" r="2.4" fill="#141518"/>
+    <circle cx="32" cy="45.27" r="2.4" fill="#141518"/>
+  </g>
+  <text x="88" y="50" textLength="190" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="48"
+        font-weight="700" fill="currentColor">section<tspan>9</tspan></text>
+  <!-- o 의 속을 눈으로 — 글자는 건드리지 않는다 -->
+  <circle cx="209.0" cy="39.0" r="5.6" fill="url(#s9dome)"/>
+  <ellipse cx="207.43" cy="36.76" rx="2.24" ry="1.46" fill="url(#s9lit)" transform="rotate(-22 207.43 36.76)"/>
+  <circle cx="208.29" cy="40.37" r="0.47" fill="#141518"/>
+  <circle cx="209.71" cy="40.37" r="0.47" fill="#141518"/>
+  <circle cx="209.0" cy="41.6" r="0.47" fill="#141518"/>
+  <!-- 9 의 고리 속을 눈으로 -->
+  <circle cx="265.2" cy="30.0" r="5.2" fill="url(#s9dome)"/>
+  <ellipse cx="263.74" cy="27.92" rx="2.08" ry="1.35" fill="url(#s9lit)" transform="rotate(-22 263.74 27.92)"/>
+  <circle cx="264.54" cy="31.27" r="0.44" fill="#141518"/>
+  <circle cx="265.86" cy="31.27" r="0.44" fill="#141518"/>
+  <circle cx="265.2" cy="32.42" r="0.44" fill="#141518"/>
+  </g>
+</svg>
