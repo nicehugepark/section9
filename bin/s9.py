@@ -31312,6 +31312,17 @@ def jira_block_info(now=None):
     user = max(per_user, key=per_user.get)
     missing = list(missing_by[user])
     oldest = min(float(r.get("at") or now) for r in blocked)
+    # 막힌 시각은 발신함 항목의 `at` 만으로는 젊게 나온다 — 쓸기(jira_pending_sweep)가
+    # 항목을 새로 놓기 때문이다(실측 2026-09-14: 만료 오류가 적힌 가장 이른 문서는
+    # 09-09, 발신함의 가장 오래된 항목은 09-13). 만료일이 지금보다 과거면 그날(0시)과
+    # 발신함 시각 중 더 이른 쪽을 「막힌 때」로 둔다.
+    exp_raw, _left, level, _line = jira_token_expiry(user)
+    if level == "expired":
+        try:
+            exp_ts = _time.mktime(datetime.date.fromisoformat(exp_raw).timetuple())
+            oldest = min(oldest, exp_ts)
+        except (ValueError, OverflowError):
+            pass
     tok = any(m.startswith("API token") for m in missing)
     return {"reason": " · ".join(missing), "missing": missing, "count": len(blocked),
             "since": datetime.datetime.fromtimestamp(oldest).astimezone().isoformat(timespec="seconds"),

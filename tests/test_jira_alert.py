@@ -121,6 +121,10 @@ class JiraAlert(unittest.TestCase):
             self.assertEqual(info["user"], "hong")
             self.assertTrue(info["since"])
             self.assertIn(SETTINGS, info["fix"])
+            # 만료일이 발신함 항목보다 이르면 since 는 그날이다 — 쓸기가 항목을 새로 놓아
+            # `at` 만 보면 「1일」로 나오던 것(실제는 닷새)
+            self.assertTrue(info["since"].startswith("2000-01-01"), info["since"])
+            self.assertGreater(info["age_sec"], 20 * 365 * 86400)
             w = m.whoami_info()
             self.assertEqual(w["user"], "hong")
             self.assertEqual(w["jira_block"]["count"], 3)
