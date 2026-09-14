@@ -483,7 +483,17 @@
   /* 한 「지나감」 — 납작해지며 테 뒤로 갔다가, 반 바퀴면 같은 쪽에서 한 바퀴면
      반대쪽에서 펴지며 돌아온다. 두·세 바퀴는 이것을 거듭한다.
      숨는 시간은 한 장면 안팎(80~180ms)이다 — 길면 눈이 사라진 것으로 보인다. */
-  function roll(deg, turns, sp, ease, end, done) {
+  /* 바퀴가 늘면 한 바퀴의 걸음을 줄인다 — 안 그러면 「느리게 세 바퀴」가 6.6초가
+     되어 시계를 막는다(첫 띠에서 잡혔다). 같은 그림을 세 번 보는 것이라 걸음을
+     줄여도 느린 맛은 남는다. 어느 구르기도 3초를 넘지 않는다. */
+  function rollPace(sp, turns) {
+    var k = turns >= 3 ? 0.45 : (turns >= 2 ? 0.7 : 1);
+    return {steps: k < 1 ? Math.max(4, sp.steps - 2) : sp.steps,
+            gap: Math.max(26, Math.round(sp.gap * k))};
+  }
+
+  function roll(deg, turns, sp0, ease, end, done) {
+    var sp = rollPace(sp0, turns);
     var same = turns === 0.5, left = Math.max(1, Math.round(turns)), a = deg;
     (function next() {
       if (left-- <= 0) { return landing(end, done); }
@@ -500,8 +510,9 @@
     })();
   }
 
-  function rollMs(tn, sp) {
-    return Math.max(1, Math.round(tn.t)) * (sp.steps * sp.gap * 2 + 260) + 520;
+  function rollMs(tn, sp0) {
+    var sp = rollPace(sp0, tn.t);
+    return Math.max(1, Math.round(tn.t)) * (sp.steps * sp.gap * 2 + 260) + 360;
   }
 
   (function () {
