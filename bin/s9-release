@@ -5,6 +5,14 @@
   section9-<ver>-windows.zip   최상위 section9/ · bin/*.cmd 는 CRLF
   SHA256SUMS                          `sha256sum -c SHA256SUMS` 로 검증
 
+이름은 한 규칙이다 — `section9-<버전>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>`.
+운영체제 칸에는 그 파일을 받는 운영체제만 들어간다(리눅스·맥은 한 파일이라 둘 다 적는다).
+확장자만 갈리는 이유는 형식이 실제로 다른 일을 하기 때문이다: tar.gz 는 실행 비트를
+싣고(유닉스가 그것 없이는 bin/s9 를 못 실행한다), zip 은 bin/*.cmd 를 CRLF 로 실어
+Windows 탐색기가 따로 도구 없이 푼다. 그 밖의 꼬리표(판·하네스 이름 따위)는 붙이지
+않는다 — 두 파일의 내용은 같은 commit 의 같은 코드라, 이름이 갈라야 하는 것은
+「어느 운영체제에서 받는가」 하나뿐이다. (REQ-20260914-009-62x6)
+
 원천은 `git archive <ref>` 하나다: .gitattributes 의 export-ignore(vault·users·
 projects·state·scratchpad·.s9-sync)가 그대로 지켜지고, 작업 트리의 커밋하지
 않은 변경은 들어가지 않는다. 같은 commit 이면 같은 바이트다 — tar 안의 시각은

@@ -25326,7 +25326,9 @@ def cmd_release(args):
     spec = importlib.util.spec_from_file_location("s9_reltry", os.path.join(bindir, "s9_reltry.py"))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
-    ok, _checks = m.release_try(ROOT, ref=args.ref, keep=args.keep)
+    ok, _checks = m.release_try(ROOT, ref=args.ref, keep=args.keep,
+                                from_release=getattr(args, "from_release", "") or "",
+                                shot=bool(getattr(args, "shot", False)))
     sys.exit(0 if ok else 1)
 
 
@@ -37312,6 +37314,11 @@ def main():
     rl.add_argument("--ref", default="HEAD", help="git ref (기본 HEAD, 태그 v0.9.0 등)")
     rl.add_argument("--out", default="", help="build: 산출 디렉토리 (기본 dist/)")
     rl.add_argument("--keep", action="store_true", help="try: 푼 자리를 지우지 않는다")
+    rl.add_argument("--from-release", default="", metavar="TAG",
+                    help="try: 여기서 만들지 않고 GitHub 릴리스의 tar.gz 를 받아 "
+                         "SHA256SUMS 와 대조한 뒤 시험한다 (예: v0.9.0)")
+    rl.add_argument("--shot", action="store_true",
+                    help="try: 첫 실행한 대시보드를 Chrome·WebKit 으로 한 장씩 찍는다")
     rl.set_defaults(fn=cmd_release)
 
     # `s9 -h` 목록용 — 실제 인자는 main 이 argparse 앞에서 cmd_commit 에 넘긴다.

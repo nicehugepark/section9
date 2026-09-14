@@ -6,15 +6,25 @@
 
 실행: python3 tests/ release_try
 """
+import importlib.util
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 S9 = os.path.join(REPO, "bin", "s9")
 TRY = os.path.join(REPO, "scratchpad", "release-try")
+
+
+def reltry():
+    spec = importlib.util.spec_from_file_location(
+        "s9_reltry", os.path.join(REPO, "bin", "s9_reltry.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
 
 
 class ReleaseTry(unittest.TestCase):
@@ -43,6 +53,49 @@ class ReleaseTry(unittest.TestCase):
         """경계: 배포판에 문서·사용자·상태가 없고, --keep 없이는 푼 자리가 남지 않는다."""
         self.assertIn("✓ 배포판에 문서·사용자·상태가 없다", self.out)
         self.assertFalse(os.path.exists(TRY), TRY)
+
+
+class Sums(unittest.TestCase):
+    """받은 파일과 SHA256SUMS 대조 (REQ-20260914-009-62x6) — 맥의 백그라운드 작업자는
+    shasum 을 부를 수 없어 이 판정이 s9 안에 있다. 망이 필요 없는 단위 시험이다."""
+
+    def setUp(self):
+        self.m = reltry()
+        self.d = tempfile.mkdtemp(prefix="reltry-sums-")
+        self.tar = os.path.join(self.d, "section9-0.9.0-linux-macos.tar.gz")
+        with open(self.tar, "wb") as f:
+            f.write(b"section9")
+        self.sha = self.m.sha256_of(self.tar)
+        self.sums = os.path.join(self.d, "SHA256SUMS")
+
+    def write(self, text):
+        with open(self.sums, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def test_s1_the_same_hash_passes(self):
+        """정상: SHA256SUMS 의 해시가 받은 파일과 같으면 통과."""
+        self.write(f"{self.sha}  {os.path.basename(self.tar)}\n")
+        same, why = self.m.sums_match(self.sums, self.tar)
+        self.assertTrue(same, why)
+
+    def test_s2_a_binary_star_and_a_path_still_match(self):
+        """경계: 이름 앞의 `*`(binary 표시)와 경로가 붙어 있어도 같은 파일로 본다."""
+        self.write(f"{self.sha} *dist/{os.path.basename(self.tar)}\n")
+        self.assertTrue(self.m.sums_match(self.sums, self.tar)[0])
+
+    def test_s3_a_missing_line_is_not_a_pass(self):
+        """경계: 그 파일 줄이 없으면 통과가 아니다 — 대조하지 못한 것을 통과로 읽지 않는다."""
+        self.write(f"{self.sha}  section9-0.9.0-windows.zip\n")
+        same, why = self.m.sums_match(self.sums, self.tar)
+        self.assertFalse(same)
+        self.assertIn("없다", why)
+
+    def test_s4_a_different_hash_fails(self):
+        """실패: 해시가 다르면 실패로 판정하고 근거에 양쪽 앞자리를 적는다."""
+        self.write("0" * 64 + f"  {os.path.basename(self.tar)}\n")
+        same, why = self.m.sums_match(self.sums, self.tar)
+        self.assertFalse(same)
+        self.assertIn(self.sha[:16], why)
 
 
 if __name__ == "__main__":

@@ -59,7 +59,7 @@ Claude Code 는 Pro · Max · Team · Enterprise 또는 Console 계정이 필요
 
 ### 2.1 리눅스
 
-절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.1-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.1-windows.zip`(Windows) · `SHA256SUMS`(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
+절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.1-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.1-windows.zip`(Windows) · `SHA256SUMS`(검증용). 이름은 `section9-<버전>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>` 한 규칙입니다. 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
 
 0 **준비물을 확인합니다** (어느 디렉토리에서나) 
 

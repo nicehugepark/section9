@@ -4,6 +4,9 @@
 python3·bin/s9-release 를 직접 못 부른다 — 배포판 실측이 「사람이 맥 앞에 앉을
 때까지」 막혀 있었다. 이 명령 하나가 그 절차 전부다:
   ① bin/s9-release 로 tar.gz·zip·SHA256SUMS 를 만든다(코드만 — vault·users·projects 없음)
+     `--from-release <태그>` 면 만들지 않고 **GitHub 릴리스가 올린 그 파일**을 gh 로 받아
+     SHA256SUMS 와 대조한다 (REQ-20260914-009-62x6) — 사람이 받는 것과 같은 파일로 재야
+     릴리스 실측이 된다. curl·shasum 도 같은 이유로 부를 수 없어 여기 안에 둔다.
   ② tar.gz 를 scratchpad/release-try/ 아래에 푼다(tarfile — 바깥 tar 불필요)
   ③ 그 자리에서 `bin/s9 code --no-open` 을 claude 실행 직전까지(S9_CODE_DRYRUN=1) 돌린다 —
      HOME·CLAUDE_CONFIG_DIR 은 임시 폴더라 사람의 설정을 건드리지 않는다
@@ -16,6 +19,7 @@ python3·bin/s9-release 를 직접 못 부른다 — 배포판 실측이 「사�
 출력은 사람이 읽는 보고다 — 가이드의 「예상 출력」과 맞춰 보는 자리.
 """
 import getpass
+import hashlib
 import json
 import os
 import shutil
@@ -108,6 +112,56 @@ def build(root, ref, out, log):
     return os.path.join(out, tars[0]) if tars else None
 
 
+def fetch(root, tag, out, log):
+    """릴리스 자산을 받는다 — (tar.gz 경로, SHA256SUMS 경로). 못 받으면 (None, None).
+
+    gh 로 받는 이유: 비공개 저장소여도 사람이 이미 로그인한 자격으로 받고, 자산 이름이
+    판마다 달라도 패턴으로 고를 수 있다.
+    """
+    argv = ["gh", "release", "download", tag, "--dir", out, "--clobber",
+            "--pattern", "*linux-macos.tar.gz", "--pattern", "SHA256SUMS"]
+    r = subprocess.run(argv, capture_output=True, encoding="utf-8", errors="replace",
+                       cwd=root, stdin=subprocess.DEVNULL)
+    for line in ((r.stdout or "") + (r.stderr or "")).splitlines():
+        log("  " + line)
+    if r.returncode != 0:
+        return None, None
+    tars = sorted(f for f in os.listdir(out) if f.endswith(".tar.gz"))
+    sums = os.path.join(out, "SHA256SUMS")
+    return (os.path.join(out, tars[0]) if tars else None,
+            sums if os.path.exists(sums) else None)
+
+
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def sums_match(sums_path, tar_path):
+    """(같은가, 근거 한 줄) — SHA256SUMS 의 그 파일 줄과 받은 파일의 해시를 견준다.
+
+    줄 모양은 `sha256  이름`(shasum·sha256sum 공통)이고, 이름 앞의 `*`(binary 표시)와
+    경로는 떼고 본다. 그 파일 줄이 아예 없으면 **같지 않은 것으로 본다** — 대조하지
+    못한 것을 통과로 읽으면 검사가 없는 것과 같다.
+    """
+    want, name = "", os.path.basename(tar_path)
+    try:
+        with open(sums_path, encoding="utf-8") as f:
+            for ln in f:
+                parts = ln.split()
+                if len(parts) >= 2 and os.path.basename(parts[-1].lstrip("*")) == name:
+                    want = parts[0].strip()
+    except OSError:
+        return False, "SHA256SUMS 를 읽지 못했다"
+    if not want:
+        return False, f"SHA256SUMS 에 {name} 줄이 없다"
+    got = sha256_of(tar_path)
+    return got == want, f"받은 것 {got[:16]}… / SHA256SUMS {want[:16]}…"
+
+
 def wait_http(url, timeout=40):
     t0 = time.time()
     while time.time() - t0 < timeout:
@@ -119,8 +173,12 @@ def wait_http(url, timeout=40):
     return None
 
 
-def release_try(root, ref="HEAD", keep=False, log=print):
-    """(전부 통과했나, 확인 목록) — 확인은 (이름, 통과 여부, 근거) 셋."""
+def release_try(root, ref="HEAD", keep=False, log=print, from_release="", shot=False):
+    """(전부 통과했나, 확인 목록) — 확인은 (이름, 통과 여부, 근거) 셋.
+
+    from_release: 태그(v0.9.0). 주면 ①이 「만들기」가 아니라 「받아서 해시 대조」가 된다.
+    shot: 첫 실행한 대시보드를 Chrome·WebKit 으로 한 장씩 찍는다(서버를 내리기 전).
+    """
     base = os.path.join(root, TRY_DIR)
     shutil.rmtree(base, ignore_errors=True)
     dist, unpacked = os.path.join(base, "dist"), os.path.join(base, "unpacked")
@@ -133,11 +191,25 @@ def release_try(root, ref="HEAD", keep=False, log=print):
         checks.append((name, bool(ok), why))
         log(("✓ " if ok else "✗ ") + name + (f" — {why}" if why else ""))
 
-    log(f"① 배포판 만들기 (ref {ref})")
-    tar_path = build(root, ref, dist, log)
-    check("tar.gz 가 만들어졌다", tar_path, tar_path or "bin/s9-release 실패")
-    if not tar_path:
-        return False, checks
+    if from_release:
+        log(f"① 릴리스 {from_release} 의 자산 받기 (gh release download)")
+        tar_path, sums_path = fetch(root, from_release, dist, log)
+        check("tar.gz 를 받았다", tar_path,
+              (f"{os.path.basename(tar_path)} {os.path.getsize(tar_path)} bytes"
+               if tar_path else "gh release download 실패"))
+        if not tar_path:
+            return False, checks
+        same, why = (sums_match(sums_path, tar_path) if sums_path
+                     else (False, "SHA256SUMS 를 받지 못했다"))
+        check("SHA256SUMS 와 해시가 같다", same, why)
+        if not same:
+            return False, checks
+    else:
+        log(f"① 배포판 만들기 (ref {ref})")
+        tar_path = build(root, ref, dist, log)
+        check("tar.gz 가 만들어졌다", tar_path, tar_path or "bin/s9-release 실패")
+        if not tar_path:
+            return False, checks
     with tarfile.open(tar_path) as tf:
         names = tf.getnames()
         data = [n for n in names if n.split("/")[1:2] and n.split("/")[1] in
@@ -192,6 +264,21 @@ def release_try(root, ref="HEAD", keep=False, log=print):
     root_ok = bool(who) and os.path.realpath(str(who.get("root") or "")) == os.path.realpath(site)
     check("대시보드가 그 자리에서 답한다", root_ok,
           f"root={who.get('root')}" if who else "응답 없음")
+    if shot and root_ok:
+        # 캡처는 base 밖에 둔다 — base 는 이 함수가 지우는 자리다(--keep 없으면).
+        # 엔진 둘은 규약이다: Chrome 만 보고 넘기지 않는다 (PROTOCOL 19조·browser-verify).
+        shots_dir = os.path.join(root, "scratchpad", "release-shots")
+        os.makedirs(shots_dir, exist_ok=True)
+        log(f"④ 그 대시보드 캡처 → {shots_dir}")
+        for engine in ("chrome", "webkit"):
+            dest = os.path.join(shots_dir, f"firstrun-{from_release or ref}-{engine}.png")
+            rs = subprocess.run([sys.executable, os.path.join(root, "bin", "s9"), "shot",
+                                 f"http://127.0.0.1:{port}/", "--out", dest, "--engine", engine],
+                                capture_output=True, encoding="utf-8", errors="replace",
+                                cwd=root, stdin=subprocess.DEVNULL, timeout=300)
+            got = os.path.exists(dest)
+            check(f"{engine} 로 캡처했다", got,
+                  dest if got else ((rs.stdout or "") + (rs.stderr or "")).strip()[-200:])
     log("⑤ 이름 등록 → 기본 프로젝트 → 사용법 안내 (비대화형이라 s9 user add · s9 init 으로)")
     n_files, n_open, has_project = onboarding_count(site, env, log)
     check("기본 프로젝트 general 이 섰다", has_project)

@@ -11,6 +11,12 @@ section9-<ver>-linux-macos.tar.gz 와 section9-<ver>-windows.zip. 최상위는
 section9/, zip 의 bin/*.cmd 는 CRLF, 같은 commit 이면 같은 sha256. 판은 VERSION
 파일 하나에서 나와 `s9 --version` 과 화면(Settings › 시스템)이 같은 값을 읽는다.
 
+세 번째 겹(B8): 이름은 운영체제마다 다른 규칙을 쓰지 않는다 (REQ-20260914-009-62x6,
+주인 물음 「배포용 압축파일 네이밍룰이 os별로 다른 이유가 있나?」). 규칙 하나 —
+`section9-<버전>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>`. 확장자가 갈리는
+것은 형식이 실제로 다른 일을 하기 때문이고(tar.gz 는 실행 비트, zip 은 CRLF),
+그 밖의 꼬리표는 붙지 않는다.
+
 실행: python3 tests/ release_archive
 """
 import importlib.machinery
@@ -225,6 +231,34 @@ class TheReleaseBuild(unittest.TestCase):
             js = f.read()
         self.assertIn("<td>버전</td>", js, "Settings › 시스템 판에 「버전」 줄이 없다")
         self.assertIn("(window.__whoami||{}).version", js, "화면이 서버의 version 값을 읽지 않는다")
+
+    def test_b11_one_naming_rule_for_every_os(self):
+        """이름은 `section9-<버전>-<운영체제>.<그 운영체제의 기본 형식>` 하나다.
+
+        주인 물음 2026-09-14 「배포용 압축파일 네이밍룰이 os별로 다른 이유가 있나?」
+        (REQ-20260914-009-62x6) — 없었다. Windows 것에만 `-claude` 꼬리표가 붙어
+        운영체제마다 규칙이 갈려 보였다. 두 겹으로 지킨다: 만들어진 이름이 한 규칙에
+        맞는가, 그리고 옛 이름이 문서·코드 어딘가에 남아 있지 않은가.
+        """
+        rule = re.compile(r"^section9-" + re.escape(self.ver) + r"-(linux-macos|windows)\.(tar\.gz|zip)$")
+        for p in (self.tgz, self.zip):
+            self.assertRegex(os.path.basename(p), rule)
+        self.assertEqual(sorted(n for n in os.listdir(self.out) if n != "SHA256SUMS"),
+                         [f"section9-{self.ver}-linux-macos.tar.gz", f"section9-{self.ver}-windows.zip"],
+                         "dist/ 에 규칙 밖의 파일이 있다")
+
+    def test_b12_the_old_windows_name_is_gone_everywhere(self):
+        """옛 이름이 문서·코드에 남아 있으면 사람이 없는 파일을 받으러 간다.
+
+        찾는 말은 여기서 이어 붙인다 — 이 시험 파일 자신이 그 말을 글자로 품으면
+        제가 저를 잡는다.
+        """
+        needle = "windows" + "-claude"
+        r = subprocess.run(["git", "grep", "-lI", needle, "--",
+                            "bin", "web", "harness", "tests", "docs", ".github", "README.md"],
+                           cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1,
+                         f"옛 이름 {needle} 가 남아 있다 — 문서가 없는 파일을 가리킨다:\n" + r.stdout)
 
 
 if __name__ == "__main__":

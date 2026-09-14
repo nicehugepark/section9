@@ -69,7 +69,7 @@ curl.exe -L -o section9-0.9.1-windows.zip https://github.com/nicehugepark/sectio
 **하지 말 것**
 
 - PowerShell 에서는 `curl` 이 아니라 **`curl.exe`** 라고 칩니다. PowerShell 5.1 의 `curl` 은 `Invoke-WebRequest` 의 별칭이라 `-L -o` 옵션을 모릅니다.
-- 릴리스 페이지에 GitHub 이 자동으로 붙이는 `Source code (zip)` 은 받지 않습니다. 이름이 `-windows.zip` 으로 끝나는 파일이 우리가 만든 배포판입니다(Claude Code native 전용).
+- 릴리스 페이지에 GitHub 이 자동으로 붙이는 `Source code (zip)` 은 받지 않습니다. 이름이 `section9-` 로 시작해 `-windows.zip` 으로 끝나는 파일이 우리가 만든 배포판입니다(Claude Code native 전용).
 
 ### A-2. `%USERPROFILE%\section9` 에 풀기
 
