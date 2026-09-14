@@ -15,7 +15,8 @@
      기하로 잰다. 「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
-  N6 재주 표가 온전하다 — 합쳐 **150 을 넘고**, 점이 따로 노는 재주는 **10%% 이하**이며
+  N6 재주 표가 온전하다 — 합쳐 **80 을 넘고**(구르기만 스물 넘게), 점이 따로 노는
+     재주는 **10%% 이하**이며, 비슷한 것을 표에 두 줄로 두지 않으며
      항목마다 넷이 있으며, 시계가 가드(움직임 줄이기·안 보이는 탭)를 보고 커서를
      좇는 중에는 끼어들지 않는다. 붓이 제 손으로 돔에서 자르는 것도 여기서 본다.
      점 셋은 **하나의 시선**이다 — 제각각 기어 다니면 장난이 아니라 벌레로 읽힌다
@@ -225,17 +226,29 @@ class TheTrickTableIsWhole(unittest.TestCase):
             i = src.index("var %s = [" % name)
             return src[i:src.index("\n  ];", i)].count('{n: "')
         chains = src[src.index("var CHAINS = ["):src.index("\n  ];", src.index("var CHAINS = ["))]
-        return hand, arr("PATHS"), arr("SPEEDS"), arr("MOODS"), chains.count("[\"")
+        rolls = src[src.index("var ROLLS = ["):src.index("\n  ];", src.index("var ROLLS = ["))]
+        return (hand, arr("PATHS"), arr("SPEEDS"), rolls.count("[") - 1,
+                chains.count("[\""))
 
     def test_n6_the_table_is_big_and_the_three_dots_stay_one_gaze(self):
         src = read("app", "mark.js")
-        hand, paths, speeds, moods, chains = self.counts(src)
-        made = paths * speeds * moods
-        total = len(hand) + made + chains
+        hand, paths, speeds, rolls, chains = self.counts(src)
+        made = paths * speeds
+        total = len(hand) + made + rolls + chains
         self.assertGreaterEqual(paths, 10, "경로가 열 가지도 안 된다")
-        self.assertGreaterEqual(total, 150,
-                                "재주가 %d 개다 — 손 %d + 곱해 낸 것 %d + 연쇄 %d"
-                                % (total, len(hand), made, chains))
+        self.assertGreaterEqual(total, 80,
+                                "재주가 %d 개다 — 손 %d + 곱해 낸 것 %d + 구르기 %d + 연쇄 %d"
+                                % (total, len(hand), made, rolls, chains))
+        self.assertGreaterEqual(rolls, 20,
+                                "구르기가 %d 가지뿐이다 — 이 마크에서 가장 「타치코마」다운 "
+                                "움직임이라 스물은 넘어야 한다" % rolls)
+        # 비슷한 것을 표에 두지 않는다 — 속도는 둘, 결은 경로마다 하나
+        self.assertLessEqual(speeds, 2,
+                             "속도가 %d 갈래다 — 「보통」은 어느 경로에서도 「느리게」와 "
+                             "눈으로 갈리지 않았다" % speeds)
+        self.assertIn("var PATH_MOOD = [", src,
+                      "경로마다 결을 하나로 고르는 자리가 없다 — 네 결을 다 곱하면 "
+                      "폭만 다른 짝이 표에 두 줄로 남는다")
         # 점 셋은 하나의 시선이다
         solo = src.count("solo: true,")
         self.assertLessEqual(solo * 100.0 / total, 10.0,
@@ -262,10 +275,13 @@ class TheTrickTableIsWhole(unittest.TestCase):
         joined = " ".join(names)
         for want, why in ((("부르르", "지그재그", "다다닥"), "요란하게 움직이는 재주"),
                           (("숨 쉬기", "툭 벌어짐"), "무리가 벌어졌다 좁아지는 재주"),
-                          (("홀로", "흩어", "자리 바꾸기", "물결"), "점 셋이 따로 노는 재주"),
-                          (("세로축", "가로축", "비스듬한"), "축이 다른 회전")):
+                          (("홀로", "흩어", "자리 바꾸기", "물결"), "점 셋이 따로 노는 재주")):
             with self.subTest(why):
                 self.assertTrue(any(w in joined for w in want), "%s 가 표에 없다" % why)
+        # 축이 다른 회전은 구르기 가족에 산다 — 축 이름이 셋 이상이어야 한다
+        ax = src[src.index("var ROLL_AXES = ["):src.index("\n  ];", src.index("var ROLL_AXES = ["))]
+        self.assertGreaterEqual(len(re.findall(r'\{n: "', ax)), 3,
+                                "구르기의 축이 셋도 안 된다 — 세로·가로·비스듬히는 있어야 한다")
         self.assertGreaterEqual(chains, 6, "연쇄 재주가 여섯도 안 된다")
 
     def test_n6b_the_clock_yields_and_the_brushes_cut_at_the_dome(self):

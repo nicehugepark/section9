@@ -421,43 +421,86 @@
            [200, function () { rest(200); }]], done);
     }},
 
-    /* --- 무리째 구르는 것 ---------------------------------------------- */
-
-    {name: "뱅그르르", rare: "드묾", ms: 1000, run: function (done) {
-      seq([[860, function () { S(360 * sign(), 820, EASE_IO); }],
-           [120, function () { S(0, 0); }]], done);
-    }},
-
-    {name: "두 바퀴", rare: "아주 드묾", ms: 1450, run: function (done) {
-      seq([[1260, function () { S(720 * sign(), 1220, EASE_IO); }],
-           [160, function () { S(0, 0); }]], done);
-    }},
-
-    {name: "구르기", rare: "드묾", ms: 1700, run: function (done) {
-      var dir = sign();
-      S(360 * dir, 1500, EASE_IO);
-      ramp(9, 160, function (t) {
-        var a = t * Math.PI * 2 * dir;
-        P(Math.sin(a) * MAX * 0.7, -Math.cos(a) * MAX * 0.5, 165, {ease: LINEAR});
-      }, function () { S(0, 0); rest(220); wait(230, done); });
-    }},
-
-    {name: "세로축 돌기", rare: "드묾", ms: 1500, hides: true, run: function (done) {
-      turn(0, done);
-    }},
-
-    {name: "가로축 돌기", rare: "드묾", ms: 1500, hides: true, run: function (done) {
-      turn(90, done);
-    }},
-
-    {name: "비스듬한 축 돌기", rare: "아주 드묾", ms: 1600, hides: true, run: function (done) {
-      turn(rnd(20, 70) * sign(), done);
-    }},
-
-    {name: "반 바퀴만", rare: "드묾", ms: 1250, hides: true, run: function (done) {
-      turn(rnd(-30, 30), done, true);
-    }}
+    /* --- 무리째 구르는 것은 아래 「구르기 가족」이 맡는다 -------------- */
   ];
+
+  /* 구르기 가족 — 이 마크에서 가장 「타치코마」다운 움직임이라 갈래를 따로 둔다
+     (REQ-20260914-002-62x6, 주인 16:49 「구르기 종류를 좀 더 늘려서」).
+     축 × 바퀴 수 × 맺음 중에서 **눈으로 구별되는 것만** 골랐다 — 넷을 다 곱하면
+     마흔여덟이지만 절반은 서로 같아 보인다(같은 축·같은 바퀴에서 완급만 다른 것).
+     그래서 축·바퀴마다 맺음을 둘씩만 고른 스물넷이다. 무리가 굳은 채 구르는 것뿐
+     — 점이 따로 노는 것은 없다. */
+
+  var ROLL_AXES = [
+    {n: "세로축", d: 0}, {n: "가로축", d: 90},
+    {n: "오른쪽 비스듬히", d: 35}, {n: "왼쪽 비스듬히", d: -35}
+  ];
+  var ROLL_TURNS = [
+    {n: "반 바퀴", t: 0.5, ms: 1300, rare: "드묾"},
+    {n: "한 바퀴", t: 1, ms: 1600, rare: "드묾"},
+    {n: "두 바퀴", t: 2, ms: 2800, rare: "아주 드묾"}
+  ];
+  var ROLL_FINS = [
+    {n: "부드럽게", ease: EASE_IO, end: "제자리"},
+    {n: "툭", ease: LINEAR, end: "제자리"},
+    {n: "튕겨 멈춤", ease: EASE_IO, end: "흔들리며"},
+    {n: "천천히 굴러 빨라짐", ease: EASE_IN, end: "제자리"},
+    {n: "반대편에서 멈춤", ease: EASE_IO, end: "반대편"}
+  ];
+  /* 축·바퀴마다 고른 맺음 둘 — 손으로 골랐다(같은 축에서 같은 맺음이 겹치지 않게). */
+  var ROLLS = [
+    [0, 0, 0], [0, 0, 2], [0, 1, 1], [0, 1, 4], [0, 2, 3], [0, 2, 0],
+    [1, 0, 1], [1, 0, 3], [1, 1, 0], [1, 1, 2], [1, 2, 4], [1, 2, 1],
+    [2, 0, 2], [2, 0, 4], [2, 1, 3], [2, 1, 0], [2, 2, 1], [2, 2, 2],
+    [3, 0, 3], [3, 0, 0], [3, 1, 4], [3, 1, 2], [3, 2, 0], [3, 2, 3]
+  ];
+
+  function landing(end, done) {
+    if (end === "반대편") {
+      var s2 = sign();
+      seq([[300, function () { P(MAX * 0.7 * s2, 0, 280, {ease: EASE_IO}); }],
+           [320, function () { rest(300); }]], done);
+    } else if (end === "흔들리며") {
+      seq([[120, function () { P(MAX * 0.55, 0, 110, {ease: EASE_IO}); }],
+           [110, function () { P(-MAX * 0.34, 0, 100, {ease: EASE_IO}); }],
+           [100, function () { P(MAX * 0.18, 0, 90, {ease: EASE_IO}); }],
+           [220, function () { rest(200); }]], done);
+    } else { rest(200); wait(220, done); }
+  }
+
+  /* 한 「지나감」 — 납작해지며 테 뒤로 갔다가, 반 바퀴면 같은 쪽에서 한 바퀴면
+     반대쪽에서 펴지며 돌아온다. 두 바퀴는 이것을 두 번 한다. */
+  function roll(deg, turns, ease, end, done) {
+    var same = turns === 0.5, left = turns === 2 ? 2 : 1, a = deg;
+    (function next() {
+      if (left-- <= 0) { return landing(end, done); }
+      var b = same ? a : a + 180;
+      ramp(6, 70, function (t) { slide(a, t, 70, ease); }, function () {
+        wait(pick([140, 320]), function () {
+          slide(b, 1, 0);
+          wait(40, function () {
+            ramp(6, 70, function (t) { slide(b, 1 - t, 70, LINEAR); },
+              function () { a = b; next(); });
+          });
+        });
+      });
+    })();
+  }
+
+  (function () {
+    var i, ax, tn, fi;
+    for (i = 0; i < ROLLS.length; i++) {
+      ax = ROLL_AXES[ROLLS[i][0]]; tn = ROLL_TURNS[ROLLS[i][1]]; fi = ROLL_FINS[ROLLS[i][2]];
+      (function (ax, tn, fi) {
+        TRICKS.push({
+          name: ax.n + " " + tn.n + "·" + fi.n, rare: tn.rare, ms: tn.ms, hides: true,
+          run: function (done) { roll(ax.d * sign(), tn.t, fi.ease, fi.end, done); }
+        });
+      })(ax, tn, fi);
+    }
+  })();
+
+
 
   /* 구체가 한 바퀴(또는 반 바퀴) 도는 것 — 나갈 때는 납작해지며 테 뒤로,
      들어올 때는 반대쪽(반 바퀴면 같은 쪽)에서 펴지며 돌아온다. */
@@ -509,9 +552,12 @@
     return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
   }
 
+  /* 속도는 **둘**뿐이다 (주인 16:49 「차이가 구분이 안 되는 비슷한 패턴이 너무
+     많다」). 종전에는 느리게·보통·요란하게 셋이었는데, 띠로 훑어 보니 「보통」은
+     어느 경로에서도 「느리게」와 눈으로 갈리지 않았다 — 같은 그림이 조금 빠를
+     뿐이다. 갈리는 것은 **느긋한가 부산한가**다. */
   var SPEEDS = [
     {n: "느리게", steps: 10, gap: 190, ease: EASE_IO, rare: "흔함"},
-    {n: "보통", steps: 9, gap: 120, ease: EASE_IO, rare: "가끔"},
     {n: "요란하게", steps: 12, gap: 60, ease: LINEAR, rare: "드묾"}
   ];
 
@@ -519,12 +565,17 @@
      종전에는 「무리 · 점 하나 · 점 셋 따로 · 짝」으로 곱했는데, 점을 따로 놀리는
      세 갈래가 표의 3/4 를 차지해 화면이 벌레처럼 읽혔다. 점 셋은 **하나의 시선**이니
      곱하는 것은 무리가 어떻게 움직이는가 — 몇 번 · 얼마나 크게 · 어떤 완급으로. */
+  /* 결도 경로마다 **하나**다. 네 결을 다 곱하면 「원·느리게·한 번」과
+     「원·느리게·작게」처럼 폭만 다른 짝이 생기는데, 폭은 실행 때 무작위로 뽑으므로
+     표에 두 줄로 있을 까닭이 없다. 경로마다 그 그림이 가장 잘 사는 결 하나만
+     남기고, 폭과 각도는 실행 때 뽑는다. */
   var MOODS = [
     {n: "한 번", rep: 1, amp: 1, ease: EASE_IO},
-    {n: "두 번", rep: 2, amp: 0.72, ease: EASE_IO},
-    {n: "작게", rep: 1, amp: 0.5, ease: EASE_IO},
-    {n: "튕기듯", rep: 1, amp: 0.9, ease: BOUNCE}
+    {n: "두 번", rep: 2, amp: 0.78, ease: EASE_IO},
+    {n: "튕기듯", rep: 1, amp: 0.95, ease: BOUNCE}
   ];
+  /* 경로마다 고른 결 — PATHS 와 같은 차례 */
+  var PATH_MOOD = [1, 2, 0, 0, 0, 2, 0, 1, 0, 0, 2, 1];
 
   function combo(path, sp, md) {
     return {
@@ -546,10 +597,10 @@
   }
 
   (function () {
-    var i, j, k;
+    var i, j;
     for (i = 0; i < PATHS.length; i++) {
       for (j = 0; j < SPEEDS.length; j++) {
-        for (k = 0; k < MOODS.length; k++) { TRICKS.push(combo(PATHS[i], SPEEDS[j], MOODS[k])); }
+        TRICKS.push(combo(PATHS[i], SPEEDS[j], MOODS[PATH_MOOD[i]]));
       }
     }
   })();
@@ -557,10 +608,10 @@
   /* 연쇄 재주 — 손으로 지은 것 둘·셋을 잇는다. 하나로는 못 내는 **이야기**가
      나온다(두리번거리다 놀라고 한참 바라본다). 아주 드물게만 나온다. */
   var CHAINS = [
-    ["두리번", "놀람", "응시"], ["곁눈질", "뱅그르르"], ["스캔", "툭 벌어짐"],
+    ["두리번", "놀람", "응시"], ["곁눈질", "세로축 한 바퀴·툭"], ["스캔", "툭 벌어짐"],
     ["졸음", "놀람"], ["끄덕임", "기지개"], ["도리도리", "갸웃"],
     ["힐끗힐끗", "두 번 깜빡"], ["깡충깡충", "느린 깜빡"], ["빙 둘러보기", "응시"],
-    ["흔들흔들", "졸음"], ["궁금해 다가감", "멀어짐"], ["다다닥 두리번", "구르기"]
+    ["흔들흔들", "졸음"], ["궁금해 다가감", "멀어짐"], ["다다닥 두리번", "가로축 한 바퀴·부드럽게"]
   ];
 
   (function () {
