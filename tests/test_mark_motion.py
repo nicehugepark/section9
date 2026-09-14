@@ -246,12 +246,27 @@ class TheTrickTableIsWhole(unittest.TestCase):
         self.assertGreaterEqual(rolls, 40,
                                 "구르기가 %d 가지뿐이다 — 주인이 보고 싶어 하는 갈래라 "
                                 "마흔은 넘어야 한다(주인 2026-09-14 17:35)" % rolls)
+        # 표가 기대는 것이 실제로 **정의되어** 있는가
+        # 실제 사고 2026-09-14 17:50: 구르기 가족을 넓히는 편집이 그 아래에 있던
+        # roll·landing·rollPace·rollMs 와 ROLL_TURNS·ROLL_SPEEDS·ROLL_FINS 를 통째로
+        # 지웠는데, 글자를 세는 시험은 전부 통과했다(지워진 이름을 아무도 안 찾았다).
+        # 화면에서는 mark.js 가 불러오자마자 죽어 **눈이 아예 안 움직였다**.
+        # 표가 부르는 이름은 여기서 하나씩 있는지 본다.
+        for want in ("var ROLL_DIRS", "var ROLL_SHAPES", "var ROLL_TURNS",
+                     "var ROLL_SPEEDS", "var ROLL_FINS", "function roll(",
+                     "function landing(", "function rollPace(", "function rollMs(",
+                     "function slide(", "function ramp(", "function seq("):
+            with self.subTest(want):
+                self.assertIn(want, src,
+                              "%s 가 없다 — 표가 부르는 것이 정의되어 있지 않으면 "
+                              "mark.js 가 불러오자마자 죽는다" % want)
+
         # 방위와 꼴 — 구르기가 갈리는 두 축
         dirs = len(re.findall(r'\{n: "[^"]+", x:', src))
         shapes = len(re.findall(r'\{n: "[^"]+", ax:', src))
         self.assertGreaterEqual(dirs, 8, "굴러가는 방위가 %d 뿐이다 — 여덟 방위는 있어야 한다" % dirs)
         self.assertGreaterEqual(shapes, 5, "구르는 꼴이 %d 뿐이다 — 다섯은 있어야 한다" % shapes)
-        self.assertIn('back ? "에서" : "로"', src,
+        self.assertIn("back ? d.n + \"에서\" : toward(d.n)", src,
                       "굴러가는 쪽과 되돌아오는 쪽을 가르지 않는다 — 방위가 한쪽뿐이면 "
                       "같은 그림이 절반이다")
         # 의성어 넷은 이름 그대로 표에 있어야 한다

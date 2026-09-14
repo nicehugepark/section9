@@ -441,11 +441,19 @@
      늘 같은 쪽으로만 굴렀다. 이제 표는 **어디로 굴러가는가**로 갈린다.
      `slide()` 는 축 각을 받으므로 진행 방향 u=(-sinθ, cosθ) 을 뒤집어 축을 구한다. */
   var ROLL_DIRS = [
-    {n: "위로", x: 0, y: -1}, {n: "오른쪽 위로", x: 0.71, y: -0.71},
-    {n: "오른쪽으로", x: 1, y: 0}, {n: "오른쪽 아래로", x: 0.71, y: 0.71},
-    {n: "아래로", x: 0, y: 1}, {n: "왼쪽 아래로", x: -0.71, y: 0.71},
-    {n: "왼쪽으로", x: -1, y: 0}, {n: "왼쪽 위로", x: -0.71, y: -0.71}
+    {n: "위", x: 0, y: -1}, {n: "오른쪽 위", x: 0.71, y: -0.71},
+    {n: "오른쪽", x: 1, y: 0}, {n: "오른쪽 아래", x: 0.71, y: 0.71},
+    {n: "아래", x: 0, y: 1}, {n: "왼쪽 아래", x: -0.71, y: 0.71},
+    {n: "왼쪽", x: -1, y: 0}, {n: "왼쪽 위", x: -0.71, y: -0.71}
   ];
+
+  /* 「…로」와 「…으로」 — 받침이 있으면(ㄹ 빼고) 「으로」다. 이름을 손으로 적어 두면
+     방위를 더할 때마다 조사를 틀린다(실제로 「오른쪽으에서」가 나왔다). */
+  function toward(w) {
+    var c = w.charCodeAt(w.length - 1) - 0xAC00;
+    var j = (c >= 0 && c < 11172) ? c % 28 : 0;
+    return w + ((j === 0 || j === 8) ? "로" : "으로");
+  }
   function dirAxis(d) { return Math.atan2(-d.x, d.y) * 180 / Math.PI; }
 
   /* 구르는 **꼴** 여섯 — 같은 방위라도 이것이 다르면 눈이 갈라 본다. */
@@ -458,12 +466,84 @@
     {n: "8자로", ax: function (p, t, a) { return a + (p % 2 ? 68 : -68); }, wob: 0}
   ];
 
+
+  var ROLL_TURNS = [
+    {n: "반 바퀴", t: 0.5}, {n: "한 바퀴", t: 1},
+    {n: "두 바퀴", t: 2}, {n: "세 바퀴", t: 3}
+  ];
+  /* 속도는 구르기에서만 셋이다 — 무리가 그냥 옮겨 다닐 때는 「보통」이 「느리게」와
+     눈으로 안 갈리지만(v8), 같은 한 바퀴라도 느리면 굴러가는 것이고 빠르면 휙 도는
+     것이다. 걸음 수와 간격이 함께 바뀐다. */
+  var ROLL_SPEEDS = [
+    {n: "느리게", steps: 8, gap: 110}, {n: "보통", steps: 6, gap: 70},
+    {n: "빠르게", steps: 5, gap: 38}
+  ];
+  var ROLL_FINS = [
+    {n: "부드럽게", ease: EASE_IO, end: "제자리"},
+    {n: "툭", ease: LINEAR, end: "제자리"},
+    {n: "튕겨 멈춤", ease: EASE_IO, end: "흔들리며"},
+    {n: "감속", ease: EASE_IN, end: "제자리"},
+    {n: "반대편에서 멈춤", ease: EASE_IO, end: "반대편"}
+  ];
+
+  function landing(end, done) {
+    if (end === "반대편") {
+      var s2 = sign();
+      seq([[300, function () { P(MAX * 0.7 * s2, 0, 280, {ease: EASE_IO}); }],
+           [320, function () { rest(300); }]], done);
+    } else if (end === "흔들리며") {
+      seq([[120, function () { P(MAX * 0.55, 0, 110, {ease: EASE_IO}); }],
+           [110, function () { P(-MAX * 0.34, 0, 100, {ease: EASE_IO}); }],
+           [100, function () { P(MAX * 0.18, 0, 90, {ease: EASE_IO}); }],
+           [220, function () { rest(200); }]], done);
+    } else { rest(200); wait(220, done); }
+  }
+
+  /* 바퀴가 늘면 한 바퀴의 걸음을 줄인다 — 안 그러면 「느리게 세 바퀴」가 6.6초가
+     되어 시계를 막는다(v11 의 첫 띠에서 잡혔다). 같은 그림을 거듭 보는 것이라
+     걸음을 줄여도 느린 맛은 남는다. 어느 구르기도 3초를 넘지 않는다(가장 긴 것 2.94초). */
+  function rollPace(sp, turns) {
+    var k = turns >= 3 ? 0.45 : (turns >= 2 ? 0.7 : 1);
+    return {steps: k < 1 ? Math.max(4, sp.steps - 2) : sp.steps,
+            gap: Math.max(26, Math.round(sp.gap * k))};
+  }
+
+  function rollMs(tn, sp0) {
+    var sp = rollPace(sp0, tn.t);
+    return Math.max(1, Math.round(tn.t)) * (sp.steps * sp.gap * 2 + 260) + 360;
+  }
+
+  /* 한 「지나감」 — 납작해지며 테 뒤로 갔다가, 반 바퀴면 같은 쪽에서 한 바퀴면
+     반대쪽에서 펴지며 돌아온다. 두·세 바퀴는 이것을 거듭한다. 꼴(sh)이 지나갈 때마다
+     축을 어떻게 틀지 정하고, 숨는 시간은 한 장면 안팎(80~180ms)이다. */
+  function roll(deg, sh, turns, sp0, ease, end, done) {
+    sh = sh || ROLL_SHAPES[0];
+    if (sh.half) { turns = 0.5; }
+    var sp = rollPace(sp0, turns);
+    var same = turns === 0.5, left = Math.max(1, Math.round(turns)), a = deg, p = 0;
+    (function next() {
+      if (left-- <= 0) { return landing(end, done); }
+      var b = same ? a : a + 180, q = p++;
+      ramp(sp.steps, sp.gap, function (t) { slide(sh.ax(q, t, a), t, sp.gap, ease, sh.wob); },
+        function () {
+          wait(pick([80, 180]), function () {
+            slide(b, 1, 0);
+            wait(30, function () {
+              ramp(sp.steps, sp.gap,
+                function (t) { slide(sh.ax(q, 1 - t, b), 1 - t, sp.gap, LINEAR, sh.wob); },
+                function () { a = b; next(); });
+            });
+          });
+        });
+    })();
+  }
+
   /* 표에 올리는 것 — 방위 8 × 되돌아옴 2 × 꼴 6 = 96. 속도·바퀴·맺음은 자리마다
      돌려 가며 물려 어느 둘도 같은 벌이 되지 않게 했다. 곱한 것을 다 올리지 않는
      까닭은 그 셋이 **방위·꼴만큼 눈에 갈리지 않기** 때문이다 — 갈리는 축으로만
      표를 늘리고 나머지는 자리마다 달리 물린다. */
   function rollName(d, back, sh, tn, sp, fi) {
-    return d.n.replace(/로$/, back ? "에서" : "로") + " " + sh.n + " " + tn.n
+    return (back ? d.n + "에서" : toward(d.n)) + " " + sh.n + " " + tn.n
            + "·" + sp.n + "·" + fi.n;
   }
 
