@@ -18460,6 +18460,11 @@ def here_requests(platform=None, rows=None, machine=None, user=None):
     for r in (rows if rows is not None else load_catalog()):
         if r.get("type") != "request" or r.get("status") not in ("open", "blocked", "in-progress"):
             continue
+        # 사용법 안내(onboarding)는 사람이 읽고 따라 하는 요청이다 — 세션이 집어
+        # 「작업」하지 않는다 (REQ-20260914-011-62x6). 첫 세션의 기동 프롬프트가
+        # `s9 next → claim` 을 시키므로, 여기서 빼지 않으면 첫 세션이 안내 1 을 집는다.
+        if "onboarding" in (r.get("tags") or []):
+            continue
         # 다른 컴퓨터의 신선한 리스 — 세 갈래 모두에 선다. 담당 머신이 이
         # 컴퓨터라도, 저쪽이 지금 쥐고 있으면 지금 집을 것은 아니다.
         if doc_lease_verdict(r, local, want="list")[1] == "busy-elsewhere":
