@@ -16,9 +16,9 @@
      「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
-  N6 뒤돌아보기와 뱅그르르가 가드를 지킨다 — 「움직임 줄이기」·안 보이는 탭에서는
-     걸리지 않고, 사람이 커서를 움직이는 중에는 그 회차를 건너뛴다. 그리고 뒤로
-     나간 점 셋이 **정말로 돔 밖**이어서 테가 가리는지를 기하로 잰다.
+  N6 재주 표가 온전하다 — 열여덟보다 많고 항목마다 이름·희귀도·길이·하는 일이
+     있으며, 시계가 가드(움직임 줄이기·안 보이는 탭)를 보고 커서를 좇는 중에는
+     끼어들지 않는다. 가장 멀리 가는 값들이 돔 안에 남는지도 기하로 잰다.
   N5 정지 파일 셋(mark·favicon·logo)의 렌즈에 음영(radialGradient)과 반사가 있고,
      점 셋이 주인이 고른 비율(지름의 8~14% · 무게중심 13~17% 아래 · 정삼각)을 지킨다.
 
@@ -137,7 +137,8 @@ class TheMoveHasACeiling(unittest.TestCase):
                                     "%s 끝까지 밀면 점이 테에 닿는다 (%.2f / %.2f)"
                                     % (name, reach, R))
 
-        self.assertIn("pupil.style.transform", src, "transform 으로 옮기지 않는다")
+        self.assertIn("el.style.transform = tr", src, "transform 으로 옮기지 않는다")
+        self.assertIn("css(pupil,", src, "무리를 옮기는 붓이 없다")
         for banned in ('setAttribute("cx"', 'setAttribute("cy"',
                        "style.left", "style.top"):
             self.assertNotIn(banned, src,
@@ -201,60 +202,96 @@ class TheStillFacesHaveDepth(unittest.TestCase):
         self.face(brand.group(1) + "</svg>")
 
 
-class TheRareMovesStayPolite(unittest.TestCase):
-    """N6. 뒤돌아보기와 뱅그르르 — 가드 · 끼어들지 않기 · 정말 가려지는가.
+class TheTrickTableIsWhole(unittest.TestCase):
+    """N6. 재주 표 — 열여덟보다 많고, 항목마다 넷을 갖추고, 가드를 지키고,
+    어떤 재주도 점을 돔 밖에 두고 끝나지 않는다.
 
-    이 둘은 드물게 일어나므로 화면을 지켜보다 잡기 어렵다. 그래서 시험이 재는 것은
-    「일어났는가」가 아니라 **일어나지 않아야 할 때 안 일어나는가**와 **일어났을 때
-    화면에서 말이 되는가** 둘이다.
+    재주가 스물여덟이라 「하나씩 눈으로 본다」로는 지킬 수 없다. 그래서 시험이 재는
+    것은 그림이 아니라 **표의 꼴과 경계**다 — 표에 넷(이름·희귀도·길이·하는 일)이
+    다 있는가 · 시계가 가드를 보는가 · 사람이 커서를 움직이는 중에 끼어들지 않는가 ·
+    가장 멀리 가는 값들이 돔 안에 남는가. 재주가 예쁜지는 사람이 띠를 보고 판정한다.
     """
 
-    def body(self, src, name):
-        """`function 이름() { … }` 의 본문 — 가드가 그 안에 있는지 보려는 것이다."""
-        i = src.index("function %s()" % name)
-        j = src.index("\n  }", i)
-        return src[i:j]
+    ENTRY = re.compile(r'\{name: "([^"]+)", rare: "([^"]+)", ms: (\d+)'
+                       r'(, hides: (true))?, run: function')
+    RARE = ("흔함", "가끔", "드묾", "아주 드묾")
 
-    def test_n6_the_rare_moves_are_guarded_and_really_hide(self):
+    def tricks(self, src):
+        return self.ENTRY.findall(src)
+
+    def test_n6_the_table_has_eighteen_or_more_well_formed_tricks(self):
         src = read("app", "mark.js")
-        for fn in ("behind", "spin"):
-            b = self.body(src, fn)
-            with self.subTest(fn):
-                self.assertIn("unseen() || still()", b,
-                              "%s 가 안 보이는 탭·움직임 줄이기를 안 본다" % fn)
-                self.assertIn("handsOn()", b,
-                              "%s 가 커서를 좇는 중에 끼어든다" % fn)
-        css = read("css", "header.css").replace(" ", "").replace("\n", "")
-        self.assertIn(".spin{transition:none;transform:none}", css,
-                      "움직임 줄이기에서 회전 그룹을 안 세운다")
+        got = self.tricks(src)
+        self.assertGreaterEqual(len(got), 18,
+                                "재주가 %d 개뿐이다 — 열여덟 이상이어야 한다" % len(got))
+        names = [g[0] for g in got]
+        self.assertEqual(len(names), len(set(names)), "같은 이름의 재주가 둘이다")
+        for name, rare, ms, _, _ in got:
+            with self.subTest(name):
+                self.assertIn(rare, self.RARE, "희귀도가 넷 중 하나가 아니다: %r" % rare)
+                self.assertTrue(200 <= int(ms) <= 3000,
+                                "길이가 0.2~3초 밖이다: %sms" % ms)
+        # 주인이 예시로 든 넷이 각각 있는가 (이름이 아니라 갈래로 센다)
+        joined = " ".join(names)
+        for want, why in ((("부르르", "지그재그", "다다닥"), "요란하게 움직이는 재주"),
+                          (("숨 쉬기", "툭 벌어짐"), "무리가 벌어졌다 좁아지는 재주"),
+                          (("홀로", "흩어", "자리 바꾸기", "물결"), "점 셋이 따로 노는 재주"),
+                          (("세로축", "가로축", "비스듬한"), "축이 다른 회전")):
+            with self.subTest(why):
+                self.assertTrue(any(w in joined for w in want),
+                                "%s 가 표에 없다" % why)
+        # 축이 자유로운 회전은 렌즈 중심 회전(뱅그르르)과 **다른** 재주여야 한다
+        self.assertTrue(any("뱅그르르" in n for n in names), "렌즈 중심 회전이 없다")
 
-        # 머리 조각의 뼈대 — 오려 내기와 회전 그룹이 없으면 둘 다 화면에서 깨진다
+    def test_n6b_the_clock_yields_and_nothing_ends_outside_the_dome(self):
+        src = read("app", "mark.js")
+        stage = src[src.index("function stage()"):src.index("\n  }", src.index("function stage()"))]
+        self.assertIn("unseen() || still()", stage,
+                      "시계가 안 보이는 탭·움직임 줄이기를 안 본다")
+        self.assertIn("handsOn()", stage, "시계가 커서를 좇는 중에 끼어든다")
+        self.assertIn("lastPick", src, "같은 재주를 연달아 뽑지 않는 장치가 없다")
+        self.assertIn("rest()", stage, "재주 끝에 쉼 자세로 돌려놓지 않는다")
+
+        css = read("css", "header.css").replace(" ", "").replace("\n", "")
+        for sel in (".pupil", ".spin", ".d0", ".d1", ".d2"):
+            with self.subTest(sel):
+                self.assertIn(sel, css, "%s 층의 규칙이 없다" % sel)
+        self.assertIn(".d2{transition:none;transform:none}", css,
+                      "움직임 줄이기에서 점 층을 안 세운다")
+
         snippet = re.search(r'<div class="brand">(.*?)</svg>', read("index.html"), re.S)
         snippet = snippet.group(1) + "</svg>"
-        self.assertIn("<clipPath", snippet,
-                      "돔으로 오려 내지 않는다 — 점이 테 밖 허공에 뜬다")
-        self.assertIn('clip-path="url(#s9lensclip)"', snippet, "오려 내기를 안 쓴다")
-        self.assertIn('<g class="spin">', snippet,
-                      "회전 그룹이 없다 — 무리와 축이 달라 한 그룹에 못 얹는다")
+        for want in ("<clipPath", 'clip-path="url(#s9lensclip)"', '<g class="spin">',
+                     '<g class="d0"', '<g class="d1"', '<g class="d2"'):
+            with self.subTest(want):
+                self.assertIn(want, snippet, "머리 조각에 %s 가 없다" % want)
 
-        # 뒤로 나갔을 때 점 셋이 **정말** 돔 밖인가 (가로로 눌린 뒤 밀려 나간 자리로)
+        # 가장 멀리 가는 값 둘이 돔 안에 남는가 — 무리의 상한과 점 하나의 상한
         c = {}
-        for key in ("BEHIND_OUT", "BEHIND_FLAT"):
-            m = re.search(r"var\s+%s\s*=\s*([\d.]+)" % key, src)
+        for key, pat in (("LENS_R", r"var\s+LENS_R\s*=\s*([\d.]+)"),
+                         ("MAXF", r"var\s+MAX\s*=\s*LENS_R\s*\*\s*([\d.]+)"),
+                         ("DOTF", r"var\s+DOT_MAX\s*=\s*MAX\s*\*\s*([\d.]+)"),
+                         ("HIDE", r"var\s+HIDE\s*=\s*([\d.]+)")):
+            m = re.search(pat, src)
             self.assertIsNotNone(m, "%s 가 상수로 없다" % key)
             c[key] = float(m.group(1))
+        R = c["LENS_R"]
+        MAXV = R * c["MAXF"]
+        DOTV = MAXV * c["DOTF"]
         m = DOME.search(snippet)
-        cx, cy, R = (float(v) for v in m.groups())
+        cx, cy, _ = (float(v) for v in m.groups())
         d3 = [tuple(float(v) for v in g) for g in DOT.findall(snippet[m.end():])][:3]
-        ox = sum(p[0] for p in d3) / 3.0      # 무리의 무게중심 — 눌림의 축이다
-        oy = sum(p[1] for p in d3) / 3.0
-        for dx, dy, r in d3:
-            x = ox + (dx - ox) * c["BEHIND_FLAT"] + c["BEHIND_OUT"]
-            near = math.hypot(x - cx, dy - cy) - r
-            self.assertGreater(near, R,
-                               "뒤로 나간 점이 돔 안에 걸친다 (%.2f / %.2f) "
-                               "— 반쯤 보이면 「뒤로 갔다」가 아니라 「잘렸다」다"
-                               % (near, R))
+        far = max(math.hypot(x - cx, y - cy) + r for x, y, r in d3)
+        self.assertLess(far + DOTV, R,
+                        "점 하나가 홀로 갈 수 있는 거리(%.2f)가 돔을 넘는다" % DOTV)
+        self.assertLess(far + MAXV, R,
+                        "무리의 이동 상한(%.2f)이 돔을 넘는다" % MAXV)
+        # 커지는 재주 — 어떤 배율도 무리를 돔 밖으로 밀지 않아야 한다
+        big = max([float(x) for x in re.findall(r"\{s: ([\d.]+)", src)] or [1])
+        self.assertLessEqual(big, 1.25, "무리를 %.2f 배까지 키운다 — 테를 넘는다" % big)
+        # 뒤로 도는 재주는 **반쯤** 걸치면 안 된다 — 아예 밖이어야 테가 가린다
+        self.assertGreater(c["HIDE"] - far, 0,
+                           "뒤로 밀어내는 거리(%.1f)가 모자라 점이 테에 걸친다" % c["HIDE"])
 
 
 if __name__ == "__main__":
