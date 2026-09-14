@@ -61,7 +61,10 @@ class TheFacesExist(unittest.TestCase):
     def test_a_drawing_stands_alone(self):
         """viewBox 가 있어야 부르는 쪽이 크기를 정하고, 바깥 주소가 없어야
         오프라인에서도 그려진다."""
-        outside = re.compile(r'https?://|<image\b|@import|xlink:href|url\(')
+        # `url(#…)` 는 **같은 파일 안**의 그림 조각을 가리키는 것이다 (REQ-20260914-001-62x6:
+        # 렌즈의 음영이 radialGradient 라 이 표기를 쓴다) — 바깥 주소가 아니므로 세지 않는다.
+        # 바깥으로 나가는 `url(http…)`·`url(./a.png)` 는 그대로 걸린다.
+        outside = re.compile(r'https?://|<image\b|@import|xlink:href|url\((?!#)')
         for name in MARKS:
             with self.subTest(name):
                 with open(asset(name), encoding="utf-8") as f:

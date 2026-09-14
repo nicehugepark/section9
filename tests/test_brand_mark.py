@@ -5,7 +5,9 @@
 guide.html 의 차례도 같은 정사각(.sq)이었다 — 한 제품이 자리마다 다른 얼굴을 보였다.
 
 계약 셋:
-  M1 index.html 머리글 .brand 는 img.mark 로 assets/mark.svg 를 쓰고, 그 파일이 있다.
+  M1 index.html 머리글 .brand 의 마크는 **인라인 svg.mark** 다 — 눈(점 셋)을 움직여야
+     하는데 `<img>` 안의 요소는 문서의 것이 아니라 붙잡을 수 없다(REQ-20260914-001-62x6).
+     그림 파일(assets/mark.svg)은 그대로 있고 가이드가 쓴다.
   M2 guide.html 차례의 .brand 도 같은 그림을 쓴다.
   M3 옛 정사각 규칙(.brand .dot · .brand .sq)이 CSS 어디에도 남아 있지 않다.
 
@@ -27,14 +29,18 @@ def read(p):
 
 BRAND = re.compile(r'<div class="brand">(.*?)section9', re.S)
 MARK = re.compile(r'<img class="mark" src="assets/mark\.svg"[^>]*>')
+INLINE = re.compile(r'<svg class="mark"[^>]*>.*?<g class="pupil">.*?</g>.*?</svg>', re.S)
 
 
 class BrandMark(unittest.TestCase):
-    def test_m1_index_header_uses_the_mark_file(self):
-        """M1. index.html 머리글은 assets/mark.svg 를 img.mark 로 쓴다."""
+    def test_m1_index_header_carries_the_mark_inline(self):
+        """M1. index.html 머리글의 마크는 인라인 svg.mark 이고 그림 파일도 그대로 있다."""
         m = BRAND.search(read(os.path.join(WEB, "index.html")))
         self.assertIsNotNone(m, ".brand 가 없다")
-        self.assertRegex(m.group(1), MARK)
+        self.assertRegex(m.group(1), INLINE,
+                         "머리글 마크가 인라인 svg.mark(+ g.pupil)가 아니다")
+        self.assertNotRegex(m.group(1), MARK,
+                            "그림 파일 마크가 남아 있다 — 한 자리에 얼굴이 둘이다")
         self.assertTrue(os.path.exists(os.path.join(WEB, "assets", "mark.svg")))
 
     def test_m2_guide_toc_uses_the_same_mark(self):
