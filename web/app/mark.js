@@ -72,11 +72,15 @@
   var MAX_DOWN = LENS_R * 0.18;    // 아래쪽만 좁다 — 무리가 이미 중심보다 아래다
   var DOT_MAX = MAX * 1.05;       // 점 하나가 홀로 갈 수 있는 가장 먼 거리
   var HIDE = 34;                   // 이만큼 밀면 무리가 돔 밖이라 테가 가린다
-  var FAR = 900;                   // 이만큼(화면 px) 밖이면 더 멀어져도 같은 세기
-  var NEAR_MIN = 0.45;             // 아무리 멀어도 상한의 이만큼은 그쪽을 본다
+  /* 커서를 보는 반경 — 마크 한가운데에서 320 화소. 1440 폭 화면의 22 퍼센트이고,
+     머리글의 브랜드와 첫 탭 몇 개가 들어가는 거리다. 이보다 넓게 잡으면 사람이
+     아래 칸에서 일하는 내내 눈이 손을 좇아 산만하고, 좁게 잡으면 마크에 다가가도
+     안 쳐다본다. (REQ-20260914-002-62x6, 주인 16:49) */
+  var NEAR_R = 320;
+  var NEAR_MIN = 0.35;             // 반경 가장자리에서의 세기 — 들어올 때 튀지 않게
+  var CALM_MS = 1500;              // 커서가 멎은 뒤 이만큼 지나면 재주가 다시 돈다
   var TRACK_MS = 190;              // 커서를 좇아가는 시간
   var TRACK_GAP = 60;              // 커서를 다시 보는 최소 간격(ms)
-  var BUSY_MS = 1500;              // 커서가 이 안에 움직였으면 재주를 부리지 않는다
   var IDLE_MS = [1400, 4200];      // 재주와 재주 사이
   var LINEAR = "linear";
   var EASE_IN = "cubic-bezier(.55,.06,.68,.19)";
@@ -88,7 +92,11 @@
   var aimX = 0, aimY = 0;          // 커서가 부르는 자리
   var busy = false;                // 재주를 부리는 중인가
   var lastTrack = 0;
+  var lastPaint = 0;
   var lastPick = -1;
+  var following = false;           // 커서를 좇는 중인가 — 그동안 재주는 쉰다
+  var calmTimer = null;            // 커서가 멎기를 기다리는 시계(timers 와 따로 산다)
+  var bag = [];                    // 섞은 주머니 — 뽑는 순서가 표 순서를 안 드러내게
 
   var lessMotion = window.matchMedia
     ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
@@ -99,7 +107,6 @@
   function pick(r) { return rnd(r[0], r[1]); }
   function sign() { return Math.random() < 0.5 ? -1 : 1; }
   function wait(ms, fn) { timers.push(setTimeout(fn, Math.round(ms))); }
-  function handsOn() { return Date.now() - lastTrack < BUSY_MS; }
 
   /* ---- 붓 ------------------------------------------------------------ */
 
@@ -584,24 +591,37 @@
 
   var WEIGHT = {"흔함": 8, "가끔": 4, "드묾": 2, "아주 드묾": 1};
 
+  /* 뽑기는 **섞은 주머니**다 (주인 16:49 「순서가 고정이라면 랜덤으로 바꿔줘」).
+     매번 난수로 고르면 같은 재주가 연달아 나오기도 하고 어떤 것은 한참 안 나온다.
+     주머니는 희귀도만큼 표를 넣고 섞어 하나씩 꺼내므로, 한 바퀴 도는 동안 모든
+     재주가 제 몫만큼 나오고 순서는 매번 다르다. 바닥나면 다시 채워 섞는다. */
+  function refill() {
+    var i, k, w;
+    bag = [];
+    for (i = 0; i < TRICKS.length; i++) {
+      w = WEIGHT[TRICKS[i].rare] || 1;
+      for (k = 0; k < w; k++) { bag.push(i); }
+    }
+    for (i = bag.length - 1; i > 0; i--) {        // 피셔–예이츠
+      k = Math.floor(Math.random() * (i + 1));
+      w = bag[i]; bag[i] = bag[k]; bag[k] = w;
+    }
+  }
+
   function choose() {
-    var total = 0, i, w = [];
-    for (i = 0; i < TRICKS.length; i++) {
-      w[i] = (i === lastPick) ? 0 : (WEIGHT[TRICKS[i].rare] || 1);
-      total += w[i];
+    if (!bag.length) { refill(); }
+    var i = bag.pop();
+    if (i === lastPick && bag.length) {           // 바로 앞엣것은 다시 안 뽑는다
+      var k = Math.floor(Math.random() * bag.length);
+      var j = bag[k]; bag[k] = i; i = j;
     }
-    var r = Math.random() * total;
-    for (i = 0; i < TRICKS.length; i++) {
-      r -= w[i];
-      if (r <= 0) { return i; }
-    }
-    return 0;
+    return i;
   }
 
   function stage() {
     wait(pick(IDLE_MS), function () {
-      if (unseen() || still()) { return; }
-      if (busy || handsOn()) { stage(); return; }   // 사람이 보고 있으면 비킨다
+      if (unseen() || still() || following) { return; }
+      if (busy) { stage(); return; }
       var i = choose(), t = TRICKS[i];
       lastPick = i;
       busy = true;
@@ -622,21 +642,40 @@
 
   function measure() { box = svg.getBoundingClientRect(); }
 
+  /* 커서를 좇는다 — **재주를 끊고**.
+
+     v5 에서 재주 표와 시계를 들이면서 이 기능이 사실상 꺼졌다. `track()` 이
+     `if (!busy)` 로 재주 중에는 아무것도 쓰지 않았는데, 재주 하나가 1~2.5초이고
+     사이가 1.4~4.2초라 절반 가까이가 「재주 중」이었다 — 연쇄 재주는 5초를 넘겼다.
+     사람이 커서를 움직이는 동안 눈이 반응하지 않으니 꺼진 것으로 보였다.
+     고치는 길은 조건을 무르게 하는 것이 아니라 **재주를 끊는 것**이다: 반경 안에서
+     커서가 움직이면 그 자리에서 시계를 멈추고 커서를 본다. */
   function track(e) {
     if (still() || unseen() || !box) { return; }
-    var now = Date.now();
-    if (now - lastTrack < TRACK_GAP) { return; }
-    lastTrack = now;
     var dx = e.clientX - (box.left + box.width / 2);
     var dy = e.clientY - (box.top + box.height / 2);
     var d = Math.sqrt(dx * dx + dy * dy);
-    if (d < 0.5) { return; }
-    /* 거리로 자르지 않는다 — 멀면 옅게, 가까우면 끝까지. 세로도 줄이지 않는다. */
-    var t = 1 - Math.min(1, d / FAR);
-    var m = MAX * (NEAR_MIN + (1 - NEAR_MIN) * t);
+    if (d > NEAR_R) { return; }          // 반경 밖에서 움직이는 커서는 보지 않는다
+    var now = Date.now();
+    lastTrack = now;
+    if (!following) { following = true; stop(); }   // 재주를 끊는다
+    clearTimeout(calmTimer);
+    calmTimer = setTimeout(calm, CALM_MS);          // 멎으면 재주로 돌아간다
+    if (now - lastPaint < TRACK_GAP) { return; }
+    lastPaint = now;
+    if (d < 1) { return; }
+    var m = MAX * (NEAR_MIN + (1 - NEAR_MIN) * (1 - d / NEAR_R));
     aimX = dx / d * m; aimY = dy / d * m;
-    if (!busy) { P(aimX, aimY, TRACK_MS); }
+    P(aimX, aimY, TRACK_MS);
   }
+
+  /* 커서가 멎었거나 반경을 떠났다 — 눈을 제자리로 두고 시계를 다시 건다. */
+  function calm() {
+    following = false;
+    aimX = 0; aimY = 0;
+    if (!unseen() && !still()) { rest(360); stage(); }
+  }
+
 
   /* ---- 오르내림 -------------------------------------------------------- */
 
@@ -646,8 +685,10 @@
     busy = false;
   }
 
+  function halt() { stop(); clearTimeout(calmTimer); following = false; }
+
   function start() {
-    stop();
+    halt();
     if (still()) {                 // 움직임 줄이기 — 쉼 자세로 그대로 선다
       aimX = 0; aimY = 0;
       css(pupil, "", 0);
@@ -683,7 +724,7 @@
   }
 
   document.addEventListener("visibilitychange", function () {
-    if (unseen()) { stop(); } else { start(); }
+    if (unseen()) { halt(); } else { start(); }
   });
   window.addEventListener("resize", measure, { passive: true });
   window.addEventListener("pointermove", track, { passive: true });

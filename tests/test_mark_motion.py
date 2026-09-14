@@ -12,8 +12,7 @@
   N2 mark.js 가 `prefers-reduced-motion`·`document.hidden` 을 둘 다 보고,
      안 보이는 창에서는 타이머를 끈다.
   N3 눈은 렌즈 안에서만 움직인다 — 상한까지 밀어도 점 셋이 테에 닿지 않는 것을
-     기하로 재고, 커서는 거리로 자르지 않는 것(NEAR_MIN > 0)을 함께 본다.
-     「움직이는 것은 transform 뿐」도 여기서 본다.
+     기하로 잰다. 「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
   N6 재주 표가 온전하다 — 합쳐 **150 을 넘고**, 점이 따로 노는 재주는 **10%% 이하**이며
@@ -99,7 +98,7 @@ class TheMoveHasACeiling(unittest.TestCase):
     def consts(self, src):
         """`var 이름 = 숫자` 또는 `var 이름 = 앞선이름 * 숫자` 를 읽는다."""
         out = {}
-        for key in ("LENS_R", "MAX", "MAX_DOWN", "FAR", "NEAR_MIN"):
+        for key in ("LENS_R", "MAX", "MAX_DOWN", "NEAR_R", "NEAR_MIN"):
             m = re.search(r"var\s+%s\s*=\s*(?:([A-Z_]+)\s*\*\s*)?([\d.]+)" % key, src)
             self.assertIsNotNone(m, "%s 가 상수로 없다" % key)
             v = float(m.group(2))
@@ -118,10 +117,8 @@ class TheMoveHasACeiling(unittest.TestCase):
         self.assertLess(c["MAX_DOWN"], c["MAX"],
                         "아래쪽 상한이 옆·위와 같다 — 점 무리가 이미 아래에 앉아 있다")
         self.assertGreater(c["NEAR_MIN"], 0,
-                           "아무리 멀어도 커서를 좇는 몫(NEAR_MIN)이 0 이다 "
-                           "— 화면 어디에 있든 그쪽을 봐야 한다")
-        self.assertNotIn("d > NEAR", src,
-                         "커서를 거리로 잘라 낸다 — 그 밖에서는 눈이 죽는다")
+                           "반경 가장자리에서의 세기(NEAR_MIN)가 0 이다 — 들어오는 "
+                           "순간 눈이 튄다")
 
         # 상한까지 밀어도 점 셋이 돔 안에 남는가 — 옆·위·아래 셋을 실제로 재 본다
         head = re.search(r'<div class="brand">(.*?)</svg>', read("index.html"), re.S)
@@ -275,8 +272,28 @@ class TheTrickTableIsWhole(unittest.TestCase):
         src = read("app", "mark.js")
         stage = src[src.index("function stage()"):src.index("\n  }", src.index("function stage()"))]
         self.assertIn("unseen() || still()", stage, "시계가 안 보이는 탭·움직임 줄이기를 안 본다")
-        self.assertIn("handsOn()", stage, "시계가 커서를 좇는 중에 끼어든다")
+        self.assertIn("following", stage, "시계가 커서를 좇는 중에 끼어든다")
         self.assertIn("lastPick", src, "같은 재주를 연달아 뽑지 않는 장치가 없다")
+        # 뽑기는 섞은 주머니다 — 순서가 표 순서를 드러내면 안 된다
+        self.assertIn("function refill()", src, "섞은 주머니가 없다")
+        rf = src[src.index("function refill()"):src.index("\n  }", src.index("function refill()"))]
+        self.assertIn("Math.floor(Math.random() * (i + 1))", rf,
+                      "주머니를 섞지 않는다 — 피셔–예이츠가 없다")
+        self.assertIn("WEIGHT[TRICKS[i].rare]", rf, "희귀도만큼 담지 않는다")
+
+        # 커서 추종 — 반경 안에서 움직이면 **재주를 끊고** 좇는다
+        tr = src[src.index("  function track(e)"):src.index("\n  }", src.index("  function track(e)"))]
+        self.assertIn("d > NEAR_R", tr, "반경 밖 커서를 걸러 내지 않는다")
+        self.assertIn("stop();", tr,
+                      "커서가 와도 재주를 안 끊는다 — 재주 중에는 눈이 커서를 무시하게 된다")
+        self.assertIn("calmTimer", tr, "커서가 멎기를 기다리는 시계가 없다")
+        for key, lo, hi in (("NEAR_R", 120, 600), ("CALM_MS", 800, 3000)):
+            m = re.search(r"var\s+%s\s*=\s*([\d.]+)" % key, src)
+            self.assertIsNotNone(m, "%s 가 상수로 없다" % key)
+            self.assertTrue(lo <= float(m.group(1)) <= hi,
+                            "%s 가 %s~%s 밖이다: %s" % (key, lo, hi, m.group(1)))
+        cm = src[src.index("  function calm()"):src.index("\n  }", src.index("  function calm()"))]
+        self.assertIn("stage()", cm, "커서가 멎어도 재주가 다시 돌지 않는다")
         self.assertIn("rest()", stage, "재주 끝에 쉼 자세로 돌려놓지 않는다")
 
         # 붓이 제 손으로 자르는가 — 여기가 참이면 재주를 하나씩 흉내 내지 않아도 된다
