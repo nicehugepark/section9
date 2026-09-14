@@ -16,6 +16,9 @@
      「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
+  N6 뒤돌아보기와 뱅그르르가 가드를 지킨다 — 「움직임 줄이기」·안 보이는 탭에서는
+     걸리지 않고, 사람이 커서를 움직이는 중에는 그 회차를 건너뛴다. 그리고 뒤로
+     나간 점 셋이 **정말로 돔 밖**이어서 테가 가리는지를 기하로 잰다.
   N5 정지 파일 셋(mark·favicon·logo)의 렌즈에 음영(radialGradient)과 반사가 있고,
      점 셋이 주인이 고른 비율(지름의 8~14% · 무게중심 13~17% 아래 · 정삼각)을 지킨다.
 
@@ -196,6 +199,62 @@ class TheStillFacesHaveDepth(unittest.TestCase):
         # 머리글의 얼굴도 같은 자로 잰다 — 탭·가이드와 한 얼굴이어야 한다
         brand = re.search(r'<div class="brand">(.*?)</svg>', read("index.html"), re.S)
         self.face(brand.group(1) + "</svg>")
+
+
+class TheRareMovesStayPolite(unittest.TestCase):
+    """N6. 뒤돌아보기와 뱅그르르 — 가드 · 끼어들지 않기 · 정말 가려지는가.
+
+    이 둘은 드물게 일어나므로 화면을 지켜보다 잡기 어렵다. 그래서 시험이 재는 것은
+    「일어났는가」가 아니라 **일어나지 않아야 할 때 안 일어나는가**와 **일어났을 때
+    화면에서 말이 되는가** 둘이다.
+    """
+
+    def body(self, src, name):
+        """`function 이름() { … }` 의 본문 — 가드가 그 안에 있는지 보려는 것이다."""
+        i = src.index("function %s()" % name)
+        j = src.index("\n  }", i)
+        return src[i:j]
+
+    def test_n6_the_rare_moves_are_guarded_and_really_hide(self):
+        src = read("app", "mark.js")
+        for fn in ("behind", "spin"):
+            b = self.body(src, fn)
+            with self.subTest(fn):
+                self.assertIn("unseen() || still()", b,
+                              "%s 가 안 보이는 탭·움직임 줄이기를 안 본다" % fn)
+                self.assertIn("handsOn()", b,
+                              "%s 가 커서를 좇는 중에 끼어든다" % fn)
+        css = read("css", "header.css").replace(" ", "").replace("\n", "")
+        self.assertIn(".spin{transition:none;transform:none}", css,
+                      "움직임 줄이기에서 회전 그룹을 안 세운다")
+
+        # 머리 조각의 뼈대 — 오려 내기와 회전 그룹이 없으면 둘 다 화면에서 깨진다
+        snippet = re.search(r'<div class="brand">(.*?)</svg>', read("index.html"), re.S)
+        snippet = snippet.group(1) + "</svg>"
+        self.assertIn("<clipPath", snippet,
+                      "돔으로 오려 내지 않는다 — 점이 테 밖 허공에 뜬다")
+        self.assertIn('clip-path="url(#s9lensclip)"', snippet, "오려 내기를 안 쓴다")
+        self.assertIn('<g class="spin">', snippet,
+                      "회전 그룹이 없다 — 무리와 축이 달라 한 그룹에 못 얹는다")
+
+        # 뒤로 나갔을 때 점 셋이 **정말** 돔 밖인가 (가로로 눌린 뒤 밀려 나간 자리로)
+        c = {}
+        for key in ("BEHIND_OUT", "BEHIND_FLAT"):
+            m = re.search(r"var\s+%s\s*=\s*([\d.]+)" % key, src)
+            self.assertIsNotNone(m, "%s 가 상수로 없다" % key)
+            c[key] = float(m.group(1))
+        m = DOME.search(snippet)
+        cx, cy, R = (float(v) for v in m.groups())
+        d3 = [tuple(float(v) for v in g) for g in DOT.findall(snippet[m.end():])][:3]
+        ox = sum(p[0] for p in d3) / 3.0      # 무리의 무게중심 — 눌림의 축이다
+        oy = sum(p[1] for p in d3) / 3.0
+        for dx, dy, r in d3:
+            x = ox + (dx - ox) * c["BEHIND_FLAT"] + c["BEHIND_OUT"]
+            near = math.hypot(x - cx, dy - cy) - r
+            self.assertGreater(near, R,
+                               "뒤로 나간 점이 돔 안에 걸친다 (%.2f / %.2f) "
+                               "— 반쯤 보이면 「뒤로 갔다」가 아니라 「잘렸다」다"
+                               % (near, R))
 
 
 if __name__ == "__main__":

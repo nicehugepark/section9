@@ -134,15 +134,16 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
       <stop offset=".55" stop-color="#ffffff" stop-opacity=".30"/>
       <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
+    <clipPath id="s9lensclip"><circle cx="32" cy="32" r="27.4"/></clipPath>
   </defs>
   <circle cx="32" cy="32" r="31" fill="#141518"/>
   <circle cx="32" cy="32" r="27.4" fill="url(#s9dome)"/>
   <ellipse cx="24.33" cy="21.04" rx="10.96" ry="7.12" fill="url(#s9lit)" transform="rotate(-22 24.33 21.04)"/>
-  <g class="pupil">
+  <g clip-path="url(#s9lensclip)"><g class="pupil"><g class="spin">
     <circle cx="26.04" cy="36.67" r="2.9" fill="#141518"/>
     <circle cx="37.96" cy="36.67" r="2.9" fill="#141518"/>
     <circle cx="32" cy="46.99" r="2.9" fill="#141518"/>
-  </g>
+  </g></g></g>
 </svg>section9</div>
     <div class="tabs">
       <button data-tab="board" class="active">Board</button>

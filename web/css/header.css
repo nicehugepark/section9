@@ -24,10 +24,16 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
    눈금으로 읽히게 하려는 것이다(엔진마다 기본값이 갈린 적이 있다). */
 .brand .mark .pupil{transform-box:view-box;transform-origin:32px 40.11px;
   transition:transform 190ms cubic-bezier(.22,.61,.36,1)}
+/* 회전은 축이 다르다 — 무리가 납작해지는 축은 제 무게중심이고, 뱅그르르 도는 축은
+   **렌즈 중심**이다(REQ-20260914-002-62x6). 한 그룹에 둘을 얹으면 축이 하나뿐이라
+   회전이 무리를 렌즈 밖으로 던진다. 그래서 그룹이 둘이고 기준점도 둘이다. */
+.brand .mark .spin{transform-box:view-box;transform-origin:32px 32px;
+  transition:transform 820ms cubic-bezier(.45,.05,.25,1)}
 @media (prefers-reduced-motion:reduce){
   /* 움직임을 줄이라고 한 화면에서는 눈도 가만히 있는다 — mark.js 도 같은 것을 보고
      타이머를 걸지 않는다. 두 곳이 같은 말을 해야 한쪽이 늦게 와도 안 흔들린다. */
-  .brand .mark .pupil{transition:none;transform:none}
+  .brand .mark .pupil,
+  .brand .mark .spin{transition:none;transform:none}
 }
 .tabs{display:flex;gap:2px;flex:none}
 .tabs button{border:0;background:none;padding:4px 12px 13px;cursor:pointer;
