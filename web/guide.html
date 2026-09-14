@@ -125,7 +125,7 @@ footer{margin-top:70px;padding-top:16px;border-top:1px solid var(--border);
 <body>
 <aside class="toc">
   <div class="brand"><img class="mark" src="assets/mark.svg" alt="" width="18" height="18">section9
-    <span class="sub">User Guide · 0.9.0</span></div>
+    <span class="sub">User Guide · 0.9.1</span></div>
   <nav id="toc">
     <a href="#intro"><span class="n">1</span>section9이 뭔가요</a>
     <a href="#install"><span class="n">2</span>받기와 첫 실행</a>
@@ -159,7 +159,7 @@ footer{margin-top:70px;padding-top:16px;border-top:1px solid var(--border);
 <div class="wrap"><div class="page">
 <div class="pagehead">
   <h1>section9 사용자 가이드</h1>
-  <div class="meta">verified 2026-09-13 · 0.9.0 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서(판정 버튼 「승인 done」「반려 in-progress」와 안내 요청 일곱 편은 2026-09-14 재확인, REQ-20260914-011), 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측</div>
+  <div class="meta">verified 2026-09-14 · 0.9.1 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서(판정 버튼 「승인 done」「반려 in-progress」와 안내 요청 일곱 편은 2026-09-14 재확인, REQ-20260914-011), 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측</div>
 </div>
 
 <!-- ═══════════════ 1 ═══════════════ -->
@@ -214,13 +214,13 @@ section9 은 AI 작업의 <b>외부기억(모든 것이 문서로 남음)</b>이
 <h3>두 갈래 — 릴리스 파일과 소스</h3>
 <div class="tblwrap"><table>
   <tr><th style="width:200px">갈래</th><th>무엇을 받나</th><th style="width:250px">누구에게 맞나</th></tr>
-  <tr><td><b>릴리스 파일</b> (이 장의 기본)</td><td>GitHub Releases 의 <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows.zip</code>(Windows). 코드만 들어 있고 <code>.git</code> 이 없습니다 — 첫 실행이 저장소를 만듭니다</td><td>처음 쓰는 모든 사람</td></tr>
+  <tr><td><b>릴리스 파일</b> (이 장의 기본)</td><td>GitHub Releases 의 <code>section9-0.9.1-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.1-windows.zip</code>(Windows). 코드만 들어 있고 <code>.git</code> 이 없습니다 — 첫 실행이 저장소를 만듭니다</td><td>처음 쓰는 모든 사람</td></tr>
   <tr><td><b>소스</b></td><td><code>git clone</code> 한 section9 저장소(또는 그 fork)</td><td>section9 자체를 고치거나 개발 흐름을 따르는 사람 — <a href="#install-src">2.5 절</a></td></tr>
 </table></div>
 <p class="dim">예시는 풀어 놓은 자리를 <code>~/section9</code> 로 통일합니다. 실제로는 아무 경로나 됩니다 — 푼 그 디렉토리가 곧 작업 공간이고, <b>이 가이드의 모든 <code>bin/s9 …</code> 명령은 그 디렉토리 안에서 실행</b>합니다.</p>
 
 <h3 id="install-linux">2.1 리눅스</h3>
-<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
+<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.1-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.1-windows.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
 <div class="step"><div class="num">0</div><div class="body">
   <b>준비물을 확인합니다</b> <span class="dim">(어느 디렉토리에서나)</span>
   <pre><code>git --version        # git version 2.x
@@ -231,15 +231,15 @@ claude --version     # 2.x.x (Claude Code)</code></pre>
 <div class="step"><div class="num">1</div><div class="body">
   <b>릴리스 파일을 받습니다</b> <span class="dim">(실행 위치: 홈)</span>
   <pre><code>cd ~
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-linux-macos.tar.gz
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.0/SHA256SUMS
-sha256sum -c SHA256SUMS --ignore-missing     # section9-0.9.0-linux-macos.tar.gz: OK 가 보이면 받은 파일이 온전한 것입니다</code></pre>
+curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing     # section9-0.9.1-linux-macos.tar.gz: OK 가 보이면 받은 파일이 온전한 것입니다</code></pre>
   <p>브라우저로 받아도 됩니다 — <a href="https://github.com/nicehugepark/section9/releases" target="_blank" rel="noopener">github.com/nicehugepark/section9/releases</a> 의 <b>Assets</b> 에서 그 파일. 받은 자리로 <code>cd</code> 한 뒤 다음 단계로.</p>
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
   <b>풉니다 — <code>section9/</code> 디렉토리가 생깁니다</b>
-  <pre><code>tar tzf section9-0.9.0-linux-macos.tar.gz | head -1     # section9/  ← 풀리면 생길 디렉토리
-tar xzf section9-0.9.0-linux-macos.tar.gz                  # 홈에서 풀었으니 그대로 ~/section9 입니다
+  <pre><code>tar tzf section9-0.9.1-linux-macos.tar.gz | head -1     # section9/  ← 풀리면 생길 디렉토리
+tar xzf section9-0.9.1-linux-macos.tar.gz                  # 홈에서 풀었으니 그대로 ~/section9 입니다
 cd ~/section9
 ls bin/s9 bin/s9-install                                   # 둘이 보이면 제대로 풀린 것입니다</code></pre>
   <p>압축 파일의 최상위가 <code>section9/</code> 이고 실행 권한도 들어 있습니다(<code>bin/s9-release</code> 가 그렇게 만듭니다). 다른 자리에서 풀었으면 <code>mv section9 ~/section9</code> 로 옮깁니다 — 이 가이드와 훅이 <code>~/section9</code> 를 기준으로 적혀 있고, 나중에 옮기면 <code>bin/s9-install</code> 을 한 번 다시 실행합니다(훅에 적힌 경로를 새 자리로 고칩니다).</p>
@@ -310,15 +310,15 @@ claude --version</code></pre>
 </div></div>
 <div class="step"><div class="num">1</div><div class="body">
   <b>릴리스 파일을 받습니다</b>
-  <p>Safari 로 <a href="https://github.com/nicehugepark/section9/releases" target="_blank" rel="noopener">github.com/nicehugepark/section9/releases</a> 의 <b>Assets</b> 에서 <code>section9-0.9.0-linux-macos.tar.gz</code> 를 받으면 <code>~/Downloads</code> 에 놓입니다. 터미널로는 리눅스와 같은 한 줄입니다.</p>
+  <p>Safari 로 <a href="https://github.com/nicehugepark/section9/releases" target="_blank" rel="noopener">github.com/nicehugepark/section9/releases</a> 의 <b>Assets</b> 에서 <code>section9-0.9.1-linux-macos.tar.gz</code> 를 받으면 <code>~/Downloads</code> 에 놓입니다. 터미널로는 리눅스와 같은 한 줄입니다.</p>
   <pre><code>cd ~/Downloads
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-linux-macos.tar.gz</code></pre>
+curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz</code></pre>
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
   <b>풀고, <code>~/section9</code> 로 옮깁니다</b>
   <p>Finder 에서 두 번 눌러도 풀립니다(<code>~/Downloads/section9</code> 가 생깁니다). 이 가이드는 터미널 기준입니다 — 어느 쪽이든 결과 디렉토리 <code>section9</code> 를 홈 바로 아래로 옮깁니다.</p>
   <pre><code>cd ~/Downloads
-tar xzf section9-0.9.0-linux-macos.tar.gz     # section9/ 가 생깁니다
+tar xzf section9-0.9.1-linux-macos.tar.gz     # section9/ 가 생깁니다
 mv section9 ~/section9
 cd ~/section9
 ls bin/s9 bin/s9-install                        # 둘이 보이면 제대로 풀린 것입니다</code></pre>
@@ -343,7 +343,7 @@ bin/s9 code</code></pre>
 </ul>
 
 <h3 id="install-windows">2.3 Windows 와 WSL</h3>
-<p>Windows 는 별도 문서입니다 — <a href="https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md" target="_blank" rel="noopener">docs/guide-windows.md</a>. <b>Windows native</b>(파일 <code>section9-0.9.0-windows.zip</code> · <code>bin\s9.cmd code</code>)와 <b>WSL</b> 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.</p>
+<p>Windows 는 별도 문서입니다 — <a href="https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md" target="_blank" rel="noopener">docs/guide-windows.md</a>. <b>Windows native</b>(파일 <code>section9-0.9.1-windows.zip</code> · <code>bin\s9.cmd code</code>)와 <b>WSL</b> 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.</p>
 <p class="dim">WSL 은 리눅스입니다 — WSL 셸 안에서 <a href="#install-linux">2.1</a> 을 그대로 따르되, 파일을 WSL 의 홈(<code>~</code>) 안에 두고 Windows 드라이브(<code>/mnt/c/…</code>)에 두지 마십시오. 그 자리의 git 은 느리고 파일 권한 표시가 어긋납니다. 브라우저는 Windows 쪽 것이 저절로 열립니다.</p>
 
 <h3 id="after-first-run">2.4 첫 실행 뒤 — 공통</h3>
@@ -1325,7 +1325,7 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
 </section>
 
 <footer>
-  section9 user guide · verified 2026-09-13 · 0.9.0 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥은 세션 감지·브라우저 열기 실측) ·
+  section9 user guide · verified 2026-09-14 · 0.9.1 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥은 세션 감지·브라우저 열기 실측) ·
   캡처: 실제 화면(개발 인스턴스, 2026-09-06 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md) · Windows·WSL: docs/guide-windows.md
 </footer>
 

@@ -46,7 +46,18 @@ def archive_top_level():
         return {m.name.split("/")[0] for m in tf.getmembers()}
 
 
-def version_file():
+def version_file(ref="HEAD"):
+    """배포판이 지어지는 그 ref 의 VERSION — 작업 트리의 파일이 아니다.
+
+    build() 는 `--ref HEAD` 로 짓고 s9-release 는 그 ref 의 VERSION 을 읽는다. 판을
+    올리는 commit 을 담기 전(작업 트리 0.9.1 · HEAD 0.9.0)에는 둘이 갈리므로, 작업
+    트리를 읽으면 그 순간의 검사가 전부 「파일이 없다」로 선다(2026-09-14 0.9.1 실측).
+    ref 를 못 읽는 자리(git 없음)에서만 작업 트리로 물러난다."""
+    if ref:
+        r = subprocess.run(["git", "-C", ROOT, "show", f"{ref}:VERSION"],
+                           capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
     with open(os.path.join(ROOT, "VERSION"), encoding="utf-8") as f:
         return f.read().strip()
 
@@ -183,7 +194,8 @@ class TheReleaseBuild(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         m = re.match(r"^section9 (\S+)( \([0-9a-f]{7,}\))?$", r.stdout.strip())
         self.assertIsNotNone(m, f"s9 --version 의 꼴이 다르다: {r.stdout!r}")
-        self.assertEqual(m.group(1), self.ver, "s9 --version 과 VERSION 파일이 다르다")
+        # `s9 --version` 은 작업 트리의 VERSION 을 읽는다 — 배포판(HEAD)의 판과는 다른 물음이다
+        self.assertEqual(m.group(1), version_file(ref=None), "s9 --version 과 VERSION 파일이 다르다")
 
     def test_b10_whoami_carries_the_version_and_the_screen_draws_it(self):
         # 서버가 주는 값(whoami_info — /api/whoami 와 /api/boot 묶음이 같은 함수)이
@@ -208,7 +220,7 @@ class TheReleaseBuild(unittest.TestCase):
                 else:
                     os.environ[k] = v
         self.assertEqual(who.get("version"), m.s9_version())
-        self.assertTrue(who["version"].startswith(self.ver), who["version"])
+        self.assertTrue(who["version"].startswith(version_file(ref=None)), who["version"])
         with open(os.path.join(ROOT, "web", "app", "settings.js"), encoding="utf-8") as f:
             js = f.read()
         self.assertIn("<td>버전</td>", js, "Settings › 시스템 판에 「버전」 줄이 없다")

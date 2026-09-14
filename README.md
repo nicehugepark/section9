@@ -4,7 +4,7 @@ Claude Code 로 일하는 사람의 **외부기억(external memory)**. 프롬프
 마크다운 문서(`vault/`)로 기록하고, 상태머신·대시보드·git 동기화로 여러 사람·여러
 머신·여러 세션이 같은 기록을 이어서 쓰게 한다. 컨텍스트는 사라지지만 문서는 남는다.
 
-> 검증: 2026-09-13 · 0.9.0 · Linux(WSL2) · python 3 · Claude Code CLI. 맥은 실측 중이다(§10).
+> 검증: 2026-09-14 · 0.9.1 · Linux(WSL2) · python 3 · Claude Code CLI. 맥은 실측 중이다(§10).
 > 릴리스 파일·GitHub 잇기·초대·합류는 0.9.0 에서 새로 선 흐름이다 — 화면 글자는 그 화면의 문구 표에서, 출력은
 > 릴리스 모양으로 푼 임시 자리에서 실행해 옮겼다(2026-09-13). 맥은 같은 날 세션 감지·브라우저 열기를 실측했다.
 > 화면별 사용법과 운영 절차는 [docs/guide.md](docs/guide.md), Windows·WSL 은
@@ -44,8 +44,8 @@ GitHub Releases 의 압축 파일을 받아 풀고, 그 안에서 `bin/s9 code` 
 
 ```bash
 cd ~
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-linux-macos.tar.gz
-tar xzf section9-0.9.0-linux-macos.tar.gz     # 최상위가 section9/ 라 홈에서 풀면 그대로 ~/section9 (실행 권한 포함)
+curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+tar xzf section9-0.9.1-linux-macos.tar.gz     # 최상위가 section9/ 라 홈에서 풀면 그대로 ~/section9 (실행 권한 포함)
 cd ~/section9
 bin/s9 code
 ```

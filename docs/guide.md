@@ -2,7 +2,7 @@
 
 # section9 사용자 가이드
 
-verified 2026-09-13 · 0.9.0 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서(판정 버튼 「승인 done」「반려 in-progress」와 안내 요청 일곱 편은 2026-09-14 재확인, REQ-20260914-011), 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측    
+verified 2026-09-14 · 0.9.1 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서(판정 버튼 「승인 done」「반려 in-progress」와 안내 요청 일곱 편은 2026-09-14 재확인, REQ-20260914-011), 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측    
 
 ## 1. section9이 뭔가요
 
@@ -52,14 +52,14 @@ Claude Code 는 Pro · Max · Team · Enterprise 또는 Console 계정이 필요
 
 | 갈래 | 무엇을 받나 | 누구에게 맞나 |
 | --- | --- | --- |
-| **릴리스 파일** (이 장의 기본) | GitHub Releases 의 `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows.zip`(Windows). 코드만 들어 있고 `.git` 이 없습니다 — 첫 실행이 저장소를 만듭니다 | 처음 쓰는 모든 사람 |
+| **릴리스 파일** (이 장의 기본) | GitHub Releases 의 `section9-0.9.1-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.1-windows.zip`(Windows). 코드만 들어 있고 `.git` 이 없습니다 — 첫 실행이 저장소를 만듭니다 | 처음 쓰는 모든 사람 |
 | **소스** | `git clone` 한 section9 저장소(또는 그 fork) | section9 자체를 고치거나 개발 흐름을 따르는 사람 — 2.5 절 |
 
 예시는 풀어 놓은 자리를 `~/section9` 로 통일합니다. 실제로는 아무 경로나 됩니다 — 푼 그 디렉토리가 곧 작업 공간이고, **이 가이드의 모든 `bin/s9 …` 명령은 그 디렉토리 안에서 실행**합니다.
 
 ### 2.1 리눅스
 
-절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows.zip`(Windows) · `SHA256SUMS`(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
+절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.1-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.1-windows.zip`(Windows) · `SHA256SUMS`(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
 
 0 **준비물을 확인합니다** (어느 디렉토리에서나) 
 
@@ -75,9 +75,9 @@ claude --version     # 2.x.x (Claude Code)
 
 ```
 cd ~
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-linux-macos.tar.gz
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.0/SHA256SUMS
-sha256sum -c SHA256SUMS --ignore-missing     # section9-0.9.0-linux-macos.tar.gz: OK 가 보이면 받은 파일이 온전한 것입니다
+curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing     # section9-0.9.1-linux-macos.tar.gz: OK 가 보이면 받은 파일이 온전한 것입니다
 ```
 
 브라우저로 받아도 됩니다 — [github.com/nicehugepark/section9/releases](https://github.com/nicehugepark/section9/releases) 의 **Assets** 에서 그 파일. 받은 자리로 `cd` 한 뒤 다음 단계로.
@@ -85,8 +85,8 @@ sha256sum -c SHA256SUMS --ignore-missing     # section9-0.9.0-linux-macos.tar.gz
 2 **풉니다 — `section9/` 디렉토리가 생깁니다** 
 
 ```
-tar tzf section9-0.9.0-linux-macos.tar.gz | head -1     # section9/  ← 풀리면 생길 디렉토리
-tar xzf section9-0.9.0-linux-macos.tar.gz                  # 홈에서 풀었으니 그대로 ~/section9 입니다
+tar tzf section9-0.9.1-linux-macos.tar.gz | head -1     # section9/  ← 풀리면 생길 디렉토리
+tar xzf section9-0.9.1-linux-macos.tar.gz                  # 홈에서 풀었으니 그대로 ~/section9 입니다
 cd ~/section9
 ls bin/s9 bin/s9-install                                   # 둘이 보이면 제대로 풀린 것입니다
 ```
@@ -167,11 +167,11 @@ git 과 python3 가 없으면 `xcode-select --install` 한 번(Apple 의 Command
 
 1 **릴리스 파일을 받습니다** 
 
-Safari 로 [github.com/nicehugepark/section9/releases](https://github.com/nicehugepark/section9/releases) 의 **Assets** 에서 `section9-0.9.0-linux-macos.tar.gz` 를 받으면 `~/Downloads` 에 놓입니다. 터미널로는 리눅스와 같은 한 줄입니다.
+Safari 로 [github.com/nicehugepark/section9/releases](https://github.com/nicehugepark/section9/releases) 의 **Assets** 에서 `section9-0.9.1-linux-macos.tar.gz` 를 받으면 `~/Downloads` 에 놓입니다. 터미널로는 리눅스와 같은 한 줄입니다.
 
 ```
 cd ~/Downloads
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-linux-macos.tar.gz
+curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
 ```
 
 2 **풀고, `~/section9` 로 옮깁니다** 
@@ -180,7 +180,7 @@ Finder 에서 두 번 눌러도 풀립니다(`~/Downloads/section9` 가 생깁�
 
 ```
 cd ~/Downloads
-tar xzf section9-0.9.0-linux-macos.tar.gz     # section9/ 가 생깁니다
+tar xzf section9-0.9.1-linux-macos.tar.gz     # section9/ 가 생깁니다
 mv section9 ~/section9
 cd ~/section9
 ls bin/s9 bin/s9-install                        # 둘이 보이면 제대로 풀린 것입니다
@@ -208,7 +208,7 @@ bin/s9 code
 
 ### 2.3 Windows 와 WSL
 
-Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.0-windows.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
+Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.1-windows.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
 
 WSL 은 리눅스입니다 — WSL 셸 안에서 2.1 을 그대로 따르되, 파일을 WSL 의 홈(`~`) 안에 두고 Windows 드라이브(`/mnt/c/…`)에 두지 마십시오. 그 자리의 git 은 느리고 파일 권한 표시가 어긋납니다. 브라우저는 Windows 쪽 것이 저절로 열립니다.
 
@@ -1217,4 +1217,4 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
 - section9 자체 저장소를 연동하지 마십시오 — 하루 수십 건이 그대로 티켓이 됩니다. 시험은 별도 프로젝트(예: `s9 project add mp1`)로. 
 - 401 이 났다고 여러 번 다시 누르지 마십시오 — 새 token 을 만들어 넣은 뒤 「연결 확인」 한 번. 
 
- section9 user guide · verified 2026-09-13 · 0.9.0 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥은 세션 감지·브라우저 열기 실측) · 캡처: 실제 화면(개발 인스턴스, 2026-09-06 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md) · Windows·WSL: docs/guide-windows.md
+ section9 user guide · verified 2026-09-14 · 0.9.1 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥은 세션 감지·브라우저 열기 실측) · 캡처: 실제 화면(개발 인스턴스, 2026-09-06 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md) · Windows·WSL: docs/guide-windows.md

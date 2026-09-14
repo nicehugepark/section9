@@ -1,6 +1,6 @@
 # section9 Windows 가이드 — 순수 Windows 와 WSL
 
-verified 2026-09-14 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행), 그리고 Claude Code native 로그인 실측 REQ-20260913-024(2026-09-13, 공식 설치기 `install.ps1` · `claude.exe` 2.1.270 · 같은 컴퓨터), 그리고 v0.9.0 릴리스 자산의 첫 실행 실측 REQ-20260913-021(2026-09-14, 같은 컴퓨터 — WSL 에서 받은 파일의 `SHA256SUMS` 대조, Windows 쪽 cmd.exe 에서 릴리스 zip 의 첫 실행 dry run) · Windows native 에서 아직 재지 않은 것은 그 자리에 「아직 재지 않았습니다」로 적었고, 무엇을 언제 어디서 쟀는지와 함께 맨 뒤 D장의 표 둘에 모았습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
+verified 2026-09-14 · 기준 버전 0.9.1 (`s9 --version` → `section9 0.9.1`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행), 그리고 Claude Code native 로그인 실측 REQ-20260913-024(2026-09-13, 공식 설치기 `install.ps1` · `claude.exe` 2.1.270 · 같은 컴퓨터), 그리고 v0.9.0 릴리스 자산의 첫 실행 실측 REQ-20260913-021(2026-09-14, 같은 컴퓨터 — WSL 에서 받은 파일의 `SHA256SUMS` 대조, Windows 쪽 cmd.exe 에서 릴리스 zip 의 첫 실행 dry run) · Windows native 에서 아직 재지 않은 것은 그 자리에 「아직 재지 않았습니다」로 적었고, 무엇을 언제 어디서 쟀는지와 함께 맨 뒤 D장의 표 둘에 모았습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
 
 이 문서는 **Windows 컴퓨터에 section9 을 처음 설치해 첫 실행까지 가는 사람**을 위한 절차서입니다. 터미널(cmd.exe 또는 PowerShell)을 열 줄 알면 됩니다. GitHub 계정은 나중에 이어도 되고(C장), Claude 구독(Pro·Max·Team·Enterprise 중 하나)은 첫 세션을 열 때 필요합니다.
 
@@ -56,14 +56,14 @@ Claude Code 설치 명령은 **어느 터미널에서 치느냐에 따라 다릅
 
 | 파일 | 누가 받나 |
 | --- | --- |
-| `section9-0.9.0-windows.zip` | **이 장(A)** — `bin\*.cmd` 가 CRLF 로 들어 있습니다 |
-| `section9-0.9.0-linux-macos.tar.gz` | B장(WSL)·리눅스·맥 |
+| `section9-0.9.1-windows.zip` | **이 장(A)** — `bin\*.cmd` 가 CRLF 로 들어 있습니다 |
+| `section9-0.9.1-linux-macos.tar.gz` | B장(WSL)·리눅스·맥 |
 | `SHA256SUMS` | 받은 파일이 온전한지 확인할 때 |
 
 브라우저에서 받아도 되고, 터미널에서 받아도 됩니다. Windows 10 1803 이후에는 `curl.exe` 와 `tar.exe` 가 기본으로 들어 있습니다(이 컴퓨터 실측: curl 8.21.0 · bsdtar 3.8.8).
 
 ```
-curl.exe -L -o section9-0.9.0-windows.zip https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-windows.zip
+curl.exe -L -o section9-0.9.1-windows.zip https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-windows.zip
 ```
 
 **하지 말 것**
@@ -78,7 +78,7 @@ curl.exe -L -o section9-0.9.0-windows.zip https://github.com/nicehugepark/sectio
 zip 안의 최상위 폴더 이름이 `section9\` 이므로, **홈 디렉토리에 풀면 곧바로 `%USERPROFILE%\section9` 가 됩니다.**
 
 ```
-tar -xf section9-0.9.0-windows.zip -C %USERPROFILE%
+tar -xf section9-0.9.1-windows.zip -C %USERPROFILE%
 ```
 
 PowerShell 이면 `-C $env:USERPROFILE`. 탐색기에서 zip 을 오른쪽 클릭 → **압축 풀기…** → 대상을 `C:\Users\<계정>` 으로 두어도 같습니다.
@@ -164,7 +164,7 @@ section9 install 완료
 
 | 명령 | 이렇게 나오면 됩니다 |
 | --- | --- |
-| `bin\s9 --version` | 첫 실행 전(`.git` 없음): `section9 0.9.0` · 첫 실행 뒤: `section9 0.9.0 (177eb7f)` — 괄호 안은 **이 폴더의 첫 commit** 해시라 컴퓨터마다 다릅니다 (Windows 실측 2026-09-13) |
+| `bin\s9 --version` | 첫 실행 전(`.git` 없음): `section9 0.9.1` · 첫 실행 뒤: `section9 0.9.1 (177eb7f)` — 괄호 안은 **이 폴더의 첫 commit** 해시라 컴퓨터마다 다릅니다 (Windows 실측 2026-09-13) |
 | `bin\s9 doctor` | `✓ s9 serve: 포트 9909 응답 …` · `✓ 훅: claude 훅 · git pre-commit 모두 설치됨` · `✓ claude 로그인` 줄들. `✗` 가 있으면 그 줄이 할 일을 말합니다 |
 | `bin\s9 ls` | 문서 목록. 한글 제목이 깨지지 않고 그대로 보여야 합니다(2026-09-03 실측: `bin\s9.cmd ls` 한글 그대로) |
 
@@ -296,8 +296,8 @@ git config --global user.email "<GitHub 에 등록한 이메일>"
 
 ```
 cd ~
-curl -L -o section9-0.9.0-linux-macos.tar.gz https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-linux-macos.tar.gz
-tar -xzf section9-0.9.0-linux-macos.tar.gz
+curl -L -o section9-0.9.1-linux-macos.tar.gz https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+tar -xzf section9-0.9.1-linux-macos.tar.gz
 cd ~/section9 && bin/s9 code
 ```
 
@@ -308,7 +308,7 @@ tar.gz 의 최상위 폴더가 `section9/` 이므로 홈에서 풀면 `~/section
 - **브라우저는 Windows 쪽이 열립니다.** s9 는 WSL 을 알아보고 `wslview` → `explorer.exe` → `cmd.exe /c start` 순으로 Windows 의 기본 브라우저를 엽니다 — 리눅스 안의 `xdg-open` 으로 열면 사람 눈에 보이지 않기 때문입니다. `◌ 브라우저에서 열었다: http://127.0.0.1:9909/` 가 뜹니다. 아무것도 안 뜨면 Windows 브라우저에서 직접 `http://127.0.0.1:9909` 를 엽니다.
 - **헤더의 OS 표식이 `WSL`, 브라우저 탭 제목에 `[WSL]`** 이 붙습니다. Windows 판과 함께 둘 때 어느 쪽 화면인지 이것으로 가릅니다.
 
-첫 실행 뒤의 확인은 A-4 와 같습니다: `bin/s9 --version` → `section9 0.9.0 (…)`, `bin/s9 doctor` 의 `✓` 줄들, 브라우저 우상단의 이름.
+첫 실행 뒤의 확인은 A-4 와 같습니다: `bin/s9 --version` → `section9 0.9.1 (…)`, `bin/s9 doctor` 의 `✓` 줄들, 브라우저 우상단의 이름.
 
 ### B-2. WSL 에서만 다른 것 — 화면·캡처·포트
 
@@ -432,7 +432,7 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 | `~/section9` | `%USERPROFILE%\section9` | PowerShell 은 `$env:USERPROFILE\section9` |
 | `bin/s9 code` | `bin\s9 code` | PATHEXT 가 `s9.cmd` 로 잇습니다(A-3) |
 | `bin/s9-install` | `bin\s9-install.cmd` | `s9 code` 가 필요할 때 스스로 부르므로 보통 직접 칠 일이 없습니다 |
-| `section9-0.9.0-linux-macos.tar.gz` · `tar -xzf` | `section9-0.9.0-windows.zip` · `tar -xf` | 둘 다 최상위 폴더 `section9/` |
+| `section9-0.9.1-linux-macos.tar.gz` · `tar -xzf` | `section9-0.9.1-windows.zip` · `tar -xf` | 둘 다 최상위 폴더 `section9/` |
 | `ss -ltnp \| grep 9909` | `netstat -ano \| findstr :9909` | 포트 점유 확인 |
 | `xdg-open <url>` | `start <url>` | 브라우저 열기 |
 | `export S9_PORT=9911` | `set S9_PORT=9911` | PowerShell 은 `$env:S9_PORT=9911` |
