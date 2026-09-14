@@ -23529,135 +23529,300 @@ def ensure_default_project():
         do_project_default(res["slug"], actor=owner, via=" (s9 init)")
     except ValueError:
         return ""
-    # 처음 선 기본 프로젝트에는 읽을 것이 함께 선다 (REQ-20260908-028) — 이
-    # 함수는 프로젝트가 없을 때만 여기까지 오므로 안내도 한 벌만 선다.
+    # 처음 선 기본 프로젝트에는 읽을 것이 함께 선다 (REQ-20260908-028 →
+    # REQ-20260914-011-62x6: 글은 harness/common/onboarding/ 의 파일). 압축을 푼
+    # 자리의 첫 실행은 등록 **전에** 이미 심었다(cmd_code) — 그때 담당자는 이 컴퓨터의
+    # 계정 이름이므로 지금 등록한 이름으로 잇는다. 아직 안 심은 자리(설치만 한
+    # 저장소·clone)는 여기서 심는다 — 이 함수는 프로젝트가 없을 때만 여기까지 오고
+    # 표식이 두 번째를 막으므로 안내는 한 벌만 선다.
     try:
-        seed_guide_requests(res["slug"], owner)
+        onboarding_adopt(owner)
+        seed_onboarding_requests(res["slug"], owner)
     except Exception:
         pass                    # 안내가 못 서도 프로젝트는 섰다 — 설치를 막지 않는다
     return res["slug"]
 
 
-# ── 안내 요청 (REQ-20260908-028) ─────────────────────────────────────────────
+# ── 사용법 안내 요청 (REQ-20260908-028 → REQ-20260914-011-62x6) ───────────────
 # 주인 2026-09-08 12:55: 「기본 프로젝트에는 기본적으로 제공되는 open 상태의 요청이
 # 존재하는데 사실상 설명서들이 될 것이다 … 설치하자마자 바로 이해를 할 수 있을 것
-# 아닌가. 둘러보는 퍼널이 짧아지고 말이야.」 설치한 사람이 처음 보는 보드에 읽을
-# 것이 있어야 한다 — guide.html 은 찾아가야 보이지만 카드는 첫 화면에 선다.
-# 본문은 화면의 글자(탭·버튼 이름)를 그대로 쓴다. 다 읽은 카드는 ✓ 승인으로 done
-# 에 보내면 된다 — 그것이 곧 첫 판정 연습이다.
-GUIDE_REQUESTS = [
-    {
-        "title": "안내 1 — 요청은 어떻게 생기나",
-        "summary": "터미널에 일을 시키면 카드가 생기고 open → in-progress → review → done 으로 흐른다",
-        "goal": "이 카드를 읽은 사람이 터미널에 한 줄을 치고 Board 에 카드가 생기는 것을 본다",
-        "body": """이 카드는 section9 이 설치 때 세운 안내입니다. 다 읽었으면 카드의 ✓ 승인을 눌러 done 으로 보내십시오 — 그것이 첫 판정입니다.
-
-## 요청이 생기는 자리
-
-터미널에서 `~/section9/bin/s9 code` 를 실행하고, 뜨는 Claude Code 입력창에 평소 말하듯 적습니다.
-
-    결제 모듈에 환불 API 추가해줘
-
-그 한 줄이 곧 요청입니다. 따로 등록할 것은 없습니다 — 훅이 자동으로 REQ 카드를 만들고 화면에 「기록했다」는 안내가 뜹니다. 질문(「이 함수는 왜 이렇게 짰어?」)은 카드 없이 답만 받습니다.
-
-## 카드가 흐르는 순서
-
-- open — 접수. 터미널에서 일을 시킨 순간 생깁니다.
-- in-progress — 진행. 타치코마(리드)가 착수하면 옮깁니다. 카드 왼쪽의 점이 지금 실제로 실행 중인지를 말합니다.
-- review — 확인 대기. 사람만 답할 수 있는 판정을 청하는 자리입니다. 카드에 확인 포인트(무엇을 눌러 보고 무엇이 보이면 승인인지)가 뜹니다.
-- done — 완료. ✓ 승인을 누르면 옮겨집니다.
-- ↺ 반려 — 사유를 적으면 in-progress 로 돌아가고, 약 30초 안에 백그라운드 작업이 사유를 읽고 재작업해 다시 review 로 올립니다.
-- blocked — 대기. 사람의 손이나 다른 요청의 완료를 기다립니다. 카드에 대기 사유가 그대로 보입니다.
-
-## 알아 두면 좋은 명령 셋
-
-    ~/section9/bin/s9 digest                 # 지금 진행 중인 작업의 요약
-    ~/section9/bin/s9 show REQ-20260908-001  # 요청 문서 하나의 전문
-    ~/section9/bin/s9 blocked                # 대기 중인 요청과 사유
-
-더 자세한 것은 대시보드 우상단의 가이드(guide.html) 3·4장에 있습니다.
-""",
-    },
-    {
-        "title": "안내 2 — 프로젝트 만들기",
-        "summary": "카드가 쌓이면 프로젝트로 묶는다 — Projects 탭의 + 프로젝트 만들기, 또는 터미널 한 줄",
-        "goal": "이 카드를 읽은 사람이 프로젝트를 하나 만들고 요청이 그 프로젝트에 붙는 것을 본다",
-        "body": """이 카드는 section9 이 설치 때 세운 안내입니다. 다 읽었으면 카드의 ✓ 승인을 눌러 done 으로 보내십시오.
-
-## 지금 이 카드가 있는 자리
-
-이 카드는 「기본 프로젝트 (general)」에 있습니다. 프로젝트를 따로 정하지 않은 요청은 전부 여기 붙습니다 — 혼자 쓰는 동안은 이 하나로 충분합니다.
-
-## 프로젝트를 만드는 두 길
-
-카드가 쌓여 「결제 건」「사내 도구 건」처럼 묶고 싶어지면 프로젝트를 만듭니다. 만든 사람이 owner 가 됩니다.
-
-1. 화면 — 상단 탭 Projects → 왼쪽 목록 위의 + 프로젝트 만들기 → slug(영문·숫자·._-)와 이름을 적습니다.
-2. 터미널 — 한 줄:
-
-       ~/section9/bin/s9 project add pay --name "결제 시스템"
-
-## 요청을 프로젝트에 붙이는 법
-
-- 세션을 열 때: `~/section9/bin/s9 code --project pay` — 그 세션의 요청은 전부 pay 에 붙습니다.
-- 프롬프트 첫 줄에: `[프로젝트: pay] 환불 API 추가해줘` — 훅이 떼어 넘깁니다.
-- 이미 만든 카드는: `~/section9/bin/s9 set <REQ 번호> --project pay`, 또는 Board 카드에서 프로젝트를 고릅니다.
-
-프로젝트에 붙은 요청이 접수되면 그 프로젝트의 projects/pay/CONTEXT.md 가 세션에 자동으로 주입됩니다 — 배경 설명을 매번 반복하지 않아도 됩니다. 멤버·역할은 Projects 탭에서 프로젝트를 고르면 열리는 정보 패널에서 바꿉니다.
-
-더 자세한 것은 가이드(guide.html) 5장 「Projects」에 있습니다.
-""",
-    },
-    {
-        "title": "안내 3 — 확인 대기 카드 판정하기",
-        "summary": "review 열의 카드는 사람의 판정을 기다린다 — 확인 포인트대로 눌러 보고 ✓ 승인 또는 ↺ 반려",
-        "goal": "이 카드를 읽은 사람이 review 카드 하나를 확인 포인트대로 확인하고 승인 또는 반려한다",
-        "body": """이 카드는 section9 이 설치 때 세운 안내입니다. 다 읽었으면 카드의 ✓ 승인을 눌러 done 으로 보내십시오.
-
-## review 열에 카드가 오면
-
-타치코마가 일을 끝내고 사람만 답할 수 있는 것을 물을 때 카드가 review 열로 옵니다. 카드에는 확인 포인트가 있습니다 — 무엇이 달라졌나 / 어디서 무엇을 눌러 보나 / 무엇이 보이면 승인이고 무엇이 보이면 반려인가. 그대로 따라 해 보면 됩니다.
-
-## 판정 둘
-
-- ✓ 승인 — 카드가 done 으로 갑니다. 메모를 적으면 타치코마가 그 메모를 후속 작업으로 받습니다(질문이면 답하고, 「그다음 이것도」면 새 요청으로 착수합니다).
-- ↺ 반려 — 사유를 적으면 카드가 in-progress 로 돌아갑니다. 약 30초 안에 백그라운드 작업이 사유를 읽고 재작업해 다시 review 로 올립니다. 자리를 지킬 필요가 없습니다.
-
-## 자주 묻는 것
-
-- 기계로 확인되는 것(테스트·검사)은 타치코마가 스스로 닫습니다 — review 에 오는 것은 취향·방향·바깥 사실처럼 사람만 답할 수 있는 것입니다.
-- TDD 3/5 배지는 그 작업이 스스로 정한 검증 시나리오 5개 중 3개를 통과했다는 뜻입니다. 5/5 가 다 차야 review 로 올라옵니다. 반려하면 0 부터 다시 채웁니다 — 숫자가 준 것처럼 보여도 정상입니다.
-- 채팅으로 물어도 됩니다 — 대시보드의 채팅 입력창에 적으면 지금 열려 있는 세션이 곧바로 답합니다.
-
-더 자세한 것은 가이드(guide.html) 4장 「카드의 일생」에 있습니다.
-""",
-    },
-]
+# 아닌가. 둘러보는 퍼널이 짧아지고 말이야.」 2026-09-14 19:52: 「새로 설치하고 general
+# 프로젝트에 사용법에 대한 요청 문서들이 open 상태로 무사히 준비되어 있는 건가?」
+#
+# 글은 코드에 박지 않는다 — harness/common/onboarding/NN-<slug>.md 한 파일이 요청
+# 하나다(코드와 함께 배포판에 실린다; 글은 document-writer 의 몫). 파일의 모양:
+#
+#     ---
+#     title: 20자 이내 명사구           # 없으면 그 파일은 건너뛴다
+#     summary: 한 줄
+#     goal: 무엇이 충족되면 done 인지 한 문장
+#     size: S                           # S|M|L, 그 밖이면 S
+#     tags: ["onboarding"]              # ["a", "b"] · [a, b] · a, b · 줄마다 "- a" 전부 읽는다
+#     priority: 55                      # 선택 — 없으면 파일 순서로 준다(아래)
+#     ---
+#     ## Original
+#     (본문 — 다음 `## ` 제목 앞까지)
+#
+# 심는 자리는 기본 프로젝트가 처음 서는 순간(ensure_default_project) **한 곳**이다 —
+# 첫 실행(`s9 code`)의 이름 물음 바로 뒤. 만드는 길은 cmd_new 하나라 번호·날짜·
+# 색인·History 가 사람이 만든 요청과 같다(별도 파서로 흉내 내지 않는다).
+# 순서: Board 의 open 열은 가중치 내림차순 → 갱신 내림차순(web/app/state.js 의
+# workOrder)이라 같은 가중치면 마지막에 만든 파일이 맨 위에 선다. 그래서 파일 순서를
+# 가중치로 옮긴다 — 첫 파일이 가장 높고 마지막 파일이 기본값(50)이다. 전부 보통 등급
+# (50~74) 안이라 카드에 「낮음」「높음」이 붙지 않고, 서두르는 문턱(75)은 넘지 않는다.
+# 두 번째는 없다: state/onboarding-seeded(이 컴퓨터의 살림, git 밖)가 있으면 다시 심지
+# 않고, 표식이 없어도 같은 title 의 onboarding 요청이 있으면 그 파일은 건너뛴다.
+# `s9 code --join` 은 합류 직후 그 표식을 「joined」로 먼저 쓴다 — 팀 vault 에 내
+# 안내를 넣지 않는다. 안내 파일이 하나도 없으면 조용히 아무것도 하지 않는다.
+ONBOARDING_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.realpath(__file__)), os.pardir, "harness", "common", "onboarding"))
+ONBOARDING_TAG = "onboarding"
+ONBOARDING_MARK = "onboarding-seeded"
 
 
-def seed_guide_requests(slug, owner):
-    """기본 프로젝트가 처음 설 때 안내 요청을 open 으로 세운다 (REQ-20260908-028).
-    만드는 길은 cmd_new 하나다 — 문서의 모양·번호·색인이 사람이 만든 요청과 같아야
-    화면이 구분 없이 다룬다. 반환: 세운 문서 id 목록."""
+def onboarding_mark_path():
+    return os.path.join(ROOT, "state", ONBOARDING_MARK)
+
+
+def onboarding_state():
+    """표식의 내용 — {"at", "reason": "seeded"|"joined", "ids": [...]}; 없으면 {}."""
+    try:
+        with open(onboarding_mark_path(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def onboarding_mark(reason, ids=()):
+    os.makedirs(os.path.dirname(onboarding_mark_path()), exist_ok=True)
+    with open(onboarding_mark_path(), "w", encoding="utf-8") as f:
+        json.dump({"at": now_iso(), "reason": reason, "ids": list(ids)}, f, ensure_ascii=False)
+        f.write("\n")
+
+
+def onboarding_mark_joined():
+    """`s9 code --join` 이 합류 직후 부른다 — 반환 True 면 이번에 표식을 썼다.
+    이미 표식이 있으면 그대로 둔다(있는 기록을 덮어 지우지 않는다)."""
+    if onboarding_state():
+        return False
+    onboarding_mark("joined")
+    return True
+
+
+def onboarding_files(directory=None):
+    """안내 파일 — 이름 순. 디렉토리가 없거나 비었으면 []."""
+    d = directory or ONBOARDING_DIR
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return []
+    return [os.path.join(d, n) for n in sorted(names)
+            if n.endswith(".md") and not n.startswith(".")
+            and os.path.isfile(os.path.join(d, n))]
+
+
+def _onboarding_scalar(raw):
+    s = str(raw).strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        s = s[1:-1]
+    return s.strip()
+
+
+def _onboarding_value(raw):
+    raw = raw.strip()
+    if not raw:
+        return ""
+    if raw.startswith("["):
+        try:
+            v = json.loads(raw)
+            if isinstance(v, list):
+                return [str(x).strip() for x in v if str(x).strip()]
+        except ValueError:
+            pass
+        return [_onboarding_scalar(x) for x in raw.strip("[]").split(",") if x.strip()]
+    return _onboarding_scalar(raw)
+
+
+def _onboarding_frontmatter(text):
+    """안내 파일의 프론트매터 → (dict, 본문). 값은 문자열 아니면 목록.
+
+    fm_parse 를 쓰지 않는 까닭: 그것은 s9 가 스스로 쓴 문서(JSON 목록)를 읽는 것이고,
+    사람이 손으로 쓰는 이 파일은 `[a, b]`·`a, b`·줄마다 `- a` 를 다 쓴다."""
+    text = text.lstrip("﻿").replace("\r\n", "\n")
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 3)
+    if end < 0:
+        return {}, text
+    block, body = text[4:end], text[end + 5:]
+    meta, key = {}, ""
+    for line in block.splitlines():
+        m = re.match(r"([A-Za-z_]\w*):\s*(.*)$", line)
+        if m:
+            key, raw = m.group(1), m.group(2)
+            meta[key] = _onboarding_value(raw)
+            continue
+        m = re.match(r"\s+-\s*(.+)$", line)
+        if m and key:
+            if not isinstance(meta.get(key), list):
+                meta[key] = [] if meta.get(key) in ("", None) else [meta[key]]
+            meta[key].append(_onboarding_scalar(m.group(1)))
+    return meta, body
+
+
+def _onboarding_tags(v):
+    """tags 값(목록·`a, b`·`a b`) → 목록; onboarding 이 언제나 맨 앞에 선다."""
+    items = v if isinstance(v, list) else re.split(r"[,\s]+", str(v or "").strip().strip("[]"))
+    out = []
+    for t in items:
+        t = _onboarding_scalar(t).lstrip("#")
+        if t and t != ONBOARDING_TAG and t not in out:
+            out.append(t)
+    return [ONBOARDING_TAG] + out
+
+
+def _onboarding_body(body):
+    """`## Original` 아래 글 — 다음 `## ` 제목 앞까지. 그 제목이 없으면 본문 전부."""
+    lines = body.split("\n")
+    start = next((i + 1 for i, ln in enumerate(lines)
+                  if re.match(r"##\s+Original\s*$", ln.strip())), None)
+    if start is None:
+        return body.strip()
+    out = []
+    for ln in lines[start:]:
+        if ln.startswith("## "):
+            break
+        out.append(ln)
+    return "\n".join(out).strip()
+
+
+def onboarding_parse(path):
+    """안내 파일 하나 → 요청 재료 dict. title 이 없으면 None(그 파일은 건너뛴다)."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        meta, body = _onboarding_frontmatter(f.read())
+    title = meta.get("title")
+    title = title.strip() if isinstance(title, str) else ""
+    if not title:
+        return None
+
+    def _s(k):
+        v = meta.get(k, "")
+        return (v if isinstance(v, str) else " ".join(v)).strip()
+    size = _s("size").upper()
+    prio = None
+    if meta.get("priority") not in (None, "", []):
+        try:
+            prio = parse_priority(meta.get("priority"))
+        except (ValueError, TypeError):
+            prio = None
+    return {"title": title, "summary": _s("summary"), "goal": _s("goal"),
+            "size": size if size in ("S", "M", "L") else "S",
+            "tags": _onboarding_tags(meta.get("tags")), "priority": prio,
+            "body": _onboarding_body(body) or title, "path": path}
+
+
+def onboarding_first_run_place():
+    """압축을 풀어 처음 실행한 자리인가 — .git 이 없고 코드가 있는 자리.
+    bin/s9_firstrun.py ensure_repo 가 저장소를 세우는 전제와 같은 조건이다."""
+    return (not os.path.exists(os.path.join(ROOT, ".git"))
+            and _firstrun_module().is_code_root(ROOT))
+
+
+def onboarding_adopt(user):
+    """첫 실행이 등록 전에 심은 안내 요청의 담당자(이 컴퓨터의 계정 이름)를 지금 등록한
+    이름으로 잇는다 — 반환: 고친 id 목록.
+
+    담당자가 이미 등록된 사람이면(같은 이름으로 등록했거나 남의 것) 건드리지 않는다.
+    creator 는 생성 때 굳는 값이지만(DOC-20260902-001 D2) 여기서는 같은 사람이 이름을
+    정하기 전에 적힌 자리 표시라 함께 옮긴다 — 다른 사람이었던 적이 없다."""
+    user = (user or "").strip()
+    ids = onboarding_state().get("ids") or []
+    if not user or not ids:
+        return []
+    known = set(registered_users())
+    if user not in known:
+        return []
+    done = []
+    for doc_id in ids:
+        path = locate(doc_id)
+        if not path:
+            continue
+        meta, body = read_doc(path)
+        old = str(meta.get("user") or "")
+        if not old or old == user or old in known:
+            continue
+        ts = now_iso()
+        meta["user"] = user
+        if str(meta.get("creator") or "") == old:
+            meta["creator"] = user
+        meta["updated"] = ts
+        body = (body.rstrip("\n")
+                + f"\n- {ts} user: {old} -> {user} (첫 실행이 등록 전에 세운 안내 — 등록한 이름으로)\n")
+        acquire_lock()
+        try:
+            write_doc(path, meta, body)
+        finally:
+            release_lock()
+        done.append(doc_id)
+    if done:
+        rebuild_index(quiet=True)
+    return done
+
+
+def onboarding_priority(index, count):
+    """파일 순서 → 가중치: 첫 파일이 가장 높고 마지막이 기본값(50). 서두르는 문턱(75) 아래."""
+    return max(PRIORITY_DEFAULT, min(PRIORITY_RUSH - 1, PRIORITY_DEFAULT + (count - 1 - index)))
+
+
+def seed_onboarding_requests(slug, owner, files=None):
+    """기본 프로젝트가 처음 설 때 사용법 안내 요청을 open 으로 심는다. 반환: 세운 id 목록.
+
+    아무것도 심지 않는 때: 표식이 이미 있다(심었거나 합류한 자리) · 안내 파일이 없다 ·
+    vault 에 안내가 아닌 요청이 있다(새 설치가 아니다). 파일 하나가 못 서도(제목 없음·
+    cmd_new 의 거부) 나머지는 선다 — 안내가 첫 실행을 멈추지 않는다."""
     import contextlib as _ctx
     import io as _io
     import types as _types
+    if onboarding_state():
+        return []
+    files = onboarding_files() if files is None else list(files)
+    if not files:
+        return []
+    reqs = [r for r in load_catalog() if r.get("type") == "request"]
+    if any(ONBOARDING_TAG not in (r.get("tags") or []) for r in reqs):
+        return []
+    have = {str(r.get("title") or "") for r in reqs}
     ids = []
-    for g in GUIDE_REQUESTS:
+    for i, path in enumerate(files):
+        try:
+            g = onboarding_parse(path)
+        except OSError:
+            g = None
+        if not g or g["title"] in have:
+            continue
         args = _types.SimpleNamespace(
-            doc_type="request", title=g["title"], summary=g["summary"],
-            goal=g["goal"], status="open", size="S", priority=None,
-            user=owner, assignee=None, tag_list=["guide"],
+            doc_type="request", title=g["title"], summary=g["summary"], goal=g["goal"],
+            status="open", size=g["size"],
+            priority=(g["priority"] if g["priority"] is not None
+                      else onboarding_priority(i, len(files))),
+            user=owner, assignee=None, tag_list=g["tags"], root=True,
             parent=None, derived_from=None, relates=None, why="",
             ref_doc=None, ref_link=None, ref_file=None, needs_os="",
             from_chat="", project=slug, project_tag=None,
             body=g["body"], body_file=None, origin="human", agent="")
         out = _io.StringIO()
-        with _ctx.redirect_stdout(out):
-            cmd_new(args)
-        first = (out.getvalue().strip().split() or [""])[0]
-        if first.startswith("REQ-"):
-            ids.append(first)
+        try:
+            with _ctx.redirect_stdout(out):
+                cmd_new(args)
+        except SystemExit:          # die() — 사유는 stderr 에 이미 났다; 다음 파일로
+            continue
+        doc_id = next((t for t in out.getvalue().split() if t.startswith("REQ-")), "")
+        if doc_id:
+            ids.append(doc_id)
+            have.add(g["title"])
+    if ids:
+        onboarding_mark("seeded", ids)
     return ids
 
 
@@ -25533,6 +25698,12 @@ def cmd_code(args):
                   f"(문서·사람·프로젝트 포함)")
         elif _fr.get("skipped") == "joined":
             print("◌ 이미 합류한 자리다 — 그대로 계속한다")
+        # 팀 vault 에 내 사용법 안내를 심지 않는다 (REQ-20260914-011-62x6) — 설치가
+        # 부르는 `s9 init` 과 아래의 이름 물음이 기본 프로젝트를 세우기 전에 표식을 둔다.
+        try:
+            onboarding_mark_joined()
+        except OSError:
+            pass
         try:
             if sync_autoraise():
                 print("◌ 문서 동기화: remote — 문서 이벤트마다 commit→pull→push")
@@ -25541,6 +25712,20 @@ def cmd_code(args):
         if getattr(args, "project", ""):
             code_project(args.project)      # 없는 slug 면 설치 전에 여기서 선다
     else:
+        # 압축을 푼 자리의 첫 실행이면 저장소가 서기 **전에** 사용법 안내 요청을 심는다
+        # (REQ-20260914-011-62x6, 주인 2026-09-14 19:52). 등록 전이라 담당자는 이 컴퓨터의
+        # 계정 이름(resolve_user 가 등록 전에 주는 값)이고 프로젝트는 아직 없는 general 을
+        # 가리킨다 — 이름 물음 뒤 ensure_default_project 가 그 slug 로 프로젝트를 세우고
+        # 담당자를 등록한 이름으로 잇는다(onboarding_adopt). 이 순서라야 안내가 첫 commit
+        # 「section9 첫 실행」에 함께 담긴다(아직 .git 이 없어 문서마다 commit 이 서지 않는다).
+        # 맥·Windows 실측(2026-09-14): 등록 뒤에만 심던 옛 길은 이름 물음 전의 보드가 비어
+        # 있었고, 안내 2편(나를 등록하기)은 바로 그때 읽혀야 하는 글이다.
+        _seeded = []
+        if onboarding_first_run_place():
+            try:
+                _seeded = seed_onboarding_requests(DEFAULT_PROJECT_SLUG, resolve_user())
+            except Exception as e:
+                print(f"◌ 사용법 안내 요청을 세우지 못했다({e}) — 계속한다")
         _fr = _firstrun_module().ensure_repo(ROOT, INSTANCE_TRACK_GITIGNORE,
                                              sync_marker_body("local", chosen=False))
         if _fr.get("created"):
@@ -25548,6 +25733,9 @@ def cmd_code(args):
         elif _fr.get("error"):
             print(f"◌ 저장소를 세우지 못했다({_fr['error']}) — 문서 commit 없이 계속한다; "
                   f"git 을 설치한 뒤 다시 `s9 code`")
+        if _seeded:
+            print(f"◌ 사용법 안내 요청 {len(_seeded)}건이 Board 의 open 열에 섰다 — "
+                  f"처음이면 그것부터 읽는다(안내 2편이 이름 등록이다)")
     # 옮기기 **전**의 포트를 먼저 읽는다 — pick 이 state/port 를 고쳐 쓴 뒤에 s9_port() 를
     # 읽으면 옮긴 포트가 나온다 (실측 2026-09-13: 「포트 9910 는 … 9910 로 띄운다」).
     _base = s9_port()
@@ -25650,8 +25838,10 @@ def cmd_code(args):
                     if made:
                         print(f"◌ 기본 프로젝트 '{made}' — 프로젝트를 고르지 않은 "
                               f"새 문서가 여기 붙는다 (옮기기: s9 project default <slug>)")
-                        print(f"◌ 안내 요청 {len(GUIDE_REQUESTS)}건이 Board 의 open 열에 "
-                              f"섰다 — 처음이면 그것부터 읽는다")
+                        _st = onboarding_state()
+                        if _st.get("reason") == "seeded" and _st.get("ids") and not _seeded:
+                            print(f"◌ 사용법 안내 요청 {len(_st['ids'])}건이 Board 의 open 열에 "
+                                  f"섰다 — 처음이면 그것부터 읽는다")
                 except Exception:
                     pass
             else:
@@ -36528,12 +36718,17 @@ def cmd_init(_args):
     # 설치는 프로젝트를 하나 갖고 시작한다 (REQ-20260908-022) — 없으면 첫 문서부터
     # 「프로젝트 미정」이고, 사람은 일을 시작하기 전에 프로젝트를 등록해야 한다는
     # 것을 모른다. 이미 프로젝트가 있는 저장소에서는 아무 일도 일어나지 않는다.
+    _before = onboarding_state().get("at", "")
     created = ensure_default_project()
     print(f"initialized: {ROOT}")
     if created:
         print(f"  ↳ 기본 프로젝트 '{created}' — 프로젝트를 고르지 않은 새 문서가 "
               f"여기 붙는다 (옮기기: s9 project default <slug>)")
-        print(f"  ↳ 안내 요청 {len(GUIDE_REQUESTS)}건이 open 으로 섰다 — Board 에서 읽는다")
+        _st = onboarding_state()
+        _n = len(_st.get("ids") or [])
+        if _n:          # 지금 심었으면 「섰다」, 첫 실행이 먼저 심어 두었으면 「있다」
+            print(f"  ↳ 사용법 안내 요청 {_n}건이 open 으로 "
+                  f"{'섰다' if _st.get('at', '') != _before else '있다'} — Board 에서 읽는다")
     elif not all_projects() and not registered_users():
         # 신원이 먼저다 — 등록 전에는 프로젝트를 만들어도 그 사람이 문서를
         # 붙일 수 없다(contribute 가 거짓).

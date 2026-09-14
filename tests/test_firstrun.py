@@ -140,6 +140,26 @@ class FirstRun(unittest.TestCase):
         stray = sorted(p for p in tracked if p.startswith(("state/", "index/", ".claude/")))
         self.assertEqual(stray, [], "이 컴퓨터의 살림이 첫 commit 에 담겼다")
 
+    def test_n5_the_onboarding_guides_stand_before_anyone_is_registered(self):
+        """N5. 첫 `s9 code` 는 이름을 묻기 전에 사용법 안내 요청을 general 에 open 으로 심고, 첫 commit 에
+        함께 담는다 (REQ-20260914-011-62x6) — 배포판의 harness/common/onboarding/*.md 한 편이 요청 하나."""
+        mod = self.s9mod()
+        files = mod.onboarding_files()
+        rows = [r for r in mod.load_catalog()
+                if r.get("type") == "request" and "onboarding" in (r.get("tags") or [])]
+        self.assertEqual(len(rows), len(files), [r["title"] for r in rows])
+        self.assertGreaterEqual(len(files), 1, "배포판에 안내 파일이 없다")
+        self.assertIn(f"사용법 안내 요청 {len(files)}건이 Board 의 open 열에 섰다", self.first.stdout)
+        for r in rows:
+            self.assertEqual(r["status"], "open", r["title"])
+            self.assertEqual(r["project"], mod.DEFAULT_PROJECT_SLUG, r["title"])
+            self.assertEqual(r["user"], getpass.getuser(), r["title"])
+        self.assertEqual(mod.onboarding_state().get("reason"), "seeded")
+        tracked = set(_git(self.root, "ls-tree", "-r", "--name-only", "HEAD").stdout.split("\n"))
+        for r in rows:
+            rel = os.path.relpath(mod.find_path(r["id"]), self.root).replace(os.sep, "/")
+            self.assertIn(rel, tracked, "안내가 첫 commit 에 담기지 않았다")
+
     def test_n4_install_ran_after_the_repo_stood(self):
         """N4. 설치가 저장소 뒤에 돌았다 — claude 훅은 임시 CLAUDE_CONFIG_DIR 에, git 훅은 .git/hooks 에."""
         self.assertIn("훅 미설치", self.first.stdout)

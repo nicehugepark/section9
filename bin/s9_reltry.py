@@ -8,9 +8,14 @@ python3·bin/s9-release 를 직접 못 부른다 — 배포판 실측이 「사�
   ③ 그 자리에서 `bin/s9 code --no-open` 을 claude 실행 직전까지(S9_CODE_DRYRUN=1) 돌린다 —
      HOME·CLAUDE_CONFIG_DIR 은 임시 폴더라 사람의 설정을 건드리지 않는다
   ④ 확인: .git(main, commit 1) · .s9-sync local · 훅이 임시 설정에 · 대시보드가 그 자리에서 답한다
-  ⑤ 서버를 내리고 폴더를 지운다(--keep 이면 남긴다)
+  ⑤ 이름을 등록하고 기본 프로젝트를 세운다 — 사람이라면 첫 실행의 이름 물음이 하는 일인데
+     여기는 비대화형이라 그 물음이 뜨지 않으므로 `s9 user add` · `s9 init` 으로 같은 함수를
+     지난다 — 그리고 general 에 사용법 안내(onboarding) 요청이 open 으로 섰는지 센다
+     (REQ-20260914-011-62x6; 배포판에 harness/common/onboarding/*.md 가 있을 때만 N≥1 을 요구)
+  ⑥ 서버를 내리고 폴더를 지운다(--keep 이면 남긴다)
 출력은 사람이 읽는 보고다 — 가이드의 「예상 출력」과 맞춰 보는 자리.
 """
+import getpass
 import json
 import os
 import shutil
@@ -43,6 +48,51 @@ def clean_env(base):
     """러너·훅이 실은 S9_*·GIT_* 를 걷어 사람의 셸에 가깝게."""
     return {k: v for k, v in base.items()
             if not k.startswith(("S9_", "GIT_")) and k not in ("CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME")}
+
+
+def os_account():
+    try:
+        return getpass.getuser() or "user"
+    except Exception:          # 계정 정보가 없는 컨테이너 — getpass 가 KeyError 를 낸다
+        return "user"
+
+
+def s9_run(site, env, *argv, timeout=120):
+    """푼 자리의 bin/s9 한 번 — (exit, 출력)."""
+    r = subprocess.run([sys.executable, os.path.join(site, "bin", "s9"), *argv],
+                       cwd=site, env=env, capture_output=True, encoding="utf-8",
+                       errors="replace", stdin=subprocess.DEVNULL, timeout=timeout)
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+
+def onboarding_count(site, env, log):
+    """(배포판의 안내 파일 수, general 에 open 으로 선 onboarding 요청 수, 기본 프로젝트가 섰나).
+
+    사람의 첫 실행은 이름 물음 뒤에 기본 프로젝트를 세우고 그 자리에서 안내를 심는다
+    (bin/s9.py ensure_default_project). 비대화형에서는 물음이 뜨지 않으므로 그 안내
+    줄이 시키는 대로 `s9 user add <계정>` 뒤 `s9 init` 으로 같은 함수를 지난다."""
+    try:
+        n_files = len([f for f in os.listdir(os.path.join(site, "harness", "common", "onboarding"))
+                       if f.endswith(".md") and not f.startswith(".")])
+    except OSError:
+        n_files = 0
+    for argv in (("user", "add", os_account()), ("init",)):
+        _rc, out = s9_run(site, env, *argv)
+        for line in out.splitlines():
+            log("  │ " + line)
+    _rc, cat = s9_run(site, env, "index", "cat")
+    n_open, has_project = 0, False
+    for line in cat.splitlines():
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if r.get("type") == "project" and r.get("slug") == "general":
+            has_project = True
+        if (r.get("type") == "request" and r.get("status") == "open"
+                and r.get("project") == "general" and "onboarding" in (r.get("tags") or [])):
+            n_open += 1
+    return n_files, n_open, has_project
 
 
 def build(root, ref, out, log):
@@ -142,7 +192,14 @@ def release_try(root, ref="HEAD", keep=False, log=print):
     root_ok = bool(who) and os.path.realpath(str(who.get("root") or "")) == os.path.realpath(site)
     check("대시보드가 그 자리에서 답한다", root_ok,
           f"root={who.get('root')}" if who else "응답 없음")
-    log("⑤ 서버 내리기")
+    log("⑤ 이름 등록 → 기본 프로젝트 → 사용법 안내 (비대화형이라 s9 user add · s9 init 으로)")
+    n_files, n_open, has_project = onboarding_count(site, env, log)
+    check("기본 프로젝트 general 이 섰다", has_project)
+    check(f"general 에 onboarding 요청 {n_open}건이 open",
+          n_open >= 1 if n_files else True,
+          f"배포판의 안내 파일 {n_files}건" if n_files
+          else "배포판에 안내 파일이 없다(harness/common/onboarding) — 0건이 맞다")
+    log("⑥ 서버 내리기")
     subprocess.run([sys.executable, os.path.join(site, "bin", "s9"), "serve", "--stop"],
                    cwd=site, env=env, capture_output=True, encoding="utf-8", errors="replace",
                    stdin=subprocess.DEVNULL, timeout=120)

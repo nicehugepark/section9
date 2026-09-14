@@ -28,7 +28,8 @@ WEB_ONLY = ("붉음", "붉었", "붉으면", "초록 기록")
 def _sources():
     pats = ["bin/s9.py", "bin/s9-guard", "bin/s9-install", "bin/s9-audit-*", "bin/s9-doctor",
             "tests/__main__.py", "tests/*.py", "harness/claude/gen_roster.py",
-            "harness/common/PROTOCOL.md", "web/app/*.js", "docs/*.md", "README.md"]
+            "harness/common/PROTOCOL.md", "harness/common/onboarding/*.md",
+            "web/app/*.js", "docs/*.md", "README.md"]
     out = []
     for pat in pats:
         out += [p for p in glob.glob(os.path.join(ROOT, pat)) if os.path.basename(p) not in SKIP]
