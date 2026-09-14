@@ -15,6 +15,9 @@
      기하로 잰다. 「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
+  N7 구르는 동안 세 점이 같은 쪽으로 움직인다 — 앞선 점만 뒤로 도는 자리가
+     지나감 밖에 있는지, 축이 도는 꼴이 직각으로 갈라 놓지 않는지, 밀어낸 끝에서
+     세 점이 전부 테 밖인지를 조각의 실제 좌표로 푼다.
   N6 재주 표가 온전하다 — 합쳐 **80 을 넘고**(구르기만 마흔 넘게, 그리고 뽑는 몫의
      30퍼센트 이상), 점이 따로 노는
      재주는 **10%% 이하**이며, 비슷한 것을 표에 두 줄로 두지 않으며
@@ -147,6 +150,73 @@ class TheMoveHasACeiling(unittest.TestCase):
         self.assertEqual(src.count("svg.getBoundingClientRect()"), 1,
                          "자리를 여러 곳에서 읽는다 — 커서를 좇으며 읽으면 "
                          "움직일 때마다 레이아웃이 다시 돈다")
+
+
+class TheRollKeepsOneDirection(unittest.TestCase):
+    """N7. 구르는 동안 세 점이 **같은 쪽으로** 움직인다.
+
+    주인(2026-09-14 18:28): 「눈 2개가 왼쪽으로 돌아갈 때 입은 오른쪽으로 돌아가는
+    경우가 있는 것 같다.」
+
+    구르기는 진행 방향 u 로 밀면서 그 방향으로 납작해진다. 한 점의 화면 속도는
+
+        v = (π/2)·[ HIDE·cos(a) − (1−K_MIN)·sin(a)·((p−O)·u) ],   a = t·T_MAX·π/2
+
+    로 **전부 u 위에** 있다 — 방향이 갈리는 것이 아니라 **부호**가 갈린다. 앞선
+    점은 `(p−O)·u` 가 크므로 뒤 항이 먼저 커져, 어느 순간 그 점만 뒤로 돈다.
+    뒤집히는 자리는 `cot(a) = (1−K_MIN)·proj/HIDE` 이고, 지나감의 끝(T_MAX)이 그보다
+    앞서야 한다. 이 시험은 그 부등식을 **조각의 실제 좌표로** 푼다 — 재주를 흉내
+    내지 않고도 「갈라지지 않는다」가 참이 된다.
+    """
+
+    def consts(self, src):
+        out = {}
+        for k in ("HIDE", "T_MAX", "K_MIN", "CURVE_MAX"):
+            m = re.search(r"var\s+%s\s*=\s*([\d.]+)" % k, src)
+            self.assertIsNotNone(m, "%s 가 상수로 없다" % k)
+            out[k] = float(m.group(1))
+        return out
+
+    def test_n7_three_dots_never_split(self):
+        src = read("app", "mark.js")
+        c = self.consts(src)
+        snippet = re.search(r'<div class="brand">(.*?)</svg>', read("index.html"), re.S)
+        snippet = snippet.group(1) + "</svg>"
+        m = DOME.search(snippet)
+        cx, cy, R = (float(v) for v in m.groups())
+        d3 = [tuple(float(v) for v in g) for g in DOT.findall(snippet[m.end():])][:3]
+        ox = sum(p[0] for p in d3) / 3.0
+        oy = sum(p[1] for p in d3) / 3.0
+        proj = max(math.hypot(p[0] - ox, p[1] - oy) for p in d3)
+
+        # ① 지나감이 끝나기 전에 앞선 점이 뒤로 돌지 않는가
+        cot = 1.0 / math.tan(c["T_MAX"] * math.pi / 2)
+        lim = (1 - c["K_MIN"]) * proj / c["HIDE"]
+        self.assertGreater(cot, lim * 1.5,
+                           "구르기 끝에서 앞선 점이 뒤로 돈다 — cot(%.2f)=%.3f 이 "
+                           "문턱 %.3f 의 1.5배를 못 넘는다. 끝(T_MAX)을 앞당기거나 "
+                           "납작해짐의 바닥(K_MIN)을 올려라"
+                           % (c["T_MAX"], cot, lim))
+
+        # ② 축이 도는 꼴(휘어짐)이 직각으로 갈라 놓지 않는가
+        common = c["HIDE"] * math.cos(c["T_MAX"] * math.pi / 2) * (math.pi / 2)
+        perp = math.radians(c["CURVE_MAX"]) * proj
+        self.assertLess(perp, 0.55 * common,
+                        "휘어짐 %.0f도가 공통 속도(%.1f)의 절반을 넘는 직각 성분(%.1f)을 "
+                        "만든다 — 축 양쪽의 점이 서로 다른 쪽으로 간다"
+                        % (c["CURVE_MAX"], common, perp))
+        # 지나감 안에서 축이 도는 꼴은 휘어짐뿐이어야 한다
+        dr = src[src.index("function rollDraw("):src.index("\n  }", src.index("function rollDraw("))]
+        self.assertIn("curve = rnd(24, CURVE_MAX)", dr, "휘어짐이 상한을 안 쓴다")
+
+        # ③ 밀어낸 끝에서 세 점이 **전부** 테 밖인가 (위로 구를 때가 가장 빡빡하다)
+        k = c["K_MIN"] + (1 - c["K_MIN"]) * math.cos(c["T_MAX"] * math.pi / 2)
+        low = max(p[1] for p in d3) - oy          # 무게중심에서 아래 점까지
+        r = d3[0][2]
+        inner = abs((oy - cy) - c["HIDE"] + low * k) - r
+        self.assertGreater(inner, R,
+                           "위로 구를 때 점 하나가 테 안(%.1f < %.1f)에 남는다 — "
+                           "허공에 뜬 점으로 보인다. HIDE 를 키워라" % (inner, R))
 
 
 class TheScriptStandsInLine(unittest.TestCase):

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="section9">
+  <title>section9</title>
+  <!-- 탭 크기(16~32)용 — 머리글 마크와 같은 얼굴 -->
+  <defs>
+    <radialGradient id="s9dome" cx="50%" cy="30%" r="76%">
+      <stop offset="0" stop-color="#fffefb"/><stop offset=".42" stop-color="#faf7ef"/>
+      <stop offset=".70" stop-color="#dcd5c2"/><stop offset=".88" stop-color="#b8b09a"/><stop offset=".97" stop-color="#a49c86"/>
+      <stop offset="1" stop-color="#b9b2a0"/>
+    </radialGradient>
+    <radialGradient id="s9lit" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".92"/>
+      <stop offset=".5" stop-color="#ffffff" stop-opacity=".38"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="31" fill="#141518"/>
+  <circle cx="32" cy="32" r="28.9" fill="url(#s9dome)"/>
+  <ellipse cx="23.91" cy="20.44" rx="11.56" ry="7.51" fill="url(#s9lit)" transform="rotate(-22 23.91 20.44)"/>
+  <circle cx="25.71" cy="36.93" r="3.06" fill="#000000"/>
+  <circle cx="38.29" cy="36.93" r="3.06" fill="#000000"/>
+  <circle cx="32" cy="47.81" r="3.06" fill="#000000"/>
+</svg>
