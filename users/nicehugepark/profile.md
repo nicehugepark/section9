@@ -288,3 +288,4 @@ machines: ["eek-p620", "Seongjinui-Macmini.local"]
 - 2026-09-14T14:19:49+09:00 config ui_tone=system (by nicehugepark via dashboard)
 - 2026-09-14T14:19:57+09:00 config pref_직접실행=git 명령을 포함해 리드가 할 수 있는 일은 사람에게 시키지 않는다(주인 지시 2026-09-14 14:00·14:19 「이런 건 제발 직접 좀 해」). 도구·분류기가 막으면 우회하지 말고 막힌 사실과 그것을 여는 설정 한 줄만 알린다. (by nicehugepark)
 - 2026-09-14T14:22:19+09:00 config ui_skin=calm (by nicehugepark via dashboard)
+- 2026-09-14T21:41:38+09:00 config jira_token_expires=2026-09-15 (by nicehugepark)
