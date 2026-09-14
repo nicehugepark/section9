@@ -62,6 +62,10 @@ if os.name == "nt":
 ROOT = os.environ.get("S9_ROOT") or os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))
 ORPHAN_AGE = 180          # 이보다 오래 산 테스트 서버는 고아로 본다
+S9_CLI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "s9")
+# Jira 발신함이 준비물로 막힘 (REQ-20260914-013-62x6): 20건이 쌓였거나 하루를 넘겼으면
+# critical — 실제 사고는 112건·닷새였다. 그 아래는 warn.
+JIRA_BLOCK_CRIT_N, JIRA_BLOCK_CRIT_SEC = 20, 86400
 
 
 def _envint(name, default):
@@ -1791,6 +1795,53 @@ def sync_verdict(s):
               f"동기화: {mode}" + (f" · origin {origin}" if origin else ""))
 
 
+def jira_info(root=None):
+    """Jira 발신함과 준비물 (REQ-20260914-013-62x6) — 판정은 bin/s9 의 jira_block_info
+    한 곳이라 여기서는 `s9 jira outbox --json` 을 부른다(doctor 는 s9 를 import 하지
+    않는다). 못 읽으면 None."""
+    env = dict(os.environ, S9_ROOT=root or ROOT)
+    argv = ([S9_CLI] if os.name != "nt" else [sys.executable, S9_CLI]) + ["jira", "outbox", "--json"]
+    try:
+        r = subprocess.run(argv, capture_output=True, encoding="utf-8", errors="replace",
+                           env=env, timeout=15)
+        if r.returncode != 0:
+            return None
+        d = json.loads(r.stdout or "{}")
+        return d if isinstance(d, dict) else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def _age_text(sec):
+    sec = max(0, int(sec or 0))
+    if sec < 3600:
+        return f"{sec // 60}분"
+    if sec < 86400:
+        return f"{sec // 3600}시간"
+    return f"{sec // 86400}일"
+
+
+def jira_verdict(j):
+    """설정 없음 → ok 「연동 안 함」 · 준비물 OK → ok · 막힘 → warn/critical 에 까닭·건수·
+    여는 길(화면 글자 그대로: Settings › 외부 서비스 › Jira)."""
+    if not isinstance(j, dict):
+        return _v("jira", "Jira", "unknown", "Jira: 상태를 읽지 못했다",
+                  "`s9 jira outbox --json` 을 직접 실행해 오류를 보라.")
+    b = j.get("block")
+    n = int(j.get("rows") or 0)
+    if isinstance(b, dict) and b.get("count"):
+        cnt = int(b.get("count") or 0)
+        level = ("critical" if cnt >= JIRA_BLOCK_CRIT_N
+                 or int(b.get("age_sec") or 0) >= JIRA_BLOCK_CRIT_SEC else "warn")
+        return _v("jira", "Jira", level,
+                  f"Jira: 발신함 {cnt}건이 준비물 없음으로 막혀 있다 — {b.get('reason', '')} "
+                  f"(막힌 지 {_age_text(b.get('age_sec'))}) — 어느 요청도 Jira 로 나가지 않는다",
+                  b.get("fix") or "Settings › 외부 서비스 › Jira 에서 빠진 것을 채워라.")
+    if not j.get("enabled") and n == 0:
+        return _v("jira", "Jira", "ok", "Jira: 연동 안 함")
+    return _v("jira", "Jira", "ok", f"Jira: 준비물 OK · 발신함 {n}건")
+
+
 def system_checks():
     return [boot_verdict(boot_info()),
             tmp_verdict(tmp_info()),
@@ -1798,6 +1849,7 @@ def system_checks():
             serve_verdict(serve_info()),
             repo_verdict(repo_info()),
             sync_verdict(sync_info()),
+            jira_verdict(jira_info()),
             project_verdict(project_info()),
             hooks_verdict(hooks_info()),
             login_verdict(login_info()),

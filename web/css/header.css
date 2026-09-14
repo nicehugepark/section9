@@ -65,6 +65,8 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 .who b{color:var(--text);font-weight:600}
 .who.warn{color:var(--c-blocked);white-space:normal}
 .who.warn code{font-family:var(--mono);border:1px solid var(--hairline);padding:0 3px}
+/* 준비물로 막힌 Jira 발신함 — 이름 옆 글자 색으로만 (REQ-20260914-013-62x6) */
+.who .jblock{color:var(--c-blocked);white-space:normal;margin-left:6px}
 .who .as{color:var(--c-review)}
 
 /* ── 서버 코드 낡음 알림 (REQ-20260826-011-62x6) ─────────────────────────────

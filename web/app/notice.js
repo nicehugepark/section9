@@ -45,6 +45,16 @@ function updateProfileBadge(){
     ? `프로필 미기재: ${miss.join(" · ")} — Settings > 내 계정에서 입력하세요` : "";
 }
 
+/* 준비물로 막힌 Jira 발신함 (REQ-20260914-013-62x6) — 서버(whoami.jira_block)가 값을
+   실을 때만 그린다. 실제 사고: API token 이 만료된 뒤 발신함 112건이 닷새 동안 문서
+   프론트매터에만 실패를 적었고 화면에는 아무것도 서지 않았다. 여는 길은 화면의 글자
+   그대로(Settings › 외부 서비스 › Jira). 준비물이 채워져 발신함이 비면 키가 빠져 사라진다. */
+function jiraBlockHtml(w){
+  const jb = w && w.jira_block;
+  if (!jb || !jb.count) return "";
+  return ` <span class="jblock">⚠ Jira 발신함 ${esc(String(jb.count))}건이 막혔습니다 — ${esc(jb.reason || "")} · Settings › 외부 서비스 › Jira</span>`;
+}
+
 function renderWhoami(){
   const el = $("#whoami"), w = window.__whoami || {};
   if (!el) return;
@@ -60,7 +70,7 @@ function renderWhoami(){
   }
   if (!w.registered){
     el.className = "who warn";
-    el.innerHTML = `⚠ 미등록 계정 <b>${esc(w.user)}</b> @ ${esc(w.machine || "")} — 터미널에서 <code>s9 user add ${esc(w.user)}</code> 로 등록하세요`;
+    el.innerHTML = `⚠ 미등록 계정 <b>${esc(w.user)}</b> @ ${esc(w.machine || "")} — 터미널에서 <code>s9 user add ${esc(w.user)}</code> 로 등록하세요` + jiraBlockHtml(w);
     return;
   }
   el.className = "who";
@@ -68,7 +78,8 @@ function renderWhoami(){
   // 라 이름만으로는 못 가른다 (REQ-20260906-055). 경로는 tooltip, OS 는 글자.
   const where = w.os ? ` <span class="where" title="${esc(w.root || "")}">${esc(w.os)}</span>` : "";
   el.innerHTML = `<b>${esc(w.user)}</b> @ ${esc(w.machine || "")}${where} [${esc(w.role || "member")}]`
-    + (asUser ? ` <span class="as">→ @${esc(asUser)} 시점</span>` : "");
+    + (asUser ? ` <span class="as">→ @${esc(asUser)} 시점</span>` : "")
+    + jiraBlockHtml(w);
 }
 
 /* ── 서버 코드 낡음 (REQ-20260826-011-62x6) ────────────────────────────────

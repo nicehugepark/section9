@@ -995,6 +995,11 @@ def main():
     sy = run(env, "sync", "--status", "--quiet")
     sync_late = ("" if sy.returncode != 0 or not sy.stdout.strip() else
                  f" ◈ 동기화 지연: {sy.stdout.strip()} ")
+    # 준비물(API token 만료 등)로 막힌 Jira 발신함 (REQ-20260914-013-62x6) — 발신함은
+    # 문서 프론트매터에만 실패를 적었고 사람은 닷새를 몰랐다. 막혔으면 매 턴 한 줄.
+    jb = run(env, "jira", "outbox", "--quiet")
+    jira_block = ("" if jb.returncode != 0 or not jb.stdout.strip() else
+                  f" ◈ {jb.stdout.strip()} — 사람에게 알려라. ")
     # 미확인 승인 메모 — 질문·후속 지시가 담겼을 수 있다: 리드가 이번 턴에 소화 (1회 주입)
     ap = run(env, "approvals", "--quiet")
     approvals = ("" if ap.returncode != 0 or not ap.stdout.strip() else
@@ -1061,7 +1066,7 @@ def main():
     attnote = (f"첨부 {len(atts)}건이 body에 기록되었다. " if atts else "")
     emit(pend +
         f"[section9 audit] 이 프롬프트는 {doc_id} 로 자동 기록되었다 (Request 분류). {attnote}{projhint}"
-        f"현재 요청 주체: {who}.{warn}{untitled}{parentless}{here_txt}{approvals}{reopened}{handoff}{loose}{stalled}{stale_serve}{sync_late}{blocked}{review}{wkwarn} "
+        f"현재 요청 주체: {who}.{warn}{untitled}{parentless}{here_txt}{approvals}{reopened}{handoff}{loose}{stalled}{stale_serve}{sync_late}{jira_block}{blocked}{review}{wkwarn} "
         f"이 세션에서 s9 를 호출할 때는 반드시 `S9_SESSION={session}` 을 앞에 붙여라. 규약: "
         f"(1) 제목은 원문 복사가 아니라 20자 이내의 이해하기 쉬운 명사구로 교체하라 — "
         f"`s9 set {doc_id} --title '...' --summary '...' --size S|M|L "

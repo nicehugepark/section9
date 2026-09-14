@@ -526,6 +526,14 @@ def whoami_info():
     # 같은 이름의 저장소가 한 노트북에 둘(윈도우 네이티브·WSL)이면 화면만 보고는 어느
     # 쪽인지 못 가른다 — root 경로와 OS 를 함께 준다 (REQ-20260906-055).
     where = {"root": ROOT, "os": os_platform(), "version": s9_version()}
+    # 준비물로 막힌 Jira 발신함 (REQ-20260914-013-62x6) — 있을 때만 싣는다. 화면은 이
+    # 키가 있을 때만 머리 경고를 그리고, Jira 를 잇지 않은 저장소에서는 키가 서지 않는다.
+    try:
+        jb = jira_block_info()
+    except Exception:
+        jb = None
+    if jb:
+        where["jira_block"] = jb
     if name:
         return {"workspace": workspace, "user": name, "display": user_profile(name).get("display", ""),
                 "role": user_role(name), "machine": current_machine(),
@@ -31235,6 +31243,129 @@ def jira_ping(user, **kw):
 # 비우는 것(요청 생성 훅이 실어 둔다). Jira 가 죽어 있어도 요청은 성공한다.
 JIRA_OUTBOX = os.path.join(ROOT, "state", "jira-outbox.jsonl")
 JIRA_BACKOFF_MAX = 3600
+
+# ── 준비물로 막힌 발신함을 사람에게 알린다 (REQ-20260914-013-62x6) ──────────
+# 실제 사고 2026-09-09~14: API token 이 만료된 뒤 발신함 112건이 50번씩 재시도하며
+# 문서 프론트매터의 last_error 에만 「준비물이 없다」를 적었다 — 사람에게 닿는 자리는
+# 하나도 없었다(주인 21:04 「지라 토큰이 만료되는 사실을 난 왜 여태 모르고 있었던
+# 거지?」). 판정은 jira_block_info 한 곳이고 세 자리(대시보드 머리 whoami·리드 세션
+# 수신함 event·s9 doctor)가 그 값을 그대로 싣는다. 준비물 판정 자체는
+# jira_auth_header 의 것을 빌린다 — 자를 둘 두지 않는다.
+JIRA_ALERT_STATE = os.path.join(ROOT, "state", "jira-alert.json")
+JIRA_SETTINGS_PATH = "Settings › 외부 서비스 › Jira"      # 화면의 글자 그대로
+_JIRA_OUTBOX_OWNERS = {}          # 발신함 항목 id → 문서 소유자 (문서의 user 는 안 바뀐다)
+
+
+def _jira_outbox_owners(rows):
+    """발신함 항목의 문서 소유자 — 한 번 읽은 id 는 다시 읽지 않는다(whoami 는 /api/boot
+    마다 불린다). 발신함에서 빠진 id 는 잊는다."""
+    ids = {r.get("id") for r in rows if r.get("id")}
+    for did in list(_JIRA_OUTBOX_OWNERS):
+        if did not in ids:
+            del _JIRA_OUTBOX_OWNERS[did]
+    for did in ids:
+        if did in _JIRA_OUTBOX_OWNERS:
+            continue
+        try:
+            path = locate(did)
+            _JIRA_OUTBOX_OWNERS[did] = (str(read_doc(path)[0].get("user") or "")
+                                        if path else "")
+        except Exception:
+            _JIRA_OUTBOX_OWNERS[did] = ""
+    return dict(_JIRA_OUTBOX_OWNERS)
+
+
+def _jira_age_text(sec):
+    sec = max(0, int(sec))
+    if sec < 3600:
+        return f"{sec // 60}분"
+    if sec < 86400:
+        return f"{sec // 3600}시간"
+    return f"{sec // 86400}일"
+
+
+def jira_block_info(now=None):
+    """준비물이 없어 발신함이 나가지 못하는 지금 — 막힌 것이 없으면 None.
+    {"reason": 빠진 것을 ' · ' 로 이은 글, "missing": [빠진 것], "count": 막힌 건수,
+     "since": 가장 오래된 항목의 시각, "age_sec": 그때부터 지금까지, "user": 준비물 주인,
+     "fix": 여는 길(화면 글자 그대로)} — 화면·수신함·doctor 가 이 값을 그대로 싣는다.
+    Jira 를 잇지 않은 저장소는 발신함이 비어 있으니 언제나 None 이다."""
+    import time as _time
+    rows = jira_outbox_read()
+    if not rows:
+        return None
+    now = now or _time.time()
+    owners = _jira_outbox_owners(rows)
+    missing_by = {}
+    for r in rows:
+        u = owners.get(r.get("id"), "")
+        if not u or u in missing_by:
+            continue
+        # 사람이 스위치를 끈 계정의 항목은 「막힘」이 아니다 — 재발급을 권하면 거짓말이다
+        missing_by[u] = jira_auth_header(u)[1] if jira_enabled_for(u) else []
+    blocked = [r for r in rows if missing_by.get(owners.get(r.get("id"), ""))]
+    if not blocked:
+        return None
+    per_user = {}
+    for r in blocked:
+        per_user[owners[r["id"]]] = per_user.get(owners[r["id"]], 0) + 1
+    user = max(per_user, key=per_user.get)
+    missing = list(missing_by[user])
+    oldest = min(float(r.get("at") or now) for r in blocked)
+    tok = any(m.startswith("API token") for m in missing)
+    return {"reason": " · ".join(missing), "missing": missing, "count": len(blocked),
+            "since": datetime.datetime.fromtimestamp(oldest).astimezone().isoformat(timespec="seconds"),
+            "age_sec": int(max(0.0, now - oldest)), "user": user,
+            "users": {u: " · ".join(missing_by[u]) for u in per_user},
+            "fix": JIRA_SETTINGS_PATH + (" 에 token 재발급" if tok else " 에서 빠진 것을 채우기")}
+
+
+def jira_block_text(info):
+    """훅·CLI 한 줄 — 「Jira 발신함 N건 준비물 없음 — <까닭> · <여는 길>」."""
+    return f"Jira 발신함 {info['count']}건 준비물 없음 — {info['reason']} · {info['fix']}"
+
+
+def jira_block_notify(info, now=None):
+    """막힘을 리드 세션 수신함에 kind=event 로 — 처음 막힐 때 한 번, 그 뒤 하루 한 번.
+    마지막으로 알린 날은 state/jira-alert.json 에 남는다. 막힘이 풀리면 그 파일을 지워
+    다음 막힘이 다시 「처음」이 된다. 듣는 세션이 없으면 적지 않고 다음 틱에 다시 본다.
+    반환: 보낸 세션 id 또는 ""."""
+    import time as _time
+    now = now or _time.time()
+    if not info:
+        try:
+            os.remove(JIRA_ALERT_STATE)
+        except OSError:
+            pass
+        return ""
+    try:
+        with open(JIRA_ALERT_STATE, encoding="utf-8") as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        st = {}
+    day = _time.strftime("%Y-%m-%d", _time.localtime(now))
+    if st.get("day") == day:
+        return ""
+    try:
+        b = chat_target(None, user=info.get("user") or None)
+        sid = (b or {}).get("session", "")
+        if not sid or not _inbox_watch_alive(sid):
+            return ""
+        chat_send(f"[Jira] {jira_block_text(info)} (막힌 지 {_jira_age_text(info['age_sec'])}). "
+                  f"어느 요청도 Jira 로 나가지 못하고 있다 — 사람에게 이 사실과 여는 길을 "
+                  f"알려라. 준비물이 채워지면 발신함은 스스로 다시 나간다.",
+                  sid8=sid, sender="jira", kind="event")
+    except Exception:
+        return ""
+    st = {"day": day, "notified_at": now, "count": info["count"], "reason": info["reason"],
+          "session": sid}
+    try:
+        os.makedirs(os.path.dirname(JIRA_ALERT_STATE), exist_ok=True)
+        with open(JIRA_ALERT_STATE, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False)
+    except OSError:
+        pass
+    return sid
 JIRA_LABEL_PREFIX = "s9-"
 
 
@@ -31600,6 +31731,7 @@ def jira_outbox_tick(now=None, limit=5, **kw):
     now = now or _time.time()
     rows = jira_outbox_read()
     if not rows:
+        jira_block_notify(None)          # 비었으면 막힘도 없다 — 다음 막힘은 다시 「처음」
         return []
     done, keep, n = [], [], 0
     for r in rows:
@@ -31622,6 +31754,10 @@ def jira_outbox_tick(now=None, limit=5, **kw):
         keep.append(r)
         done.append((r["id"], False))
     jira_outbox_write(keep)       # 성공·건너뜀은 빠지고, 실패는 다음 때와 함께 남는다
+    try:
+        jira_block_notify(jira_block_info(now), now)   # 준비물로 막혔으면 사람에게 (REQ-20260914-013-62x6)
+    except Exception:
+        pass
     return done
 
 
@@ -32489,6 +32625,18 @@ def cmd_jira(args):
         return
     if args.action == "outbox":
         rows = jira_outbox_read()
+        if getattr(args, "quiet", False):
+            # 훅 주입 한 줄 (REQ-20260914-013-62x6) — 막혔을 때만, 아니면 아무것도
+            info = jira_block_info()
+            if info:
+                print(jira_block_text(info))
+            return
+        if getattr(args, "json", False) and not getattr(args, "run", False):
+            # doctor 의 자리 — 판정은 여기(jira_block_info) 하나다
+            me = resolve_user(getattr(args, "user", None))
+            print(json.dumps({"rows": len(rows), "enabled": jira_enabled_for(me),
+                              "block": jira_block_info()}, ensure_ascii=False))
+            return
         if getattr(args, "run", False):
             kinds = {r["id"]: r.get("kind") for r in rows}
             for i, ok in jira_outbox_tick():
@@ -37295,6 +37443,8 @@ def main():
     ji.add_argument("--user", help="누구의 준비물로 (기본: 나)")
     ji.add_argument("--json", action="store_true")
     ji.add_argument("--run", action="store_true", help="outbox: 지금 한 틱 처리")
+    ji.add_argument("--quiet", action="store_true",
+                    help="outbox: 준비물로 막혔을 때만 한 줄(훅 주입용) — 아니면 아무것도")
     ji.set_defaults(fn=cmd_jira)
 
     gh_ = sub.add_parser("github", help="GitHub 저장소 잇기 (REQ-20260913-008-62x6) — "
