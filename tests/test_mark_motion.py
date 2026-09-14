@@ -227,11 +227,11 @@ class TheTrickTableIsWhole(unittest.TestCase):
             i = src.index("var %s = [" % name)
             return src[i:src.index("\n  ];", i)].count('{n: "')
         chains = src[src.index("var CHAINS = ["):src.index("\n  ];", src.index("var CHAINS = ["))]
-        # 구르기 = 방위 × 되돌아옴(2) × 꼴 + 이름으로 지은 것(빙그르르·데구르르 …)
-        dirs = len(re.findall(r'\{n: "[^"]+", x:', src))
+        # 구르기 = 꼴마다 대표 하나 + 이름으로 지은 것(빙그르르·데구르르 …).
+        # 벌의 수가 아니라 **뽑는 방법**이 다양성을 낸다(v13).
         shapes = len(re.findall(r'\{n: "[^"]+", ax:', src))
         named = len(re.findall(r'fam: "구르기", rare:', src))
-        return (hand, arr("PATHS"), arr("SPEEDS"), dirs * 2 * shapes + named,
+        return (hand, arr("PATHS"), arr("SPEEDS"), shapes + named,
                 chains.count("[\""))
 
     def test_n6_the_table_is_big_and_the_three_dots_stay_one_gaze(self):
@@ -240,12 +240,35 @@ class TheTrickTableIsWhole(unittest.TestCase):
         made = paths * speeds
         total = len(hand) + made + rolls + chains
         self.assertGreaterEqual(paths, 10, "경로가 열 가지도 안 된다")
-        self.assertGreaterEqual(total, 80,
+        self.assertGreaterEqual(total, 60,
                                 "재주가 %d 개다 — 손 %d + 곱해 낸 것 %d + 구르기 %d + 연쇄 %d"
                                 % (total, len(hand), made, rolls, chains))
-        self.assertGreaterEqual(rolls, 40,
-                                "구르기가 %d 가지뿐이다 — 주인이 보고 싶어 하는 갈래라 "
-                                "마흔은 넘어야 한다(주인 2026-09-14 17:35)" % rolls)
+        self.assertGreaterEqual(rolls, 8,
+                                "구르기 대표가 %d 뿐이다 — 꼴마다 하나씩은 있어야 한다" % rolls)
+        # 구르기는 표가 아니라 **뽑는 방법**이다 (주인 2026-09-14 18:00)
+        self.assertIn("function rollDraw(", src,
+                      "구르기를 실행 때마다 새로 짓지 않는다 — 표는 유한하고, 유한한 "
+                      "표는 한참 보면 되풀이가 보인다")
+        dr = src[src.index("function rollDraw("):src.index("\n  }", src.index("function rollDraw("))]
+        for want in ("rnd(0, 360)", "turns = rnd(", "spd = rnd(", "ein = rnd(", "tilt = rnd("):
+            with self.subTest(want):
+                self.assertIn(want, dr, "%s — 연속 변수로 뽑지 않는다" % want)
+        vec = dr[dr.index("v: ["):]
+        self.assertGreaterEqual(vec.count(","), 8,
+                                "새로움을 재는 벡터가 너무 짧다 — 축이 여덟은 되어야 "
+                                "「비슷한 것」을 가려낼 수 있다")
+        m = re.search(r"var\s+NOVEL\s*=\s*([\d.]+)", src)
+        self.assertIsNotNone(m, "새로움 문턱(NOVEL)이 없다")
+        self.assertTrue(0.18 <= float(m.group(1)) <= 0.45,
+                        "문턱이 0.18~0.45 밖이다: %s — 방향 30도(0.259)·바퀴 0.5(0.200)·"
+                        "속도 30%%(0.300)가 잣대다" % m.group(1))
+        for want in ("function fresh(", "function nearest(", "function remember(",
+                     "function reseed("):
+            with self.subTest(want):
+                self.assertIn(want, src, "%s 가 없다 — 비슷한 것을 걸러 낼 수 없다" % want)
+        self.assertIn("reseed();", src,
+                      "재주마다 폭과 빠르기를 새로 뽑지 않는다 — 표정도 매번 조금씩 "
+                      "달라야 한다")
         # 표가 기대는 것이 실제로 **정의되어** 있는가
         # 실제 사고 2026-09-14 17:50: 구르기 가족을 넓히는 편집이 그 아래에 있던
         # roll·landing·rollPace·rollMs 와 ROLL_TURNS·ROLL_SPEEDS·ROLL_FINS 를 통째로
@@ -264,9 +287,9 @@ class TheTrickTableIsWhole(unittest.TestCase):
         # 방위와 꼴 — 구르기가 갈리는 두 축
         dirs = len(re.findall(r'\{n: "[^"]+", x:', src))
         shapes = len(re.findall(r'\{n: "[^"]+", ax:', src))
-        self.assertGreaterEqual(dirs, 8, "굴러가는 방위가 %d 뿐이다 — 여덟 방위는 있어야 한다" % dirs)
+        self.assertGreaterEqual(dirs, 8, "방위 이름이 %d 뿐이다 — 여덟은 있어야 한다" % dirs)
         self.assertGreaterEqual(shapes, 5, "구르는 꼴이 %d 뿐이다 — 다섯은 있어야 한다" % shapes)
-        self.assertIn("back ? d.n + \"에서\" : toward(d.n)", src,
+        self.assertIn("p.back ? w + \"에서\" : toward(w)", src,
                       "굴러가는 쪽과 되돌아오는 쪽을 가르지 않는다 — 방위가 한쪽뿐이면 "
                       "같은 그림이 절반이다")
         # 의성어 넷은 이름 그대로 표에 있어야 한다

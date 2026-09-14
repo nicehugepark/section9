@@ -1,42 +1,59 @@
-/* 머리글 마크의 눈 — 재주 표와 그것을 고르는 시계 (REQ-20260914-001·002-62x6).
+/* 머리글 마크의 눈 — 가족 몫으로 고르고, 뽑아서 짓는다 (REQ-20260914-001·002-62x6).
 
-   주인(2026-09-14 14:24): 「움직이는 패턴이 더 다양해졌으면 좋겠다. … 정말 다양한
-   패턴이 들어가서 한참을 쳐다보고 그것만 바라보아도 재미가 있을만큼 … 빙그르르
-   돌아가는 것도 수평으로만 돌아가지 말고, 수직이나 다양한 축으로 돌아갈 수
-   있도록 … 예시를 든 것뿐이지 예시뿐만이 아니라 훨씬 더 다양한 패턴을 원한다.」
+   주인의 말이 여기까지 끌고 왔다.
+     14:24 「훨씬 더 다양한 패턴을 원한다」 → 재주를 손으로 늘리지 않고 **표**로.
+     15:05 「점 3개가 따로 노는 건 호러다」 → 점 셋은 **하나의 시선**.
+     16:49 「커서를 쫓아가던 기능이 꺼진 것 같다」 → 커서가 오면 **재주를 끊는다**.
+     17:35 「구르기가 아무리 기다려도 몇 번 안 나온다」 → 희귀도가 아니라 **가족 몫**.
+     18:00 「비슷한 것을 제외하고 아주 최대한 다양하게」 → 표가 아니라 **뽑는 방법**.
 
-   **패턴을 덧붙이지 않고 구조를 바꿨다.** 종전(v4)은 「둘러보기·뒤돌아보기·
-   뱅그르르」 셋이 각자 제 타이머를 들고 있었다 — 넷째를 더하려면 타이머와
-   끼어들기 규칙을 한 벌 더 써야 했고, 열여덟을 더하면 그것이 열여덟 벌이 된다.
-   그래서 자리를 둘로 갈랐다.
+   ## 자리 넷
 
-     · **재주 표**(TRICKS) — 재주 하나는 {이름 · 희귀도 · 길이 · 하는 일}이다.
-       새 재주를 더하는 일이 표에 줄 하나를 더하는 일이 된다.
-     · **시계**(stage) — 유휴 때마다 희귀도 가중치로 하나를 뽑아 돌린다. 같은
-       것을 연달아 뽑지 않고, 사람이 커서를 움직이는 중이면 그 회차를 건너뛴다.
+   · **표(TRICKS)** — 재주 하나는 {이름 · 가족 · 희귀도 · 길이 · 하는 일}이다.
+     표정은 손으로 적은 스물여섯, 곱은 경로 × 속도, 구르기는 **꼴마다 대표 하나**,
+     연쇄는 그 셋을 잇는 것.
+   · **시계(stage)** — 유휴 때마다 **가족을 몫으로** 뽑고(구르기 35 · 표정 35 ·
+     곱 20 · 연쇄 10) 그 가족의 섞은 주머니에서 하나를 꺼낸다. 희귀도는 가족 안에서만
+     쓴다 — 희귀도는 「이 재주가 얼마나 드문가」이지 「이 갈래가 얼마나 자주 나오는가」가
+     아니기 때문이다.
+   · **뽑기(rollDraw · reseed)** — 구르기는 실행할 때마다 방향(0~360 연속) · 기울기 ·
+     바퀴(0.5~3 연속) · 완급 곡선 · 꼴의 세기 · 맺음을 범위에서 뽑아 새로 짓는다.
+     표정·곱·연쇄도 폭과 빠르기를 매번 새로 뽑는다(V). **표는 유한하지만 뽑기는
+     유한하지 않다** — 같은 것이 두 번 나오지 않는다.
+   · **새로움 검사(fresh)** — 뽑은 값을 정규화한 벡터로 두고 최근 스무 번과의 거리를
+     재, 문턱(0.28)보다 가까우면 다시 뽑는다. 문턱은 눈으로 갈리는 최소 차이에서
+     나왔다: 방향 30도(0.259) · 바퀴 0.5(0.200) · 속도 30%(0.300).
 
-   **희귀도가 곧 크기다.** 흔한 재주는 잔잔하고(곁눈질·응시), 드문 재주는 크다
-   (뒤돌아보기·자리 바꾸기·두 바퀴). 큰 것이 자주 나오면 산만하고, 작은 것만
-   나오면 죽은 화면이다.
+   ## 움직이는 층이 셋인 까닭 — 축이 셋이다
 
-   **움직이는 층이 셋이다.** 한 층에 다 얹을 수 없는 까닭은 층마다 **축이 다르기**
-   때문이다(`transform-origin` 은 요소당 하나다).
+   `transform-origin` 은 요소당 하나다.
      · `.pupil` — 무리 전체. 축은 무리의 무게중심. 자리·크기·눌림·기울기.
-     · `.spin`  — 회전. 축은 **렌즈 중심**. 무리가 렌즈 안을 도는 것.
-     · `.d0·.d1·.d2` — 점 하나씩. 축은 그 점의 한가운데. 흩어지고 자리를 바꾼다.
+     · `.spin`  — 회전. 축은 **렌즈 중심**.
+     · `.d0·.d1·.d2` — 점 하나씩. 축은 그 점의 한가운데.
 
-   **구체가 도는 것처럼 보이게 하는 법.** 평면 도형이 구를 도는 것처럼 보이려면
-   둘이 함께 있어야 한다 — 진행 방향으로 **납작해지고**(그 방향의 배율이 cos),
-   가장자리에서 **테 뒤로 가려진다**(돔 원 clipPath). 축이 세로면 가로로 지나가고,
-   가로면 세로로 지나간다. 비스듬한 축은 그 방향으로 눌러야 하므로 회전·눌림·
-   되돌림을 곱한 matrix 를 쓴다(`slide()`).
+   ## 구체가 도는 것처럼 보이게 하는 법
 
-   규율은 그대로다: 자리는 렌즈 안(뒤로 도는 재주만 예외 — 그때는 테가 가린다) ·
-   값은 `transform` 만 · 「움직임 줄이기」(prefers-reduced-motion)나 안 보이는 탭
-   (document.hidden)에서는 타이머를 끈다.
+   평면 도형이 구를 도는 것처럼 보이려면 둘이 함께 있어야 한다 — 진행 방향으로
+   **납작해지고**(그 방향의 배율이 cos), 가장자리에서 **테 뒤로 가려진다**(돔 원
+   clipPath). 비스듬한 축은 그 방향으로 눌러야 하므로 회전·눌림·되돌림을 곱한
+   matrix 를 쓴다(`slide()`).
 
-   검토 보조: 주소에 `?mark=show` 를 붙이면 재주를 표 순서대로 한 번씩 돌린다.
-   드문 재주를 사람이 기다려 볼 수 없어 둔 길이다(제품 기능이 아니다). */
+   ## 경계는 재주가 아니라 붓에 있다
+
+   무리를 옮기는 붓(`capped`)은 배율까지 셈에 넣고, 점을 옮기는 붓(`dcap`)은 옮긴
+   거리가 아니라 **옮긴 자리**로 잰다. 재주가 어떤 값을 주어도 그 둘을 지나야 화면에
+   닿으므로, 재주를 하나씩 흉내 내지 않고도 「돔 밖으로 못 나간다」가 참이다.
+
+   ## 커서
+
+   반경 320 화소 안에서 커서가 움직이면 **재주를 끊고** 좇는다. 반경 밖은 보지 않고,
+   커서가 멎고 1.5초가 지나면 눈이 제자리로 오고 재주가 다시 돈다.
+
+   「움직임 줄이기」(prefers-reduced-motion)나 안 보이는 탭(document.hidden)에서는
+   타이머를 끈다. 옮기는 것은 `transform` 뿐이다.
+
+   검토 보조: 주소에 `?mark=show`(+`&from=N`·`&rep=N`)를 붙이면 표를 차례로 돌린다.
+   화면에서는 언제나 가족 몫 + 섞은 주머니다. 제품의 길이 아니다. */
 (function () {
   "use strict";
 
@@ -131,7 +148,7 @@
   function css(el, tr, ms, ease) {
     if (!el) { return; }
     el.style.transitionTimingFunction = ease || "";
-    el.style.transitionDuration = Math.round(ms) + "ms";
+    el.style.transitionDuration = Math.round(ms / V.spd) + "ms";
     el.style.transform = tr;
   }
 
@@ -139,7 +156,7 @@
   function P(x, y, ms, o) {
     o = o || {};
     var s = o.s === undefined ? 1 : o.s;
-    var p = capped(x, y, s);
+    var p = capped(x * V.amp, y * V.amp, s);
     var sx = (o.sx === undefined ? 1 : o.sx) * s;
     var sy = (o.sy === undefined ? 1 : o.sy) * s;
     css(pupil, "translate(" + p[0].toFixed(2) + "px," + p[1].toFixed(2) + "px) scale("
@@ -150,7 +167,7 @@
 
   /* 구체를 도는 것처럼 지나간다 — 축이 `deg` 인 회전. t 는 0(가운데)에서
      1(가장자리). 진행 방향으로 납작해지고, 그 방향으로 밀려 테 뒤로 들어간다. */
-  function slide(deg, t, ms, ease, wob) {
+  function slide(deg, t, ms, ease, wob, wobF) {
     var th = deg * Math.PI / 180;
     var ux = -Math.sin(th), uy = Math.cos(th);      // 진행 방향(축의 직각)
     var k = Math.cos(t * Math.PI / 2);              // 그 방향의 배율 — 가장자리에서 0
@@ -159,7 +176,7 @@
     var off = HIDE * Math.sin(t * Math.PI / 2);
     var wx = 0, wy = 0;
     if (wob) {                       // 진행 방향의 직각으로 잔 흔들림 — 비틀거리며
-      var w = Math.sin(t * Math.PI * 5) * wob;
+      var w = Math.sin(t * Math.PI * (wobF || 5)) * wob;
       wx = -uy * w; wy = ux * w;
     }
     css(pupil, "matrix(" + a.toFixed(4) + "," + b.toFixed(4) + "," + b.toFixed(4) + ","
@@ -214,6 +231,63 @@
       list.push([gap, (function (k) { return function () { fn(k / (n - 1)); }; })(i)]);
     }
     seq(list, done);
+  }
+
+  /* ---- 새로움 검사 -------------------------------------------------
+     주인(2026-09-14 18:00): 「방향, 축, 각, 속도, 모양 조합은 무궁무진하다. 비슷한
+     것을 제외하고 아주 최대한 다양하게 만들어라.」
+
+     **표는 아무리 길어도 유한하다.** 백을 적든 천을 적든 한참 보면 되풀이가 보인다.
+     그래서 구르기는 표에 적힌 벌이 아니라 **뽑는 방법**이 되었다 — 실행할 때마다
+     방향·기울기·바퀴·완급·꼴·맺음을 범위에서 뽑으므로 같은 구르기가 두 번 나오지
+     않는다. 표에는 꼴마다 대표 하나만 있고, 그 하나가 매번 다른 것을 짓는다.
+
+     그것만으로는 「비슷한 것」이 연달아 나올 수 있다. 그래서 뽑은 값을 정규화한
+     벡터로 두고 **최근 스무 번과의 거리**를 잰다 — 가장 가까운 것보다 문턱만큼
+     떨어질 때까지 다시 뽑는다. 문턱 0.28 은 눈으로 갈리는 최소 차이에서 나왔다:
+     방향 30도(=0.259) · 바퀴 0.5(=0.200) · 속도 30%(=0.300). 하나만 달라도
+     0.2~0.3 이므로, 문턱을 그 언저리에 두면 「방향만 조금 다른 것」은 걸러지고
+     「방향이 확 다르거나 둘 이상이 다른 것」은 통과한다. */
+
+  var NOVEL = 0.28;
+  var seenRoll = [], seenVar = [];
+
+  function nearest(list, v) {
+    var m = 9, i, j, d, s2;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].length !== v.length) { continue; }
+      s2 = 0;
+      for (j = 0; j < v.length; j++) { d = v[j] - list[i][j]; s2 += d * d; }
+      d = Math.sqrt(s2);
+      if (d < m) { m = d; }
+    }
+    return m;
+  }
+
+  function remember(list, v) { list.push(v); if (list.length > 20) { list.shift(); } }
+
+  /* 열네 번까지 다시 뽑고, 그래도 안 되면 그중 가장 먼 것을 쓴다 — 영영 못 뽑아
+     화면이 멎는 일이 없게. */
+  function fresh(list, make, thr) {
+    var best = null, bestD = -1, i, c, d;
+    for (i = 0; i < 14; i++) {
+      c = make();
+      d = nearest(list, c.v);
+      if (d >= (thr === undefined ? NOVEL : thr)) { remember(list, c.v); return c.p; }
+      if (d > bestD) { bestD = d; best = c; }
+    }
+    remember(list, best.v);
+    return best.p;
+  }
+
+  /* 재주마다 새로 뽑는 **폭과 빠르기의 결** — 표정·곱·연쇄도 매번 조금씩 다르다.
+     성격(무엇을 하는가)은 표가 지키고, 이 둘이 그 위에 변주를 얹는다. */
+  var V = {amp: 1, spd: 1};
+  function reseed() {
+    V = fresh(seenVar, function () {
+      var a = rnd(0.72, 1.18), b = rnd(0.72, 1.35);
+      return {v: [(a - 0.72) / 0.46, (b - 0.72) / 0.63], p: {amp: a, spd: b}};
+    }, 0.22);
   }
 
   /* ---- 재주 표 --------------------------------------------------------
@@ -524,13 +598,13 @@
     (function next() {
       if (left-- <= 0) { return landing(end, done); }
       var b = same ? a : a + 180, q = p++;
-      ramp(sp.steps, sp.gap, function (t) { slide(sh.ax(q, t, a), t, sp.gap, ease, sh.wob); },
+      ramp(sp.steps, sp.gap, function (t) { slide(sh.ax(q, t, a), t, sp.gap, ease, sh.wob, sh.wobF); },
         function () {
           wait(pick([80, 180]), function () {
             slide(b, 1, 0);
             wait(30, function () {
               ramp(sp.steps, sp.gap,
-                function (t) { slide(sh.ax(q, 1 - t, b), 1 - t, sp.gap, LINEAR, sh.wob); },
+                function (t) { slide(sh.ax(q, 1 - t, b), 1 - t, sp.gap, LINEAR, sh.wob, sh.wobF); },
                 function () { a = b; next(); });
             });
           });
@@ -538,36 +612,90 @@
     })();
   }
 
-  /* 표에 올리는 것 — 방위 8 × 되돌아옴 2 × 꼴 6 = 96. 속도·바퀴·맺음은 자리마다
-     돌려 가며 물려 어느 둘도 같은 벌이 되지 않게 했다. 곱한 것을 다 올리지 않는
-     까닭은 그 셋이 **방위·꼴만큼 눈에 갈리지 않기** 때문이다 — 갈리는 축으로만
-     표를 늘리고 나머지는 자리마다 달리 물린다. */
-  function rollName(d, back, sh, tn, sp, fi) {
-    return (back ? d.n + "에서" : toward(d.n)) + " " + sh.n + " " + tn.n
-           + "·" + sp.n + "·" + fi.n;
+  /* 구르기는 **표에 적힌 벌이 아니라 뽑는 방법**이다. 표에는 꼴마다 대표 하나만
+     있고, 그 하나가 실행할 때마다 방향(0~360 연속) · 축 기울기 · 바퀴(0.5~3 연속) ·
+     완급 곡선 양끝 · 꼴의 세기 · 맺음을 범위에서 뽑아 새로 짓는다. 뽑은 값은
+     정규화한 벡터로 새로움 검사를 거치므로 최근 스무 번과 비슷한 것은 다시 뽑는다. */
+
+  function rollDraw(si) {
+    return fresh(seenRoll, function () {
+      var deg = rnd(0, 360), tilt = rnd(-26, 26), back = Math.random() < 0.5;
+      var turns = rnd(0.5, 3), spd = rnd(0, 1);
+      var ein = rnd(0, 0.85), eout = rnd(0.15, 1);
+      var curve = 0, tumble = 0, wobA = 0, wobF = rnd(3.5, 9), fig = 0, half = false;
+      if (si === 1) { curve = rnd(30, 64); }
+      else if (si === 2) { tumble = rnd(58, 122); }
+      else if (si === 3) { wobA = rnd(2.2, 4.8); }
+      else if (si === 4) { half = true; turns = rnd(0.4, 0.85); }
+      else if (si === 5) { fig = rnd(44, 88); }
+      var p = {si: si, deg: deg, tilt: tilt, back: back, turns: turns, spd: spd,
+               ein: ein, eout: eout, curve: curve, tumble: tumble,
+               wobA: wobA, wobF: wobF, fig: fig, half: half};
+      var th = deg * Math.PI / 180;
+      return {p: p, v: [
+        (Math.cos(th) + 1) / 2, (Math.sin(th) + 1) / 2,   // 방향 — 30도 차이 = 0.259
+        (turns - 0.5) / 2.5,                              // 바퀴 — 0.5 차이 = 0.200
+        spd,                                              // 빠르기 — 30% 차이 = 0.300
+        (tilt + 26) / 52, ein, eout,
+        curve / 64, tumble / 122, wobA / 4.8, fig / 88,
+        back ? 1 : 0
+      ]};
+    });
   }
 
+  var DIR_STEP = 360 / ROLL_DIRS.length;
+
+  function rollName2(p) {
+    var deg = (p.deg % 360 + 360) % 360;
+    /* 진행 방향의 화면 각 — u=(-sinθ, cosθ) 이므로 방위 이름은 그 벡터로 찾는다 */
+    var th = deg * Math.PI / 180, ux = -Math.sin(th), uy = Math.cos(th);
+    var best = 0, bd = -9, i, d;
+    for (i = 0; i < ROLL_DIRS.length; i++) {
+      d = ux * ROLL_DIRS[i].x + uy * ROLL_DIRS[i].y;
+      if (d > bd) { bd = d; best = i; }
+    }
+    var off = Math.round(Math.acos(Math.max(-1, Math.min(1, bd))) * 180 / Math.PI);
+    var w = ROLL_DIRS[best].n + (off >= 4 ? " " + off + "도" : "");
+    var head = p.back ? w + "에서" : toward(w);
+    var turns = p.turns < 0.7 ? "반 바퀴"
+      : (Math.abs(p.turns - Math.round(p.turns)) < 0.12
+         ? ["", "한 바퀴", "두 바퀴", "세 바퀴"][Math.round(p.turns)]
+         : p.turns.toFixed(1) + "바퀴");
+    var pace = p.ein > 0.55 && p.eout > 0.7 ? "느리게 시작해 빨라짐"
+      : (p.ein < 0.25 && p.eout < 0.5 ? "빠르게 시작해 느리게"
+         : (p.spd > 0.66 ? "빠르게" : (p.spd < 0.33 ? "느리게" : "고르게")));
+    var end = p.fin === "흔들리며" ? "흔들리며 멈춤"
+      : (p.fin === "반대편" ? "반대편에서 멈춤" : "제자리에 멈춤");
+    return head + " " + ROLL_SHAPES[p.si].n + " " + turns + "·" + pace + "·" + end;
+  }
+
+  /* 꼴마다 대표 하나 — 여섯 줄이 무한한 구르기를 낸다. */
   (function () {
-    var di, bk, si, k = 0;
-    for (di = 0; di < ROLL_DIRS.length; di++) {
-      for (bk = 0; bk < 2; bk++) {
-        for (si = 0; si < ROLL_SHAPES.length; si++) {
-          var d = ROLL_DIRS[di], sh = ROLL_SHAPES[si];
-          var tn = sh.half ? ROLL_TURNS[0] : ROLL_TURNS[1 + (k % 3)];
-          var sp = ROLL_SPEEDS[(di + si) % 3];
-          var fi = ROLL_FINS[(di * 2 + si) % 5];
-          k++;
-          (function (d, back, sh, tn, sp, fi) {
-            TRICKS.push({
-              name: rollName(d, back, sh, tn, sp, fi), fam: "구르기",
-              rare: tn.t >= 2 ? "드묾" : "가끔", ms: rollMs(tn, sp), hides: true,
-              run: function (done) {
-                roll(dirAxis(d) + (back ? 180 : 0), sh, tn.t, sp, fi.ease, fi.end, done);
+    var si;
+    for (si = 0; si < ROLL_SHAPES.length; si++) {
+      (function (si) {
+        TRICKS.push({
+          name: "구르기 · " + ROLL_SHAPES[si].n, fam: "구르기",
+          rare: "흔함", ms: 3000, hides: true, shape: si,
+          run: function (done) {
+            var p = rollDraw(si);
+            p.fin = ["제자리", "흔들리며", "반대편", "제자리"][Math.floor(rnd(0, 4))];
+            var sp = {n: "", steps: Math.round(8 - 3 * p.spd),
+                      gap: Math.round(110 - 72 * p.spd)};
+            var sh = {
+              n: ROLL_SHAPES[si].n, half: p.half, wob: p.wobA, wobF: p.wobF,
+              ax: function (q, t, a) {
+                return a + (t - 0.5) * p.curve + q * p.tumble
+                       + (q % 2 ? p.fig : -p.fig);
               }
-            });
-          })(d, bk === 1, sh, tn, sp, fi);
-        }
-      }
+            };
+            window.__S9_ROLL = rollName2(p);      // 검토 보조 — 방금 지은 것의 이름
+            roll(p.deg + p.tilt + (p.back ? 180 : 0), sh, p.turns, sp,
+                 "cubic-bezier(" + p.ein.toFixed(2) + ",0," + p.eout.toFixed(2) + ",1)",
+                 p.fin, done);
+          }
+        });
+      })(si);
     }
   })();
 
@@ -777,6 +905,7 @@
       if (busy) { stage(); return; }
       var i = choose(), t = TRICKS[i];
       lastPick = i;
+      reseed();                     // 재주마다 폭과 빠르기를 새로 뽑는다
       window.__S9_LAST = t.name + "|" + t.fam + "|" + Date.now();   // 검토 보조
       busy = true;
       var ended = false;
@@ -787,7 +916,10 @@
         rest();
         stage();
       };
-      wait(t.ms + 400, end);       // 재주가 끝을 못 알려도 시계는 멈추지 않는다
+      /* 지킴이는 **변주까지 셈에 넣는다** — 폭·빠르기 씨앗(V.spd)이 0.72 이면
+         같은 재주가 1.4배 길어진다. 그것을 빼고 재면 긴 구르기가 끝나기 전에
+         잘린다(띠에서 3.8초짜리가 잡혔다). */
+      wait(t.ms / V.spd + 500, end);
       t.run(end);
     });
   }
@@ -858,12 +990,32 @@
   /* 검토 보조 — 재주를 표 순서대로 한 번씩. 제품의 길이 아니다. */
   function showAll() {
     var m = /[?&]from=(\d+)/.exec(location.search);
-    var i = m ? +m[1] : 0;      // 띠를 두 장으로 나눠 찍을 때 쓰는 시작 자리
+    var r = /[?&]rep=(\d+)/.exec(location.search);
+    var i = m ? +m[1] : 0;      // 띠를 여러 장으로 나눠 찍을 때 쓰는 시작 자리
+    var rep = r ? Math.max(1, +r[1]) : 1, turn = 0;
+    /* 검토용 — 같은 꼴을 백 번 지어 보고 이웃 거리를 재는 자리. 제품의 길이 아니다. */
+    window.__S9_DRAW = function (si, n) {
+      var out = [], k, seen = [], keys = {};
+      for (k = 0; k < n; k++) {
+        var before = seenRoll.length;
+        var p = rollDraw(si);
+        out.push(seenRoll[seenRoll.length - 1]);
+        keys[JSON.stringify(seenRoll[seenRoll.length - 1])] = 1;
+      }
+      var worst = 9;
+      for (k = 1; k < out.length; k++) {
+        var d = nearest(out.slice(Math.max(0, k - 20), k), out[k]);
+        if (d < worst) { worst = d; }
+      }
+      return {n: out.length, unique: Object.keys(keys).length, minGap: worst};
+    };
     window.__S9_TRICKS = TRICKS.map(function (t) { return t.name; });
     (function next() {
       if (i >= TRICKS.length) { window.__S9_TRICK = "(끝)"; return; }
-      var t = TRICKS[i++];
-      window.__S9_TRICK = t.name;
+      var t = TRICKS[i];
+      if (++turn >= rep) { turn = 0; i++; }
+      window.__S9_TRICK = t.name + (rep > 1 ? " #" + (turn === 0 ? rep : turn) : "");
+      reseed();
       busy = true;
       var ended = false;
       var end = function () {
@@ -872,7 +1024,7 @@
         busy = false; rest(120);
         wait(360, next);
       };
-      wait(t.ms + 400, end);
+      wait(t.ms / V.spd + 500, end);
       t.run(end);
     })();
   }
