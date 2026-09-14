@@ -4421,12 +4421,21 @@ def _append_only_marks(text):
 
 
 def _marks_lost(snap_marks, live_marks):
-    """뜬 것에 있는데 지금 것에 없는 자국들 (벌수 차이만큼)."""
+    """뜬 것에 있는데 지금 것에 없는 자국들.
+
+    **같은 글자의 줄은 하나로 센다** (실제 사고 2026-09-14 12:39, REQ-20260914-001-62x6):
+    동기화 병합이 같은 노트를 두 번 붙였다가 뒤에 하나로 접었는데, 벌수로 맞대던
+    감사가 「기록 2건이 사라졌다」고 알렸다 — 사라진 것은 없고 겹친 것이 걷힌
+    것이다. 거짓 경보를 내는 탐지기는 꺼진 탐지기다(같은 REQ-20260901-004 의 교훈).
+    글자로 맞대지는 않는다 — 다시쓰기(이름 바꾸기·노트 다듬기)는 유실이 아니다
+    (REQ-20260901-004 의 첫 교훈). 뜬 것의 **서로 다른 줄 수**와 지금 것의 **줄 수**를
+    같은 시각끼리 맞댄다: 겹친 줄은 하나로, 글자가 바뀐 줄은 그대로 한 줄로 센다."""
     gone = []
     for key, lines in snap_marks.items():
-        deficit = len(lines) - len(live_marks.get(key, []))
+        uniq = list(dict.fromkeys(lines))          # 같은 글자는 하나로, 차례는 유지
+        deficit = len(uniq) - len(live_marks.get(key, []))
         if deficit > 0:
-            gone.extend(lines[-deficit:])
+            gone.extend(uniq[-deficit:])
     return gone
 
 
