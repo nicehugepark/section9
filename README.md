@@ -38,7 +38,7 @@ Claude Code 로 일하는 사람의 **외부기억(external memory)**. 프롬프
 ## 3. 설치 — 릴리스 파일로
 
 GitHub Releases 의 압축 파일을 받아 풀고, 그 안에서 `bin/s9 code` 를 **한 번** 친다.
-리눅스·맥은 `section9-<ver>-linux-macos.tar.gz`, Windows 는 `section9-<ver>-windows-claude.zip`
+리눅스·맥은 `section9-<ver>-linux-macos.tar.gz`, Windows 는 `section9-<ver>-windows.zip`
 ([docs/guide-windows.md](docs/guide-windows.md)). 파일에는 코드만 들어 있고 `.git` 이 없다 —
 첫 실행이 저장소를 만든다.
 

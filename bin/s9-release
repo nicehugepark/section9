@@ -2,7 +2,7 @@
 """s9-release — 코드만 담은 배포판 둘을 dist/ 에 만든다 (REQ-20260913-006-62x6).
 
   section9-<ver>-linux-macos.tar.gz   최상위 section9/ · 실행 비트 유지
-  section9-<ver>-windows-claude.zip   최상위 section9/ · bin/*.cmd 는 CRLF
+  section9-<ver>-windows.zip   최상위 section9/ · bin/*.cmd 는 CRLF
   SHA256SUMS                          `sha256sum -c SHA256SUMS` 로 검증
 
 원천은 `git archive <ref>` 하나다: .gitattributes 의 export-ignore(vault·users·
@@ -186,7 +186,7 @@ def release_notes(ref, ver):
         pass
     return (f"section9 {ver}\n\n배포판\n"
             f"- section9-{ver}-linux-macos.tar.gz — 리눅스·맥: 풀고 `bin/s9 code`\n"
-            f"- section9-{ver}-windows-claude.zip — 윈도우(Claude): 풀고 `bin\\s9.cmd code`\n"
+            f"- section9-{ver}-windows.zip — 윈도우(Claude): 풀고 `bin\\s9.cmd code`\n"
             f"- SHA256SUMS — `sha256sum -c SHA256SUMS`\n")
 
 
@@ -195,7 +195,7 @@ def build(ref, ver, out):
     check_contents(raw)
     os.makedirs(out, exist_ok=True)
     tgz = os.path.join(out, f"section9-{ver}-linux-macos.tar.gz")
-    zp = os.path.join(out, f"section9-{ver}-windows-claude.zip")
+    zp = os.path.join(out, f"section9-{ver}-windows.zip")
     write_targz(raw, tgz)
     write_zip(raw, zp)
     sums = os.path.join(out, "SHA256SUMS")

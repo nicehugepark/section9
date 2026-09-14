@@ -52,24 +52,24 @@ Claude Code 설치 명령은 **어느 터미널에서 치느냐에 따라 다릅
 
 실행 디렉토리: `%USERPROFILE%\Downloads` (cmd.exe: `cd /d %USERPROFILE%\Downloads` · PowerShell: `cd $env:USERPROFILE\Downloads`).
 
-배포판은 GitHub 릴리스에 붙습니다: `https://github.com/nicehugepark/section9/releases` **(실측 예정 — REQ-20260913-021 이 v0.9.0 릴리스를 실행한 뒤 링크가 열립니다)**. 파일 셋 중 이름이 `-windows-claude.zip` 으로 끝나는 것을 받습니다.
+배포판은 GitHub 릴리스에 붙습니다: `https://github.com/nicehugepark/section9/releases` **(2026-09-14 실측 — v0.9.0 릴리스에서 받은 zip 을 Windows 11 native 에서 풀어 첫 실행까지 확인)**. 파일 셋 중 이름이 `-windows.zip` 으로 끝나는 것을 받습니다.
 
 | 파일 | 누가 받나 |
 | --- | --- |
-| `section9-0.9.0-windows-claude.zip` | **이 장(A)** — `bin\*.cmd` 가 CRLF 로 들어 있습니다 |
+| `section9-0.9.0-windows.zip` | **이 장(A)** — `bin\*.cmd` 가 CRLF 로 들어 있습니다 |
 | `section9-0.9.0-linux-macos.tar.gz` | B장(WSL)·리눅스·맥 |
 | `SHA256SUMS` | 받은 파일이 온전한지 확인할 때 |
 
 브라우저에서 받아도 되고, 터미널에서 받아도 됩니다. Windows 10 1803 이후에는 `curl.exe` 와 `tar.exe` 가 기본으로 들어 있습니다(이 컴퓨터 실측: curl 8.21.0 · bsdtar 3.8.8).
 
 ```
-curl.exe -L -o section9-0.9.0-windows-claude.zip https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-windows-claude.zip
+curl.exe -L -o section9-0.9.0-windows.zip https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-windows.zip
 ```
 
 **하지 말 것**
 
 - PowerShell 에서는 `curl` 이 아니라 **`curl.exe`** 라고 칩니다. PowerShell 5.1 의 `curl` 은 `Invoke-WebRequest` 의 별칭이라 `-L -o` 옵션을 모릅니다.
-- 릴리스 페이지에 GitHub 이 자동으로 붙이는 `Source code (zip)` 은 받지 않습니다. 이름에 `windows-claude` 가 든 파일이 우리가 만든 배포판입니다.
+- 릴리스 페이지에 GitHub 이 자동으로 붙이는 `Source code (zip)` 은 받지 않습니다. 이름이 `-windows.zip` 으로 끝나는 파일이 우리가 만든 배포판입니다(Claude Code native 전용).
 
 ### A-2. `%USERPROFILE%\section9` 에 풀기
 
@@ -78,7 +78,7 @@ curl.exe -L -o section9-0.9.0-windows-claude.zip https://github.com/nicehugepark
 zip 안의 최상위 폴더 이름이 `section9\` 이므로, **홈 디렉토리에 풀면 곧바로 `%USERPROFILE%\section9` 가 됩니다.**
 
 ```
-tar -xf section9-0.9.0-windows-claude.zip -C %USERPROFILE%
+tar -xf section9-0.9.0-windows.zip -C %USERPROFILE%
 ```
 
 PowerShell 이면 `-C $env:USERPROFILE`. 탐색기에서 zip 을 오른쪽 클릭 → **압축 풀기…** → 대상을 `C:\Users\<계정>` 으로 두어도 같습니다.
@@ -415,7 +415,7 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 | `~/section9` | `%USERPROFILE%\section9` | PowerShell 은 `$env:USERPROFILE\section9` |
 | `bin/s9 code` | `bin\s9 code` | PATHEXT 가 `s9.cmd` 로 잇습니다(A-3) |
 | `bin/s9-install` | `bin\s9-install.cmd` | `s9 code` 가 필요할 때 스스로 부르므로 보통 직접 칠 일이 없습니다 |
-| `section9-0.9.0-linux-macos.tar.gz` · `tar -xzf` | `section9-0.9.0-windows-claude.zip` · `tar -xf` | 둘 다 최상위 폴더 `section9/` |
+| `section9-0.9.0-linux-macos.tar.gz` · `tar -xzf` | `section9-0.9.0-windows.zip` · `tar -xf` | 둘 다 최상위 폴더 `section9/` |
 | `ss -ltnp \| grep 9909` | `netstat -ano \| findstr :9909` | 포트 점유 확인 |
 | `xdg-open <url>` | `start <url>` | 브라우저 열기 |
 | `export S9_PORT=9911` | `set S9_PORT=9911` | PowerShell 은 `$env:S9_PORT=9911` |

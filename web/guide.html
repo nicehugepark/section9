@@ -214,13 +214,13 @@ section9 은 AI 작업의 <b>외부기억(모든 것이 문서로 남음)</b>이
 <h3>두 갈래 — 릴리스 파일과 소스</h3>
 <div class="tblwrap"><table>
   <tr><th style="width:200px">갈래</th><th>무엇을 받나</th><th style="width:250px">누구에게 맞나</th></tr>
-  <tr><td><b>릴리스 파일</b> (이 장의 기본)</td><td>GitHub Releases 의 <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows-claude.zip</code>(Windows). 코드만 들어 있고 <code>.git</code> 이 없습니다 — 첫 실행이 저장소를 만듭니다</td><td>처음 쓰는 모든 사람</td></tr>
+  <tr><td><b>릴리스 파일</b> (이 장의 기본)</td><td>GitHub Releases 의 <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows.zip</code>(Windows). 코드만 들어 있고 <code>.git</code> 이 없습니다 — 첫 실행이 저장소를 만듭니다</td><td>처음 쓰는 모든 사람</td></tr>
   <tr><td><b>소스</b></td><td><code>git clone</code> 한 section9 저장소(또는 그 fork)</td><td>section9 자체를 고치거나 개발 흐름을 따르는 사람 — <a href="#install-src">2.5 절</a></td></tr>
 </table></div>
 <p class="dim">예시는 풀어 놓은 자리를 <code>~/section9</code> 로 통일합니다. 실제로는 아무 경로나 됩니다 — 푼 그 디렉토리가 곧 작업 공간이고, <b>이 가이드의 모든 <code>bin/s9 …</code> 명령은 그 디렉토리 안에서 실행</b>합니다.</p>
 
 <h3 id="install-linux">2.1 리눅스</h3>
-<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows-claude.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
+<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
 <div class="step"><div class="num">0</div><div class="body">
   <b>준비물을 확인합니다</b> <span class="dim">(어느 디렉토리에서나)</span>
   <pre><code>git --version        # git version 2.x
@@ -343,7 +343,7 @@ bin/s9 code</code></pre>
 </ul>
 
 <h3 id="install-windows">2.3 Windows 와 WSL</h3>
-<p>Windows 는 별도 문서입니다 — <a href="https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md" target="_blank" rel="noopener">docs/guide-windows.md</a>. <b>Windows native</b>(파일 <code>section9-0.9.0-windows-claude.zip</code> · <code>bin\s9.cmd code</code>)와 <b>WSL</b> 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.</p>
+<p>Windows 는 별도 문서입니다 — <a href="https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md" target="_blank" rel="noopener">docs/guide-windows.md</a>. <b>Windows native</b>(파일 <code>section9-0.9.0-windows.zip</code> · <code>bin\s9.cmd code</code>)와 <b>WSL</b> 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.</p>
 <p class="dim">WSL 은 리눅스입니다 — WSL 셸 안에서 <a href="#install-linux">2.1</a> 을 그대로 따르되, 파일을 WSL 의 홈(<code>~</code>) 안에 두고 Windows 드라이브(<code>/mnt/c/…</code>)에 두지 마십시오. 그 자리의 git 은 느리고 파일 권한 표시가 어긋납니다. 브라우저는 Windows 쪽 것이 저절로 열립니다.</p>
 
 <h3 id="after-first-run">2.4 첫 실행 뒤 — 공통</h3>

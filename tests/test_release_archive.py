@@ -7,7 +7,7 @@ track 하는 자기 문서(vault)·사용자(users)·프로젝트 자료(project
 하네스가 아니라 이 설치의 데이터라 배포판에 들어가면 안 된다.
 
 두 번째 겹(B*): `bin/s9-release` 가 그 archive 로 배포판 둘을 만든다 —
-section9-<ver>-linux-macos.tar.gz 와 section9-<ver>-windows-claude.zip. 최상위는
+section9-<ver>-linux-macos.tar.gz 와 section9-<ver>-windows.zip. 최상위는
 section9/, zip 의 bin/*.cmd 는 CRLF, 같은 commit 이면 같은 sha256. 판은 VERSION
 파일 하나에서 나와 `s9 --version` 과 화면(Settings › 시스템)이 같은 값을 읽는다.
 
@@ -97,7 +97,7 @@ class TheReleaseBuild(unittest.TestCase):
         cls.res = build(cls.out)
         cls.ver = version_file()
         cls.tgz = os.path.join(cls.out, f"section9-{cls.ver}-linux-macos.tar.gz")
-        cls.zip = os.path.join(cls.out, f"section9-{cls.ver}-windows-claude.zip")
+        cls.zip = os.path.join(cls.out, f"section9-{cls.ver}-windows.zip")
         cls.tar_members = []
         cls.zip_names = []
         if os.path.exists(cls.tgz):

@@ -85,7 +85,7 @@ FALLBACK_TEXT = """{{inviter}} 님이 section9 의 「{{project}}」 프로젝�
 · 리눅스 / macOS / WSL: section9-<버전>-linux-macos.tar.gz 를 받아
     tar xzf section9-<버전>-linux-macos.tar.gz
     cd section9
-· Windows (Claude Code Windows 판): section9-<버전>-windows-claude.zip 을 받아
+· Windows (Claude Code Windows 판): section9-<버전>-windows.zip 을 받아
     압축을 풀고 PowerShell 또는 cmd 로 그 폴더(section9)에 들어갑니다
 
 ■ 합류 — 아래 한 줄이 저장소를 잇고 이 프로젝트에 넣어 줍니다
@@ -106,7 +106,7 @@ FALLBACK_HTML = """<table role="presentation" width="600" cellpadding="0" cellsp
 <tr><td style="padding:12px 0 4px 0;font-weight:600;color:#2b5fd9;">설치 — 릴리스 파일을 받아 풉니다</td></tr>
 <tr><td style="padding:0 0 4px 0;"><a href="{{release_url}}" style="color:#2b5fd9;">{{release_url}}</a></td></tr>
 <tr><td style="padding:0 0 4px 0;">리눅스 / macOS / WSL: <code>section9-&lt;버전&gt;-linux-macos.tar.gz</code> 를 받아 <code>tar xzf</code> 로 풀고 <code>cd section9</code></td></tr>
-<tr><td style="padding:0 0 12px 0;">Windows (Claude Code Windows 판): <code>section9-&lt;버전&gt;-windows-claude.zip</code> 을 받아 압축을 풀고 PowerShell 또는 cmd 로 그 폴더(section9)에 들어갑니다</td></tr>
+<tr><td style="padding:0 0 12px 0;">Windows (Claude Code Windows 판): <code>section9-&lt;버전&gt;-windows.zip</code> 을 받아 압축을 풀고 PowerShell 또는 cmd 로 그 폴더(section9)에 들어갑니다</td></tr>
 <tr><td style="padding:12px 0 4px 0;font-weight:600;color:#2b5fd9;">합류 — 아래 한 줄이 저장소를 잇고 이 프로젝트에 넣어 줍니다</td></tr>
 <tr><td style="padding:0 0 4px 0;">리눅스 / macOS / WSL</td></tr>
 <tr><td style="padding:0 0 8px 0;"><code style="display:block;padding:8px 10px;border:1px solid #d9d9d9;font-size:13px;white-space:pre-wrap;word-break:break-all;">{{join_cmd_posix}}</code></td></tr>

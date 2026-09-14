@@ -52,14 +52,14 @@ Claude Code 는 Pro · Max · Team · Enterprise 또는 Console 계정이 필요
 
 | 갈래 | 무엇을 받나 | 누구에게 맞나 |
 | --- | --- | --- |
-| **릴리스 파일** (이 장의 기본) | GitHub Releases 의 `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows-claude.zip`(Windows). 코드만 들어 있고 `.git` 이 없습니다 — 첫 실행이 저장소를 만듭니다 | 처음 쓰는 모든 사람 |
+| **릴리스 파일** (이 장의 기본) | GitHub Releases 의 `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows.zip`(Windows). 코드만 들어 있고 `.git` 이 없습니다 — 첫 실행이 저장소를 만듭니다 | 처음 쓰는 모든 사람 |
 | **소스** | `git clone` 한 section9 저장소(또는 그 fork) | section9 자체를 고치거나 개발 흐름을 따르는 사람 — 2.5 절 |
 
 예시는 풀어 놓은 자리를 `~/section9` 로 통일합니다. 실제로는 아무 경로나 됩니다 — 푼 그 디렉토리가 곧 작업 공간이고, **이 가이드의 모든 `bin/s9 …` 명령은 그 디렉토리 안에서 실행**합니다.
 
 ### 2.1 리눅스
 
-절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows-claude.zip`(Windows) · `SHA256SUMS`(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
+절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows.zip`(Windows) · `SHA256SUMS`(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
 
 0 **준비물을 확인합니다** (어느 디렉토리에서나) 
 
@@ -208,7 +208,7 @@ bin/s9 code
 
 ### 2.3 Windows 와 WSL
 
-Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.0-windows-claude.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
+Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.0-windows.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
 
 WSL 은 리눅스입니다 — WSL 셸 안에서 2.1 을 그대로 따르되, 파일을 WSL 의 홈(`~`) 안에 두고 Windows 드라이브(`/mnt/c/…`)에 두지 마십시오. 그 자리의 git 은 느리고 파일 권한 표시가 어긋납니다. 브라우저는 Windows 쪽 것이 저절로 열립니다.
 

@@ -3,7 +3,7 @@
 #   git tag -a v0.9.0 -m '0.9.0 — ...'   # 판은 VERSION 파일과 같아야 한다(s9-release 가 확인)
 #   git push origin v0.9.0
 #
-# 자산: section9-<ver>-linux-macos.tar.gz · section9-<ver>-windows-claude.zip · SHA256SUMS
+# 자산: section9-<ver>-linux-macos.tar.gz · section9-<ver>-windows.zip · SHA256SUMS
 # 노트: docs/RELEASE-NOTES.md 의 `## <ver>` 절 → 없으면 주석 태그의 메시지 → 없으면 기본 한 줄.
 # 같은 태그로 다시 실행되면(릴리스가 이미 있으면) 자산만 --clobber 로 바꿔 올린다.
 # 만드는 것은 bin/s9-release 하나다 — 로컬에서 같은 명령으로 같은 바이트가 나온다.
