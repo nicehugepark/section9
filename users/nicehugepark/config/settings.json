@@ -1,6 +1,6 @@
 {
- "ui_skin": "calm",
- "ui_tone": "system",
+ "ui_skin": "grid",
+ "ui_tone": "graphite",
  "stream_mirror": "on",
  "timezone": "Asia/Seoul",
  "last_model_choice": "fable",
