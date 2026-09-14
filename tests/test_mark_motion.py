@@ -16,9 +16,11 @@
      「움직이는 것은 transform 뿐」도 여기서 본다.
   N4 조각 목록에 있고 **마지막이 아니다** — 마지막 조각은 화면이 다 섰다는 표식을
      세우는 자리라 그것을 빼앗으면 「조각을 못 받았다」 알림이 멀쩡한 화면을 지운다.
-  N6 재주 표가 온전하다 — 손으로 지은 것과 틀이 곱해 낸 것을 합쳐 **110 을 넘고**
+  N6 재주 표가 온전하다 — 합쳐 **150 을 넘고**, 점이 따로 노는 재주는 **10%% 이하**이며
      항목마다 넷이 있으며, 시계가 가드(움직임 줄이기·안 보이는 탭)를 보고 커서를
      좇는 중에는 끼어들지 않는다. 붓이 제 손으로 돔에서 자르는 것도 여기서 본다.
+     점 셋은 **하나의 시선**이다 — 제각각 기어 다니면 장난이 아니라 벌레로 읽힌다
+     (주인 2026-09-14 15:05).
   N5 정지 파일 셋(mark·favicon·logo)의 렌즈에 음영(radialGradient)과 반사가 있고,
      점 셋이 주인이 고른 비율(지름의 8~14% · 무게중심 13~17% 아래 · 정삼각)을 지킨다.
 
@@ -217,7 +219,7 @@ class TheTrickTableIsWhole(unittest.TestCase):
         흉내 내지 않고도 「돔 밖으로 못 나간다」가 참이다.
     """
 
-    ENTRY = re.compile(r'\{name: "([^"]+)", rare: "([^"]+)", ms: (\d+)')
+    ENTRY = re.compile(r'\{name: "([^"]+)", rare: "([^"]+)", ms: (\d+)(, solo: true)?')
     RARE = ("흔함", "가끔", "드묾", "아주 드묾")
 
     def counts(self, src):
@@ -226,20 +228,29 @@ class TheTrickTableIsWhole(unittest.TestCase):
             i = src.index("var %s = [" % name)
             return src[i:src.index("\n  ];", i)].count('{n: "')
         chains = src[src.index("var CHAINS = ["):src.index("\n  ];", src.index("var CHAINS = ["))]
-        return hand, arr("PATHS"), arr("SPEEDS"), arr("TARGETS"), chains.count("[\"")
+        return hand, arr("PATHS"), arr("SPEEDS"), arr("MOODS"), chains.count("[\"")
 
-    def test_n6_the_table_passes_a_hundred_and_ten_and_is_well_formed(self):
+    def test_n6_the_table_is_big_and_the_three_dots_stay_one_gaze(self):
         src = read("app", "mark.js")
-        hand, paths, speeds, targets, chains = self.counts(src)
-        made = paths * speeds * targets
+        hand, paths, speeds, moods, chains = self.counts(src)
+        made = paths * speeds * moods
         total = len(hand) + made + chains
         self.assertGreaterEqual(paths, 10, "경로가 열 가지도 안 된다")
-        self.assertGreaterEqual(total, 110,
+        self.assertGreaterEqual(total, 150,
                                 "재주가 %d 개다 — 손 %d + 곱해 낸 것 %d + 연쇄 %d"
                                 % (total, len(hand), made, chains))
+        # 점 셋은 하나의 시선이다
+        solo = src.count("solo: true,")
+        self.assertLessEqual(solo * 100.0 / total, 10.0,
+                             "점이 따로 노는 재주가 %d 개(%.1f%%)다 — 10%% 를 넘으면 "
+                             "화면이 장난이 아니라 벌레로 읽힌다" % (solo, solo * 100.0 / total))
+        self.assertGreater(solo, 0, "점이 따로 노는 재주가 아예 없다 — 소수는 남긴다")
+        self.assertNotIn('{n: "점 셋 따로"', src,
+                         "곱하는 축에 점을 따로 놀리는 갈래가 남아 있다 — 그러면 표의 "
+                         "태반이 그것이 된다")
         names = [g[0] for g in hand]
         self.assertEqual(len(names), len(set(names)), "같은 이름의 재주가 둘이다")
-        for name, rare, ms in hand:
+        for name, rare, ms, _solo in hand:
             with self.subTest(name):
                 self.assertIn(rare, self.RARE, "희귀도가 넷 중 하나가 아니다: %r" % rare)
                 self.assertTrue(200 <= int(ms) <= 3000, "길이가 0.2~3초 밖이다: %sms" % ms)
