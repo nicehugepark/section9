@@ -31744,9 +31744,23 @@ def jira_outbox_tick(now=None, limit=5, **kw):
     if not rows:
         jira_block_notify(None)          # 비었으면 막힘도 없다 — 다음 막힘은 다시 「처음」
         return []
+    # 준비물(token 만료·없음)로 막혔던 항목은 준비물이 돌아오는 순간 때가 된 것이다 —
+    # backoff(최대 1시간)를 그대로 두면 「준비물이 채워지면 발신함은 스스로 다시 나간다」가
+    # 한 시간 뒤의 일이 된다 (REQ-20260914-015-62x6, 실측 2026-09-14 21:45: 만료일을 고친
+    # 뒤에도 26건이 next_at 22:13 까지 기다렸다).
+    try:
+        credentials_back = jira_block_info(now) is None
+    except Exception:
+        credentials_back = False
+
+    def _due(r):
+        if float(r.get("next_at") or 0) <= now:
+            return True
+        return credentials_back and "준비물" in str(r.get("last_error") or "")
+
     done, keep, n = [], [], 0
     for r in rows:
-        if n >= limit or float(r.get("next_at") or 0) > now:
+        if n >= limit or not _due(r):
             keep.append(r)
             continue
         n += 1
