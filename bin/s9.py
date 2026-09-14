@@ -14458,6 +14458,8 @@ def sync_resolve(doc_ids, take):
         f = _sync_git("fetch", "--quiet", timeout=20)
         if f.returncode != 0:
             return {"ok": False, "error": "fetch 실패: " + f.stderr.strip()[:200]}
+        stash_before = (_sync_git("rev-parse", "-q", "--verify",
+                                  "refs/stash").stdout or "").strip()
         r = _sync_git("rebase", "--autostash", "@{upstream}", timeout=30)
         rounds = 0
         while r.returncode != 0:
@@ -14503,6 +14505,10 @@ def sync_resolve(doc_ids, take):
             r = subprocess.run(["git", "-C", ROOT, "rebase", "--continue"],
                                capture_output=True, encoding="utf-8", errors="replace", timeout=30,
                                env=env)
+        # 이 rebase 도 되돌리기에만 실패할 수 있다 (REQ-20260914-005-62x6).
+        # `_sync_pull_cmd` 와 같은 기제다 — rebase 는 returncode 0 으로 끝나는데
+        # 걷어 간 작업은 보관함에 `autostash` 로 남고 작업 트리는 HEAD 로 돌아간다.
+        _sync_reclaim_autostash(stash_before)
         _sync_pull_stamp()
         try:
             # rebase 앞뒤로 실제 바뀐 문서만 (REQ-20260902-035 §3). 내 커밋이

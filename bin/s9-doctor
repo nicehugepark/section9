@@ -1724,22 +1724,46 @@ def sync_info():
             orphan = [l.strip() for l in f if l.strip()]
     except OSError:
         pass
+    # 보관함에 이미 쌓인 autostash (REQ-20260914-005-62x6). 위의 orphan 파일은
+    # 되돌리기 검사가 선 뒤의 실패만 받는다 — 그 전에 쌓인 것은 어느 화면에도
+    # 안 떴다(2026-09-14 기준 다섯, 09-06~09-14). git 은 되돌리기에 실패한
+    # autostash 를 보관함에 넣고 rebase 를 returncode 0 으로 끝내므로, 커밋하지
+    # 않은 작업이 그 안에 있는데 아무도 모른다. 그래서 보관함을 직접 센다.
+    stuck = 0
+    try:
+        r = subprocess.run(["git", "stash", "list"], cwd=ROOT,
+                           capture_output=True, encoding="utf-8",
+                           errors="replace", timeout=10)
+        if r.returncode == 0:
+            stuck = sum(1 for l in r.stdout.splitlines()
+                        if l.strip().endswith("autostash"))
+    except Exception:
+        pass
     return {"instance": True,
             "mode": "local" if head == "local" else "remote",
             "chosen": "아직 고르지 않음" not in body,
             "orphan": orphan,
+            "autostash": stuck,
             "origin": origin}
 
 
 def sync_verdict(s):
     orphan = s.get("orphan") or []
+    stuck = s.get("autostash") or 0
     if orphan:
         last = orphan[-1].split()[-1]
+        # orphan 파일은 검사가 선 뒤의 실패만 받는다 — 그 전에 쌓인 것까지 세어
+        # 함께 적는다 (REQ-20260914-005-62x6). 이 줄 하나만 보고 「1건」으로 읽고
+        # 넘어가면 나머지는 또 안 보인다.
+        more = (f" · 보관함에는 autostash 가 {stuck}건 있다"
+                if stuck > len(orphan) else "")
         return _v("sync", "동기화", "critical",
                   f"동기화: 되돌리지 못한 보관함 {len(orphan)}건 — 커밋하지 않은 "
-                  f"작업이 그 안에 갇혀 있다 (마지막 {last[:8]})",
+                  f"작업이 그 안에 갇혀 있다 (마지막 {last[:8]}){more}",
                   f"`git stash apply {last}` 로 작업 트리에 되돌린 뒤, 되돌렸으면 "
-                  "state/sync-stash-orphan.txt 를 지워라.")
+                  "state/sync-stash-orphan.txt 를 지워라."
+                  + (" 나머지는 `git stash list` 로 보고 하나씩 되돌려라."
+                     if more else ""))
     if not s.get("instance"):
         # 코드 저장소를 그냥 클론한 자리 — 어떤 git 쓰기도 하지 않는다(설계 그대로)
         return _v("sync", "동기화", "ok", "동기화: 인스턴스가 아니다 — git 쓰기 없음")
@@ -1756,6 +1780,13 @@ def sync_verdict(s):
                   f"동기화: local 인데 origin 이 있다 — 문서가 밖으로 나가지 않는다 ({why})",
                   "`s9 sync --on` 으로 켜라. 이 마커는 track 되므로 한 번 켜면 "
                   "다른 머신의 클론에도 따라간다.")
+    if stuck:
+        n = stuck
+        return _v("sync", "동기화", "warn",
+                  f"동기화: 보관함에 남은 autostash {n}건 — 되돌아가지 못한 "
+                  f"커밋하지 않은 작업이 그 안에 있다",
+                  "`git stash list` 로 보고 `git stash apply stash@{0}` 로 "
+                  "작업 트리에 되돌려라. 필요 없는 것이면 `git stash drop`.")
     return _v("sync", "동기화", "ok",
               f"동기화: {mode}" + (f" · origin {origin}" if origin else ""))
 
