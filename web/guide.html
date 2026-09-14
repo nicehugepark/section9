@@ -159,7 +159,7 @@ footer{margin-top:70px;padding-top:16px;border-top:1px solid var(--border);
 <div class="wrap"><div class="page">
 <div class="pagehead">
   <h1>section9 사용자 가이드</h1>
-  <div class="meta">verified 2026-09-13 · 0.9.0 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서, 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측</div>
+  <div class="meta">verified 2026-09-13 · 0.9.0 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서(판정 버튼 「승인 done」「반려 in-progress」와 안내 요청 일곱 편은 2026-09-14 재확인, REQ-20260914-011), 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측</div>
 </div>
 
 <!-- ═══════════════ 1 ═══════════════ -->
@@ -275,7 +275,7 @@ claude 는 설치됐지만 로그인이 없다 — 터미널에서 `claude` 를 
 ◌ 이 컴퓨터의 계정(&lt;계정&gt;)은 section9 에 등록돼 있지 않다. 이름(Enter=&lt;계정&gt;): 
 user registered: &lt;계정&gt;  (users/&lt;계정&gt;/)
 ◌ 기본 프로젝트 'general' — 프로젝트를 고르지 않은 새 문서가 여기 붙는다 (옮기기: s9 project default &lt;slug&gt;)
-◌ 안내 요청 3건이 Board 의 open 열에 섰다 — 처음이면 그것부터 읽는다</code></pre>
+◌ 안내 요청 7건이 Board 의 open 열에 섰다 — 처음이면 그것부터 읽는다</code></pre>
   <div class="tblwrap"><table>
     <tr><th style="width:290px">줄</th><th>뜻 · 할 일</th></tr>
     <tr><td><code>◌ 저장소를 새로 세웠다 — 혼자 쓰는 상태 …</code></td><td><code>.git</code> 이 없는 자리라 첫 실행이 git 저장소를 세운 것입니다 — <code>git init</code>(가지 <code>main</code>) · 이 자리용 <code>.gitignore</code> · <code>.s9-sync</code>(첫 줄 <code>local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)</code>) · 첫 commit <b>section9 첫 실행</b>. 이미 저장소인 자리(2.5 절)에서는 이 줄이 없습니다. 할 일은 없습니다</td></tr>
@@ -283,12 +283,12 @@ user registered: &lt;계정&gt;  (users/&lt;계정&gt;/)
     <tr><td><code>◌ Claude Code 로그인이 없다 …</code> · <code>claude 는 설치됐지만 로그인이 없다 …</code></td><td>로그인 전이면 뜹니다(둘째 줄은 설치가 남기는 같은 뜻의 안내). 할 일은 없습니다 — 이 흐름이 이어서 띄우는 Claude Code 화면의 안내대로 로그인하면 됩니다</td></tr>
     <tr><td><code>◌ section9 훅 미설치 감지 …</code> ~ <code>section9 install 완료</code></td><td>훅·스킬·역할 에이전트를 놓는 설치입니다. 몇 번을 다시 해도 같은 결과입니다(멱등). 설치 전 <code>~/.claude</code> 설정은 백업됩니다(처음이면 「백업할 예전 설정이 없다 — 새 환경이다」) — 되돌리기는 <a href="#undo">7장</a></td></tr>
     <tr><td><code>◌ 이 컴퓨터의 계정(…)은 … 이름(Enter=…):</code></td><td><b>여기서 한 번 답합니다.</b> Enter 만 치면 OS 계정 이름으로 등록되고, 다른 이름을 치면 그 이름으로 등록됩니다. 이것이 문서에 기록되는 내 이름입니다 — <a href="#after-first-run">2.4 절</a>(첫 사람을 admin 으로 올리는 명령까지)</td></tr>
-    <tr><td><code>◌ 기본 프로젝트 'general' — …</code> · <code>◌ 안내 요청 3건이 Board 의 open 열에 섰다 …</code></td><td>이름이 정해지면 기본 프로젝트 <code>general</code> 이 서고, 처음 읽을 안내 요청 세 건이 Board 에 놓입니다</td></tr>
+    <tr><td><code>◌ 기본 프로젝트 'general' — …</code> · <code>◌ 안내 요청 7건이 Board 의 open 열에 섰다 …</code></td><td>이름이 정해지면 기본 프로젝트 <code>general</code> 이 서고, 처음 읽을 안내 요청 일곱 편이 Board 에 놓입니다 — 원천은 <code>harness/common/onboarding/</code></td></tr>
   </table></div>
 </div></div>
 <div class="step"><div class="num">5</div><div class="body">
   <b>처음 뜨는 화면</b>
-  <p><b>브라우저</b> — <code>http://127.0.0.1:9909</code> 의 Board 탭. open 열에 <b>안내 1 — 요청은 어떻게 생기나</b> · <b>안내 2 — 프로젝트 만들기</b> · <b>안내 3 — 확인 대기 카드 판정하기</b> 세 카드가 있고, 우상단에 <b>이름 @ 컴퓨터 [역할]</b> 이 뜹니다.
+  <p><b>브라우저</b> — <code>http://127.0.0.1:9909</code> 의 Board 탭. open 열에 <b>안내 1 — 이 보드 읽는 법</b> 부터 <b>안내 7 — 팀 초대와 합류</b> 까지 일곱 카드(보드 읽기 · 나를 등록하기 · 첫 요청 세우기 · 이어 말하기와 채팅 · 승인과 반려 · GitHub 잇기 · 팀 초대와 합류)가 순서대로 있고, 우상단에 <b>이름 @ 컴퓨터 [역할]</b> 이 뜹니다.
   <b>터미널</b> — Claude Code 의 프롬프트가 열립니다. 이제 <a href="#after-first-run">2.4 절</a>대로 일을 시키면 됩니다.</p>
 </div></div>
 <p><b>하지 말 것</b></p>
@@ -334,7 +334,7 @@ bin/s9 code</code></pre>
 </div></div>
 <div class="step"><div class="num">5</div><div class="body">
   <b>처음 뜨는 화면</b>
-  <p>2.1 의 5 와 같습니다 — Board 의 안내 요청 세 건, 우상단의 <b>이름 @ 컴퓨터 [역할]</b>, 터미널의 Claude Code. Safari 와 Chrome 둘 다 됩니다 — 둘 중 하나에서 어색한 것이 보이면 그것이 결함이니 요청으로 남겨 주십시오.</p>
+  <p>2.1 의 5 와 같습니다 — Board 의 안내 요청 일곱 편, 우상단의 <b>이름 @ 컴퓨터 [역할]</b>, 터미널의 Claude Code. Safari 와 Chrome 둘 다 됩니다 — 둘 중 하나에서 어색한 것이 보이면 그것이 결함이니 요청으로 남겨 주십시오.</p>
 </div></div>
 <p><b>하지 말 것</b> — 2.1 의 넷에 더해:</p>
 <ul>
@@ -473,13 +473,13 @@ section9 install 완료
   <text x="595" y="112" font-size="11.5" fill="#141518" font-weight="bold">review</text>
   <text x="582" y="132" font-size="10.5" fill="#6d28d9">사람의 판정 대기</text>
   <line x1="718" y1="116" x2="762" y2="116" stroke="#047857" marker-end="url(#ahg)"/>
-  <text x="740" y="106" text-anchor="middle" font-size="9" fill="#047857">✓ 승인</text>
+  <text x="740" y="106" text-anchor="middle" font-size="9" fill="#047857">승인 done</text>
   <rect x="764" y="84" width="102" height="64" fill="#fff" stroke="#d8d8d3"/>
   <rect x="778" y="104" width="7" height="7" fill="#047857"/>
   <text x="791" y="112" font-size="11.5" fill="#141518" font-weight="bold">done</text>
   <text x="778" y="132" font-size="10.5" fill="#047857">완료</text>
   <path d="M 643 148 L 643 210 L 451 210 L 451 148" fill="none" stroke="#b45309" stroke-dasharray="4 3" marker-end="url(#ahr)"/>
-  <text x="547" y="202" text-anchor="middle" font-size="10.5" fill="#b45309">↺ 반려 — 사유를 적어 되돌림</text>
+  <text x="547" y="202" text-anchor="middle" font-size="10.5" fill="#b45309">반려 in-progress — 사유를 적어 되돌림</text>
   <text x="547" y="230" text-anchor="middle" font-size="9.5" fill="#9096a0">~30초 안에 백그라운드 작업이 반려 사유를 반영해 다시 review 로 올림</text>
   <text x="451" y="52" text-anchor="middle" font-size="9.5" fill="#b91c1c">⛔ blocked = 사람의 손이나 다른 작업을 기다림 (사유가 카드에 표시)</text>
   <line x1="451" y1="60" x2="451" y2="80" stroke="#b91c1c" stroke-dasharray="3 3"/>
@@ -492,8 +492,8 @@ section9 install 완료
   <tr><td><span class="st" style="color:var(--c-inprogress)">in-progress</span></td><td>진행</td><td>타치코마가 착수하면 옮깁니다. 카드 왼쪽의 점이 "지금 실제로 실행 중인가"를 말합니다(아래 표)</td></tr>
   <tr><td><span class="st" style="color:var(--c-blocked)">blocked</span></td><td>대기</td><td>사람의 확인이나 다른 요청의 완료를 기다립니다. 카드에 <b>대기 사유</b>가 그대로 보이고, 기다리던 요청이 done 이 되면 자동으로 풀립니다</td></tr>
   <tr><td><span class="st" style="color:var(--c-review)">review</span></td><td>확인 대기</td><td>사람만 답할 수 있는 판정을 청하는 자리입니다. 카드에 <b>확인 포인트</b>(무엇을 눌러 보고 무엇이 보이면 승인인지) 가 보라색으로 뜹니다. 기계로 확인되는 것은 타치코마가 스스로 닫습니다</td></tr>
-  <tr><td><span class="st" style="color:var(--c-done)">done</span></td><td>완료</td><td><b>✓ 승인</b>을 누르면 옮겨집니다. 승인 메모를 적으면 타치코마가 후속 작업으로 받습니다</td></tr>
-  <tr><td><span class="st" style="color:var(--c-inprogress)">↺ 반려</span></td><td>—</td><td><b>↺ 반려</b>를 누르고 사유를 적으면 in-progress 로 돌아갑니다. 약 30초 안에 백그라운드 작업이 사유를 읽고 재작업해 다시 review 로 올립니다 — 자리를 지킬 필요가 없습니다</td></tr>
+  <tr><td><span class="st" style="color:var(--c-done)">done</span></td><td>완료</td><td><b>승인 done</b> 을 누르면 옮겨집니다. 승인 메모를 적으면 타치코마가 후속 작업으로 받습니다</td></tr>
+  <tr><td><span class="st" style="color:var(--c-inprogress)">반려 in-progress</span></td><td>—</td><td><b>반려 in-progress</b> 를 누르고 사유를 적으면 in-progress 로 돌아갑니다. 약 30초 안에 백그라운드 작업이 사유를 읽고 재작업해 다시 review 로 올립니다 — 자리를 지킬 필요가 없습니다</td></tr>
   <tr><td><span class="st" style="color:var(--c-draft)">cancelled</span></td><td>취소</td><td>하지 않기로 한 요청. 목록에서 내려가되 기록은 남습니다</td></tr>
 </table></div>
 
@@ -524,7 +524,7 @@ section9 install 완료
 <ul>
   <li>상태별 열(open → in-progress → blocked → review → done · cancelled)에 요청 카드가 놓입니다. 열 머리의 숫자가 건수이고, 넘치면 <b>+ N개 더 보기</b>.</li>
   <li>카드 한 장: 제목 · 담당(<b>N</b> 아이콘 + 이름) · 만든이(사람 또는 타치코마) · 우선순위 · 크기(S/M/L) · <span class="tddb">TDD n/n</span> · #태그 · REQ 번호 · 그 상태에 머문 시간.</li>
-  <li><b>review 카드에서 바로 판정합니다</b>: <b>✓ 승인</b> = done, <b>↺ 반려</b> = 사유를 적어 재작업. 카드의 보라색 글이 "무엇을 확인해 달라는지"(확인 포인트)입니다.</li>
+  <li><b>review 카드에서 바로 판정합니다</b>: <b>승인 done</b> 을 누르면 done 으로 가고, <b>반려 in-progress</b> 를 누르면 사유를 적어 재작업으로 돌립니다. 창 머리가 「판정」이면 판정이고 「상태 옮기기」면 판정이 아닌 이동입니다. 카드의 보라색 글이 "무엇을 확인해 달라는지"(확인 포인트)입니다.</li>
   <li>카드를 <b>드래그</b>해 다른 열에 놓아도 상태가 바뀝니다 — 허용되는 열만 점선으로 표시됩니다.</li>
   <li>담당 이름을 누르면 담당을 바꿀 수 있습니다. 멈춘 카드에는 <b>▶ 이어가기</b>·<b>깨우기</b> 버튼이 붙습니다.</li>
   <li>상단 <b>내 것만</b>을 켜면 내가 멤버인 프로젝트의 문서만 남습니다.</li>
