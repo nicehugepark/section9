@@ -23775,52 +23775,6 @@ def invite_module():
     return m
 
 
-def mark_module():
-    """bin/s9_mark.py — 마크 버전의 보존·전환 (REQ-20260914-002-62x6). 한 번만 싣는다."""
-    m = globals().get("_MARK_MODULE")
-    if m is None:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "s9_mark", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_mark.py"))
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-        globals()["_MARK_MODULE"] = m
-    return m
-
-
-def cmd_mark(args):
-    """s9 mark ls|use|show — 마크의 버전을 보고 갈아 끼운다."""
-    mk = mark_module()
-    action = args.action or "ls"
-    if action == "ls":
-        print("\n".join(mk.table()))
-        return
-    if action == "show":
-        if not args.version:
-            die("usage: s9 mark show <버전>")
-        web, assets, store = mk.paths()
-        d = os.path.join(store, args.version)
-        if not os.path.isdir(d):
-            die("그런 버전이 없다: %s" % args.version)
-        for f in sorted(os.listdir(d)):
-            fp = os.path.join(d, f)
-            print("  %-22s %7d" % (f, os.path.getsize(fp)))
-        return
-    if action == "use":
-        if not args.version:
-            die("usage: s9 mark use <버전>")
-        try:
-            res = mk.use(args.version)
-        except ValueError as e:
-            die(str(e))
-        print("마크 %s 을(를) 실었다 — %s" % (res["version"], res["note"]))
-        print("  web/assets 일곱 파일%s" %
-              ("과 index.html 의 머리 조각" if res["shell_changed"] else " (머리 조각은 그대로)"))
-        print("  되돌리기: bin/s9 mark use <다른 버전>  ·  목록: bin/s9 mark ls")
-        return
-    die("usage: s9 mark ls|use <버전>|show <버전>")
-
-
 def cmd_project(args):
     action = args.action
 
@@ -37014,11 +36968,6 @@ def main():
     pj.add_argument("--print", dest="print_body", action="store_true",
                     help="invite: 메일 본문을 stdout 으로 (직접 보내는 길 — 초대로 기록한다)")
     pj.set_defaults(fn=cmd_project)
-
-    mk = sub.add_parser("mark", help="마크의 버전 보기·갈아 끼우기 (REQ-20260914-002-62x6)")
-    mk.add_argument("action", nargs="?", choices=("ls", "use", "show"), default="ls")
-    mk.add_argument("version", nargs="?", help="web/assets/mark/ 아래의 버전 이름 (예: v1)")
-    mk.set_defaults(fn=cmd_mark)
 
     sh = sub.add_parser("shot", help="headless 스크린샷 (WSL=Windows Chrome) — UI 검증용")
     sh.add_argument("url")

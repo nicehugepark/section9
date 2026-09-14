@@ -9,3 +9,7 @@ v1 「검은 타일」 — 잉크 사각 타일 위에 렌즈(테·돔 음영·�
   · logo.svg 타일과 큰 PNG 는 큰 새김(점 지름 8%, 15.2% 아래)
 
 다시 구우려면: python3 build.py install <web/assets 경로> · python3 build.py pages
+
+되돌리기(명령이 아니라 절차 한 줄):
+  cp web/assets/mark/v1/{mark.svg,favicon.svg,logo.svg,favicon.ico,icon-192.png,icon-512.png,apple-touch-icon.png} web/assets/
+  그리고 web/index.html 의 `<svg class="mark">…</svg>` 한 덩어리를 이 폴더의 header.svg 로 바꾼다.
