@@ -18,14 +18,17 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
    세로는 글자의 대문자 높이 중심에 맞춘다. 18 → 20px 로 키운 것은 20 이 Windows
    배율 125%·150% 에서 25·30 화소로 **정수**가 되기 때문이다(18 은 22.5 라 반
    화소에 걸린다, REQ-20260914-002-62x6). 마크의 한가운데가 제자리에 남도록
-   vertical-align 을 -4 에서 -5px 로 함께 옮겼다. */
-.brand .mark{display:inline-block;width:20px;height:20px;margin-right:8px;vertical-align:-5px}
+   vertical-align 은 **0** 이다 — 높이 0 인 인라인블록처럼 상자의 아래 가장자리가
+   밑선에 앉는다. 마크 안에서 원의 아래 끝이 상자 바닥보다 0.31px 위이므로, 결과로
+   **공의 바닥점이 글자의 밑선에 놓인다**. -5px 은 그보다 5px 아래여서 공만 가라앉아
+   보였다(주인 2026-09-14 17:24). 0 은 어느 배율에서도 반 화소에 안 걸린다. */
+.brand .mark{display:inline-block;width:20px;height:20px;margin-right:8px;vertical-align:0}
 /* 눈 — 옮겨 갈 자리는 web/app/mark.js 가 주고, 그 자리에 이르는 시간과 감속은
    여기서 정한다. 바꾸는 것이 `transform` 뿐이라 글자 배치가 다시 계산되지 않는다.
    기준점은 점 무리의 무게중심(viewBox 32, 38.8)이다 — 렌즈가 잠깐 줄었다 돌아올
    때 한쪽으로 쏠리지 않게. `transform-box:view-box` 를 적는 것은 기준점을 그림의
    눈금으로 읽히게 하려는 것이다(엔진마다 기본값이 갈린 적이 있다). */
-.brand .mark .pupil{transform-box:view-box;transform-origin:32px 40.35px;
+.brand .mark .pupil{transform-box:view-box;transform-origin:32px 40.56px;
   transition:transform 190ms cubic-bezier(.22,.61,.36,1)}
 /* 회전은 축이 다르다 — 무리가 납작해지는 축은 제 무게중심이고, 뱅그르르 도는 축은
    **렌즈 중심**이다(REQ-20260914-002-62x6). 한 그룹에 둘을 얹으면 축이 하나뿐이라

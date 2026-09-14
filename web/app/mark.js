@@ -67,7 +67,7 @@
     }
   })();
 
-  var LENS_R = 28.2;               // 돔 반지름 (viewBox 눈금) — 테 안쪽이다
+  var LENS_R = 28.9;               // 돔 반지름 (viewBox 눈금) — 테 안쪽이다
   var MAX = LENS_R * 0.30;         // **이동 상한** — 돔 반지름의 30%
   var MAX_DOWN = LENS_R * 0.18;    // 아래쪽만 좁다 — 무리가 이미 중심보다 아래다
   var DOT_MAX = MAX * 1.05;       // 점 하나가 홀로 갈 수 있는 가장 먼 거리
