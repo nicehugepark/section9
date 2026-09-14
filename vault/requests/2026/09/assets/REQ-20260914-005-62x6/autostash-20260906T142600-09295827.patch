@@ -1,0 +1,219 @@
+diff --git a/bin/s9.py b/bin/s9.py
+index f5784b117..82740e0f0 100755
+--- a/bin/s9.py
++++ b/bin/s9.py
+@@ -10311,23 +10311,24 @@ def _sync_pull_cmd(timeout=8):
+     f = _sync_git("fetch", "--quiet", timeout=timeout)
+     if f.returncode != 0:
+         return f
+-    # 남이 담아 두거나 고치는 중인 것은 **index 째** 보관했다 되돌린다 (REQ-20260906-066).
+-    # 예전의 `--autostash` 는 되돌릴 때 index 를 잃었다 — 실제 발생 2026-09-06 12:38:
+-    # 검사에 막힌 commit 을 다시 시도하는 사이 sync 가 돌아 담아 둔 61파일이 풀렸고,
+-    # 두 번째 commit 에 3파일만 들어갔다. 깨끗한 트리면 보관 없이 바로 rebase 다.
+-    dirty = (_sync_git("status", "--porcelain", "--untracked-files=no").stdout or "").strip()
+-    if not dirty:
+-        return _sync_git("rebase", "-q", "@{u}", timeout=timeout)
+-    kept = _sync_git("stash", "push", "-q", "-m", "s9-sync: 남의 작업 보관", timeout=timeout)
+-    if kept.returncode != 0:
+-        return kept
+-    r = _sync_git("rebase", "-q", "@{u}", timeout=timeout)
+-    if r.returncode != 0:
+-        _sync_abort_rebase()               # 되돌리기 전에 rebase 잔재부터 — 충돌 위에 되돌리지 않는다
+-    back = _sync_git("stash", "pop", "-q", "--index", timeout=timeout)
+-    if back.returncode != 0:
+-        _sync_log("경고: 보관해 둔 남의 작업을 되돌리지 못했다 — `git stash list` 의 "
+-                  "「s9-sync: 남의 작업 보관」에 그대로 있다: " + (back.stderr or "").strip()[:200])
++    # 담아 둔(index) 것은 pull 뒤 다시 담는다 (REQ-20260906-066·082). `--autostash` 는
++    # 되돌릴 때 index 를 잃는다 — 실제 발생 2026-09-06 12:38: 검사에 막힌 commit 을 다시
++    # 시도하는 사이 sync 가 돌아 담아 둔 61파일이 풀렸다. 그래서 pull 전에 담긴 경로를
++    # 적어 두고 뒤에 `git add` 로 되담는다(내용은 autostash 가 되돌려 놓는다). 직접
++    # 보관·되돌리기(stash push/pop)는 쓰지 않는다 — 실제 발생 14:07~14:25: 문서를 동시에
++    # 고치는 다른 s9 명령과 겹치면 되돌리기가 실패해 보관함에 14건이 쌓이고 그 기록이
++    # 문서에서 사라졌다(REQ-20260906-082). autostash 는 같은 경합에서도 「충돌 시 보관함에
++    # 남긴다」로 끝나고 다음 회차의 pull 을 막지 않는다.
++    try:
++        staged = [n.strip() for n in (_sync_git("diff", "--cached", "--name-only").stdout or "")
++                  .splitlines() if n.strip() and not n.strip().startswith(tuple(SYNC_DATA_PATHS))]
++    except Exception:
++        staged = []
++    r = _sync_git("rebase", "--autostash", "-q", "@{u}", timeout=timeout)
++    if staged:
++        keep = [n for n in staged if os.path.exists(os.path.join(ROOT, n))]
++        if keep:
++            _sync_git("add", "--", *keep)
+     return r
+ 
+ 
+diff --git a/tests/test_sync_classify.py b/tests/test_sync_classify.py
+index ae17be8da..23c282fa1 100644
+--- a/tests/test_sync_classify.py
++++ b/tests/test_sync_classify.py
+@@ -48,7 +48,7 @@ class SyncClassify(unittest.TestCase):
+         def fake(*argv, timeout=6):
+             self.calls.append(argv)
+             # 「당기기」는 fetch 뒤 rebase 다 — 대본의 "pull" 은 그 rebase 에 답한다
+-            op = "pull" if argv[:2] == ("rebase", "-q") else argv[0]
++            op = "pull" if argv[:2] == ("rebase", "--autostash") else argv[0]
+             if op == "diff":
+                 return CP(out="vault/x.md\n")
+             if op in q and q[op]:
+@@ -79,7 +79,7 @@ class SyncClassify(unittest.TestCase):
+         self.assertEqual([e["attempt"] for e in pushes], [0, 1])
+         self.assertEqual(pushes[0]["kind"], "rejected")
+         # 재시도 사이에 pull 이 한 번 더 있었다
+-        self.assertEqual(sum(1 for c in self.calls if c[:2] == ("rebase", "-q")), 2)
++        self.assertEqual(sum(1 for c in self.calls if c[:2] == ("rebase", "--autostash")), 2)
+ 
+     # C2. 거부가 이어져도 백오프는 없다 — 다음 이벤트가 다시 민다
+     def test_c2_repeated_rejection_ends_without_backoff(self):
+@@ -111,7 +111,7 @@ class SyncClassify(unittest.TestCase):
+             self.calls.append(argv)
+             if argv[0] == "diff":
+                 return CP(out="vault/x.md\n")
+-            if argv[:2] == ("rebase", "-q"):
++            if argv[:2] == ("rebase", "--autostash"):
+                 raise subprocess.TimeoutExpired("git", timeout)
+             return CP()
+         with mock.patch.object(self.m, "_sync_git", fake), \
+@@ -155,7 +155,7 @@ class SyncClassify(unittest.TestCase):
+             self.calls.append(argv)
+             if argv[0] == "diff":
+                 return CP(out="vault/x.md\n")
+-            if argv[:2] == ("rebase", "-q"):
++            if argv[:2] == ("rebase", "--autostash"):
+                 return CP(1, self.CONF)
+             if argv[:2] == ("rebase", "--abort"):
+                 return CP(128, "fatal: could not move back to bd8e852\n")
+@@ -176,18 +176,22 @@ class SyncClassify(unittest.TestCase):
+         verbs = [c[0] for c in self.calls]
+         self.assertNotIn("pull", verbs, "pull 은 FETCH_HEAD 를 읽는다 — 겹친 fetch 에 선다")
+         i_fetch = verbs.index("fetch")
+-        i_rebase = next(i for i, c in enumerate(self.calls) if c[:2] == ("rebase", "-q"))
++        i_rebase = next(i for i, c in enumerate(self.calls) if c[:2] == ("rebase", "--autostash"))
+         self.assertLess(i_fetch, i_rebase)
+-        self.assertEqual(self.calls[i_rebase], ("rebase", "-q", "@{u}"))
+-        self.assertFalse([c for c in self.calls if c[:1] == ("stash",)], "깨끗한 트리에 보관을 걸었다")
++        self.assertEqual(self.calls[i_rebase], ("rebase", "--autostash", "-q", "@{u}"))
++        self.assertFalse([c for c in self.calls if c[:1] == ("stash",)], "sync 가 제 보관함을 만든다 — 되돌리기 실패가 기록을 삼킨다(REQ-20260906-082)")
++
++    # C13. 남이 담아 둔(git add) 변경은 pull 뒤 다시 담긴다 — autostash 가 index 를 풀어도
++    #      (REQ-20260906-066); sync 제 경로는 되담지 않고, 직접 보관(stash)은 쓰지 않는다(082)
++    def test_c13_staged_paths_are_restaged_after_the_pull(self):
++        os.makedirs(os.path.join(self.root, "bin"), exist_ok=True)
++        with open(os.path.join(self.root, "bin", "s9.py"), "w") as f:
++            f.write("# staged\n")
+ 
+-    # C13. 남이 담아 두거나 고치는 중인 것이 있으면 보관해 두고 rebase 한 뒤 **index 째** 되돌린다 —
+-    #      예전의 자동 보관(--autostash)은 되돌릴 때 index 를 잃었다 (실제 발생 2026-09-06 12:38, REQ-20260906-066)
+-    def test_c13_dirty_tree_is_kept_with_its_index_across_the_pull(self):
+         def fake(*argv, timeout=6):
+             self.calls.append(argv)
+-            if argv[:2] == ("status", "--porcelain"):
+-                return CP(out="M  bin/s9.py\n")
++            if argv[:3] == ("diff", "--cached", "--name-only") and "--" not in argv:
++                return CP(out="bin/s9.py\nvault/x.md\n")
+             if argv[0] == "diff":
+                 return CP(out="vault/x.md\n")
+             return CP()
+@@ -197,13 +201,11 @@ class SyncClassify(unittest.TestCase):
+             r = self.m.sync_run("t")
+         self.assertEqual(r, "ok")
+         verbs = [c[:2] for c in self.calls]
+-        i_keep = verbs.index(("stash", "push"))
+-        i_reb = verbs.index(("rebase", "-q"))
+-        i_back = verbs.index(("stash", "pop"))
+-        self.assertLess(i_keep, i_reb)
+-        self.assertLess(i_reb, i_back)
+-        self.assertIn("--index", self.calls[i_back], "index 없이 되돌리면 담아 둔 것이 풀린다")
+-        self.assertNotIn("--autostash", sum((list(c) for c in self.calls), []))
++        i_reb = verbs.index(("rebase", "--autostash"))
++        i_add = next(i for i, c in enumerate(self.calls) if c[:2] == ("add", "--") and "bin/s9.py" in c)
++        self.assertLess(i_reb, i_add, "되담기가 pull 앞에 있다")
++        self.assertNotIn("vault/x.md", self.calls[i_add], "sync 제 경로까지 되담는다")
++        self.assertFalse([c for c in self.calls if c[:1] == ("stash",)])
+ 
+     # C6. 관측 — commit/pull/push 단계가 한 줄씩
+     def test_c6_events_have_stage_ms_rc(self):
+diff --git a/tests/test_sync_transport.py b/tests/test_sync_transport.py
+index a6cf99ca8..67f33a0e5 100644
+--- a/tests/test_sync_transport.py
++++ b/tests/test_sync_transport.py
+@@ -47,7 +47,7 @@ class TransportUnit(unittest.TestCase):
+         def fake(*argv, timeout=6):
+             # 「당기기」는 fetch 뒤 rebase @{u} 다(REQ-20260906-001, FETCH_HEAD 경합) —
+             # 이 시험은 망을 오가는 단계만 세므로 그 rebase 를 pull 로 센다
+-            self.calls.append("pull" if argv[:2] == ("rebase", "-q") else argv[0])
++            self.calls.append("pull" if argv[:2] == ("rebase", "--autostash") else argv[0])
+             if argv[0] == "diff":
+                 return CP(out="vault/x.md\n")
+             return CP()
+diff --git a/vault/requests/2026/09/REQ-20260903-006-62x6.md b/vault/requests/2026/09/REQ-20260903-006-62x6.md
+index 8d11a36ec..3dc7ab8da 100644
+--- a/vault/requests/2026/09/REQ-20260903-006-62x6.md
++++ b/vault/requests/2026/09/REQ-20260903-006-62x6.md
+@@ -69,6 +69,10 @@ commit 00e3dcb — s9 sync: lease REQ-20260903-006-62x6
+ 
+ commit 4520536 — s9 sync: lease REQ-20260903-006-62x6
+ 
++### 2026-09-06T14:18:14+09:00 commit (by nicehugepark)
++
++commit 9f3b8c8 — s9 sync: REQ-20260903-006-62x6 open->in-progress
++
+ ### 2026-09-06T14:18:38+09:00 commit (by nicehugepark)
+ 
+ commit 734f879 — s9 sync: REQ-20260903-006-62x6 open->in-progress
+diff --git a/vault/requests/2026/09/REQ-20260906-079-62x6.md b/vault/requests/2026/09/REQ-20260906-079-62x6.md
+index 35fec01e9..4f5e78e83 100644
+--- a/vault/requests/2026/09/REQ-20260906-079-62x6.md
++++ b/vault/requests/2026/09/REQ-20260906-079-62x6.md
+@@ -19,6 +19,7 @@ priority: 50
+ creator: nicehugepark
+ origin: human
+ project_source: only
++lease: {"user": "nicehugepark", "machine": "DESKTOP-TEHV1KR", "session": "11b47d38", "since": "2026-09-06T14:18:17+09:00", "renewed": "2026-09-06T14:18:17+09:00"}
+ ---
+ 
+ ## Original
+@@ -40,6 +41,10 @@ commit 44c6a27 — s9 sync: new REQ-20260906-079-62x6
+ 
+ commit 1c0a892 — s9 sync: set REQ-20260906-079-62x6
+ 
++### 2026-09-06T14:18:11+09:00 commit (by nicehugepark)
++
++commit 37c3b5b — s9 sync: REQ-20260906-079-62x6 open->in-progress
++
+ ## History
+ - 2026-09-06T14:17:42+09:00 created by nicehugepark (status: open)
+ - 2026-09-06T14:18:11+09:00 status: open -> in-progress (by nicehugepark) — 리드 직접: 051 은 4샤드 부하 재현 8회 + CLOSE_WAIT 표본으로 판정, 맥 셋은 피어 세션 실측 대기
+diff --git a/vault/requests/2026/09/REQ-20260906-082-62x6.md b/vault/requests/2026/09/REQ-20260906-082-62x6.md
+index d0478875b..262591edc 100644
+--- a/vault/requests/2026/09/REQ-20260906-082-62x6.md
++++ b/vault/requests/2026/09/REQ-20260906-082-62x6.md
+@@ -15,14 +15,14 @@ relates_why: {}
+ tags: ["sync", "index"]
+ created: 2026-09-06T14:25:48+09:00
+ status_since: 2026-09-06T14:25:48+09:00
+-updated: 2026-09-06T14:25:55+09:00
++updated: 2026-09-06T14:25:58+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: derived
+ origin_actor: lead
+ origin_req: REQ-20260906-066-62x6
+ project_source: explicit
+-lease: {"user": "nicehugepark", "machine": "DESKTOP-TEHV1KR", "session": "11b47d38", "since": "2026-09-06T14:25:54+09:00", "renewed": "2026-09-06T14:25:57+09:00"}
++lease: {"user": "nicehugepark", "machine": "DESKTOP-TEHV1KR", "session": "11b47d38", "since": "2026-09-06T14:25:54+09:00", "renewed": "2026-09-06T14:25:58+09:00"}
+ ---
+ 
+ ## Original
+@@ -43,6 +43,10 @@ commit 903687c — s9 sync: REQ-20260906-082-62x6 open->in-progress
+ 
+ commit 816abe6 — s9 sync: lease REQ-20260906-082-62x6
+ 
++### 2026-09-06T14:25:58+09:00 commit (by nicehugepark)
++
++commit 64bb185 — s9 sync: note REQ-20260906-082-62x6
++
+ ## History
+ - 2026-09-06T14:25:48+09:00 created by nicehugepark (status: open)
+ - 2026-09-06T14:25:48+09:00 status: open -> in-progress (by nicehugepark) — 코드는 autostash + 되담기로 되돌렸다(시험 통과). 이제 보관함 14건을 오래된 것부터 apply 해 되살린다
