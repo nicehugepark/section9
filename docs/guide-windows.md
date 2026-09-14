@@ -1,6 +1,6 @@
 # section9 Windows 가이드 — 순수 Windows 와 WSL
 
-verified 2026-09-13 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행), 그리고 Claude Code native 로그인 실측 REQ-20260913-024(2026-09-13, 공식 설치기 `install.ps1` · `claude.exe` 2.1.270 · 같은 컴퓨터) · 아직 확인하지 못한 출력은 **(실측 예정 — REQ-20260913-016)** 으로 표시했고 그 목록은 맨 뒤 D장에 있습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
+verified 2026-09-14 · 기준 버전 0.9.0 (`s9 --version` → `section9 0.9.0`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행), 그리고 Claude Code native 로그인 실측 REQ-20260913-024(2026-09-13, 공식 설치기 `install.ps1` · `claude.exe` 2.1.270 · 같은 컴퓨터), 그리고 v0.9.0 릴리스 자산의 첫 실행 실측 REQ-20260913-021(2026-09-14, 같은 컴퓨터 — WSL 에서 받은 파일의 `SHA256SUMS` 대조, Windows 쪽 cmd.exe 에서 릴리스 zip 의 첫 실행 dry run) · Windows native 에서 아직 재지 않은 것은 그 자리에 「아직 재지 않았습니다」로 적었고, 무엇을 언제 어디서 쟀는지와 함께 맨 뒤 D장의 표 둘에 모았습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
 
 이 문서는 **Windows 컴퓨터에 section9 을 처음 설치해 첫 실행까지 가는 사람**을 위한 절차서입니다. 터미널(cmd.exe 또는 PowerShell)을 열 줄 알면 됩니다. GitHub 계정은 나중에 이어도 되고(C장), Claude 구독(Pro·Max·Team·Enterprise 중 하나)은 첫 세션을 열 때 필요합니다.
 
@@ -301,7 +301,7 @@ tar -xzf section9-0.9.0-linux-macos.tar.gz
 cd ~/section9 && bin/s9 code
 ```
 
-tar.gz 의 최상위 폴더가 `section9/` 이므로 홈에서 풀면 `~/section9` 가 됩니다. 릴리스 링크는 v0.9.0 릴리스를 실행한 뒤에 열립니다 **(실측 예정 — REQ-20260913-021)**.
+tar.gz 의 최상위 폴더가 `section9/` 이므로 홈에서 풀면 `~/section9` 가 됩니다. 릴리스 v0.9.0 은 2026-09-14 에 공개됐습니다. 위 링크로 받은 tar.gz 는 이 컴퓨터의 WSL 에서 `sha256sum -c SHA256SUMS` 가 OK 였고, 그 파일과 바이트가 같은 tar.gz 로 WSL 첫 실행 10/10(`s9 release try --ref v0.9.0`), 릴리스에서 직접 받은 파일로 맥 첫 실행 13/13 을 쟀습니다(REQ-20260913-021 · REQ-20260914-009).
 
 `s9 code` 가 하는 일과 출력은 리눅스와 같습니다(`docs/guide.md` 3장). WSL 에서만 다른 것:
 
@@ -360,22 +360,22 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 
 ### C-1. GitHub 잇기 — Settings › 저장소
 
-대시보드 **Settings › 저장소** 에 GitHub 연동 판이 있습니다 **(실측 예정 — REQ-20260913-009 화면 · REQ-20260913-008 API)**. 길은 둘입니다.
+대시보드 **Settings › 저장소** 에 「GitHub 연동」 판이 있습니다. 화면은 2026-09-13 에 WSL 에서 Chrome·WebKit 으로 눌러 확인했고(로컬 bare 저장소를 GitHub 삼아 잇기·끊기, REQ-20260913-009), 그 뒤의 API 와 명령은 같은 날 실제 GitHub 로 실측했습니다(REQ-20260913-008 — 아래). Windows native 의 대시보드에서는 아직 재지 않았습니다. 길은 둘입니다.
 
 | 길 | 무엇을 넣나 | 무엇이 일어나나 |
 | --- | --- | --- |
-| **있는 저장소 잇기** | GitHub 저장소 주소(`git@github.com:<계정>/<이름>.git` 또는 `https://…`) | 접근을 확인하고(`git ls-remote`), origin 을 설정하고, 첫 push 를 하고, `.s9-sync` 를 `remote` 로 바꿉니다. **비어 있지 않은 저장소는 거부**합니다 — 팀 저장소에 합류하는 길은 C-2 입니다 |
+| **이미 있는 저장소 잇기** | GitHub 저장소 URL(`git@github.com:<계정>/<이름>.git` 또는 `https://…`) | 접근을 확인하고(`git ls-remote`), origin 을 설정하고, 첫 push 를 하고, `.s9-sync` 를 `remote` 로 바꿉니다. **비어 있지 않은 저장소는 거부**합니다 — 팀 저장소에 합류하는 길은 C-2 입니다 |
 | **새 저장소 만들기** | 이름 · private 여부 · (조직이면) org | GitHub 에 저장소를 만든 뒤 위와 같이 잇습니다 |
 
-준비물: GitHub 에 쓸 권한. `gh auth login`(GitHub CLI — Windows: `winget install GitHub.cli`, 실측 예정) 또는 Settings › 외부 서비스에 GitHub 토큰. 화면이 둘 중 무엇이 준비됐는지와 잠긴 버튼의 사유를 한 줄로 보여 줍니다. 요청·지식 문서가 실리므로 **Private** 을 권합니다.
+준비물: GitHub 에 쓸 권한. `gh auth login`(GitHub CLI — Windows 에서는 `winget install GitHub.cli` 로 설치합니다. 이 설치와 로그인의 Windows 흐름은 아직 재지 않았습니다 — 이 컴퓨터의 Windows 에 `gh` 가 없었습니다, REQ-20260913-016) 또는 Settings › 외부 서비스에 GitHub 토큰. 화면이 둘 중 무엇이 준비됐는지와 잠긴 버튼의 사유를 한 줄로 보여 줍니다. 요청·지식 문서가 실리므로 **Private** 을 권합니다.
 
 이은 뒤의 두 번째 컴퓨터 절차(같은 저장소 받기 → `bin\s9 user attach <이름>` → `bin\s9 code`)와 충돌 해결은 `docs/guide.md` 6장과 같습니다. Windows 에서 push 권한 확인은 `ssh -T git@github.com` — Windows 10 이후에는 OpenSSH 클라이언트가 기본으로 들어 있어 cmd.exe·PowerShell 에서 그대로 됩니다.
 
-터미널로 같은 일을 하는 `s9 github …` 명령은 REQ-20260913-008 이 만듭니다 **(실측 예정)**. 끊으려면 같은 판의 **연결 끊기** — origin 을 제거하고 `.s9-sync` 를 `local` 로 되돌립니다.
+터미널로 같은 일을 하는 명령은 `s9 github status` · `s9 github link <URL>` · `s9 github create <이름> [--private|--public] [--org <조직>]` · `s9 github unlink` 입니다. 2026-09-13 에 WSL 에서 실제 GitHub 로 실측했습니다(REQ-20260913-008): `create s9-link-probe --private` → 저장소가 만들어지고 이어짐(`status` 에 origin · sync remote · gh 로그인) → `unlink` → `local` 로 → `link https://github.com/<계정>/s9-link-probe`(방금 만들어 우리 이력만 있는 저장소) → 잇고 push → 비어 있지 않은 저장소에 `link` → 거부. Windows native 에서는 `bin\s9 github …` 를 아직 재지 않았습니다. 끊으려면 같은 판의 **끊기** — 확인 창을 한 번 지나 origin 을 제거하고 `.s9-sync` 를 `local` 로 되돌립니다.
 
 ### C-2. 초대받은 프로젝트에 합류 — `--join`
 
-팀의 admin 이 Projects 탭에서 초대 메일을 보내면(REQ-20260913-010·012), 메일에 저장소 주소와 합류 명령이 실려 옵니다. 명령의 꼴은 판마다 이렇습니다 **(실측 예정 — REQ-20260913-013 구현 · REQ-20260913-016 Windows 확인)**:
+팀의 admin 이 Projects 탭의 **+ 초대하기** 로 초대 메일을 보내면(REQ-20260913-010·012), 메일에 저장소 주소와 합류 명령이 실려 옵니다. 초대와 합류는 2026-09-13 에 WSL 에서 쟀습니다 — 초대 창은 Chromium·WebKit 에서 SMTP 스텁으로 실제 발송 1통까지(REQ-20260913-012), `--join` 첫 실행은 로컬 bare 저장소를 GitHub 삼은 시험 10/10(합류·멱등·다른 URL 거부·문서 있는 자리 거부, REQ-20260913-013). 실제 메일 서버로의 발송과 Windows native 의 `bin\s9 code --join …` 은 아직 재지 않았습니다. 명령의 꼴은 판마다 이렇습니다:
 
 | 판 | 실행 디렉토리 | 명령 |
 | --- | --- | --- |
@@ -390,21 +390,38 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 
 ---
 
-## D. 실측 예정 목록 — REQ-20260913-016 이 채웁니다
+## D. 실측 기록 — 무엇을 언제 어디서 쟀고, Windows native 에서 무엇을 아직 재지 않았나
 
-이 문서에서 지어내지 않고 비워 둔 자리입니다. 실측이 끝나면 그 결과로 이 표의 줄이 사라지고 본문이 고쳐집니다.
+이 문서는 지어내지 않습니다. 본문의 출력·문구는 D-1 의 실측에서 왔고, 재지 않은 것은 본문의 그 자리에도 「아직 재지 않았습니다」로 적었습니다. 「Windows native」는 이 컴퓨터(Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로)의 cmd.exe 를 WSL 에서 interop 으로 띄운 것이고, 「WSL」은 같은 컴퓨터의 Ubuntu 입니다.
 
-| # | 자리 | 무엇을 재나 | 채우는 요청 |
+### D-1. 실측한 것
+
+| # | 자리 | 무엇을 쟀나 | 언제 · 어디서 | 근거 |
+| --- | --- | --- | --- | --- |
+| 1 | A-1 · B-1 | v0.9.0 릴리스 공개(워크플로 run 34830050365)와 자산 셋 `section9-0.9.0-linux-macos.tar.gz` · `section9-0.9.0-windows.zip` · `SHA256SUMS`, 받은 두 파일의 `sha256sum -c SHA256SUMS` OK, 받은 파일 = 태그에서 다시 지은 파일(바이트 동일) | 2026-09-14 · WSL | REQ-20260913-021 |
+| 2 | A-1 · A-3 · A-4 | 릴리스 zip 을 풀어 `bin\s9.cmd --version` → `section9 0.9.0`; 첫 실행 dry run(`S9_CODE_DRYRUN=1`, HOME·USERPROFILE·CLAUDE_CONFIG_DIR 을 임시 폴더로) exit 0 — 저장소를 새로 세우고, 훅·스킬·에이전트를 임시 설정에 설치하고, 9909 가 다른 section9 이라 9910 으로 대시보드를 띄우고, claude 실행 직전까지. 그날 저녁 zip 의 이름만 `-windows.zip` 으로 통일했고 내용(sha256 e3ed54dc…)은 같다 | 2026-09-14 · Windows native | REQ-20260913-021 · REQ-20260914-009 |
+| 3 | B-1 | tar.gz 첫 실행 — WSL 에서 받은 파일과 바이트가 같은 tar.gz 로 10/10(`s9 release try --ref v0.9.0`) · 맥에서 릴리스에서 직접 받아 SHA256SUMS 대조 뒤 13/13(`s9 release try --from-release v0.9.0`, Chrome·WebKit 캡처) | 2026-09-14 · WSL · 맥 | REQ-20260913-021 · REQ-20260914-009 |
+| 4 | A-2 | 공백이 든 경로에서의 첫 실행(훅 경로 결함을 찾아 고침) | 2026-09-13 · Windows native | REQ-20260913-016 |
+| 5 | A-3 | zip 첫 실행이 `git init`·첫 commit·`.s9-sync local` 을 만드는지와 그 출력 전문 — A-3 에 전문 | 2026-09-13 · Windows native | REQ-20260913-007 · 016 |
+| 6 | A-0 · A-3 | 훅 경로가 `.cmd` 로 settings.json 의 9개 이벤트에 들어가는지 · UTF-8 · CRLF · Claude Code native 의 설치(공식 설치기 `install.ps1`, `claude.exe` 2.1.270)와 로그인 없는 상태의 안내 줄(PATH 밖 경로 안내 포함) | 2026-09-13 · Windows native | REQ-20260913-016 · REQ-20260913-024 |
+| 7 | A-4 | `bin\s9 --version` 의 Windows 출력 — A-4 표 | 2026-09-13 · Windows native | REQ-20260913-016 |
+| 8 | A-7 ⑤ | 9909 를 다른 프로그램이 쓸 때의 Windows 문구 — A-7 ⑤ | 2026-09-13 · Windows native | REQ-20260913-016 |
+| 9 | C-1 | `s9 github` 의 `status`·`link`·`create`·`unlink` 와 `/api/github/*` — 실제 GitHub 로 비공개 저장소 만들기·잇기·끊기, 비어 있지 않은 저장소 거부 | 2026-09-13 · WSL | REQ-20260913-008 |
+| 10 | C-1 | Settings › 저장소의 「GitHub 연동」 판 — 「이미 있는 저장소 잇기」·「새 저장소 만들기」·「끊기」를 Chrome·WebKit 에서 눌러 확인(로컬 bare 저장소를 GitHub 삼음, 캡처 4장) | 2026-09-13 · WSL | REQ-20260913-009 |
+| 11 | C-2 | 초대 명령 `s9 project invite` 와 `POST /api/project/invite`(SMTP 스텁, 시험 10/10) · Projects 탭 「+ 초대하기」 창 — Chromium·WebKit 에서 SMTP 스텁으로 실제 발송 1통까지(캡처 4장) | 2026-09-13 · WSL | REQ-20260913-010 · 012 |
+| 12 | C-2 | `bin/s9 code --join <url> --project <slug>` 첫 실행 — 로컬 bare 저장소를 GitHub 삼아 합류·멱등·다른 URL 거부·문서 있는 자리 거부, 시험 10/10 | 2026-09-13 · WSL | REQ-20260913-013 |
+
+### D-2. Windows native 에서 아직 재지 않은 것
+
+| # | 자리 | 무엇을 아직 재지 않았나 | 왜 · 무엇으로 대신했나 |
 | --- | --- | --- | --- |
-| 1 | A-1 · B-1 | v0.9.0 릴리스 페이지와 받는 링크가 실제로 열리는지, `SHA256SUMS` 대조 | REQ-20260913-021 |
-| 2 | A-2 | 공백이 든 경로에서의 첫 실행 | **실측 완료 2026-09-13** (REQ-20260913-016) — A-2 에 반영 |
-| 3 | A-3 | zip 첫 실행이 `git init`·첫 commit·`.s9-sync local` 을 만드는지와 그 출력 전문(Windows) | **실측 완료 2026-09-13** (REQ-20260913-007 · 016) — A-3 에 전문 |
-| 4 | A-3 | 훅 경로가 `.cmd` 로 settings.json 에 들어가는지 · 로그인 상태 · UTF-8 · CRLF | **훅·UTF-8·CRLF 실측 완료 2026-09-13**; 로그인 상태 **실측 완료 2026-09-13** (REQ-20260913-024, `claude.exe` 2.1.270 — A-3 6번 · A-0 PATH 줄). 브라우저 로그인 뒤의 첫 세션 화면은 사람의 인증이 필요해 재지 않았다 |
-| 5 | A-4 | `bin\s9 --version` 의 Windows 출력 | **실측 완료 2026-09-13** — A-4 표 |
-| 6 | A-7 ⑤ | 9909 를 **다른 프로그램**이 쓸 때의 Windows 문구 | **실측 완료 2026-09-13** — A-7 ⑤ |
-| 7 | C-1 | Settings › 저장소의 GitHub 연동 판 — 라벨·버튼 이름·잠김 사유 | REQ-20260913-009 · 008 |
-| 8 | C-1 | `winget install GitHub.cli` 와 `gh auth login` 의 Windows 흐름 | 못 쟀다 — 이 컴퓨터에 `gh` 가 없고 설치는 주인의 컴퓨터라 하지 않았다(REQ-20260913-016 노트) |
-| 9 | C-2 | `bin\s9 code --join …` 의 Windows 출력과 합류 뒤 첫 화면 | REQ-20260913-013 · 016 |
+| 1 | A-3 | `bin\s9 code` 가 실제로 Claude Code 를 띄우는 것, 로그인 뒤의 첫 세션 화면, 훅이 실제로 실행되는지 | 두 번의 첫 실행(2026-09-13 · 09-14)이 모두 dry run 이라 claude 실행 직전에서 멈췄고, 로그인은 사람의 브라우저 인증이라 하지 않았다(REQ-20260913-016 · 024 · 021) |
+| 2 | A-3 | 콘솔 창을 닫았을 때 대시보드가 남는지 | WSL 에서 cmd.exe 를 interop 으로 띄우는 방식으로는 잴 수 없다(REQ-20260913-016 노트) |
+| 3 | A-4 | `bin\s9-doctor.cmd` 의 로그인 줄 | Windows 에서 쳤을 때 출력에 로그인 줄이 없었다 — 원인은 아직 확인하지 않았다(REQ-20260913-024 노트) |
+| 4 | C-1 | `winget install GitHub.cli` 와 `gh auth login` 의 Windows 흐름 | 이 컴퓨터의 Windows 에 `gh` 가 없어 재지 않았다(REQ-20260913-016 노트) |
+| 5 | C-1 | Windows 판 대시보드에서 GitHub 연동 누르기 · `bin\s9 github …` | WSL 에서만 쟀다(D-1 의 9·10). Windows 의 토큰 helper 는 Git for Windows 의 sh 에 기댄다 — 미검증(REQ-20260913-008 노트) |
+| 6 | C-2 | `bin\s9 code --join …` 의 Windows 출력과 합류 뒤 첫 화면 | WSL 에서 시험으로만 쟀다(D-1 의 12). REQ-20260913-013 노트: 「Windows 는 실행하지 못했다 — `--needs-machine` 요청으로」 |
+| 7 | C-2 | 실제 메일 서버(SMTP)로의 초대 메일 발송 — 어느 판이든 | SMTP 준비물이 없어 스텁으로 쟀다(REQ-20260913-010: 실제 발송은 준비물이 생긴 뒤 한 통 보내 본다) |
 
 ## 부록. 리눅스 명령 ↔ Windows 명령 대조표
 
