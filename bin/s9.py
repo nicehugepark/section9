@@ -12729,6 +12729,15 @@ def _sync_pull_cmd(timeout=8):
     f = _sync_git("fetch", "--quiet", timeout=timeout)
     if f.returncode != 0:
         return f
+    # 원격에 새 commit 이 없으면 rebase 를 걸지 않는다 (REQ-20260914-003-62x6, 실제 사고
+    # 2026-09-14 01:27·11:17): 당길 것이 없어도 `rebase --autostash` 는 커밋하지 않은
+    # 변경을 보관함으로 걷어 갔다가 되돌린다 — 그 사이 다른 작업자(생성기·commit)가
+    # 같은 파일을 쓰면 되돌리기가 실패하고, git 은 returncode 0 으로 끝내며 stderr 한 줄
+    # (「Applying autostash resulted in conflicts」)만 남긴 채 작업 트리를 HEAD 로 둔다.
+    # 회차의 대부분은 당길 것이 없다 — 그 회차에는 걷었다 되돌리는 일 자체를 하지 않는다.
+    behind = _sync_git("rev-list", "--count", "HEAD..@{u}", timeout=timeout)
+    if behind.returncode == 0 and (behind.stdout or "").strip() == "0":
+        return behind
     # 담아 둔(index) 것은 pull 뒤 다시 담는다 (REQ-20260906-066·082). `--autostash` 는
     # 되돌릴 때 index 를 잃는다 — 실제 발생 2026-09-06 12:38: 검사에 막힌 commit 을 다시
     # 시도하는 사이 sync 가 돌아 담아 둔 61파일이 풀렸다. 그래서 pull 전에 담긴 경로를
@@ -12742,7 +12751,11 @@ def _sync_pull_cmd(timeout=8):
                   .split("\0") if n.strip() and not n.startswith(tuple(SYNC_DATA_PATHS))]
     except Exception:
         staged = []
+    stash_before = (_sync_git("rev-parse", "-q", "--verify", "refs/stash").stdout or "").strip()
     r = _sync_git("rebase", "--autostash", "-q", "@{u}", timeout=timeout)
+    if r.returncode == 0:
+        # rebase 는 끝났는데 보관함이 남았으면 되돌리기가 실패한 것이다 (REQ-20260914-003-62x6)
+        _sync_reclaim_autostash(stash_before)
     if staged:
         keep = [n for n in staged if os.path.exists(os.path.join(ROOT, n))]
         if keep:
@@ -12868,6 +12881,56 @@ def _sync_restore_autostash(rb):
         os.makedirs(os.path.dirname(SYNC_ORPHAN_STASH), exist_ok=True)
         with open(SYNC_ORPHAN_STASH, "a", encoding="utf-8") as f:
             f.write(f"{now_iso()} {sha}\n")
+    except OSError:
+        pass
+    return ""
+
+
+def _sync_reclaim_autostash(before):
+    """rebase 는 끝났는데 보관함(autostash)이 남았으면 작업 트리에 되돌린다 (REQ-20260914-003-62x6).
+
+    실제 사고 2026-09-14 01:27·11:17 — designer 가 마크 파일(web/assets 일곱·index.html)을
+    굽는 사이 동기화의 `rebase --autostash` 가 돌았다. rebase 자체는 성공했는데 마지막
+    단계의 되돌리기(`stash apply`)가 「그 사이 바뀐 파일」에 막혀 실패했고, git 은
+    보관함을 `autostash` 이름으로 남기고 **returncode 0** 으로 끝났다. 작업 트리의 추적
+    파일은 HEAD 로 돌아가 있었고, 알려 주는 것은 stderr 한 줄뿐이었다 — 아무도 읽지
+    않는 자리다. 두 번 다 사람이 다시 만들었고, `git stash list` 에는 그런 autostash 가
+    다섯 남아 있었다(09-06 ~ 09-14).
+
+    `_sync_restore_autostash` 는 rebase 가 **실패한** 자리(.git/rebase-merge/autostash)를
+    되돌리고, 여기는 rebase 가 **성공한** 자리를 되돌린다. 남의 손으로 넣은 보관함
+    (이름이 autostash 가 아닌 것)은 건드리지 않는다. 되돌리지 못하면(그 파일을 그 사이
+    남이 다시 썼으면 덮지 않는다) 소리를 낸다 — sync.log 와 state/sync-stash-orphan.txt
+    에 sha 를 적고, 보관함은 그대로 둔다. `before` 는 rebase 전 refs/stash 의 sha 다.
+    """
+    after = (_sync_git("rev-parse", "-q", "--verify", "refs/stash").stdout or "").strip()
+    if not after or after == (before or ""):
+        return ""
+    # 이름은 reflog 쪽에 있다(`git stash list` 가 보여 주는 그 줄) — commit 제목은
+    # 「WIP on main: …」라 가르지 못한다.
+    subject = (_sync_git("log", "-g", "-1", "--format=%gs", "refs/stash").stdout or "").strip()
+    if not subject.endswith("autostash"):
+        return ""
+    err = ""
+    for attempt in range(3):
+        r = _sync_git("stash", "apply", "--index", after, timeout=20)
+        if r.returncode != 0:          # index 까지는 못 얹어도 내용은 얹는다
+            r = _sync_git("stash", "apply", after, timeout=20)
+        if r.returncode == 0:
+            top = (_sync_git("rev-parse", "-q", "--verify", "refs/stash").stdout or "").strip()
+            if top == after:
+                _sync_git("stash", "drop", "-q", "stash@{0}", timeout=10)
+            _sync_log(f"↺ rebase 뒤 남은 보관함을 작업 트리에 되돌렸다 "
+                      f"(autostash {after[:8]}, {attempt + 1}회째)")
+            return after
+        err = (r.stderr or r.stdout or "").strip()
+        time.sleep(0.3 * (attempt + 1))
+    _sync_log(f"⚠ rebase 뒤 남은 보관함을 되돌리지 못했다 — 그 sha 는 {after} 이고, "
+              f"`git stash apply {after}` 로 손수 되돌릴 수 있다: {err[:200]}")
+    try:
+        os.makedirs(os.path.dirname(SYNC_ORPHAN_STASH), exist_ok=True)
+        with open(SYNC_ORPHAN_STASH, "a", encoding="utf-8") as f:
+            f.write(f"{now_iso()} {after}\n")
     except OSError:
         pass
     return ""
