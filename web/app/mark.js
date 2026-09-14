@@ -150,15 +150,20 @@
 
   /* 구체를 도는 것처럼 지나간다 — 축이 `deg` 인 회전. t 는 0(가운데)에서
      1(가장자리). 진행 방향으로 납작해지고, 그 방향으로 밀려 테 뒤로 들어간다. */
-  function slide(deg, t, ms, ease) {
+  function slide(deg, t, ms, ease, wob) {
     var th = deg * Math.PI / 180;
     var ux = -Math.sin(th), uy = Math.cos(th);      // 진행 방향(축의 직각)
     var k = Math.cos(t * Math.PI / 2);              // 그 방향의 배율 — 가장자리에서 0
     var c = ux, s2 = uy;
     var a = k * c * c + s2 * s2, b = (k - 1) * c * s2, d = k * s2 * s2 + c * c;
     var off = HIDE * Math.sin(t * Math.PI / 2);
+    var wx = 0, wy = 0;
+    if (wob) {                       // 진행 방향의 직각으로 잔 흔들림 — 비틀거리며
+      var w = Math.sin(t * Math.PI * 5) * wob;
+      wx = -uy * w; wy = ux * w;
+    }
     css(pupil, "matrix(" + a.toFixed(4) + "," + b.toFixed(4) + "," + b.toFixed(4) + ","
-        + d.toFixed(4) + "," + (ux * off).toFixed(2) + "," + (uy * off).toFixed(2) + ")",
+        + d.toFixed(4) + "," + (ux * off + wx).toFixed(2) + "," + (uy * off + wy).toFixed(2) + ")",
         ms, ease);
   }
 
@@ -431,102 +436,58 @@
      그래서 축·바퀴마다 맺음을 둘씩만 고른 스물넷이다. 무리가 굳은 채 구르는 것뿐
      — 점이 따로 노는 것은 없다. */
 
-  var ROLL_AXES = [
-    {n: "세로축", d: 0}, {n: "가로축", d: 90},
-    {n: "오른쪽 비스듬히", d: 35}, {n: "왼쪽 비스듬히", d: -35}
+  /* 굴러가는 **방위** 여덟 (주인 2026-09-14 17:45: 「구르기는 방향과 축을 정말
+     다양하게 하도록 해라」). 종전에는 축 넷에 방향이 한쪽뿐이었다 — 축이 세로면
+     늘 같은 쪽으로만 굴렀다. 이제 표는 **어디로 굴러가는가**로 갈린다.
+     `slide()` 는 축 각을 받으므로 진행 방향 u=(-sinθ, cosθ) 을 뒤집어 축을 구한다. */
+  var ROLL_DIRS = [
+    {n: "위로", x: 0, y: -1}, {n: "오른쪽 위로", x: 0.71, y: -0.71},
+    {n: "오른쪽으로", x: 1, y: 0}, {n: "오른쪽 아래로", x: 0.71, y: 0.71},
+    {n: "아래로", x: 0, y: 1}, {n: "왼쪽 아래로", x: -0.71, y: 0.71},
+    {n: "왼쪽으로", x: -1, y: 0}, {n: "왼쪽 위로", x: -0.71, y: -0.71}
   ];
-  var ROLL_TURNS = [
-    {n: "반 바퀴", t: 0.5}, {n: "한 바퀴", t: 1},
-    {n: "두 바퀴", t: 2}, {n: "세 바퀴", t: 3}
-  ];
-  /* 속도를 되살렸다 (주인 2026-09-14 17:35). 무리가 그냥 옮겨 다닐 때는 「보통」이
-     「느리게」와 눈으로 안 갈렸지만(v8), **구르기에서는 갈린다** — 같은 한 바퀴라도
-     느리면 굴러가는 것이고 빠르면 휙 도는 것이다. 걸음 수와 간격이 함께 바뀐다. */
-  var ROLL_SPEEDS = [
-    {n: "느리게", steps: 8, gap: 110}, {n: "보통", steps: 6, gap: 70},
-    {n: "빠르게", steps: 5, gap: 38}
-  ];
-  var ROLL_FINS = [
-    {n: "부드럽게", ease: EASE_IO, end: "제자리"},
-    {n: "툭", ease: LINEAR, end: "제자리"},
-    {n: "튕겨 멈춤", ease: EASE_IO, end: "흔들리며"},
-    {n: "감속", ease: EASE_IN, end: "제자리"},
-    {n: "반대편에서 멈춤", ease: EASE_IO, end: "반대편"}
-  ];
-  /* 축·바퀴마다 (속도, 맺음) 셋씩 — 축 4 × 바퀴 4 × 3 = 48. 240 가지를 다 넣으면
-     같은 축·같은 바퀴에서 맺음만 다른 것이 대부분이라, 축·바퀴마다 **속도가 서로
-     다른** 셋을 골라 느림·보통·빠름이 어느 자리에서도 한 번씩 나오게 했다. */
-  var ROLLS = [
-    [0,0,0,0],[0,0,1,2],[0,0,2,1], [0,1,1,1],[0,1,2,4],[0,1,0,3],
-    [0,2,2,3],[0,2,0,0],[0,2,1,2], [0,3,0,4],[0,3,2,2],[0,3,1,0],
-    [1,0,1,1],[1,0,2,3],[1,0,0,0], [1,1,0,0],[1,1,2,2],[1,1,1,4],
-    [1,2,2,4],[1,2,1,1],[1,2,0,3], [1,3,1,3],[1,3,0,2],[1,3,2,0],
-    [2,0,2,2],[2,0,0,4],[2,0,1,3], [2,1,1,3],[2,1,0,0],[2,1,2,1],
-    [2,2,0,1],[2,2,2,0],[2,2,1,2], [2,3,2,1],[2,3,1,4],[2,3,0,3],
-    [3,0,0,3],[3,0,1,0],[3,0,2,4], [3,1,2,0],[3,1,1,2],[3,1,0,1],
-    [3,2,1,0],[3,2,0,2],[3,2,2,3], [3,3,1,1],[3,3,0,4],[3,3,2,2]
+  function dirAxis(d) { return Math.atan2(-d.x, d.y) * 180 / Math.PI; }
+
+  /* 구르는 **꼴** 여섯 — 같은 방위라도 이것이 다르면 눈이 갈라 본다. */
+  var ROLL_SHAPES = [
+    {n: "곧게", ax: function (p, t, a) { return a; }, wob: 0},
+    {n: "휘어져", ax: function (p, t, a) { return a + (t - 0.5) * 54; }, wob: 0},
+    {n: "텀블링으로", ax: function (p, t, a) { return a + p * 90; }, wob: 0},
+    {n: "비틀거리며", ax: function (p, t, a) { return a; }, wob: 3.2},
+    {n: "반동으로", ax: function (p, t, a) { return a; }, wob: 0, half: true},
+    {n: "8자로", ax: function (p, t, a) { return a + (p % 2 ? 68 : -68); }, wob: 0}
   ];
 
-  function landing(end, done) {
-    if (end === "반대편") {
-      var s2 = sign();
-      seq([[300, function () { P(MAX * 0.7 * s2, 0, 280, {ease: EASE_IO}); }],
-           [320, function () { rest(300); }]], done);
-    } else if (end === "흔들리며") {
-      seq([[120, function () { P(MAX * 0.55, 0, 110, {ease: EASE_IO}); }],
-           [110, function () { P(-MAX * 0.34, 0, 100, {ease: EASE_IO}); }],
-           [100, function () { P(MAX * 0.18, 0, 90, {ease: EASE_IO}); }],
-           [220, function () { rest(200); }]], done);
-    } else { rest(200); wait(220, done); }
-  }
-
-  /* 한 「지나감」 — 납작해지며 테 뒤로 갔다가, 반 바퀴면 같은 쪽에서 한 바퀴면
-     반대쪽에서 펴지며 돌아온다. 두·세 바퀴는 이것을 거듭한다.
-     숨는 시간은 한 장면 안팎(80~180ms)이다 — 길면 눈이 사라진 것으로 보인다. */
-  /* 바퀴가 늘면 한 바퀴의 걸음을 줄인다 — 안 그러면 「느리게 세 바퀴」가 6.6초가
-     되어 시계를 막는다(첫 띠에서 잡혔다). 같은 그림을 세 번 보는 것이라 걸음을
-     줄여도 느린 맛은 남는다. 어느 구르기도 3초를 넘지 않는다. */
-  function rollPace(sp, turns) {
-    var k = turns >= 3 ? 0.45 : (turns >= 2 ? 0.7 : 1);
-    return {steps: k < 1 ? Math.max(4, sp.steps - 2) : sp.steps,
-            gap: Math.max(26, Math.round(sp.gap * k))};
-  }
-
-  function roll(deg, turns, sp0, ease, end, done) {
-    var sp = rollPace(sp0, turns);
-    var same = turns === 0.5, left = Math.max(1, Math.round(turns)), a = deg;
-    (function next() {
-      if (left-- <= 0) { return landing(end, done); }
-      var b = same ? a : a + 180;
-      ramp(sp.steps, sp.gap, function (t) { slide(a, t, sp.gap, ease); }, function () {
-        wait(pick([80, 180]), function () {
-          slide(b, 1, 0);
-          wait(30, function () {
-            ramp(sp.steps, sp.gap, function (t) { slide(b, 1 - t, sp.gap, LINEAR); },
-              function () { a = b; next(); });
-          });
-        });
-      });
-    })();
-  }
-
-  function rollMs(tn, sp0) {
-    var sp = rollPace(sp0, tn.t);
-    return Math.max(1, Math.round(tn.t)) * (sp.steps * sp.gap * 2 + 260) + 360;
+  /* 표에 올리는 것 — 방위 8 × 되돌아옴 2 × 꼴 6 = 96. 속도·바퀴·맺음은 자리마다
+     돌려 가며 물려 어느 둘도 같은 벌이 되지 않게 했다. 곱한 것을 다 올리지 않는
+     까닭은 그 셋이 **방위·꼴만큼 눈에 갈리지 않기** 때문이다 — 갈리는 축으로만
+     표를 늘리고 나머지는 자리마다 달리 물린다. */
+  function rollName(d, back, sh, tn, sp, fi) {
+    return d.n.replace(/로$/, back ? "에서" : "로") + " " + sh.n + " " + tn.n
+           + "·" + sp.n + "·" + fi.n;
   }
 
   (function () {
-    var i, ax, tn, sp, fi;
-    for (i = 0; i < ROLLS.length; i++) {
-      ax = ROLL_AXES[ROLLS[i][0]]; tn = ROLL_TURNS[ROLLS[i][1]];
-      sp = ROLL_SPEEDS[ROLLS[i][2]]; fi = ROLL_FINS[ROLLS[i][3]];
-      (function (ax, tn, sp, fi) {
-        TRICKS.push({
-          name: ax.n + " " + tn.n + "·" + sp.n + "·" + fi.n,
-          fam: "구르기", rare: tn.t >= 2 ? "드묾" : "가끔", ms: rollMs(tn, sp), hides: true,
-          run: function (done) { roll(ax.d * sign(), tn.t, sp, fi.ease, fi.end, done); }
-        });
-      })(ax, tn, sp, fi);
+    var di, bk, si, k = 0;
+    for (di = 0; di < ROLL_DIRS.length; di++) {
+      for (bk = 0; bk < 2; bk++) {
+        for (si = 0; si < ROLL_SHAPES.length; si++) {
+          var d = ROLL_DIRS[di], sh = ROLL_SHAPES[si];
+          var tn = sh.half ? ROLL_TURNS[0] : ROLL_TURNS[1 + (k % 3)];
+          var sp = ROLL_SPEEDS[(di + si) % 3];
+          var fi = ROLL_FINS[(di * 2 + si) % 5];
+          k++;
+          (function (d, back, sh, tn, sp, fi) {
+            TRICKS.push({
+              name: rollName(d, back, sh, tn, sp, fi), fam: "구르기",
+              rare: tn.t >= 2 ? "드묾" : "가끔", ms: rollMs(tn, sp), hides: true,
+              run: function (done) {
+                roll(dirAxis(d) + (back ? 180 : 0), sh, tn.t, sp, fi.ease, fi.end, done);
+              }
+            });
+          })(d, bk === 1, sh, tn, sp, fi);
+        }
+      }
     }
   })();
 
@@ -540,15 +501,15 @@
       }});
     TRICKS.push({name: "데구르르", fam: "구르기", rare: "흔함", ms: rollMs(ROLL_TURNS[2], S0),
       run: function (done) {            // 느리게 두 바퀴 굴러가며 감속
-        roll(rnd(-20, 20), 2, S0, EASE_IN, "제자리", done);
+        roll(rnd(0, 360), ROLL_SHAPES[0], 2, S0, EASE_IN, "제자리", done);
       }});
     TRICKS.push({name: "데굴데굴", fam: "구르기", rare: "흔함", ms: rollMs(ROLL_TURNS[3], S1),
       run: function (done) {            // 통통 튀며 세 바퀴
-        roll(rnd(-25, 25), 3, S1, BOUNCE, "흔들리며", done);
+        roll(rnd(0, 360), ROLL_SHAPES[3], 3, S1, BOUNCE, "흔들리며", done);
       }});
     TRICKS.push({name: "휘리리릭", fam: "구르기", rare: "흔함", ms: rollMs(ROLL_TURNS[3], S2),
       run: function (done) {            // 빠르게 세 바퀴 돌고 탁 멈춤
-        roll(rnd(-40, 40) + 90 * (Math.random() < 0.5 ? 0 : 1), 3, S2, LINEAR, "제자리", done);
+        roll(rnd(0, 360), ROLL_SHAPES[2], 3, S2, LINEAR, "제자리", done);
       }});
   })();
 

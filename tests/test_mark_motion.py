@@ -227,10 +227,11 @@ class TheTrickTableIsWhole(unittest.TestCase):
             i = src.index("var %s = [" % name)
             return src[i:src.index("\n  ];", i)].count('{n: "')
         chains = src[src.index("var CHAINS = ["):src.index("\n  ];", src.index("var CHAINS = ["))]
-        rolls = src[src.index("var ROLLS = ["):src.index("\n  ];", src.index("var ROLLS = ["))]
-        # 구르기 = 표에서 곱아 낸 것(ROLLS) + 이름으로 지은 것(빙그르르·데구르르 …)
+        # 구르기 = 방위 × 되돌아옴(2) × 꼴 + 이름으로 지은 것(빙그르르·데구르르 …)
+        dirs = len(re.findall(r'\{n: "[^"]+", x:', src))
+        shapes = len(re.findall(r'\{n: "[^"]+", ax:', src))
         named = len(re.findall(r'fam: "구르기", rare:', src))
-        return (hand, arr("PATHS"), arr("SPEEDS"), rolls.count("[") - 1 + named,
+        return (hand, arr("PATHS"), arr("SPEEDS"), dirs * 2 * shapes + named,
                 chains.count("[\""))
 
     def test_n6_the_table_is_big_and_the_three_dots_stay_one_gaze(self):
@@ -245,6 +246,14 @@ class TheTrickTableIsWhole(unittest.TestCase):
         self.assertGreaterEqual(rolls, 40,
                                 "구르기가 %d 가지뿐이다 — 주인이 보고 싶어 하는 갈래라 "
                                 "마흔은 넘어야 한다(주인 2026-09-14 17:35)" % rolls)
+        # 방위와 꼴 — 구르기가 갈리는 두 축
+        dirs = len(re.findall(r'\{n: "[^"]+", x:', src))
+        shapes = len(re.findall(r'\{n: "[^"]+", ax:', src))
+        self.assertGreaterEqual(dirs, 8, "굴러가는 방위가 %d 뿐이다 — 여덟 방위는 있어야 한다" % dirs)
+        self.assertGreaterEqual(shapes, 5, "구르는 꼴이 %d 뿐이다 — 다섯은 있어야 한다" % shapes)
+        self.assertIn('back ? "에서" : "로"', src,
+                      "굴러가는 쪽과 되돌아오는 쪽을 가르지 않는다 — 방위가 한쪽뿐이면 "
+                      "같은 그림이 절반이다")
         # 의성어 넷은 이름 그대로 표에 있어야 한다
         for w in ("빙그르르", "데구르르", "데굴데굴", "휘리리릭"):
             with self.subTest(w):
@@ -302,10 +311,7 @@ class TheTrickTableIsWhole(unittest.TestCase):
                           (("홀로", "흩어", "자리 바꾸기", "물결"), "점 셋이 따로 노는 재주")):
             with self.subTest(why):
                 self.assertTrue(any(w in joined for w in want), "%s 가 표에 없다" % why)
-        # 축이 다른 회전은 구르기 가족에 산다 — 축 이름이 셋 이상이어야 한다
-        ax = src[src.index("var ROLL_AXES = ["):src.index("\n  ];", src.index("var ROLL_AXES = ["))]
-        self.assertGreaterEqual(len(re.findall(r'\{n: "', ax)), 3,
-                                "구르기의 축이 셋도 안 된다 — 세로·가로·비스듬히는 있어야 한다")
+        # 축이 다른 회전은 구르기 가족의 방위가 맡는다(위에서 여덟 이상을 이미 봤다)
         self.assertGreaterEqual(chains, 6, "연쇄 재주가 여섯도 안 된다")
 
     def test_n6b_the_clock_yields_and_the_brushes_cut_at_the_dome(self):
