@@ -924,15 +924,24 @@ bin/s9 code
 
 ### 충돌 — `s9 sync resolve`
 
-두 기계가 같은 문서를 서로 다르게 고치고 merge driver 도 못 합치면, 전송이 그 자리에서 서고 `s9 sync --status` 에 **충돌 — s9 sync resolve 필요** 가 뜹니다. 그 뒤로는 push 도 pull 도 밀립니다. 푸는 법은 문서마다 한쪽을 고르는 것입니다.
+두 기계가 같은 자리를 서로 다르게 고치고 merge driver 도 못 합치면, 전송이 그 자리에서 서고 `s9 sync --status` 에 **충돌 — s9 sync resolve 필요** 가 뜹니다. 그 뒤로는 push 도 pull 도 밀립니다. 푸는 법은 한쪽을 고르는 것입니다.
+
+무엇이 충돌했는지 모를 때는 **지목 없이 한 번** 칩니다 — 충돌한 파일, 양쪽의 commit, 그리고 그대로 칠 수 있는 확정 명령이 나옵니다.
 
 ```
-~/section9/bin/s9 sync resolve REQ-20260906-040 --take mine     # 내 로컬 본으로 확정
-~/section9/bin/s9 sync resolve REQ-20260906-040 --take theirs   # GitHub(origin) 본으로 확정
+~/section9/bin/s9 sync resolve                                  # 무엇이 막혔는지 보기
 ```
 
-- 고르기 전에 양쪽 본을 `state/sync-conflict/<id>.mine.md` · `.theirs.md` 로 남깁니다 — 진 쪽이 사라지지 않습니다. 
-- 지목하지 않은 문서가 충돌하면 기계가 대신 고르지 않고 멈춘 뒤 그 id 를 알려 줍니다. 
+```
+~/section9/bin/s9 sync resolve REQ-20260906-040 --take mine     # 문서 — 내 로컬 본으로 확정
+~/section9/bin/s9 sync resolve REQ-20260906-040 --take theirs   # 문서 — GitHub(origin) 본으로 확정
+~/section9/bin/s9 sync resolve --paths tests/test_x.py --take theirs   # 문서가 아닌 파일
+```
+
+- 문서는 **id** 로, 코드·설정처럼 문서가 아닌 파일은 `--paths` 뒤에 **경로**로 지목합니다. 둘을 한 번에 적어도 됩니다. 
+- 고르기 전에 양쪽 본을 `state/sync-conflict/` 아래에 남깁니다 — 진 쪽이 사라지지 않습니다(문서는 `<id>.mine.md`, 그 밖은 경로를 편 `tests__test_x.py.mine`). 
+- 지목하지 않은 자리가 충돌하면 기계가 대신 고르지 않고 멈춘 뒤 그 이름을 알려 줍니다 — 그 이름을 그대로 다시 적어 함께 지목하면 됩니다. 
+- 같은 고침이 두 기계에서 따로 담긴 것이면 「두 쪽이 거의 같습니다」라고 짚어 줍니다. 그중 한쪽을 골랐을 때 내 commit 에 남는 것이 없으면 그 commit 은 그대로 지나갑니다. 
 - 아직 보내지 못한 commit 을 파일로 뽑아 두려면 `s9 sync rescue` — `state/sync-rescue/*.patch`. 
 
 **맥에서 걸리는 것이 있으면** `bin/s9 doctor --live` 출력과 함께 요청으로 남겨 주십시오. 이 절차는 리눅스·WSL 에서 검증됐고, 맥은 2026-09-13 에 세션 감지·브라우저 열기를 실측했습니다(2.2 절). 

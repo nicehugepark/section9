@@ -190,8 +190,9 @@ s9 code
 `s9 sync --status` 로 아직 보내지 못한 commit 이 있는지, `git push` 가 권한 오류를 내는지 본다 —
 두 번째 기계의 ssh 키가 GitHub 에 등록돼 있어야 한다.
 
-`state/`(포트·세션·수신함)와 `index/` 는 기계마다 따로다. 충돌한 문서는 `s9 sync resolve <id>`
-로 한쪽을 확정하고, 보내지 못한 commit 은 `s9 sync rescue` 로 패치 파일로 내보낸다.
+`state/`(포트·세션·수신함)와 `index/` 는 기계마다 따로다. 무엇이 충돌했는지는 `s9 sync resolve`
+를 지목 없이 한 번 치면 나오고, 확정은 문서면 `s9 sync resolve <id> --take mine|theirs`,
+코드·설정이면 `--paths <파일>` 이다. 보내지 못한 commit 은 `s9 sync rescue` 로 패치 파일로 내보낸다.
 
 ### ② 팀 인스턴스 저장소 (관리자용)
 

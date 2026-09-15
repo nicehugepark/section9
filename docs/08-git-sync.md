@@ -65,7 +65,7 @@ rebase → push** 한다. 이 문서는 그 동작을 코드(`bin/s9.py` 의 `sy
 | 종류 | 뜻 | 다음 |
 |---|---|---|
 | `rejected` | 남이 먼저 push 했다 | 즉시 fetch+rebase 후 재시도(3회) |
-| `conflict` | 같은 문서를 두 기계가 고쳤고 병합 드라이버도 못 합쳤다 | 멈춤. `s9 sync resolve`(6절) |
+| `conflict` | 같은 자리(문서든 코드든)를 두 기계가 고쳤고 병합 드라이버도 못 합쳤다 | 멈춤. 파일 이름·두 commit 을 `state/.sync-conflict.json` 에 적고 `s9 sync resolve`(6절) |
 | `untracked` | 추적 안 되는 파일이 rebase 자리를 막는다 | sync-rescue 로 옮기고 1회 재시도 |
 | `protected` | branch 보호 규칙(PR 필수) | 재시도 없음 — 표면화 |
 | `net` | 네트워크·인증·시간 초과 | 60초 동안 로컬 commit 만 하고 전송은 미룬다(backoff, `state/.sync-fail.ts`) |
@@ -97,7 +97,8 @@ rebase → push** 한다. 이 문서는 그 동작을 코드(`bin/s9.py` 의 `sy
 | `s9 sync --stats [--json]` | 단계별(commit·pull·push) 지연 p50/p95 와 push 거부율 — `state/sync.jsonl` |
 | `s9 sync --on` / `--off` | `remote` / `local`. 마커가 없으면 거부 |
 | `s9 sync` | 수동 1회(`sync_run("manual")`) |
-| `s9 sync resolve <id…> --take mine\|theirs` | 충돌 문서를 내 로컬 본 / origin 본으로 확정하고 rebase 를 잇는다. 고르기 전에 양쪽을 `state/sync-conflict/<id>.mine.md`·`.theirs.md` 로 남긴다. 지목하지 않은 문서가 충돌하면 abort 하고 그 id 를 알려 준다 |
+| `s9 sync resolve` | (지목 없이) 지금 막힌 충돌을 보여 준다 — 파일, 양쪽 commit, 그대로 칠 수 있는 확정 명령. 사실은 `state/.sync-conflict.json` 에 rebase 가 선 그 순간 적힌다(abort 하면 사라지기 때문) |
+| `s9 sync resolve <id…> [--paths <파일…>] --take mine\|theirs` | 충돌을 내 로컬 본 / origin 본으로 확정하고 rebase 를 잇는다. 문서는 **id**, 그 밖의 파일은 **경로**(`--paths`)로 지목하며 섞어 쓸 수 있다. 고르기 전에 양쪽을 `state/sync-conflict/` 아래에 남긴다(문서 `<id>.mine.md`, 그 밖은 `tests__test_x.py.mine`). 지목하지 않은 자리가 충돌하면 abort 하고 그 이름을 알려 준다. 고른 뒤 내 commit 에 남는 것이 없으면 그 commit 은 `--skip` 으로 지나간다 — 같은 고침이 두 기계에서 따로 담겼다는 뜻이다 |
 | `s9 sync rescue` | 아직 보내지 못한 commit 을 `state/sync-rescue/NNNN-*.patch` 로 뽑는다(`format-patch @{upstream}..HEAD`). 되살리기는 `git am` |
 
 ## 7. 두 번째 기계에 필요한 것
