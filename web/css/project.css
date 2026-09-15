@@ -86,6 +86,22 @@ select.pjc{padding-right:4px}
 .pjlist .pjhead .more{display:inline-block;width:auto;margin:0;padding:0;
   font-size:11px;text-align:left;color:var(--muted)}
 .pjhead .pjn{color:var(--faint)}
+/* 되찾는 손 — 만드는 손 **곁에** (REQ-20260915-064-62x6). designer 의 옛 안은
+   「줄 오른끝」이었으나 이 머리에는 그보다 나중에 배운 규칙이 있다: 오른끝으로
+   미는 값(`margin-left:auto`)은 줄이 접히는 순간 둘을 화면에서 가장 먼 두 자리에
+   앉힌다(REQ-20260907-024, test_rail_head_rule s2). 둘 다 누르는 것이니 같은 줄에
+   나란히 서고, 사이는 여백 하나로만 벌린다.
+   잉크는 만드는 손보다 한 급 아래다 — 이 줄에서 늘 하는 일은 만드는 것이고,
+   되찾기는 버린 적이 있을 때만 서는 손이다. 아이콘이 아니라 글자이고, 수는
+   `b` 한 칸에 선다. 라운드도 바탕도 없다 — 이 판의 규칙이 그렇고
+   (test_project_screen: 라운드 금지 · 색면 하이라이트 금지), hover 는 곁의
+   만드는 손과 같이 **잉크만** 올라온다. */
+.pjhead .pjtail .pjtrash{margin-left:14px;flex:none;border:0;background:none;
+  cursor:pointer;font-family:var(--mono);font-size:10.5px;letter-spacing:0;
+  color:var(--faint);padding:0;line-height:1.4}
+.pjhead .pjtail .pjtrash:hover{color:var(--text)}
+.pjhead .pjtail .pjtrash b{margin-left:4px;font-weight:600;
+  font-variant-numeric:tabular-nums}
 /* 보관 묶음은 펴면 접을 수 있어야 한다 — `.more::before` 의 "+ " 는 여는 손짓이라
    접는 자리에서는 반대 부호가 선다(목록의 다른 「더 보기」와 같은 층). */
 .pjlist .more[aria-expanded="true"]::before{content:"− "}

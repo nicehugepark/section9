@@ -1,0 +1,176 @@
+<!doctype html>
+<!-- REQ-20260915-064-62x6 검증 하니스 (same-origin 보조 페이지):
+     Projects 레일 머리의 「휴지통 n」을 **실제로 눌러 본다.**
+
+     캡처 한 장으로는 손잡이가 눌리는지, 눌러서 열린 판이 프로젝트만 보이는지,
+     그 자리에서 되돌린 것이 레일로 돌아오는지를 못 잡는다. 그래서 여기서는
+     임시 프로젝트를 하나 만들어 **진짜로 버리고**, 레일의 손잡이를 진짜
+     MouseEvent 로 눌러 판을 열고, 판에서 되돌린 뒤 레일로 돌아온 것까지 본다.
+     끝나면 그 임시 프로젝트를 다시 버려 자취를 지운다(완전히 지우는 것은
+     사람이 CLI 로 한다 — 화면이 되돌릴 수 없는 일을 저 혼자 하지 않는다). -->
+<html><head><meta charset="utf-8"><title>verify project trash rail</title>
+<style>
+ html,body{margin:0;background:#111;color:#eee;font:13px/1.6 ui-monospace,monospace}
+ #out{padding:10px 14px;white-space:pre-wrap;font-size:14px}
+ .ok{color:#55c07a} .bad{color:#e06c5d} .hi{color:#d9b13b} .dim{color:#8b8f96}
+ iframe{border:0;width:1400px;height:760px;background:#000}
+</style>
+</head><body>
+<div id="out">초기화…</div>
+<iframe id="f" src="/#projects"></iframe>
+<script>
+const out = document.getElementById("out");
+const lines = [];
+const say = (s, cls) => { lines.push(cls ? `<span class="${cls}">${s}</span>` : s);
+                          out.innerHTML = lines.join("\n"); };
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const wait = (fn, ms=20000, what="") => new Promise((res, rej) => {
+  const t0 = Date.now();
+  const t = setInterval(() => {
+    let v = null;
+    try{ v = fn(); }catch(e){}
+    if (v){ clearInterval(t); res(v); }
+    else if (Date.now() - t0 > ms){ clearInterval(t); rej(new Error("timeout: " + what)); }
+  }, 120);
+});
+const sleep = ms => new Promise(s => setTimeout(s, ms));
+const verdicts = [];
+const check = (name, pass, detail) => {
+  verdicts.push({name, pass});
+  say(`  ${pass ? "✓" : "✗"} ${esc(name)}${detail ? "  — " + esc(detail) : ""}`,
+      pass ? "ok" : "bad");
+};
+
+// 사람의 손가락이 닿는 것은 그 좌표의 맨 위 요소다.
+function realClick(win, doc, el){
+  const r = el.getBoundingClientRect();
+  const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + r.height / 2);
+  const top = doc.elementFromPoint(cx, cy) || el;
+  const mk = t => new win.MouseEvent(t, {bubbles: true, cancelable: true, view: win,
+                                         clientX: cx, clientY: cy, button: 0});
+  top.dispatchEvent(mk("mousedown"));
+  top.dispatchEvent(mk("mouseup"));
+  top.dispatchEvent(mk("click"));
+  return top;
+}
+
+/* 화면 안쪽의 조각들은 script scope 의 `let`·`function` 이라 밖에서는 못 잡는다.
+   같은 문서에 script 한 조각을 심으면 그 조각은 같은 scope 에서 돈다. */
+function inject(win, doc){
+  const s = doc.createElement("script");
+  s.textContent = `window.__vr = {
+    post: (u, b) => postJSONRaw(u, b),
+    refetch: async () => { await tidyFetch(); await docsChanged(); tidyDecorate(); },
+    trashTypes: () => (tidyTrash || []).map(r => r.type || ""),
+    narrow: () => tidyType,
+    tab: () => tidyTab,
+  };`;
+  doc.body.appendChild(s);
+  return wait(() => win.__vr, 5000, "__vr");
+}
+
+const f = document.getElementById("f");
+let loads = 0;
+f.addEventListener("load", () => { loads++; if (loads === 1) run(); });
+
+const SLUG = "trash-rail-check";
+const rail = doc => doc.querySelector('#view .docs[data-pane="projects"] .pjlist');
+const handle = doc => { const r = rail(doc); return r && r.querySelector(".pjtrash"); };
+const panel = doc => doc.querySelector(".tidypanel");
+
+async function run(){
+  const win = f.contentWindow, doc = win.document;
+  const errs = [];
+  let id = "";
+  win.addEventListener("error", e => errs.push(String(e.message || e)));
+  try{
+    await wait(() => win.document.getElementById("view") && doc.body, 25000, "화면 뜸");
+    await sleep(1500);                       // 부트가 projects·catalog·휴지통을 채운다
+    await inject(win, doc);
+
+    // ── 0. 시작 자리 — 휴지통에 프로젝트가 없으면 손잡이도 없다 (경계)
+    await win.__vr.refetch();
+    await sleep(300);
+    const types0 = win.__vr.trashTypes();
+    const prj0 = types0.filter(t => t === "project").length;
+    check("프로젝트가 0건이면 손잡이가 서지 않는다", prj0 === 0 && !handle(doc),
+      `휴지통 ${types0.length}건 · 그중 프로젝트 ${prj0}건`);
+
+    // ── 1. 임시 프로젝트 하나를 만들어 **진짜로** 버린다
+    const mk = await win.__vr.post("/api/project/add",
+      {slug: SLUG, name: "휴지통 손잡이 검증(임시)",
+       summary: "REQ-20260915-064 검증용 — 끝나면 지웁니다"});
+    if (!mk.ok) throw new Error("프로젝트를 못 만들었다: " + (mk.error || ""));
+    id = mk.id;
+    say(`  · 임시 프로젝트 ${esc(id)} (${esc(SLUG)})`, "dim");
+    const rm = await win.__vr.post("/api/docs/tidy", {op: "rm", ids: [id]});
+    if (!rm.ok) throw new Error("못 버렸다: " + (rm.error || ""));
+    await win.__vr.refetch();
+
+    // ── 2. 레일 머리에 손잡이가 선다 (정상)
+    const h = await wait(() => handle(doc), 10000, "레일의 휴지통 손잡이");
+    const n = h.querySelector("b") ? h.querySelector("b").textContent.trim() : "";
+    check("레일 머리에 「휴지통 n」이 선다", /휴지통/.test(h.textContent) && n === "1",
+      h.textContent.replace(/\s+/g, " "));
+    check("세는 것은 프로젝트뿐이다",
+      n === String(win.__vr.trashTypes().filter(t => t === "project").length),
+      `휴지통 전량 ${win.__vr.trashTypes().length}건 · 손잡이 ${n}`);
+    const tail = h.closest(".pjtail");
+    check("만드는 손 곁, 같은 줄에 선다",
+      !!tail && (!tail.querySelector(".pjnew")
+        || h.getBoundingClientRect().left
+             > tail.querySelector(".pjnew").getBoundingClientRect().right),
+      tail ? [...tail.children].map(c => c.className).join(" · ") : "줄 없음");
+
+    // ── 3. 눌러서 그 자리에서 판을 연다 (정상)
+    realClick(win, doc, h);
+    const box = await wait(() => panel(doc), 10000, "보관함 · 휴지통 판");
+    await sleep(400);
+    check("판이 휴지통 탭으로 열린다", win.__vr.tab() === "trash",
+      [...box.querySelectorAll(".tidytabs button")]
+        .map(b => b.textContent.trim() + (b.classList.contains("on") ? "←" : "")).join(" "));
+    const items = () => [...box.querySelectorAll(".tlist .titem")];
+    check("목록이 프로젝트만 남는다",
+      win.__vr.narrow() === "project" && items().length === 1
+        && /휴지통 손잡이 검증/.test(items()[0].textContent),
+      `${items().length}줄 · ` + (items()[0]
+        ? items()[0].textContent.replace(/\s+/g, " ").slice(0, 48) : ""));
+    const chip = [...box.querySelectorAll(".tsieve button.on")]
+      .find(b => /프로젝트만/.test(b.textContent));
+    check("좁힌 사실을 「프로젝트만」이 말한다", !!chip,
+      chip ? chip.textContent.trim() : "칸 없음");
+    const tabN = box.querySelector('.tidytabs [data-tab="trash"] b');
+    check("탭의 수는 좁혀도 전량 그대로다",
+      !!tabN && +tabN.textContent === win.__vr.trashTypes().length,
+      `탭 ${tabN ? tabN.textContent : "?"} · 전량 ${win.__vr.trashTypes().length}`);
+
+    // ── 4. 그 자리에서 되돌린다 (goal)
+    const back = items()[0] && items()[0].querySelector('[data-tidy="back"]');
+    if (!back) throw new Error("되돌리는 손잡이가 없다");
+    realClick(win, doc, back);
+    await wait(() => !handle(doc), 15000, "손잡이가 걷힌다");
+    await sleep(600);
+    check("되돌리면 프로젝트가 레일로 돌아온다",
+      !!(rail(doc) && rail(doc).textContent.includes(SLUG)), SLUG);
+    check("되돌린 뒤 손잡이는 사라진다", !handle(doc), "휴지통에 프로젝트 0건");
+
+    check("화면이 죽지 않았다", errs.length === 0, errs.join(" | "));
+  }catch(e){
+    check("하니스가 끝까지 갔다", false, String(e && e.message || e));
+  }finally{
+    // 자취를 지운다 — 만든 것은 되돌려 놓는다. 완전히 지우는 것은 사람의 손이다.
+    try{
+      if (id && win.__vr) await win.__vr.post("/api/docs/tidy", {op: "rm", ids: [id]});
+      say(`  · 임시 프로젝트를 다시 휴지통으로 보냈다 — `
+        + `<code>bin/s9 purge ${esc(id)}</code> 로 지운다`, "dim");
+    }catch(e){ say("  · 자취 지우기 실패: " + esc(String(e)), "bad"); }
+  }
+  const bad = verdicts.filter(v => !v.pass);
+  say("");
+  say(bad.length ? `${bad.length}건 실패 / ${verdicts.length}건`
+                 : `${verdicts.length}/${verdicts.length} 통과`,
+      bad.length ? "bad" : "ok");
+  document.title = bad.length ? `FAIL ${bad.length}` : `PASS ${verdicts.length}`;
+}
+</script>
+</body></html>
