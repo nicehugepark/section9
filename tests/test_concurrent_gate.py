@@ -238,8 +238,14 @@ class DataOnlyCommits(unittest.TestCase):
         # 하나뿐이니 그 창은 닫아 둔다 — 열어 두면 이 시험은 bin/s9.py 를 담은
         # 커밋이 15분 안에 있었는지에 따라 갈린다(실제로 2026-09-15 전체 회차가
         # 그렇게 한 번 실패했다: 몇 분 전 커밋이 다른 세션 것으로 보였다).
+        # 자리도 못박는다 (REQ-20260916-019-2n7g). 요청 전용 worktree 안에서는
+        # `concurrent_flags` 가 `fresh_staged` 를 아예 부르지 않으므로
+        # (REQ-20260916-013-2n7g), 이 시험은 **어디서 돌렸는지**에 따라 갈렸다 —
+        # 본 저장소에서는 통과하고 worktree 작업자의 전체 회차에서는 실패했다.
+        # 여기서 재는 것은 「코드가 섞이면 검사가 돈다」이지 자리가 아니다.
         with mock.patch.object(g, "live_workers",
                                return_value=[("서브에이전트", "s1", 2)]), \
+             mock.patch.object(g, "in_request_worktree", return_value=False), \
              mock.patch.object(g, "recent_foreign_commits",
                                return_value=([], [])), \
              mock.patch.object(g, "fresh_staged", return_value=[]) as fresh:
