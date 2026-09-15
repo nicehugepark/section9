@@ -6,7 +6,7 @@ role: admin
 emails: ["claude01.pfe@example.invalid"]
 github: nicehugepark
 os_accounts: ["sjpark1", "sjpark", "seongjinpark"]
-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-15T17:19:14+09:00", "last_recv": "2026-09-15T17:40:58+09:00", "takes": true, "uncommitted": 3}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-15T17:51:05+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-15T17:01:04+09:00", "takes": true, "last_recv": "2026-09-15T17:05:01+09:00", "uncommitted": 3}]
+machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-15T17:19:14+09:00", "last_recv": "2026-09-15T17:47:35+09:00", "takes": true, "uncommitted": 3}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-15T17:51:05+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-15T17:01:04+09:00", "takes": true, "last_recv": "2026-09-15T17:05:01+09:00", "uncommitted": 3}]
 machines: ["eek-p620", "Seongjinui-Macmini.local"]
 first_name: 성진
 last_name: 박
@@ -14,6 +14,8 @@ display: nicehugepark
 ---
 
 ## Notes
+둘째 줄
+셋째 줄 (by nicehugepark)
 - 2026-08-23T16:18:27+09:00 config ui_skin=soft (by nicehugepark via dashboard)
 - 2026-08-23T16:18:30+09:00 config ui_skin=terminal (by nicehugepark via dashboard)
 - 2026-08-23T16:18:34+09:00 config ui_tone=paper (by nicehugepark via dashboard)
@@ -301,6 +303,4 @@ display: nicehugepark
 - 2026-09-15T16:56:03+09:00 config ui_density=normal (by nicehugepark via dashboard)
 - 2026-09-15T16:56:29+09:00 updated display (by nicehugepark via dashboard)
 - 2026-09-15T17:35:04+09:00 config pref_줄바꿈시험=첫 줄
-둘째 줄
-셋째 줄 (by nicehugepark)
 - 2026-09-15T17:37:29+09:00 config pref_줄바꿈시험=(삭제) (by nicehugepark)
