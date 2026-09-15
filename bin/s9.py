@@ -9079,6 +9079,23 @@ def stream_mirror_on(user=None):
     return str(v).strip().lower() not in ("off", "false", "0", "no")
 
 
+TRASH_KEEP_DAYS = 30          # 휴지통 수명 기본값 (REQ-20260915-062-62x6)
+
+
+def trash_keep_days(user=None):
+    """휴지통에 둘 기간(일). 0 이면 수명을 말하지 않는다 — 끈 상태다.
+
+    macOS·Windows·Drive 가 다 30일을 쓴다. 확립어를 따르는 것은 취향이
+    아니라, 사람이 이미 아는 모형을 다시 배우게 하지 않기 위해서다.
+    **지우는 것은 자동이 아니다** — 수명을 넘긴 건수를 판이 말하고, 비우는
+    손은 사람이 누른다. 되돌릴 수 없는 일에 사람의 손이 한 번 들어간다."""
+    try:
+        v = (user_config(user or resolve_user(None)) or {}).get("trash_keep_days")
+        return max(0, int(v)) if v not in (None, "") else TRASH_KEEP_DAYS
+    except Exception:
+        return TRASH_KEEP_DAYS
+
+
 def stream_keep_days(user=None):
     try:
         v = (user_config(user or resolve_user(None)) or {}).get("stream_keep_days")
@@ -22184,11 +22201,34 @@ def trash_entries():
                 "creator_raw": str(meta.get("creator") or ""),
                 "assignee": meta.get("assignee", ""),
                 "created": meta.get("created", ""),
-                "deleted": mt,
+                # 버린 때는 **문서에 적힌 것**이 먼저다 (REQ-20260915-062-62x6).
+                # mtime 은 동기화·복사가 건드리면 틀어지는 값이라 적힌 것이
+                # 없을 때만 쓴다. `how` 는 누른 자리이고, 안 적힌 옛 문서는
+                # 빈 값 그대로 둔다 — 모르는 것을 화면이 지어내면 안 된다.
+                "deleted": str(meta.get("trashed") or "") or mt,
+                "trashed_by": str(meta.get("trashed_by") or ""),
+                "trashed_how": str(meta.get("trashed_how") or ""),
                 "path": os.path.relpath(p, ROOT),
                 "home": os.path.relpath(os.path.dirname(dirpath), ROOT),
             })
     out.sort(key=lambda e: e["deleted"], reverse=True)
+    return out
+
+
+def trash_overdue(ents, keep_days):
+    """수명을 넘긴 행들 (REQ-20260915-062-62x6). keep_days 가 0 이면 빈 목록 —
+    끈 상태에서는 넘겼다는 말 자체를 하지 않는다. 버린 때를 못 읽는 행은
+    넘기지 않은 것으로 본다: 모르는 것을 지울 쪽으로 세지 않는다."""
+    if not keep_days:
+        return []
+    cut = datetime.datetime.now() - datetime.timedelta(days=int(keep_days))
+    out = []
+    for e in ents:
+        try:
+            if datetime.datetime.fromisoformat(e["deleted"]) < cut:
+                out.append(e)
+        except Exception:
+            continue
     return out
 
 
@@ -22208,6 +22248,46 @@ def _trash_find(doc_id):
     die(f"휴지통에 없다: {doc_id} — `s9 trash` 로 목록을 보라")
 
 
+def _trashed_workdir(src):
+    """휴지통 문서가 데리고 있는 작업 폴더의 실경로 — 없으면 "".
+
+    자리는 **문서가 적은 것**(`trashed_workdir`)만 읽는다: 이름으로 다시 찾으면
+    겹쳐서 비켜선 이름(`<slug>-2`)을 못 찾고, 남의 프로젝트 폴더를 집을 수도
+    있다. 경로가 `projects/` 밖을 가리키면 없는 것으로 본다 — 손으로 고친
+    프론트매터 한 줄이 저장소 아무 데나 옮기게 두지 않는다."""
+    try:
+        meta, _ = read_doc(src)
+    except Exception:
+        return ""
+    rel = str(meta.get("trashed_workdir") or "").replace("\\", "/").strip()
+    if not rel or rel.startswith("/") or ".." in rel.split("/"):
+        return ""
+    base = os.path.realpath(os.path.join(ROOT, "projects"))
+    full = os.path.realpath(os.path.join(ROOT, rel))
+    if not full.startswith(base + os.sep) or not os.path.isdir(full):
+        return ""
+    return full
+
+
+def _workdir_restore_target(src):
+    """되돌릴 작업 폴더와 그 자리 (src, dst) — 데려갈 것이 없으면 ("", "").
+    자리가 이미 차 있으면 die: 합치는 것은 덮어쓰는 것과 같다."""
+    wsrc = _trashed_workdir(src)
+    if not wsrc:
+        return "", ""
+    try:
+        meta, _ = read_doc(src)
+    except Exception:
+        return "", ""
+    wdst = project_workdir(meta.get("slug") or "")
+    if not wdst:
+        return "", ""
+    if os.path.exists(wdst):
+        die(f"복원 자리에 이미 작업 폴더가 있다: "
+            f"{os.path.relpath(wdst, ROOT)} — 덮어쓰지 않는다")
+    return wsrc, wdst
+
+
 def do_restore(doc_id, user=None):
     """휴지통에서 원래 자리로 되돌린다 (첨부도 함께). 정식 id 반환."""
     ent = _trash_find(doc_id)
@@ -22217,10 +22297,17 @@ def do_restore(doc_id, user=None):
     if os.path.exists(dst):
         die(f"복원 자리에 이미 파일이 있다: {os.path.relpath(dst, ROOT)} "
             f"— 덮어쓰지 않는다")
+    # 프로젝트는 작업 폴더까지가 한 벌이다 (REQ-20260915-063-62x6) — 갈 자리가
+    # 막혀 있으면 **문서도 옮기지 않는다**: 반만 돌아온 프로젝트는 돌아오지
+    # 않은 것보다 나쁘다. 그래서 판정은 아무것도 옮기기 전에 끝난다.
+    wsrc, wdst = _workdir_restore_target(src)
     _write_gate(dst, None)      # 되돌리기도 쓰기다 (REQ-20260902-028)
     ts, user = now_iso(), resolve_user(user)
     acquire_lock()
     try:
+        if wsrc and wdst:
+            os.makedirs(os.path.dirname(wdst), exist_ok=True)
+            shutil.move(wsrc, wdst)
         adir = os.path.join(os.path.dirname(src), "assets-" + ent["id"])
         if os.path.isdir(adir):
             adst = os.path.join(home, "assets", ent["id"])
@@ -22231,6 +22318,12 @@ def do_restore(doc_id, user=None):
         try:
             meta, body = read_doc(dst)
             meta["updated"] = ts
+            # 되돌아온 문서는 버려진 적이 없는 것처럼 선다
+            # (REQ-20260915-062-62x6) — 버린 기록은 휴지통에 있는 동안의
+            # 사실이다. 남겨 두면 살아 있는 문서가 제가 버려졌다고 말한다.
+            for k in ("trashed", "trashed_by", "trashed_how",
+                      "trashed_workdir"):
+                meta.pop(k, None)
             write_doc(dst, meta, _hist_append(
                 body, f"- {ts} restored (by {user})\n"))
         except Exception:
@@ -22253,9 +22346,14 @@ def do_purge(doc_id, user=None):
     ent = _trash_find(doc_id)
     src = os.path.join(ROOT, ent["path"])
     _write_gate(src, None)      # 영구 소거도 쓰기다 (REQ-20260902-028)
+    # 데려온 작업 폴더도 여기서 끝난다 (REQ-20260915-063-62x6) — 지우는 자리는
+    # 되돌릴 수 없는 이 층 하나뿐이다. 자리는 문서를 지우기 **전에** 읽는다.
+    wdir = _trashed_workdir(src)
     ts, user = now_iso(), resolve_user(user)
     acquire_lock()
     try:
+        if wdir:
+            shutil.rmtree(wdir, ignore_errors=True)
         shutil.rmtree(os.path.join(os.path.dirname(src),
                                    "assets-" + ent["id"]), ignore_errors=True)
         os.remove(src)
@@ -22275,16 +22373,65 @@ def do_purge(doc_id, user=None):
     return ent["id"]
 
 
-def do_rm(doc_id, reason="", user=None):
+def project_workdir(slug):
+    """프로젝트의 작업 폴더 실경로 — `projects/<slug>/`. 모양이 어긋나면 "".
+
+    프로젝트는 문서 한 장이 아니다 (REQ-20260915-063-62x6): slug 는 네 자리에
+    굳는데(문서 파일명·이 폴더·요청의 `project:`·주소) 버리는 길이 여태 첫
+    자리만 보았다."""
+    slug = str(slug or "")
+    if not slug or slug != safe_name(slug):
+        return ""
+    return os.path.join(ROOT, "projects", slug)
+
+
+def _workdir_trash_target(slug):
+    """버릴 작업 폴더와 그것이 갈 자리 (src, dst) — 폴더가 없으면 ("", "").
+
+    이름이 겹치면 덮지 않고 `<slug>-2` 로 비켜 선다: 앞서 버린 같은 slug 의
+    폴더를 지우면 되돌릴 것이 사라진다. 어느 자리로 갔는지는 문서가 적고
+    (`trashed_workdir`), 되돌릴 때 그 적힌 자리를 읽는다 — 이름으로 다시
+    찾으면 비켜선 이름을 못 찾는다."""
+    src = project_workdir(slug)
+    if not src or not os.path.isdir(src):
+        return "", ""
+    tdir = os.path.join(ROOT, "projects", TRASH_DIR)
+    base = os.path.basename(src)
+    dst, n = os.path.join(tdir, base), 2
+    while os.path.exists(dst):
+        dst = os.path.join(tdir, f"{base}-{n}")
+        n += 1
+    return src, dst
+
+
+def do_rm(doc_id, reason="", user=None, how="cli"):
     """문서 삭제 = tombstone (REQ-20260825-031/-006 승인): 파일을 소거하지 않고
     같은 디렉토리의 .trash/ 로 옮긴다. 카탈로그·목록에서는 사라지지만 발번
     스캔에는 남아, 삭제된 번호가 다른 문서로 재발급되던 사고가 구조적으로
-    막힌다. 정식 id 반환."""
+    막힌다. 정식 id 반환.
+
+    **버린 사실을 문서에 적는다** (REQ-20260915-062-62x6). 여태 버린 때는
+    파일 mtime 이었고 버린 사람은 아무 데도 없었다 — mtime 은 동기화·복사가
+    건드리면 틀어지는 값이라, 「언제 버렸나」를 그것으로 말하면 화면이 언젠가
+    거짓을 말한다. `how` 는 **누른 자리**다(screen=대시보드 판, cli=명령):
+    추측이 아니라 부른 자리가 아는 사실이고, 판의 거르개가 이 값으로 갈린다."""
     path = find_path(doc_id)
     _write_gate(path, None)     # 지우기도 쓰기다 (REQ-20260902-028)
+    wsrc = wdst = ""
     try:
-        meta, _ = read_doc(path)
+        meta, body = read_doc(path)
         doc_id = meta.get("id") or doc_id
+        meta["trashed"] = now_iso()
+        meta["trashed_by"] = str(user or whoami_info().get("user") or "")
+        meta["trashed_how"] = "screen" if how == "screen" else "cli"
+        # 프로젝트는 작업 폴더까지가 한 벌이다 (REQ-20260915-063-62x6).
+        # 여태는 문서 한 장만 갔고 `projects/<slug>/` 는 제자리에 남아, 버린
+        # 프로젝트의 산출물이 아무도 가리키지 않는 폴더로 남았다.
+        if meta.get("type") == "project":
+            wsrc, wdst = _workdir_trash_target(meta.get("slug") or "")
+            if wdst:
+                meta["trashed_workdir"] = os.path.relpath(wdst, ROOT)
+        write_doc(path, meta, body)
     except Exception:
         pass
     acquire_lock()
@@ -22296,8 +22443,15 @@ def do_rm(doc_id, reason="", user=None):
             tdst = os.path.join(trash, "assets-" + doc_id)
             shutil.rmtree(tdst, ignore_errors=True)
             shutil.move(adir, tdst)
+        if wsrc and wdst:               # 작업 폴더도 함께 (REQ-20260915-063-62x6)
+            os.makedirs(os.path.dirname(wdst), exist_ok=True)
+            shutil.move(wsrc, wdst)
         shutil.move(path, os.path.join(trash, os.path.basename(path)))
-        rebuild_index(quiet=True)
+        # **전량이어야 한다** — 바로 위에서 버린 사실을 적느라 write_doc 을
+        # 지났고, 그 증분은 「이 문서가 이 자리에 있다」를 얹은 뒤다. 증분이
+        # 돌았다는 표만 보고 넘어가면 옮겨 간 문서가 카탈로그에 남는다
+        # (REQ-20260915-062-62x6 에서 test_doc_tidy s4 가 잡았다).
+        rebuild_index(quiet=True, full=True)
     finally:
         release_lock()
     if os.environ.get("S9_SESSION"):
@@ -22382,12 +22536,18 @@ def cmd_trash(args):
     for e in ents:
         print(f"{e['id']}  [{e['type'] or '?'}]  {e['deleted'][:16].replace('T', ' ')}"
               f"  {e['user']}  {e['title']}")
+    # 낱말은 확정 사전을 따른다 (REQ-20260910-006 · -062): 「소거」는 폐기어다.
+    keep = trash_keep_days()
+    over = trash_overdue(ents, keep)
     print(f"-- {len(ents)}건 — 되돌리기 `s9 restore <id>` · "
-          f"영구 소거 `s9 purge <id> --yes`")
+          f"완전히 지우기 `s9 purge <id> --yes`")
+    if keep and over:
+        print(f"   그중 {len(over)}건이 {keep}일을 넘겼다 — "
+              f"`s9 purge --all --older-than {keep} --yes` 로 비운다")
 
 
 def cmd_purge(args):
-    """휴지통 영구 소거 — 되돌릴 수 없으므로 --yes 없이는 아무 일도 안 한다."""
+    """휴지통에서 완전히 지우기 — 되돌릴 수 없으므로 --yes 없이는 아무 일도 안 한다."""
     ents = trash_entries()
     if getattr(args, "all", False):
         targets = [e["id"] for e in ents]
@@ -22399,15 +22559,15 @@ def cmd_purge(args):
     else:
         targets = list(args.id or [])
     if not targets:
-        print("소거할 것이 없다." if getattr(args, "all", False)
+        print("휴지통이 비었다." if getattr(args, "all", False)
               else "대상 id를 지정하라 (또는 --all). 목록은 `s9 trash`.")
         return
     if not args.yes:
         for i in targets:
             print(f"{i}: (미실행)")
-        die(f"{len(targets)}건을 **영구 소거**한다 — 되돌릴 수 없다. "
+        die(f"{len(targets)}건을 **완전히 지운다** — 되돌릴 수 없다. "
             f"확인했으면 --yes 를 붙여라.")
-    done, failed = _each(targets, do_purge, "소거됨")
+    done, failed = _each(targets, do_purge, "지워짐")
     _each_report(done, failed, "purged (영구)")
 
 
@@ -22444,7 +22604,8 @@ def docs_bulk(op, ids, actor="", reason=""):
                 if actor and not doc_visible(meta, actor):
                     raise ValueError("권한 없음")
                 if op == "rm":
-                    done.append(do_rm(i, reason or "dashboard", actor))
+                    done.append(do_rm(i, reason or "dashboard", actor,
+                                      how="screen"))
                 else:
                     changed, rid = do_archive(i, on=(op == "archive"),
                                               user=actor, reason=reason)
@@ -23089,7 +23250,7 @@ KNOWN_CONFIG_KEYS = (
     "observe", "observe_until", "machine_fp", "jira_account_id",
     "jira_site", "jira_token_expires", "last_model_choice",
     "last_account_choice", "auto_resume", "auto_resume_apply",
-    "auto_resume_grace_sec", "s9code_args")
+    "auto_resume_grace_sec", "s9code_args", "trash_keep_days")
 
 
 def do_user_config_set(name, key, value, actor=""):
@@ -34506,12 +34667,33 @@ def audit_data(limit=None):
             events = events[:limit]
         return {"events": list(events), "total": total}
 
+def project_doc_counts():
+    """slug 마다 그것을 가리키는 문서 수 — {slug: {"reqs": n, "docs": n}}.
+
+    버리기 확인 창이 이 수를 말한다 (REQ-20260915-063-62x6): 프로젝트를 버리면
+    이 문서들은 없는 slug 를 가리킨 채 남으므로, 몇 건이 남는지를 누르기 전에
+    알아야 버릴지 보관할지 정할 수 있다. 세는 것은 카탈로그 한 벌이라 버린
+    문서는 이미 빠져 있고, 보관된 문서는 들어간다 — 보관은 보이느냐일 뿐
+    그 문서가 여전히 이 프로젝트를 가리키기 때문이다."""
+    out = {}
+    for r in load_catalog():
+        slug = str(r.get("project") or "")
+        if not slug or r.get("type") == "project":
+            continue
+        c = out.setdefault(slug, {"reqs": 0, "docs": 0})
+        c["docs"] += 1
+        if r.get("type") == "request":
+            c["reqs"] += 1
+    return out
+
+
 def projects_data():
     """모든 프로젝트 + 멤버(활성/만료) — 대시보드 셀렉터·정보패널용.
     history_tail 은 관리정보 패널용 additive 확장 (REQ-20260831-027) —
     body 가 필요해 all_projects(meta만) 대신 직접 읽는다."""
     out = []
     docs = []
+    counts = project_doc_counts()
     if os.path.isdir(PROJECTS):
         for fn in sorted(os.listdir(PROJECTS)):
             if fn.endswith(".md"):
@@ -34532,6 +34714,12 @@ def projects_data():
             "members": members,
             "member_active": sum(1 for m in members if m["active"]),
             "member_total": len(members),
+            # 이 프로젝트를 가리키는 문서 수 — 버리기 확인 창이 읽는다
+            # (REQ-20260915-063-62x6). 작업 폴더가 있는지도 함께 말한다:
+            # 버리면 그것도 함께 가고 되돌리면 함께 돌아온다.
+            "reqs": counts.get(meta.get("slug", ""), {}).get("reqs", 0),
+            "docs": counts.get(meta.get("slug", ""), {}).get("docs", 0),
+            "workdir": os.path.isdir(project_workdir(meta.get("slug", "")) or ""),
             "history_tail": project_history_tail(body),
         })
     return {"projects": out}
@@ -36658,7 +36846,11 @@ def cmd_serve(args):
                 # 휴지통 (REQ-20260829-025). 지운 것도 남의 것은 안 보인다 —
                 # 삭제가 격리를 우회하는 열람 경로가 되면 안 된다.
                 me = viewer_of(qs)
+                # 수명은 **서버가 말한다** (REQ-20260915-062-62x6) — 화면이
+                # 30 을 제 손에 쥐고 있으면 설정을 바꾼 사람과 화면이 서로
+                # 다른 약속을 하게 된다.
                 self._json({"ok": True,
+                            "keep_days": trash_keep_days(me or None),
                             "rows": [e for e in trash_entries()
                                      if doc_visible(e, me)]})
             elif parsed.path == "/api/git/state":
@@ -36874,7 +37066,7 @@ def cmd_serve(args):
                     # 소거만 한 겹 더 요구한다 — 되돌릴 수 없는 유일한 층이라,
                     # 실수로 흘러든 요청이 그대로 실행되지 않게 한다.
                     if op == "purge" and not req.get("confirm"):
-                        raise ValueError("영구 소거는 confirm 이 필요하다")
+                        raise ValueError("완전히 지우려면 confirm 이 필요하다")
                     self._json(docs_bulk(op, ids, actor,
                                          str(req.get("reason") or "")))
                 elif parsed.path == "/api/roster/save":
@@ -38837,12 +39029,12 @@ def main():
     rst.add_argument("id", nargs="+")
     rst.set_defaults(fn=cmd_restore)
 
-    pg = sub.add_parser("purge", help="휴지통 영구 소거 — 되돌릴 수 없다 (--yes 필수)")
+    pg = sub.add_parser("purge", help="휴지통에서 완전히 지운다 — 되돌릴 수 없다 (--yes 필수)")
     pg.add_argument("id", nargs="*")
     pg.add_argument("--all", action="store_true", help="휴지통 전체")
     pg.add_argument("--older-than", type=int, default=0, metavar="DAYS",
                     dest="older_than", help="--all 과 함께: N일 이전에 버린 것만")
-    pg.add_argument("--yes", action="store_true", help="확인함 — 실제로 소거한다")
+    pg.add_argument("--yes", action="store_true", help="확인함 — 실제로 지운다")
     pg.set_defaults(fn=cmd_purge)
 
     rs = sub.add_parser("resume", help="세션 resume (크로스머신) — 사람 확인(--yes) 필수")

@@ -38,8 +38,42 @@ let tidyLoadedAt = 0;
 /* 치운 직후에 목록 띠 아래 서는 한 줄 — {op, ids} 또는 null (REQ-20260910-006).
    op 는 방금 한 일이지 되돌릴 일이 아니다: 되돌리는 짝은 tidyAct 가 정한다. */
 let tidyUndo = null;
+/* 휴지통 판을 좁히는 두 손 (REQ-20260915-062-62x6). 백 건이 넘으면 되돌릴
+   하나를 찾는 비용이 목록 길이에 비례한다 — 그 비용을 상수로 만드는 것이
+   이 둘이다. 보관함 탭에는 세우지 않는다: 거기는 한 자리 수다. */
+let tidyQ = "";                       // 검색어 (id·제목)
+let tidyWho = "all";                  // all | screen | cli
+let tidyKeepDays = 0;                 // 서버가 말한 수명 (0 = 끈 상태)
 
 const tidyWhen = s => String(s || "").slice(0, 16).replace("T", " ");
+
+/* 어디서 버렸나 — 값은 서버가 적은 그대로다. 옛 문서에는 적힌 적이 없어서
+   빈 값이 오고, 그때 화면은 **모른다고 말한다**. 지어내면 거르개가 거짓을
+   말하고, 사람은 거기 없는 문서를 찾다 판을 닫는다. */
+const TIDY_HOW = {screen: "화면에서 버림", cli: "명령으로 버림"};
+// 안 적힌 옛 문서는 **아무 말도 하지 않는다** — 「모름」을 백 줄에 되풀이하면
+// 그 말은 정보가 0 이고, 아는 몇 줄까지 그 되풀이에 묻힌다.
+const tidyHowLabel = h => TIDY_HOW[h] || "";
+
+/* 수명을 넘겼나 — 자는 서버와 같다(bin/s9.py trash_overdue). 버린 때를 못
+   읽는 행은 넘기지 않은 것으로 본다: 모르는 것을 지울 쪽으로 세지 않는다. */
+function tidyOverdue(r){
+  if (!tidyKeepDays) return false;
+  const t = Date.parse(r.deleted || "");
+  if (!t) return false;
+  return Date.now() - t > tidyKeepDays * 86400000;
+}
+
+/* 검색·거르개를 지난 행들. 순서는 서버가 준 그대로(버린 때 역순)를 지킨다. */
+function tidyRows(){
+  if (tidyTab !== "trash") return tidyArch;
+  if (tidyTrash === null) return null;
+  const q = tidyQ.trim().toLowerCase();
+  return tidyTrash.filter(r =>
+    (tidyWho === "all" || (r.trashed_how || "") === tidyWho)
+    && (!q || (r.id || "").toLowerCase().includes(q)
+           || (r.title || "").toLowerCase().includes(q)));
+}
 
 async function tidyFetch(){
   const get = async (url, pick) => {
@@ -54,7 +88,13 @@ async function tidyFetch(){
     // 보관함은 언제나 전량이다 — 보관한 문서를 보러 온 자리에 창을 씌우면
     // 오래 전에 보관한 문서가 목록에서 사라진다 (REQ-20260902-035 §4).
     get("/api/catalog?archived=1&window=all" + q, j => Array.isArray(j) ? j : null),
-    get("/api/trash?" + meQ(), j => Array.isArray(j?.rows) ? j.rows : null),
+    get("/api/trash?" + meQ(), j => {
+      if (!Array.isArray(j?.rows)) return null;
+      // 수명은 서버가 말한다 — 화면이 30 을 제 손에 쥐면 설정을 바꾼
+      // 사람과 화면이 서로 다른 약속을 하게 된다 (REQ-20260915-062-62x6).
+      tidyKeepDays = Math.max(0, +j.keep_days || 0);
+      return j.rows;
+    }),
   ]);
   tidyLoadedAt = Date.now();
 }
@@ -321,9 +361,29 @@ function tidyClose(){
 
 function tidyRender(){
   if (!tidyBox) return;
-  const rows = tidyTab === "trash" ? tidyTrash : tidyArch;
+  const all = tidyTab === "trash" ? tidyTrash : tidyArch;
+  const rows = tidyRows();
   const lost = rows === null;
+  // 탭의 수는 **전량**이다 — 거르개가 좁힌 수를 탭에 세우면 「휴지통 3」을
+  // 보고 세 건뿐이라고 읽는다. 좁혀진 수는 거르개 제 자리에서 말한다.
   const cnt = r => r === null ? "" : `<b>${r.length}</b>`;
+  const narrowed = !lost && tidyTab === "trash"
+    && (tidyQ.trim() || tidyWho !== "all");
+  /* 수명을 넘긴 것은 **전량에서** 센다 — 거르개로 좁힌 화면에서 「3건
+     정리하기」를 누른 사람이 실제로는 쉰 건을 지우면 안 된다. 그래서 세는
+     것도 지우는 것도 전량 기준이고, 확인 창이 그 수를 그대로 말한다. */
+  const over = (tidyTab === "trash" && !lost) ? (all || []).filter(tidyOverdue) : [];
+  /* 판 바닥은 두 가지를 약속한다: 번호는 태워 둔다(옛 약속), 그리고 수명.
+     수명이 꺼져 있으면 그 말을 하지 않는다 — 지키지 않을 약속은 적지 않는다. */
+  const footLine = () => {
+    const num = "휴지통에 있는 문서도 번호를 그대로 씁니다 — 완전히 지워도"
+              + " 그 번호가 다른 문서에 다시 쓰이지는 않습니다.";
+    if (!over.length) return num;
+    // 수는 손잡이가 이미 말한다 — 문장까지 세면 같은 수가 두 번 서고, 바닥이
+    // 세 줄이 된다. 문장이 맡는 것은 **약속**이다.
+    return `${tidyKeepDays}일을 넘긴 것도 저절로 사라지지 않습니다`
+         + ` — 지우는 것은 사람이 누릅니다. ` + num;
+  };
   /* 빈 탭은 두 줄이다 (REQ-20260907-085 · s9-design R6): 무엇이 없는가 아래에
      **반대쪽에 몇 건이 있는가**를 적는다. 보관함 1 · 휴지통 76 인 화면에서 빈
      쪽을 먼저 본 사람은 「없다」로 읽고 판을 닫았다 — 건너갈 자리가 있다는 말을
@@ -340,7 +400,12 @@ function tidyRender(){
         <div class="tid">${esc(shortId(r.id))}</div>
         <div class="ttl" title="${esc(r.title || "")}">${esc(r.title || "(제목 없음)")}</div>
         <div class="twhen" title="${esc(personTitle(r.user || "?"))}">${esc(tidyWhen(tidyTab === "trash" ? r.deleted : r.archived))}
-          · ${personNameHTML(r.user || "?")}${r.type ? " · " + esc(r.type) : ""}</div>
+          · ${personNameHTML(r.user || "?")}${r.type ? " · " + esc(r.type) : ""}${
+            tidyTab === "trash"
+              ? (tidyHowLabel(r.trashed_how)
+                  ? ` · <span class="thow">${esc(tidyHowLabel(r.trashed_how))}</span>` : "")
+                + (tidyOverdue(r) ? ` <span class="tover">${tidyKeepDays}일 넘김</span>` : "")
+              : ""}</div>
       </div>
       <div class="acts">
         <button type="button" data-tidy="back" data-id="${esc(r.id)}"
@@ -348,13 +413,30 @@ function tidyRender(){
         ${tidyTab === "trash" ? `<button type="button" class="gone" data-tidy="purge"
           data-id="${esc(r.id)}" title="영구히 지웁니다 — 되돌릴 수 없습니다">완전히 지우기</button>` : ""}
       </div></div>`;
+  /* 좁히는 손 한 줄 — 검색 칸과 거르개 셋 (REQ-20260915-062-62x6).
+     휴지통 탭에만, 그리고 받은 것이 있을 때만 선다: 못 받은 자리에 거르개를
+     그리면 「걸러서 없는 것」과 「못 받아서 없는 것」이 같은 얼굴이 된다. */
+  const sieve = (tidyTab === "trash" && !lost && (all || []).length)
+    ? `<div class="tsieve">
+        <input type="search" data-tidy="q" class="tq" value="${esc(tidyQ)}"
+          placeholder="번호나 제목으로 찾기" aria-label="휴지통에서 찾기">
+        ${[["all", "전부"], ["screen", "화면에서 버린 것"],
+           ["cli", "명령으로 버린 것"]].map(([v, t]) =>
+          `<button type="button" data-tidy="who" data-who="${v}"
+            class="${tidyWho === v ? "on" : ""}">${t}</button>`).join("")}
+       </div>`
+    : "";
   const body = lost
     ? `<div class="tempty">이 목록을 받지 못했습니다 — 실행 중인 서버가 아직
         이 기능을 지원하지 않는 버전일 수 있습니다.
         <code>bin/s9 serve --restart</code> 로 다시 띄워 주세요.</div>`
     : !rows.length
-      ? `<div class="tempty">${tidyTab === "trash"
-          ? "휴지통이 비었습니다." : "보관한 문서가 없습니다."}${crossLine()}</div>`
+      ? (narrowed
+          ? `<div class="tempty">이 조건에 맞는 문서가 없습니다.
+              <div class="tsub">휴지통에 ${(all || []).length}건이 있습니다.
+                <button type="button" data-tidy="clearq">조건 풀기</button></div></div>`
+          : `<div class="tempty">${tidyTab === "trash"
+              ? "휴지통이 비었습니다." : "보관한 문서가 없습니다."}${crossLine()}</div>`)
       : rows.map(item).join("");
   tidyBox.innerHTML = `<div class="dlghead">` + DLG_GRIP + `
       <span class="dlgcap">보관함 · 휴지통</span>
@@ -366,13 +448,16 @@ function tidyRender(){
       <button type="button" data-tidy="tab" data-tab="trash"
         class="${tidyTab === "trash" ? "on" : ""}">휴지통${cnt(tidyTrash)}</button>
     </div>
+    ${sieve}
     <div class="tlist">${body}</div>
     <div class="tfoot">
-      <span class="path">${tidyTab === "trash"
-        ? "휴지통에 있는 문서도 번호를 그대로 씁니다 — 완전히 지워도 그 번호가 다른 문서에 다시 쓰이지는 않습니다."
+      <span class="path">${tidyTab === "trash" ? footLine()
         : "보관한 문서는 그대로 있습니다. 목록에서만 내려와 있습니다."}</span>
       <div class="acts">
-        ${tidyTab === "trash" && rows && rows.length
+        ${over.length
+          ? `<button type="button" class="gone" data-tidy="purgeold">${
+              over.length}건 정리하기</button>` : ""}
+        ${tidyTab === "trash" && all && all.length
           ? `<button type="button" class="gone" data-tidy="purgeall">휴지통 비우기</button>` : ""}
         <button type="button" data-tidy="close">닫기</button></div></div>`;
 }
@@ -417,6 +502,17 @@ async function tidyAct(what, el){
   if (what === "open"){ await tidyOpen(); return; }
   if (what === "close"){ tidyClose(); return; }
   if (what === "tab"){ tidyTab = el.dataset.tab; tidyRender(); return; }
+  /* 좁히는 손 (REQ-20260915-062-62x6). 검색은 다시 그린 뒤 커서를 그 칸 끝에
+     되돌린다 — 한 글자마다 칸을 놓치면 두 글자를 못 친다. */
+  if (what === "q"){
+    tidyQ = el.value || "";
+    tidyRender();
+    const box = tidyBox && tidyBox.querySelector(".tq");
+    if (box){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+    return;
+  }
+  if (what === "who"){ tidyWho = el.dataset.who || "all"; tidyRender(); return; }
+  if (what === "clearq"){ tidyQ = ""; tidyWho = "all"; tidyRender(); return; }
   if (what === "tick"){
     tidySel.has(id) ? tidySel.delete(id) : tidySel.add(id);
     tidyDecorate(); return;
@@ -455,8 +551,12 @@ async function tidyAct(what, el){
     await tidySend(tidyTab === "trash" ? "restore" : "unarchive", [id]);
     return;
   }
-  if (what === "purge" || what === "purgeall"){
-    const ids = what === "purge" ? [id] : (tidyTrash || []).map(r => r.id);
+  if (what === "purge" || what === "purgeall" || what === "purgeold"){
+    /* 「정리하기」는 **전량에서** 수명을 넘긴 것만 집는다 — 거르개로 좁힌
+       화면에서 눌러도 지워지는 것은 바닥이 센 그 수 그대로다. */
+    const ids = what === "purge" ? [id]
+      : (tidyTrash || []).filter(r => what === "purgeall" || tidyOverdue(r))
+                         .map(r => r.id);
     if (!ids.length) return;
     /* 되돌릴 수 없는 유일한 층이라 여기서만 한 번 더 묻는다. 무엇이 사라지는지
        이름으로 말한다 — 숫자만 보이면 무엇을 지우는지 모른 채 누른다.
@@ -489,11 +589,47 @@ function tidyNames(ids, find){
 
 /* 삭제는 되돌릴 수 있지만 **목록에서 사라진다** — 스무 개를 한 번에 보내는
    손이라 무엇이 가는지 한 번은 보여 준다. 완전히 지우기와 달리 붉지 않다. */
+/* 프로젝트는 **문서 한 장이 아니다** (REQ-20260915-063-62x6). slug 는 네 자리에
+   굳는데(문서 · 작업 폴더 `projects/<slug>/` · 요청의 `project:` · 주소) 버리는
+   손은 여태 첫 자리만 보았다 — 폴더는 제자리에 남고, 그 프로젝트를 가리키던
+   요청들은 없는 이름을 가리킨 채 남았다.
+
+   그래서 누르기 전에 두 가지를 말한다: **몇 건이 남는가**(요청 수)와 **무엇이
+   함께 가는가**(작업 폴더). 그리고 남는 것이 있으면 버리기 대신 **보관**을
+   권한다 — 끝난 프로젝트를 치우는 길은 버리기가 아니라 보관이고(목록에서만
+   접힌다), 요청은 그대로 이어진다.
+
+   수는 `/api/projects` 가 싣는다 — 화면의 카탈로그는 창(window)으로 잘려 와서
+   여기서 세면 적게 센다. 아직 못 받아 왔으면 수를 지어내지 않고 이 문단 전체를
+   세우지 않는다: 「0건」이라고 말한 뒤 실제로는 200건이 남는 것이 최악이다. */
+function tidyPrjWarn(ids){
+  return ids.map(i => (projects || []).find(p => p.id === i))
+    .filter(p => p && typeof p.reqs === "number")
+    .map(p => {
+      const n = p.reqs, rest = (p.docs || 0) - n;
+      const keep = p.workdir
+        ? `<p>작업 폴더 <span class="path">projects/${esc(p.slug)}/</span> 도 `
+          + `함께 휴지통으로 가고, 되돌리면 함께 돌아옵니다.</p>`
+        : "";
+      // 없는 문제는 말하지 않는다 — 가리키는 것이 없으면 권할 것도 없다
+      if (!n && !rest) return `<p>이 프로젝트를 가리키는 요청은 없습니다.</p>` + keep;
+      return `<p>이 프로젝트를 가리키는 요청이 <b>${n}</b>건 있습니다`
+        + (rest > 0 ? ` · 그 밖의 문서 ${rest}건` : "")
+        + ` — 버리면 그 문서들은 없는 프로젝트를 가리킨 채 남습니다.</p>`
+        + `<p>끝난 프로젝트라면 Projects 탭에서 <b>status</b> 를 `
+        + `<b>archived</b> 로 두세요 — 목록에서 접히고 요청은 그대로 `
+        + `이어집니다.</p>` + keep;
+    }).join("");
+}
+
 function tidyConfirmRm(ids){
+  const prj = ids.length === 1 && (catFind(ids[0]) || {}).type === "project";
   return s9dlg({kind: "confirm", cap: "휴지통", stop: false,
     title: ids.length > 1 ? `${ids.length}건을 휴지통으로 보냅니다`
-                          : "이 문서를 휴지통으로 보냅니다",
+                          : prj ? "이 프로젝트를 휴지통으로 보냅니다"
+                                : "이 문서를 휴지통으로 보냅니다",
     descHtml: tidyNames(ids, catFind)
+      + tidyPrjWarn(ids)
       + `<p>목록에서 사라지지만 Docs 탭 위 <b>「보관함 · 휴지통」</b>에서 `
       + `되돌릴 수 있습니다.</p>`,
     ok: "휴지통으로 보내기", cancel: "그만두기"});
@@ -503,6 +639,12 @@ function tidyConfirmRm(ids){
    안에 살고, 그 줄은 통째로 "문서 열기" 컨트롤이다 — 거품 단계에서 받으면
    눈금을 누를 때마다 문서가 함께 열린다. 이 조각은 목록을 소유하지 않으므로
    자기 손잡이만 가로채고 나머지는 그대로 흘려보낸다. */
+/* 조상을 거슬러 손잡이를 찾는 **유일한 자리**. 누른 자리가 Element 가 아닐 수
+   있어서(텍스트 노드) 판정은 `evEl` 하나를 지난다 — 조각마다 제 방어를 두면
+   조각 수만큼 구멍이 남는다 (REQ-20260830-006 · -20260830-010 실사고). 누르는
+   손과 글을 받는 칸이 둘 다 이 경로를 지난다 (REQ-20260915-062-62x6). */
+const tidyNear = (e, sel) => evEl(e.target)?.closest(sel);
+
 document.addEventListener("click", e => {
   /* 눌린 자리가 **Element 가 아닐 수 있다** — 그러면 조상을 거슬러 찾는 손이
      아예 없다 (REQ-20260830-006 실사고: `TypeError: … is not a function`,
@@ -518,14 +660,24 @@ document.addEventListener("click", e => {
      글자를 끌면 dragstart 의 target 이 텍스트 노드다), 조각 하나가 또 통째로
      죽었다. 조각마다 자기 방어를 두면 조각 수만큼 구멍이 남는다. 판정은
      `evEl` 하나를 지난다 (web/app/state.js). */
-  const near = sel => evEl(e.target)?.closest(sel);
+  const near = sel => tidyNear(e, sel);
   const t = near("[data-tidy]");
   // 판 밖을 누르면 닫는다 — 떠 있는 것은 떠 있는 것끼리 같은 규칙을 쓴다.
   // 닫기만 하고 그 클릭은 원래 주인에게 그대로 흘려보낸다.
   if (!t && tidyBox && !near(".tidypanel,.dlgbox")) tidyClose();
   if (!t) return;
+  /* 글을 받는 칸은 손잡이가 아니다 (REQ-20260915-062-62x6) — 여기서
+     preventDefault 를 하면 검색 칸을 눌러도 커서가 안 들어간다. 이 칸의
+     일은 아래 `input` 이 받는다. */
+  if (t.tagName === "INPUT"){ e.stopPropagation(); return; }
   e.preventDefault(); e.stopPropagation();
   tidyAct(t.dataset.tidy, t);
+}, true);
+
+// 검색 칸은 친 글자마다 좁힌다 — 누르는 손잡이가 아니라 받는 칸이다.
+document.addEventListener("input", e => {
+  const t = tidyNear(e, "[data-tidy]");
+  if (t && t.tagName === "INPUT") tidyAct(t.dataset.tidy, t);
 }, true);
 
 document.addEventListener("keydown", e => {

@@ -265,6 +265,9 @@ class DocTidyTest(unittest.TestCase):
         self.assertEqual(js.count(".closest("), 1,
                          "조상을 거슬러 찾는 자리가 둘 이상이다 — "
                          "둘이면 언젠가 한쪽만 지켜진다")
+        # 듣는 자리가 둘이 됐다(누르는 손 + 글을 받는 칸, REQ-20260915-062-62x6).
+        # 계약은 그대로다 — 둘 다 `tidyNear` 한 곳을 지나므로 위의 `.closest(`
+        # 한 번이 그 사실을 이미 잰다.
         self.assertIn("evEl(e.target)", js,
                       "눌린 자리를 공용 경로(evEl)으로 거르지 않는다 — "
                       "조각마다 자기 방어를 두면 조각 수만큼 구멍이 남는다 "
