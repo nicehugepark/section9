@@ -781,9 +781,29 @@ function showPrefForm(u, host){
     ta.style.height = "auto";
     ta.style.height = Math.min(Math.max(ta.scrollHeight, 48), 240) + "px";
   };
+  /* 폭이 바뀌면 줄 수도 바뀐다 — 그런데 `fit` 은 처음 그릴 때와 타이핑할 때만
+     걸려 있었다. 실측 2026-09-15, 실제 맥 Safari 26.4: 768 폭으로 **새로 열면**
+     두 칸이 94px·74px 로 제대로 펴지는데, 1440 에서 열어 둔 채 폭만 768 로
+     줄이면 둘 다 54px 에 머물러 셋째 줄이 반쯤 잘렸다. iPad 를 돌리면 폭이
+     1024↔768 로 바뀌므로 흔한 길이다.
+     **폭이 달라졌을 때만** 다시 편다 — `fit` 이 높이를 고치니 높이 변화까지
+     듣고 있으면 제가 낸 변화에 제가 다시 불려 되울린다.
+     ResizeObserver 가 없는 브라우저에서는 종전대로 처음 한 번만 편다. */
+  const fitWidth = new WeakMap();
+  const ro = typeof ResizeObserver === "function"
+    ? new ResizeObserver(entries => {
+        for (const e of entries){
+          const w = Math.round(e.contentRect.width);
+          if (fitWidth.get(e.target) === w) continue;
+          fitWidth.set(e.target, w);
+          fit(e.target);
+        }
+      })
+    : null;
   host.querySelectorAll(".pf-val").forEach(ta => {
     fit(ta);
     ta.addEventListener("input", () => fit(ta));
+    if (ro) ro.observe(ta);
   });
 
   const goneLine = () => {

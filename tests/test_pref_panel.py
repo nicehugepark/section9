@@ -93,6 +93,26 @@ class PrefValueSurvivesTheScreen(unittest.TestCase):
             self.form, r"<input[^>]*class=\"uf pf-val\"",
             "값 칸이 한 줄짜리 input 으로 되돌아갔다 — 열고 저장만 해도 값이 뭉개진다")
 
+    def test_value_cell_refits_when_the_width_changes(self):
+        """폭이 바뀌면 줄 수도 바뀐다 — 태블릿을 돌린 자리에서 값이 잘리면 안 된다.
+
+        실측 2026-09-15, 실제 맥 Safari 26.4: 768 폭으로 새로 열면 값 칸이
+        94px·74px 로 펴지는데, 1440 에서 열어 둔 채 폭만 768 로 줄이면 둘 다
+        54px 에 머물러 셋째 줄이 반쯤 잘렸다. `fit` 이 처음 그릴 때와 `input`
+        에만 걸려 있어서다.
+        """
+        self.assertIn("ResizeObserver", self.form,
+                      "값 칸의 폭 변화를 듣는 자리가 없다 — 태블릿을 돌리면 값이 잘린다")
+        self.assertRegex(self.form, r"ro\.observe\(ta\)",
+                         "관찰자를 만들어 놓고 값 칸에 붙이지 않았다")
+        self.assertRegex(
+            self.form, r"contentRect\.width",
+            "높이까지 듣고 있으면 fit 이 낸 높이 변화에 제가 다시 불려 되울린다 — "
+            "폭만 보아야 한다")
+        self.assertRegex(
+            self.form, r'typeof ResizeObserver === "function"',
+            "ResizeObserver 가 없는 브라우저에서 판이 통째로 죽는다")
+
     def test_no_pref_table_left_in_account_panel(self):
         """⑦ 같은 값을 고치는 자리가 둘이면 어느 쪽이 참인지 화면이 말하지 못한다."""
         acct = _fn(self.js, "showUserForm")
