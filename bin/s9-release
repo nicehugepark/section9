@@ -2,7 +2,7 @@
 """s9-release — 코드만 담은 배포판 둘을 dist/ 에 만든다 (REQ-20260913-006-62x6).
 
   section9-<ver>-linux-macos.tar.gz   최상위 section9/ · 실행 비트 유지
-  section9-<ver>-windows.zip   최상위 section9/ · bin/*.cmd 는 CRLF
+  section9-<ver>-windows.zip   최상위 section9/ · bin/*.cmd 와 최상위 *.cmd 는 CRLF
   SHA256SUMS                          `sha256sum -c SHA256SUMS` 로 검증
 
 이름은 한 규칙이다 — `section9-<버전>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>`.
@@ -41,7 +41,9 @@ PREFIX = "section9/"
 # 배포판에 있어서는 안 되는 것 / 반드시 있어야 하는 것 — tests/test_release_archive.py 와 같은 표
 DATA_DIRS = ("vault", "users", "projects", "state", "scratchpad", ".s9-sync")
 CODE_DIRS = ("bin", "web", "harness", "tests", "docs")
-CRLF_RE = re.compile(r"^section9/bin/[^/]+\.cmd$")
+# bin/*.cmd 와 최상위 *.cmd(탐색기에서 두 번 누르는 section9.cmd · section9-dashboard.cmd,
+# REQ-20260915-006-62x6) — cmd.exe 는 LF 만인 배치 파일에서 라벨 이동을 못 한다
+CRLF_RE = re.compile(r"^section9/(?:bin/)?[^/]+\.cmd$")
 SEMVER_TAG_RE = re.compile(r"^v(\d+\.\d+\.\d+)$")
 
 
@@ -194,7 +196,8 @@ def release_notes(ref, ver):
         pass
     return (f"section9 {ver}\n\n배포판\n"
             f"- section9-{ver}-linux-macos.tar.gz — 리눅스·맥: 풀고 `bin/s9 code`\n"
-            f"- section9-{ver}-windows.zip — 윈도우(Claude): 풀고 `bin\\s9.cmd code`\n"
+            f"- section9-{ver}-windows.zip — 윈도우(Claude): 풀고 탐색기에서 `section9.cmd` 두 번 누르기"
+            f"(또는 `bin\\s9.cmd code`)\n"
             f"- SHA256SUMS — `sha256sum -c SHA256SUMS`\n")
 
 

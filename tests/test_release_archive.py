@@ -152,8 +152,18 @@ class TheReleaseBuild(unittest.TestCase):
             self.assertEqual(missing, [], f"{label} 에 코드가 빠졌다")
 
     def test_b4_zip_cmd_files_are_crlf(self):
-        cmds = [n for n in self.zip_names if re.match(r"^section9/bin/[^/]+\.cmd$", n)]
+        """bin/*.cmd 와 최상위 *.cmd(탐색기에서 두 번 누르는 section9.cmd ·
+        section9-dashboard.cmd, REQ-20260915-006-62x6)는 zip 에서 CRLF 다. 최상위 둘은
+        HEAD 에 있을 때 반드시 담겨야 한다 — 이 빌드는 HEAD 로 짓는데, 그 둘을 처음 담는
+        commit 의 검사에서는 HEAD 가 아직 그것을 모른다(작업 트리로 짓는 검사는
+        tests/test_win_launcher.py)."""
+        cmds = [n for n in self.zip_names if re.match(r"^section9/(?:bin/)?[^/]+\.cmd$", n)]
         self.assertTrue(cmds, "zip 에 bin/*.cmd 가 없다")
+        for top in ("section9.cmd", "section9-dashboard.cmd"):
+            in_head = subprocess.run(["git", "-C", ROOT, "cat-file", "-e", f"HEAD:{top}"],
+                                     capture_output=True).returncode == 0
+            if in_head:
+                self.assertIn(PREFIX + top, cmds, f"{top} 가 zip 의 최상위에 없다")
         with zipfile.ZipFile(self.zip) as zf:
             for n in cmds:
                 data = zf.read(n)

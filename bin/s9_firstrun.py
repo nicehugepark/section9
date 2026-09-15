@@ -28,7 +28,9 @@ git 훅이 영영 없었다.
 
 경로는 os.path.join 으로만 짓고 셸 문자열을 만들지 않는다 — Windows 도 같은 길이다.
 """
+import base64
 import getpass
+import ntpath
 import os
 import re
 import shutil
@@ -406,3 +408,119 @@ def join_project(ns, slug, user, email="", via=" (s9 code --join)"):
     if out["renamed"] or out["added"] or out["default"]:
         out["lines"].append(f"◌ 프로젝트 {slug} 에 참여했다 — 요청·문서가 그 프로젝트에 붙는다")
     return out
+
+
+# ── Windows 바로 가기 (REQ-20260915-006-62x6) ────────────────────────────────
+# 주인 물음 2026-09-15: 「윈도우 native 버전에서는 cmd 를 사용하지 않고 윈도우 탐색기에서
+# 실행할 수 있는 환경을 만들어 주는 건 어떤가?」 zip 을 푼 폴더 맨 위의 section9.cmd 가
+# 두 번 눌러 시작하는 파일이고, 첫 실행이 그것을 가리키는 바로 가기(.lnk)를 바탕화면과
+# 시작 메뉴에 둔다. .lnk 는 Python 만으로는 못 만든다 — PowerShell 의 WScript.Shell COM
+# 을 한 번 부른다. 실패해도 첫 실행을 막지 않고(부르는 쪽이 경고 한 줄), 이미 있으면
+# 다시 만들지 않는다(사람이 지운 것을 되살리지 않는다).
+LAUNCHER = "section9.cmd"
+SHORTCUT_NAME = "section9.lnk"
+ICON_REL = ("web", "assets", "favicon.ico")
+# 바탕화면·시작 메뉴의 자리는 레지스트리(User Shell Folders)가 말한다 — OneDrive 가
+# 바탕화면을 옮긴 계정에서는 %USERPROFILE%\Desktop 이 보이는 바탕화면이 아니다. 값은
+# REG_EXPAND_SZ(`%USERPROFILE%\Desktop`)라 환경으로 편다: 시험이 USERPROFILE 을 임시로
+# 돌리면 그대로 따라온다(실측 2026-09-15: 두 값 모두 %USERPROFILE% 로 시작). 못 읽으면 기본값.
+SHELL_FOLDERS = (
+    ("바탕화면", "Desktop", r"%USERPROFILE%\Desktop"),
+    ("시작 메뉴", "Programs", r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"),
+)
+SHELL_FOLDERS_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+
+
+def shell_folder(name, default):
+    """사용자 셸 폴더 하나 — 레지스트리 값(없으면 기본값)을 환경변수로 편 경로."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, SHELL_FOLDERS_KEY) as k:
+            val = winreg.QueryValueEx(k, name)[0]
+    except (ImportError, OSError):
+        val = default
+    return ntpath.expandvars(val)
+
+
+def shortcut_dirs():
+    """[(라벨, 디렉토리)] — 바로 가기가 놓일 자리 둘."""
+    return [(label, shell_folder(name, default)) for label, name, default in SHELL_FOLDERS]
+
+
+def _ps_quote(text):
+    """PowerShell 작은따옴표 문자열 — 안의 ' 는 '' 로."""
+    return "'" + str(text).replace("'", "''") + "'"
+
+
+def shortcut_script(root, paths):
+    """바로 가기를 만드는 PowerShell 본문. 대상은 <root>/section9.cmd, 작업 폴더는 <root>,
+    아이콘은 web/assets/favicon.ico(마크). 없는 상위 폴더는 만든다(시험의 임시 바탕화면)."""
+    target = os.path.join(root, LAUNCHER)
+    icon = os.path.join(root, *ICON_REL) + ",0"
+    lines = ["$ErrorActionPreference = 'Stop'",
+             "$sh = New-Object -ComObject WScript.Shell",
+             "foreach ($p in @(" + ", ".join(_ps_quote(p) for p in paths) + ")) {",
+             "  $d = Split-Path -Parent $p",
+             "  if (-not (Test-Path -LiteralPath $d)) {"
+             " New-Item -ItemType Directory -Path $d -Force | Out-Null }",
+             "  $s = $sh.CreateShortcut($p)",
+             "  $s.TargetPath = " + _ps_quote(target),
+             "  $s.WorkingDirectory = " + _ps_quote(root),
+             "  $s.IconLocation = " + _ps_quote(icon),
+             "  $s.Description = 'section9'",
+             "  $s.Save()",
+             "}"]
+    return "\n".join(lines) + "\n"
+
+
+def powershell_argv(script):
+    """따옴표·한글 경로를 셸에 맡기지 않는다 — 본문을 UTF-16LE base64 로 넘긴다(-EncodedCommand)."""
+    enc = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    return ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-EncodedCommand", enc]
+
+
+def ensure_shortcuts(root, run=None, is_windows=None, dirs=None, timeout=60):
+    """바탕화면·시작 메뉴에 section9.lnk 를 둔다 — Windows 에서만, 없는 것만, 한 번의 PowerShell 로.
+
+    돌려주는 것: {"created": [라벨…], "paths": [만든 .lnk 경로…], "skipped": 사유, "error": 한 줄}.
+    skipped: not-windows(다른 판) · no-launcher(최상위 section9.cmd 가 없는 자리 — 옛 배포판) ·
+    exists(둘 다 이미 있다). 예외를 밖으로 내지 않는다 — 부르는 쪽은 첫 실행을 잇는다.
+    """
+    res = {"created": [], "paths": [], "skipped": "", "error": ""}
+    win = (os.name == "nt") if is_windows is None else bool(is_windows)
+    if not win:
+        res["skipped"] = "not-windows"
+        return res
+    if not os.path.isfile(os.path.join(root, LAUNCHER)):
+        res["skipped"] = "no-launcher"
+        return res
+    want = [(label, os.path.join(d, SHORTCUT_NAME)) for label, d in (dirs or shortcut_dirs())]
+    want = [(label, p) for label, p in want if not os.path.isfile(p)]
+    if not want:
+        res["skipped"] = "exists"
+        return res
+    argv = powershell_argv(shortcut_script(root, [p for _, p in want]))
+    run = run or subprocess.run
+    try:
+        r = run(argv, capture_output=True, stdin=subprocess.DEVNULL, timeout=timeout)
+    except FileNotFoundError:
+        res["error"] = "powershell 이 없다"
+        return res
+    except subprocess.TimeoutExpired:
+        res["error"] = f"powershell 이 {timeout}초 안에 끝나지 않았다"
+        return res
+    except (OSError, ValueError) as e:
+        res["error"] = str(e)
+        return res
+    if r.returncode != 0:
+        err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        res["error"] = f"powershell rc={r.returncode}" + (f": {err[-1].strip()}" if err else "")
+        return res
+    made = [(label, p) for label, p in want if os.path.isfile(p)]
+    res["created"] = [label for label, _ in made]
+    res["paths"] = [p for _, p in made]
+    missing = [p for label, p in want if not os.path.isfile(p)]
+    if missing:
+        res["error"] = "powershell 은 끝났는데 파일이 없다: " + ", ".join(missing)
+    return res

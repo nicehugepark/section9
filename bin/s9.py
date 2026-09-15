@@ -26130,6 +26130,16 @@ def cmd_code(args):
         if r.returncode != 0:
             die("s9-install 실패 — 수동 실행 후 다시 시도하라: bin/s9-install")
         print("◌ 설치 완료 — 지금 시작하는 세션부터 자동 audit이 적용된다.")
+        # Windows 바로 가기 (REQ-20260915-006-62x6) — 설치가 도는 첫 실행에 한 번: 바탕화면·
+        # 시작 메뉴에 section9.cmd 를 가리키는 section9.lnk. 다른 판은 not-windows 로 곧
+        # 돌아오고, 실패는 한 줄로만 남긴다 — 바로 가기 때문에 첫 실행이 서지 않는다.
+        _sc = _firstrun_module().ensure_shortcuts(ROOT)
+        if _sc.get("created"):
+            print("◌ 바로 가기 「section9」를 만들었다: " + " · ".join(_sc["created"])
+                  + " — 다음부터는 그것을 두 번 누르면 된다")
+        elif _sc.get("error"):
+            print(f"◌ 바로 가기를 만들지 못했다({_sc['error']}) — 계속한다; "
+                  f"탐색기에서 이 폴더의 section9.cmd 를 두 번 눌러도 같다")
     # 첫 사용의 승계 제안 (REQ-20260905-025): 설치가 조용히 옮겨 둔 예전 설정에
     # 옮길 만한 줄이 있으면 **한 번만** 알린다 — 묻지 않고 넣지도 않는다. 세 길이
     # 나란히 있다: 설치 시 조용한 백업(기본) · `s9-install --backup ask` · 여기.
