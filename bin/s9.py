@@ -29746,6 +29746,395 @@ def _shot_cdp(url, size, wait, out, dpr=1.0, browser=None):
         _sh.rmtree(prof, ignore_errors=True)
 
 
+# ---- safaridriver 살림 (REQ-20260916-019-2n7g) -----------------------------
+#
+# 맥의 Safari 는 한 번에 **한 WebDriver 세션**만 받는다. 그래서 끝난 에이전트가
+# 남기고 간 safaridriver 하나가 다음 사람의 실브라우저 검증을 통째로 막는다:
+#
+#     Could not create a session: The Safari instance is already paired with
+#     another WebDriver session.
+#
+# 2026-09-16 밤에 두 번 막혔고(04:25 · 05:13), 두 번 다 푼 길은 그 pid 를 죽이는
+# 것뿐이었다. 그런데 **남의 것인지 남겨진 것인지 가릴 값이 없었다** — 실행 중인
+# 검증을 끊으면 그쪽이 잃으므로, 리드는 `s9 workers` 가 빌 때까지 20분을 기다린
+# 뒤에야 끊었다. 그 20분은 판정이 아니라 두려움이었다.
+#
+# 가리는 데 필요한 값은 하나다: **누가 띄웠나.** 띄우는 자리를 여기로 모아
+# 주인(세션·요청·pid·시작 시각)을 state 에 적어 두면, 다음 사람은 그 세션이
+# 아직 떠 있는지(`chat_alive`)만 보고 판정할 수 있다. 판정은 셋이고 **모르는
+# 것은 모른다고 적는다** — 손으로 띄운 드라이버를 추측으로 「남겨진 것」이라
+# 부르기 시작하면 이 장치는 곧 거짓말을 한다.
+#
+# 기록은 `state/safaridriver/<포트>.json` 이다. state 는 이 머신의 살림이라
+# 커밋되지 않는다 — 드라이버의 pid 는 이 머신 밖에서 오판만 만든다.
+
+SD_PORT_DEFAULT = 4445
+SD_STALE_SEC = 600          # `quit --stale` 이 건드리지 않는 나이 하한
+SD_MINE = "내 것"
+SD_IN_USE = "쓰는 중"
+SD_LEFT = "남겨진 것"
+SD_UNKNOWN = "모름"
+SD_PORT_RE = re.compile(r"-{1,2}p(?:ort)?[=\s]*(\d+)")
+
+
+def _sd_dir():
+    d = os.path.join(ROOT, "state", "safaridriver")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _sd_reg_path(port):
+    return os.path.join(_sd_dir(), f"{int(port)}.json")
+
+
+def _sd_read_reg(port):
+    try:
+        with open(_sd_reg_path(port), encoding="utf-8") as f:
+            r = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return r if isinstance(r, dict) else None
+
+
+def _sd_write_reg(rec):
+    with open(_sd_reg_path(rec["port"]), "w", encoding="utf-8") as f:
+        json.dump(rec, f, ensure_ascii=False, indent=1)
+
+
+def _sd_drop_reg(port):
+    try:
+        os.remove(_sd_reg_path(port))
+    except OSError:
+        pass
+
+
+def _sd_port_of(cmdline):
+    m = SD_PORT_RE.search(cmdline or "")
+    return int(m.group(1)) if m else 0
+
+
+def _sd_processes(table=None):
+    """지금 도는 safaridriver 들 — {pid: 포트}.
+
+    판정은 **실행 파일 이름**으로 한다 — 명령줄에 "safaridriver" 가 들었는지로
+    보면 `s9 safaridriver ls` 를 도는 제 자신이 목록에 실린다."""
+    out = {}
+    for pid, cmd in (table if table is not None else (proc_table() or {})).items():
+        parts = (cmd or "").split()
+        if not parts or os.path.basename(parts[0]) != "safaridriver":
+            continue
+        try:
+            out[int(pid)] = _sd_port_of(cmd)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _sd_age(pid):
+    """그 프로세스가 뜬 지 몇 초인가 — 못 재면 0.
+
+    맥의 ps 는 `etimes`(초)를 주는 판과 `etime`(DD-HH:MM:SS)만 주는 판이 갈린다.
+    둘 다 받는다 — 나이를 못 재는 것은 `quit --stale` 의 하한을 무력화한다."""
+    import subprocess as _sp
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return 0
+    for fmt in ("etimes=", "etime="):
+        try:
+            out = _sp.run(["ps", "-p", str(pid), "-o", fmt],
+                          capture_output=True, text=True, timeout=5)
+        except Exception:
+            return 0
+        raw = (out.stdout or "").strip()
+        if not raw:
+            continue
+        if raw.isdigit():
+            return int(raw)
+        days, _, clock = raw.partition("-")
+        if not clock:
+            days, clock = "0", raw
+        bits = [int(x) for x in clock.split(":") if x.isdigit()]
+        if not bits:
+            continue
+        sec = 0
+        for b in bits:
+            sec = sec * 60 + b
+        try:
+            return sec + int(days) * 86400
+        except ValueError:
+            return sec
+    return 0
+
+
+def _sd_binding_of(sid):
+    """그 세션의 바인딩 — 기록에는 앞 8자만 적히므로 앞자리로 찾는다."""
+    import glob as _glob
+    sid = (sid or "").strip()
+    if not sid:
+        return None
+    for bp in sorted(_glob.glob(_local_binding_glob())):
+        try:
+            with open(bp, encoding="utf-8") as f:
+                b = _norm_binding(json.load(f))
+        except (OSError, ValueError):
+            continue
+        if str(b.get("session") or "").startswith(sid[:8]):
+            return b
+    return None
+
+
+def _sd_verdict(reg, me):
+    """(판정, 까닭) — 넷 중 하나. 모르는 것은 모른다고 답한다."""
+    if not reg:
+        return SD_UNKNOWN, "손으로 띄운 드라이버다"
+    sid = str(reg.get("session") or "")
+    if sid and me and sid[:8] == me[:8]:
+        return SD_MINE, "이 세션이 띄웠다"
+    if not sid:
+        return SD_UNKNOWN, "기록에 주인 세션이 적히지 않았다"
+    b = _sd_binding_of(sid)
+    if not b:
+        return SD_UNKNOWN, f"주인 세션 {sid[:8]} 의 바인딩이 이 머신에 없다"
+    if chat_alive(b):
+        return SD_IN_USE, f"주인 세션 {sid[:8]} 이 떠 있다"
+    return SD_LEFT, f"주인 세션 {sid[:8]} 이 끝났다"
+
+
+def _sd_rows(me=None):
+    """떠 있는 safaridriver 마다 한 줄. 프로세스가 사라진 기록은 여기서 거둔다."""
+    me = me if me is not None else (os.environ.get("S9_SESSION") or "")
+    table = proc_table() or {}       # 한 번만 훑는다 — 표 하나로 목록도 청소도 한다
+    procs = _sd_processes(table)
+    rows = []
+    for pid, port in sorted(procs.items(), key=lambda kv: (kv[1], kv[0])):
+        reg = _sd_read_reg(port) if port else None
+        if reg and int(reg.get("pid") or 0) != pid:
+            # 그 포트에 다른 드라이버가 섰다 — 옛 기록은 이 프로세스의 것이 아니다.
+            reg = None
+        verdict, why = _sd_verdict(reg, me)
+        rows.append({"pid": pid, "port": port, "age": _sd_age(pid),
+                     "reg": reg, "verdict": verdict, "why": why})
+    if table:
+        # 프로세스 표를 실제로 읽었을 때만 거둔다 — 표가 비어 오는 판에서
+        # 쓸어 버리면 살아 있는 드라이버가 전부 주인을 잃는다.
+        live_ports = set(procs.values())
+        for fn in sorted(os.listdir(_sd_dir())):
+            if not fn.endswith(".json"):
+                continue
+            try:
+                port = int(fn[:-5])
+            except ValueError:
+                continue
+            if port not in live_ports:
+                _sd_drop_reg(port)
+    return rows
+
+
+def _sd_port_busy(port):
+    """그 포트에 무언가 듣고 있는가."""
+    import socket as _s
+    with _s.socket(_s.AF_INET, _s.SOCK_STREAM) as c:
+        c.settimeout(0.3)
+        return c.connect_ex(("127.0.0.1", int(port))) == 0
+
+
+def _sd_ready(port, timeout=8.0):
+    """safaridriver 가 WebDriver 로 답하기 시작했는가 (`GET /status`)."""
+    import time as _t
+    import urllib.request as _u
+    end = _t.time() + timeout
+    while _t.time() < end:
+        try:
+            with _u.urlopen(f"http://127.0.0.1:{int(port)}/status", timeout=1) as r:
+                if r.status == 200:
+                    return True
+        except Exception:
+            pass
+        _t.sleep(0.2)
+    return False
+
+
+def _sd_kill(pid, grace=3.0):
+    """그 드라이버를 거둔다 — 먼저 TERM, 안 죽으면 KILL. 거뒀으면 True.
+
+    safaridriver 가 끝나면 Safari 의 짝도 풀린다(2026-09-16 실측: 그것만이
+    풀린 길이었다). WebDriver 세션 id 는 띄운 쪽만 아는 값이라 여기서
+    `DELETE /session/<id>` 를 부를 수 없다 — 프로세스가 경계다."""
+    import signal as _sig
+    import time as _t
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    try:
+        os.kill(pid, _sig.SIGTERM)
+    except OSError:
+        _sd_reap(pid)
+        return not pid_alive(pid)
+    end = _t.time() + grace
+    while _t.time() < end:
+        _sd_reap(pid)
+        if not pid_alive(pid):
+            return True
+        _t.sleep(0.1)
+    try:
+        os.kill(pid, _sig.SIGKILL)
+    except OSError:
+        pass
+    _t.sleep(0.2)
+    _sd_reap(pid)
+    return not pid_alive(pid)
+
+
+def _sd_reap(pid):
+    """죽인 것이 **제 자식이면** 거둔다 — 아니면 조용히 지나간다.
+
+    `kill(pid, 0)` 은 좀비에게도 성공한다. `start` 가 띄운 드라이버는 이
+    프로세스의 자식이라, 거두지 않으면 방금 죽인 것이 「아직 살아 있다」로
+    읽힌다 — 실측 2026-09-16: 한 바퀴 시험이 정확히 그 자리에서 실패했다.
+    남의 자식(다른 세션이 남긴 드라이버)에는 ChildProcessError 가 나고,
+    그건 거둘 것이 없다는 뜻이니 그대로 지나간다."""
+    try:
+        os.waitpid(int(pid), os.WNOHANG)
+    except (ChildProcessError, OSError, ValueError, AttributeError):
+        pass
+
+
+def _sd_spawn(port):
+    """safaridriver 를 띄우고 pid 를 낸다. 못 띄우면 0.
+
+    **제 세션과 끊어서 띄운다**(`start_new_session`) — 드라이버는 이 명령 한
+    번보다 오래 살아야 검증에 쓸 수 있다. 그래서 남겨지기도 하는 것이고,
+    그 값을 치르는 대신 주인을 적어 둔다(`_sd_write_reg`)."""
+    import subprocess as _sp
+    try:
+        return _sp.Popen(["safaridriver", "-p", str(int(port))],
+                         stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                         start_new_session=True).pid
+    except (OSError, ValueError):
+        return 0
+
+
+def _sd_require_mac():
+    if os_platform() != "macOS":
+        print("s9 safaridriver: safaridriver 는 맥에만 있다 — 이 판은 "
+              f"{os_platform()} 이다. 맥에서 볼 것은 `s9 new request "
+              "--needs-machine <그 맥>` 으로 세워라.", file=sys.stderr)
+        sys.exit(2)
+
+
+def _sd_line(r):
+    reg = r.get("reg") or {}
+    who = "주인 기록 없음"
+    if reg:
+        who = f"세션 {str(reg.get('session') or '미상')[:8]}"
+        if reg.get("req"):
+            who += f" · {reg['req']}"
+    return (f"- 포트 {r['port'] or '미상'} (pid {r['pid']}, {_when(r['age'])}) "
+            f"— {r['verdict']} · {who} ({r['why']})")
+
+
+def cmd_safaridriver(args):
+    """맥 Safari 의 WebDriver 드라이버 살림 — 띄우고, 누구 것인지 보이고, 거둔다."""
+    _sd_require_mac()
+    me = (getattr(args, "session", "") or os.environ.get("S9_SESSION") or "")
+    action = getattr(args, "action", "ls") or "ls"
+
+    if action == "ls":
+        rows = _sd_rows(me)
+        for r in rows:
+            print(_sd_line(r))
+        if not rows:
+            print("(떠 있는 safaridriver 없음)")
+            return
+        if any(r["verdict"] in (SD_LEFT, SD_UNKNOWN) for r in rows):
+            print(f"「{SD_IN_USE}」이 아닌 것을 거두려면: s9 safaridriver quit --stale")
+        return
+
+    if action == "start":
+        port = int(getattr(args, "port", 0) or 0)
+        rows = _sd_rows(me)
+        if not port:
+            taken = {r["port"] for r in rows}
+            port = next((p for p in range(SD_PORT_DEFAULT, SD_PORT_DEFAULT + 40)
+                         if p not in taken and not _sd_port_busy(p)), 0)
+            if not port:
+                print("s9 safaridriver start: 쓸 포트를 못 찾았다", file=sys.stderr)
+                sys.exit(1)
+        standing = next((r for r in rows if r["port"] == port), None)
+        if standing:
+            print(f"이미 포트 {port} 에 떠 있다 "
+                  f"(pid {standing['pid']}, {standing['verdict']}) "
+                  f"— http://127.0.0.1:{port}")
+            return
+        pid = _sd_spawn(port)
+        if not pid:
+            print("s9 safaridriver start: safaridriver 를 띄우지 못했다 — "
+                  "맥에 safaridriver 가 있는지 보라", file=sys.stderr)
+            sys.exit(1)
+        if not _sd_ready(port):
+            _sd_kill(pid)
+            print(f"s9 safaridriver start: 포트 {port} 가 WebDriver 로 답하지 않는다 "
+                  "— Safari ▸ 설정 ▸ 고급 ▸ 개발자용의 「Allow Remote Automation」을 "
+                  "켰는지 보라(켜고 끄는 것은 사람의 몫이다).", file=sys.stderr)
+            sys.exit(1)
+        _sd_write_reg({"port": port, "pid": pid,
+                       "session": me[:8], "machine": current_machine(),
+                       "req": (getattr(args, "req", "") or
+                               os.environ.get("S9_JOB_REQ") or ""),
+                       "started": now_iso()})
+        print(f"safaridriver 포트 {port} (pid {pid}) — http://127.0.0.1:{port}")
+        print("끝낼 때 거둬라: s9 safaridriver quit --mine")
+        return
+
+    # quit
+    rows = _sd_rows(me)
+    force = bool(getattr(args, "force", False))
+    older = int(getattr(args, "older_than", SD_STALE_SEC) or 0)
+    port = int(getattr(args, "port", 0) or 0)
+    if port:
+        target = [r for r in rows if r["port"] == port]
+        if not target:
+            print(f"s9 safaridriver quit: 포트 {port} 에 떠 있는 드라이버가 없다",
+                  file=sys.stderr)
+            sys.exit(1)
+        if target[0]["verdict"] == SD_IN_USE and not force:
+            print(f"s9 safaridriver quit: 포트 {port} 는 {target[0]['why']} — "
+                  "거두면 그쪽 검증이 중단된다. 그래도 거두려면 --force.",
+                  file=sys.stderr)
+            sys.exit(1)
+    elif getattr(args, "mine", False):
+        target = [r for r in rows if r["verdict"] == SD_MINE]
+    elif getattr(args, "stale", False):
+        target = [r for r in rows
+                  if r["verdict"] in (SD_LEFT, SD_UNKNOWN) and r["age"] >= older]
+    elif getattr(args, "all", False):
+        if not force:
+            print("s9 safaridriver quit --all: 떠 있는 것을 전부 거둔다 — "
+                  "--force 를 함께 줘라", file=sys.stderr)
+            sys.exit(1)
+        target = rows
+    else:
+        print("s9 safaridriver quit: 무엇을 거둘지 골라라 — "
+              "--mine · --stale · --port <번호> · --all", file=sys.stderr)
+        sys.exit(2)
+
+    if not target:
+        print("(거둘 것 없음)")
+        return
+    failed = 0
+    for r in target:
+        ok = _sd_kill(r["pid"])
+        if r["port"]:
+            _sd_drop_reg(r["port"])
+        print(f"{'거뒀다' if ok else '못 거뒀다'}: 포트 {r['port'] or '미상'} "
+              f"(pid {r['pid']}, {r['verdict']})")
+        failed += 0 if ok else 1
+    if failed:
+        sys.exit(1)
+
+
 def _shot_size(raw):
     """`--size` 를 쉼표꼴 "W,H" 하나로 세운다 (REQ-20260913-005-2n7g).
 
@@ -39423,6 +39812,24 @@ def main():
     wk.add_argument("--why", default="",
                     help="중단하는 이유 (--stop 에 필수, --stop-all 에 권장)")
     wk.set_defaults(fn=cmd_workers)
+
+    sd = sub.add_parser("safaridriver",
+                        help="맥 Safari 의 WebDriver 드라이버 — 띄우기·주인 보기·거두기")
+    sd.add_argument("action", choices=("ls", "start", "quit"), nargs="?", default="ls")
+    sd.add_argument("--port", type=int, default=0, help="포트 (start 는 기본 자동)")
+    sd.add_argument("--session", default="", help="세션 id (기본: $S9_SESSION)")
+    sd.add_argument("--req", default="", help="start: 이 드라이버를 쓰는 요청 id")
+    sd.add_argument("--mine", action="store_true",
+                    help="quit: 이 세션이 띄운 것만 거둔다")
+    sd.add_argument("--stale", action="store_true",
+                    help="quit: 「쓰는 중」이 아니고 오래된 것을 거둔다")
+    sd.add_argument("--all", action="store_true",
+                    help="quit: 떠 있는 것을 전부 거둔다 (--force 필요)")
+    sd.add_argument("--force", action="store_true",
+                    help="quit: 「쓰는 중」이어도 거둔다")
+    sd.add_argument("--older-than", type=int, default=SD_STALE_SEC, dest="older_than",
+                    metavar="초", help=f"--stale 의 나이 하한 (기본 {SD_STALE_SEC})")
+    sd.set_defaults(fn=cmd_safaridriver)
 
     rv = sub.add_parser("review", help="확인 대기(review) 요청 목록")
     rv.add_argument("--quiet", action="store_true")
