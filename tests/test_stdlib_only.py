@@ -41,6 +41,22 @@ def local_helpers():
             and n != "__main__.py"}
 
 
+# 이 판에는 파일이 없는 표준 모듈 (REQ-20260915-003-2n7g, 맥 실측 2026-09-15).
+# 표준 라이브러리는 판마다 구성이 다르다 — `winreg` 는 윈도우에만 깔리고 `pwd` 는
+# POSIX 에만 깔린다. 3.10+ 의 `sys.stdlib_module_names` 는 **판과 무관한** 목록이라
+# 둘 다 알지만, 아래 폴백은 이 판에 실제로 깔린 파일만 훑으므로 남의 판 전용
+# 모듈을 서드파티로 본다. 맥에서 `bin/s9_firstrun.py` 의 `import winreg`
+# (윈도우에서만 부르는 자리다)가 그렇게 잡혀 맥의 모든 code 커밋이 막혔다.
+# 여기 적는 것은 **어느 판에서든 표준인 이름**뿐이라, 3.10+ 에서 합치면 무연산이다.
+OTHER_PLATFORM_STDLIB = {
+    # Windows 전용
+    "winreg", "winsound", "msvcrt", "_winapi", "nt",
+    # POSIX 전용
+    "posix", "pwd", "grp", "termios", "fcntl", "tty", "pty",
+    "resource", "syslog", "crypt", "spwd", "nis", "ossaudiodev",
+}
+
+
 def stdlib_names():
     """표준 라이브러리 최상위 모듈 이름 집합.
 
@@ -48,11 +64,11 @@ def stdlib_names():
     (CommandLineTools) 라 그 속성이 없어 이 스모크 시험이 AttributeError 로 오류나고
     커밋 검사가 모든 code 커밋을 막았다 (REQ-20260906-011-2n7g, 맥 실측 2026-09-06).
     3.9 이하에서는 같은 답을 파일 시스템에서 만든다: 내장 모듈 ∪ stdlib 디렉터리의
-    .py/패키지 ∪ lib-dynload 의 확장 모듈.
+    .py/패키지 ∪ lib-dynload 의 확장 모듈 ∪ 남의 판 전용 표준 모듈.
     """
     names = getattr(sys, "stdlib_module_names", None)
     if names:
-        return set(names)
+        return set(names) | OTHER_PLATFORM_STDLIB
     import sysconfig
     out = set(sys.builtin_module_names)
     for key in ("stdlib", "platstdlib"):
@@ -73,7 +89,7 @@ def stdlib_names():
                     out.add(n.split(".")[0])
                 elif os.path.isdir(os.path.join(sub, n)) and n != "site-packages":
                     out.add(n)
-    return out
+    return out | OTHER_PLATFORM_STDLIB
 
 
 class TestStdlibOnly(unittest.TestCase):
@@ -83,6 +99,19 @@ class TestStdlibOnly(unittest.TestCase):
         for m in ("os", "sys", "json", "ast", "sqlite3", "ssl", "unittest"):
             self.assertIn(m, names, m)
         self.assertNotIn("site-packages", names)
+
+    def test_other_platforms_modules_are_not_third_party(self):
+        """남의 판 전용 표준 모듈은 서드파티가 아니다 (REQ-20260915-003-2n7g).
+
+        맥에서 윈도우 전용 `winreg` 가 서드파티로 잡혀 모든 code 커밋이 막혔다.
+        목록이 그만큼 헐거워지지 않았는지도 함께 본다 — 진짜 서드파티는 밖이다.
+        """
+        names = stdlib_names()
+        for m in ("winreg", "msvcrt", "pwd", "fcntl"):
+            self.assertIn(m, names, "%s 가 표준 밖으로 보인다 — 이 판에 파일이 "
+                                    "없을 뿐 표준 모듈이다" % m)
+        for m in ("requests", "numpy", "flask", "pytest"):
+            self.assertNotIn(m, names, "%s 가 표준으로 보인다 — 가드가 헐거워졌다" % m)
 
     def test_no_third_party_imports(self):
         allowed = stdlib_names() | local_helpers()
