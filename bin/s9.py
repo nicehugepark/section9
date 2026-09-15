@@ -22179,7 +22179,9 @@ def _valid_gh(v, label):
 # 실패한 적이 있다(REQ-20260910-033: 한글 캡처 이름으로 sync 가 다섯 번 실패했다).
 # 그래서 **id 는 영문**이고 한글 이름은 **표시 이름(display)** 에 둔다 — 화면에 서는
 # 것은 표시 이름이라 사람이 보는 자리에서는 한글 그대로다.
-USER_NAME_RULE = "영문·숫자와 . _ - 만 (한글 이름은 표시 이름에 둔다)"
+USER_NAME_RULE = "영문·숫자와 . _ - 만 (한글 이름은 화면에 보일 이름으로 따로 받습니다)"
+# 문장 안에 넣을 짧은 꼴 — 물음과 오류가 같은 글자를 쓴다 (REQ-20260915-013-62x6).
+USER_NAME_RULE_SHORT = "영문·숫자와 . _ -"
 
 
 def user_name_ok(name):
@@ -26214,30 +26216,45 @@ def first_run_identity(u, known, ask, email="", out=print, tries=3):
     id 로 설 수 있는 글자다 — 끝내 못 정하면 ("skip", "") 으로 물러나 부르는 쪽이
     사람에게 다음 걸음을 적어 준다."""
     known = list(known or [])
-    hint = f" — 이미 있는 이름: {', '.join(known)}" if known else ""
     default, src = user_name_from_src(u, email)
+    # 머리말과 물음을 가른다 (REQ-20260915-013-62x6 반려 2026-09-15 16:54, ux-writer ·
+    # tech-writer 소집): 종전에는 한 물음에 상황·규칙·기본값·출처·이미 있는 이름을
+    # 전부 담아 한 줄로 이었고, 그 줄이 터미널 폭에서 아무 데서나 접혔다. 설명은
+    # 머리말로 올리고 **물음 줄에는 지금 칠 것 하나만** 남긴다.
+    # 낱말도 여기서 확정했다: `id`(폴더 이름이 되는 값, 첫 등장에 한 줄 정의) ·
+    # 「화면에 보일 이름」(내부 필드 이름인 「표시 이름」은 쓰지 않는다) ·
+    # 「이 컴퓨터의 계정 이름」(OS 쪽) — 그리고 문장은 전부 존댓말이다.
+    head = ["◌ 이 컴퓨터에서 section9 을 처음 켰습니다.",
+            "  이 컴퓨터를 쓰는 사람을 등록합니다.", ""]
+    if default:
+        head += ["  먼저 id 를 정해 주세요 — 기록이 쌓일 폴더 이름입니다.",
+                 f"  {USER_NAME_RULE_SHORT} 만 쓸 수 있습니다.",
+                 # 기본값의 출처는 머리말에서 말한다 — 물음 줄에 넣으면 괄호 안이
+                 # 두 토막이 되고, 「모든 사람에게 남의 계정이 뜨나」라는 물음
+                 # (주인 2026-09-15 16:26)에 답하는 것은 이 한 줄이다.
+                 # 값 뒤에 조사를 붙이지 않는다 — 이름이 무엇으로 끝나든
+                 # (…k · …1) 맞는 조사가 달라진다(translator 검수 2026-09-15).
+                 f"  Enter 를 누르면 {default} ({src}에서 가져왔습니다)"]
+    else:
+        head += [f"  이 컴퓨터의 계정 이름은 「{u}」입니다.",
+                 "  id 는 기록이 쌓일 폴더 이름이라 한글은 쓸 수 없습니다.",
+                 f"  {USER_NAME_RULE_SHORT} 로 id 를 정해 주세요.",
+                 "  한글 이름은 다음 물음에서 따로 적으시면 됩니다."]
+    if known:
+        head += [f"  이미 등록된 사람이 있습니다: {', '.join(known)}",
+                 "  다른 컴퓨터에서 쓰던 id 가 있으면 그대로 적으세요."]
+    for line in head + [""]:      # 머리말과 물음 사이에 숨 쉬는 빈 줄 하나
+        out(line)
+    q = (f"◌ id (Enter 를 누르면 {default}): " if default else "◌ id: ")
     for _ in range(max(1, tries)):
-        if default:
-            # 기본값 옆에 **출처**를 적는다 (REQ-20260915-013-62x6 반려): 어디서 온
-            # 값인지 안 보이면 「설치하는 사람마다 남의 계정이 뜨는 것 아닌가」로 읽힌다.
-            q = (f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. "
-                 f"이름(Enter={default} — {src}에서)" + hint + ": ")
-        elif not user_name_ok(u):
-            # 기본값이 없는 까닭을 **먼저** 말한다 (같은 반려의 뒷면): 이 컴퓨터에
-            # git 이메일이 없고 계정 이름은 폴더 이름이 될 수 없으면 내밀 값이
-            # 아무것도 없다. 그때 규칙만 적으면 사람은 왜 제 계정 이름이 안 되는지
-            # 모른 채 Enter 만 치게 된다 — 2026-09-15 에 실제로 그랬다.
-            q = (f"◌ 이 컴퓨터의 계정 이름({u})은 폴더 이름이 되는 id 로 쓸 수 없다 "
-                 f"— {USER_NAME_RULE}. 쓸 이름을 적어 달라"
-                 f"(한글 이름은 다음에 따로 묻는다)" + hint + ": ")
-        else:
-            q = (f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. "
-                 f"이름({USER_NAME_RULE})" + hint + ": ")
         name = (ask(q) or "").strip() or default
         if user_name_ok(name):
             return ("attach" if name in known else "add"), name
-        out(f"◌ 「{name or u}」 는 id 로 쓸 수 없다 — {USER_NAME_RULE}. "
-            f"한글 이름은 표시 이름으로 따로 들어가니, 여기에는 영문 id 를 적어 달라.")
+        # 오류가 더하는 것은 규칙이 아니라 **예시**다 — 규칙은 물음에서 이미 읽었다.
+        out(f"◌ 「{name or u}」 — 이 이름은 id 로 쓸 수 없습니다.")
+        out(f"  {USER_NAME_RULE_SHORT} 로 다시 적어 주세요.")
+        out("  예: sungjin · sj.park · park-sj")
+        out("  한글 이름은 다음 물음에서 따로 적으시면 됩니다.")
     return "skip", ""
 
 
@@ -26253,16 +26270,23 @@ def first_run_person_name(ask, out=print, tries=3, profile=None):
     컴퓨터에서 attach 하는 자리에서 같은 것을 다시 묻지 않기 위해서다."""
     if user_full_name(profile):
         return "", ""
+    # 「비우면 건너뜁니다」가 두 물음에 똑같이 붙던 것을 머리말 한 줄로 올린다
+    # (REQ-20260915-013-62x6). 첫 줄이 id 와 이 이름을 가르는 자리다 — id 는 폴더
+    # 이름, 이것은 화면에 보일 이름. 앞에서 「한글은 안 됩니다」를 들은 사람에게
+    # 「한글로 적어도 됩니다」가 그 짝이다.
+    out("◌ 화면에 보일 이름을 정해 주세요. 한글로 적어도 됩니다.")
+    out("  비워 두고 Enter 를 누르면 건너뜁니다.")
     vals = []
-    for label, q in (("성", "◌ 성 (예: 홍 — 비우면 건너뛴다): "),
-                     ("이름", "◌ 이름 (예: 길동 — 비우면 건너뛴다): ")):
+    for label, q in (("성", "◌ 성 (예: 홍): "),
+                     ("이름", "◌ 이름 (예: 길동): ")):
         val = ""
         for _ in range(max(1, tries)):
             val = (ask(q) or "").strip()
             if person_name_ok(val):
                 break
-            out(f"◌ 그 글자는 {label} 칸에 쓸 수 없다 — 줄바꿈 없이 "
-                f"{PERSON_NAME_MAX}자 안으로 적어 달라.")
+            # 칸을 주어로 세운다 — 「그 글자는 …」은 사람을 가리키는 어순이다.
+            out(f"◌ {label} 칸에는 쓸 수 없는 글자입니다.")
+            out(f"  줄바꿈 없이 {PERSON_NAME_MAX}자 안으로 적어 주세요.")
             val = ""
         vals.append(val)
     return vals[1], vals[0]
@@ -26609,9 +26633,17 @@ def cmd_code(args):
                     pass
                 verb, name = first_run_identity(u, registered_users(), input, email=_email)
                 if verb == "skip":
-                    print(f"◌ 이름을 정하지 않았다 — 등록 없이 계속한다. 나중에: "
-                          f"`{s9_cmd('user add <영문 id> --display ' + u)}` "
-                          f"(이미 있는 이름에 이으려면 `{s9_cmd('user attach <이름>')}`)")
+                    # 막다른 길이 아니라 다음 걸음을 주는 자리다. 명령은 백틱 없이
+                    # **들여쓴 제 줄**에 둔다 — 검은 창에는 백틱이 글자로 찍혀
+                    # 복사에 섞인다 (REQ-20260915-013-62x6, ux-writer).
+                    print("◌ id 를 정하지 않았습니다 — 등록 없이 계속합니다.")
+                    print("  등록은 언제든 다시 할 수 있습니다.")
+                    print("")
+                    print("  새로 등록하려면:")
+                    print(f"    {s9_cmd('user add <id>')}"
+                          + (f" --display {u}" if not user_name_ok(u) and u else ""))
+                    print("  다른 컴퓨터에서 쓰던 이름에 이으려면:")
+                    print(f"    {s9_cmd('user attach <그 이름>')}")
                 else:
                     # id 를 받은 **뒤** 성·이름을 묻는다 (REQ-20260915-030-62x6) —
                     # 카드가 부르는 이름이 여기서 정해진다. 비우면 건너뛰고 등록은
@@ -26631,8 +26663,9 @@ def cmd_code(args):
                             do_user_update(name, first_name=_first, last_name=_last,
                                            actor=name)
                         except ValueError as e:
-                            print(f"◌ 이름을 저장하지 못했다({e}) — 나중에: "
-                                  f"`{s9_cmd('user update ' + name + ' --last-name 홍 --first-name 길동')}`")
+                            print(f"◌ 이름을 저장하지 못했습니다 — {e}")
+                            print("  나중에 다시 넣으려면:")
+                            print(f"    {s9_cmd('user update ' + name + ' --last-name 홍 --first-name 길동')}")
                 # 사람이 생겼으니 이제 기본 프로젝트가 설 수 있다 (REQ-20260908-031).
                 # `s9-install` 은 `s9 init` 을 부르지만 그때는 등록된 사람이 없어
                 # 프로젝트가 서지 않는다 — 그리고 사람이 실제로 치는 것은
@@ -26643,12 +26676,14 @@ def cmd_code(args):
                 try:
                     made = ensure_default_project()
                     if made:
-                        print(f"◌ 기본 프로젝트 '{made}' — 프로젝트를 고르지 않은 "
-                              f"새 문서가 여기 붙는다 (옮기기: s9 project default <slug>)")
+                        print(f"◌ 기본 프로젝트 '{made}' 를 만들었습니다.")
+                        print("  프로젝트를 고르지 않은 새 문서는 여기에 담깁니다.")
+                        print(f"  바꾸려면: {s9_cmd('project default <slug>')}")
                         _st = onboarding_state()
                         if _st.get("reason") == "seeded" and _st.get("ids") and not _seeded:
-                            print(f"◌ 사용법 안내 요청 {len(_st['ids'])}건이 Board 의 open 열에 "
-                                  f"섰다 — 처음이면 그것부터 읽는다")
+                            print(f"◌ 사용법 안내 {len(_st['ids'])}건을 Board 의 open 열에 "
+                                  f"넣어 두었습니다.")
+                            print("  처음이시면 그것부터 읽어 보세요.")
                 except Exception:
                     pass
             else:
@@ -26660,10 +26695,14 @@ def cmd_code(args):
                 _add = (f"{s9_cmd('user add ' + _newname)}"
                         + (f" --display {u}" if _newname != u else "")) if _newname else \
                     f"{s9_cmd('user add <영문 id>')} --display {u}"
-                print(f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 "
-                      f"잇는다: {s9_cmd('user attach <이름>')}"
-                      + (f" ({', '.join(known)})" if known else "")
-                      + f" · 새 사람이면: {_add}")
+                # 두 길(잇기·새로 등록)이면 두 줄이고, 칠 명령은 제 줄에 둔다
+                # (REQ-20260915-013-62x6).
+                print(f"◌ 이 컴퓨터의 계정 이름은 {u} 입니다.")
+                print("  section9 에 아직 등록되어 있지 않습니다.")
+                print("  다른 컴퓨터에서 쓰던 이름에 이으려면:")
+                print(f"    {s9_cmd('user attach ' + (known[0] if known else '<그 이름>'))}")
+                print("  새로 등록하려면:")
+                print(f"    {_add}")
     except Exception:
         pass
     # 초대받은 프로젝트에 선다 (REQ-20260913-013-62x6) — 신원이 정해진 뒤라야 초대

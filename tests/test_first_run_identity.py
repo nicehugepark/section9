@@ -24,11 +24,17 @@ class FirstRunIdentity(unittest.TestCase):
 
     # F1. 이미 있는 이름을 치면 attach — 물음에 등록된 이름이 보인다
     def test_f1_existing_name_attaches(self):
-        asked = []
-        verb, name = self.m.first_run_identity("seongjinpark", ["nicehugepark", "bob"],
-                                               lambda q: asked.append(q) or "nicehugepark")
+        """이미 등록된 사람은 **머리말**에 선다 — 물음 줄에는 지금 칠 것 하나만
+        남긴다(REQ-20260915-013-62x6 재작업, ux-writer·tech-writer 소집)."""
+        asked, said = [], []
+        verb, name = self.m.first_run_identity(
+            "seongjinpark", ["nicehugepark", "bob"],
+            lambda q: asked.append(q) or "nicehugepark", out=said.append)
         self.assertEqual((verb, name), ("attach", "nicehugepark"))
-        self.assertIn("nicehugepark", asked[0]); self.assertIn("bob", asked[0])
+        head = "\n".join(said)
+        self.assertIn("nicehugepark", head); self.assertIn("bob", head)
+        self.assertIn("그대로 적으세요", head,
+                      "이미 있는 이름이 무엇에 쓰는 값인지 말하지 않는다")
 
     # F2. 없는 이름이면 add
     def test_f2_new_name_adds(self):
@@ -54,8 +60,8 @@ class FirstRunIdentity(unittest.TestCase):
             "박성진", [], lambda q: asked.append(q) or "",
             email="nicehugepark@example.com")
         self.assertEqual((verb, name), ("add", "nicehugepark"))
-        self.assertIn("Enter=nicehugepark", asked[0])
-        self.assertNotIn("Enter=박성진", asked[0])
+        self.assertIn("Enter 를 누르면 nicehugepark", asked[0])
+        self.assertNotIn("박성진", asked[0], "물음 줄에 못 쓸 이름이 기본값으로 섰다")
 
     def test_f5_no_english_anywhere_means_the_rule_is_shown_and_asked_again(self):
         """F5. 이메일도 한글 계정이면 기본값이 없다 — 규칙을 보이고 다시 묻는다."""
@@ -65,9 +71,12 @@ class FirstRunIdentity(unittest.TestCase):
             email="", out=said.append)
         self.assertEqual((verb, name), ("add", "sjpark"))
         self.assertEqual(len(asked), 2, "빈 Enter 뒤에 다시 묻지 않았다")
-        self.assertIn(self.m.USER_NAME_RULE, asked[0])
-        self.assertTrue(any("표시 이름" in s for s in said),
+        head = "\n".join(said)
+        self.assertIn(self.m.USER_NAME_RULE_SHORT, head, "규칙이 머리말에 없다")
+        self.assertTrue(any("다음 물음에서 따로" in x for x in said),
                         "한글 이름이 어디로 가는지 말하지 않았다")
+        self.assertNotIn("표시 이름", head,
+                         "내부 필드 이름(표시 이름)이 화면에 샜다 — tech-writer 판정")
 
     def test_f6_it_never_hands_back_a_name_that_cannot_be_registered(self):
         """F6. 끝내 못 정하면 skip — 못 쓸 이름을 등록으로 넘기지 않는다."""
@@ -117,34 +126,36 @@ class TheDefaultSaysWhereItCameFrom(unittest.TestCase):
         self.assertEqual(self.m.user_name_from_src("박성진", ""), ("", ""))
 
     def test_the_question_carries_the_source(self):
-        asked = []
+        asked, said = [], []
 
         def ask(q):
             asked.append(q)
             return "gildong"
 
         self.m.first_run_identity("박성진", [], ask, email="nicehugepark@example.com",
-                             out=lambda *a: None)
-        self.assertIn("Enter=nicehugepark", asked[0])
-        self.assertIn("git 이메일", asked[0],
-                      "기본값이 어디서 왔는지가 물음에 없다 — 남의 계정으로 읽힌다")
+                                  out=said.append)
+        self.assertIn("Enter 를 누르면 nicehugepark", asked[0])
+        self.assertIn("git 이메일", "\n".join(said),
+                      "기본값이 어디서 왔는지를 아무 데서도 말하지 않는다 — 남의 계정으로 읽힌다")
 
     def test_it_says_why_there_is_no_default(self):
         """기본값이 없는 까닭을 먼저 말한다 — 이 컴퓨터에 git 이메일이 없고 계정
         이름이 폴더 이름이 될 수 없으면 내밀 값이 아무것도 없다. 규칙만 적으면
         사람은 제 계정 이름이 왜 안 되는지 모른 채 Enter 만 친다(2026-09-15 실제)."""
-        asked = []
-        self.m.first_run_identity("박성진", [], lambda q: (asked.append(q), "gildong")[1],
-                                  email="", out=lambda *a: None)
-        self.assertIn("박성진", asked[0], "무엇이 안 되는지가 물음에 없다")
-        self.assertIn("쓸 수 없다", asked[0], "왜 기본값이 없는지가 물음에 없다")
+        said = []
+        self.m.first_run_identity("박성진", [], lambda q: "gildong",
+                                  email="", out=said.append)
+        head = "\n".join(said)
+        self.assertIn("박성진", head, "무엇이 안 되는지가 머리말에 없다")
+        self.assertIn("한글은 쓸 수 없습니다", head, "왜 id 로 못 쓰는지가 없다")
 
-    def test_without_a_default_the_question_says_the_rule_instead(self):
-        asked = []
+    def test_without_a_default_the_question_asks_for_the_id_alone(self):
+        """기본값이 없으면 물음 줄은 「◌ id: 」 하나다 — 규칙은 머리말이 말했다."""
+        asked, said = [], []
         self.m.first_run_identity("박성진", [], lambda q: (asked.append(q), "gildong")[1],
-                             email="", out=lambda *a: None)
-        self.assertIn(self.m.USER_NAME_RULE, asked[0])
-        self.assertNotIn("Enter=", asked[0])
+                                  email="", out=said.append)
+        self.assertEqual(asked[0].strip(), "◌ id:")
+        self.assertIn(self.m.USER_NAME_RULE_SHORT, "\n".join(said))
 
 
 if __name__ == "__main__":
