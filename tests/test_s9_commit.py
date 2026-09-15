@@ -326,5 +326,110 @@ class S9Commit(unittest.TestCase):
         self.assertEqual(self._head_files(), ["w8.txt"])
 
 
+class Worktree(unittest.TestCase):
+    """worktree 안에서도 `s9 commit` 이 돈다 (REQ-20260915-022-62x6).
+
+    ROOT 는 **데이터**의 자리이고 worktree 는 코드만 가른다(`s9 worktree add` 가
+    S9_ROOT 를 본 저장소로 못박는다). 그런데 담을 것을 ROOT 에서 세는 바람에
+    worktree 안에서는 늘 「HEAD 대비 변경이 없다」였고, 작업자는 임시 index 도
+    sync 잠금도 없는 plain git 으로 밀려났다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._genv = {k: v for k, v in os.environ.items() if k.startswith("GIT_")}
+        for k in cls._genv:
+            os.environ.pop(k, None)
+        cls.tmp = tempfile.mkdtemp(prefix="s9commit-wt-")
+        cls.repo = os.path.join(cls.tmp, "work")
+        os.makedirs(os.path.join(cls.repo, "vault"))
+        for a in (("init", "-q", "-b", "main"), ("config", "user.name", "t"),
+                  ("config", "user.email", "t@t")):
+            cls._git(cls.repo, *a)
+        for rel, body in (("a.txt", "a\n"), ("vault/seed.md", "seed\n")):
+            cls._write(cls.repo, rel, body)
+        cls._git(cls.repo, "add", "-A")
+        cls._git(cls.repo, "commit", "-q", "-m", "base")
+        cls.wt = os.path.join(cls.tmp, "wt-one")
+        cls._git(cls.repo, "worktree", "add", "-q", "-b", "wt/one", cls.wt)
+        # 같은 저장소가 아닌 자리 — 옮기지 않는 것을 재는 대조군
+        cls.other = os.path.join(cls.tmp, "other")
+        os.makedirs(cls.other)
+        for a in (("init", "-q", "-b", "main"), ("config", "user.name", "t"),
+                  ("config", "user.email", "t@t")):
+            cls._git(cls.other, *a)
+        cls._write(cls.other, "z.txt", "z\n")
+        cls._git(cls.other, "add", "-A")
+        cls._git(cls.other, "commit", "-q", "-m", "base")
+
+    @classmethod
+    def tearDownClass(cls):
+        os.environ.update(cls._genv)
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    @classmethod
+    def _git(cls, where, *a):
+        r = subprocess.run(["git", "-C", where, *a], env=_env(where),
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            raise AssertionError(f"git {' '.join(a)}: {r.stderr}")
+        return r.stdout
+
+    @classmethod
+    def _write(cls, where, rel, text):
+        p = os.path.join(where, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def _s9(self, cwd, *a, timeout=90):
+        """S9_ROOT 는 늘 본 저장소다 — worktree 가 데이터를 가르지 않는다."""
+        return subprocess.run([sys.executable, S9, "commit", *a], cwd=cwd,
+                              env=_env(self.repo), capture_output=True, text=True,
+                              timeout=timeout)
+
+    def test_it_commits_in_the_worktree_i_stand_in(self):
+        main_head = self._git(self.repo, "rev-parse", "HEAD").strip()
+        self._write(self.wt, "a.txt", "worktree 에서 고쳤다\n")
+        r = self._s9(self.wt, "-m", "wt: a.txt", "--", "a.txt")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with self.subTest("그 worktree 의 branch 에 담겼다"):
+            self.assertEqual(self._git(self.wt, "show", "HEAD:a.txt"),
+                             "worktree 에서 고쳤다\n")
+            self.assertEqual(self._git(self.wt, "rev-parse", "--abbrev-ref", "HEAD").strip(),
+                             "wt/one")
+        with self.subTest("본 저장소의 HEAD 는 그대로다"):
+            self.assertEqual(self._git(self.repo, "rev-parse", "HEAD").strip(), main_head)
+        with self.subTest("그 worktree 의 index 가 새 HEAD 에 맞춰졌다"):
+            self.assertEqual(
+                [n for n in self._git(self.wt, "diff", "--cached", "--name-only").splitlines() if n],
+                [], "역방향이 담긴 것으로 보인다 — 다음 commit 이 되돌린다")
+
+    def test_an_absolute_path_resolves_against_that_worktree(self):
+        self._write(self.wt, "a.txt", "절대 경로로\n")
+        r = self._s9(self.wt, "-m", "wt: 절대 경로", "--",
+                     os.path.join(self.wt, "a.txt"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._git(self.wt, "show", "HEAD:a.txt"), "절대 경로로\n")
+
+    def test_in_the_main_repo_nothing_changes(self):
+        """회귀: 본 저장소에서 부르면 종전대로 본 저장소에 담는다."""
+        self._write(self.repo, "a.txt", "본 저장소에서\n")
+        r = self._s9(self.repo, "-m", "main: a.txt", "--", "a.txt")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._git(self.repo, "show", "HEAD:a.txt"), "본 저장소에서\n")
+
+    def test_another_repository_is_not_touched(self):
+        """남의 저장소 안에서 불러도 그 저장소는 안 건드린다 — ROOT 에서 담는다."""
+        other_head = self._git(self.other, "rev-parse", "HEAD").strip()
+        self._write(self.other, "z.txt", "남의 것\n")
+        self._write(self.repo, "a.txt", "ROOT 에서 담긴다\n")
+        r = self._s9(self.other, "-m", "other 에서 불렀다", "--", "a.txt")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._git(self.other, "rev-parse", "HEAD").strip(), other_head,
+                         "남의 저장소에 commit 했다")
+        self.assertEqual(self._git(self.repo, "show", "HEAD:a.txt"), "ROOT 에서 담긴다\n")
+
+
 if __name__ == "__main__":
     unittest.main()

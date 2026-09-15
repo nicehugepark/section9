@@ -33,6 +33,11 @@ HEAD blob 으로 맞춘다. 맞추지 않으면 `git diff --cached` 가 내 변�
 공유 index 로는 남의 add 가 섞일 때마다 표가 바뀌어 사람이 두세 번 다시 걸어야
 했다(실측 2026-09-13 ④). 임시 index 는 이 실행 안에서 바뀌지 않으므로 표도 안 바뀐다.
 
+어디서 담나. **지금 서 있는 working tree 에서** (REQ-20260915-022). ROOT 는 데이터의
+자리(vault·state)이고 worktree 는 그 둘을 일부러 가르므로, 담을 것은 cwd 의 working
+tree 에서 세고 잠금·표식·S9_ROOT 는 ROOT 에 둔다. 같은 저장소의 working tree 일 때만
+옮긴다(git common dir 이 같을 때) — 남의 저장소는 건드리지 않는다.
+
 s9.py 의 헬퍼(ROOT · _sync_lock_take · _sync_commit_busy · pid_alive)는 bind() 로
 받는다 — 잠금과 표식의 정의를 두 벌로 두지 않는다. 훅(pre-commit=s9-guard ·
 commit-msg · post-commit)은 그대로 돈다: `--no-verify` 는 어디에도 없다.
@@ -59,7 +64,8 @@ GIT_ENV_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
 _TOKEN_RE = re.compile(r"S9_ALLOW_CONCURRENT=([0-9a-f]{4,})")
 
 USAGE = ("usage: s9 commit [-m 메시지 | -F 파일] [--hunks <patch>] [--wait 초] -- <경로…>\n"
-         "  지정한 경로의 HEAD 대비 변경만 임시 index 로 commit 한다 — 공유 index 의\n"
+         "  지정한 경로의 HEAD 대비 변경만 임시 index 로 commit 한다(지금 서 있는 working\n"
+         "  tree 에서 — worktree 안이면 그 worktree 에). 공유 index 의\n"
          "  남의 항목은 실리지 않고 그대로 남는다. sync 회차·다른 commit 이 끝나기를\n"
          "  기다렸다가(--wait, 기본 90초) 그 잠금 아래에서 commit 하므로 훅이 도는 동안\n"
          "  HEAD 가 옮겨지지 않는다. 훅(s9-guard·commit-msg·post-commit)은 그대로 돈다.\n"
@@ -73,7 +79,66 @@ def bind(g):
 
 
 def root():
+    """데이터의 자리 — vault·state·잠금·표식이 사는 곳 (본 저장소)."""
     return _S9["ROOT"]
+
+
+_WORK = {}
+
+
+def _git_at(cwd, *argv, timeout=15):
+    try:
+        return subprocess.run(["git", "-C", cwd, *argv], env=clean_env(),
+                              capture_output=True, encoding="utf-8",
+                              errors="replace", timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _common_dir(path):
+    """그 working tree 가 딸린 저장소의 공용 git 디렉터리 — 못 읽으면 빈 문자열.
+
+    linked worktree 의 `--git-dir` 은 제 자리(.git/worktrees/<이름>)를 가리키지만
+    `--git-common-dir` 은 본 저장소의 .git 을 가리킨다 — 같은 저장소인지는 이것으로 본다."""
+    r = _git_at(path, "rev-parse", "--git-common-dir")
+    d = (r.stdout.strip() if r and r.returncode == 0 else "")
+    if not d:
+        return ""
+    return os.path.realpath(d if os.path.isabs(d) else os.path.join(path, d))
+
+
+def work_root():
+    """commit 할 working tree — 지금 서 있는 자리 (REQ-20260915-022).
+
+    ROOT 는 **데이터**의 자리(vault·state)이지 코드가 놓인 working tree 가 아니다.
+    worktree 는 그 둘을 일부러 가른다(`s9 worktree add` 가 S9_ROOT 를 본 저장소로
+    못박는다 — 코드는 갈리고 데이터는 하나다, REQ-20260828-011). 그런데 `s9 commit`
+    은 ROOT 에서 담을 것을 세어, worktree 안에서 부르면 늘 「HEAD 대비 변경이 없다」
+    였다. 그래서 worktree 작업자는 plain git 으로 밀려났고 — 그 길에는 임시 index 도
+    sync 잠금도 없다(REQ-20260913-022 가 닫은 다섯이 다시 열린다).
+
+    **같은 저장소의 working tree 일 때만 옮긴다**(git common dir 이 같을 때):
+    남의 저장소 안에서 부른 `s9 commit` 이 그 저장소를 건드리지 않는다.
+    잠금·표식은 ROOT 에 그대로 둔다 — 저장소가 하나이므로 조용한 창도 하나다.
+    """
+    if "path" in _WORK:
+        return _WORK["path"]
+    rt = _S9["ROOT"]
+    path = rt
+    try:
+        cwd = os.getcwd()
+    except OSError:
+        cwd = rt
+    r = _git_at(cwd, "rev-parse", "--show-toplevel")
+    top = (r.stdout.strip() if r and r.returncode == 0 else "")
+    if top:
+        cand = os.path.realpath(top)
+        if cand != os.path.realpath(rt):
+            common = _common_dir(cand)
+            if common and common == _common_dir(rt):
+                path = cand
+    _WORK["path"] = path
+    return path
 
 
 def mark_path():
@@ -92,7 +157,7 @@ def clean_env(**extra):
 
 
 def git(*argv, env=None, timeout=120, input=None):
-    return subprocess.run(["git", "-C", root(), *argv], env=env or clean_env(),
+    return subprocess.run(["git", "-C", work_root(), *argv], env=env or clean_env(),
                           capture_output=True, encoding="utf-8", errors="replace",
                           timeout=timeout, input=input)
 
@@ -134,7 +199,7 @@ def parse_argv(argv):
             opts["message"].append(a[2:])
             i += 1
             continue
-        if a.startswith("-") and not os.path.exists(os.path.join(root(), a)):
+        if a.startswith("-") and not os.path.exists(os.path.join(work_root(), a)):
             return f"모르는 옵션: {a}", None
         paths.append(a)
         i += 1
@@ -142,9 +207,9 @@ def parse_argv(argv):
 
 
 def rel_paths(paths):
-    """저장소 루트 기준 경로로 — 절대 경로·cwd 기준 상대 경로 둘 다 받는다."""
+    """working tree 루트 기준 경로로 — 절대 경로·cwd 기준 상대 경로 둘 다 받는다."""
     out = []
-    rt = os.path.realpath(root())
+    rt = os.path.realpath(work_root())
     for p in paths:
         cand = p
         if os.path.isabs(p):
@@ -362,7 +427,7 @@ def reconcile_shared_index(old, new, paths, err):
 def do_commit(paths, message, hunks=None, wait=90.0, out=None, err=None):
     out = out or sys.stdout
     err = err or sys.stderr
-    rt = root()
+    rt = work_root()
     r = git("rev-parse", "--verify", "-q", "HEAD")
     if r.returncode != 0:
         print("HEAD 가 없다 — 첫 commit 은 git commit 으로", file=err)
@@ -389,7 +454,9 @@ def do_commit(paths, message, hunks=None, wait=90.0, out=None, err=None):
         return 3
     tmp = tempfile.mkdtemp(prefix="s9commit-")
     idx = os.path.join(tmp, "index")
-    env = clean_env(GIT_INDEX_FILE=idx, S9_ROOT=rt)
+    # S9_ROOT 는 **데이터**의 자리다 — worktree 에서 담아도 훅은 본 저장소의
+    # vault·state 를 본다. 담는 자리(rt)와 가른다.
+    env = clean_env(GIT_INDEX_FILE=idx, S9_ROOT=root())
     try:
         with LockToucher(lock):
             mark_write()
