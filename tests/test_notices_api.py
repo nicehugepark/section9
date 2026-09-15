@@ -320,7 +320,10 @@ class NoticesFacts(unittest.TestCase):
         self.assertEqual(len(ns), 1, ns)
         n = ns[0]
         self.assertEqual(n["sev"], "warn")
-        self.assertEqual(n["say"], "치워 둔 작업 — 동기화가 잠시 치워 둔 1건이 아직 남아 있습니다.")
+        # 주체 칸이 「동기화」, 제목이 「치워 둔 작업」이다 — 문장은 그 둘을 다시
+        # 적지 않는다 (REQ-20260915-061-62x6: 한 줄에 같은 말이 세 번 서던 자리).
+        self.assertEqual(n["say"], "치워 둔 작업 — 1건을 아직 되돌리지 못했습니다.")
+        self.assertNotIn("동기화가", n["say"], "주체를 문장이 또 적는다")
         self.assertEqual(n["go"], {"kind": "cmd", "text": "s9 doctor"})
         self.assertTrue(n["since"].startswith("20"), n["since"])
 
