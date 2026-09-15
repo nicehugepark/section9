@@ -13531,6 +13531,13 @@ def _sync_pull_cmd(timeout=8):
     # 무조건 서고, 그 안의 autostash 에 남의 작업이 갇힌 채로 하루가 간다.
     if os.path.isdir(os.path.join(ROOT, ".git", "rebase-merge")):
         _sync_abort_rebase()
+    # HEAD 가 가지에서 떨어져 있으면 여기서 되붙인다 (REQ-20260916-002). 떨어진
+    # 자리에서는 pull 도 push 도 「HEAD does not point to a branch」로 서는데,
+    # commit 은 그대로 쌓여 겉으로는 아무 일도 없어 보인다 — 실제로 26분·29건이
+    # 그렇게 밖으로 못 나갔다. 원인이 무엇이든(이 회차의 rebase 든, 사람이 친
+    # checkout 이든) 당기기 전에 한 번 보는 것이 가장 싼 자리다.
+    if _sync_head_detached():
+        _sync_reattach_head(_sync_default_branch())
     f = _sync_git("fetch", "--quiet", timeout=timeout)
     if f.returncode != 0:
         return f
@@ -13741,6 +13748,49 @@ def _sync_reclaim_autostash(before):
     return ""
 
 
+def _sync_default_branch():
+    """이 저장소가 미는 가지 — 원격의 기본 가지를 읽고, 못 읽으면 main."""
+    r = _sync_git("symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD",
+                  timeout=6)
+    name = (r.stdout or "").strip()
+    if r.returncode == 0 and name.startswith("origin/"):
+        return name[len("origin/"):]
+    return "main"
+
+
+def _sync_reattach_head(branch="main", why=""):
+    """HEAD 가 가지에서 떨어졌으면 지금 자리에 가지를 붙인다 (REQ-20260916-002).
+
+    작업 트리·index 를 건드리지 않는다 — 가지 ref 를 지금 HEAD 자리로 옮기고
+    HEAD 가 그 가지를 가리키게만 한다. 그래서 commit 을 하나도 잃지 않는다.
+    떨어진 채로 두면 그 저장소의 어떤 작업도 밖으로 나가지 못한다(push 가 설
+    자리가 없다) — 그런데 겉으로는 commit 이 쌓이므로 아무도 모른다.
+    """
+    cur = _sync_git("rev-parse", "HEAD", timeout=6)
+    sha = (cur.stdout or "").strip()
+    if cur.returncode != 0 or not sha:
+        _sync_log("✗ HEAD 를 읽지 못해 가지에 다시 붙이지 못했다")
+        return False
+    ref = "refs/heads/" + branch
+    up = _sync_git("update-ref", ref, sha, timeout=6)
+    sy = _sync_git("symbolic-ref", "HEAD", ref, timeout=6)
+    if up.returncode != 0 or sy.returncode != 0:
+        _sync_log(f"✗ HEAD 가 가지({branch})에서 떨어져 있는데 다시 붙이지 "
+                  f"못했다 — 이 저장소의 작업이 밖으로 나가지 못한다"
+                  + (f" (사유: {why})" if why else ""))
+        return False
+    _sync_log(f"↺ HEAD 가 가지에서 떨어져 있었다 → {branch} 를 {sha[:7]} 로 "
+              f"옮겨 다시 붙였다 (commit 보존)"
+              + (f" · 떨어진 사유: {why}" if why else ""))
+    return True
+
+
+def _sync_head_detached():
+    """HEAD 가 가지에 붙어 있나 — 붙어 있지 않으면 그 가지 이름을 못 읽는다."""
+    r = _sync_git("symbolic-ref", "-q", "HEAD", timeout=6)
+    return r.returncode != 0 or not (r.stdout or "").strip()
+
+
 def _sync_abort_rebase():
     """rebase 를 물린다 — abort 가 실패하면 남은 파일을 비우고 가지를 원위치로.
 
@@ -13775,9 +13825,21 @@ def _sync_abort_rebase():
         pass
     _sync_git("rebase", "--quit", timeout=6)
     if orig:
-        _sync_git("checkout", "-q", "-B", branch or "main", orig, timeout=6)
-        _sync_log(f"↺ rebase --abort 실패 → --quit 뒤 {branch or 'main'} 를 "
-                  f"{orig[:7]} 로 되돌렸다 (로컬 commit 보존)")
+        br = branch or "main"
+        co = _sync_git("checkout", "-q", "-B", br, orig, timeout=6)
+        if co.returncode == 0:
+            _sync_log(f"↺ rebase --abort 실패 → --quit 뒤 {br} 를 "
+                      f"{orig[:7]} 로 되돌렸다 (로컬 commit 보존)")
+        else:
+            # **되돌리기가 실패했는데 성공 문구를 찍던 자리다** (REQ-20260916-002,
+            # 실제 사고 2026-09-16 08:17): 이 checkout 이 조용히 실패해 HEAD 가
+            # 가지에서 떨어진 채 남았고, 그 뒤 26분·commit 29건이 어느 가지도
+            # 가리키지 않는 자리에 쌓였다. pull·push 는 전부 「HEAD does not
+            # point to a branch」로 섰는데 로그는 「되돌렸다」라고 말하고 있었다.
+            # 되돌리기에 실패해도 **가지에서 떨어진 채 두지는 않는다**: 가지를
+            # 지금 HEAD 자리로 옮겨 붙인다. 되돌리기는 못 했지만 commit 은 하나도
+            # 잃지 않고 그 뒤의 pull·push 가 다시 선다.
+            _sync_reattach_head(br, why=(co.stderr or "").strip()[:200])
     else:
         # --quit 이 지우지 못한 자리는 손으로 비운다 — 남으면 그 뒤 pull 이 전부 선다
         if os.path.isdir(rb):
