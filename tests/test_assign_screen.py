@@ -97,7 +97,7 @@ class Screen(unittest.TestCase):
             "originWho", "originFace", "originBits", "madeBy", "lineageChip", "lineageTell",
             "lineageRowHTML", "leaseElsewhere", "canTakeover",
             "elsewhereRowHTML", "assignBtnHTML", "ownerBadgeHTML",
-            "badgeFace",
+            "badgeFace", "badgeAttrs",
             "assignDoc", "assignPick", "takeoverDoc", "stallHTML",
             "cardHTML",
             # 담당 컴퓨터 (REQ-20260910-017-62x6)
@@ -278,7 +278,14 @@ class Screen(unittest.TestCase):
             self.assertIn('class="rvpt elsew"', self.parts["elsewhereRowHTML"])
             self.assertIn('class="deed"', self.parts["elsewhereRowHTML"])
             # 카드의 담당 배지는 배지 그대로다 — 새 배지를 만들지 않는다.
-            self.assertIn('class="badge asgnb"', self.parts["ownerBadgeHTML"])
+            # 겉을 짓는 자리가 badgeAttrs 한 곳으로 모인 뒤로는(REQ-20260915-031·-035)
+            # 글자를 대조하지 않고 **그 함수를 지나는지**를 본다 — 대조하면 배지가
+            # 어디서 나오든 이 시험은 글자만 보고 통과·실패한다.
+            self.assertIn('badgeAttrs(u, "asgnb")', self.parts["ownerBadgeHTML"],
+                          "담당 배지가 badgeAttrs 를 안 지난다")
+            attrs = self.parts["badgeAttrs"]
+            self.assertIn('class="badge', attrs, "badgeAttrs 가 배지 겉을 안 짓는다")
+            self.assertIn("extra", attrs, "badgeAttrs 가 덧붙는 class 를 안 받는다")
         with self.subTest("f3_one_function_builds_both_screens"):
             # 재료를 나눠 갖는 자리가 바뀌었다 (REQ-20260911-016): 사람이 아닌
             # 것이 만들었을 때의 **이름**은 `originFace` 하나가 짓고, 카드 칩과

@@ -307,11 +307,31 @@ def _now_stamps(rows):
 
 
 def _const(src, name):
-    """`const NAME = …;` 선언 한 덩어리를 원문 그대로 떠 온다 (여러 줄 허용)."""
-    m = re.search(r"^const %s\s*=[\s\S]*?;\n" % re.escape(name), src, re.M)
+    """`const NAME = …;` 선언 한 덩어리를 원문 그대로 떠 온다 (여러 줄 허용).
+
+    몸이 중괄호로 열리는 화살표(`const f = x => { … };`)는 **중괄호를 세어** 끝을
+    찾는다 — 첫 `;\n` 에서 끊으면 조각이 반만 실려 node 가 `Unexpected end of
+    input` 으로 죽는다(실측 2026-09-15, personTitle).
+    """
+    m = re.search(r"^const %s\s*=" % re.escape(name), src, re.M)
     if not m:
         raise AssertionError("원문에 const %s 선언이 없다" % name)
-    return m.group(0)
+    i = m.start()
+    brace = src.find("{", m.end())
+    semi = src.find(";", m.end())
+    if brace < 0 or (0 <= semi < brace):
+        return src[i:semi + 1] + "\n"
+    depth, j = 0, brace
+    while j < len(src):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                end = src.find(";", j)
+                return src[i:(end + 1 if end >= 0 else j + 1)] + "\n"
+        j += 1
+    raise AssertionError("const %s 의 끝을 못 찾았다" % name)
 
 
 @unittest.skipUnless(NODE, "node 없음 — 실행 검증 생략")
@@ -372,7 +392,12 @@ class StallRendersTheSame(unittest.TestCase):
             # 멎는다(이 파일 위 주석의 그 규율).
             _const(self.src, "LEASE_TTL"), _const(self.src, "docCreator"),
             g("originWho"), g("originBits"), g("lineageTell"), g("lineageChip"),
-            g("badgeFace"), g("ownerBadgeHTML"),
+            # 사람의 이름을 짓는 자리는 web/app/state.js 다 (REQ-20260915-031) —
+            # badgeFace 가 그 이름을 부르므로 조각에 함께 실어야 node 가 돈다.
+            # 조각 목록이 화면을 이어 붙이는 자리다(이 파일 위 주석의 그 규율).
+            g("personOf"), g("personId"), g("personFull"),
+            _const(self.src, "personName"), _const(self.src, "personTitle"),
+            g("badgeFace"), g("badgeAttrs"), g("ownerBadgeHTML"),
             # 프로젝트 자리 (REQ-20260906-053) — 메타 줄의 조각, 없으면 render 가 멎는다
             g("projBtnHTML"),
             g("leaseElsewhere"), g("canTakeover"), g("elsewhereRowHTML"),
