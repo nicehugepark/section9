@@ -24,6 +24,18 @@
   S5 Ctrl + 왼쪽 클릭도 같은 주소를 새 탭으로 연다.
   S6 손잡이 안의 다른 손잡이(「이어 말하기」)는 새 탭을 열지 않는다 — 행동이다.
   S7 맨 왼쪽 클릭은 지금처럼 이 탭 안에서 연다(회귀).
+  S9 재는 동안 판은 스스로 다시 그려지지 않는다.
+  S10 그래도 판이 다시 그려지면, 누른 자리에 **지금 있는** 카드가 열린다.
+
+판은 재는 동안에도 다시 그려진다 (REQ-20260916-021). 좌표를 재고 누르기까지 몇
+초가 흐르는데, 그 사이 안전 폴(events_ch.js evSweep, 이 판에서는 30초 주기)이
+카탈로그를 다시 받고 그 내용이 바뀌었으면 renderBoard 가 판을 다시 써 카드가
+위아래로 옮겨진다. 2026-09-16 05:41 에 그 일이 실제로 일어났다 — 재는 중에
+워처가 요청 하나를 등록하고 다른 하나를 전이시켰고, 처음 잰 좌표는 그때 문서를
+여는 자리가 아닌 곳(카드 바깥 또는 카드 안의 손잡이)을 가리켜 맨 클릭이 아무
+문서도 열지 않았다(주소가 #board 에 머물렀다). 그래서 이 시험은 둘을 한다:
+재기 전에 화면의 폴링을 멈추고(S9), 누를 자리는 **누르기 직전에** 다시 재어
+그 순간의 카드 id 로 판정한다.
 
 실행: python3 tests/ link_newtab
 """
@@ -69,16 +81,43 @@ SPOT = """(() => {
           id: host ? host.dataset.doc : "", tag: el.tagName};
 })()"""
 
-# 가운데 버튼 — 그 자리에 auxclick 을 보낸다(머리말의 실측 참조).
+# 가운데 버튼 — 그 자리에 auxclick 을 보낸다(머리말의 실측 참조). 어느 카드를
+# 눌렀는지도 **그 순간에** 함께 받는다 — 판이 다시 그려지면 id 가 달라진다.
 AUX = """(() => {
   const el = document.querySelector(%s), r = el.getBoundingClientRect();
+  const host = el.closest("[data-doc]");
   el.dispatchEvent(new MouseEvent("auxclick", {button: 1, buttons: 4,
     bubbles: true, cancelable: true,
     clientX: r.left + 2, clientY: r.top + 2}));
-  return {opened: window.__nt.slice(), hash: location.hash};
+  return {opened: window.__nt.slice(), hash: location.hash,
+          id: host ? host.dataset.doc : ""};
 })()"""
 
 READ = '(() => ({opened: window.__nt.slice(), hash: location.hash}))()'
+
+# 재는 동안 카드는 자리를 옮기지 않는다 — 화면의 폴링을 멈춘다. 폴링 벨트는 한
+# 자리(net.js S9_POLLS)에 모여 있으므로 전부 멈추고, 남은 수를 돌려준다.
+FREEZE = """(() => {
+  if (typeof S9_POLLS === "undefined" || typeof s9EveryStop !== "function")
+    return -1;
+  for (const p of S9_POLLS.slice()) s9EveryStop(p);
+  return S9_POLLS.length;
+})()"""
+
+# 판이 다시 그려지는 그 순간을 손으로 만든다 — 맨 앞 카드를 카탈로그에서 빼면
+# 뒤의 카드가 그 자리로 올라온다. 처음 잰 좌표를 그대로 쓰던 손은 여기서 빈틈을
+# 누르게 되고, 누르기 직전에 다시 재는 손은 올라온 카드를 연다.
+REDRAW = """(() => {
+  const first = document.querySelector("#view .card[data-doc]");
+  if (!first) return null;
+  const was = first.dataset.doc;
+  const i = catalog.findIndex(r => r.id === was);
+  if (i < 0) return null;
+  catalog.splice(i, 1);
+  render();
+  const now = document.querySelector("#view .card[data-doc]");
+  return {was: was, now: now ? now.dataset.doc : ""};
+})()"""
 
 
 class LinksOpenInANewTab(unittest.TestCase):
@@ -182,15 +221,22 @@ class LinksOpenInANewTab(unittest.TestCase):
         return s
 
     @classmethod
-    def press(cls, s, button="middle", modifiers=0):
-        """사람이 누르는 그대로 — 왼쪽 버튼은 누름·놓음 한 짝이 click 을 낳는다."""
+    def press(cls, sel, button="middle", modifiers=0):
+        """사람이 누르는 그대로 — 왼쪽 버튼은 누름·놓음 한 짝이 click 을 낳는다.
+
+        자리는 **누르기 직전에** 잰다(머리말: 판은 재는 동안에도 다시 그려진다).
+        그 자리의 카드 id 도 같은 순간에 받아 판정에 쓴다 — 미리 재 둔 id 로 판정하면, 판이
+        옮겨졌을 때 「무엇을 눌렀는지」와 「무엇이 열렸는지」가 서로 다른 순간을
+        가리킨다.
+        """
+        s = cls.spot(sel)
         buttons = 4 if button == "middle" else 1
         for kind, held in (("mousePressed", buttons), ("mouseReleased", 0)):
             cls.ws.call("Input.dispatchMouseEvent", type=kind,
                         x=s["x"], y=s["y"], button=button, buttons=held,
                         clickCount=1, modifiers=modifiers)
         time.sleep(0.12)
-        return cls.ws.eval(READ)
+        return {**cls.ws.eval(READ), "id": s["id"]}
 
     @classmethod
     def aux(cls, sel):
@@ -200,12 +246,13 @@ class LinksOpenInANewTab(unittest.TestCase):
     @classmethod
     def measure(cls):
         o = cls.out
+        # 재기 전에 화면의 폴링을 멈춘다 — 멈추고 나면 남은 벨트가 없어야 한다.
+        o["frozen"] = cls.ws.eval(FREEZE)
         cls.ws.eval(RECORD)
-        card = cls.spot("#view .card[data-doc] .t")   # 제목 자리 — 안쪽 손잡이가 없다
-        o["cardId"] = card["id"] or None
+        CARD = "#view .card[data-doc] .t"              # 제목 자리 — 안쪽 손잡이가 없다
 
         # S2 — Board 카드는 앵커가 아니다. 가운데 버튼으로 그 문서를 새 탭에.
-        o["cardMid"] = cls.aux("#view .card[data-doc] .t")
+        o["cardMid"] = cls.aux(CARD)
 
         # S6 — 카드 안의 「이어 말하기」는 행동이지 주소가 아니다.
         o["pickMid"] = cls.aux("#view .card .pickdoc")
@@ -235,21 +282,27 @@ class LinksOpenInANewTab(unittest.TestCase):
         # 새 탭의 보조키는 판마다 다르다 — 맥 Chrome 은 Ctrl+클릭을 오른쪽 클릭
         # (맥락 메뉴)으로 바꿔 click 이 오지 않는다; 거기서는 ⌘(CDP modifiers=4)다.
         # 화면은 둘 다 받는다(events.js: ctrlKey || metaKey). (REQ-20260910-012-2n7g)
-        o["cardCtrl"] = cls.press(card, button="left",
+        o["cardCtrl"] = cls.press(CARD, button="left",
                                   modifiers=(4 if sys.platform == "darwin" else 2))
 
         # S7 — 맨 왼쪽 클릭은 지금처럼 이 탭 안에서 연다(회귀). 화면이 바뀌므로 끝에.
         cls.ws.eval(RECORD)
-        o["cardPlain"] = cls.press(card, button="left")
+        o["cardPlain"] = cls.press(CARD, button="left")
+
+        # S10 — 판으로 돌아가(헤더의 Board 를 사람처럼 눌러) 판을 다시 그린 뒤,
+        #       그 자리에 **지금 있는** 카드가 열리는지 본다.
+        cls.press('header [data-tab="board"]', button="left")
+        cls.ws.eval(RECORD)
+        o["redraw"] = cls.ws.eval(REDRAW)
+        o["afterRedraw"] = cls.press(CARD, button="left")
 
     # ---- 판정 -------------------------------------------------------------
     def test_s2_middle_button_on_a_card_opens_that_document_in_a_new_tab(self):
         got = self.out["cardMid"]
         self.assertEqual(len(got["opened"]), 1,
                          "카드를 가운데 버튼으로 눌렀는데 새 탭이 하나가 아니다")
-        self.assertTrue(got["opened"][0].endswith("#docs/" + self.out["cardId"])
-                        or got["opened"][0].endswith(
-                            "#projects/" + self.out["cardId"]),
+        self.assertTrue(got["opened"][0].endswith("#docs/" + got["id"])
+                        or got["opened"][0].endswith("#projects/" + got["id"]),
                         "새 탭 주소가 그 문서를 열지 않는다: %r" % got["opened"])
         self.assertEqual(got["hash"], "#board",
                          "새 탭으로 여는 중에 이 탭의 화면까지 바뀌었다")
@@ -273,7 +326,7 @@ class LinksOpenInANewTab(unittest.TestCase):
         got = self.out["cardCtrl"]
         self.assertEqual(len(got["opened"]), 1,
                          "Ctrl + 클릭이 새 탭을 열지 않았다")
-        self.assertTrue(got["opened"][0].endswith(self.out["cardId"]),
+        self.assertTrue(got["opened"][0].endswith(got["id"]),
                         "Ctrl + 클릭이 다른 주소를 열었다: %r" % got["opened"])
         self.assertEqual(got["hash"], "#board",
                          "Ctrl + 클릭이 이 탭의 화면까지 바꿨다")
@@ -285,7 +338,7 @@ class LinksOpenInANewTab(unittest.TestCase):
     def test_s7_a_plain_click_still_opens_in_this_tab(self):
         got = self.out["cardPlain"]
         self.assertEqual(got["opened"], [], "맨 클릭이 새 탭을 열었다")
-        self.assertEqual(got["hash"], "#docs/" + self.out["cardId"],
+        self.assertEqual(got["hash"], "#docs/" + got["id"],
                          "맨 클릭이 이 탭에서 그 문서를 열지 않았다")
 
     def test_s8_the_rule_lives_in_one_place(self):
@@ -294,6 +347,24 @@ class LinksOpenInANewTab(unittest.TestCase):
         self.assertIn("hashOpenNew", self.ev)
         self.assertIn('el.closest("a[href],button")', self.ev,
                       "앵커와 안쪽 버튼을 가르는 자리가 없다")
+
+    def test_s9_the_board_does_not_redraw_while_we_measure(self):
+        """살아 있는 판은 좌표를 재고 누르는 사이에 카드를 옮긴다 (REQ-20260916-021)."""
+        self.assertEqual(
+            self.out["frozen"], 0,
+            "화면의 폴링 벨트를 걷지 못했다 — 잰 자리가 몇 초 뒤엔 빈틈일 수 있다")
+
+    def test_s10_a_redrawn_board_opens_the_card_now_under_the_cursor(self):
+        """판이 다시 그려져도 누른 자리의 카드가 열린다 (REQ-20260916-021)."""
+        rd = self.out["redraw"]
+        self.assertTrue(rd["now"] and rd["now"] != rd["was"],
+                        "판을 다시 그렸는데 맨 앞 카드가 그대로다: %r" % (rd,))
+        got = self.out["afterRedraw"]
+        self.assertEqual(got["id"], rd["now"],
+                         "다시 그려진 판에서 누른 자리가 그 카드가 아니다")
+        self.assertEqual(got["opened"], [], "맨 클릭이 새 탭을 열었다")
+        self.assertEqual(got["hash"], "#docs/" + rd["now"],
+                         "다시 그려진 판에서 맨 클릭이 그 문서를 열지 않았다")
 
 
 if __name__ == "__main__":
