@@ -182,55 +182,38 @@ console.log(JSON.stringify({text: el.textContent, tab: "tabindex" in el.attrs}))
 
 
 class StaleMarkIsDrawn(unittest.TestCase):
-    """마크는 폰트가 아니라 그림이다 (REQ-20260910-026).
+    """마크는 폰트가 아니라 그림이고, 그림은 사전에서 온다 (REQ-20260910-026·027).
 
-    카드의 시계를 다시 그릴 때 세운 인라인 마크 규칙과 같다
-    (board.css `.elapsed::before`, REQ-20260910-009 P2): 한 칸 = 한 화소 ·
-    획 1px · `mask` + `currentColor`. node 가 없어도 도는 검사다.
+    여기 있던 검사는 `.usagechip .stale` 한 규칙을 붙들고 있었다. 마크가 사전
+    한 곳(`web/css/marks.css`)으로 모이면서 칩은 제 클래스를 갖지 않고 사전의
+    낱말(`mk-clock`)을 부르게 됐는데 — 이 파일 위쪽 `STALE` 이 이미 그 글자를
+    안다 — 이 검사만 옛 이름에 남아, 아무 요소도 물지 않는 규칙을 살아 있는
+    것처럼 붙들었다(REQ-20260916-014-2n7g). 검사의 자리를 화면이 실제로 그리는
+    것으로 옮긴다: `.mk` 가 칠하고 `--mk-clock-src` 가 모양을 준다.
+    격자 11칸·획 1px·단축 금지는 사전 전체를 세는 test_marks_dictionary 가
+    본다. node 가 없어도 도는 검사다.
     """
     @classmethod
     def setUpClass(cls):
         with open(index_path(), encoding="utf-8") as f:
             cls.html = f.read()
 
-    def _rule(self):
-        m = re.search(r"\.usagechip \.stale\{([^}]*)\}", self.html)
-        self.assertIsNotNone(m, ".usagechip .stale 규칙이 없다 — 마크를 무엇으로 그리나")
-        return m.group(1)
-
     def test_the_mark_is_painted_by_a_mask(self):
-        css = self._rule()
+        m = re.search(r"\n\.mk,[^{]*\{([^}]*)\}", self.html)
+        self.assertIsNotNone(m, "사전의 `.mk` 규칙이 없다 — 마크를 무엇으로 그리나")
+        css = m.group(1)
         self.assertIn("background-color:currentColor", css,
                       "색을 스킨·톤이 아니라 다른 곳이 정한다")
-        self.assertIn("mask:url(\"data:image/svg+xml,", css, "그림이 아니다")
-        self.assertNotIn("content:", css, "글리프로 되돌아갔다 — 잉크를 OS 가 정한다")
+        self.assertIn("mask-image:var(--mk)", css, "그림이 아니다")
 
-    def test_one_cell_is_one_pixel(self):
-        """눈금 N칸이 N화소다 — 크기가 아니라 이 비율이 규칙이다."""
-        css = self._rule()
-        box = re.search(r"viewBox='0 0 (\d+) (\d+)'", css)
-        self.assertIsNotNone(box, "그림에 격자(viewBox)가 없다")
-        w, h = box.group(1), box.group(2)
-        self.assertEqual(w, h, "격자가 정사각이 아니다")
-        self.assertIn(f"width:{w}px", css, f"격자 {w}칸인데 폭이 다르다 — 획이 번진다")
-        self.assertIn(f"height:{h}px", css, f"격자 {h}칸인데 높이가 다르다")
-        self.assertIn(f"center/{w}px {h}px", css, "그림을 격자와 다른 크기로 늘렸다")
-        self.assertRegex(css, r"stroke-width='1'", "획이 1px 이 아니다")
-        # .5 중심이라야 가로·세로 획이 화소 경계에 앉는다
-        self.assertNotRegex(css, r"[Mm]\d+ \d+h", "정수 좌표의 획 — 반 화소로 번진다")
-
-    def test_the_mark_does_not_grow_the_line(self):
-        """마크가 칩의 줄보다 높으면 값이 낡을 때마다 계정 줄이 튄다.
-
-        칩은 10.5px mono 이고 줄 높이를 따로 주지 않는다(`normal`) — 글자
-        위쪽까지가 대략 8px 이라, 가운데 맞춤(`vertical-align:middle`)으로
-        서는 마크의 절반이 그 안에 들어와야 한다. 11px 로 그렸을 때 실제로
-        1px 자랐다 (REQ-20260910-026).
-        """
-        css = self._rule()
-        self.assertIn("vertical-align:middle", css, "고정 화소로 앉히면 스킨마다 어긋난다")
-        n = int(re.search(r"height:(\d+)px", css).group(1))
-        self.assertLessEqual(n, 9, f"마크가 {n}px 다 — 10.5px 글자 줄을 밀어 올린다")
+    def test_the_stale_mark_has_a_drawing_in_the_dictionary(self):
+        """칩이 부르는 낱말에 그림이 실제로 달려 있다 — 빈 이름이 아니다."""
+        self.assertRegex(
+            self.html, r"--mk-clock-src:url\(\"data:image/svg\+xml,",
+            "시각 마크가 사전에 그림으로 없다 — 글리프로 되돌아가면 잉크를 OS 가 정한다")
+        self.assertRegex(
+            self.html, r"\.mk-clock\{--mk:var\(--mk-clock-src\)\}",
+            "칩이 부르는 `mk-clock` 이 사전의 그림을 물지 않는다")
 
 
 if __name__ == "__main__":
