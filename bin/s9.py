@@ -13564,8 +13564,44 @@ def _sync_commit_busy():
             continue
         if why == "s9-commit" and not commit_module().mark_pid_alive(path):
             continue        # 죽은 s9 commit 이 남긴 표식 — 회차를 세우지 않는다
+        if why == "commit-in-progress" and not commit_module().mark_pid_alive(path):
+            # 죽은 pre-commit(s9-guard)이 남긴 표식 (REQ-20260915-005-62x6, 실제 사고
+            # 2026-09-15 11:16): guard 는 검사를 통과하면 표식을 남기고 post-commit 이
+            # 지우는데, 그 사이 git 이 지면(ref 잠금·commit-msg 훅 거부·신호) post-commit
+            # 이 없어 표식이 5분 동안 남는다 — 그동안 sync 는 회차를 세우고 `s9 commit` 은
+            # 90초를 기다리다 exit 3 이었다. pid 가 죽었으면 commit 은 없다: 지우고 한 줄
+            # 적는다(무시만 하면 볼 때마다 같은 판정을 되풀이한다).
+            _sync_clear_dead_commit_mark(path, age)
+            continue
         return why
     return ""
+
+
+def _commit_mark_pid(path):
+    """「pid N 시각」 꼴 표식의 pid — 모르면 0."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            head = f.readline().split()
+    except OSError:
+        return 0
+    if len(head) >= 2 and head[0] == "pid":
+        try:
+            return int(head[1])
+        except ValueError:
+            return 0
+    return 0
+
+
+def _sync_clear_dead_commit_mark(path, age):
+    """pid 가 죽은 commit-in-progress 표식을 지우고 sync.log 에 한 줄 남긴다."""
+    pid = _commit_mark_pid(path)
+    try:
+        os.remove(path)
+    except OSError:
+        return False
+    _sync_log(f"↺ 죽은 commit(pid {pid})이 남긴 state/commit-in-progress 를 제거했다 "
+              f"({int(age)}초 전 것) — pre-commit 뒤에 commit 이 져서 post-commit 이 지우지 못한 자리")
+    return True
 
 
 def _sync_clear_stale_index_lock():
@@ -14012,6 +14048,18 @@ def _sync_poll_once(timeout=8):
     # pull 부터 진다 (REQ-20260912-004-62x6, 실측 2026-09-13: poll 139회 연속
     # 실패로 174 commit 을 못 받았다). 5분 넘은 것만 제거한다.
     _sync_clear_stale_index_lock()
+    # pull 은 sync 잠금 아래에서만 한다 (REQ-20260915-005-62x6, 실제 사고 2026-09-15
+    # 11:16:33~36): sync_poll 의 commit-busy 검사는 poll 이 **시작될 때** 한 번인데,
+    # fetch 가 도는 3초 사이에 `s9 commit` 이 잠금을 잡고 pre-commit 을 통과했고, 그
+    # 뒤에 이 pull 이 HEAD 를 옮겨(reflog: pull --ff-only: Fast-forward) git 이
+    # 「cannot lock ref HEAD」로 졌다 — post-commit 이 없어 commit-in-progress 표식이
+    # 남았고 다음 commit 은 90초를 기다린 뒤 exit 3 이었다. 잠금을 쥐면 `s9 commit`
+    # 의 take_sync_window 가 이 pull 이 끝나기를 기다리고, 잠금이 잡혀 있으면(전송
+    # 회차·commit) 이번 poll 은 받지 않는다 — 다음 차례에 받는다.
+    lock = _sync_lock_take(30)
+    if not lock:
+        _SYNC_POLL_LAST["error"] = "동기화 잠금이 잡혀 있다(전송 회차 또는 commit) — 이번 poll 은 받지 않는다"
+        return "busy"
     try:
         before = _sync_git("rev-parse", "HEAD").stdout.strip()
         r = git_run(["pull", "--ff-only"], timeout=timeout)
@@ -14019,6 +14067,10 @@ def _sync_poll_once(timeout=8):
         _SYNC_POLL_LAST["error"] = str(e)[:200]
         return "net"
     finally:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
         try:
             os.makedirs(os.path.dirname(_SYNC_POLL_TS), exist_ok=True)
             with open(_SYNC_POLL_TS, "w", encoding="utf-8") as f:
