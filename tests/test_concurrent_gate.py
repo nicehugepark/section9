@@ -233,8 +233,15 @@ class DataOnlyCommits(unittest.TestCase):
                          "문서만 담았는데 검사가 돌았다 — 동기화가 또 막힌다")
 
     def test_one_code_file_mixed_in_still_stops_it(self):
+        # 둘째 검사(`recent_foreign_commits`)는 **이 저장소의 진짜 이력**을 읽는다
+        # (REQ-20260915-008-2n7g). 여기서 재는 것은 「코드가 섞이면 검사가 돈다」
+        # 하나뿐이니 그 창은 닫아 둔다 — 열어 두면 이 시험은 bin/s9.py 를 담은
+        # 커밋이 15분 안에 있었는지에 따라 갈린다(실제로 2026-09-15 전체 회차가
+        # 그렇게 한 번 실패했다: 몇 분 전 커밋이 다른 세션 것으로 보였다).
         with mock.patch.object(g, "live_workers",
                                return_value=[("서브에이전트", "s1", 2)]), \
+             mock.patch.object(g, "recent_foreign_commits",
+                               return_value=([], [])), \
              mock.patch.object(g, "fresh_staged", return_value=[]) as fresh:
             g.concurrent_gate(["vault/requests/2026/09/REQ-1.md", "bin/s9.py"])
         self.assertEqual(fresh.call_count, 1,
