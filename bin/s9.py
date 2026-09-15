@@ -18595,16 +18595,26 @@ def cmd_untitled(args):
 # 셋(착수·전이 / 매 턴 훅 주입 / linkcheck --parents)이 전부 아래 한 판정을 읽는다
 # — 판정이 갈리면 화면마다 다른 목록이 되고, 그러면 사람은 아무 목록도 믿지 않는다.
 
+# 이 규율이 기계로 서기 시작한 날 (tests/test_no_orphan_requests.py 와 **같은 값**).
+# 이 날짜 앞의 문서는 backfill 의 몫이라 매 턴 짚지 않는다 — 그러나 `linkcheck
+# --parents` 는 그 backlog 도 그대로 보여 준다(한 번에 훑으라고 있는 명령이다).
+PARENT_ENFORCE_FROM = "2026-09-10"
+
+
 def _parentless_row(r):
     """이 요청은 parent 도 root 도 없는가 — 결함으로 셀 것만 참.
-    사람 입구(origin human)만 본다: 에이전트가 세운 요청은 cmd_new 가 origin_req
-    를 채우고 규약이 --parent 를 요구하는 자리라 이 검사의 뿌리(채팅 경로)가 아니다.
-    옛 문서(origin 없음)는 backfill 의 몫이고 매 턴 짚을 것이 아니다."""
+
+    **입구로 가르지 않는다** (REQ-20260916-002, 실제 사고 2026-09-16). 전에는
+    `origin == "human"` 만 셌고, 그 전제는 「에이전트가 세운 요청은 규약이
+    --parent 를 요구한다」였다. 실제로는 지켜지지 않아서, 무인 작업자가 세운
+    REQ-20260916-020-2n7g 가 parent 없이 서고 **전체 테스트를 실패시키는데
+    화면의 어느 목록에도 안 떴다** — 짚는 자리 셋과 막는 시험이 서로 다른
+    집합을 보고 있었고, 두 목록의 교집합은 0이었다. 결함의 뜻은 하나다:
+    parent 도 root 도 없다. 날짜로 좁히는 것은 부르는 쪽의 몫이다(since).
+    """
     if r.get("type") != "request" or r.get("status") == "cancelled":
         return False
-    if (r.get("parent") or "").strip() or r.get("root"):
-        return False
-    return doc_origin(r) == "human"
+    return not ((r.get("parent") or "").strip() or r.get("root"))
 
 
 def parentless_requests(session="", since="", started_only=False):
@@ -18662,6 +18672,10 @@ def parent_nudge(meta, session=""):
     착수(in-progress)·review·done 전이(cmd_status)와 훅 주입이 이 문구를 그대로 쓴다."""
     if not _parentless_row({**meta, "root": doc_root(meta), "origin": doc_origin(meta)}):
         return ""
+    # 매 턴 짚는 자리는 시행일 뒤만 본다 — 옛 문서 395건을 턴마다 들이밀면
+    # 짚는 문장 자체가 소음이 되고, 그러면 아무도 안 읽는다.
+    if (meta.get("created") or "")[:10] < PARENT_ENFORCE_FROM:
+        return ""
     rid = meta.get("id", "")
     msg = (f"⚠ {rid} 에 parent 가 없습니다 — 파생이면 `s9 link {rid} --parent <REQ>`, "
            f"새 주제면 `s9 set {rid} --root`")
@@ -18672,8 +18686,12 @@ def parent_nudge(meta, session=""):
 
 
 def cmd_parentless(args):
+    # 기본은 **시행일 뒤**만 — 그 앞의 것은 backfill 이라 지금 고칠 것과 섞으면
+    # 고칠 것이 그 안에 묻힌다(시행일 앞 395건 · 뒤 0건, 실측 2026-09-16).
+    # 옛 것까지 보려면 `--since 2026-01-01` 처럼 날짜를 직접 준다.
+    since = getattr(args, "since", "") or PARENT_ENFORCE_FROM
     rows = parentless_requests(session=getattr(args, "session", "") or "",
-                               since=getattr(args, "since", "") or "",
+                               since=since,
                                started_only=bool(getattr(args, "started", False)))
     for r in rows:
         print(f"- {r['id']} {(r.get('created') or '')[:10]} [{r.get('status')}] "
@@ -18682,6 +18700,13 @@ def cmd_parentless(args):
         print(f"parent·root 없는 요청 {len(rows)}건" if rows else "parent·root 없는 요청 없음")
         if rows:
             print("파생이면 `s9 link <id> --parent <REQ>`, 새 주제면 `s9 set <id> --root`")
+        if not getattr(args, "since", ""):
+            old = len(parentless_requests(
+                session=getattr(args, "session", "") or "",
+                started_only=bool(getattr(args, "started", False)))) - len(rows)
+            if old > 0:
+                print(f"({PARENT_ENFORCE_FROM} 앞의 것 {old}건은 backfill 몫이라 "
+                      f"세지 않았다 — 보려면 `--since 2026-01-01`)")
     return 0
 
 
