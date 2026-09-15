@@ -148,6 +148,9 @@ class TheGateStands(unittest.TestCase):
             for cmd in ("git commit -m x",
                         "git commit -am x",
                         "git commit --amend --no-edit",
+                        "git commit --no-edit --amend",
+                        # 메시지 안의 옵션 이름 — `-m` 뒤 따옴표는 글이다
+                        "git commit -m '-n 을 쓰지 마라'",
                         # 글 안의 옵션 이름은 명령이 아니다 (⑤ 와 같은 갈래)
                         "bin/s9 note REQ-1 '커밋에 -n 을 붙이지 마라'",
                         "bin/s9 commit -m '검사를 --no-verify 로 끄지 마라'"):
