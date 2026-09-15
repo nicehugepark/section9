@@ -102,6 +102,19 @@ class TestStdlibOnly(unittest.TestCase):
             self.assertIn(m, names, m)
         self.assertNotIn("site-packages", names)
 
+    def test_other_platforms_modules_are_not_third_party(self):
+        """남의 판 전용 표준 모듈은 서드파티가 아니다 (REQ-20260915-003-2n7g).
+
+        맥에서 윈도우 전용 `winreg` 가 서드파티로 잡혀 모든 code 커밋이 막혔다.
+        목록이 그만큼 헐거워지지 않았는지도 함께 본다 — 진짜 서드파티는 밖이다.
+        """
+        names = stdlib_names()
+        for m in ("winreg", "msvcrt", "pwd", "fcntl"):
+            self.assertIn(m, names, "%s 가 표준 밖으로 보인다 — 이 판에 파일이 "
+                                    "없을 뿐 표준 모듈이다" % m)
+        for m in ("requests", "numpy", "flask", "pytest"):
+            self.assertNotIn(m, names, "%s 가 표준으로 보인다 — 가드가 헐거워졌다" % m)
+
     def test_no_third_party_imports(self):
         allowed = stdlib_names() | local_helpers()
         bad = []

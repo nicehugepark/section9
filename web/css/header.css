@@ -60,8 +60,15 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 .hrow2{display:flex;gap:14px;align-items:center;justify-content:space-between;
   flex-wrap:wrap;padding:8px 22px;border-top:1px solid var(--hairline)}
 .fgroup,.pgroup{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-/* whoami 라벨 — 서버 파생 신원 표시 전용 (선택 UI 아님, REQ-20260824-027) */
-.who{font-family:var(--mono);font-size:10px;letter-spacing:.4px;color:var(--muted);white-space:nowrap}
+/* whoami 라벨 — 서버 파생 신원 표시 전용 (선택 UI 아님, REQ-20260824-027).
+   접히는 단위는 줄이 아니라 덩이(.wseg)다 — 사용량 칩과 같은 까닭이다
+   (REQ-20260915-001-2n7g): 줄 전체를 nowrap 으로 두면 min-content 폭이 글자
+   전체 폭이 되어 좁은 폭에서 머리글을 밀어낸다. 이름 · 「@ 컴퓨터」 · OS ·
+   권한은 각각 한 덩이라 「@」가 홀로 줄 끝에 남지 않고, 컴퓨터 이름이 혼자
+   기둥보다 길면 그 덩이만 마지막 수단으로 끊긴다. */
+.who{font-family:var(--mono);font-size:10px;letter-spacing:.4px;color:var(--muted);
+  text-align:right;max-width:100%;overflow-wrap:anywhere}
+.who .wseg{white-space:nowrap}
 .who b{color:var(--text);font-weight:600}
 .who.warn{color:var(--c-blocked);white-space:normal}
 .who.warn code{font-family:var(--mono);border:1px solid var(--hairline);padding:0 3px}
@@ -213,8 +220,18 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 /* MY PROJECTS 레저 스트립 — '내 것만' 토글 ON일 때 #proj-info 자리 위에 표시
    (DOC-20260823-006 권고안 B). 배지·pill·라운드·그림자 금지 — 선과 타이포만. */
 /* 헤더 계정·사용량 칩 (REQ-20260824-043) — 60s 폴, 색은 임계 신호만 */
+/* 접히는 단위는 칩이 아니라 **덩이**다 (REQ-20260915-001-2n7g). 여기 있던
+   `white-space:nowrap` 은 이 상자의 min-content 폭을 글자 전체 폭으로 못박아,
+   400px 창의 머리글(356px)을 밀어내고 문서를 9px 가로로 넘치게 했다 — 맥
+   Safari 실측 innerWidth 400 · scrollWidth 409, 「fable 37%」의 끝이 잘렸다.
+   덩이 안만 nowrap 이면 「5h」와 그 숫자는 갈리지 않으면서 자리가 모자랄 때
+   덩이 사이에서 접힌다. 접힌 줄도 오른끝에 맞춘다 — 이 묶음은 오른끝 정렬
+   기둥이라(`.idcol`), 왼끝 정렬이면 줄마다 오른쪽이 들쭉날쭉해진다.
+   메일은 낱말 하나라 접을 자리가 없다: 그 덩이만 마지막 수단으로 끊긴다. */
 .usagechip{font-family:var(--mono);font-size:10.5px;color:var(--muted);
-  white-space:nowrap;letter-spacing:.02em}
+  letter-spacing:.02em;text-align:right;max-width:100%}
+.usagechip .useg{white-space:nowrap}
+.usagechip .useg.mail{white-space:normal;overflow-wrap:anywhere}
 /* 클로드 계정(사용량)과 하네스 신원을 두 줄로 분리 — 가독 (2026-08-24 채팅 요청) */
 .pgroup.idcol{flex-direction:column;align-items:flex-end;gap:2px}
 .usagechip .warn{color:var(--c-inprogress);font-weight:600}
