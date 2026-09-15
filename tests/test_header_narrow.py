@@ -112,6 +112,20 @@ class HeaderNarrow(unittest.TestCase):
         self.assertRegex(websrc.fn(self, app, "tabReveal"), r"scrollIntoView",
                          "고른 탭을 보이는 자리로 밀지 않는다")
 
+    def test_no_scroll_bar_stands_on_the_tab_row(self):
+        """가로로 미는 줄 위의 막대는 자리를 먹고 눈에 거슬린다 — 표시는 흐림이
+        맡는다(위 시나리오). 두 갈래로 지운다: 표준 속성 `scrollbar-width:none`
+        과 옛 WebKit 의 `::-webkit-scrollbar{display:none}`.
+
+        이 시험이 서 있는 까닭은 test_scrollbar S3 과 부딪혔던 자리이기
+        때문이다 (REQ-20260916-020) — S3 은 「숨기는 것은 새로 짓는 것이
+        아니다」로 좁혔고, 여기서는 그 숨김을 지워서 S3 을 통과시키는 길을 닫는다."""
+        self.assertRegex(self.narrow, r"\.tabs\{[^}]*scrollbar-width:none",
+                         "탭 줄에 표준 속성으로 막대를 지우는 규칙이 없다")
+        self.assertRegex(
+            self.narrow, r"\.tabs::-webkit-scrollbar\{[^}]*display:none",
+            "옛 WebKit 에서 탭 줄 막대가 그대로 선다")
+
     def test_side_shell_skin_keeps_its_vertical_tabs(self):
         """soft 스킨의 탭은 왼쪽 셸에 **세로로** 선다 — 거기에 가로 밀기를
         얹으면 셸이 무너진다. 규칙에서 빼 둔 것을 지운 적이 없어야 한다."""

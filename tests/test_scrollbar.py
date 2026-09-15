@@ -10,6 +10,10 @@
      있으면 ::-webkit-scrollbar 를 무시하고 이쪽을 그린다.
   S2 옛 WebKit 을 위한 같은 그림이 함께 있다(폭 · 트랙 투명 · 화살표 없음).
   S3 규칙은 tokens.css 한 곳에 산다 — 스킨 파일이 제 스크롤바를 새로 짓지 않는다.
+     **숨기는 것은 새로 짓는 것이 아니다** (REQ-20260916-020): 막대를 지우기만 하는
+     블록(display:none · width/height:0)은 스킨마다 다른 그림을 만들 수 없으니 세지
+     않는다 — 좁은 폭 탭 줄은 가로로 미는 줄이라 그 위의 막대를 숨긴다. 색·폭·모양을
+     다시 정하는 선언이 하나라도 섞이면 그대로 잡는다.
   S4 트랙은 투명이고 썸은 색면이 아니라 선의 색(--hairline)·손이 얹히면 --muted 다.
 
 실행: python3 tests/ scrollbar
@@ -24,6 +28,24 @@ CSS = os.path.join(HERE, "..", "web", "css")
 
 def read(name):
     return open(os.path.join(CSS, name), encoding="utf-8").read()
+
+
+# 막대를 **지우는** 선언. 이것만 담긴 블록은 아무것도 그리지 않으므로 스킨마다
+# 다른 그림이 새어 나올 수 없다 — S3 이 세지 않는다 (REQ-20260916-020).
+ERASING = re.compile(r"^(display:none|(width|height):0(px)?)$")
+RULE = re.compile(r"(?m)^([^\n{]*scrollbar[^\n{]*)\{([^}]*)\}")
+COMMENT = re.compile(r"/\*.*?\*/", re.S)
+
+
+def invents_its_own(css):
+    """스크롤바를 **새로 짓는** 규칙의 선택자들. 지우기만 하는 것은 빼고 돌려준다."""
+    out = []
+    for m in RULE.finditer(css):
+        decls = [d.replace(" ", "") for d in COMMENT.sub("", m.group(2)).split(";")]
+        if all(ERASING.match(d) for d in decls if d.strip()):
+            continue
+        out.append(m.group(1).strip())
+    return out
 
 
 class ScrollbarIsDrawnInOnePlace(unittest.TestCase):
@@ -49,9 +71,20 @@ class ScrollbarIsDrawnInOnePlace(unittest.TestCase):
         for fn in sorted(os.listdir(CSS)):
             if not fn.endswith(".css") or fn in ("tokens.css", "terminal.css"):
                 continue
-            for m in re.finditer(r"(?m)^([^\n{]*scrollbar[^\n{]*)\{", read(fn)):
-                bad.append(f"{fn}: {m.group(1).strip()}")
+            bad += [f"{fn}: {sel}" for sel in invents_its_own(read(fn))]
         self.assertEqual(bad, [], "스킨이 제 스크롤바를 따로 짓는다 — tokens.css 한 곳으로")
+
+    def test_s3_hiding_is_not_inventing(self):
+        """지우는 블록은 통과하고, 그리는 선언이 하나라도 섞이면 잡힌다."""
+        hide = ':root:not([data-skin="soft"]) .tabs::-webkit-scrollbar'
+        self.assertEqual(invents_its_own(hide + "{display:none}"), [])
+        self.assertEqual(invents_its_own(".x::-webkit-scrollbar{width:0;height:0}"), [])
+        self.assertEqual(
+            invents_its_own(hide + "{display:none;background:#888}"), [hide],
+            "지우는 선언에 그리는 선언이 섞였는데 놓쳤다")
+        self.assertEqual(
+            invents_its_own(".x::-webkit-scrollbar{width:10px;background:red}"),
+            [".x::-webkit-scrollbar"], "제 막대를 새로 짓는 규칙을 놓쳤다")
 
     def test_s4_the_thumb_is_never_a_filled_chip(self):
         for m in re.finditer(r"::-webkit-scrollbar-thumb[^{]*\{([^}]*)\}", self.tok):
