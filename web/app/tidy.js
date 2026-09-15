@@ -9,10 +9,12 @@
      완전히     휴지통에서 영영 지운다. **되돌릴 수 없다** — 이 층만 붉고,
      지우기     이 층만 한 번 더 묻는다.
 
-   화면의 낱말은 확정 사전 여섯뿐이다 (REQ-20260910-006): 보관 · 보관 해제 ·
-   휴지통으로 · 되돌리기 · 완전히 지우기 · 휴지통 비우기. 명령 이름과 값
-   (`archive`·`rm`·`restore`·`purge`·`archived`)은 사람이 직접 치는 글자라 그대로
-   둔다.
+   화면의 낱말은 확정 사전 여섯뿐이다 (REQ-20260910-006 · -20260915-066):
+   보관함으로 · **문서 목록으로** · 휴지통으로 · 완전히 지우기 · 휴지통 비우기 ·
+   되돌리기(치운 뒤 무르는 줄 **전용**). 명령 이름과 값 (`archive`·`rm`·
+   `restore`·`purge`·`archived`)은 사람이 직접 치는 글자라 그대로 둔다.
+   「보관 해제」는 폐기했다 — 휴지통 행과 보관함 행이 같은 버튼·같은 툴팁·같은
+   알림인데 라벨만 둘이었고, 누른 말과 돌아온 말이 달랐다.
 
    판정은 여기서 하지 않는다: 서버의 `/api/docs/tidy` 가 CLI(`s9 archive` ·
    `rm` · `restore` · `purge`)와 **같은 함수**를 지난다. 화면이 제 규칙을 한 벌
@@ -62,6 +64,21 @@ function tidyOverdue(r){
   const t = Date.parse(r.deleted || "");
   if (!t) return false;
   return Date.now() - t > tidyKeepDays * 86400000;
+}
+
+/* 거르개 칩 — **기록이 있는 갈래만 세운다** (REQ-20260915-066-62x6, designer
+   실측: 그날 휴지통 122건이 전부 빈 값이라 두 칸이 언제 눌러도 빈 목록이었다).
+   눌러도 아무것도 없는 칸은 손잡이가 아니라 함정이다. 남는 갈래가 하나뿐이면
+   거르개 줄 자체가 할 말이 없으므로 비운다. */
+function sieveChips(){
+  const rows = tidyTrash || [];
+  const have = k => rows.some(r => (r.trashed_how || "") === k);
+  const kinds = [["screen", "화면에서 버린 것"], ["cli", "명령으로 버린 것"]]
+    .filter(([k]) => have(k));
+  if (kinds.length < 2 && !tidyQ.trim() && tidyWho === "all") return "";
+  return [["all", "전체"], ...kinds].map(([v, t]) =>
+    `<button type="button" data-tidy="who" data-who="${v}"
+      class="${tidyWho === v ? "on" : ""}">${t}</button>`).join("");
 }
 
 /* 검색·거르개를 지난 행들. 순서는 서버가 준 그대로(버린 때 역순)를 지킨다. */
@@ -146,7 +163,23 @@ async function tidySend(op, ids, extra){
 
 /* ------------------------------------------------- Docs 목록·뷰어에 덧붙이기 */
 
+/* 헤더의 전역 손잡이를 채운다 (REQ-20260915-066-62x6). 수가 없으면(아직 못
+   받았다) 손잡이를 세우지 않는다 — 0 을 미리 적으면 비었다고 거짓말을 하고,
+   0건이면 갈 곳이 없으므로 역시 세우지 않는다. */
+function trashChipPaint(){
+  const el = document.getElementById("trash-chip");
+  if (!el) return;
+  const n = tidyTrash === null ? null : tidyTrash.length;
+  el.hidden = !n;
+  if (!n) return;
+  const html = `휴지통<b>${n}</b>`;
+  if (el.innerHTML !== html) el.innerHTML = html;
+  const t = "보관함과 휴지통을 열어 되돌립니다";
+  el.title = t; el.setAttribute("aria-label", `${t} — 휴지통 ${n}건`);
+}
+
 function tidyDecorate(){
+  trashChipPaint();
   const list = $("#view .doclist");
   if (list){
     list.classList.toggle("picking", tidyPicking);
@@ -309,7 +342,7 @@ function tidyDecorate(){
       + ` data-id="${esc(id)}" title="${arch
           ? "문서 목록으로 되돌립니다"
           : "보관함으로 내립니다 — 문서는 그대로 있고 언제든 되돌립니다"}">`
-      + `${arch ? "보관 해제" : "보관함으로"}</button>`)
+      + `${arch ? "문서 목록으로" : "보관함으로"}</button>`)
       + `<button type="button" class="deed tidy" data-tidy="rm1" data-id="${esc(id)}"`
       + ` title="휴지통으로 보냅니다 — 목록에서 사라지되 되돌릴 수 있습니다">휴지통으로</button>`;
     let box = grp;
@@ -333,7 +366,7 @@ const TIDY_SAID = {
   archive: n => n > 1 ? `${n}건을 보관함으로 내렸습니다` : "보관함으로 내렸습니다",
   back:    n => n > 1 ? `${n}건을 문서 목록으로 되돌렸습니다.`
                       : "문서 목록으로 되돌렸습니다.",
-  purge:   n => `${n}건을 완전히 지웠습니다.`,
+  purge:   n => n > 1 ? `${n}건을 완전히 지웠습니다.` : "완전히 지웠습니다.",
 };
 
 function tidyUndoHTML(){
@@ -376,13 +409,14 @@ function tidyRender(){
   /* 판 바닥은 두 가지를 약속한다: 번호는 태워 둔다(옛 약속), 그리고 수명.
      수명이 꺼져 있으면 그 말을 하지 않는다 — 지키지 않을 약속은 적지 않는다. */
   const footLine = () => {
-    const num = "휴지통에 있는 문서도 번호를 그대로 씁니다 — 완전히 지워도"
-              + " 그 번호가 다른 문서에 다시 쓰이지는 않습니다.";
-    if (!over.length) return num;
-    // 수는 손잡이가 이미 말한다 — 문장까지 세면 같은 수가 두 번 서고, 바닥이
-    // 세 줄이 된다. 문장이 맡는 것은 **약속**이다.
-    return `${tidyKeepDays}일을 넘긴 것도 저절로 사라지지 않습니다`
-         + ` — 지우는 것은 사람이 누릅니다. ` + num;
+    /* 바닥은 **한 가지만** 말한다 (REQ-20260915-066-62x6, ux-writer). 번호
+       약속은 「완전히 지우기」 확인 창이 그 자리에서 이미 하므로 여기서 빼면
+       두 줄이 한 줄이 된다. 수는 손잡이가 말하니 문장은 약속만 맡는다.
+       연어도 고쳤다: 누르는 것은 버튼이지 「지우는 것」이 아니다(translator). */
+    if (over.length)
+      return `${tidyKeepDays}일을 넘긴 것도 저절로 사라지지 않습니다`
+           + ` — 사람이 눌러야 지워집니다.`;
+    return "버린 문서는 여기 남아 있습니다. 되돌리거나 완전히 지울 수 있습니다.";
   };
   /* 빈 탭은 두 줄이다 (REQ-20260907-085 · s9-design R6): 무엇이 없는가 아래에
      **반대쪽에 몇 건이 있는가**를 적는다. 보관함 1 · 휴지통 76 인 화면에서 빈
@@ -409,7 +443,7 @@ function tidyRender(){
       </div>
       <div class="acts">
         <button type="button" data-tidy="back" data-id="${esc(r.id)}"
-          title="문서 목록으로 되돌립니다">${tidyTab === "trash" ? "되돌리기" : "보관 해제"}</button>
+          title="문서 목록으로 되돌립니다">문서 목록으로</button>
         ${tidyTab === "trash" ? `<button type="button" class="gone" data-tidy="purge"
           data-id="${esc(r.id)}" title="영구히 지웁니다 — 되돌릴 수 없습니다">완전히 지우기</button>` : ""}
       </div></div>`;
@@ -420,10 +454,7 @@ function tidyRender(){
     ? `<div class="tsieve">
         <input type="search" data-tidy="q" class="tq" value="${esc(tidyQ)}"
           placeholder="번호나 제목으로 찾기" aria-label="휴지통에서 찾기">
-        ${[["all", "전부"], ["screen", "화면에서 버린 것"],
-           ["cli", "명령으로 버린 것"]].map(([v, t]) =>
-          `<button type="button" data-tidy="who" data-who="${v}"
-            class="${tidyWho === v ? "on" : ""}">${t}</button>`).join("")}
+        ${sieveChips()}
        </div>`
     : "";
   const body = lost
@@ -434,7 +465,7 @@ function tidyRender(){
       ? (narrowed
           ? `<div class="tempty">이 조건에 맞는 문서가 없습니다.
               <div class="tsub">휴지통에 ${(all || []).length}건이 있습니다.
-                <button type="button" data-tidy="clearq">조건 풀기</button></div></div>`
+                <button type="button" data-tidy="clearq">조건 지우기</button></div></div>`
           : `<div class="tempty">${tidyTab === "trash"
               ? "휴지통이 비었습니다." : "보관한 문서가 없습니다."}${crossLine()}</div>`)
       : rows.map(item).join("");
@@ -455,8 +486,8 @@ function tidyRender(){
         : "보관한 문서는 그대로 있습니다. 목록에서만 내려와 있습니다."}</span>
       <div class="acts">
         ${over.length
-          ? `<button type="button" class="gone" data-tidy="purgeold">${
-              over.length}건 정리하기</button>` : ""}
+          ? `<button type="button" class="gone" data-tidy="purgeold">넘긴 ${
+              over.length}건 완전히 지우기</button>` : ""}
         ${tidyTab === "trash" && all && all.length
           ? `<button type="button" class="gone" data-tidy="purgeall">휴지통 비우기</button>` : ""}
         <button type="button" data-tidy="close">닫기</button></div></div>`;

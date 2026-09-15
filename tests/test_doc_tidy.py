@@ -370,15 +370,26 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
     def test_s5_the_words_are_the_settled_six(self):
         """확정 사전 여섯만 선다 (REQ-20260910-006).
 
-        보관 / 보관 해제 · 휴지통으로 · 되돌리기 · 완전히 지우기 · 휴지통 비우기.
-        폐기한 낱말이 한 곳이라도 남으면 같은 것에 이름이 둘이 된다."""
+        보관함으로 · **문서 목록으로** · 휴지통으로 · 완전히 지우기 ·
+        휴지통 비우기 · 되돌리기(치운 뒤 무르는 줄 **전용**).
+        폐기한 낱말이 한 곳이라도 남으면 같은 것에 이름이 둘이 된다.
+
+        「보관 해제」는 2026-09-15 에 폐기했다 (REQ-20260915-066-62x6): 휴지통
+        행과 보관함 행은 **같은 버튼**(같은 `data-tidy="back"`·같은 툴팁·같은
+        알림 「문서 목록으로 되돌렸습니다」)인데 라벨만 둘이었다. 누른 말과
+        돌아온 말이 다른 것이 결함이고, 게다가 「되돌리기」는 같은 판의 무르는
+        줄이 이미 쓰고 있어 한 낱말이 두 일을 가리켰다."""
         vis = self._strings(self.js)
-        for gone in ("영구 삭제", "전부 영구 삭제", "영구 삭제하기", "소거"):
+        for gone in ("영구 삭제", "전부 영구 삭제", "영구 삭제하기", "소거",
+                     "보관 해제"):
             self.assertNotIn(gone, vis, "폐기한 낱말: " + gone)
         self.assertIn("완전히 지우기", vis)
         self.assertIn("휴지통 비우기", vis)
-        # 한 낱말이 두 뜻을 지지 않는다 — 휴지통 탭은 되돌리기, 보관함 탭은 보관 해제
-        self.assertIn('${tidyTab === "trash" ? "되돌리기" : "보관 해제"}', self.js)
+        # 같은 일에 이름은 하나다 — 양 탭의 행 라벨이 한 글자로 선다.
+        self.assertIn('title="문서 목록으로 되돌립니다">문서 목록으로</button>',
+                      self.js, "행 라벨이 양 탭에서 한 글자가 아니다")
+        self.assertIn('arch ? "문서 목록으로" : "보관함으로"', self.js,
+                      "문서 뷰어 벨트가 판과 다른 이름을 쓴다")
 
     def test_s6_one_signal_invalidates_both_lists(self):
         """치우는 손은 **한 신호**만 지난다 (REQ-20260910-005 실제 사고).

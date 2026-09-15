@@ -204,3 +204,17 @@
   cursor:pointer;font-family:inherit;font-size:11px;color:var(--text);
   padding:2px 8px;border-radius:5px;margin-left:6px}
 .tidypanel .tempty .tsub button:hover{background:var(--hairline)}
+
+/* 헤더의 전역 손잡이 (REQ-20260915-066-62x6). 여는 길이 Docs 목록 머리 한 곳뿐이라
+   사람이 Settings 를 뒤졌다 — 두 번 같은 지적이 왔다. 이웃(usagechip·who)과 같은
+   급의 잉크로 서고, 면을 채우지 않는다. 아이콘이 아니라 글자다. */
+/* 브랜드 행의 오른쪽 — sv-chip 왼쪽. 탭 높이에 묻혀 한 픽셀도 더하지 않는다. */
+.hrow1 .trashchip{margin-left:auto}
+.hrow1 .svchip:not(:empty){margin-left:10px}
+.trashchip{border:0;background:none;cursor:pointer;font-family:var(--mono);
+  font-size:10.5px;letter-spacing:0;color:var(--muted);padding:2px 6px;
+  line-height:1.4;border-radius:5px}
+.trashchip:hover{color:var(--text);background:var(--hairline)}
+.trashchip b{margin-left:4px;color:var(--faint);font-weight:600;
+  font-variant-numeric:tabular-nums}
+.trashchip:hover b{color:var(--text)}

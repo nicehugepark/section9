@@ -14,7 +14,7 @@
 </style>
 </head><body>
 <div id="out">초기화…</div>
-<iframe id="f" src="/?tidy=trash#docs"></iframe>
+<iframe id="f" src="/#board"></iframe>
 <script>
 const out = document.getElementById("out");
 const lines = [];
@@ -78,18 +78,41 @@ async function run(){
   win.addEventListener("error", e => errs.push(String(e.message)));
   win.addEventListener("unhandledrejection", e => errs.push("reject: " + e.reason));
   try{
-    await wait(() => doc.querySelector(".tidypanel .tsieve"), 20000, "좁히는 손 한 줄");
+    /* 머리의 전역 손잡이부터 본다 (REQ-20260915-066-62x6) — Board 탭에서 연다.
+       여태 휴지통을 여는 길이 Docs 목록 머리 한 곳뿐이라 사람이 Settings 를
+       뒤졌다. 「어느 탭에서나 열린다」가 이 판정의 전부다. */
+    const chip = await wait(() =>
+      { const c = doc.getElementById("trash-chip"); return c && !c.hidden ? c : null; },
+      20000, "머리의 휴지통 손잡이");
+    check("Board 탭 머리에 휴지통 손잡이가 선다", true, chip.textContent.trim());
+    check("아이콘이 아니라 글자다 — 읽어 줄 이름이 있다",
+      /휴지통/.test(chip.textContent) && /휴지통/.test(chip.getAttribute("aria-label") || ""),
+      chip.getAttribute("aria-label"));
+    realClick(win, doc, chip);
+    await wait(() => doc.querySelector(".tidypanel"), 20000, "판");
+    await sleep(600);
+    // 휴지통 탭으로 옮긴다 — 판은 비어 있지 않은 쪽부터 연다.
+    const tab = doc.querySelector('.tidypanel [data-tab="trash"]');
+    if (tab) realClick(win, doc, tab);
     await sleep(400);
+    check("그 손잡이로 연 판이 보관함·휴지통 판이다",
+      !!doc.querySelector(".tidypanel .tidytabs"),
+      (doc.querySelector(".tidypanel .dlgcap") || {}).textContent);
+    await sleep(200);
     const n0 = rows(doc);
     const tabText = () =>
       (doc.querySelector('.tidypanel .tidytabs [data-tab="trash"]') || {}).textContent || "";
     say(`휴지통 ${n0}건으로 시작 · 탭「${esc(tabText().trim())}」`, "hi");
-    check("좁히는 손 한 줄이 선다 (검색 칸 + 거르개 셋)",
-      !!doc.querySelector(".tidypanel .tq")
-      && doc.querySelectorAll('.tidypanel [data-tidy="who"]').length === 3);
+    const chips = doc.querySelectorAll('.tidypanel [data-tidy="who"]').length;
+    check("검색 칸이 선다", !!doc.querySelector(".tidypanel .tq"));
+    /* 기록이 0건인 갈래는 세우지 않는다 — 눌러도 빈 목록인 칸은 손잡이가
+       아니라 함정이다 (designer 실측). 그래서 칩은 0개이거나 3개다. */
+    check("거르개는 아예 없거나 셋이다 — 눌러도 빈 칸을 그리지 않는다",
+      chips === 0 || chips === 3, `칩 ${chips}개`);
 
-    // ── 거르개
+    // ── 거르개 (설 때만)
     const who = v => doc.querySelector(`.tidypanel [data-tidy="who"][data-who="${v}"]`);
+    if (chips === 3){
     realClick(win, doc, who("screen")); await sleep(250);
     const nScreen = rows(doc);
     check("「화면에서 버린 것」이 갈라 낸다", nScreen > 0 && nScreen < n0,
@@ -105,15 +128,19 @@ async function run(){
       doc.querySelector(".tidypanel .titem .tid").textContent.trim());
 
     realClick(win, doc, who("all")); await sleep(250);
-    check("「전부」로 돌아오면 다시 전량이다", rows(doc) === n0, `→ ${rows(doc)}`);
+    check("「전체」로 돌아오면 다시 전량이다", rows(doc) === n0, `→ ${rows(doc)}`);
+    }
 
-    // ── 검색 (한 자씩)
-    await type(win, doc, "거르개");
+    /* ── 검색 (한 자씩). 칠 글자는 **첫 행의 번호**에서 얻는다 — 고정 낱말을
+       박아 두면 그 문서가 사라진 날 하니스가 제품 결함처럼 실패한다. */
+    const first = doc.querySelector(".tidypanel .titem .tid").textContent.trim();
+    const term = first.slice(-3);
+    await type(win, doc, term);
     await sleep(250);
     const nq = rows(doc);
     check("친 글자마다 목록이 좁아진다", nq > 0 && nq < n0, `→ ${nq}`);
     check("친 글자가 칸에 그대로 남는다",
-      (doc.querySelector(".tidypanel .tq") || {}).value === "거르개",
+      (doc.querySelector(".tidypanel .tq") || {}).value === term,
       (doc.querySelector(".tidypanel .tq") || {}).value);
 
     // ── 걸러서 0 인 자리
@@ -124,18 +151,23 @@ async function run(){
       (doc.querySelector(".tidypanel .tempty") || {}).textContent?.trim().slice(0, 40));
     realClick(win, doc, doc.querySelector('.tidypanel [data-tidy="clearq"]'));
     await sleep(250);
-    check("「조건 풀기」가 전량으로 되돌린다", rows(doc) === n0, `→ ${rows(doc)}`);
+    check("「조건 지우기」가 전량으로 되돌린다", rows(doc) === n0, `→ ${rows(doc)}`);
 
     // ── 바닥
-    check("바닥이 번호 약속을 말한다", footText(doc).includes("번호"),
-      footText(doc).slice(0, 30) + "…");
+    const labels = [...doc.querySelectorAll(".tidypanel .titem .acts button")]
+      .map(b => b.textContent.trim());
+    check("행의 되돌리는 손이 양 탭에서 「문서 목록으로」 하나다",
+      labels.includes("문서 목록으로") && !labels.includes("보관 해제"),
+      [...new Set(labels)].join(" · "));
+    check("바닥이 한 가지만 말한다 — 번호 약속은 확인 창의 몫",
+      !footText(doc).includes("번호"), footText(doc).slice(0, 40) + "…");
     /* 수명은 **넘긴 것이 있을 때만** 말한다 — 0 인데 날수를 적으면 숫자만 서고
        뒤따르는 일이 없다. 이 저장소의 지금 휴지통은 가장 오래된 것이 30일 안이라,
        0 인 쪽이 지금 볼 수 있는 모습이다. */
     const marks = doc.querySelectorAll(".tidypanel .tover").length;
     check("넘긴 것이 없으면 날수도 손잡이도 세우지 않는다",
-      marks > 0 ? (!!overBtn(doc) && footText(doc).includes("넘겼습니다"))
-                : (!overBtn(doc) && !footText(doc).includes("넘겼습니다")),
+      marks > 0 ? (!!overBtn(doc) && /완전히 지우기/.test(overBtn(doc).textContent))
+                : (!overBtn(doc) && !footText(doc).includes("넘긴")),
       `넘긴 줄 ${marks}개 · 정리하기 ${overBtn(doc) ? "있음" : "없음"}`);
 
     check("화면이 죽지 않았다", errs.length === 0, errs.join(" | "));
