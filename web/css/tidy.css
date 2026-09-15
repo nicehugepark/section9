@@ -205,16 +205,19 @@
   padding:2px 8px;border-radius:5px;margin-left:6px}
 .tidypanel .tempty .tsub button:hover{background:var(--hairline)}
 
-/* 헤더의 전역 손잡이 (REQ-20260915-066-62x6). 여는 길이 Docs 목록 머리 한 곳뿐이라
-   사람이 Settings 를 뒤졌다 — 두 번 같은 지적이 왔다. 이웃(usagechip·who)과 같은
-   급의 잉크로 서고, 면을 채우지 않는다. 아이콘이 아니라 글자다. */
-/* 브랜드 행의 오른쪽 — sv-chip 왼쪽. 탭 높이에 묻혀 한 픽셀도 더하지 않는다. */
-.hrow1 .trashchip{margin-left:auto}
-.hrow1 .svchip:not(:empty){margin-left:10px}
-.trashchip{border:0;background:none;cursor:pointer;font-family:var(--mono);
-  font-size:10.5px;letter-spacing:0;color:var(--muted);padding:2px 6px;
-  line-height:1.4;border-radius:5px}
-.trashchip:hover{color:var(--text);background:var(--hairline)}
-.trashchip b{margin-left:4px;color:var(--faint);font-weight:600;
-  font-variant-numeric:tabular-nums}
-.trashchip:hover b{color:var(--text)}
+/* 탭 줄 끝의 갈 곳 — 휴지통 (REQ-20260915-077-62x6).
+
+   모양은 탭 그대로다: 마크업이 `.tabs button` 이라 기본 얼굴도, 스킨마다의
+   탭 얼굴(soft 의 세로 레일·terminal 의 반전·glass 의 둥근 칩)도 그대로 입는다 —
+   여기에 따로 적을 것은 둘뿐이다: 갈라 보이게 하는 줄과, 한글이 흐트러지지
+   않게 하는 자간. 탭과 같은 색·같은 크기로 서야 「갈 곳」으로 읽힌다. */
+.tabs .tabsep{flex:none;align-self:flex-start;width:1px;height:12px;
+  margin:7px 4px 0;background:var(--border)}
+/* 세로 레일 스킨에서는 줄도 누워야 가르는 일을 한다 — Finder 사이드바의
+   구분선과 같은 자리이고, 같은 뜻을 가로로 누워 말한다. */
+[data-skin="soft"] .tabs .tabsep{width:auto;height:1px;align-self:stretch;margin:5px 0}
+/* 한글은 자간을 받으면 낱글자로 흥어진다(음절마다 떨어져 한 낱말로 안 읽힌다).
+   라틴 탭에 자간을 주는 스킨에서만 되돌린다 — 대문자 변환은 한글에 아무 일도
+   하지 않으므로 그대로 둔다 (s9-design 「표」 절의 열 머리 규율과 같은 까닭). */
+.tabs button.tabaux{letter-spacing:0}
+

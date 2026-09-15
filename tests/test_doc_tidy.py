@@ -325,8 +325,18 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
 
     def test_s1_the_handle_counts_two_piles_apart(self):
         vis = self._strings(self.js)
-        self.assertIn('`보관함${cnt(na)} · 휴지통${cnt(nt)}`', vis,
-                      "손잡이가 두 이름·두 수로 서지 않는다")
+        # 계약 개정 (REQ-20260915-077-62x6): 두 이름·두 수를 세는 자리는
+        # Docs 목록 머리의 손잡이가 아니라 **판 안 탭 둘**이다. 그 손잡이는
+        # 걸어냈다 — 타입바는 거르개 칩의 줄이라, 같은 모양·같은 줄·같은
+        # 문법(이름+굵은 수)으로 선 「갈 곳」을 눈이 거르개로 분류했고, 갈 곳은
+        # 탭 줄 끝으로 옮겨 낱말 하나로 선다(수 없이). 두 수를 따로 센다는
+        # 085 의 판정은 그대로이고, 그 판정을 지키는 자리만 바뀜다.
+        self.assertIn('보관함${cnt(tidyArch)}', vis,
+                      "판 탭이 보관함을 제 수로 세지 않는다")
+        self.assertIn('휴지통${cnt(tidyTrash)}', vis,
+                      "판 탭이 휴지통을 제 수로 세지 않는다")
+        self.assertNotIn('`보관함${cnt(na)} · 휴지통${cnt(nt)}`', vis,
+                         "거르개 줄에 갈 곳이 다시 섬다")
         self.assertNotIn("tidyArch.length + tidyTrash.length", vis,
                          "합계 한 수는 무엇을 세는지 말하지 못한다")
         # 자리 기억 열쇠(dlgDragBind·dlgPosPlaceFor 의 인자)만 옛 이름을 지킨다 —
@@ -346,10 +356,16 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
     def test_s2_no_number_before_the_lists_arrive(self):
         """아직 못 받아 왔으면 수 없이 이름만 — 0 을 미리 적으면 비었다고
         거짓말을 한다."""
-        self.assertIn("const cnt = n => n === null ? \"\" : `<b>${n}</b>`",
+        # 규칙은 그대로이고 사는 자리만 판 탭으로 옮겨졌다 (REQ-20260915-077-62x6).
+        # 목록을 통째로 받아 null 이면 수를 적지 않는다 — 안 온 것과 없는 것은
+        # 다른 화면이다.
+        self.assertIn('const cnt = r => r === null ? "" : `<b>${r.length}</b>`',
                       self.js)
-        self.assertIn("const na = tidyArch === null ? null : tidyArch.length",
-                      self.js)
+        self.assertIn("cnt(tidyArch)", self.js)
+        # 전역 손잡이는 수를 아예 안 달고 항상 선다 — 수를 그리던 조각이
+        # 남아 있으면 언젠가 다시 붙는다.
+        self.assertNotIn("trashChipPaint", self.js,
+                         "갈 곳에 수를 그리던 조각이 남아 있다")
 
     def test_s3_the_pick_tip_says_both_destinations_politely(self):
         vis = self._strings(self.js)
@@ -364,7 +380,10 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
         있는지는 말하지 않았고, 손잡이는 Docs 타입바 끝 한 곳뿐이라 주인은 버린
         뒤 한참을 뒤졌다 (REQ-20260910-005/006)."""
         vis = self._strings(self.js)
-        self.assertIn("Docs 탭 위 <b>「보관함 · 휴지통」</b>에서 ", vis)
+        # 자리가 탭 줄 끝으로 옮겨서 문장도 함께 옮긴다 (REQ-20260915-077-62x6).
+        # 가리키는 이름은 항상 **화면에 실제로 있는 글자**여야 한다.
+        self.assertIn("탭 줄 끝의 <b>「휴지통」</b>에서 ", vis)
+        self.assertNotIn("Docs 탭 위", vis, "없는 손잡이를 가리킨다")
         self.assertNotIn("치운 것 → 휴지통", vis)
 
     def test_s5_the_words_are_the_settled_six(self):
@@ -433,9 +452,13 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
         """한쪽이 0 이면 반대쪽부터 연다 — 둘 다 있으면 보관함 그대로."""
         self.assertIn('if (!na && nt) tidyTab = "trash";', self.js)
         self.assertIn('else if (na && !nt) tidyTab = "archived";', self.js)
-        open_body = self.js.split("async function tidyOpen()")[1]
+        # 부르는 손이 좁힘을 들고 올 수 있다(REQ-20260915-064-62x6) — 인자 하나가
+        # 붙었을 뿐 계약은 그대로다: **빈 쪽을 피해 고르는 일**은 받아 온 뒤에 한다.
+        # (좁혀서 연 판이 제 탭을 미리 세우는 것은 다른 일이다 — 그때는 고를 것이
+        #  이미 정해져 있고, 첫 그림부터 좁혀진 화면이어야 판이 번쩍이지 않는다.)
+        open_body = self.js.split("async function tidyOpen(")[1]
         self.assertLess(open_body.index("await tidyFetch()"),
-                        open_body.index('tidyTab = "trash"'),
+                        open_body.index('if (!na && nt) tidyTab = "trash";'),
                         "탭은 **받아 온 뒤에** 고른다")
 
     def test_s6_the_empty_tab_points_at_the_other_pile(self):

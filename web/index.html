@@ -156,6 +156,26 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
       <button data-tab="terminal">Terminal</button>
       <button data-tab="projects">Projects</button>
       <button data-tab="settings">Settings<span id="settings-badge" class="pbadge" hidden>⚠</span></button>
+      <!-- 갈 곳 하나 — 버린 것을 되찾는 자리 (REQ-20260915-077-62x6).
+           탭 줄이 이 제품의 「갈 곳」 문법이다 — 그래서 휴지통도 그 줄에 선다.
+           앞서 브랜드 행 오른쪽 끝(서버 상태 칩 옆)에 두었는데, 그 자리는
+           「자동 복구 7회」가 사는 계기판이라 갈 곳이 아니라 **숫자**로 읽혔다
+           (주인 지적 2026-09-15). 폭이 남는 자리로 도망간 것은 설계가 아니다.
+           자리는 탭 여덟 **뒤**, 세로줄 하나를 사이에 두고. macOS Finder 사이드바·
+           Gmail 레일·Notion 이 휴지통을 목적지 목록의 끝에 두는 그 자리다 — 줄이
+           「탭과 같은 급의 갈 곳이되, 화면을 바꾸는 탭은 아니다」를 말한다
+           (data-tab 이 없어 밑줄을 받지 않고, 누르면 판이 뜨며 화면은 그대로 있다).
+           `.tabs button` 그대로라 스킨의 탭 얼굴을 함께 입는다 — soft 는 왼쪽 세로
+           레일의 막항, terminal 은 반전. 새 체계를 만들지 않는다.
+           **수는 세우지 않는다**: 굵은 수는 이 화면에서 거르개 칩의 문법이고,
+           휴지통에 몇 건이 있는가는 사람이 판단할 사실이 아니다 — 판을 열면 그 안
+           탭 둘이 보관함·휴지통을 따로 센다. 수가 없으니 0건이어도 사라지지
+           않는다 — 자리를 배운 사람에게 갈 곳은 늘 같은 자리에 있어야 한다.
+           **아이콘이 아니라 글자**다 — 아이콘만 두면 화면낭독기가 읽을 이름이 없다. -->
+      <span class="tabsep" aria-hidden="true"></span>
+      <button id="trash-chip" class="tabaux" type="button" data-tidy="open"
+              aria-haspopup="dialog" aria-expanded="false"
+              title="버린 문서와 보관한 문서를 휴지통에서 되돌립니다">휴지통</button>
     </div>
     <!-- 서버 상태 칩 — 사람의 손을 요구하지 않는(또는 접어 둔) 서버 사실의 자리
          (REQ-20260827-017-62x6). 전용 행을 주면 아무 할 일 없는 사실 때문에 헤더가
@@ -164,14 +184,6 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
          다투다 좁은 화면에서 그 행을 두 줄로 밀어 — 줄이려던 높이를 도로 쓴다.
          브랜드 행은 오른쪽이 늘 비어 있고, 탭 높이에 묻혀 한 픽셀도 더하지 않는다.
          사건이 없으면 비어 있고, :empty 로 자리까지 사라진다. -->
-    <!-- 버린 것으로 가는 전역 손잡이 (REQ-20260915-066-62x6). 여태 휴지통을 여는
-         길은 Docs 목록 머리 한 곳뿐이었고, 그래서 사람이 Settings 를 뒤졌다 —
-         두 번 같은 지적이 왔다. macOS·Windows·Gmail 이 다 전역 자리에 둔다.
-         자리는 sv-chip 과 같은 이유로 브랜드 행이다: 툴바 행에 두면 필터·신원
-         묶음과 폭을 다퉈 그 행이 두 줄로 밀린다(1440px 실측).
-         **아이콘이 아니라 글자**다 — 아이콘은 이름이 사라져 화면낭독기가 읽을
-         것이 없다. 0건이면 아예 세우지 않는다. -->
-    <button id="trash-chip" class="trashchip" type="button" data-tidy="open" hidden></button>
     <span id="sv-chip" class="svchip" role="status" aria-live="polite"></span>
   </div>
   <div class="hrow2">

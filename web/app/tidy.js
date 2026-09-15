@@ -46,6 +46,12 @@ let tidyUndo = null;
 let tidyQ = "";                       // 검색어 (id·제목)
 let tidyWho = "all";                  // all | screen | cli
 let tidyKeepDays = 0;                 // 서버가 말한 수명 (0 = 끈 상태)
+/* 종류 좁힘 — "" 또는 문서 종류 한 가지 (REQ-20260915-064-62x6). 위의 둘과 달리
+   판 안에서 켜지지 않는다: **밖에서 부른 손이** 들고 온다. Projects 레일의
+   「휴지통 n」이 그 손이고, 그 손이 센 수와 판이 보이는 줄 수가 같아야 해서
+   좁힘이 함께 따라 들어온다. 판을 닫으면 풀린다. */
+let tidyType = "";
+const TIDY_TYPE_SAY = {project: "프로젝트"};
 
 const tidyWhen = s => String(s || "").slice(0, 16).replace("T", " ");
 
@@ -87,7 +93,8 @@ function tidyRows(){
   if (tidyTrash === null) return null;
   const q = tidyQ.trim().toLowerCase();
   return tidyTrash.filter(r =>
-    (tidyWho === "all" || (r.trashed_how || "") === tidyWho)
+    (!tidyType || (r.type || "") === tidyType)
+    && (tidyWho === "all" || (r.trashed_how || "") === tidyWho)
     && (!q || (r.id || "").toLowerCase().includes(q)
            || (r.title || "").toLowerCase().includes(q)));
 }
@@ -163,42 +170,87 @@ async function tidySend(op, ids, extra){
 
 /* ------------------------------------------------- Docs 목록·뷰어에 덧붙이기 */
 
-/* 헤더의 전역 손잡이를 채운다 (REQ-20260915-066-62x6). 수가 없으면(아직 못
-   받았다) 손잡이를 세우지 않는다 — 0 을 미리 적으면 비었다고 거짓말을 하고,
-   0건이면 갈 곳이 없으므로 역시 세우지 않는다. */
-function trashChipPaint(){
-  const el = document.getElementById("trash-chip");
-  if (!el) return;
-  const n = tidyTrash === null ? null : tidyTrash.length;
-  el.hidden = !n;
-  if (!n) return;
+/* 헤더의 전역 손잡이는 여기서 그리지 않는다 (REQ-20260915-077-62x6).
+   탭 줄 끝에 「휴지통」 세 글자로 서 있고, 그 글자는 문서 수와 무관하게 항상
+   같다 — 갈 곳은 거기 있다는 사실이지 세는 값이 아니다. 종전에는 수가 붙어 들쌍날쌍
+   했고(0건이면 사라졌다), 하필 그 굵은 수가 이 화면에서 거르개 칩의 문법이라
+   갈 곳이 아니라 계기판 숫자로 읽혔다. 수는 판을 열면 그 안 탭 둘이 따로 센다. */
+
+/* Projects 레일 머리의 되찾는 손 (REQ-20260915-064-62x6).
+
+   버린 손과 되찾는 손이 다른 탭에 살았다 — 프로젝트를 버리면 Projects 탭에는
+   「휴지통」이라는 낱말이 한 번도 없어서, 버린 사람에게 도착지가 화면 밖이었다.
+   그래서 만드는 손잡이 줄의 오른끝에 되찾는 손을 세운다(designer 2순위 (a)).
+
+   세는 것은 **프로젝트뿐**이다. 전역 수(그날 127)를 여기 세우면 「프로젝트가
+   127개 버려져 있다」로 읽힌다 — 자리마다 같은 낱말이 다른 것을 세면 안 되고,
+   눌러서 여는 판도 그 수만큼만 보여야 한다(그래서 `data-narrow`).
+
+   **보관함은 세우지 않는다.** 보관된 프로젝트는 바로 아래 「보관된 프로젝트 n개」
+   로 이미 접혀 있다 — 한 서랍을 여는 자리가 한 화면에 둘이면, 문서 전체를 세는
+   손잡이와 프로젝트만 세는 아래 줄이 서로 다른 수를 말한다.
+
+   이 조각이 목록을 소유하지 않는 것은 Docs 타입바와 같다(`.tbtail`): 레일은
+   project.js 가 그리고, 손잡이는 수를 쥔 쪽이 붙인다. */
+function prjTrashPaint(){
+  const head = document.querySelector(
+    '#view .docs[data-pane="projects"] .pjlist .pjhead');
+  if (!head) return;
+  // 못 받아 왔으면(null) 아무 말도 하지 않는다 — 「0」은 비었다는 거짓말이다
+  const n = tidyTrash === null ? 0
+    : tidyTrash.filter(r => (r.type || "") === "project").length;
+  let el = head.querySelector(".pjtrash");
+  if (!n){
+    if (el){
+      /* 조상을 거슬러 찾는 자리는 이 조각에 **하나뿐**이다 (test_doc_tidy s11) —
+         둘이면 언젠가 한쪽만 지켜진다. 여기서는 거슬러 찾을 것도 없다: 이 손잡이를
+         붙인 것이 바로 아래 줄이라 부모가 곧 그 줄이다. */
+      const tail = el.parentElement;
+      el.remove();
+      // 내가 세운 빈 줄은 내가 걷는다 — 만드는 손잡이가 있으면 그 줄은 그대로
+      if (tail && tail.classList.contains("pjtail") && !tail.children.length)
+        tail.remove();
+    }
+    return;
+  }
+  if (!el){
+    let tail = head.querySelector(".pjtail");
+    if (!tail){
+      head.insertAdjacentHTML("beforeend", `<span class="pjtail"></span>`);
+      tail = head.querySelector(".pjtail");
+    }
+    tail.insertAdjacentHTML("beforeend", `<button type="button" class="pjtrash"`
+      + ` data-tidy="open" data-narrow="project"></button>`);
+    el = tail.querySelector(".pjtrash");
+  }
   const html = `휴지통<b>${n}</b>`;
   if (el.innerHTML !== html) el.innerHTML = html;
-  const t = "보관함과 휴지통을 열어 되돌립니다";
-  el.title = t; el.setAttribute("aria-label", `${t} — 휴지통 ${n}건`);
+  const t = "버린 프로젝트를 여기서 되돌립니다";
+  el.title = t;
+  el.setAttribute("aria-label", `${t} — 휴지통에 프로젝트 ${n}개`);
 }
 
 function tidyDecorate(){
-  trashChipPaint();
+  prjTrashPaint();
   const list = $("#view .doclist");
   if (list){
     list.classList.toggle("picking", tidyPicking);
-    // ① 타입바 끝의 두 손잡이 — 고르기 · 보관함 · 휴지통
+    // ① 타입바 끝의 손잡이 — 고르기 (갈 곳은 탭 줄이 맡는다)
     const tb = list.querySelector(".typebar");
     if (tb && !tb.querySelector("[data-tidy]")){
-      /* 둘은 **한 덩이**다 (REQ-20260907-013). 낱개로 붙이면 띠가 접힐 때
-         「고르기」가 한 줄 오른끝, 「보관함 · 휴지통」이 다음 줄 왼끝으로 갈라져 가장 먼
-         두 자리에 앉는다 — 같은 축의 두 손잡이가 남남으로 읽힌다. 묶어 두면
-         접힘이 묶음 단위로 일어나 둘이 늘 붙어 다닌다. */
+      /* 이 띠에 남는 손잡이는 「고르기」 **하나**다 (REQ-20260915-077-62x6).
+         「보관함 · 휴지통」은 탭 줄 끝으로 갔다 — 이 띠는 거르개 칩의 줄이라, 같은
+         모양·같은 줄·같은 문법(이름+굵은 수)으로 선 갈 곳을 눈이 거르개로 분류했다.
+         「고르기」는 남는다 — 그것은 갈 곳이 아니라 **이 목록의 모드**라, 목록 머리가
+         제자리다. 묶음(.tbtail)은 그대로 둔다: 띠가 접힐 때 손잡이가 제 줄을 갖게
+         하는 자리라, 하나가 되어도 하는 일은 같다. */
       tb.insertAdjacentHTML("beforeend",
         `<span class="tbtail">`
         + `<button class="tb" data-tidy="pick" type="button"></button>`
-        + `<button class="tb" data-tidy="open" type="button"></button>`
         + `</span>`);
     }
     if (tb){
       const bp = tb.querySelector('[data-tidy="pick"]');
-      const bo = tb.querySelector('[data-tidy="open"]');
       if (bp){
         bp.classList.toggle("on", tidyPicking);
         bp.setAttribute("aria-pressed", tidyPicking ? "true" : "false");
@@ -207,20 +259,6 @@ function tidyDecorate(){
         bp.title = t; bp.setAttribute("aria-label", t);
         const html = "고르기" + (tidySel.size ? `<b>${tidySel.size}</b>` : "");
         if (bp.innerHTML !== html) bp.innerHTML = html;
-      }
-      if (bo){
-        /* 손잡이는 두 자리의 이름을 그대로 데리고 선다 (REQ-20260907-085).
-           합계 한 수는 무엇을 세는지 말하지 못한다 — 「1+76=77」 로는 보관이
-           77건인지 휴지통이 77건인지 알 수 없고, 두 수를 따로 세우면 판을 열기
-           전에 어느 쪽을 볼지가 정해진다. 아직 못 받아 왔으면(둘 다 null) 수
-           없이 이름만 선다 — 0 을 미리 적으면 비었다고 거짓말을 한다. */
-        const na = tidyArch === null ? null : tidyArch.length;
-        const nt = tidyTrash === null ? null : tidyTrash.length;
-        const t = "보관함과 휴지통을 열어 되돌립니다";
-        bo.title = t; bo.setAttribute("aria-label", t);
-        const cnt = n => n === null ? "" : `<b>${n}</b>`;
-        const html = `보관함${cnt(na)} · 휴지통${cnt(nt)}`;
-        if (bo.innerHTML !== html) bo.innerHTML = html;
       }
     }
     // ② 줄마다 눈금 (고르는 중일 때만 보인다 — 없을 때도 자리는 만들지 않는다)
@@ -386,9 +424,26 @@ function tidyUndoHTML(){
 
 /* ------------------------------------------------- 보관함 · 휴지통 (판) */
 
+/* 손잡이가 열림·닫힘을 말한다 (REQ-20260915-077-62x6, architect). 보이는 글자
+   「휴지통」이 이름이고(WCAG 2.5.3 — 그래서 aria-label 을 덮어쓰지 않는다),
+   이 손잡이가 여는 것이 판이라는 사실과 지금 열려 있는지만 상태로 준다 —
+   화면낭독기는 보이는 판을 못 보므로 이 한 글자가 그 자리를 대신한다. */
+/* 판이 열릴 때 서 있던 화면 — 거기서 떠나면 판도 따라 닫는다. */
+let tidyAt = "";
+function tidyNavAway(now){ if (tidyBox && now !== tidyAt) tidyClose(); }
+
+function trashChipExpanded(on){
+  const el = document.getElementById("trash-chip");
+  if (el) el.setAttribute("aria-expanded", on ? "true" : "false");
+}
+
 function tidyClose(){
   if (!tidyBox) return;
   tidyBox.remove(); tidyBox = null;
+  trashChipExpanded(false);
+  /* 밖에서 들고 온 좁힘은 판과 함께 끝난다 (REQ-20260915-064-62x6) — 남겨 두면
+     다음에 헤더의 전역 손잡이로 연 사람이 「휴지통 127」을 누르고 세 줄을 본다. */
+  tidyType = "";
   tidyDecorate();
 }
 
@@ -401,7 +456,7 @@ function tidyRender(){
   // 보고 세 건뿐이라고 읽는다. 좁혀진 수는 거르개 제 자리에서 말한다.
   const cnt = r => r === null ? "" : `<b>${r.length}</b>`;
   const narrowed = !lost && tidyTab === "trash"
-    && (tidyQ.trim() || tidyWho !== "all");
+    && (tidyQ.trim() || tidyWho !== "all" || tidyType);
   /* 수명을 넘긴 것은 **전량에서** 센다 — 거르개로 좁힌 화면에서 「3건
      정리하기」를 누른 사람이 실제로는 쉰 건을 지우면 안 된다. 그래서 세는
      것도 지우는 것도 전량 기준이고, 확인 창이 그 수를 그대로 말한다. */
@@ -429,6 +484,14 @@ function tidyRender(){
     return `<div class="tsub">${tidyTab === "trash" ? "보관함에" : "휴지통에"}`
          + ` ${n}건이 있습니다.</div>`;
   };
+  /* 빈 상태의 둘째 줄 (REQ-20260915-077-62x6, ux-writer). 반대쪽에 쌓인 것이
+     있으면 건너갈 자리를 먼저 말하고(crossLine), 둘 다 비었으면 「무엇을 하면 여기
+     담기나」를 말한다 — 전역 손잡이가 수 없이 항상 서 있게 되면서, 빈 판을 여는
+     사람이 생겼다. 빈 자리는 안내가 아니라 다음 행동을 주는 자리다(s9-design R6).
+     없는 버튼을 지어내지 않고, 이미 화면에 있는 손잡이의 이름을 그대로 짚는다. */
+  const emptyNext = () => crossLine()
+    || `<div class="tsub">문서 목록에서 「${tidyTab === "trash" ? "휴지통으로" : "보관함으로"}」를`
+     + ` 누르면 여기에 담깁니다.</div>`;
   const item = r => `<div class="titem">
       <div class="tmain">
         <div class="tid">${esc(shortId(r.id))}</div>
@@ -450,11 +513,20 @@ function tidyRender(){
   /* 좁히는 손 한 줄 — 검색 칸과 거르개 셋 (REQ-20260915-062-62x6).
      휴지통 탭에만, 그리고 받은 것이 있을 때만 선다: 못 받은 자리에 거르개를
      그리면 「걸러서 없는 것」과 「못 받아서 없는 것」이 같은 얼굴이 된다. */
+  /* 종류 좁힘은 **켜진 채로 들어온다** (REQ-20260915-064-62x6) — Projects 레일의
+     손잡이가 프로젝트만 세어 놓고 판에는 127건을 펴 놓으면, 손잡이의 수와 눈앞의
+     목록이 다른 말을 한다. 그래서 그 좁힘이 판까지 따라오고, 여기 한 칸이 그
+     사실을 말한다: 켜진 칸이라 다시 누르면 풀린다(전량으로 넓어진다). */
+  const typeChip = tidyType
+    ? `<button type="button" class="on" data-tidy="type" data-type=""
+        aria-pressed="true" title="누르면 휴지통 전체를 봅니다">${
+        esc(TIDY_TYPE_SAY[tidyType] || tidyType)}만</button>`
+    : "";
   const sieve = (tidyTab === "trash" && !lost && (all || []).length)
     ? `<div class="tsieve">
         <input type="search" data-tidy="q" class="tq" value="${esc(tidyQ)}"
           placeholder="번호나 제목으로 찾기" aria-label="휴지통에서 찾기">
-        ${sieveChips()}
+        ${typeChip}${sieveChips()}
        </div>`
     : "";
   const body = lost
@@ -467,11 +539,11 @@ function tidyRender(){
               <div class="tsub">휴지통에 ${(all || []).length}건이 있습니다.
                 <button type="button" data-tidy="clearq">조건 지우기</button></div></div>`
           : `<div class="tempty">${tidyTab === "trash"
-              ? "휴지통이 비었습니다." : "보관한 문서가 없습니다."}${crossLine()}</div>`)
+              ? "휴지통이 비어 있습니다." : "보관한 문서가 없습니다."}${emptyNext()}</div>`)
       : rows.map(item).join("");
   tidyBox.innerHTML = `<div class="dlghead">` + DLG_GRIP + `
       <span class="dlgcap">보관함 · 휴지통</span>
-      <span class="dlgdoc">끝난 것은 보관함으로, 잘못 만든 것은 휴지통으로</span>
+      <span class="dlgdoc">치운 문서가 여기 있습니다 — 되돌리면 문서 목록으로 돌아갑니다.</span>
       <span class="dlgesc"><kbd>ESC</kbd> 닫기</span></div>
     <div class="tidytabs">
       <button type="button" data-tidy="tab" data-tab="archived"
@@ -493,12 +565,19 @@ function tidyRender(){
         <button type="button" data-tidy="close">닫기</button></div></div>`;
 }
 
-async function tidyOpen(){
+async function tidyOpen(narrow){
   if (tidyBox){ tidyClose(); return; }
+  /* 부른 손이 좁힘을 들고 올 수 있다 (REQ-20260915-064-62x6). 그리기 **전에**
+     세운다 — 받아 오기 전의 첫 그림도 좁혀진 화면이어야, 판이 전량으로 한 번
+     번쩍였다가 줄어드는 일이 없다. */
+  tidyType = narrow || "";
+  if (tidyType) tidyTab = "trash";
   tidyBox = document.createElement("div");
   tidyBox.className = "hovercard dlgbox tidypanel";
   tidyBox.setAttribute("role", "dialog");
   tidyBox.setAttribute("aria-label", "보관함과 휴지통");
+  trashChipExpanded(true);
+  tidyAt = typeof dlgScreen === "function" ? dlgScreen() : "";
   document.body.appendChild(tidyBox);
   /* 다른 팝업과 같은 끌기·자리 기억 (REQ-20260907-028). 이 이름은 화면에 안
      나오는 **자리 기억 열쇠**라 판 제목이 바뀌어도 그대로 둔다 — 바꾸면 판을
@@ -510,8 +589,11 @@ async function tidyOpen(){
   /* 비어 있지 않은 쪽을 먼저 연다 — 한쪽이 0 인데 그쪽부터 열면 찾으러 온
      사람이 「없다」로 읽고 닫는다. 둘 다 있으면 보관함을 그대로 둔다. */
   const na = (tidyArch || []).length, nt = (tidyTrash || []).length;
-  if (!na && nt) tidyTab = "trash";
-  else if (na && !nt) tidyTab = "archived";
+  // 좁혀서 열었으면 고른 탭이 이미 정해져 있다 — 여기서 되돌리지 않는다
+  if (!tidyType){
+    if (!na && nt) tidyTab = "trash";
+    else if (na && !nt) tidyTab = "archived";
+  }
   tidyRender();
   tidyDecorate();
 }
@@ -530,7 +612,7 @@ async function tidyAct(what, el){
     }
     return;
   }
-  if (what === "open"){ await tidyOpen(); return; }
+  if (what === "open"){ await tidyOpen(el && el.dataset.narrow); return; }
   if (what === "close"){ tidyClose(); return; }
   if (what === "tab"){ tidyTab = el.dataset.tab; tidyRender(); return; }
   /* 좁히는 손 (REQ-20260915-062-62x6). 검색은 다시 그린 뒤 커서를 그 칸 끝에
@@ -543,7 +625,11 @@ async function tidyAct(what, el){
     return;
   }
   if (what === "who"){ tidyWho = el.dataset.who || "all"; tidyRender(); return; }
-  if (what === "clearq"){ tidyQ = ""; tidyWho = "all"; tidyRender(); return; }
+  if (what === "type"){ tidyType = el.dataset.type || ""; tidyRender(); return; }
+  // 조건 지우기는 **걸린 조건을 다 푼다** — 하나만 남기면 목록이 왜 짧은지 모른다
+  if (what === "clearq"){
+    tidyQ = ""; tidyWho = "all"; tidyType = ""; tidyRender(); return;
+  }
   if (what === "tick"){
     tidySel.has(id) ? tidySel.delete(id) : tidySel.add(id);
     tidyDecorate(); return;
@@ -661,7 +747,10 @@ function tidyConfirmRm(ids){
                                 : "이 문서를 휴지통으로 보냅니다",
     descHtml: tidyNames(ids, catFind)
       + tidyPrjWarn(ids)
-      + `<p>목록에서 사라지지만 Docs 탭 위 <b>「보관함 · 휴지통」</b>에서 `
+      /* 도착지를 말할 때는 **지금 화면에 있는 글자**를 그대로 짚는다 — 없는 손잡이를
+         가리키면 찾다 말고 반려한다(규약 12조 ②). 탭 줄 끝으로 자리가 옮겨서
+         이 문장도 함께 옮긴다 (REQ-20260915-077-62x6). */
+      + `<p>목록에서 사라지지만 탭 줄 끝의 <b>「휴지통」</b>에서 `
       + `되돌릴 수 있습니다.</p>`,
     ok: "휴지통으로 보내기", cancel: "그만두기"});
 }

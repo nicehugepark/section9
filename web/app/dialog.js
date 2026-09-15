@@ -309,6 +309,13 @@ function dlgScreen(){
 let dlgAt = "";
 function dlgCheckNav(){
   if (dlgClose && dlgScreen() !== dlgAt) dlgClose(null);
+  /* 「보관함 · 휴지통」 판도 같이 닫는다 (REQ-20260915-077-62x6, architect).
+     판 밖 클릭은 닫는데 뒤로가기는 안 닫는 비대칭이 있었다 — 떠 있는 판은
+     한 법으로 사라져야 한다. **언제 떠나는가를 그 판이 직접 재게** 한다 —
+     여기서 dlgAt 하나로 둘을 재면 s9dlg 가 한 번도 안 열린 화면에서는 그 값이
+     빈 문자열이라 매 회차 「바뀌었다」가 되고, 방금 연 판이 그 자리에서 바로
+     닫힌다(실제로 하니스가 잡았다). 판마다 제 자리를 기억하게 한다. */
+  if (typeof tidyNavAway === "function") tidyNavAway(dlgScreen());
 }
 
 function s9dlg(o){

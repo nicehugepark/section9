@@ -270,14 +270,11 @@ function renderSettingsSection(meAdmin){
         <tr><td>요청 상태</td><td>${Object.entries(byStatus).map(([k,n])=>`${k} ${n}`).join(" · ")||"(없음)"}</td></tr>
         <tr><td>등록 사용자</td><td>${(window.__users||[]).map(u=>`@${esc(u.name)}[${esc(u.role)}]`).join(" ")||"(없음)"}</td></tr>
       </table>
-      <!-- 버린 것을 찾으러 온 사람이 실제로 온 자리 (REQ-20260915-066-62x6).
-           목록을 여기 복제하지 않는다 — Settings 는 설정을 바꾸는 자리이고,
-           휴지통은 설정이 아니라 문서다. 여는 손 한 줄만 둔다. -->
-      <div class="cfg-h">보관함 · 휴지통</div>
-      <div class="path" style="line-height:1.9">
-        목록에서 내렸거나 버린 문서는 여기서 되돌립니다.
-        <button type="button" class="deed" data-tidy="open">보관함 · 휴지통 열기</button>
-      </div>
+      <!-- 휴지통을 여는 줄은 여기 안 선다 (REQ-20260915-077-62x6).
+           휴지통은 설정이 아니라 **갈 곳**이다 — 설정 묶음들 끝에 세우면
+           「휴지통은 설정의 하나」라고 말하게 되고, 찾는 사람은 여전히 맨 아래까지
+           내려와야 본다. 자리는 탭 줄 끝 — 이 탭(Settings) 바로 옆이라, 설정을
+           누르러 온 손이 지나치는 자리다. 한 판을 여는 자리는 하나면 된다. -->
       <div class="cfg-h">설계 문서</div>
       <div class="path" style="line-height:1.9">
         docs/00~11 (개요·포맷·인덱스·상태머신·검색·대시보드·audit·사용자·git·설치/인가·부트스트랩·Windows)<br>
