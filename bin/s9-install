@@ -1009,12 +1009,18 @@ def start_dashboard():
     # 대시보드가 임시 디렉터리를 서비스하며 404 를 냈다. 남의 뿌리에 포트를 일러
     # 주지 않았으면 띄우지 않는다: 어느 포트여야 하는지 우리가 모르는 것이고,
     # 모를 때 고를 기본값이 하필 남의 자리다.
-    own = main_worktree_root(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if not told and os.path.realpath(ROOT) != os.path.realpath(own):
-        say(f"대시보드는 띄우지 않습니다 — {ROOT} 에 state/port 가 없어 기본 포트 "
-            f"{port} 로 떨어지는데, 그 포트는 이 컴퓨터의 다른 저장소 자리입니다. "
-            f"띄우려면 S9_PORT 를 주거나 그 뿌리의 state/port 에 포트를 적으세요.")
-        return
+    # 제 뿌리가 어디인지는 **포트를 못 들었을 때만** 쓴다 — 들었으면 기본 포트로
+    # 떨어질 일이 없으니 물을 것도 없다. 맨 앞에서 묻던 것을 쓰는 자리로 옮겼다
+    # (REQ-20260916-002-2n7g): 그 물음이 `subprocess.run(["git", …])` 이라,
+    # 기동만 닫아 둔 시험에서 쓰지도 않을 답을 구하다 터졌다.
+    if not told:
+        own = main_worktree_root(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if os.path.realpath(ROOT) != os.path.realpath(own):
+            say(f"대시보드는 띄우지 않습니다 — {ROOT} 에 state/port 가 없어 기본 포트 "
+                f"{port} 로 떨어지는데, 그 포트는 이 컴퓨터의 다른 저장소 자리입니다. "
+                f"띄우려면 S9_PORT 를 주거나 그 뿌리의 state/port 에 포트를 적으세요.")
+            return
     try:
         socket.create_connection(("127.0.0.1", port), 0.5).close()
         say(f"대시보드 이미 실행 중: http://127.0.0.1:{port}/")
