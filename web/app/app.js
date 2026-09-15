@@ -53,6 +53,51 @@ function tabSync(){
     b.classList.toggle("active", b.dataset.tab === tab));
 }
 
+/* 밀 수 있다는 것을 보이게 한다 (REQ-20260916-011-2n7g). 손전화 폭에서 탭 줄은
+   가로로 밀리는 상자가 되는데(tablet.css 560 눈금), 맥·iOS 는 겹쳐 뜨는
+   스크롤막대라 밀 수 있다는 표시가 한 화소도 없다 — 바로 앞 요청이 그 이유로
+   반려됐다. 그래서 밀 수 있는 **쪽에만** 가장자리 흐림을 켠다: 흐림의 유무가
+   곧 「그쪽에 더 있다」이고, 끝에 닿으면 스스로 꺼진다.
+   넓은 폭에서는 상자가 밀리지 않아 scrollWidth 와 clientWidth 가 같고, 두 이름표
+   모두 꺼진 채로 남는다 — 흐림 규칙 자체가 그 폭에는 없으므로 해도 없다. */
+function tabEdges(){
+  const el = document.querySelector("header .tabs");
+  if (!el) return;
+  const max = el.scrollWidth - el.clientWidth;
+  el.classList.toggle("edge-l", el.scrollLeft > 1);
+  el.classList.toggle("edge-r", el.scrollLeft < max - 1);
+}
+
+/* 고른 탭이 화면 밖에 있으면 어디 있는지를 화면이 말해 주지 못한다 — 탭이
+   바뀔 때마다 그 탭을 밀어 넣는다. `block:"nearest"` 라 세로로는 움직이지
+   않는다(이미 보이는 자리면 브라우저가 아무것도 하지 않는다).
+   부르는 자리는 tabSync 가 아니라 render 다: tabSync 는 제 본문만 떼어 내
+   실제로 실행되는 계약이 걸려 있어(tests/test_tab_active_sync) 가짜 화면에
+   없는 손을 부르면 그 계약이 깨진다. 탭을 옮기는 길은 모두 render 를 지난다. */
+function tabReveal(){
+  const el = document.querySelector("header .tabs button.active");
+  if (el && el.scrollIntoView) el.scrollIntoView({inline: "nearest", block: "nearest"});
+  tabEdges();
+}
+
+/* 접힌 거르개가 무엇을 걸고 있는지 (REQ-20260916-011-2n7g). 손전화 폭에서
+   거르개 넷은 손잡이 하나 뒤로 접히는데(tablet.css 560 눈금), 접는 것보다
+   중요한 것은 **접힌 채로도 걸린 것이 읽히는** 일이다 — 거르개가 켜진 줄
+   모르고 빈 목록을 「없다」로 읽으면 그건 고장으로 보인다.
+   걸린 조건의 사전은 이미 하나뿐이다(graph.js 의 HCOND·hdrConds) — 그것을
+   그대로 읽는다. 두 벌이 되면 조건이 하나 늘 때 고칠 자리가 둘이 된다.
+   검색어는 세지 않는다: 검색칸은 이 폭에서도 접히지 않고 제 글자를 보이므로,
+   손잡이가 그것을 되풀이하면 같은 사실이 한 줄에 두 번 선다.
+   부르는 자리는 render 한 곳이다 — 조건을 바꾸는 손(입력·'내 것만'·그래프의
+   되돌리기)이 전부 그리로 모이므로, 손마다 이 줄을 더하면 언젠가 하나가 빠진다. */
+function foldSummary(){
+  const s = document.getElementById("fold-f-on");
+  if (!s || typeof hdrConds !== "function") return;
+  const txt = hdrConds().filter(c => c.k !== "q")
+    .map(c => c.k === "mine" ? "내 것만" : `${c.ko} ${c.val()}`).join(" · ");
+  if (s.textContent !== txt) s.textContent = txt;
+}
+
 // 상태 → 해시 push (뒤로가기가 동작하도록 history에 쌓는다)
 function pushRoute(){
   dlgCheckNav();   // 화면을 옮기는 모든 손이 지나는 자리 (REQ-20260828-007)
@@ -535,6 +580,8 @@ function render(){
   updateTitle();
   syncTypeFilter();
   markHeaderCause(null);   // 지목은 그래프 빈 화면이 다시 붙인다 — 남으면 거짓말이 된다
+  tabReveal();     // 고른 탭이 밀린 줄 밖에 있으면 여기서 제자리로 온다
+  foldSummary();   // 종류 축이 없는 화면이면 조건도 아니다 — syncTypeFilter 뒤여야 한다
   // L0 (REQ-040): 살아있는 terminal 셸은 절대 재빌드하지 않는다 — 15s catalog
   // 갱신(refreshCatalog→render)이 입력줄 DOM을 파괴해 타이핑을 날리던 치명
   // 결함의 차단점. 터미널 갱신은 자체 SSE/폴이 append로만 수행한다.

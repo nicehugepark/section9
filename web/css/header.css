@@ -212,6 +212,25 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 /* 그 화면에 축이 없는 필터는 감춘다 — skin override가 select에 display를 걸어도
    지도록 명시(REQ-20260826-006). Board에는 타입 축이 없다. */
 .hrow2 select[hidden]{display:none}
+/* ── 거르개 손잡이 (REQ-20260916-011-2n7g) ─────────────────────────────────
+   손전화 폭에서만 서는 부품이라 기본은 **없음**이다 — 자리를 차지하는 것은
+   tablet.css 의 560 눈금 하나뿐이고, 그 밖의 폭에서는 거르개가 그대로 펼쳐져
+   있어야 한다. 모양은 헤더의 어휘 그대로다: 배지·pill·색면 없이 글자와 마크만.
+   열림은 삼각 마크의 방향으로 말한다(marks.css 의 접기/펼치기 사전 ▾/▴). */
+.ffold{display:none;align-items:baseline;gap:8px;min-width:0;
+  border:0;background:none;cursor:pointer;font:inherit;font-size:12.5px;
+  color:var(--muted);text-align:left;padding:0}
+.ffold::after{content:"";--mk:var(--mk-fold-src);margin-left:auto}
+.ffold[aria-expanded="true"]{color:var(--text)}
+.ffold[aria-expanded="true"]::after{--mk:var(--mk-unfold-src)}
+.ffold:hover{color:var(--text)}
+.ffold:focus-visible{outline:2px solid var(--text);outline-offset:-2px}
+/* 걸린 조건 — 라벨은 흐리고 조건은 잉크색이다. 색면 없이 색과 글꼴만으로 가른다.
+   조건이 없으면 덩이째 사라진다(빈 자리표시자는 곧 배경이 된다, header.css 의
+   `.svchip:empty` 와 같은 까닭). */
+.ffold-on{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;
+  color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ffold-on:empty{display:none}
 .chk{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);
   cursor:pointer;user-select:none;-webkit-user-select:none}
 .chk input{accent-color:var(--text)}

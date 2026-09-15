@@ -478,6 +478,19 @@ function headerFilterChanged(){
   gLastOn = null;   // 조건이 바뀌면 직전 클릭에 대한 인정은 무효다
   render();
 }
+
+/* 거르개 손잡이 (REQ-20260916-011-2n7g) — 여는 손은 여기, 걸린 것을 적는 손은
+   app.js 의 foldSummary 다(render 한 곳에서만 불린다). */
+$("#fold-f")?.addEventListener("click", e => {
+  const b = e.currentTarget, open = b.getAttribute("aria-expanded") !== "true";
+  b.setAttribute("aria-expanded", open ? "true" : "false");
+  b.closest(".hrow2")?.classList.toggle("fopen", open);
+});
+/* 탭 줄의 가장자리 흐림 — 미는 동안과 폭이 바뀔 때 다시 잰다 (app.js tabEdges).
+   탭을 **고를 때**의 갱신은 tabSync 가 이미 한다. */
+document.querySelector("header .tabs")
+  ?.addEventListener("scroll", tabEdges, {passive: true});
+addEventListener("resize", tabEdges);
 ["#q","#q-body","#f-user","#f-project","#f-tag","#f-type"].forEach(s =>
   $(s).addEventListener("input", () => {
     gLastOn = null;
