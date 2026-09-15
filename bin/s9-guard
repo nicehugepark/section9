@@ -97,6 +97,22 @@ def role_change_hits(staged, diff_text):
 FRESH_SEC = 900                     # 15분: 에이전트가 파일을 잡고 있는 폭
 OVERRIDE = "S9_ALLOW_CONCURRENT"    # 사람이 확인했으면 이걸로 지나간다
 
+# **「남이 아직 쓰는 중」만 보면 절반이다** (REQ-20260915-008-2n7g, 실제 사고
+# 2026-09-15). 세션 A 가 13:59:50 에 commit 230e94a68 로 tests/test_stdlib_only.py 를
+# 닫았고, 세션 B 가 14:01 에 19926f3bd 로 같은 파일을 덮었다(내용이 같아 잃은 것은
+# 없었다). 위의 검사가 보는 것은 **작업 트리**다 — A 는 이미 commit 을 마쳐 작업
+# 트리에 아무것도 남기지 않았으므로 걸릴 것이 없었다. 그래서 창을 하나 더 낸다:
+# 담기는 코드 파일을 **방금 다른 세션이 담았으면** 그 commit 을 짚는다.
+# 폭은 위와 같은 15분이다 — 재는 것이 다를 뿐(저장 시각 / commit 시각) 잡으려는
+# 것은 같은 「그 사이」다.
+RECENT_COMMIT_SEC = 900
+# 어느 세션이 담았는지는 commit 자신이 말하지 않는다 — author 는 사람·머신까지만
+# 말하고, 같은 컴퓨터의 두 세션은 같은 author 로 찍힌다. 그렇다고 trailer 로 이력에
+# 박으면 모든 커밋 메시지에 기계 식별자가 남는다. state/ 에 적는다 — 이력은
+# 깨끗하고, 이 판정은 어차피 이 컴퓨터에서만 뜻이 있다.
+COMMIT_SESSIONS = ("state", "commit-sessions.jsonl")
+LEDGER_KEEP = 500                   # 이보다 길어지면 뒤쪽만 남긴다 (창은 15분이다)
+
 
 def current_user():
     u = os.environ.get("S9_USER")
@@ -382,6 +398,220 @@ def file_size_gate(staged, out=None):
     sys.exit(1)
 
 
+def my_binding():
+    """이 커밋을 거는 세션의 바인딩 — 모르면 빈 dict (REQ-20260915-008-2n7g).
+
+    가르는 신호는 **프로세스의 계보**다. 세션이 건 커밋은 그 세션의 자손이므로
+    (사람이 친 `git commit` 이든 `s9 commit` 이 부른 것이든) 바인딩의
+    `attach_pid` 가 `self_and_ancestors()` 안에 든다. `S9_SESSION` 이 붙어 있으면
+    그것이 먼저다 — 무인 세션은 환경변수 접두를 못 쓰지만(allowlist), 훅이 아니라
+    러너가 부르는 자리에서는 붙는다.
+
+    바인딩 파일이 깨져 있어도 커밋을 터뜨리지 않는다 — 모르면 빈 값이고,
+    모르는 것을 「남」으로 단정하지도 않는다.
+    """
+    sid = (os.environ.get("S9_SESSION") or "").strip()[:8]
+    d = os.path.join(ROOT, "state", "sessions")
+    try:
+        names = os.listdir(d)
+    except OSError:
+        names = []
+    mine, best, newest = self_and_ancestors(), {}, 0.0
+    for n in names:
+        if not n.endswith(".json"):
+            continue
+        p = os.path.join(d, n)
+        try:
+            st = os.stat(p)
+            if time.time() - st.st_mtime > 86400:
+                continue                     # 어제 세션은 이 커밋을 걸지 않았다
+            with open(p, encoding="utf-8") as f:
+                b = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(b, dict):
+            continue
+        got = str(b.get("session") or "")[:8]
+        try:
+            pid = int(b.get("attach_pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        hit = (got and got == sid) or (pid and pid in mine)
+        if hit and st.st_mtime > newest:
+            best, newest = b, st.st_mtime
+    if best:
+        return best
+    return {"session": sid} if sid else {}
+
+
+def commit_sessions_path():
+    return os.path.join(ROOT, *COMMIT_SESSIONS)
+
+
+def _full_sha(sha=None):
+    """기록의 열쇠는 온전한 sha 다 — `git log` 가 주는 %H 와 같은 글자여야 한다."""
+    try:
+        r = subprocess.run(["git", "rev-parse", sha or "HEAD"], capture_output=True,
+                           encoding="utf-8", errors="replace", cwd=ROOT, timeout=10,
+                           env=clean_git_env())
+        return (r.stdout or "").strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def note_commit_session(sha):
+    """이 커밋을 어느 세션이 담았는지 적는다 (post-commit).
+
+    한 줄씩 덧붙이기만 한다 — 같은 작업 트리의 여러 주체가 동시에 커밋해도
+    서로의 줄을 지우지 않는다(읽고-고쳐-쓰기였으면 지웠다).
+    """
+    b = my_binding()
+    sid = str(b.get("session") or "")[:8]
+    if not sha or not sid:
+        return ""
+    row = {"sha": sha, "session": sid,
+           "machine": str(b.get("machine") or ""),
+           "user": str(b.get("user") or ""), "ts": int(time.time())}
+    path = commit_sessions_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        trim_commit_sessions(path)
+    except OSError:
+        return ""
+    return sid
+
+
+def trim_commit_sessions(path=None):
+    """창이 15분인 기록을 무한히 쌓아 두지 않는다 — 뒤쪽 LEDGER_KEEP 줄만 남긴다."""
+    path = path or commit_sessions_path()
+    try:
+        if os.path.getsize(path) < 128 * 1024:
+            return
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) <= LEDGER_KEEP:
+            return
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(lines[-LEDGER_KEEP:])
+    except OSError:
+        pass
+
+
+def commit_sessions():
+    """sha → 그것을 담은 세션. 나중에 적힌 줄이 이긴다."""
+    out = {}
+    try:
+        with open(commit_sessions_path(), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                sha = str(row.get("sha") or "")
+                if sha:
+                    out[sha] = row
+    except OSError:
+        pass
+    return out
+
+
+def _recent_commits_touching(paths):
+    """그 경로들을 최근에 만진 commit — 파일 → (sha, 커밋시각, 제목).
+
+    파일마다 `git log -1` 을 부르지 않는다 — 한 번 불러 최신부터 읽는다.
+
+    **못 읽으면 빈 손으로 돌아간다.** 이력을 못 읽는 것이 커밋을 터뜨리는 이유가
+    되어서는 안 된다 — 여기서 나는 예외는 사람에게 아무것도 알려 주지 않으면서
+    커밋만 막는다(이 파일의 다른 이력 조회도 같은 이유로 넓게 받는다).
+    """
+    if not paths:
+        return {}
+    sep = "\x1f"
+    try:
+        r = subprocess.run(["git", "log", "-n", "40",
+                            f"--format=%H{sep}%ct{sep}%s", "--name-only",
+                            "HEAD", "--", *paths],
+                           capture_output=True, encoding="utf-8",
+                           errors="replace", cwd=ROOT, timeout=30,
+                           env=clean_git_env())
+        if r.returncode != 0:
+            return {}
+    except Exception:
+        return {}
+    newest, cur = {}, None
+    for line in (r.stdout or "").splitlines():
+        if sep in line:
+            h, ct, subj = line.split(sep, 2)
+            try:
+                cur = (h, int(ct), subj)
+            except ValueError:
+                cur = None
+            continue
+        f = line.strip()
+        if f and cur:
+            newest.setdefault(f, cur)       # 최신부터 읽으므로 첫 줄이 마지막 commit
+    return newest
+
+
+def recent_foreign_commits(staged):
+    """담기는 코드 파일을 **방금 다른 세션이 담았나** (REQ-20260915-008-2n7g).
+
+    돌려주는 것 둘: 막을 것(다른 세션의 것으로 **확인된** commit)과
+    말만 할 것(어느 세션이 담았는지 기록이 없는 commit). 모르는 것을 막지 않는
+    까닭은, 다른 컴퓨터에서 pull 로 들어온 commit·훅 없이 만든 commit 이 전부
+    거기 들기 때문이다 — 그것까지 막으면 이 검사는 곧 손잡이로만 쓰이게 된다.
+    아는 것은 막고 모르는 것은 보여 준다.
+    """
+    code = [f for f in (staged or []) if not is_data_path(f)]
+    if not code:
+        return [], []
+    mine = str(my_binding().get("session") or "")[:8]
+    ledger = commit_sessions()
+    now, stop, unknown = time.time(), [], []
+    for f, (sha, ct, subj) in sorted(_recent_commits_touching(code).items()):
+        if f not in code:
+            continue
+        age = int(now - ct)
+        if age >= RECENT_COMMIT_SEC or age < 0:
+            continue
+        row = ledger.get(sha) or {}
+        sid = str(row.get("session") or "")[:8]
+        if sid and sid == mine:
+            continue                         # 내가 담은 것이다
+        who = (f"세션 {sid}" + (f" · {row.get('machine')}" if row.get("machine") else "")
+               if sid else "어느 세션인지 기록이 없다")
+        item = (f, sha[:9], age, subj.strip()[:60], who)
+        (stop if sid else unknown).append(item)
+    return stop, unknown
+
+
+def _when(age):
+    m = age // 60
+    return f"{m}분 전" if m else f"{age}초 전"
+
+
+def concurrent_flags(staged):
+    """두 검사가 함께 보는 것 — (fresh, 막을 것, 말만 할 것, 표를 만드는 이름들).
+
+    커밋 검사(`concurrent_gate`)와 조회(`concurrent_report`)가 **같은 값**을 봐야
+    한다 (REQ-20260907-070). 둘이 따로 세면 조회가 준 표로 커밋이 막힌다 —
+    검사가 둘로 늘어난 뒤에도 그 계약은 그대로다: 표는 하나이고, 두 검사가 짚은
+    파일 전부를 덮는다.
+    """
+    if staged and all(is_data_path(f) for f in staged):
+        return [], [], [], [], []
+    workers = live_workers()
+    fresh = fresh_staged(staged) if workers else []
+    stop, unknown = recent_foreign_commits(staged)
+    names = sorted({f for f, _ in fresh} | {x[0] for x in stop})
+    return workers, fresh, stop, unknown, names
+
+
 def concurrent_gate(staged):
     """워커가 도는 중에 '방금 만져진' 파일을 담으려 하면 막는다.
 
@@ -390,23 +620,24 @@ def concurrent_gate(staged):
     `=1` 은 「읽었다」는 주장일 뿐이고 읽었는지는 아무도 안 봤다. 2026-09-07
     18:26 에 리드가 검사가 없던 그 자리로 남의 진행 중 변경 셋을 제 커밋에 쓸어 담았다.
     사람이 규율을 안 지킨 것이 아니라 **지키지 않아도 지나갈 수 있었다.**
+
+    **검사는 둘이고 표는 하나다** (REQ-20260915-008-2n7g). 여기서 함께 보는
+    둘째 창이 「방금 다른 세션이 담은 파일」이다. 문서만 담는 커밋은 둘 다
+    몫이 아니다 (REQ-20260908-049): 이 검사가 지키려는 것은 남의 **코드**이지
+    문서가 아니다 — 문서는 하나가 파일 하나이고, 동기화가 제가 쓴 것만 담으며,
+    겹치면 의미 병합기가 푼다. 그런데 2026-09-08 하루의 대부분, 서브에이전트가
+    하나라도 돌면 `vault/…` 한 파일을 담는 커밋조차 막혀 문서가 밖으로 못
+    나갔다. 코드가 한 파일이라도 섞이면 종전대로 본다.
     """
-    workers = live_workers()
-    if not workers:
+    workers, fresh, foreign, unknown, names = concurrent_flags(staged)
+    for f, sha, age, subj, _who in unknown[:5]:
+        # 막지는 않는다 — 다른 컴퓨터에서 온 commit 이 다 여기 든다. 다만
+        # 짚어는 준다: 내가 덮으려는 것이 무엇인지는 보여야 한다.
+        print(f"[s9-guard] {f} 는 {_when(age)} commit {sha} 로 담겼다 "
+              f"({subj}) — 어느 세션인지 기록이 없다.", file=sys.stderr)
+    if not fresh and not foreign:
         return
-    # **문서만 담는 커밋은 이 검사의 몫이 아니다** (REQ-20260908-049).
-    # 이 검사가 막으려는 것은 남의 커밋하지 않은 **코드**를 내 커밋이 쓸어
-    # 담는 것이다(REQ-20260907-062). 문서는 하나가 파일 하나이고, 동기화가
-    # 제가 쓴 것만 담으며, 겹치면 의미 병합기가 푼다. 그런데 이 검사가 그
-    # 커밋까지 막아, 서브에이전트가 도는 동안 **문서가 밖으로 못 나갔다** —
-    # 2026-09-08 하루의 대부분이 그랬고 다른 머신이 그만큼 뒤처졌다.
-    # 코드가 한 파일이라도 섞이면 종전대로 막는다.
-    if staged and all(is_data_path(f) for f in staged):
-        return
-    fresh = fresh_staged(staged)
-    if not fresh:
-        return
-    tok = concurrent_token(fresh)
+    tok = concurrent_token([(f, 0) for f in names])
     if os.environ.get(OVERRIDE) == tok:
         # 지나간 사실을 남긴다 — commit-msg 가 이것을 읽어 trailer 로 붙인다.
         # 옛 사고의 아픈 곳이 「그 커밋 메시지가 그 파일들을 설명하지 않는다」였다.
@@ -414,20 +645,28 @@ def concurrent_gate(staged):
             os.makedirs(os.path.join(ROOT, "state"), exist_ok=True)
             with open(os.path.join(ROOT, "state", "concurrent-swept.txt"),
                       "w", encoding="utf-8") as f:
-                f.write("\n".join(sorted(x for x, _ in fresh)) + "\n")
+                f.write("\n".join(names) + "\n")
         except OSError:
             pass
         return
-    print("s9-guard: 다른 작업자가 붙어 있는 중에, 그 사이 바뀐 파일을 "
-          "담으려 합니다.", file=sys.stderr)
-    print("  지금 실행 중인 작업자:", file=sys.stderr)
-    for w in workers[:5]:
-        print(f"    {w}", file=sys.stderr)
-    print("  최근에 바뀐 스테이지 파일:", file=sys.stderr)
-    for f, age in fresh[:10]:
-        m, sec = age // 60, age
-        when = f"{m}분 전" if m else f"{sec}초 전"
-        print(f"    - {f}  ({when} 바뀜)", file=sys.stderr)
+    if fresh:
+        print("s9-guard: 다른 작업자가 붙어 있는 중에, 그 사이 바뀐 파일을 "
+              "담으려 합니다.", file=sys.stderr)
+        print("  지금 실행 중인 작업자:", file=sys.stderr)
+        for w in workers[:5]:
+            print(f"    {w}", file=sys.stderr)
+        print("  최근에 바뀐 스테이지 파일:", file=sys.stderr)
+        for f, age in fresh[:10]:
+            print(f"    - {f}  ({_when(age)} 바뀜)", file=sys.stderr)
+    if foreign:
+        print("s9-guard: 방금 다른 세션이 담은 파일을 다시 담으려 합니다 "
+              "(2026-09-15 실제 사고).", file=sys.stderr)
+        for f, sha, age, subj, who in foreign[:10]:
+            print(f"    - {f}  ({_when(age)} commit {sha} · {who})", file=sys.stderr)
+            print(f"        {subj}", file=sys.stderr)
+        print("  그 commit 을 먼저 읽으세요: git show <위 해시> -- <그 파일>", file=sys.stderr)
+        print("  같은 자리를 고쳤으면 이 커밋이 그 사람의 것을 되돌립니다.",
+              file=sys.stderr)
     print("`git add <경로>` 는 '내 변경'이 아니라 '그 파일의 지금 상태'를 담습니다 —",
           file=sys.stderr)
     print("남이 쓰는 중이면 남의 미완성이 이 커밋의 일부가 됩니다(2026-08-26 21:42 실제 사고).",
@@ -459,25 +698,31 @@ def concurrent_report(staged, out=None):
     무엇도 막지 않고 항상 0 을 돌려준다 — 이것은 검사가 아니라 조회다.
     """
     w = out if out is not None else sys.stdout
-    workers = live_workers()
-    if not workers:
-        print("동시 작업 검사: 지금 붙어 있는 작업자가 없습니다 — 막지 않습니다.", file=w)
+    workers, fresh, foreign, unknown, names = concurrent_flags(staged)
+    if workers:
+        print("지금 실행 중인 작업자:", file=w)
+        for x in workers[:5]:
+            print(f"  {x}", file=w)
+    else:
+        print("동시 작업 검사: 지금 붙어 있는 작업자가 없습니다.", file=w)
+    if fresh:
+        print("담긴 파일 중 최근에 바뀐 것:", file=w)
+        for f, age in fresh[:10]:
+            print(f"  - {f}  ({_when(age)} 바뀜)", file=w)
+    if foreign:
+        print("방금 다른 세션이 담은 파일:", file=w)
+        for f, sha, age, subj, who in foreign[:10]:
+            print(f"  - {f}  ({_when(age)} commit {sha} · {who}) {subj}", file=w)
+    for f, sha, age, subj, _who in unknown[:5]:
+        print(f"  ({f} 는 {_when(age)} commit {sha} 로 담겼다 — 어느 세션인지 "
+              f"기록이 없어 막지 않습니다)", file=w)
+    if not fresh and not foreign:
+        print("막을 것이 없습니다 — 이대로 커밋해도 이 검사는 서지 않습니다.", file=w)
         return 0
-    print("지금 실행 중인 작업자:", file=w)
-    for x in workers[:5]:
-        print(f"  {x}", file=w)
-    fresh = fresh_staged(staged)
-    if not fresh:
-        print("담긴 파일 중 그 사이 바뀐 것은 없습니다 — 막지 않습니다.", file=w)
-        return 0
-    print("담긴 파일 중 최근에 바뀐 것:", file=w)
-    for f, age in fresh[:10]:
-        m = age // 60
-        print(f"  - {f}  ({m}분 전 바뀜)" if m else f"  - {f}  ({age}초 전 바뀜)", file=w)
     print("이대로 커밋하면 막힙니다. `git diff --cached` 로 담기는 내용을 읽고,", file=w)
     print("네 것만 맞으면 아래 표로 지나가세요 — 목록이든 담긴 내용이든", file=w)
     print("한 글자만 달라져도 표는 죽습니다:", file=w)
-    print(f"  {OVERRIDE}={concurrent_token(fresh)} git commit ...", file=w)
+    print(f"  {OVERRIDE}={concurrent_token([(f, 0) for f in names])} git commit ...", file=w)
     return 0
 
 
@@ -1171,6 +1416,13 @@ def after_commit(sha=None):
     # 표식은 post-commit 훅의 첫 줄이 지운다 — 여기서도 지운다: 템플릿을 새로 놓기
     # 전의 훅(rm 줄이 없는 것)으로 커밋해도 잔재가 5분 동안 sync 를 세우지 않도록.
     commit_mark_clear()
+    # 누가 담았는지는 지금 적어야 한다 (REQ-20260915-008-2n7g) — 아래 어느 갈래로
+    # 빠지든(넓지 않은 커밋은 바로 돌아간다) 기록은 남는다. 이것이 없으면 다음
+    # 커밋을 거는 세션은 방금 담긴 파일을 보고도 그것이 남의 것인지 못 가린다.
+    try:
+        note_commit_session(_full_sha(sha))
+    except Exception:
+        pass
     sha = sha or "HEAD"
     if not head_touches_wide(sha) and not head_fixes_red(sha):
         return 0
