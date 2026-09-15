@@ -303,3 +303,4 @@ display: nicehugepark
 - 2026-09-15T17:35:04+09:00 config pref_줄바꿈시험=첫 줄
 둘째 줄
 셋째 줄 (by nicehugepark)
+- 2026-09-15T17:37:29+09:00 config pref_줄바꿈시험=(삭제) (by nicehugepark)
