@@ -14,6 +14,18 @@
 사이에서만 접는다. 이어짐을 알리는 `·` 는 앞 덩이 **끝**에 붙어, 접힌 줄이
 언제나 이름으로 시작한다.
 
+**손전화 폭에서는 접는 대신 던다** (REQ-20260916-012-2n7g, 2026-09-16 개정).
+접히기는 했으나 사용량 2줄 + 신원 2줄이 그 폭의 머리글에서 50px 을 먹었고,
+머리글 전체가 428px(창 900 의 47%)이었다. 그래서 ≤560px 에서는 **다른 자리에
+이미 있는 것**을 뺀다 — 메일은 칩을 눌러 여는 카드에, OS·저장소 경로는 신원
+줄의 title 에, 권한은 Settings 에 있다. 남는 것은 한도 비율과 「이름 @ 컴퓨터」
+뿐이고, 둘이 각각 한 줄로 서서 50px 이 26px 이 된다.
+
+말줄임으로 자르지 않은 까닭이 이 파일의 머리말 그대로다 — `nowrap` 은 이
+상자의 min-content 폭을 글자 전체 폭으로 못박는다. `min-width:0` 으로 막을
+수는 있으나 그러면 값이 잘린다. 뺀 것은 볼 길이 남아 있고 잘린 것은 그렇지
+않다.
+
 여기서 재는 것은 규칙에 무엇이 적혔는지가 아니라 **브라우저가 실제로 앉힌
 자리**다 — 넘침은 글자 폭·글꼴에 걸리는 일이라 그리지 않고는 잴 수 없다.
 화소나 반화소를 재지 않으므로(재는 것은 넘쳤나·몇 줄인가) 맥 브라우저로도 잰다.
@@ -78,8 +90,8 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g,
 const $ = sel => document.querySelector(sel);
 const asUser = "";
 const s9cmd = c => "s9 " + c;
-window.__draw = mail => {
-  renderUsageChip(document.getElementById("usage-chip"), {email: mail, limits: [
+window.__draw = (mail, stale) => {
+  renderUsageChip(document.getElementById("usage-chip"), {email: mail, stale: !!stale, limits: [
     {kind: "session", percent: 29}, {kind: "weekly_all", percent: 34},
     {kind: "weekly_scoped", percent: 37, scope_name: "Fable"}]});
   // 신원 줄도 실물이 그린다 — 같은 기둥을 나눠 쓰는 이웃이고, 좁은 폭에서
@@ -117,10 +129,20 @@ MEASURE_JS = """
     const t = [...ns].map(r => Math.round(r.top));
     return [...new Set(t)].length;
   };
+  // `vis` 는 상자가 실제로 그려졌나다 — 규칙이 물린 덩이는 글자가 DOM 에
+  // 남아 있어도(카드가 그 글자를 쓴다) 상자를 얻지 못한다.
+  const seen = n => n.getClientRects().length > 0;
   const segs = [...el.querySelectorAll('.useg')].map(s => ({
     text: s.textContent.replace(/\\s+/g, ' ').trim(),
+    vis: seen(s),
     lines: rows(s.getClientRects()),
-    right: +Math.max(...[...s.getClientRects()].map(r => r.right)).toFixed(1)}));
+    right: seen(s)
+      ? +Math.max(...[...s.getClientRects()].map(r => r.right)).toFixed(1) : null}));
+  const wsegs = [...who.querySelectorAll('.wseg')].map(s => ({
+    text: s.textContent.replace(/\\s+/g, ' ').trim(),
+    cls: s.className, vis: seen(s)}));
+  const mark = el.querySelector('.mk-clock');
+  const addr = el.querySelector('.useg.mail .addr');
   const r = el.getBoundingClientRect();
   return {innerWidth: window.innerWidth,
           scrollWidth: se.scrollWidth,
@@ -130,19 +152,35 @@ MEASURE_JS = """
           chipLines: rows([...el.querySelectorAll('.useg')]
                           .flatMap(s => [...s.getClientRects()])),
           whoRight: +who.getBoundingClientRect().right.toFixed(1),
-          segs};
+          whoLines: rows([...who.querySelectorAll('.wseg')]
+                         .flatMap(s => [...s.getClientRects()])),
+          whoHeight: +who.getBoundingClientRect().height.toFixed(1),
+          markVis: !!mark && seen(mark),
+          addrVis: !!addr && seen(addr),
+          segs, wsegs};
 })()
 """
 
 CASES = (
-    ("wide", WIDE, "ledger", MAIL),
-    ("narrow", NARROW, "ledger", MAIL),
-    ("tight", TIGHT, "ledger", MAIL),
-    ("narrow_long_mail", NARROW, "ledger", LONG_MAIL),
-    ("narrow_soft", NARROW, "soft", MAIL),
+    ("wide", WIDE, "ledger", MAIL, False),
+    ("narrow", NARROW, "ledger", MAIL, False),
+    ("tight", TIGHT, "ledger", MAIL, False),
+    ("narrow_long_mail", NARROW, "ledger", LONG_MAIL, False),
+    ("narrow_soft", NARROW, "soft", MAIL, False),
+    # 값이 낡은 갈래 — 마크는 메일 덩이에 얹혀 있어, 메일을 빼면서 함께 지워지기
+    # 쉽다. 그 자리를 잰다 (REQ-20260916-012-2n7g).
+    ("narrow_stale", NARROW, "ledger", MAIL, True),
 )
-# 자리가 모자라 실제로 접혀야 하는 갈래 — 넘치는 대신 접었는지 여기서 본다
-MUST_FOLD = ("tight", "narrow_long_mail", "narrow_soft")
+# 손전화 폭 — 여기서는 덜어서 한 줄로 선다(접어서가 아니라)
+PHONE = ("narrow", "tight", "narrow_long_mail", "narrow_soft", "narrow_stale")
+# 신원 줄이 설 수 있는 줄 수. soft 만 2 인 까닭은 **셸이 다르기 때문**이다 —
+# 이 스킨은 머리글이 창 폭이 아니라 왼쪽 세로 띠이고, 400px 창에서 그 띠가
+# 232px 다(실측 2026-09-16, 맥 Safari · 안쪽 203px). 「nicehugepark」 79px +
+# 「@ Seongjinui-Macmini.local」 171px 은 그 안에 못 든다. 여기서 한 줄을
+# 받아 내려면 컴퓨터 이름을 잘라야 하는데, 그러면 어느 컴퓨터의 화면인지가
+# 사라진다 — 덩이 사이에서 접히는 것이 맞는 갈래다(REQ-20260915-001-2n7g).
+WHO_LINES = {"narrow": 1, "tight": 1, "narrow_long_mail": 1,
+             "narrow_stale": 1, "narrow_soft": 2}
 
 _MEASURED = {}
 
@@ -209,11 +247,11 @@ def measure(chrome):
                 break
             time.sleep(0.25)
         time.sleep(0.3)
-        for name, (w, h), skin, mail in CASES:
+        for name, (w, h), skin, mail, stale in CASES:
             ws.call("Emulation.setDeviceMetricsOverride", width=w, height=h,
                     deviceScaleFactor=1, mobile=False)
             ws.eval("document.documentElement.dataset.skin=%r" % skin)
-            ws.eval("window.__draw(%r)" % mail)
+            ws.eval("window.__draw(%r, %s)" % (mail, "true" if stale else "false"))
             time.sleep(0.25)
             out[name] = ws.eval(MEASURE_JS)
         ws.call("Emulation.clearDeviceMetricsOverride")
@@ -242,7 +280,7 @@ class TheChipStaysInsideTheHeader(unittest.TestCase):
 
     def test_no_case_overflows_the_document(self):
         """어느 폭에서도 문서가 가로로 넘치지 않는다 — 이 건의 증상 그 자체."""
-        for name, _, _, _ in CASES:
+        for name, *_ in CASES:
             d = self.data[name]
             self.assertLessEqual(
                 d["scrollWidth"], d["innerWidth"],
@@ -253,7 +291,7 @@ class TheChipStaysInsideTheHeader(unittest.TestCase):
 
     def test_the_chip_ends_inside_the_toolbar(self):
         """칩의 오른끝이 툴바의 안쪽 오른변 안이다 — 안여백은 남는 자리가 아니다."""
-        for name, _, _, _ in CASES:
+        for name, *_ in CASES:
             d = self.data[name]
             self.assertLessEqual(
                 d["chipRight"], d["railRight"] + 0.5,
@@ -274,21 +312,80 @@ class TheChipStaysInsideTheHeader(unittest.TestCase):
                          "1440px 에서 칩이 %d 줄이다 — 자리가 남는데 접었다"
                          % d["chipLines"])
 
-    def test_a_narrow_window_folds_instead_of_clipping(self):
-        """자리가 모자라면 잘리는 대신 접힌다 — goal 이 허용한 두 갈래 중 하나.
+    def test_a_phone_width_stands_on_one_line_each(self):
+        """손전화 폭에서는 칩도 신원도 한 줄이다 (REQ-20260916-012-2n7g).
 
-        한 줄인 채로 넘치지도 않았다면 글자가 상자 밖으로 새거나 잘린 것이다.
+        접어서가 아니라 **덜어서** 한 줄이다 — 이 폭에서 판단에 쓰지 않는
+        덩이(메일·OS·권한)가 다른 자리로 물러났다. 여기서 두 줄이 나오면
+        그 자리에서 머리글이 창의 절반을 먹던 상태로 돌아간 것이다.
         """
-        for name in MUST_FOLD:
+        for name in PHONE:
             d = self.data[name]
-            self.assertGreater(
+            self.assertEqual(
                 d["chipLines"], 1,
-                "%s: 칩이 한 줄 그대로다 — 들어갈 자리가 없는데 접지 않았다"
-                % name)
+                "%s: 사용량이 %d 줄이다 — 이 폭에서 서야 할 것은 한도 비율뿐이다"
+                % (name, d["chipLines"]))
+            self.assertLessEqual(
+                d["whoLines"], WHO_LINES[name],
+                "%s: 신원이 %d 줄이다 — 이 폭에서 서야 할 것은 「이름 @ 컴퓨터」뿐이다"
+                % (name, d["whoLines"]))
+
+    def test_a_phone_width_drops_what_lives_elsewhere(self):
+        """뺀 것은 볼 길이 남아 있다 — 메일은 카드에, OS·권한은 title·Settings 에.
+
+        글자를 지우는 것이 아니라 이 폭에서만 물리는 것이라, DOM 에는 그대로
+        있고 상자만 얻지 못한다(카드가 같은 글자를 쓴다).
+        """
+        for name in PHONE:
+            d = self.data[name]
+            mail = [s for s in d["segs"] if "@" in s["text"]]
+            self.assertTrue(mail, "%s: 메일 덩이가 DOM 에서 사라졌다 — 카드가 그 "
+                                  "글자를 쓴다" % name)
+            self.assertFalse(
+                d["addrVis"],
+                "%s: 이 폭에서 메일 글자가 서 있다 — 같은 글자가 칩을 눌러 여는 "
+                "카드에 있다" % name)
+            for w in d["wsegs"]:
+                if "where" in w["cls"] or "role" in w["cls"]:
+                    self.assertFalse(
+                        w["vis"],
+                        "%s: 신원 줄에 「%s」가 서 있다 — OS 는 줄의 title, 권한은 "
+                        "Settings 에 있다" % (name, w["text"]))
+                else:
+                    self.assertTrue(
+                        w["vis"],
+                        "%s: 신원 줄에서 「%s」가 사라졌다 — 이름과 컴퓨터는 남는다"
+                        % (name, w["text"]))
+
+    def test_the_stale_mark_is_not_dropped_with_the_mail(self):
+        """「값이 낡았다」 마크는 메일 덩이에 얹혀 있지만 함께 물러나지 않는다.
+
+        마크가 사라지면 화면이 낡은 값을 방금 받은 값처럼 말한다.
+        """
+        self.assertTrue(
+            self.data["narrow_stale"]["markVis"],
+            "값이 낡았는데 마크가 서지 않는다 — 메일을 뺄 때 함께 지워졌다")
+        self.assertFalse(
+            self.data["narrow"]["markVis"],
+            "낡지 않았는데 마크가 섰다")
+
+    def test_a_dangling_separator_never_leads_the_line(self):
+        """낡지 않은 갈래에서는 메일 덩이가 통째로 물러난다.
+
+        글자만 빼고 덩이를 남기면 그 덩이의 이어짐 표시(`·`)가 줄 앞에 홀로
+        서서, 앞에 무엇이 있었던 것처럼 읽힌다.
+        """
+        for name in PHONE:
+            d = self.data[name]
+            first = next((s for s in d["segs"] if s["vis"]), None)
+            self.assertIsNotNone(first, "%s: 칩에 선 덩이가 하나도 없다" % name)
+            self.assertFalse(
+                first["text"].strip() == "·",
+                "%s: 이어짐 표시만 남은 덩이가 줄 앞에 섰다" % name)
 
     def test_a_segment_never_splits(self):
         """「5h 29%」의 이름과 숫자가 갈리지 않는다 — 덩이 안은 nowrap 이다."""
-        for name, _, _, mail in CASES:
+        for name, _, _, mail, _ in CASES:
             for seg in self.data[name]["segs"]:
                 if seg["text"].startswith(mail[:12]):
                     continue        # 메일 덩이는 마지막 수단으로 접힐 수 있다
@@ -309,10 +406,22 @@ class TheChipStaysInsideTheHeader(unittest.TestCase):
                          "마지막 덩이에 이어짐 표시가 붙었다 — 뒤에 올 것이 없다")
 
     def test_every_word_is_still_there(self):
-        """접느라 글자를 버리지 않았다 — 계정·5h·wk·모델이 모두 선다."""
-        text = " ".join(s["text"] for s in self.data["tight"]["segs"])
+        """넓은 폭에서는 글자를 하나도 버리지 않는다 — 계정·5h·wk·모델이 모두 선다."""
+        text = " ".join(s["text"] for s in self.data["wide"]["segs"] if s["vis"])
         for want in (MAIL, "5h", "29%", "wk", "34%", "fable", "37%"):
             self.assertIn(want, text, "칩에서 「%s」가 사라졌다" % want)
+
+    def test_a_phone_width_still_shows_every_limit(self):
+        """좁은 폭에서 던 것은 계정뿐이다 — 한도 셋은 이름과 숫자가 다 선다.
+
+        이 폭에서 사람이 칩을 보는 까닭이 한도이고, 계정은 이미 아는 값이다.
+        """
+        for name in ("narrow", "tight"):
+            text = " ".join(s["text"] for s in self.data[name]["segs"] if s["vis"])
+            for want in ("5h", "29%", "wk", "34%", "fable", "37%"):
+                self.assertIn(want, text,
+                              "%s: 칩에서 「%s」가 사라졌다 — 한도는 이 폭에서도 "
+                              "판단에 쓴다" % (name, want))
 
 
 class TheRuleSaysSo(unittest.TestCase):
@@ -333,6 +442,27 @@ class TheRuleSaysSo(unittest.TestCase):
         self.assertRegex(self.css.replace(" ", ""),
                          r"\.usagechip\.useg\{[^}]*white-space:nowrap",
                          "덩이(.useg)가 nowrap 이 아니다 — 「5h」와 숫자가 갈린다")
+
+    def test_the_mail_text_has_a_box_of_its_own(self):
+        """메일 글자가 제 상자(`.addr`)에 든다 (REQ-20260916-012-2n7g).
+
+        마크와 한 덩이에 살면서 따로 물리려면 글자에 상자가 있어야 한다.
+        """
+        js = open(os.path.join(WEB, "app", "usage.js"), encoding="utf-8").read()
+        self.assertIn('class="addr"', js,
+                      "메일 글자에 상자가 없다 — 좁은 폭에서 글자만 빼고 "
+                      "「값이 낡았다」 마크를 남길 길이 없어진다")
+
+    def test_the_phone_rule_is_not_a_clamp(self):
+        """좁은 폭 규칙이 칩을 한 줄로 묶지 않는다 — 그 길이 이 파일의 사고였다."""
+        tab = open(os.path.join(WEB, "css", "tablet.css"), encoding="utf-8").read()
+        phone = tab[tab.index("@media (max-width:560px)"):]
+        for bad in ("white-space:nowrap", "text-overflow:ellipsis"):
+            self.assertNotIn(
+                bad.replace(" ", ""),
+                re.sub(r"/\*.*?\*/", "", phone, flags=re.S).replace(" ", ""),
+                "손전화 폭 규칙에 「%s」가 있다 — 좁혀서 자르는 대신 다른 자리에 "
+                "있는 것을 던다 (REQ-20260915-001-2n7g 의 뿌리)" % bad)
 
 
 if __name__ == "__main__":
