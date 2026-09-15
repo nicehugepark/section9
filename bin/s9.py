@@ -534,6 +534,17 @@ def whoami_info():
         jb = None
     if jb:
         where["jira_block"] = jb
+    # 만료가 다가온(또는 이미 지난) token 도 막히기 전에 머리에 선다 (REQ-20260914-015-62x6,
+    # 주인 물음 2026-09-15 09:28 「지라 토큰 만료 관련 경고는 어디서 확인할 수 있는 거야」):
+    # Settings 를 열어야 보이던 「token 만료일」 줄과 `s9 jira ping` 만으로는 사람이 모른
+    # 채 만료를 맞았다. 막힌 뒤에는 jira_block 이 그 자리를 쓰므로 둘을 같이 싣지 않는다.
+    if not jb and name:
+        try:
+            exp, left, level, line = jira_token_expiry(name)
+            if level in ("soon", "expired") and jira_enabled_for(name):
+                where["jira_expiry"] = {"date": exp, "days": left, "level": level, "line": line}
+        except Exception:
+            pass
     if name:
         return {"workspace": workspace, "user": name, "display": user_profile(name).get("display", ""),
                 "role": user_role(name), "machine": current_machine(),

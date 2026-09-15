@@ -51,8 +51,16 @@ function updateProfileBadge(){
    그대로(Settings › 외부 서비스 › Jira). 준비물이 채워져 발신함이 비면 키가 빠져 사라진다. */
 function jiraBlockHtml(w){
   const jb = w && w.jira_block;
-  if (!jb || !jb.count) return "";
-  return ` <span class="jblock">⚠ Jira 발신함 ${esc(String(jb.count))}건이 막혔습니다 — ${esc(jb.reason || "")} · Settings › 외부 서비스 › Jira</span>`;
+  if (jb && jb.count){
+    return ` <span class="jblock">⚠ Jira 발신함 ${esc(String(jb.count))}건이 막혔습니다 — ${esc(jb.reason || "")} · Settings › 외부 서비스 › Jira</span>`;
+  }
+  /* 만료가 다가온 token (REQ-20260914-015-62x6) — 막히기 전에 같은 자리에 선다.
+     서버(whoami.jira_expiry)가 만료 7일 안·만료 뒤에만 싣는다. */
+  const je = w && w.jira_expiry;
+  if (je && je.line){
+    return ` <span class="jblock">⚠ ${esc(je.line)} · Settings › 외부 서비스 › Jira</span>`;
+  }
+  return "";
 }
 
 function renderWhoami(){
