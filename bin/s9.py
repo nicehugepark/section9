@@ -463,6 +463,72 @@ def user_profile(name):
         return {}
 
 
+# ── 사람의 이름 (REQ-20260915-029-62x6) ────────────────────────────────────
+# id 와 이름은 다른 층이다. id(`users/<id>/`)는 폴더 이름이자 git 경로라 영문만
+# 서지만(user_name_ok), 성·이름은 사람이 불리는 글자라 한글 그대로 둔다. 다만 값이
+# frontmatter 한 줄에 그대로 실리므로 줄바꿈·제어문자는 경계에서 막는다 — 안 막으면
+# 이름 한 칸이 문서의 다른 키를 만들어 낸다.
+PERSON_NAME_MAX = 64
+# 성이 앞에 서는 말들(한글·한자·가나). 이 글자가 하나라도 있으면 그 사람의 말
+# 순서는 「성이름」이다 — 로마자 표기를 짐작해 만들지 않는다.
+_CJK_NAME_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힣]")
+
+
+def person_name_ok(v):
+    """성·이름 칸에 설 수 있는 글자인가 — 비움은 허용이다(이름은 선택이다)."""
+    s = "" if v is None else str(v)
+    if len(s) > PERSON_NAME_MAX:
+        return False
+    return not any(ord(c) < 32 or ord(c) == 127 for c in s)
+
+
+def valid_person_name(v, label):
+    """경계 검증 — 통과하면 앞뒤를 턴 값, 아니면 ValueError."""
+    s = ("" if v is None else str(v)).strip()
+    if not person_name_ok(s):
+        raise ValueError(f"invalid {label}: 줄바꿈·제어문자 없이 "
+                         f"{PERSON_NAME_MAX}자 안으로")
+    return s
+
+
+def user_full_name(profile):
+    """사람을 부르는 한 이름 — **짓는 자리는 이 함수 하나다**.
+
+    호출부가 제 손으로 성·이름을 잇게 두면 화면마다 순서가 갈린다(REQ-20260915-029-62x6).
+    규칙은 셋: ① 사람이 직접 쓴 `display` 가 있으면 그것이 이긴다 — 스스로 정한 표기가
+    조립한 것보다 낫다. ② 없으면 성·이름을 그 사람의 말 순서로 잇는다(한글·한자·가나면
+    「성이름」, 로마자면 「이름 성」). ③ 하나도 없으면 **빈 문자열** — 그 자리에
+    id 를 대신 세울지는 부르는 쪽의 몫이다(카드는 id 를, 어떤 화면은 아무것도 안 보일 수 있다).
+
+    profile: 프로필 frontmatter dict, 또는 사람의 id(그러면 여기서 읽는다)."""
+    p = profile or {}
+    if not isinstance(p, dict):
+        p = user_profile(str(p))
+    disp = str(p.get("display") or "").strip()
+    if disp:
+        return disp
+    first = str(p.get("first_name") or "").strip()
+    last = str(p.get("last_name") or "").strip()
+    if not (first and last):
+        return first or last
+    if _CJK_NAME_RE.search(first + last):
+        return f"{last}{first}"
+    return f"{first} {last}"
+
+
+def user_names():
+    """id → 부르는 이름 (REQ-20260915-029-62x6) — 카드가 id 대신 이름을 세울 표.
+
+    이름이 없는 사람은 싣지 않는다: 표에 없으면 화면은 id 를 그대로 쓴다(빈 문자열을
+    실어 보내면 화면마다 「없음」을 다르게 그린다). 짓는 규칙은 user_full_name 하나다."""
+    out = {}
+    for u in registered_users():
+        full = user_full_name(user_profile(u))
+        if full:
+            out[u] = full
+    return out
+
+
 def os_identity():
     """세션 바인딩을 배제한 계정 폴백 ($S9_USER > OS 계정) — attach/add가
     프로필 os_accounts에 기록하는 값. 바인딩은 이미 등록 사용자를 가리키므로 제외."""
@@ -529,11 +595,18 @@ def whoami_info():
     # Jira 막힘·만료 같은 머리 경고는 여기 싣지 않는다 — 2026-09-14~15 에 jira_block·
     # jira_expiry 키로 신원 옆에 얹었다가 반려됐다(REQ-20260915-001-62x6: 외부 서비스는
     # Jira 만이 아니고 Jira 는 선택이다). 알림은 전부 notices_info() 가 싣는다.
+    # 이름 셋은 늘 함께 실린다 (REQ-20260915-029-62x6): `user` 는 id, `full` 은
+    # 화면이 부르는 이름이다 — 화면이 성·이름을 제 손으로 잇지 않게 한다.
     if name:
-        return {"workspace": workspace, "user": name, "display": user_profile(name).get("display", ""),
+        prof = user_profile(name)
+        return {"workspace": workspace, "user": name, "display": prof.get("display", ""),
+                "first_name": prof.get("first_name", ""),
+                "last_name": prof.get("last_name", ""),
+                "full": user_full_name(prof),
                 "role": user_role(name), "machine": current_machine(),
                 "registered": True, "stream_mirror": st_on, **where}
     return {"workspace": workspace, "user": raw, "display": "", "role": "",
+            "first_name": "", "last_name": "", "full": "",
             "machine": current_machine(), "registered": False,
             "stream_mirror": st_on, **where}
 
@@ -22120,7 +22193,8 @@ def user_name_from(raw, email=""):
 
 
 def do_user_add(name, role="member", display="", email="", machine=None,
-                emails=None, github="", github_org=""):
+                emails=None, github="", github_org="",
+                first_name="", last_name=""):
     """사용자 등록의 단일 코드 경로 (CLI + 웹).
     emails(회사 이메일 N개)·github(개인)·github_org(조직 계정)는 프로필 필수
     권장 필드 — 미기재면 세션 시작 digest가 입력을 촉구한다 (REQ-20260824-055)."""
@@ -22136,6 +22210,11 @@ def do_user_add(name, role="member", display="", email="", machine=None,
     meta = {"name": name, "role": role}
     if display:
         meta["display"] = display
+    # 성·이름은 선택이다 — 없으면 칸을 세우지 않는다(빈 칸이 늘어선 프로필보다 낫다).
+    for _k, _v in (("first_name", first_name), ("last_name", last_name)):
+        _v = valid_person_name(_v, _k)
+        if _v:
+            meta[_k] = _v
     if email:
         meta["email"] = email
     emails = _valid_emails(emails)
@@ -22511,7 +22590,8 @@ def attach_turns_sync_on(meta):
 
 
 def do_user_update(name, display=None, email=None, role=None, actor="",
-                   emails=None, github=None, github_org=None):
+                   emails=None, github=None, github_org=None,
+                   first_name=None, last_name=None):
     """프로필 수정 — 변경 내역을 profile.md Notes에 audit.
     emails는 리스트 전체 교체(빈 리스트 = 비움), github/github_org는 개별 갱신."""
     if not user_role(name):
@@ -22522,6 +22602,13 @@ def do_user_update(name, display=None, email=None, role=None, actor="",
     changed = []
     for k, v in (("display", display), ("email", email)):
         if v is not None and meta.get(k, "") != v:
+            meta[k] = v
+            changed.append(k)
+    for k, v in (("first_name", first_name), ("last_name", last_name)):
+        if v is None:
+            continue
+        v = valid_person_name(v, k)     # 경계에서 막는다 — 문서에 닿기 전에
+        if meta.get(k, "") != v:
             meta[k] = v
             changed.append(k)
     if emails is not None:
@@ -22830,6 +22917,7 @@ def cmd_user(args):
                 emails=(args.emails.split(",") if args.emails is not None
                         else None),
                 github=args.github, github_org=args.github_org,
+                first_name=args.first_name, last_name=args.last_name,
                 actor=resolve_user())
         except ValueError as e:
             die(str(e))
@@ -22844,7 +22932,9 @@ def cmd_user(args):
                                emails=(args.emails.split(",") if args.emails
                                        else None),
                                github=args.github or "",
-                               github_org=args.github_org or "")
+                               github_org=args.github_org or "",
+                               first_name=args.first_name or "",
+                               last_name=args.last_name or "")
         except ValueError as e:
             die(str(e))
         print(f"user registered: {name}  ({os.path.relpath(udir, ROOT)}/)")
@@ -26107,6 +26197,33 @@ def first_run_identity(u, known, ask, email="", out=print, tries=3):
     return "skip", ""
 
 
+def first_run_person_name(ask, out=print, tries=3, profile=None):
+    """첫 실행이 id 다음에 묻는 성·이름 (REQ-20260915-030-62x6) — (이름, 성).
+
+    id 를 정한 **뒤**에 묻는다: id 는 폴더 이름이라 영문이어야 하고(user_name_ok),
+    여기는 사람이 불리는 글자라 한글이면 한글 그대로 저장한다. 비우면 ("", "") 로
+    건너뛰고 등록은 그대로 간다 — 이름이 없다고 등록이 끊기면 안 된다.
+    로마자를 짐작해 만들지 않는다: 그 사람이 정해 두지 않은 표기를 코드가 지어내지 않는다.
+
+    profile 을 주면 **이미 불릴 이름이 있는 사람에게는 묻지 않는다** — 두 번째
+    컴퓨터에서 attach 하는 자리에서 같은 것을 다시 묻지 않기 위해서다."""
+    if user_full_name(profile):
+        return "", ""
+    vals = []
+    for label, q in (("성", "◌ 성 (예: 홍 — 비우면 건너뛴다): "),
+                     ("이름", "◌ 이름 (예: 길동 — 비우면 건너뛴다): ")):
+        val = ""
+        for _ in range(max(1, tries)):
+            val = (ask(q) or "").strip()
+            if person_name_ok(val):
+                break
+            out(f"◌ 그 글자는 {label} 칸에 쓸 수 없다 — 줄바꿈 없이 "
+                f"{PERSON_NAME_MAX}자 안으로 적어 달라.")
+            val = ""
+        vals.append(val)
+    return vals[1], vals[0]
+
+
 def browser_open_cmd(url, _which=None, _plat=None):
     """대시보드를 사람의 기본 브라우저로 열 명령 (REQ-20260907-035).
 
@@ -26452,12 +26569,26 @@ def cmd_code(args):
                           f"`{s9_cmd('user add <영문 id> --display ' + u)}` "
                           f"(이미 있는 이름에 이으려면 `{s9_cmd('user attach <이름>')}`)")
                 else:
+                    # id 를 받은 **뒤** 성·이름을 묻는다 (REQ-20260915-030-62x6) —
+                    # 카드가 부르는 이름이 여기서 정해진다. 비우면 건너뛰고 등록은
+                    # 그대로 간다. attach 면 이미 이름이 있는 사람에게 다시 묻지 않는다.
+                    _first, _last = first_run_person_name(
+                        input, profile=(user_profile(name) if verb == "attach" else None))
                     # 한글 OS 계정이면 그 이름을 **표시 이름**으로 남긴다 — 화면에 서는
                     # 것은 이쪽이라, id 를 영문으로 정해도 사람이 보는 이름은 그대로다.
                     argv = [sys.executable, os.path.realpath(__file__), "user", verb, name]
                     if verb == "add" and not user_name_ok(u) and u:
                         argv += ["--display", u]
                     subprocess.run(argv, stdin=subprocess.DEVNULL)
+                    if _first or _last:
+                        # 쓰기는 한 벌뿐이다(do_user_update) — add·attach 어느 쪽으로
+                        # 들어와도 이름이 앉는 자리는 같다.
+                        try:
+                            do_user_update(name, first_name=_first, last_name=_last,
+                                           actor=name)
+                        except ValueError as e:
+                            print(f"◌ 이름을 저장하지 못했다({e}) — 나중에: "
+                                  f"`{s9_cmd('user update ' + name + ' --last-name 홍 --first-name 길동')}`")
                 # 사람이 생겼으니 이제 기본 프로젝트가 설 수 있다 (REQ-20260908-031).
                 # `s9-install` 은 `s9 init` 을 부르지만 그때는 등록된 사람이 없어
                 # 프로젝트가 서지 않는다 — 그리고 사람이 실제로 치는 것은
@@ -35628,7 +35759,9 @@ def cmd_serve(args):
                                "serveguard": guard_report(s9_port()),
                                "catalog": {"etag": _ce, "window": _cw},
                                # 알림 줄 (REQ-20260915-001-62x6) — /api/notices 와 같은 함수
-                               "notices": notices_info()}
+                               "notices": notices_info(),
+                               # 카드가 id 대신 세울 이름 표 (REQ-20260915-029-62x6)
+                               "names": user_names()}
                 self._json(payload)
             elif parsed.path == "/api/machines":
                 # 담당 컴퓨터를 고르는 목록 (REQ-20260910-017-62x6). 원천은 machine_table
@@ -35720,6 +35853,9 @@ def cmd_serve(args):
                         continue
                     out.append({"name": u, "role": meta.get("role", "member"),
                                 "display": meta.get("display", ""),
+                                "first_name": meta.get("first_name", ""),
+                                "last_name": meta.get("last_name", ""),
+                                "full": user_full_name(meta),
                                 "email": meta.get("email", ""),
                                 "emails": meta.get("emails", []),
                                 "github": meta.get("github", ""),
@@ -36205,7 +36341,9 @@ def cmd_serve(args):
                         raise ValueError(f"role '{role}' 부여는 admin만 가능 (me={actor})")
                     do_user_add(str(req.get("name") or "").strip(), role=role,
                                 display=str(req.get("display") or "").strip(),
-                                email=str(req.get("email") or "").strip())
+                                email=str(req.get("email") or "").strip(),
+                                first_name=str(req.get("first_name") or "").strip(),
+                                last_name=str(req.get("last_name") or "").strip())
                     self._json({"ok": True})
                 elif parsed.path == "/api/user/update":
                     role = req.get("role")
@@ -36216,6 +36354,8 @@ def cmd_serve(args):
                         email=req.get("email"), role=role,
                         emails=req.get("emails"), github=req.get("github"),
                         github_org=req.get("github_org"),
+                        first_name=req.get("first_name"),
+                        last_name=req.get("last_name"),
                         actor=f"{actor} via dashboard")
                     self._json({"ok": True, "changed": changed})
                 elif parsed.path == "/api/project/member":
@@ -38187,6 +38327,9 @@ def main():
     up.add_argument("--github", help="개인 GitHub 계정")
     up.add_argument("--github-org", dest="github_org", help="조직 GitHub 계정/팀")
     up.add_argument("--display")
+    # 성·이름은 id 와 다른 층이다 — 한글 그대로 들어간다 (REQ-20260915-029-62x6)
+    up.add_argument("--first-name", dest="first_name", help="이름 (예: 길동)")
+    up.add_argument("--last-name", dest="last_name", help="성 (예: 홍)")
     up.add_argument("--session", help="세션 id (기본: $S9_SESSION)")
     up.add_argument("--machine", help="머신 이름 (기본: $S9_MACHINE 또는 hostname)")
     up.set_defaults(fn=cmd_user)
