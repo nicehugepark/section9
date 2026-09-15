@@ -247,8 +247,12 @@ class GuardLoopTest(unittest.TestCase):
 
     # 중지 요청은 서버를 두고 감시만 끝낸다
     def test_stop_file_ends_watch_only(self):
+        # 표식에는 **대상 감시자**가 적힌다 (REQ-20260916-001-2n7g). 루프는 이
+        # 프로세스에서 도니 대상은 내 pid 다 — 이름 없는 표식이 아무 감시자나
+        # 세우던 것이 그 요청이 고친 결함이다.
         stop = s9._guard_paths(self.port, self.root)["stop"]
-        open(stop, "w").close()
+        with open(stop, "w", encoding="utf-8") as f:
+            f.write(f"{os.getpid()}\n")
         why = s9.serve_guard_loop(self.port, "127.0.0.1", self.root,
                                   spawn=lambda: self.fail("자식을 띄우면 안 된다"),
                                   sleep=self.slept.append, clock=lambda: 0.0,

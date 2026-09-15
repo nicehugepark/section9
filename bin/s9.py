@@ -31277,6 +31277,22 @@ def _guard_spawn_child(port, host, root=None):
         lf.close()
 
 
+def _guard_stop_target(path):
+    """중지 표식이 **누구에게** 보내는 것인가 — 적힌 감시자 pid, 못 읽으면 None.
+
+    표식에 대상이 없던 동안 (REQ-20260916-001-2n7g, 실제 사고 2026-09-15 22:55~
+    2026-09-16 00:01) 대시보드가 네 번 「떴다가 곧 죽었다」. 표식은 지금 감시 중인
+    그 감시자에게 보내는 것인데, 읽을 감시자가 읽기 전에 신호로 죽으면 표식만
+    남는다 — 몇 시간 뒤에 뜨는 **다른** 감시자가 그것을 제 것으로 알고 곧바로
+    물러나고 자식 서버도 함께 내려갔다. 9910 의 표식은 아홉 시간을 기다렸다.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            return int(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def _guard_stop_signal(port, root=None):
     """감시자에게 '물러나라'가 닿게 한다 (REQ-20260829-018).
 
@@ -31344,13 +31360,27 @@ def serve_guard_loop(port, host="127.0.0.1", root=None, spawn=None,
     while max_rounds is None or rounds < max_rounds:
         rounds += 1
         if os.path.exists(p["stop"]):
-            try:
-                os.remove(p["stop"])
-            except OSError:
-                pass
-            _guard_record(port, "stop", f"{port} 감시 중지 요청 — 서버는 그대로 두고 감시를 종료한다",
-                          root=root)
-            return "stopped"
+            # 표식은 **이름이 적힌 편지**다 (REQ-20260916-001-2n7g). 내 앞으로 온
+            # 것만 따르고, 죽은 감시자 앞으로 온 것(또는 이름이 없는 옛 표식)은
+            # 지우고 계속 돈다. 살아 있는 남의 것은 건드리지 않는다 — 그가 읽는다.
+            want = _guard_stop_target(p["stop"])
+            if want == os.getpid():
+                try:
+                    os.remove(p["stop"])
+                except OSError:
+                    pass
+                _guard_record(port, "stop", f"{port} 감시 중지 요청 — 서버는 그대로 두고 감시를 종료한다",
+                              root=root)
+                return "stopped"
+            if want is None or not pid_alive(want):
+                try:
+                    os.remove(p["stop"])
+                except OSError:
+                    pass
+                _guard_record(port, "stale-stop",
+                              f"{port} 남은 중지 표식을 지나간다 — 대상은 감시자 "
+                              f"{want if want is not None else '(이름 없음)'} 인데 "
+                              f"나는 {os.getpid()} 다", root=root)
         if _port_busy(host, port):
             # 살아 있는 서버가 있다. 그게 내 자식이 아니어도 죽이지 않는다 —
             # 중복 기동도, 개입도 하지 않고 죽을 때까지 지켜본다.
@@ -35071,14 +35101,18 @@ def cmd_serve(args):
         serve_sweep_others(args.port, out=lambda m: print(m, file=sys.stderr))
     # 감시자 (REQ-20260825-096) — 이 프로세스는 감시자를 떼어 놓고 곧 돌아간다.
     if getattr(args, "stop_guard", False):
-        if _guard_alive(args.port) is None:
+        _target = _guard_alive(args.port)
+        if _target is None:
             # 중지 파일을 남겨두면 **다음에 뜨는 감시자**가 그걸 보고 곧바로
             # 물러난다 — 감시 중이 아닐 때는 아무것도 쓰지 않는다.
             print(f"포트 {args.port} 를 감시 중인 감시자가 없다")
             return
         p = _guard_paths(args.port)
         os.makedirs(p["state"], exist_ok=True)
-        open(p["stop"], "w", encoding="utf-8").close()
+        # 대상을 적는다 (REQ-20260916-001-2n7g) — 이름 없는 표식은 읽을 사람이
+        # 죽으면 다음 세대를 잘못 세운다.
+        with open(p["stop"], "w", encoding="utf-8") as _sf:
+            _sf.write(f"{_target}\n")
         _guard_ask_stop(args.port)
         print(f"{args.port} 감시 중지 요청 — 서버는 그대로 둔다 "
               f"(최대 {GUARD_POLL_SEC}s 안에 종료된다)")
