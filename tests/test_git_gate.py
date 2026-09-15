@@ -14,6 +14,9 @@
   ⑤ **글은 명령이 아니다** (REQ-20260902-003): 따옴표·heredoc 안의 글에 그
      이름이 적혀 있어도 지나간다 — 다만 그 글자를 셸·인터프리터가 받으면
      그것은 명령이니 그대로 막힌다.
+  ⑥ **커밋 검사를 끄는 한 줄도 막힌다** (REQ-20260916-005): worktree 작업자의
+     봉투에 든 `Bash(git commit:*)` 는 뒤에 오는 무엇이든 받아, 옵션 하나로
+     s9-guard(비밀·보호 경로·role·동시 작업·파일 크기)가 통째로 지나갔다.
 
 실행: python3 tests/ git_gate
 """
@@ -127,6 +130,35 @@ class TheGateStands(unittest.TestCase):
                     for h in grp.get("hooks", [])]
             self.assertTrue(any("s9-git-gate" in h.get("command", "")
                                 for h in rows), "PreToolUse Bash 배선이 없다")
+        with self.subTest("g11_commit_check_bypass_is_refused"):
+            # ⑥ 커밋 검사를 끄는 한 줄 (REQ-20260916-005). 사유는 작업 트리
+            # 갈래와 달라야 한다 — 「113건 유실」은 여기서 할 말이 아니다.
+            for cmd in ("git commit --no-verify -m x",
+                        "git commit -n -m x",
+                        "git commit -an -m x",
+                        "git add -A && git commit --no-verify -m x",
+                        'bash -c "git commit --no-verify -m x"',
+                        "git -c core.hooksPath=/dev/null commit -m x"):
+                r = run(cmd)
+                self.assertEqual(2, r.returncode, "안 막혔다: %s" % cmd)
+                self.assertIn("s9-guard", r.stderr, "무엇이 꺼지는지가 없다")
+                self.assertIn("blocked", r.stderr, "막혔을 때 갈 길이 없다")
+                self.assertIn("S9_GIT_OK=1", r.stderr, "우회 안내가 없다")
+        with self.subTest("g12_ordinary_commits_still_pass"):
+            for cmd in ("git commit -m x",
+                        "git commit -am x",
+                        "git commit --amend --no-edit",
+                        # 글 안의 옵션 이름은 명령이 아니다 (⑤ 와 같은 갈래)
+                        "bin/s9 note REQ-1 '커밋에 -n 을 붙이지 마라'",
+                        "bin/s9 commit -m '검사를 --no-verify 로 끄지 마라'"):
+                r = run(cmd)
+                self.assertEqual(0, r.returncode,
+                                 "막을 것이 아닌데 막았다: %s\n%s" % (cmd, r.stderr))
+            with tempfile.TemporaryDirectory(prefix="s9gate-") as td:
+                self.assertEqual(0, run("git commit --no-verify -m x",
+                                        cwd=td).returncode)
+            self.assertEqual(
+                0, run("S9_GIT_OK=1 git commit --no-verify -m x").returncode)
         with self.subTest("g7_every_envelope_carries_the_words"):
             ags = [p for p in glob.glob(os.path.join(
                 ROOT, "harness", "claude", "agents", "*.md"))
