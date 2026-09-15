@@ -194,4 +194,33 @@
   .docs{flex-direction:column;align-items:stretch}
   .doclist,[data-skin] .doclist{width:auto;max-height:42vh;
     border-right:0;border-bottom:1px solid var(--border)}
+
+  /* ── 판의 열도 같은 자리에서 쌓는다 (REQ-20260916-010-2n7g) ──
+     실측 2026-09-16, 실제 맥 Safari 26.4 · 400x900: 열 다섯의 오른끝이
+     206·398·590·782·974 이고 화면은 400 이라 한 열 반만 보였다. 둘째 열은
+     내용 한가운데서 잘려(「DESKTOP-TEHV1K / R 을 기다리는 중」) 읽히지 않았다.
+     판은 `overflow:auto` 라 가로로 밀리기는 한다(실측 maxScrollLeft 600) —
+     그러나 맥·iOS 는 겹쳐 뜨는 스크롤막대라 **밀 수 있다는 표시가 없고**,
+     이 화면을 재던 세션도 「닿을 길이 없다」로 읽었다. 보이지 않는 길은 길이 아니다.
+
+     가르는 물음은 s9-design 표 절 6 의 그것과 같다 — **열끼리 비교하는가.**
+     칸반의 열은 비교하는 것이 맞지만, 한 열 반만 서는 폭에서는 비교할 둘이
+     애초에 한 화면에 없다. 비교를 잃지 않으면서 얻을 것이 없으니 목록으로
+     읽는 쪽이 낫다: 열을 세로로 쌓으면 판이 이미 맡고 있는 세로 스크롤 하나로
+     일곱 열 전부에 닿고, 붙은 열 머리(board.css)가 지금 어느 상태를 보고 있는지
+     계속 말해 준다. 폭 560px 은 바로 위 목록·판 쌓임과 같은 눈금이다.
+
+     `min-width:176px` 을 0 으로 내리는 이유: 1180px 구간이 열에 준 바닥이
+     그대로면 쌓아 놓고도 가로로 밀린다(화면 안쪽이 374px 이다). 폭을 말하는
+     자리만 스킨과 같은 특이도로 적는다 — 스킨들이 제각기 폭을 적어 두었다. */
+  .board>.cols{flex-direction:column}
+  .col,[data-skin] .col,[data-skin][data-density] .col{
+    flex:0 0 auto;min-width:0;width:auto}
+  /* 세로 구분선은 가로 구분선이 된다 — 위 목록·판과 같은 손버릇이다.
+     **제 상자를 그리는 스킨은 그대로 둔다**: slate·cobalt·field 는 열에
+     `border:1px` 로 네 변을 두르고, 그 상자 자체가 구분이다. 그래서 이 두 줄만은
+     특이도를 낮게(`.col`) 적어 스킨이 이기게 한다 — 높게 적으면 그 스킨들의
+     상자가 오른변만 잃고 아래변 색이 갈린다. */
+  .col{border-right:0;border-bottom:1px solid var(--hairline)}
+  .col:last-child{border-bottom:0}
 }
