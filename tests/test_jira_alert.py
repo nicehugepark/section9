@@ -3,8 +3,9 @@
 실제 사고 2026-09-09~14: API token 이 만료된 뒤 발신함 112건이 50번씩 재시도하며
 문서 프론트매터의 last_error 에만 「준비물이 없다」를 적었다 — 대시보드·수신함·doctor
 어디에도 서지 않아 주인은 닷새를 몰랐다. 판정은 jira_block_info 한 곳이고 세 자리가
-그 값을 싣는다: whoami(대시보드 머리) · 리드 세션 수신함 kind=event(처음 한 번, 그 뒤
-하루 한 번) · s9 doctor 의 Jira 줄. Jira 서버는 부르지 않는다 — 준비물 판정은 만료일
+그 값을 싣는다: /api/notices(대시보드 알림 줄, REQ-20260915-001-62x6 — 처음엔 whoami 에
+얹었다가 반려됐다) · 리드 세션 수신함 kind=event(처음 한 번, 그 뒤 하루 한 번) ·
+s9 doctor 의 Jira 줄. Jira 서버는 부르지 않는다 — 준비물 판정은 만료일
 (jira_token_expires)로 실제 함수(jira_auth_header)가 내린다.
 
 실행: python3 tests/ jira_alert
@@ -113,7 +114,7 @@ class JiraAlert(unittest.TestCase):
         ids = [self.new_request(f"환불 API {i}") for i in range(3)]
         self.assertEqual(len(m.jira_outbox_read()), 3, "요청 셋이 발신함에 실려야 한다")
 
-        with self.subTest("s1_block_info_and_whoami"):
+        with self.subTest("s1_block_info_and_notices"):
             info = m.jira_block_info()
             self.assertIsNotNone(info)
             self.assertEqual(info["count"], 3)
@@ -127,8 +128,13 @@ class JiraAlert(unittest.TestCase):
             self.assertGreater(info["age_sec"], 20 * 365 * 86400)
             w = m.whoami_info()
             self.assertEqual(w["user"], "hong")
-            self.assertEqual(w["jira_block"]["count"], 3)
-            self.assertEqual(w["jira_block"]["reason"], EXPIRED)
+            self.assertNotIn("jira_block", w, "머리 경고는 whoami 가 아니라 /api/notices 가 싣는다")
+            jn = [n for n in m.notices_info()["notices"] if n["source"] == "Jira"]
+            self.assertEqual(len(jn), 1, jn)
+            self.assertEqual(jn[0]["sev"], "halt")
+            self.assertIn("3건이", jn[0]["say"])
+            self.assertIn(EXPIRED, jn[0]["say"])
+            self.assertEqual(jn[0]["go"]["target"], "settings:external:jira")
 
         with self.subTest("s1_cli_quiet_line_and_json"):
             r = self.cli("outbox", "--quiet")
@@ -168,7 +174,7 @@ class JiraAlert(unittest.TestCase):
         with self.subTest("s5_refilled_token_clears_everything"):
             m.do_user_config_set("hong", "jira_token_expires", "2099-12-31")
             self.assertIsNone(m.jira_block_info())
-            self.assertNotIn("jira_block", m.whoami_info())
+            self.assertEqual([n for n in m.notices_info()["notices"] if n["source"] == "Jira"], [])
             self.assertEqual(self.cli("outbox", "--quiet").stdout, "")
             m.jira_block_notify(m.jira_block_info())   # 틱의 끝이 하는 일 — 상태 파일이 지워진다
             self.assertFalse(os.path.exists(os.path.join(self.root, "state", "jira-alert.json")))
@@ -184,7 +190,7 @@ class JiraAlert(unittest.TestCase):
         self.new_request("환불 API")
         self.assertEqual(m.jira_outbox_read(), [])
         self.assertIsNone(m.jira_block_info())
-        self.assertNotIn("jira_block", m.whoami_info())
+        self.assertEqual(m.notices_info()["notices"], [])
         m.jira_outbox_tick()
         self.assertEqual(self.inbox_events(), [])
         self.assertEqual(self.cli("outbox", "--quiet").stdout, "")

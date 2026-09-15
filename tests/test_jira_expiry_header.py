@@ -1,11 +1,12 @@
-"""만료가 다가온 Jira token 은 막히기 전에 머리에 선다 (REQ-20260914-015-62x6).
+"""만료가 다가온 Jira token 은 막히기 전에 알림 줄에 선다 (REQ-20260914-015-62x6).
 
 주인 물음 2026-09-15 09:28: 「지라 토큰 만료 관련 경고는 어디서 확인할 수 있는 거야?」
 — 그때까지 만료 임박은 Settings › 외부 서비스 › Jira 의 「token 만료일」 줄과
 `s9 jira ping` 의 출력에만 있었다. 열어 보지 않으면 모르는 자리다(어제 만료를
-모른 채 닷새를 보낸 자리와 같다). 계약: whoami 가 `jira_expiry` 를 실으면 화면 머리가
-계정 줄 옆에 그 문장을 그린다 — 7일 안(soon)·만료 뒤(expired)에만, 발신함이 막혀
-`jira_block` 이 서 있으면 그쪽이 이긴다(둘을 같이 싣지 않는다).
+모른 채 닷새를 보낸 자리와 같다). 처음엔 whoami 의 `jira_expiry` 키로 신원 옆에
+얹었는데 그 자리가 반려됐다(REQ-20260915-001-62x6) — 지금 계약은 `/api/notices`
+(notices_info) 가 Jira 알림 하나를 싣는 것이다: 7일 안(soon)·만료 뒤(expired)에만
+주의(warn)로, 발신함이 막혀 있으면 막힘(halt) 하나만(둘을 같이 싣지 않는다).
 실행: python3 tests/ jira_expiry_header
 """
 import contextlib
@@ -21,10 +22,9 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9.py")
-NOTICE = os.path.join(HERE, "..", "web", "app", "notice.js")
 
 
-class ExpiryReachesTheHeader(unittest.TestCase):
+class ExpiryReachesTheNotices(unittest.TestCase):
 
     def setUp(self):
         self._env = {k: os.environ.get(k)
@@ -75,43 +75,46 @@ class ExpiryReachesTheHeader(unittest.TestCase):
     def in_days(self, n):
         return (datetime.date.today() + datetime.timedelta(days=n)).isoformat()
 
-    # 정상 — 사흘 뒤 만료면 머리에 선다
-    def test_soon_is_carried_by_whoami(self):
+    def jira_notices(self):
+        return [n for n in self.m.notices_info()["notices"] if n["source"] == "Jira"]
+
+    # 정상 — 사흘 뒤 만료면 주의로 선다
+    def test_soon_is_carried_by_notices(self):
         self.m.do_user_config_set("hong", "jira_token_expires", self.in_days(3))
-        w = self.m.whoami_info()
-        self.assertIn("jira_expiry", w, "만료가 다가왔는데 whoami 가 싣지 않았다")
-        self.assertEqual(w["jira_expiry"]["days"], 3)
-        self.assertEqual(w["jira_expiry"]["level"], "soon")
-        self.assertIn("3일 뒤", w["jira_expiry"]["line"])
-        self.assertNotIn("jira_block", w)
+        ns = self.jira_notices()
+        self.assertEqual(len(ns), 1, "만료가 다가왔는데 알림이 서지 않았다")
+        self.assertEqual(ns[0]["sev"], "warn")
+        self.assertIn("3일 뒤", ns[0]["say"])
+        self.assertEqual(ns[0]["id"], "jira:expiry")
 
     # 경계 — 멀리 남았으면 조용하다
     def test_far_expiry_is_silent(self):
         self.m.do_user_config_set("hong", "jira_token_expires", self.in_days(90))
-        self.assertNotIn("jira_expiry", self.m.whoami_info())
+        self.assertEqual(self.jira_notices(), [])
 
-    # 경계 — 만료가 지났고 발신함은 비어 있으면 「만료됐습니다」로 선다
+    # 경계 — 만료가 지났고 발신함은 비어 있으면 「만료됨」으로 선다
     def test_expired_with_empty_outbox_still_speaks(self):
         self.m.do_user_config_set("hong", "jira_token_expires", self.in_days(-1))
-        w = self.m.whoami_info()
-        self.assertIn("jira_expiry", w)
-        self.assertEqual(w["jira_expiry"]["level"], "expired")
-        self.assertIn("만료됐습니다", w["jira_expiry"]["line"])
+        ns = self.jira_notices()
+        self.assertEqual(len(ns), 1)
+        self.assertEqual(ns[0]["sev"], "warn")
+        self.assertIn("만료됨", ns[0]["say"])
 
-    # 회귀 — 발신함이 막혀 있으면 jira_block 이 이기고 jira_expiry 는 싣지 않는다
+    # 회귀 — 발신함이 막혀 있으면 막힘이 이기고 만료 알림은 싣지 않는다
     def test_block_wins_over_expiry(self):
         self.m.do_user_config_set("hong", "jira_token_expires", self.in_days(-1))
         self.new_request("환불 API")                   # 만료된 token → 발신함에 막힌 채 남는다
-        w = self.m.whoami_info()
-        self.assertIn("jira_block", w)
-        self.assertNotIn("jira_expiry", w, "막힘과 임박을 둘 다 실었다 — 머리에 경고가 둘 선다")
+        ns = self.jira_notices()
+        self.assertEqual([n["id"] for n in ns], ["jira:block"],
+                         "막힘과 만료를 둘 다 실었다 — 알림 줄에 Jira 가 둘 선다")
+        self.assertEqual(ns[0]["sev"], "halt")
 
-    # 화면 — notice.js 가 그 키를 읽는다
-    def test_notice_reads_the_key(self):
-        with open(NOTICE, encoding="utf-8") as f:
-            js = f.read()
-        self.assertIn("jira_expiry", js)
-        self.assertIn("je.line", js)
+    # 회귀 — 신원(whoami)에는 더 이상 실리지 않는다 (반려된 자리)
+    def test_whoami_does_not_carry_the_key(self):
+        self.m.do_user_config_set("hong", "jira_token_expires", self.in_days(3))
+        w = self.m.whoami_info()
+        self.assertNotIn("jira_expiry", w)
+        self.assertNotIn("jira_block", w)
 
 
 if __name__ == "__main__":

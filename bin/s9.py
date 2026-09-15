@@ -526,25 +526,9 @@ def whoami_info():
     # 같은 이름의 저장소가 한 노트북에 둘(윈도우 네이티브·WSL)이면 화면만 보고는 어느
     # 쪽인지 못 가른다 — root 경로와 OS 를 함께 준다 (REQ-20260906-055).
     where = {"root": ROOT, "os": os_platform(), "version": s9_version()}
-    # 준비물로 막힌 Jira 발신함 (REQ-20260914-013-62x6) — 있을 때만 싣는다. 화면은 이
-    # 키가 있을 때만 머리 경고를 그리고, Jira 를 잇지 않은 저장소에서는 키가 서지 않는다.
-    try:
-        jb = jira_block_info()
-    except Exception:
-        jb = None
-    if jb:
-        where["jira_block"] = jb
-    # 만료가 다가온(또는 이미 지난) token 도 막히기 전에 머리에 선다 (REQ-20260914-015-62x6,
-    # 주인 물음 2026-09-15 09:28 「지라 토큰 만료 관련 경고는 어디서 확인할 수 있는 거야」):
-    # Settings 를 열어야 보이던 「token 만료일」 줄과 `s9 jira ping` 만으로는 사람이 모른
-    # 채 만료를 맞았다. 막힌 뒤에는 jira_block 이 그 자리를 쓰므로 둘을 같이 싣지 않는다.
-    if not jb and name:
-        try:
-            exp, left, level, line = jira_token_expiry(name)
-            if level in ("soon", "expired") and jira_enabled_for(name):
-                where["jira_expiry"] = {"date": exp, "days": left, "level": level, "line": line}
-        except Exception:
-            pass
+    # Jira 막힘·만료 같은 머리 경고는 여기 싣지 않는다 — 2026-09-14~15 에 jira_block·
+    # jira_expiry 키로 신원 옆에 얹었다가 반려됐다(REQ-20260915-001-62x6: 외부 서비스는
+    # Jira 만이 아니고 Jira 는 선택이다). 알림은 전부 notices_info() 가 싣는다.
     if name:
         return {"workspace": workspace, "user": name, "display": user_profile(name).get("display", ""),
                 "role": user_role(name), "machine": current_machine(),
@@ -552,6 +536,255 @@ def whoami_info():
     return {"workspace": workspace, "user": raw, "display": "", "role": "",
             "machine": current_machine(), "registered": False,
             "stream_mirror": st_on, **where}
+
+
+# ── 대시보드 알림 줄 (REQ-20260915-001-62x6) ────────────────────────────────
+# 흩어져 있던 머리 경고 — whoami 의 jira_block·jira_expiry, serveinfo 의 stale,
+# 칩의 sync_alert, 미등록 계정 — 를 한 API 로 모은다. 화면은 그리기만 한다:
+# 서비스 이름은 `source` 값으로 가고 화면 코드에는 한 번도 나오지 않는다(주인
+# 반려 2026-09-15 09:49 — 외부 서비스는 Jira 만이 아니고 Jira 는 선택이다).
+#
+# 한 건 = {id, sev, source, say, go, since, sig, title, body, note}
+#   sev     halt(막힘) · warn(주의) · note(정보). 심각도 이름은 화면에 글자로 서지
+#           않는다 — 마크(■ ▲ ○)가 말한다.
+#   source  주체(값): Jira · 서버 · 동기화 · 이 컴퓨터 …
+#   say     제목 — 본문. translator 최종 표(10:06) + 리드 판정 둘의 글자 그대로이고
+#           값 자리({서비스}·{N}·{날짜}…)만 서버가 채운다.
+#   go      여는 길 **하나**: {"kind":"screen","label","target","act"} 는 화면 안
+#           자리(target = Settings 왼쪽 목록 id[:절]), {"kind":"cmd","text"} 는
+#           복사할 명령 전문.
+#   since   조건이 참이 된 시각(ISO) — 「새로 난 것인가 오래 선 것인가」만 답한다.
+#   sig     조건의 지문 — 닫기의 키. 핵심 값이 바뀌면 바뀌어 닫아 둔 것이 다시 선다.
+#   note    딸림 한 줄(툴팁) — 없으면 "".
+# 정렬: halt → warn → note, 같은 등급은 since 오래된 것 먼저.
+#
+# GitHub·SMTP 는 준비물 없음만으로는 알림이 아니다(ux-writer 규율 ②) — 그 서비스로
+# 하려던 일이 실제로 실패한 기록이 있을 때만 서는데, 그 기록을 남기는 자리가 아직
+# 없다(s9_github·s9_invite 는 결과를 호출자에게만 돌려준다). NOTICE_GO 에 자리만
+# 잡아 둔다. 사용량·내 계정·세션 다시 시작·자동 복구는 화면이 아는 진행 칩이라
+# 서버 몫이 아니다.
+
+NOTICE_SEV_RANK = {"halt": 0, "warn": 1, "note": 2}
+
+# translator 최종 표(REQ-20260915-001-62x6 translation 10:06) — (제목, 본문, 딸림 한 줄).
+# 서비스 이름은 {서비스} 값 자리다. 목록 값 뒤에는 조사를 붙이지 않고 「…입니다」로
+# 끝낸다(「Jira 주소이 없습니다」가 되기 때문).
+NOTICE_TEXT = {
+    "jira_soon": ("{서비스} token 만료 임박", "{남은}({날짜}) 만료됩니다.", ""),
+    "jira_expired": ("{서비스} token 만료됨", "{날짜}에 만료돼 {서비스}에 보내지 못합니다.",
+                     "만료일도 함께 고칩니다"),
+    "jira_block": ("{서비스} 발신함 막힘",
+                   "{N}건이 {시간}째 못 갔습니다 — 빠진 것은 {빠진 것}입니다.", ""),
+    "unregistered": ("미등록 계정", "지금 설정은 이 브라우저에만 저장됩니다.",
+                     "터미널에 붙여넣어 실행합니다"),
+    "oldcode": ("서버 재시작 필요", "{시각}에 시작한 뒤 프로그램이 바뀌었습니다.",
+                "재시작은 진행 중 요청과 실시간 연결을 끊습니다"),
+    "sync_fail": ("동기화 멈춤", "{N}번 잇따라 실패해 커밋 {M}건이 아직 못 갔습니다.", ""),
+    "autostash": ("치워 둔 작업", "동기화가 잠시 치워 둔 {N}건이 아직 남아 있습니다.", ""),
+}
+
+# 화면 안 자리 — target 은 「settings:<왼쪽 목록 id>[:<절>]」. 왼쪽 목록 id 는
+# web/app/settings.js SECTIONS 의 「repo」·「external」, 절은 web/app/jira.js 의
+# jiraPanelHTML 이 세우는 .cfg-h 머리 「Jira」(#j-summary) 와 smtpSectionHTML 의
+# 「이메일 보내기」(#s-summary). label 은 화면의 글자 그대로다(REQ-20260907-024:
+# 없는 손잡이를 가리키면 반려된다). GitHub 의 자리는 리드 판정(10:07)대로 「저장소」.
+NOTICE_GO = {
+    "jira": {"kind": "screen", "label": "외부 서비스 › Jira 열기",
+             "target": "settings:external:jira"},
+    "smtp": {"kind": "screen", "label": "외부 서비스 › 이메일 보내기 열기",
+             "target": "settings:external:smtp"},
+    "github": {"kind": "screen", "label": "저장소 열기", "target": "settings:repo"},
+}
+
+_KO_DAYS = {1: "하루", 2: "이틀", 3: "사흘", 4: "나흘", 5: "닷새",
+            6: "엿새", 7: "이레", 8: "여드레", 9: "아흐레", 10: "열흘"}
+_NOTICE_EPOCH = now_iso()     # 서버가 아닌 자리(CLI·시험)에서 since 의 바닥
+
+
+def _notice_epoch():
+    """시작 시각을 따로 적어 두지 않은 조건(미등록 계정 등)의 since — 서버가 뜬
+    때. 같은 서버가 도는 동안은 값이 바뀌지 않아 「N일째」가 폴마다 바뀌지 않는다."""
+    return SERVE_STARTED or _NOTICE_EPOCH
+
+
+def _notice_sig(*parts):
+    import hashlib
+    return hashlib.sha1("|".join(str(p) for p in parts).encode("utf-8")).hexdigest()[:12]
+
+
+def _ko_age(sec):
+    """경과를 사람 단위로 — 「3분」·「2시간」·「닷새」·「12일」({시간}=「닷새」 꼴)."""
+    sec = max(0, int(sec))
+    if sec < 3600:
+        return f"{max(1, sec // 60)}분"
+    if sec < 86400:
+        return f"{sec // 3600}시간"
+    d = sec // 86400
+    return _KO_DAYS.get(d) or f"{d}일"
+
+
+def _ko_date(raw):
+    """'2026-09-22' → '9월 22일' ({날짜}=「9월 22일」 꼴). 못 읽으면 그대로."""
+    try:
+        d = datetime.date.fromisoformat(str(raw or "").strip())
+    except ValueError:
+        return str(raw or "")
+    return f"{d.month}월 {d.day}일"
+
+
+def _ko_days_left(n):
+    """남은 날 — 0 은 「오늘」, 1 은 「내일」, 그 밖은 「N일 뒤」(ux-writer 규율 5)."""
+    n = int(n or 0)
+    return "오늘" if n <= 0 else "내일" if n == 1 else f"{n}일 뒤"
+
+
+def _iso_of_date(d, days=0):
+    """그 날(+days) 0시의 ISO — 날짜로만 아는 조건이 참이 된 때."""
+    dt = datetime.datetime.combine(d + datetime.timedelta(days=days), datetime.time())
+    return dt.astimezone().isoformat(timespec="seconds")
+
+
+def _notice_fill(tpl, vals):
+    for k, v in vals.items():
+        tpl = tpl.replace("{" + k + "}", str(v))
+    return tpl
+
+
+def _notice_row(nid, sev, source, key, vals, go, since, sig):
+    title, body, note = NOTICE_TEXT[key]
+    vals = {"서비스": source, **vals}
+    title, body = _notice_fill(title, vals), _notice_fill(body, vals)
+    return {"id": nid, "sev": sev, "source": source, "say": f"{title} — {body}",
+            "title": title, "body": body, "note": note, "go": go,
+            "since": since, "sig": sig}
+
+
+def notices_sorted(rows):
+    """halt → warn → note, 같은 등급은 since 오래된 것 먼저(새것이 위로 오면 보던
+    줄이 매번 밀린다 — designer 5절)."""
+    return sorted(rows, key=lambda r: (NOTICE_SEV_RANK.get(r.get("sev"), 9),
+                                       str(r.get("since") or "")))
+
+
+def _jira_notices(name, now):
+    """① Jira — 막힘 하나 또는 만료 하나. 둘 다면 막힘만(머리에 경고가 둘 서지 않게)."""
+    try:
+        jb = jira_block_info(now=now)
+    except Exception:
+        jb = None
+    if jb:
+        vals = {"N": jb["count"], "시간": _ko_age(jb["age_sec"]), "빠진 것": jb["reason"]}
+        return [_notice_row("jira:block", "halt", "Jira", "jira_block", vals,
+                            {**NOTICE_GO["jira"], "act": "준비물 채우기"},
+                            since=jb["since"],
+                            sig=_notice_sig("jira", "block", jb["count"], jb["reason"]))]
+    if not name:
+        return []
+    try:
+        exp, left, level, _line = jira_token_expiry(name)
+        if level not in ("soon", "expired") or not jira_enabled_for(name):
+            return []
+        d = datetime.date.fromisoformat(exp)
+    except Exception:
+        return []
+    if level == "expired":
+        # 만료됐는데 발신함은 안 막혔다(나갈 것이 없다) — 아직 막힌 일이 없으니 주의다
+        key, vals, since = "jira_expired", {"날짜": _ko_date(exp)}, _iso_of_date(d, 1)
+    else:
+        key = "jira_soon"
+        vals = {"남은": _ko_days_left(left), "날짜": _ko_date(exp)}
+        since = _iso_of_date(d, -JIRA_EXPIRY_SOON_DAYS)
+    return [_notice_row("jira:expiry", "warn", "Jira", key, vals,
+                        {**NOTICE_GO["jira"], "act": "새 token 넣기"},
+                        since=since, sig=_notice_sig("jira", "expiry", exp, level))]
+
+
+def _oldcode_notices(now):
+    """③ 서버가 옛 코드로 실행 중 — /api/serveinfo 의 stale 과 같은 사실(기동 지문 vs
+    디스크). 서버가 아닌 자리(지문 없음)에서는 낡았다고 단정하지 않는다."""
+    if not SERVE_STARTED:
+        return []
+    cur = running_code_stamp()
+    changed = stale_parts(SERVE_CODE_STAMP, cur)
+    if not changed:
+        return []
+    keys = [k for k, nm in RUNNING_FILES.items() if nm in changed]
+    mts = [float((cur.get(k) or {}).get("mtime") or 0) for k in keys]
+    since_ts = min([t for t in mts if t] or [now])
+    since = datetime.datetime.fromtimestamp(since_ts).astimezone().isoformat(timespec="seconds")
+    return [_notice_row("server:oldcode", "warn", "서버", "oldcode",
+                        {"시각": str(SERVE_STARTED)[11:16]},
+                        {"kind": "cmd", "text": "s9 serve --restart"},
+                        since=since, sig=_notice_sig("oldcode", SERVE_STARTED))]
+
+
+def _sync_autostash_left():
+    """보관함(git stash)에 남은 autostash 건수와 가장 오래된 것의 시각 — bin/s9-doctor
+    sync_info 의 셈과 같다(doctor 는 s9 를 import 하지 않아 둘이 같은 git 을 읽는다).
+    되돌리지 못한 것을 적어 둔 state/sync-stash-orphan.txt 도 doctor 처럼 함께 센다."""
+    if not os.path.isdir(os.path.join(ROOT, ".git")):
+        return 0, ""
+    n, oldest = 0, ""
+    try:
+        r = _sync_git("stash", "list", "--format=%aI%x09%gs")
+        if r.returncode == 0:
+            for ln in r.stdout.splitlines():
+                at, _, subj = ln.partition("\t")
+                if subj.strip().endswith("autostash"):
+                    n += 1
+                    if at and (not oldest or at < oldest):
+                        oldest = at.strip()
+    except Exception:
+        pass
+    try:
+        with open(SYNC_ORPHAN_STASH, encoding="utf-8") as f:
+            orphan = [ln for ln in f if ln.strip()]
+    except OSError:
+        orphan = []
+    return max(n, len(orphan)), oldest
+
+
+def _sync_notices():
+    """④ 동기화 — 잇따른 실패(칩과 같은 sync_alert_fact) · 치워 둔 작업."""
+    out = []
+    try:
+        a = sync_alert_fact()
+    except Exception:
+        a = None
+    if a:
+        out.append(_notice_row("sync:fail", "halt", "동기화", "sync_fail",
+                               {"N": int(a.get("count") or 0), "M": int(a.get("pending") or 0)},
+                               {"kind": "cmd", "text": "s9 sync"},
+                               since=a.get("since") or _notice_epoch(),
+                               sig=_notice_sig("sync", "fail", a.get("stage"),
+                                               a.get("kind"), a.get("count"))))
+    n, oldest = _sync_autostash_left()
+    if n:
+        out.append(_notice_row("sync:autostash", "warn", "동기화", "autostash", {"N": n},
+                               {"kind": "cmd", "text": "s9 doctor"},
+                               since=oldest or _notice_epoch(),
+                               sig=_notice_sig("sync", "autostash", n)))
+    return out
+
+
+def notices_info(now=None):
+    """알림 줄의 사실 전부 — /api/notices 와 /api/boot 의 notices 조각이 이 한 함수를
+    부른다(묶음이 단독과 다른 답을 하면 화면이 두 얼굴을 갖는다)."""
+    import time as _time
+    now = now or _time.time()
+    w = whoami_info()
+    rows = []
+    # ② 미등록 계정 — 사실은 whoami_info 가 이미 안다. 주체는 「이 컴퓨터」(designer 9절)
+    if not w.get("registered"):
+        raw = str(w.get("user") or "")
+        rows.append(_notice_row("identity:unreg", "halt", "이 컴퓨터", "unregistered",
+                                {"계정": raw}, {"kind": "cmd", "text": f"s9 user add {raw}"},
+                                since=_notice_epoch(),
+                                sig=_notice_sig("identity", "unreg", raw)))
+    rows += _jira_notices(w.get("user", "") if w.get("registered") else "", now)
+    rows += _oldcode_notices(now)
+    rows += _sync_notices()
+    return {"notices": notices_sorted(rows)}
 
 
 def resolve_user(explicit=None, with_source=False):
@@ -34837,7 +35070,9 @@ def cmd_serve(args):
                                "projects": projects_for(me),
                                "docindex": _obj,
                                "serveguard": guard_report(s9_port()),
-                               "catalog": {"etag": _ce, "window": _cw}}
+                               "catalog": {"etag": _ce, "window": _cw},
+                               # 알림 줄 (REQ-20260915-001-62x6) — /api/notices 와 같은 함수
+                               "notices": notices_info()}
                 self._json(payload)
             elif parsed.path == "/api/machines":
                 # 담당 컴퓨터를 고르는 목록 (REQ-20260910-017-62x6). 원천은 machine_table
@@ -34851,6 +35086,10 @@ def cmd_serve(args):
             elif parsed.path == "/api/whoami":
                 # 서버 파생 신원 — 대시보드 라벨·admin 판정·개인화의 단일 출처
                 self._json(whoami_info())
+            elif parsed.path == "/api/notices":
+                # 대시보드 알림 줄 (REQ-20260915-001-62x6) — 사실은 notices_info 한 곳이고
+                # 화면은 그리기만 한다. /api/boot 의 notices 조각과 같은 값이다.
+                self._json(notices_info())
             elif parsed.path == "/api/secrets":
                 # **키만 준다. 값은 절대 나가지 않는다** (REQ-20260828-012).
                 me = whoami_info().get("user", "")
