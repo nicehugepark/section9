@@ -292,6 +292,23 @@ class SafariDriver(unittest.TestCase):
             self.assertIn("s9 safaridriver start", src, path)
             self.assertIn("한 번에 한 WebDriver 세션", src, path)
 
+    def test_z23_session_end_reaps_this_sessions_drivers(self):
+        """회귀 — SessionEnd 훅이 이 세션이 띄운 드라이버를 거둔다.
+
+        「끝낼 때 quit --mine」은 스킬의 규율인데, 규율은 잊힌다 — 2026-09-16 의
+        사고가 정확히 그 잊음이었다. 그래서 훅이 대신 부른다. `--mine` 이어야
+        한다: 더 넓게 거두면 끝나는 세션이 남의 검증을 끊는다."""
+        hook = open(os.path.join(HERE, "..", "bin", "s9-audit-session"),
+                    encoding="utf-8").read()
+        i = hook.index('if event == "end":')
+        j = hook.index("\n    dual_warn", i)
+        end_branch = hook[i:j]
+        self.assertIn('"safaridriver", "quit", "--mine"', end_branch,
+                      "SessionEnd 가 제 드라이버를 거두지 않는다")
+        for wider in ('"--stale"', '"--all"', '"--force"'):
+            self.assertNotIn(wider, end_branch,
+                             f"끝나는 세션이 {wider} 로 남의 것까지 거둔다")
+
     def test_z22_section_is_the_same_in_source_and_output(self):
         """회귀 — 이 절이 원천(gen_roster.py)과 생성물(SKILL.md)에 글자 그대로 같이 있다.
 

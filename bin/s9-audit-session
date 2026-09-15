@@ -422,6 +422,20 @@ def main():
                            capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=10)
         except Exception:
             pass
+        # 이 세션이 띄운 safaridriver 를 거둔다 (REQ-20260916-019-2n7g).
+        # 맥의 Safari 는 한 번에 한 WebDriver 세션만 받아, 끝난 세션이 쥔
+        # 드라이버 하나가 다음 사람의 실브라우저 검증을 통째로 막는다 —
+        # 2026-09-16 밤에 두 번 막혔고 두 번 다 사람이 pid 를 찾아 죽였다.
+        # 「끝낼 때 quit --mine」은 browser-verify 스킬에 규율로 적혀 있지만
+        # **규율은 잊히고 훅은 안 잊는다.** 거두는 것은 이 세션이 띄운 것뿐이라
+        # (--mine) 남의 검증은 건드리지 않고, 맥이 아니면 그대로 지나간다.
+        # 훅이 없는 하네스(Gemini·Codex 등)는 그 한 줄을 손으로 부른다.
+        try:
+            subprocess.run([*S9_ARGV, "safaridriver", "quit", "--mine"],
+                           capture_output=True, encoding="utf-8",
+                           errors="replace", env=env, timeout=15)
+        except Exception:
+            pass
 
     dual_warn = ""
     chat_ctx = ""

@@ -462,7 +462,12 @@ class Metrics(unittest.TestCase):
         """켜는 사람이 무엇을 켰는지 알아야 한다 — 비콘 고지."""
         with open(S9_SRC, encoding="utf-8") as f:
             src = f.read()
-        blk = src.split('if action == "start":', 1)[1][:1400]
+        # 창은 **cmd_metrics 안에서** 잡는다 (REQ-20260916-019-2n7g). 전에는
+        # 파일 전체에서 첫 `if action == "start":` 를 잘랐는데, 같은 꼴의
+        # 서브명령이 앞쪽에 하나 서자 남의 함수를 재기 시작했다 — 계약은
+        # 멀쩡한 채로 시험만 깨졌다(tests/s9src.py 가 적어 둔 그 갈래다).
+        blk = src.split("def cmd_metrics(", 1)[1] \
+                 .split('if action == "start":', 1)[1][:1400]
         self.assertIn("밖으로 나간다", blk)
         self.assertIn("S9_NO_METRICS", blk)
         self.assertIn("metrics stop", blk)
