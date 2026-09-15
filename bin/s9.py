@@ -4284,6 +4284,21 @@ def work_tree_here(cwd=None):
     return top
 
 
+def is_code_path(rel):
+    """그 경로가 **코드**인가.
+
+    데이터 경로(vault/·users/·projects/·.s9-sync)는 동기화가 제 회차에 늘 담는
+    자리이고, state/ 는 이 컴퓨터의 살림살이, index/ 는 파생물이다 — 셋 다
+    `.gitignore` 가 이미 막지만, 없는 자리에서도 코드로 세지 않는다.
+    이 잣대 하나를 담기지 않은 코드 가드와 가지 가드가 함께 쓴다."""
+    rel = (rel or "").strip().strip('"')
+    if not rel or rel in SYNC_DATA_PATHS:
+        return False
+    data = tuple(x + "/" for x in SYNC_DATA_PATHS if not x.startswith("."))
+    return not (rel.startswith(data)
+                or rel.startswith(("state/", "index/", ".git")))
+
+
 def uncommitted_code(tree):
     """그 작업 트리에 담기지 않은 **코드** 파일 (저장소 상대경로, 정렬).
 
@@ -4293,7 +4308,6 @@ def uncommitted_code(tree):
     out = _git_at(tree, "status", "--porcelain", "--untracked-files=all")
     if out is None:
         return None
-    data = tuple(x + "/" for x in SYNC_DATA_PATHS if not x.startswith("."))
     paths = set()
     for line in out.splitlines():
         if len(line) < 4:
@@ -4301,13 +4315,8 @@ def uncommitted_code(tree):
         rel = line[3:].strip()
         if " -> " in rel:          # 이름 변경 — 도착지만 본다
             rel = rel.split(" -> ", 1)[1].strip()
-        rel = rel.strip('"')
-        # state/ 는 이 컴퓨터의 살림살이이고 index/ 는 파생물이다 — 둘 다
-        # .gitignore 가 이미 막지만, 없는 자리에서도 코드로 세지 않는다.
-        if not rel or rel in SYNC_DATA_PATHS or rel.startswith(data) \
-                or rel.startswith(("state/", "index/", ".git")):
-            continue
-        paths.add(rel)
+        if is_code_path(rel):
+            paths.add(rel.strip().strip('"'))
     return sorted(paths)
 
 
@@ -4400,6 +4409,136 @@ def _name_list(paths):
     head = " · ".join(paths[:UNCOMMITTED_SHOW])
     rest = len(paths) - UNCOMMITTED_SHOW
     return head + (f" 외 {rest}개" if rest > 0 else "")
+
+
+# ----------------------------------------------------------------------------
+# 가지에 담은 것은 main 에 닿아야 한다 (REQ-20260916-009-2n7g)
+#
+# 담기지 않은 코드 가드(REQ-20260915-044-62x6)가 막는 것은 「작업 트리에만 있는
+# 것」이다. 그 바로 옆에 같은 모양의 구멍이 하나 더 있었다: worktree 작업자는 제
+# 가지에 commit 하면 「담았다」로 보고하는데, 그 commit 은 main 에 없다. 사람이
+# 보는 자리도, 다른 컴퓨터가 pull 하는 자리도 main 이다 — 그러니 「고쳤다」와
+# 「볼 수 있다」가 갈린다.
+#
+# 실측 2026-09-16 01:5x: `wt/*` 가지 여섯에 main 에 없는 commit 이 있었고, 그중
+# 둘은 그날 물렸다. 하나는 가지에서 이미 끝난 구현을 모르고 리드가 처음부터 다시
+# 만들었고(REQ-20260915-009-2n7g), 하나는 확인 포인트가 「시험을 돌려 보라」인데
+# 그 시험이 main 에 없어 사람이 무엇을 눌러도 볼 수 없는 채로 판정을 기다렸다
+# (REQ-20260916-004-2n7g).
+#
+# 그래서 review·done 전이가 본다. 다만 **막기만 하면 갇힌다** — 작업자의 손에는
+# git merge 가 없다(봉투가 담고·박고·보는 것까지만 준다). 그러니 옮길 수 있으면
+# 전이가 옮기고, 못 옮기면(충돌) 그때 거부한다. 규율이 아니라 장치다.
+BRANCH_SHOW = 3                   # 문구에 적을 최대 commit 개수
+
+BRANCH_LAND_HELP = (
+    "충돌을 풀고 다시 전이하라. 이미 다른 구현이 main 에 섰으면 그 가지는 버릴 "
+    "것이니 리드가 판정한다(`s9 worktree ls` 로 보고 `s9 worktree merge <이름>`). "
+    "사람 판정만 남았으면 --force 와 사유를 함께 써라 — 지나간 사실은 History 에 "
+    "한 줄로 남는다."
+)
+
+
+def doc_branch(doc_id, tree=None):
+    """이 요청의 commit 이 앉은 가지 — 본 저장소의 main 이면 "".
+
+    자리는 둘이다. ① 이 전이가 요청 전용 worktree 안에서 돌면 그 자리의 가지다.
+    ② 본 저장소에서 돌면(리드가 대신 닫는 자리) 이 요청이 가진 worktree 의
+    가지다 — 주인 기록(state/worktree_owners)이 그 짝을 안다.
+    """
+    tree = tree or work_tree_here()
+    base = main_branch()
+    if tree and os.path.realpath(tree) != os.path.realpath(ROOT):
+        br = (_git_at(tree, "rev-parse", "--abbrev-ref", "HEAD") or "").strip()
+        return br if br and br not in ("HEAD", base) else ""
+    try:
+        name, _own = _doc_worktree(doc_id)
+    except Exception:
+        return ""
+    if not name:
+        return ""
+    br = f"wt/{name}"
+    if _git_at(ROOT, "rev-parse", "--verify", "--quiet", br + "^{commit}") is None:
+        return ""
+    return br
+
+
+def branch_unmerged_code(branch, base=None):
+    """그 가지에 있고 main 에 없는 **코드** commit — [(짧은 sha, 제목)].
+
+    못 물으면 빈 목록이다(모르는 것과 깨끗한 것을 가르지 않는다 — 모르는 자리에서
+    막으면 남의 저장소에서 부른 전이가 서 버린다).
+    데이터만 담은 commit 은 세지 않는다: 동기화가 제 회차에 늘 담는 자리라,
+    그것까지 세면 문서 한 줄에 전이가 막힌다.
+    """
+    if not branch:
+        return []
+    base = base or main_branch()
+    out = _git_at(ROOT, "log", "--format=%x1e%h%x1f%s", "--name-only",
+                  f"{base}..{branch}", timeout=30)
+    if not out:
+        return []
+    rows = []
+    for rec in out.split("\x1e"):
+        head, _, files = rec.strip("\n").partition("\n")
+        if not head.strip():
+            continue
+        sha, _, subject = head.partition("\x1f")
+        if any(is_code_path(p) for p in files.splitlines()):
+            rows.append((sha.strip(), subject.strip()))
+    return rows
+
+
+def _commit_list(rows):
+    head = " · ".join(f"{s} {t}"[:60] for s, t in rows[:BRANCH_SHOW])
+    rest = len(rows) - BRANCH_SHOW
+    return head + (f" 외 {rest}개" if rest > 0 else "")
+
+
+def branch_land(branch, why=""):
+    """그 가지의 commit 을 본 저장소의 main 으로 옮긴다 — **worktree 는 남긴다**.
+
+    거두지 않는 것이 `worktree_merge` 와 갈리는 자리다: 이 길은 작업자가 아직
+    **실행 중인** 동안 도는 마무리라, 그 자리를 치우면 일하던 쪽의 코드 사본이
+    사라진다. 거두는 것은 여전히 리드가 `s9 worktree merge` 로 한다.
+
+    sync 회차와 겹치지 않는 창에서 합친다 — `s9 commit` 이 쓰는 그 잠금·표식이다.
+    반환: (옮겼나, 사람이 읽을 한 줄).
+    """
+    import subprocess
+    base = main_branch()
+    cur = (_git_at(ROOT, "rev-parse", "--abbrev-ref", "HEAD") or "").strip()
+    if cur != base:
+        return False, (f"본 저장소가 {base} 에 서 있지 않다({cur or '?'}) — "
+                       f"그 자리는 사람이 옮겨야 한다")
+    m = commit_module()
+    lock = m.take_sync_window(60, sys.stderr)
+    if not lock:
+        return False, "동기화 회차가 60초 안에 끝나지 않았다 — 잠시 뒤 다시 전이하라"
+    msg = f"가지를 main 으로: {branch}" + (f" ({why})" if why else "")
+    r = None
+    m.mark_write()
+    try:
+        with m.LockToucher(lock):
+            r = subprocess.run(["git", "-C", ROOT, "merge", "--no-ff", branch,
+                                "-m", msg],
+                               capture_output=True, encoding="utf-8",
+                               errors="replace", timeout=300, env=m.clean_env())
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"합치지 못했다 — {type(e).__name__}: {e}"[:200]
+    finally:
+        m.mark_clear()
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+    if r.returncode != 0:
+        subprocess.run(["git", "-C", ROOT, "merge", "--abort"],
+                       capture_output=True, encoding="utf-8", errors="replace",
+                       timeout=60)
+        why_git = " ".join(((r.stderr or "") + (r.stdout or "")).split())[:200]
+        return False, f"합치지 못했다 — {why_git}"
+    return True, f"가지 {branch} 의 commit 을 {base} 으로 옮겼다"
 
 
 def do_transition(doc_id, new_status, note="", user=None, force=False, auto=False,
@@ -4520,6 +4659,20 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
             raise ValueError(
                 f"담기지 않은 코드 {len(_stray)}개 — {_name_list(_stray)}. "
                 + UNCOMMITTED_HELP)
+    # 가지에 담은 것은 main 에 닿아야 한다 (REQ-20260916-009-2n7g). 담기지 않은
+    # 코드 가드 바로 뒤에 선다 — 순서가 뜻을 만든다: 먼저 담겼나, 그 다음 닿았나.
+    _branch, _stuck, _landed = "", [], ""
+    if new_status in ("review", "done") and meta.get("type") == "request" \
+            and not judge:
+        _branch = doc_branch(doc_id)
+        _stuck = branch_unmerged_code(_branch)
+        if _stuck and not force:
+            _ok, _say = branch_land(_branch, canon_id(doc_id))
+            if not _ok:
+                raise ValueError(
+                    f"가지 {_branch} 의 commit {len(_stuck)}개가 main 에 없다 — "
+                    f"{_commit_list(_stuck)}. {_say}. " + BRANCH_LAND_HELP)
+            _landed = _say
     if note:
         note, _ = normalize_ids(note)  # short REQ-id → full-id (trigger_dependents 매칭 보장)
     if judge:
@@ -4534,6 +4687,13 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
     if _dropped_lease:
         entry += (f"- {ts} lease release {_dropped_lease.get('user')}@{_dropped_lease.get('machine')} "
                   f"(by {user}) — open 으로 되돌려 점유를 걷었다\n")
+    # 가지에서 옮겨 온 것도, 옮기지 않고 지나간 것도 문서에 남는다 — 그 commit 이
+    # 언제 main 에 닿았는지(또는 닿지 않았는지)를 나중에 물을 자리는 여기뿐이다.
+    if _landed:
+        entry += f"- {ts} {_landed} ({_commit_list(_stuck)})\n"
+    elif _stuck:
+        entry += (f"- {ts} 경고: 가지 {_branch} 의 commit {len(_stuck)}개가 main 에 "
+                  f"없는 채로 --force 로 지나갔다 — {_commit_list(_stuck)}\n")
     # 담기지 않은 코드는 조용히 넘어가지 않는다 — 막았거나, 문서에 한 줄로 남는다.
     if _stray:
         entry += (f"- {ts} 경고: 담기지 않은 코드 {len(_stray)}개를 --force 로 "
@@ -11582,8 +11742,11 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
             f"여기 사본이고 남의 commit 안 한 편집은 보이지도 닿지도 않는다. 문서·상태는 "
             f"본 저장소 하나를 함께 쓴다(S9_ROOT 가 그리로 못박혀 있다). "
             f"① 일이 끝나면 **이 worktree 의 가지(wt/{wt_name})에 commit 하라** — "
-            f"commit 하지 않은 것은 이 자리를 거둘 때 사라진다. ② 본 저장소로 합치는 "
-            f"것은 리드 몫이다(`s9 worktree merge {wt_name}`) — 직접 합치지 마라. "
+            f"commit 하지 않은 것은 이 자리를 거둘 때 사라진다. ② 가지에 담은 것은 "
+            f"아직 main 에 없다 — 사람이 보는 자리는 main 이다. 옮기는 것은 네 손이 "
+            f"아니라 전이가 한다: `{s9bin} status {doc_id} review` 가 이 가지의 코드 "
+            f"commit 을 main 으로 옮기고, 충돌해 못 옮기면 그 사실을 짚어 거절한다 — "
+            f"그때는 blocked 로 올려라(사유: 충돌). 직접 merge 하지 마라. "
             f"③ `git checkout`·`git stash`·`git reset` 은 여기서도 쓰지 마라.")
     else:
         prompt = prompt + (
