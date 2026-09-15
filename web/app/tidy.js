@@ -63,14 +63,11 @@ const TIDY_HOW = {screen: "화면에서 버림", cli: "명령으로 버림"};
 // 그 말은 정보가 0 이고, 아는 몇 줄까지 그 되풀이에 묻힌다.
 const tidyHowLabel = h => TIDY_HOW[h] || "";
 
-/* 수명을 넘겼나 — 자는 서버와 같다(bin/s9.py trash_overdue). 버린 때를 못
-   읽는 행은 넘기지 않은 것으로 본다: 모르는 것을 지울 쪽으로 세지 않는다. */
-function tidyOverdue(r){
-  if (!tidyKeepDays) return false;
-  const t = Date.parse(r.deleted || "");
-  if (!t) return false;
-  return Date.now() - t > tidyKeepDays * 86400000;
-}
+/* 수명을 넘겼나는 **서버가 판정해서 행에 실어 준다**(`overdue`,
+   REQ-20260915-084-62x6). 화면이 같은 술어를 한 벌 더 들고 있던 동안 둘은
+   실제로 갈렸다 — 서버는 시간대가 붙은 값을 못 읽고 0건을 말했고 화면은
+   `Date.parse` 로 읽어 몇 건을 말했다. 남은 `tidyKeepDays` 는 술어가 아니라
+   **사람에게 보일 날 수**다(「30일 넘김」). */
 
 /* 거르개 칩 — **기록이 있는 갈래만 세운다** (REQ-20260915-066-62x6, designer
    실측: 그날 휴지통 122건이 전부 빈 값이라 두 칸이 언제 눌러도 빈 목록이었다).
@@ -195,9 +192,13 @@ async function tidySend(op, ids, extra){
    「휴지통」이라는 낱말이 한 번도 없어서, 버린 사람에게 도착지가 화면 밖이었다.
    그래서 만드는 손잡이 줄의 오른끝에 되찾는 손을 세운다(designer 2순위 (a)).
 
-   세는 것은 **프로젝트뿐**이다. 전역 수(그날 127)를 여기 세우면 「프로젝트가
-   127개 버려져 있다」로 읽힌다 — 자리마다 같은 낱말이 다른 것을 세면 안 되고,
-   눌러서 여는 판도 그 수만큼만 보여야 한다(그래서 `data-narrow`).
+   **수는 세우지 않는다** (리드 판정 2026-09-15). Settings 레일의 「휴지통」과
+   같은 문법이다 — 갈 곳의 이름 옆에 굵은 수를 붙이면 그것이 거르개 칩으로
+   읽히고, 몇 건이 버려져 있는가는 사람이 여기서 판단할 사실이 아니다. 세는
+   일 자체는 남는다: 버린 프로젝트가 없으면 이 손잡이가 아예 서지 않는다.
+
+   보는 것은 **프로젝트뿐**이다 — 눌러서 여는 판도 프로젝트만 보여야 한다
+   (그래서 `data-narrow`). 자리마다 같은 낱말이 다른 것을 가리키면 안 된다.
 
    **보관함은 세우지 않는다.** 보관된 프로젝트는 바로 아래 「보관된 프로젝트 n개」
    로 이미 접혀 있다 — 한 서랍을 여는 자리가 한 화면에 둘이면, 문서 전체를 세는
@@ -271,11 +272,16 @@ function prjTrashPaint(){
       + ` data-tidy="open" data-narrow="project"></button>`);
     el = tail.querySelector(".pjtrash");
   }
-  const html = `휴지통<b>${n}</b>`;
-  if (el.innerHTML !== html) el.innerHTML = html;
+  if (el.textContent !== "휴지통") el.textContent = "휴지통";
+  /* 접근 이름은 **보이는 글자로 시작한다** (WCAG 2.5.3 label in name): 음성
+     제어로 「휴지통」이라 부르는 사람이 이 손잡이를 못 집으면, 보는 이름과
+     부르는 이름이 다른 것이다. 수는 어느 쪽에도 없다 — 화면에 없는 수를
+     화면낭독기만 듣는 것은 같은 자리를 두 벌로 만드는 일이다. */
   const t = "버린 프로젝트를 여기서 되돌립니다";
-  el.title = t;
-  el.setAttribute("aria-label", `${t} — 휴지통에 프로젝트 ${n}개`);
+  if (el.title !== t){
+    el.title = t;
+    el.setAttribute("aria-label", `휴지통 — ${t}`);
+  }
 }
 
 function tidyDecorate(){
@@ -512,7 +518,7 @@ function tidyRender(){
   /* 수명을 넘긴 것은 **전량에서** 센다 — 거르개로 좁힌 화면에서 「3건
      정리하기」를 누른 사람이 실제로는 쉰 건을 지우면 안 된다. 그래서 세는
      것도 지우는 것도 전량 기준이고, 확인 창이 그 수를 그대로 말한다. */
-  const over = (tidyTab === "trash" && !lost) ? (all || []).filter(tidyOverdue) : [];
+  const over = (tidyTab === "trash" && !lost) ? (all || []).filter(r => r.overdue) : [];
   /* 판 바닥은 두 가지를 약속한다: 번호는 태워 둔다(옛 약속), 그리고 수명.
      수명이 꺼져 있으면 그 말을 하지 않는다 — 지키지 않을 약속은 적지 않는다. */
   const footLine = () => {
@@ -553,7 +559,7 @@ function tidyRender(){
             tidyTab === "trash"
               ? (tidyHowLabel(r.trashed_how)
                   ? ` · <span class="thow">${esc(tidyHowLabel(r.trashed_how))}</span>` : "")
-                + (tidyOverdue(r) ? ` <span class="tover">${tidyKeepDays}일 넘김</span>` : "")
+                + (r.overdue ? ` <span class="tover">${tidyKeepDays}일 넘김</span>` : "")
               : ""}</div>
       </div>
       <div class="acts">
@@ -598,9 +604,9 @@ function tidyRender(){
       <span class="dlgdoc">치운 문서가 여기 있습니다 — 되돌리면 문서 목록으로 돌아갑니다.</span>
       <span class="dlgesc"><kbd>ESC</kbd> 닫기</span></div>
     <div class="tidytabs">
-      <button type="button" data-tidy="tab" data-tab="archived"
+      <button type="button" data-tidy="tab" data-ttab="archived"
         class="${tidyTab === "archived" ? "on" : ""}">보관함${cnt(tidyArch)}</button>
-      <button type="button" data-tidy="tab" data-tab="trash"
+      <button type="button" data-tidy="tab" data-ttab="trash"
         class="${tidyTab === "trash" ? "on" : ""}">휴지통${cnt(tidyTrash)}</button>
     </div>
     ${sieve}
@@ -617,13 +623,37 @@ function tidyRender(){
         <button type="button" data-tidy="close">닫기</button></div></div>`;
 }
 
-async function tidyOpen(narrow){
-  if (tidyBox){ tidyClose(); return; }
-  /* 부른 손이 좁힘을 들고 올 수 있다 (REQ-20260915-064-62x6). 그리기 **전에**
-     세운다 — 받아 오기 전의 첫 그림도 좁혀진 화면이어야, 판이 전량으로 한 번
-     번쩍였다가 줄어드는 일이 없다. */
-  tidyType = narrow || "";
-  if (tidyType) tidyTab = "trash";
+/* 판을 여는 손마다 청하는 것이 다르다 (REQ-20260915-064-62x6): Settings 레일은
+   그냥 열고, Projects 레일은 휴지통 탭에 프로젝트만, 「휴지통 보기」는 휴지통
+   탭을. 그 청을 **인자로** 받는다 — 부르는 쪽이 `tidyTab`·`tidyType` 에 손을
+   뻗어 미리 세우면 세우는 자리가 손 수만큼 늘고, 실제로 그렇게 늘어 다음 둘이
+   규칙 없이 남아 있었다: 검색어를 치고 닫은 뒤 레일로 열면 좁혀진 목록이
+   나왔고(손잡이가 센 수와 줄 수가 갈린다), 판이 떠 있을 때 레일을 누르면
+   좁히지 않고 그냥 닫혔다(사람은 그 손잡이가 고장 난 줄 안다).
+
+   그래서 규칙 셋이 이 한 곳에 선다.
+     ① 좁힘(검색어·거르개·종류)은 **열 때마다 처음으로 돌린다**.
+     ② 다시 눌러 닫는 것은 **같은 것을 청했을 때만** — 다른 것을 청하면 닫지
+        말고 그쪽으로 바꿔 그린다.
+     ③ 탭을 안 청한 손은 받아 온 뒤 비어 있지 않은 쪽을 고른다(아래).
+
+   그리기 **전에** 세우는 까닭: 받아 오기 전의 첫 그림도 좁혀진 화면이어야,
+   판이 전량으로 한 번 번쩍였다가 줄어드는 일이 없다. */
+function tidyAsked(tab, type){
+  tidyQ = ""; tidyWho = "all";
+  tidyType = type || "";
+  tidyTab = tab || (tidyType ? "trash" : tidyTab);
+}
+
+async function tidyOpen(want){
+  const tab = (want && want.tab) || "", type = (want && want.type) || "";
+  if (tidyBox){
+    if (tidyType === type && (!tab || tidyTab === tab)){ tidyClose(); return; }
+    tidyAsked(tab, type);
+    tidyRender();
+    return;
+  }
+  tidyAsked(tab, type);
   tidyBox = document.createElement("div");
   tidyBox.className = "hovercard dlgbox tidypanel";
   tidyBox.setAttribute("role", "dialog");
@@ -641,8 +671,8 @@ async function tidyOpen(narrow){
   /* 비어 있지 않은 쪽을 먼저 연다 — 한쪽이 0 인데 그쪽부터 열면 찾으러 온
      사람이 「없다」로 읽고 닫는다. 둘 다 있으면 보관함을 그대로 둔다. */
   const na = (tidyArch || []).length, nt = (tidyTrash || []).length;
-  // 좁혀서 열었으면 고른 탭이 이미 정해져 있다 — 여기서 되돌리지 않는다
-  if (!tidyType){
+  // 청한 것이 있으면 고른 탭이 이미 정해져 있다 — 여기서 되돌리지 않는다
+  if (!tab && !type){
     if (!na && nt) tidyTab = "trash";
     else if (na && !nt) tidyTab = "archived";
   }
@@ -664,9 +694,17 @@ async function tidyAct(what, el){
     }
     return;
   }
-  if (what === "open"){ await tidyOpen(el && el.dataset.narrow); return; }
+  if (what === "open"){
+    await tidyOpen(el && el.dataset.narrow ? {type: el.dataset.narrow} : {});
+    return;
+  }
   if (what === "close"){ tidyClose(); return; }
-  if (what === "tab"){ tidyTab = el.dataset.tab; tidyRender(); return; }
+  /* 판 **안**에서 옮기는 자리다 — 이름표가 `data-ttab` 인 까닭이 여기 있다
+     (REQ-20260915-085-62x6). 헤더의 탭 줄과 같은 `data-tab` 을 쓰면 화면 전체를
+     도는 손들(tabSync·탭 클릭)이 이 버튼까지 제 것으로 알고 건드린다.
+     좁힘은 여기서 풀지 않는다: 프로젝트만 보던 사람이 보관함을 들렀다 돌아왔을
+     때 다시 전량이 되면, 손잡이가 센 것과 판이 보이는 것이 갈린다. */
+  if (what === "tab"){ tidyTab = el.dataset.ttab; tidyRender(); return; }
   /* 좁히는 손 (REQ-20260915-062-62x6). 검색은 다시 그린 뒤 커서를 그 칸 끝에
      되돌린다 — 한 글자마다 칸을 놓치면 두 글자를 못 친다. */
   if (what === "q"){
@@ -711,11 +749,8 @@ async function tidyAct(what, el){
     return;
   }
   if (what === "undox"){ tidyUndo = null; tidyDecorate(); return; }
-  if (what === "seetrash"){
-    tidyTab = "trash";
-    if (tidyBox) tidyRender(); else await tidyOpen();
-    return;
-  }
+  // 「휴지통 보기」도 같은 길을 지난다 — 여는 자리가 둘이면 규칙도 둘이 된다
+  if (what === "seetrash"){ await tidyOpen({tab: "trash"}); return; }
   if (what === "back"){
     await tidySend(tidyTab === "trash" ? "restore" : "unarchive", [id]);
     return;
@@ -724,7 +759,7 @@ async function tidyAct(what, el){
     /* 「정리하기」는 **전량에서** 수명을 넘긴 것만 집는다 — 거르개로 좁힌
        화면에서 눌러도 지워지는 것은 바닥이 센 그 수 그대로다. */
     const ids = what === "purge" ? [id]
-      : (tidyTrash || []).filter(r => what === "purgeall" || tidyOverdue(r))
+      : (tidyTrash || []).filter(r => what === "purgeall" || r.overdue)
                          .map(r => r.id);
     if (!ids.length) return;
     /* 되돌릴 수 없는 유일한 층이라 여기서만 한 번 더 묻는다. 무엇이 사라지는지
@@ -868,8 +903,8 @@ window.addEventListener("load", () => {
   if (!m){ setTimeout(() => tidyFetch().then(tidyDecorate), 1200); return; }
   setTimeout(() => {
     if (m[1] !== "pick"){
-      tidyTab = m[1] === "trash" ? "trash" : "archived";
-      tidyAct("open", null);
+      // `?tidy=panel` 은 아무것도 안 청한다 — 비어 있지 않은 쪽이 열린다
+      tidyOpen(m[1] === "trash" ? {tab: "trash"} : {});
       return;
     }
     tidyPicking = true;

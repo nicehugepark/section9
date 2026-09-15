@@ -15,6 +15,7 @@ slug 는 네 자리에 굳는다: `vault/projects/<slug>.md` · 작업 폴더
 실행: python3 tests/ --local --no-reuse project_trash
 """
 import glob
+import json
 import importlib.machinery
 import importlib.util
 import os
@@ -194,3 +195,97 @@ class ProjectTrash(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def find_node():
+    n = shutil.which("node") or shutil.which("nodejs")
+    if n:
+        return n
+    for pat in ("/home/*/.vscode-server/bin/*/node",
+                "/root/.vscode-server/bin/*/node",
+                "/mnt/c/Temp/s9-webkit/node-*/node.exe"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
+
+
+NODE = find_node()
+
+# 가짜 화면 — `prjTrashPaint` 이 실제로 부르는 것만 흉내 낸다. 붙이는 조각은
+# `class="…"` 하나로 되찾을 수 있어서, HTML 을 진짜로 파싱할 일이 없다.
+FAKE_DOM = """
+function El(cls){
+  const o = {cls, kids: [], attrs: {}, title: "", textContent: "",
+    classList: {contains: c => cls.split(" ").includes(c)},
+    querySelector(sel){
+      const want = sel.replace(/^\./, "");
+      return o.kids.find(k => k.cls.split(" ").includes(want)) || null;
+    },
+    insertAdjacentHTML(_, html){
+      const m = /class="([^"]+)"/.exec(html);
+      const kid = El(m ? m[1] : "");
+      kid.parentElement = o;
+      o.kids.push(kid);
+    },
+    setAttribute(k, v){ o.attrs[k] = v; },
+    getAttribute(k){ return o.attrs[k] === undefined ? null : o.attrs[k]; },
+    remove(){ const i = o.parentElement.kids.indexOf(o);
+              if (i >= 0) o.parentElement.kids.splice(i, 1); }};
+  return o;
+}
+const head = El("pjhead");
+globalThis.document = {querySelector: () => head};
+"""
+
+
+class RailHandleAccessibleName(unittest.TestCase):
+    """Projects 레일의 되찾는 손 — **보이는 글자와 부르는 이름이 같다**
+    (REQ-20260915-064-62x6).
+
+    보이는 글자는 「휴지통」 한 낱말인데 접근 이름이 「버린 프로젝트를 여기서
+    되돌립니다」뿐이면, 음성 제어로 「휴지통」이라 부르는 사람이 이 손잡이를
+    집지 못한다 (WCAG 2.5.3 label in name). 수는 어느 쪽에도 없다.
+
+    글자로 재지 않는다 — `prjTrashPaint` 을 떼어 node 로 **실행하고** 붙은
+    손잡이를 읽는다.
+    """
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def paint(self, rows):
+        js = open(os.path.join(HERE, "..", "web", "app", "tidy.js"),
+                  encoding="utf-8").read()
+        m = re.search(r"function prjTrashPaint\(\)\{[\s\S]*?\n\}", js)
+        self.assertIsNotNone(m, "prjTrashPaint 을 못 찾았다")
+        src = (m.group(0) + FAKE_DOM
+               + f"\nlet tidyTrash = {json.dumps(rows)};\n"
+               + "prjTrashPaint();\n"
+               + "const el = head.querySelector('.pjtail')"
+               + " && head.querySelector('.pjtail').querySelector('.pjtrash');\n"
+               + "console.log(JSON.stringify(el ? {text: el.textContent,"
+               + " label: el.getAttribute('aria-label'), title: el.title}"
+               + " : null));\n")
+        d = tempfile.mkdtemp(prefix="s9rail-")
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        f = os.path.join(d, "run.js")
+        with open(f, "w", encoding="utf-8") as fh:
+            fh.write(src)
+        r = subprocess.run([NODE, f], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_the_name_starts_with_the_word_on_screen(self):
+        got = self.paint([{"id": "a", "type": "project"},
+                          {"id": "b", "type": "request"}])
+        self.assertIsNotNone(got, "버린 프로젝트가 있는데 손잡이가 안 섰다")
+        self.assertEqual(got["text"], "휴지통", "보이는 글자가 한 낱말이 아니다")
+        self.assertTrue(got["label"].startswith("휴지통"),
+                        f"부르는 이름이 보이는 글자로 안 시작한다: {got['label']}")
+        self.assertNotRegex(got["label"], r"\d",
+                            "화면에 없는 수를 화면낭독기만 듣는다")
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_no_trashed_project_no_handle(self):
+        self.assertIsNone(self.paint([{"id": "b", "type": "request"}]),
+                          "버린 프로젝트가 없는데 손잡이가 섰다")

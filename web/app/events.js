@@ -139,12 +139,14 @@ document.addEventListener("click", e => {
     if (hdr) hdr.click();
     return;
   }
-  const tabBtn = evEl(e.target)?.closest("[data-tab]");
+  /* 헤더의 탭 줄**만** 화면을 옮긴다 (REQ-20260915-085-62x6) — 문서 전체에서
+     찾으면 같은 이름표를 쓰는 다른 부품이 화면을 통째로 갈아 버린다. */
+  const tabBtn = evEl(e.target)?.closest("header [data-tab]");
   if (tabBtn){
     /* 수정키 클릭은 **새 탭**이다 (REQ-20260909-006, 주인: 「가운데 버튼으로 눌렀을 때
        브라우저 새 탭으로」). 탭이 <a href> 가 아니라 <button> 이라 브라우저가 스스로
        못 하니 여기서 연다 — 가운데 버튼은 아래 auxclick 이 같은 함수로 받는다. */
-    if (tabBtn.closest("header") && (e.ctrlKey || e.metaKey || e.shiftKey)){
+    if (e.ctrlKey || e.metaKey || e.shiftKey){
       tabOpenNew(tabBtn.dataset.tab);
       return;
     }

@@ -27,8 +27,13 @@ class TabNewTab(unittest.TestCase):
         self.assertRegex(self.src, r'window\.open\(url, "_blank", "noopener"\)')
 
     def test_m2_modifier_click_opens_a_new_tab_and_plain_click_does_not(self):
-        m = re.search(r'if \(tabBtn\.closest\("header"\) && \(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey\)\)\{\s*tabOpenNew', self.src)
+        # tabBtn 은 이미 `closest("header [data-tab]")` 로 헤더 안에서만 잡힌다
+        # (REQ-20260915-085-62x6) — 갈래 안의 `tabBtn.closest("header") &&` 는 늘 참이라
+        # 걷혔다. 계약은 그대로다: 수정키 클릭은 새 탭, 그 갈래가 탭 전환보다 앞선다.
+        m = re.search(r'if \(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey\)\{\s*tabOpenNew', self.src)
         self.assertIsNotNone(m, "수정키 클릭이 새 탭으로 가지 않는다")
+        self.assertIn('closest("header [data-tab]")', self.src[:m.start()],
+                      "수정키 갈래 앞에서 탭을 헤더 안으로 좁히지 않는다")
         # 보통 클릭의 갈래는 그대로 — 탭을 바꾸는 줄이 수정키 갈래 **뒤에** 남아 있다
         self.assertGreater(self.src.find("tab = tabBtn.dataset.tab;"), m.start())
 

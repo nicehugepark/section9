@@ -402,7 +402,7 @@
       // 것까지 본다. 보관함은 대개 몇 줄이라 넘치는 판을 못 만든다.
       const tb = (/[?&]dlgtab=([a-z]+)/.exec(location.search) || [])[1];
       if (tb){
-        const b = document.querySelector(`.tidypanel [data-tab="${tb}"]`);
+        const b = document.querySelector(`.tidypanel [data-ttab="${tb}"]`);
         if (b) b.click();
       }
     }, 1200);

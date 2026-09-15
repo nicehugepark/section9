@@ -14,6 +14,7 @@
 
 실행: python3 tests/ doc_tidy
 """
+import glob
 import importlib.machinery
 import importlib.util
 import json
@@ -472,3 +473,123 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
         self.assertIn(".tidypanel .tempty .tsub{", css)
         self.assertNotIn(".tidypanel .tempty{padding:22px 16px;color:var(--faint)",
                          css, "빈 상태는 읽어야 하는 글자다 — --faint 금지")
+
+
+def find_node():
+    n = shutil.which("node") or shutil.which("nodejs")
+    if n:
+        return n
+    for pat in ("/home/*/.vscode-server/bin/*/node",
+                "/root/.vscode-server/bin/*/node",
+                "/mnt/c/Temp/s9-webkit/node-*/node.exe"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
+
+
+NODE = find_node()
+
+
+class TidyOpenTakesTheRequest(unittest.TestCase):
+    """판을 여는 손은 청하는 것을 **인자로** 준다 (REQ-20260915-064-62x6).
+
+    부르는 쪽이 `tidyTab`·`tidyType` 에 직접 손을 뻗던 동안 두 결함이 규칙 없이
+    남아 있었다: 검색어를 치고 닫은 뒤 Projects 레일로 열면 좁혀진 목록이
+    나왔고(손잡이가 센 수와 판의 줄 수가 갈린다), 판이 떠 있을 때 레일을 누르면
+    좁히지 않고 그냥 닫혔다.
+
+    글자로 재지 않는다 — `tidyOpen` 을 떼어 node 로 **실행하고** 남은 값을 잰다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = open(os.path.join(HERE, "..", "web", "app", "tidy.js"),
+                      encoding="utf-8").read()
+
+    def run_open(self, calls, before=""):
+        m = re.search(r"function tidyAsked\(tab, type\)\{[\s\S]*?"
+                      r"\nasync function tidyOpen\(want\)\{[\s\S]*?\n\}",
+                      self.js)
+        self.assertIsNotNone(m, "tidyOpen 을 못 찾았다 — 이름이 바뀌면 이 시험도 따라간다")
+        js = m.group(0) + """
+let tidyQ = "치고 남은 검색어", tidyWho = "cli";
+let tidyType = "", tidyTab = "archived", tidyBox = null, tidyAt = "";
+let tidyArch = [{}], tidyTrash = [{}, {}];
+function tidyRender(){}
+function tidyDecorate(){}
+function tidyOpenersExpanded(){}
+function dlgDragBind(){}
+function dlgPosPlaceFor(){}
+function dlgScreen(){ return "docs"; }
+async function tidyFetch(){}
+function tidyClose(){ tidyBox = null; tidyType = ""; }
+globalThis.document = {
+  createElement: () => ({className: "", setAttribute(){}, remove(){}}),
+  body: {appendChild(){}}};
+""" + before + """
+(async () => {
+""" + calls + """
+  console.log(JSON.stringify({open: !!tidyBox, tab: tidyTab, type: tidyType,
+                              q: tidyQ, who: tidyWho}));
+})();
+"""
+        d = tempfile.mkdtemp(prefix="s9tidyopen-")
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        f = os.path.join(d, "run.js")
+        with open(f, "w", encoding="utf-8") as fh:
+            fh.write(js)
+        r = subprocess.run([NODE, f], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_o1_opening_clears_what_was_narrowed_before(self):
+        """O1. 열 때마다 좁힘은 처음으로 — 지난번 검색어가 남으면 손잡이가 센
+        수와 판의 줄 수가 갈린다."""
+        got = self.run_open('  await tidyOpen({type: "project"});')
+        self.assertTrue(got["open"], "판이 안 열렸다")
+        self.assertEqual(got["q"], "", "지난번 검색어가 남았다")
+        self.assertEqual(got["who"], "all", "지난번 거르개가 남았다")
+        self.assertEqual((got["tab"], got["type"]), ("trash", "project"),
+                         "청한 자리(휴지통 탭 · 프로젝트만)로 안 열렸다")
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_o2_the_same_request_twice_closes_it(self):
+        """O2. 같은 것을 두 번 청하면 닫는다."""
+        got = self.run_open('  await tidyOpen({type: "project"});\n'
+                            '  await tidyOpen({type: "project"});')
+        self.assertFalse(got["open"], "같은 손잡이를 다시 눌렀는데 안 닫혔다")
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_o3_another_request_switches_instead_of_closing(self):
+        """O3. 떠 있는 판에 **다른 것**을 청하면 닫지 말고 바꿔 그린다 —
+        닫히면 사람은 그 손잡이가 고장 난 줄 안다."""
+        got = self.run_open('  await tidyOpen({});\n'
+                            '  await tidyOpen({type: "project"});')
+        self.assertTrue(got["open"], "다른 것을 청했는데 판이 닫혔다")
+        self.assertEqual((got["tab"], got["type"]), ("trash", "project"),
+                         "바꿔 그리지 않았다")
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_o4_with_nothing_asked_it_picks_the_pile_that_is_not_empty(self):
+        """O4. 아무것도 안 청한 손은 받아 온 뒤 비어 있지 않은 쪽을 고른다."""
+        got = self.run_open('  await tidyOpen({});', before="tidyArch = [];")
+        self.assertEqual(got["tab"], "trash", "빈 보관함을 열어 보였다")
+
+
+class TidyRailHandleSaysNoNumber(unittest.TestCase):
+    """Projects 레일의 되찾는 손은 **수를 세우지 않는다** (리드 판정 2026-09-15).
+
+    Settings 레일의 「휴지통」과 같은 문법이다 — 갈 곳의 이름 옆에 굵은 수를
+    붙이면 그것이 거르개 칩으로 읽힌다.
+    """
+
+    def test_the_handle_is_one_word(self):
+        js = open(os.path.join(HERE, "..", "web", "app", "tidy.js"),
+                  encoding="utf-8").read()
+        body = js.split("function prjTrashPaint(){")[1].split("\nfunction ")[0]
+        self.assertNotIn("<b>", body, "손잡이에 수가 붙었다")
+        self.assertIn('el.textContent = "휴지통"', body)
+        self.assertNotRegex(body, r"aria-label[^\n]*\$\{n\}",
+                            "화면에 없는 수를 화면낭독기만 듣는다")
