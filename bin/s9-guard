@@ -706,6 +706,79 @@ def staged_diff_text(staged=None):
         return ""
 
 
+# 검사 출력이 가리키는 저장소 경로 — `web/app/notice.js:189:` 의 앞부분. 첫 칸이
+# 저장소의 최상위 디렉토리인 것만 센다: 러너는 실패한 시험을 파일 이름만으로
+# 찍으므로(`실패한 샤드: test_button_word.py`) 그것이 경로로 섞이지 않는다.
+_GATE_PATH_RE = re.compile(
+    r"(?<![\w./-])((?:bin|web|tests|harness|vault|projects|index|docs|state)"
+    r"/[\w.\-/]*[\w])")
+
+
+def gate_failure_paths(text):
+    """검사 실패 출력이 가리키는 저장소 경로의 집합."""
+    return {m.group(1) for m in _GATE_PATH_RE.finditer(text or "")}
+
+
+def others_draft_paths(staged):
+    """담기지 않았는데 작업 트리에서는 달라진 파일 (REQ-20260915-003-62x6).
+
+    한 working tree 에서 여럿이 일하면 옆 사람의 커밋하지 않은 편집이 디스크에
+    같이 있다. 검사가 돌리는 시험 중 다섯(test_button_word·test_no_metaphors·
+    test_screen_lexicon·test_stdlib_only·test_dialog_safe)은 저장소의 파일을 모두
+    디스크에서 읽으므로, 경로를 한정한 `s9 commit`(임시 index)조차 남의 초안에
+    막힌다 — 실측 2026-09-15: bin/·tests/ 만 담은 commit 이 web/ 초안의 낱말 때문에
+    거부됐다.
+
+    `git status --porcelain` 의 **작업 트리 칸**(둘째 글자)이 붙은 것과 untracked
+    가 그 초안이다. 담긴 경로는 뺀다 — 담은 파일의 실패는 내 실패다."""
+    try:
+        r = subprocess.run(["git", "status", "--porcelain", "-z",
+                            "--untracked-files=all"],
+                           capture_output=True, encoding="utf-8", errors="replace",
+                           cwd=ROOT, timeout=60, env=clean_git_env())
+    except Exception:
+        return set()
+    if r.returncode != 0:
+        return set()
+    recs = [x for x in r.stdout.split("\0") if x]
+    out = set()
+    i = 0
+    while i < len(recs):
+        rec = recs[i]
+        i += 1
+        if len(rec) < 4:
+            continue
+        x, y, path = rec[0], rec[1], rec[3:]
+        if x in ("R", "C"):
+            i += 1                      # 옮긴 이름은 다음 레코드에 온다 — 건너뛴다
+        if y not in (" ", "."):
+            out.add(path)
+    return out - set(staged or ())
+
+
+def draft_only_failure(staged, text, err=None):
+    """실패가 **담기지 않은 남의 초안만** 가리키는가 — 그러면 경고로 낮춘다.
+
+    낮추는 자리는 좁다: 실패 출력에서 저장소 경로를 하나라도 읽어야 하고, 읽은
+    경로가 **전부** 담기지 않은 작업 트리 파일이어야 한다. 경로를 못 읽었거나
+    하나라도 담긴 파일을 가리키면 종전대로 막는다."""
+    err = err or sys.stderr
+    hits = gate_failure_paths(text)
+    if not hits:
+        return False
+    drafts = others_draft_paths(staged)
+    if not drafts or not hits <= drafts:
+        return False
+    print("s9-guard: 커밋 검사가 실패했지만 실패한 자리가 모두 **담기지 않은 파일**입니다 "
+          "— 경고로 낮추고 커밋을 진행합니다 (REQ-20260915-003-62x6).", file=err)
+    for p in sorted(hits):
+        print(f"  - {p} — 작업 트리에만 있는 변경(다른 작업자가 고치는 중일 수 있습니다)",
+              file=err)
+    print("  담기는 내용에는 이 실패가 없습니다. 그 파일을 담을 때 같은 검사를 다시 받습니다.",
+          file=err)
+    return True
+
+
 def staged_tests_gate(staged, diff_text=None, deleted=()):
     """커밋 검사 = 담긴 시험 ∪ 관련 시험 ∪ 스모크 (REQ-20260830-029, 필수 계층 배선).
 
@@ -720,6 +793,9 @@ def staged_tests_gate(staged, diff_text=None, deleted=()):
     폴백(4분대)으로 밀린다 — 전체 확인은 review/done 전 수동 실행의 몫이다.
     담긴 시험은 정확한 파일명으로 넘긴다(러너가 정확명은 넓히지 않는다) —
     조각으로 넘기면 이웃 파일까지 끌려와 검사가 뚱뚱해진다.
+    실패가 **담기지 않은 파일만** 가리키면 경고로 낮춘다 (draft_only_failure,
+    REQ-20260915-003-62x6) — 한 working tree 에서 여럿이 일할 때 남의 초안이
+    내 commit 을 막지 않게.
     """
     # 지운 시험은 러너에 넘기지 않는다 (REQ-20260910-012). 담긴 목록에는 삭제도
     # 들어 있어서, 시험 파일 하나를 지우거나 이름을 바꾸면 러너가 없는 패턴을
@@ -755,6 +831,8 @@ def staged_tests_gate(staged, diff_text=None, deleted=()):
                        encoding="utf-8", errors="replace", cwd=ROOT, timeout=600,
                        env=clean_git_env())
     if r.returncode == 0:
+        return
+    if draft_only_failure(staged, (r.stdout or "") + (r.stderr or "")):
         return
     print("s9-guard: 커밋 검사(담긴 테스트 ∪ 관련 테스트 ∪ 스모크 테스트)가 실패합니다 — 커밋을 멈춥니다.",
           file=sys.stderr)
