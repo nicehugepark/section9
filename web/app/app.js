@@ -44,7 +44,12 @@ function applyRoute(hash, doRender){
    그래서 인자를 받지 않는다. 상태를 읽어 결정하므로 부르는 쪽은 `tab` 만
    옮기면 되고, 표시를 따로 챙길 일이 없다 — 사본이 다시 생길 자리가 없다. */
 function tabSync(){
-  document.querySelectorAll("[data-tab]").forEach(b =>
+  /* 헤더의 탭 줄**만** 돈다 (REQ-20260915-085-62x6). 문서 전체를 돌면 화면 안
+     다른 부품이 같은 이름표를 쓰는 순간 그 부품의 표시를 이 함수가 매번 꺼
+     버린다 — 「보관함 · 휴지통」 판의 하위 탭이 실제로 그랬다. 탭 줄은 화면을
+     옮기는 자리이고 그 자리는 헤더 하나뿐이다: 다른 손잡이들도 이미 그렇게
+     찾는다(events.js·notice.js·restart.js 의 `header [data-tab=…]`). */
+  document.querySelectorAll("header [data-tab]").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
 }
 

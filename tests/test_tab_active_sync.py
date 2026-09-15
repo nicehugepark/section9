@@ -17,18 +17,40 @@
 
 실행: python3 tests/ tab_active_sync
 """
+import glob
+import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from webasset import index_path   # 화면은 조각이다 — 계약은 이어 붙인 한 장을 본다 (REQ-20260829-027)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = index_path()
 
-# 손으로 적은 사본의 모양 — `[data-tab]` 을 훑어 active 를 토글하는 줄
+# 손으로 적은 사본의 모양 — `[data-tab]` 을 훑어 active 를 토글하는 줄.
+# 헤더로 좁힌 꼴(REQ-20260915-085-62x6)도 같은 사본이므로 둘 다 센다.
 HAND_COPY = re.compile(
-    r'querySelectorAll\("\[data-tab\]"\)[\s\S]{0,120}?classList\.toggle\('
-    r'"active"')
+    r'querySelectorAll\("(?:header )?\[data-tab\]"\)'
+    r'[\s\S]{0,120}?classList\.toggle\("active"')
+
+
+def find_node():
+    n = shutil.which("node") or shutil.which("nodejs")
+    if n:
+        return n
+    for pat in ("/home/*/.vscode-server/bin/*/node",
+                "/root/.vscode-server/bin/*/node",
+                "/mnt/c/Temp/s9-webkit/node-*/node.exe"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
+
+
+NODE = find_node()
 
 
 class TabActiveSync(unittest.TestCase):
@@ -36,12 +58,47 @@ class TabActiveSync(unittest.TestCase):
         with open(INDEX, encoding="utf-8") as f:
             self.src = f.read()
 
+    def tab_sync_src(self):
+        m = re.search(r'function tabSync\(\)\{[\s\S]{0,900}?\n\}', self.src)
+        self.assertIsNotNone(m, "tabSync() 가 없다 — 사본이 다시 흩어진다")
+        return m.group(0)
+
+    def run_sync(self, at, buttons):
+        """tabSync() 를 **실제로 돌려** 무엇을 건드렸는지 센다. 가짜 화면은
+        셋뿐이다 — 헤더 탭 둘과 헤더 밖의 버튼 하나."""
+        js = self.tab_sync_src() + """
+const els = [];
+function mk(where, t){
+  const o = {where, dataset: {tab: t}, touched: 0, active: null};
+  o.classList = {toggle: (n, on) => { o.touched++; o.active = on; }};
+  els.push(o);
+  return o;
+}
+""" + "".join(f'mk({json.dumps(w)}, {json.dumps(t)});\n'
+              for w, t in buttons) + """
+globalThis.document = {querySelectorAll: sel =>
+  sel.startsWith("header ") ? els.filter(e => e.where === "header") : els};
+let tab = %s;
+tabSync();
+console.log(JSON.stringify(els.map(e =>
+  ({where: e.where, tab: e.dataset.tab, touched: e.touched, active: e.active}))));
+""" % json.dumps(at)
+        d = tempfile.mkdtemp(prefix="s9tabsync-")
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        f = os.path.join(d, "run.js")
+        with open(f, "w", encoding="utf-8") as fh:
+            fh.write(js)
+        r = subprocess.run([NODE, f], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
     def test_one_place_paints_the_pill(self):
         """T1. 칠하는 자리는 하나다 — tabSync() 가 tab 을 읽어 결정한다."""
-        m = re.search(r'function tabSync\(\)\{([\s\S]{0,400}?)\n\}', self.src)
-        self.assertIsNotNone(m, "tabSync() 가 없다 — 사본이 다시 흩어진다")
-        body = m.group(1)
-        self.assertIn('querySelectorAll("[data-tab]")', body)
+        body = self.tab_sync_src()
+        self.assertIn('querySelectorAll("header [data-tab]")', body,
+                      "문서 전체를 돈다 — 화면 안 다른 부품이 같은 이름표를 "
+                      "쓰면 그 표시를 이 함수가 매번 꺼 버린다 "
+                      "(REQ-20260915-085-62x6)")
         self.assertIn('"active"', body)
         self.assertIn("dataset.tab === tab", body,
                       "인자로 받은 값이 아니라 상태(tab)를 읽어야 한다 — "
@@ -104,6 +161,25 @@ class TabActiveSync(unittest.TestCase):
                       "doRender=false 면 표시가 안 맞는다")
         self.assertRegex(self.src,
                          r'function docOpen\(id\)\{[\s\S]{0,300}?tabSync\(\)')
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_it_leaves_alone_what_is_not_a_tab(self):
+        """T5. 헤더 밖의 같은 이름표는 **건드리지 않는다**
+        (REQ-20260915-085-62x6).
+
+        「보관함 · 휴지통」 판의 하위 탭이 같은 `data-tab` 을 써서, 15초마다
+        도는 이 함수가 그 버튼의 표시를 매번 꺼 버렸다. 탭 줄은 화면을 옮기는
+        자리이고 그 자리는 헤더 하나뿐이다.
+        """
+        got = self.run_sync("docs", [("header", "board"), ("header", "docs"),
+                                     ("panel", "trash")])
+        by = {(e["where"], e["tab"]): e for e in got}
+        self.assertEqual(by[("panel", "trash")]["touched"], 0,
+                         "헤더 밖 버튼을 건드렸다 — 그 부품의 표시가 꺼진다")
+        self.assertIs(by[("header", "docs")]["active"], True,
+                      "고른 탭이 안 켜졌다")
+        self.assertIs(by[("header", "board")]["active"], False,
+                      "안 고른 탭이 안 꺼졌다")
 
 
 if __name__ == "__main__":

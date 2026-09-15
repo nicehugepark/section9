@@ -205,19 +205,17 @@
   padding:2px 8px;border-radius:5px;margin-left:6px}
 .tidypanel .tempty .tsub button:hover{background:var(--hairline)}
 
-/* 탭 줄 끝의 갈 곳 — 휴지통 (REQ-20260915-077-62x6).
+/* 드물게 가는 곳 — Settings 레일의 「보관함 · 휴지통」 (REQ-20260915-077-62x6).
 
-   모양은 탭 그대로다: 마크업이 `.tabs button` 이라 기본 얼굴도, 스킨마다의
-   탭 얼굴(soft 의 세로 레일·terminal 의 반전·glass 의 둥근 칩)도 그대로 입는다 —
-   여기에 따로 적을 것은 둘뿐이다: 갈라 보이게 하는 줄과, 한글이 흐트러지지
-   않게 하는 자간. 탭과 같은 색·같은 크기로 서야 「갈 곳」으로 읽힌다. */
-.tabs .tabsep{flex:none;align-self:flex-start;width:1px;height:12px;
-  margin:7px 4px 0;background:var(--border)}
-/* 세로 레일 스킨에서는 줄도 누워야 가르는 일을 한다 — Finder 사이드바의
-   구분선과 같은 자리이고, 같은 뜻을 가로로 누워 말한다. */
-[data-skin="soft"] .tabs .tabsep{width:auto;height:1px;align-self:stretch;margin:5px 0}
-/* 한글은 자간을 받으면 낱글자로 흥어진다(음절마다 떨어져 한 낱말로 안 읽힌다).
-   라틴 탭에 자간을 주는 스킨에서만 되돌린다 — 대문자 변환은 한글에 아무 일도
-   하지 않으므로 그대로 둔다 (s9-design 「표」 절의 열 머리 규율과 같은 까닭). */
-.tabs button.tabaux{letter-spacing:0}
+   탭 줄에는 세우지 않는다: 탭 줄은 **자주 가는 곳**의 문법이고, 휴지통은 드물게
+   가는 곳이다(주인 반려 2026-09-15). Docs 목록 머리(타입바)에도 세우지 않는다:
+   그 줄은 거르개 칩의 줄이라, 무슨 얼굴을 씌워도 옆의 칩들과 한 무리로 읽힌다.
+   자리는 Settings 레일 — 「저장소」 바로 아래, 드물게 여는 것들이 모여 있는 서랍이다.
+
+   얼굴은 그 레일의 줄 그대로다(.doclist .row) — 굵은 제목 + 회색 부제. 여기에
+   따로 적을 것은 하나뿐이다: 누를 수 있게 button 으로 세우면서 그 줄의 생김새를
+   잃지 않게 하는 것(레일의 「가이드 열기」가 a 로 같은 일을 한다). 부제가 수를
+   말하는 것은 이 레일이 이미 쓰는 문법이다(「저장소」·「백그라운드 작업」). */
+button.row#tidy-nav{display:block;width:100%;text-align:left;
+  border:0;background:none;font:inherit;color:inherit;cursor:pointer}
 

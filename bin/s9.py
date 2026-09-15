@@ -22215,21 +22215,52 @@ def trash_entries():
     return out
 
 
+def _trash_when(raw):
+    """버린 때를 하나의 자로 읽는다 (REQ-20260915-084-62x6). 적힌 값은 두 꼴로
+    섞여 온다 — `now_iso()` 가 적은 `+09:00` 짜리와, 시간대가 없던 옛 값(또는
+    mtime 으로 메운 값). 시간대가 없는 값에는 이 컴퓨터의 시간대를 붙인다:
+    그 값을 적은 것도 이 컴퓨터다. 못 읽으면 None 이고, 부르는 쪽이 그것을
+    「모른다」로 다룬다."""
+    try:
+        t = datetime.datetime.fromisoformat(str(raw or ""))
+    except Exception:
+        return None
+    return t if t.tzinfo else t.astimezone()
+
+
 def trash_overdue(ents, keep_days):
     """수명을 넘긴 행들 (REQ-20260915-062-62x6). keep_days 가 0 이면 빈 목록 —
     끈 상태에서는 넘겼다는 말 자체를 하지 않는다. 버린 때를 못 읽는 행은
-    넘기지 않은 것으로 본다: 모르는 것을 지울 쪽으로 세지 않는다."""
+    넘기지 않은 것으로 본다: 모르는 것을 지울 쪽으로 세지 않는다.
+
+    시간대가 붙은 값과 안 붙은 값을 그대로 빼면 TypeError 가 나고, 그것을
+    삼키면 **넘긴 것이 한 건도 없다**로 보인다 — 실제로 그랬다
+    (REQ-20260915-084-62x6). 그래서 두 꼴을 `_trash_when` 으로 맞춘 뒤 잰다."""
     if not keep_days:
         return []
-    cut = datetime.datetime.now() - datetime.timedelta(days=int(keep_days))
+    cut = (datetime.datetime.now().astimezone()
+           - datetime.timedelta(days=int(keep_days)))
     out = []
     for e in ents:
-        try:
-            if datetime.datetime.fromisoformat(e["deleted"]) < cut:
-                out.append(e)
-        except Exception:
-            continue
+        t = _trash_when(e.get("deleted"))
+        if t and t < cut:
+            out.append(e)
     return out
+
+
+def trash_payload(me=""):
+    """휴지통 응답 한 벌 (REQ-20260915-084-62x6). 화면·시험이 같은 것을 본다.
+
+    넘겼나(`overdue`)는 **여기서 판정해 행에 싣는다** — 화면이 같은 술어를 한 벌
+    더 들면 언젠가 한 벌만 고쳐지고, 되돌릴 수 없는 일에서 그 차이는 사고가
+    된다. 지운 것도 남의 것은 안 보인다: 삭제가 격리를 우회하는 열람 경로가
+    되면 안 된다."""
+    rows = [e for e in trash_entries() if doc_visible(e, me)]
+    keep = trash_keep_days(me or None)
+    over = {e["id"] for e in trash_overdue(rows, keep)}
+    for e in rows:
+        e["overdue"] = e["id"] in over
+    return {"ok": True, "keep_days": keep, "rows": rows}
 
 
 def _trash_find(doc_id):
@@ -22553,9 +22584,10 @@ def cmd_purge(args):
         targets = [e["id"] for e in ents]
         days = getattr(args, "older_than", 0) or 0
         if days:
-            cut = (datetime.datetime.now()
-                   - datetime.timedelta(days=days)).isoformat()
-            targets = [e["id"] for e in ents if e["deleted"] and e["deleted"] < cut]
+            # 넘겼나를 재는 자는 한 벌이다 (REQ-20260915-084-62x6). 글자로
+            # 견주던 옛 코드는 `+09:00` 이 붙은 값과 안 붙은 값을 다른 자로
+            # 재서, `s9 trash` 가 세는 수와 이 명령이 지우는 수가 갈렸다.
+            targets = [e["id"] for e in trash_overdue(ents, days)]
     else:
         targets = list(args.id or [])
     if not targets:
@@ -36849,10 +36881,7 @@ def cmd_serve(args):
                 # 수명은 **서버가 말한다** (REQ-20260915-062-62x6) — 화면이
                 # 30 을 제 손에 쥐고 있으면 설정을 바꾼 사람과 화면이 서로
                 # 다른 약속을 하게 된다.
-                self._json({"ok": True,
-                            "keep_days": trash_keep_days(me or None),
-                            "rows": [e for e in trash_entries()
-                                     if doc_visible(e, me)]})
+                self._json(trash_payload(me))
             elif parsed.path == "/api/git/state":
                 # 이 저장소와 GitHub 사이의 거리 (REQ-20260901-023).
                 # **읽기는 등록 사용자 모두**다 — 거리를 아는 데는 위험이

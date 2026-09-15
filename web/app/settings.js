@@ -89,9 +89,15 @@ async function renderSettings(){
     ["about", "시스템", "저장소·통계·문서 안내"],
   ];
   $("#count").textContent = `Settings — ${me ? "@"+me : "미등록 계정"}`;
+  /* 「보관함 · 휴지통」은 절이 아니라 **판을 여는 줄**이라 SECTIONS 에 들지
+     않는다 (REQ-20260915-077-62x6) — 줄은 tidy.js 가 내준다(수를 쥔 쪽이 제 줄을
+     붙인다). 자리는 「저장소」 바로 아래다: 휴지통에 쌓인 것은 저장소가 안고 있는
+     것이고, 「휴지통 비우기」는 저장소를 비우는 일이다. 드물게 가는 곳을 드물게
+     여는 서랍에 둔다 — 탭 줄은 자주 가는 곳의 자리다(주인 반려 2026-09-15). */
   const nav = SECTIONS.map(([k, label, sub]) =>
     `<div class="row${k===settingsSection?" sel":""}" data-sset="${k}">
-      <div>${esc(label)}</div><div class="path">${esc(sub)}</div></div>`).join("");
+      <div>${esc(label)}</div><div class="path">${esc(sub)}</div></div>`
+    + (k === "repo" && typeof tidyNavRow === "function" ? tidyNavRow() : "")).join("");
   $("#view").innerHTML = `<div class="docs">
     <div class="doclist"><div class="grp">설정</div>${nav}
       <a class="row" href="/guide.html" target="_blank" style="display:block;text-decoration:none"><div>가이드 열기</div><div class="path">/guide.html — 사용자 안내서</div></a></div>

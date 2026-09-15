@@ -19,6 +19,7 @@
 
 실행: python3 tests/ trash_sieve
 """
+import datetime
 import importlib.machinery
 import importlib.util
 import os
@@ -73,6 +74,19 @@ class TrashSieveTest(unittest.TestCase):
     def entry(self, doc_id):
         return next(e for e in self.mod().trash_entries() if e["id"] == doc_id)
 
+    def long_ago(self, days=90):
+        """지금 적히는 꼴 그대로 오래 전 — 시간대가 붙은 값이다."""
+        return (datetime.datetime.now().astimezone()
+                - datetime.timedelta(days=days)).isoformat(timespec="seconds")
+
+    def age(self, doc_id, days=90):
+        """버린 때를 뒤로 돌린다 — 문서에 적힌 값이 원천이다."""
+        m = self.mod()
+        path = os.path.join(self.root, self.entry(doc_id)["path"])
+        meta, body = m.read_doc(path)
+        meta["trashed"] = self.long_ago(days)
+        m.write_doc(path, meta, body)
+
     # ------------------------------------------------------- n1 · 버린 사실
     def test_n1_cli_rm_records_who_when_where(self):
         rid = self.new_req("명령으로 버린 것")
@@ -124,14 +138,50 @@ class TrashSieveTest(unittest.TestCase):
         self.assertEqual(e2["trashed_how"], "", "모르는 것을 지어냈다")
         self.assertTrue(e2["deleted"], "mtime 으로도 때를 못 메웠다")
 
-    def test_b2_overdue_counts_only_what_it_can_read(self):
+    def test_b2_overdue_reads_both_clock_faces(self):
+        """넘김을 재는 자는 **한 벌**이고, 두 꼴을 다 읽는다
+        (REQ-20260915-084-62x6). 지금 적히는 값에는 `+09:00` 이 붙고 옛 값에는
+        안 붙는다 — 그대로 빼면 TypeError 가 나는데, 그것을 삼키면 넘긴 것이
+        **0건**으로 보인다. 실제로 그래서 화면과 명령이 서로 다른 수를 말했다."""
         m = self.mod()
-        rows = [{"deleted": "2000-01-01T00:00:00"}, {"deleted": ""},
-                {"deleted": m.now_iso()}]
-        self.assertEqual(len(m.trash_overdue(rows, 30)), 1,
-                         "읽을 수 있는 것만 넘긴 것으로 세야 한다")
+        rows = [{"id": "aware", "deleted": self.long_ago()},
+                {"id": "naive", "deleted": "2000-01-01T00:00:00"},
+                {"id": "blank", "deleted": ""},
+                {"id": "fresh", "deleted": m.now_iso()}]
+        self.assertEqual([e["id"] for e in m.trash_overdue(rows, 30)],
+                         ["aware", "naive"],
+                         "시간대가 붙은 값과 안 붙은 값을 한 자로 못 잰다")
         self.assertEqual(m.trash_overdue(rows, 0), [],
                          "수명이 꺼졌는데 넘겼다고 말한다")
+
+    def test_b3_purge_older_than_uses_the_same_judge(self):
+        """`s9 purge --all --older-than` 도 같은 함수를 지난다. 글자로 견주던
+        옛 코드는 `+09:00` 이 붙은 값을 못 잡아, `s9 trash` 가 세는 수와 이
+        명령이 지우는 수가 갈렸다."""
+        stale = self.new_req("오래 버려 둔 것")
+        fresh = self.new_req("방금 버린 것")
+        self.ok("rm", stale)
+        self.ok("rm", fresh)
+        self.age(stale)
+        self.ok("purge", "--all", "--older-than", "30", "--yes")
+        left = [e["id"] for e in self.mod().trash_entries()]
+        self.assertNotIn(stale, left, "넘긴 것이 안 지워졌다")
+        self.assertIn(fresh, left, "안 넘긴 것까지 지웠다")
+
+    def test_b5_the_rows_the_screen_gets_carry_the_verdict(self):
+        """화면이 받는 행마다 `overdue` 가 실린다 — 술어는 한 벌이다."""
+        stale = self.new_req("넘긴 것")
+        fresh = self.new_req("안 넘긴 것")
+        self.ok("rm", stale)
+        self.ok("rm", fresh)
+        self.age(stale)
+        m = self.mod()
+        pay = m.trash_payload("boss")
+        self.assertEqual(pay["keep_days"], m.TRASH_KEEP_DAYS,
+                         "수명을 서버가 말하지 않으면 화면이 제 손에 쥔다")
+        by = {r["id"]: r for r in pay["rows"]}
+        self.assertTrue(by[stale]["overdue"], "넘긴 행에 표가 없다")
+        self.assertFalse(by[fresh]["overdue"], "안 넘긴 행을 넘겼다고 한다")
 
     def test_b4_keep_days_setting_is_read(self):
         m = self.mod()

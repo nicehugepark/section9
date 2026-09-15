@@ -1,0 +1,159 @@
+<!doctype html>
+<!-- REQ-20260915-063-62x6 검증 하니스 (same-origin 보조 페이지):
+     프로젝트를 버리기 전 **확인 창을 실제로 열어 본다.**
+
+     캡처 한 장으로는 창 안의 문장이 실제 수를 말하는지, 요청이 0 건인 프로젝트
+     에서 권하지 않는지, 프로젝트가 아닌 문서에서는 종전 그대로인지를 못 잡는다.
+     그래서 여기서는 진짜 창을 띄워 글자를 읽고 「그만두기」를 눌러 닫는다 —
+     **아무것도 버리지 않는다.** 세 갈래(요청이 있는 프로젝트 · 0 건인 프로젝트 ·
+     프로젝트가 아닌 문서)를 같은 손으로 지난다. -->
+<html><head><meta charset="utf-8"><title>verify project trash</title>
+<style>
+ html,body{margin:0;background:#111;color:#eee;font:13px/1.6 ui-monospace,monospace}
+ #out{padding:10px 14px;white-space:pre-wrap;font-size:14px}
+ .ok{color:#55c07a} .bad{color:#e06c5d} .hi{color:#d9b13b} .dim{color:#8b8f96}
+ iframe{border:0;width:1400px;height:820px;background:#000}
+</style>
+</head><body>
+<div id="out">초기화…</div>
+<iframe id="f" src="/#docs"></iframe>
+<script>
+const out = document.getElementById("out");
+const lines = [];
+const say = (s, cls) => { lines.push(cls ? `<span class="${cls}">${s}</span>` : s);
+                          out.innerHTML = lines.join("\n"); };
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const wait = (fn, ms=20000, what="") => new Promise((res, rej) => {
+  const t0 = Date.now();
+  const t = setInterval(() => {
+    let v = null;
+    try{ v = fn(); }catch(e){}
+    if (v){ clearInterval(t); res(v); }
+    else if (Date.now() - t0 > ms){ clearInterval(t); rej(new Error("timeout: " + what)); }
+  }, 120);
+});
+const sleep = ms => new Promise(s => setTimeout(s, ms));
+const verdicts = [];
+const check = (name, pass, detail) => {
+  verdicts.push({name, pass});
+  say(`  ${pass ? "✓" : "✗"} ${esc(name)}${detail ? "  — " + esc(detail) : ""}`,
+      pass ? "ok" : "bad");
+};
+
+// 사람의 손가락이 닿는 것은 그 좌표의 맨 위 요소다.
+function realClick(win, doc, el){
+  const r = el.getBoundingClientRect();
+  const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + r.height / 2);
+  const top = doc.elementFromPoint(cx, cy) || el;
+  const mk = t => new win.MouseEvent(t, {bubbles: true, cancelable: true, view: win,
+                                         clientX: cx, clientY: cy, button: 0});
+  top.dispatchEvent(mk("mousedown"));
+  top.dispatchEvent(mk("mouseup"));
+  top.dispatchEvent(mk("click"));
+  return top;
+}
+
+const f = document.getElementById("f");
+let loads = 0;
+f.addEventListener("load", () => { loads++; if (loads === 1) run(); });
+
+/* 화면 안쪽의 `projects` 는 script scope 의 `let` 이라 밖에서는 못 잡는다.
+   같은 문서에 script 한 조각을 심으면 그 조각은 같은 scope 에서 돈다 —
+   갈래마다 그 목록을 갈아 끼워, 서버를 건드리지 않고 0 건인 프로젝트를 만든다. */
+function inject(win, doc){
+  const s = doc.createElement("script");
+  s.textContent = `window.__vp = {
+    get: () => JSON.parse(JSON.stringify(projects || [])),
+    set: v => { projects = v; },
+    dlg: ids => { tidyConfirmRm(ids); },
+  };`;
+  doc.body.appendChild(s);
+  return wait(() => win.__vp, 5000, "__vp");
+}
+
+/* 창은 **한 자리를 다시 쓴다** — 닫아도 `.dlgbox` 는 DOM 에 남고 `hidden` 만
+   붙는다(dialog.js:117·413). 그래서 열림·닫힘은 그 표로 본다. */
+const openBox = doc => doc.querySelector(".dlgbox:not([hidden])");
+
+async function open1(win, doc, ids){
+  win.__vp.dlg(ids);
+  const box = await wait(() => openBox(doc), 8000, "확인 창");
+  await sleep(150);
+  return box;
+}
+
+async function cancel(win, doc){
+  const no = doc.querySelector(".dlgbox .dlgno");
+  if (no) realClick(win, doc, no);
+  await wait(() => !openBox(doc), 6000, "창 닫힘");
+  await sleep(120);
+}
+
+async function run(){
+  const win = f.contentWindow, doc = win.document;
+  const errs = [];
+  win.addEventListener("error", e => errs.push(String(e.message || e)));
+  try{
+    await wait(() => win.tidyConfirmRm && doc.body, 25000, "화면 뜸");
+    await sleep(1200);                       // 부트가 projects·catalog 를 채운다
+    await inject(win, doc);
+    const real = win.__vp.get();
+    check("화면이 프로젝트 목록을 들고 있다", real.length > 0, `${real.length}개`);
+    check("프로젝트마다 가리키는 수가 함께 온다",
+      real.every(p => typeof p.reqs === "number" && typeof p.docs === "number"),
+      real.map(p => `${p.slug}:${p.reqs}`).join(" · "));
+
+    // ── 갈래 1 — 요청이 있는 프로젝트
+    const hot = real.find(p => p.reqs > 0);
+    if (!hot) throw new Error("요청이 있는 프로젝트가 없다");
+    let box = await open1(win, doc, [hot.id]);
+    let txt = box.textContent;
+    check("창이 프로젝트라고 말한다", /이 프로젝트를 휴지통으로 보냅니다/.test(txt),
+      (box.querySelector(".dlgtitle") || box).textContent.trim().slice(0, 40));
+    check("가리키는 요청 수를 말한다",
+      new RegExp(`요청이\\s*${hot.reqs}\\s*건`).test(txt.replace(/\s+/g, " ")),
+      `${hot.slug} · ${hot.reqs}건`);
+    check("버리기 대신 보관을 권한다",
+      /archived/.test(txt) && /Projects/.test(txt),
+      txt.replace(/\s+/g, " ").match(/끝난 프로젝트라면[^.]*/)?.[0]?.slice(0, 60) || "");
+    check("작업 폴더가 함께 간다고 말한다",
+      txt.includes(`projects/${hot.slug}/`) && /함께 돌아옵니다/.test(txt),
+      `projects/${hot.slug}/`);
+    await cancel(win, doc);
+    check("그만두면 아무 일도 없다", !openBox(doc), "창이 닫혔다");
+
+    // ── 갈래 2 — 가리키는 것이 하나도 없는 프로젝트
+    win.__vp.set([{id: "PRJ-00000000-000", slug: "empty-one",
+                   title: "빈 프로젝트", reqs: 0, docs: 0, workdir: true}]);
+    box = await open1(win, doc, ["PRJ-00000000-000"]);
+    txt = box.textContent;
+    check("0 건이면 없다고만 말한다", /가리키는 요청은 없습니다/.test(txt),
+      txt.replace(/\s+/g, " ").slice(0, 50));
+    check("없는 문제를 권하지 않는다", !/archived/.test(txt), "보관 권유 없음");
+    check("그래도 작업 폴더는 말한다", txt.includes("projects/empty-one/"), "");
+    await cancel(win, doc);
+    win.__vp.set(real);
+
+    // ── 갈래 3 — 프로젝트가 아닌 문서는 종전 그대로
+    const rid = [...doc.querySelectorAll(".row[data-doc]")]
+      .map(r => r.dataset.doc).find(i => /^REQ-/.test(i));
+    if (!rid) throw new Error("요청 줄을 못 찾았다");
+    box = await open1(win, doc, [rid]);
+    txt = box.textContent;
+    check("일반 문서 창은 프로젝트 말을 얹지 않는다",
+      !/작업 폴더/.test(txt) && !/archived/.test(txt), rid);
+    check("되돌릴 수 있다는 말은 그대로다", /보관함 · 휴지통/.test(txt),
+      txt.replace(/\s+/g, " ").slice(-40));
+    await cancel(win, doc);
+
+    check("화면이 죽지 않았다", errs.length === 0, errs.join(" | "));
+    // 마지막으로 진짜 창을 **열어 둔 채** 끝낸다 — 캡처 한 장에 그 문장이 남는다
+    await open1(win, doc, [hot.id]);
+  }catch(e){
+    check("하니스가 끝까지 갔다", false, String(e && e.message || e));
+  }
+  const bad = verdicts.filter(v => !v.pass).length;
+  say(`\n판정: ${verdicts.length - bad}/${verdicts.length} 통과`,
+      bad ? "bad" : "ok");
+}
+</script></body></html>

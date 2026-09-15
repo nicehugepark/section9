@@ -170,11 +170,24 @@ async function tidySend(op, ids, extra){
 
 /* ------------------------------------------------- Docs 목록·뷰어에 덧붙이기 */
 
-/* 헤더의 전역 손잡이는 여기서 그리지 않는다 (REQ-20260915-077-62x6).
-   탭 줄 끝에 「휴지통」 세 글자로 서 있고, 그 글자는 문서 수와 무관하게 항상
-   같다 — 갈 곳은 거기 있다는 사실이지 세는 값이 아니다. 종전에는 수가 붙어 들쌍날쌍
-   했고(0건이면 사라졌다), 하필 그 굵은 수가 이 화면에서 거르개 칩의 문법이라
-   갈 곳이 아니라 계기판 숫자로 읽혔다. 수는 판을 열면 그 안 탭 둘이 따로 센다. */
+/* 판을 여는 전역 자리는 **Settings 레일**이다 (REQ-20260915-077-62x6).
+
+   휴지통은 드물게 가는 곳이라 탭 줄에 세우지 않는다(주인 반려 2026-09-15:
+   「자주 쓰는 기능이 아니니 탭으로 따로 만들지마라」). Gmail·Finder 가 휴지통을
+   레일에 두는 것은 그 제품에서 그곳이 메일함과 같은 급으로 자주 쓰이기 때문이고,
+   이 제품에서 버린 것을 되찾는 일은 한 달에 몇 번이다.
+
+   Docs 목록 머리(타입바)에도 세우지 않는다. 종전에 거기 있던 「보관함 n · 휴지통 n」
+   은 **얼굴**이 아니라 **줄**이 문제였다 — 그 줄은 거르개 칩의 줄이라, 수를 떼고
+   글자만 남겨도 옆의 칩들과 한 무리로 읽힌다. 「고르기」가 그 줄에 남는 것은 그것이
+   갈 곳이 아니라 이 목록의 모드이기 때문이다.
+
+   Settings 는 이 제품에서 드물게 여는 것들이 모여 있는 서랍이고(내 계정·디스플레이·
+   저장소·시스템), 주인이 실제로 찾아간 자리다. 자리는 「저장소」 바로 아래 — 휴지통에
+   쌓인 것은 저장소가 안고 있는 것이고, 「휴지통 비우기」는 저장소를 비우는 일이다.
+
+   즉시 되돌리는 길은 여기가 아니라 **무르는 줄**이다(버린 직후 「휴지통 보기」).
+   드물게 오는 길만 이 자리가 맡는다. */
 
 /* Projects 레일 머리의 되찾는 손 (REQ-20260915-064-62x6).
 
@@ -192,6 +205,41 @@ async function tidySend(op, ids, extra){
 
    이 조각이 목록을 소유하지 않는 것은 Docs 타입바와 같다(`.tbtail`): 레일은
    project.js 가 그리고, 손잡이는 수를 쥔 쪽이 붙인다. */
+/* Settings 레일의 부제는 상태를 겸한다 — 「저장소」·「백그라운드 작업」이 이미
+   그렇게 쓴다. 판을 열기 전에 어느 쪽에 몇 건이 있는지가 보이면, 비어 있는 날에는
+   열지 않아도 된다. 아직 못 받아 왔으면 수를 적지 않는다 — 0 은 비었다는 거짓말이다. */
+function tidyNavSub(){
+  if (tidyArch === null && tidyTrash === null)
+    return "버린 문서와 보관한 문서를 되돌립니다";
+  const na = tidyArch === null ? 0 : tidyArch.length;
+  const nt = tidyTrash === null ? 0 : tidyTrash.length;
+  if (!na && !nt) return "비어 있습니다 — 버린 문서가 없습니다";
+  return `보관함 ${na} · 휴지통 ${nt}`;
+}
+
+/* 레일의 줄을 settings.js 가 그리지 않고 여기서 내주는 것은, 수를 쥔 쪽이
+   자기 줄을 붙인다는 이 조각의 규칙 때문이다(Docs 타입바·Projects 레일과 같다).
+   레일의 다른 줄들과 같은 얼굴(.row + .path)로 서되, 화면을 바꾸는 절이 아니라
+   판을 여는 손잡이라 button 이고 sel 을 받지 않는다 — 레일 맨 아래 「가이드 열기」
+   가 a 로 같은 자리에 선다. */
+function tidyNavRow(){
+  return `<button type="button" class="row" id="tidy-nav" data-tidy="open"`
+    + ` aria-haspopup="dialog" aria-expanded="false"`
+    + ` title="${TIDY_NAV_T}">`
+    + `<div>보관함 · 휴지통</div>`
+    + `<div class="path">${esc(tidyNavSub())}</div></button>`;
+}
+const TIDY_NAV_T = "버린 문서와 보관한 문서를 휴지통에서 되돌립니다";
+
+/* 문서가 오가면 부제의 수도 따라 바뀐다 — 레일을 통째로 다시 그리지 않는다
+   (그리면 열려 있던 절의 스크롤과 입력 칸이 함께 날아간다). */
+function tidyNavPaint(){
+  const sub = document.querySelector("#tidy-nav .path");
+  if (!sub) return;
+  const t = tidyNavSub();
+  if (sub.textContent !== t) sub.textContent = t;
+}
+
 function prjTrashPaint(){
   const head = document.querySelector(
     '#view .docs[data-pane="projects"] .pjlist .pjhead');
@@ -232,6 +280,7 @@ function prjTrashPaint(){
 
 function tidyDecorate(){
   prjTrashPaint();
+  tidyNavPaint();
   const list = $("#view .doclist");
   if (list){
     list.classList.toggle("picking", tidyPicking);
@@ -424,23 +473,26 @@ function tidyUndoHTML(){
 
 /* ------------------------------------------------- 보관함 · 휴지통 (판) */
 
-/* 손잡이가 열림·닫힘을 말한다 (REQ-20260915-077-62x6, architect). 보이는 글자
-   「휴지통」이 이름이고(WCAG 2.5.3 — 그래서 aria-label 을 덮어쓰지 않는다),
-   이 손잡이가 여는 것이 판이라는 사실과 지금 열려 있는지만 상태로 준다 —
-   화면낭독기는 보이는 판을 못 보므로 이 한 글자가 그 자리를 대신한다. */
+/* 손잡이가 열림·닫힘을 말한다 (REQ-20260915-077-62x6, architect). 보이는 글자가
+   이름이고(WCAG 2.5.3 — 그래서 aria-label 을 덮어쓰지 않는다), 이 손잡이가 여는
+   것이 판이라는 사실과 지금 열려 있는지만 상태로 준다 — 화면낭독기는 보이는 판을
+   못 보므로 이 한 글자가 그 자리를 대신한다.
+   **어느 한 손잡이를 이름으로 찾지 않는다**: 판을 여는 자리는 Settings 레일·
+   Projects 레일·무르는 줄 셋이고, 그중 하나가 옮겨 갈 때마다 이 줄이 따라
+   깨졌다. 판을 여는 손잡이라고 스스로 밝힌 것(aria-haspopup)을 전부 물린다. */
 /* 판이 열릴 때 서 있던 화면 — 거기서 떠나면 판도 따라 닫는다. */
 let tidyAt = "";
 function tidyNavAway(now){ if (tidyBox && now !== tidyAt) tidyClose(); }
 
-function trashChipExpanded(on){
-  const el = document.getElementById("trash-chip");
-  if (el) el.setAttribute("aria-expanded", on ? "true" : "false");
+function tidyOpenersExpanded(on){
+  document.querySelectorAll('[data-tidy="open"][aria-haspopup="dialog"]')
+    .forEach(el => el.setAttribute("aria-expanded", on ? "true" : "false"));
 }
 
 function tidyClose(){
   if (!tidyBox) return;
   tidyBox.remove(); tidyBox = null;
-  trashChipExpanded(false);
+  tidyOpenersExpanded(false);
   /* 밖에서 들고 온 좁힘은 판과 함께 끝난다 (REQ-20260915-064-62x6) — 남겨 두면
      다음에 헤더의 전역 손잡이로 연 사람이 「휴지통 127」을 누르고 세 줄을 본다. */
   tidyType = "";
@@ -576,7 +628,7 @@ async function tidyOpen(narrow){
   tidyBox.className = "hovercard dlgbox tidypanel";
   tidyBox.setAttribute("role", "dialog");
   tidyBox.setAttribute("aria-label", "보관함과 휴지통");
-  trashChipExpanded(true);
+  tidyOpenersExpanded(true);
   tidyAt = typeof dlgScreen === "function" ? dlgScreen() : "";
   document.body.appendChild(tidyBox);
   /* 다른 팝업과 같은 끌기·자리 기억 (REQ-20260907-028). 이 이름은 화면에 안
@@ -748,9 +800,9 @@ function tidyConfirmRm(ids){
     descHtml: tidyNames(ids, catFind)
       + tidyPrjWarn(ids)
       /* 도착지를 말할 때는 **지금 화면에 있는 글자**를 그대로 짚는다 — 없는 손잡이를
-         가리키면 찾다 말고 반려한다(규약 12조 ②). 탭 줄 끝으로 자리가 옮겨서
+         가리키면 찾다 말고 반려한다(규약 12조 ②). 자리가 Settings 레일로 옮겨서
          이 문장도 함께 옮긴다 (REQ-20260915-077-62x6). */
-      + `<p>목록에서 사라지지만 탭 줄 끝의 <b>「휴지통」</b>에서 `
+      + `<p>목록에서 사라지지만 Settings 의 <b>「보관함 · 휴지통」</b>에서 `
       + `되돌릴 수 있습니다.</p>`,
     ok: "휴지통으로 보내기", cancel: "그만두기"});
 }

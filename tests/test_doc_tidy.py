@@ -329,8 +329,9 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
         # Docs 목록 머리의 손잡이가 아니라 **판 안 탭 둘**이다. 그 손잡이는
         # 걸어냈다 — 타입바는 거르개 칩의 줄이라, 같은 모양·같은 줄·같은
         # 문법(이름+굵은 수)으로 선 「갈 곳」을 눈이 거르개로 분류했고, 갈 곳은
-        # 탭 줄 끝으로 옮겨 낱말 하나로 선다(수 없이). 두 수를 따로 센다는
-        # 085 의 판정은 그대로이고, 그 판정을 지키는 자리만 바뀜다.
+        # Settings 레일로 옮겨 그 레일의 줄(제목+부제)로 선다. 두 수를 따로
+        # 센다는 085 의 판정은 그대로이고, 그 판정을 지키는 자리만 바뀐다 —
+        # 판 안 탭 둘이 굵은 수로, 레일 부제가 한 줄 글자로 센다.
         self.assertIn('보관함${cnt(tidyArch)}', vis,
                       "판 탭이 보관함을 제 수로 세지 않는다")
         self.assertIn('휴지통${cnt(tidyTrash)}', vis,
@@ -362,8 +363,7 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
         self.assertIn('const cnt = r => r === null ? "" : `<b>${r.length}</b>`',
                       self.js)
         self.assertIn("cnt(tidyArch)", self.js)
-        # 전역 손잡이는 수를 아예 안 달고 항상 선다 — 수를 그리던 조각이
-        # 남아 있으면 언젠가 다시 붙는다.
+        # 탭 줄에 수를 그리던 조각은 걷혔다 — 남아 있으면 언젠가 다시 붙는다.
         self.assertNotIn("trashChipPaint", self.js,
                          "갈 곳에 수를 그리던 조각이 남아 있다")
 
@@ -380,9 +380,10 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
         있는지는 말하지 않았고, 손잡이는 Docs 타입바 끝 한 곳뿐이라 주인은 버린
         뒤 한참을 뒤졌다 (REQ-20260910-005/006)."""
         vis = self._strings(self.js)
-        # 자리가 탭 줄 끝으로 옮겨서 문장도 함께 옮긴다 (REQ-20260915-077-62x6).
+        # 자리가 Settings 레일로 옮겨서 문장도 함께 옮긴다 (REQ-20260915-077-62x6).
         # 가리키는 이름은 항상 **화면에 실제로 있는 글자**여야 한다.
-        self.assertIn("탭 줄 끝의 <b>「휴지통」</b>에서 ", vis)
+        self.assertIn("Settings 의 <b>「보관함 · 휴지통」</b>에서 ", vis)
+        self.assertNotIn("탭 줄 끝의", vis, "탭 줄에는 세우지 않는다(주인 반려)")
         self.assertNotIn("Docs 탭 위", vis, "없는 손잡이를 가리킨다")
         self.assertNotIn("치운 것 → 휴지통", vis)
 
