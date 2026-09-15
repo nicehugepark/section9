@@ -30171,6 +30171,76 @@ def _guard_alive(port, root=None):
         f.close()
 
 
+def _guard_ports(root=None):
+    """이 저장소가 지금까지 감시한 포트들 — state/serve-guard.<포트>.lock 의 이름에서 읽는다.
+
+    잠금 파일은 저장소의 state/ 안에 있으므로 다른 clone 의 것은 섞이지 않는다."""
+    st = os.path.join(root or ROOT, "state")
+    out = []
+    try:
+        for name in os.listdir(st):
+            m = re.match(r"^serve-guard\.(\d+)\.lock$", name)
+            if m:
+                out.append(int(m.group(1)))
+    except OSError:
+        pass
+    return sorted(out)
+
+
+def serve_sweep_others(keep_port, root=None, out=None, wait=None):
+    """**한 저장소에는 대시보드가 하나다** — 다른 포트에 남은 내 대시보드를 거둔다.
+
+    실사고 2026-09-15 (REQ-20260915-014-62x6, 주인 지적 13:26: 「9909, 9910, 9911가
+    다 떠있다… 어떻게 세개가 떠 있을 수 있지?」): 감시자의 멱등 키가 **포트**라
+    9909 를 보던 감시자가 남은 채 새 세션이 9910 으로 옮겨 앉았고, 한 저장소에
+    서버가 둘이 됐다(9909 는 11:02, 9910 은 13:06 기동). 둘 다 같은 문서를 쓰니
+    화면·훅·링크가 어느 쪽을 보는지 사람이 알 수 없다. 포트를 옮기는 것은 **자리를
+    옮기는 것**이지 하나 더 두는 것이 아니다.
+
+    순서가 전부다 — 감시자를 먼저 물리고(물러난 것을 확인한 뒤) 서버를 내린다.
+    거꾸로 하면 감시자가 그 사이에 새 서버를 띄운다(`--stop` 과 같은 규율).
+    돌려주는 것: 거둔 포트 목록."""
+    import signal as _sig
+    import time as _t
+    root = root or ROOT
+    wait = GUARD_POLL_SEC * 4 if wait is None else wait
+    stopped = []
+    for p in _guard_ports(root):
+        if p == keep_port:
+            continue
+        held = _guard_alive(p, root)
+        info = serveinfo_at(p)
+        mine = bool(info) and os.path.realpath(str(info.get("root") or "")) == \
+            os.path.realpath(root)
+        if held is None and not mine:
+            continue                      # 감시자도 없고 내 서버도 아니다
+        if held is not None:
+            paths = _guard_paths(p, root)
+            try:
+                os.makedirs(paths["state"], exist_ok=True)
+                open(paths["stop"], "w", encoding="utf-8").close()
+            except OSError:
+                pass
+            _guard_ask_stop(p, held, root)
+            for _ in range(wait):
+                if _guard_alive(p, root) is None:
+                    break
+                _t.sleep(0.5)
+        if mine:
+            # SIGTERM 하나로는 늦다 — SSE 의 장수명 연결을 물고 있으면 그 자리에서
+            # 끝나지 않는다(실측 2026-09-15: 보냈는데 9909 가 계속 답했다).
+            # `--stop` 과 같은 규율로 **포트가 풀린 것을 확인하고** 안 풀리면 올린다.
+            _signal_port(p, _sig.SIGTERM)
+            if not _wait_port_free("127.0.0.1", p, tries=10):
+                _signal_port(p, sig_kill())
+                _wait_port_free("127.0.0.1", p, tries=20)
+        stopped.append(p)
+    if stopped and out:
+        out(f"같은 저장소의 대시보드를 {', '.join(str(x) for x in stopped)} 에서 거뒀다 "
+            f"— 한 저장소에는 대시보드가 하나다")
+    return stopped
+
+
 def _guard_main(port, host="127.0.0.1", root=None):
     """분리된 감시자 프로세스의 본체."""
     lock = _guard_lock(port, root)
@@ -33611,6 +33681,13 @@ def cmd_serve(args):
     elif _rec == "auto":
         _port_remember(args.port, "given", ROOT,
                        os.path.join(ROOT, "state", "port.auto"))
+    # 옮겨 앉기 **전에** 옛 자리를 거둔다 (REQ-20260915-014-62x6) — 포트를 옮기는 것은
+    # 자리를 옮기는 것이지 대시보드를 하나 더 두는 것이 아니다. 감시자의 잠금이 포트마다
+    # 따로라 옛 포트의 감시자가 남으면 그 서버를 계속 되살린다. 사람이 부른 기동에서만
+    # 쓸어 담는다 — 감시자의 자식(`--guard-run`)과 그 아래 서버는 이미 이 자리의 것이다.
+    if not getattr(args, "guard_run", False) and not getattr(args, "stop", False) \
+            and not getattr(args, "stop_guard", False):
+        serve_sweep_others(args.port, out=lambda m: print(m, file=sys.stderr))
     # 감시자 (REQ-20260825-096) — 이 프로세스는 감시자를 떼어 놓고 곧 돌아간다.
     if getattr(args, "stop_guard", False):
         if _guard_alive(args.port) is None:
@@ -33633,6 +33710,9 @@ def cmd_serve(args):
         # 내린다. 거꾸로 하면 감시자가 그 사이에 새 서버를 띄운다.
         import signal as _sig
         import time as _t
+        # 다른 포트에 남은 내 대시보드부터 거둔다 (REQ-20260915-014-62x6) — 「--stop
+        # 이면 전부 꺼져야 한다」. 감시자를 안 물리고 서버만 죽이면 되살아난다.
+        serve_sweep_others(args.port, out=print)
         held = _guard_alive(args.port)
         if held is not None:
             p = _guard_paths(args.port)

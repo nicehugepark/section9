@@ -1890,6 +1890,41 @@ def tunnel_line(rows):
     return f"ssh 터널 {len(rows)}개: " + " · ".join(parts)
 
 
+def my_dashboards():
+    """이 저장소의 대시보드가 떠 있는 포트들 (REQ-20260915-014-62x6).
+
+    주인 지적 2026-09-15: 「9909, 9910, 9911가 다 떠있다 — 어떻게 다 떠있게 됐는지
+    알 수가 없네」. 한 저장소에는 대시보드가 하나여야 하는데, 감시자의 잠금이 포트마다
+    따로라 옛 포트의 감시자가 남으면 서버가 둘이 됐다. 보이지 않으면 고쳐도 모르니
+    진단이 먼저 센다. 후보는 state/serve-guard.<포트>.lock 의 이름이고, 실제로 이
+    저장소를 쓰는지는 그 포트의 serveinfo 가 답하는 root 로 가른다."""
+    import json as _json
+    import re as _re
+    import urllib.request as _u
+    st = os.path.join(ROOT, "state")
+    ports = []
+    try:
+        for name in os.listdir(st):
+            m = _re.match(r"^serve-guard\.(\d+)\.lock$", name)
+            if m:
+                ports.append(int(m.group(1)))
+    except OSError:
+        return []
+    mine = []
+    for port in sorted(ports):
+        try:
+            with _u.urlopen(f"http://127.0.0.1:{port}/api/serveinfo", timeout=1.5) as r:
+                # 끝까지 읽는다 — 앞부분만 읽고 끊으면 서버가 연결을 끊어
+                # (ConnectionResetError) 떠 있는 대시보드를 없는 것으로 센다
+                # (실측 2026-09-15: 9909 가 그렇게 빠졌다).
+                info = _json.loads(r.read().decode("utf-8", "replace"))
+        except Exception:
+            continue
+        if os.path.realpath(str(info.get("root") or "")) == os.path.realpath(ROOT):
+            mine.append({"port": port, "started": info.get("started") or ""})
+    return mine
+
+
 def diagnose():
     rows = ps_rows()
     serves, orphans, chromes = scan(rows)
@@ -1907,6 +1942,7 @@ def diagnose():
         "windows_ports": windows_ports(),
         "system": system_checks(),
         "tunnels": tunnel_info(),
+        "my_dashboards": my_dashboards(),
     }
     return d, orphans, chromes
 
@@ -2130,6 +2166,14 @@ def main():
           f"(부모가 사라진 테스트 서버 {len(d['orphan_test_servers'])}개) · "
           f"헤드리스 브라우저 {len(d['headless_chrome'])}개 · "
           f"캡처 산출물 {human(d['shots_bytes'])}")
+    # 한 저장소에는 대시보드가 하나다 (REQ-20260915-014-62x6)
+    mine = d.get("my_dashboards") or []
+    if len(mine) > 1:
+        print("✗ 이 저장소의 대시보드가 " + str(len(mine)) + "개다 — "
+              + " · ".join(f"{x['port']}({(x['started'] or '')[11:16]} 기동)" for x in mine)
+              + " · 하나만 남기려면 `s9 serve --restart` (다른 포트의 것을 거둔다)")
+    elif mine:
+        print(f"이 저장소의 대시보드: 포트 {mine[0]['port']} 하나")
     print(tunnel_line(d.get("tunnels") or []))
     # **겹칠 때의 합을 사람이 물을 수 있어야 한다** (REQ-20260903-004).
     # 비용은 총량이 아니라 동시 최고치인데, 상한이 흩어져 있으면 그 합을
