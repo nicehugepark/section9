@@ -22091,13 +22091,42 @@ def _valid_gh(v, label):
     return v
 
 
+# 사람 이름은 **폴더 이름이자 문서의 id** 다 (REQ-20260915-013-62x6, 주인 물음
+# 2026-09-15: 「한글을 못 쓰는게 맞는건가?」). `users/<이름>/` 이 그대로 git 경로가 되고
+# 문서 frontmatter·URL·CLI 인자에 같은 글자로 다시 나온다. 한글 경로는 git 이 따옴표로
+# 감싸 돌려주어 그대로 pathspec 으로 되먹이면 어긋나고, 그 자리에서 동기화가 조용히
+# 실패한 적이 있다(REQ-20260910-033: 한글 캡처 이름으로 sync 가 다섯 번 실패했다).
+# 그래서 **id 는 영문**이고 한글 이름은 **표시 이름(display)** 에 둔다 — 화면에 서는
+# 것은 표시 이름이라 사람이 보는 자리에서는 한글 그대로다.
+USER_NAME_RULE = "영문·숫자와 . _ - 만 (한글 이름은 표시 이름에 둔다)"
+
+
+def user_name_ok(name):
+    """이 글자가 사람의 id 로 설 수 있는가 — 폴더 이름이 되는 값이다."""
+    return bool(name) and bool(re.fullmatch(r"[A-Za-z0-9._-]+", str(name)))
+
+
+def user_name_from(raw, email=""):
+    """한글 계정 이름 자리에서 쓸 **영문 id 후보** — 없으면 빈 문자열.
+
+    짐작으로 로마자를 만들지 않는다(사람 이름의 로마자 표기는 그 사람이 정한다).
+    이미 그 사람이 정해 둔 영문 글자만 쓴다: ① OS 계정이 그대로 쓸 수 있으면 그것,
+    ② git 이메일의 앞부분(`nicehugepark@…` → `nicehugepark`)."""
+    if user_name_ok(raw):
+        return str(raw)
+    local = str(email or "").split("@")[0]
+    keep = re.sub(r"[^A-Za-z0-9._-]", "", local)
+    return keep if user_name_ok(keep) else ""
+
+
 def do_user_add(name, role="member", display="", email="", machine=None,
                 emails=None, github="", github_org=""):
     """사용자 등록의 단일 코드 경로 (CLI + 웹).
     emails(회사 이메일 N개)·github(개인)·github_org(조직 계정)는 프로필 필수
     권장 필드 — 미기재면 세션 시작 digest가 입력을 촉구한다 (REQ-20260824-055)."""
-    if not name or not re.fullmatch(r"[A-Za-z0-9._-]+", name):
-        raise ValueError(f"invalid user name: {name!r} (허용: 영문/숫자/._-)")
+    if not user_name_ok(name):
+        raise ValueError(f"invalid user name: {name!r} (허용: {USER_NAME_RULE}) — "
+                         f"한글 이름은 `--display` 로 넣는다")
     if role not in ROLES:
         raise ValueError(f"invalid role: {role} (valid: {', '.join(ROLES)})")
     udir = os.path.join(USERS, name)
@@ -26046,19 +26075,36 @@ def code_project(explicit):
     return found[0] if len(found) == 1 else ""
 
 
-def first_run_identity(u, known, ask):
+def first_run_identity(u, known, ask, email="", out=print, tries=3):
     """첫 실행의 신원 잇기 (REQ-20260906-075) — (동사, 이름).
 
     두 번째 기계에서는 내 이름이 이미 저장소에 있다(users/<이름>). 그 이름을 치면
     **attach**(이 컴퓨터의 OS 계정을 그 사람에게 잇는다)이지 add 가 아니다 — 예전엔 무조건
     add 를 돌려 「이미 있다」로 실패했고 계정은 미등록인 채 남았다(맥미니 실제 발생
     2026-09-06 13:30: 그 뒤 기록이 OS 계정 이름으로 붙었다). 없는 이름이면 add 로 새로
-    만든다. Enter 는 OS 계정 이름 그대로 새 사람이다."""
+    만든다. Enter 는 OS 계정 이름 그대로 새 사람이다.
+
+    **못 쓸 이름을 기본값으로 내밀지 않는다** (REQ-20260915-013-62x6 반려, 실제 사고
+    2026-09-15): 한글 OS 계정(박성진)에서 그냥 Enter 를 치면 그 이름이 그대로 등록으로
+    갔고, id 규칙에 걸려 「한글은 안 된다」는 오류만 남긴 채 화면은 다음 걸음(Claude
+    로그인)으로 넘어갔다 — 사람은 왜 막혔는지도, 무엇을 쳐야 하는지도 모른 채 미등록으로
+    남았다. 이제 기본값은 **쓸 수 있는 이름일 때만** 내밀고(없으면 git 이메일 앞부분),
+    못 쓸 이름을 치면 그 자리에서 까닭을 말하고 다시 묻는다. 돌려주는 이름은 언제나
+    id 로 설 수 있는 글자다 — 끝내 못 정하면 ("skip", "") 으로 물러나 부르는 쪽이
+    사람에게 다음 걸음을 적어 준다."""
     known = list(known or [])
     hint = f" — 이미 있는 이름: {', '.join(known)}" if known else ""
-    name = (ask(f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. 이름(Enter={u}){hint}: ")
-            or "").strip() or u
-    return ("attach" if name in known else "add"), name
+    default = user_name_from(u, email)
+    for _ in range(max(1, tries)):
+        q = (f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. "
+             + (f"이름(Enter={default})" if default else f"이름({USER_NAME_RULE})")
+             + hint + ": ")
+        name = (ask(q) or "").strip() or default
+        if user_name_ok(name):
+            return ("attach" if name in known else "add"), name
+        out(f"◌ 「{name or u}」 는 id 로 쓸 수 없다 — {USER_NAME_RULE}. "
+            f"한글 이름은 표시 이름으로 따로 들어가니, 여기에는 영문 id 를 적어 달라.")
+    return "skip", ""
 
 
 def browser_open_cmd(url, _which=None, _plat=None):
@@ -26393,10 +26439,25 @@ def cmd_code(args):
         u, src_kind = resolve_user(None, with_source=True)
         if src_kind == "os-account" and not user_role(u):
             if sys.stdin.isatty():
-                verb, name = first_run_identity(u, registered_users(), input)
-                subprocess.run([sys.executable, os.path.realpath(__file__),
-                                "user", verb, name],
-                               stdin=subprocess.DEVNULL)
+                # git 이메일을 함께 넘긴다 — OS 계정이 한글이라 id 로 못 쓸 때
+                # 그 사람이 **이미 정해 둔 영문 글자**가 여기 있다 (REQ-20260915-013-62x6).
+                _email = ""
+                try:
+                    _email = _git_identity().get("email", "") or ""
+                except Exception:
+                    pass
+                verb, name = first_run_identity(u, registered_users(), input, email=_email)
+                if verb == "skip":
+                    print(f"◌ 이름을 정하지 않았다 — 등록 없이 계속한다. 나중에: "
+                          f"`{s9_cmd('user add <영문 id> --display ' + u)}` "
+                          f"(이미 있는 이름에 이으려면 `{s9_cmd('user attach <이름>')}`)")
+                else:
+                    # 한글 OS 계정이면 그 이름을 **표시 이름**으로 남긴다 — 화면에 서는
+                    # 것은 이쪽이라, id 를 영문으로 정해도 사람이 보는 이름은 그대로다.
+                    argv = [sys.executable, os.path.realpath(__file__), "user", verb, name]
+                    if verb == "add" and not user_name_ok(u) and u:
+                        argv += ["--display", u]
+                    subprocess.run(argv, stdin=subprocess.DEVNULL)
                 # 사람이 생겼으니 이제 기본 프로젝트가 설 수 있다 (REQ-20260908-031).
                 # `s9-install` 은 `s9 init` 을 부르지만 그때는 등록된 사람이 없어
                 # 프로젝트가 서지 않는다 — 그리고 사람이 실제로 치는 것은
@@ -26417,9 +26478,17 @@ def cmd_code(args):
                     pass
             else:
                 known = registered_users()
+                # 새 사람에게 권하는 이름은 **id 로 쓸 수 있는 것**이어야 한다
+                # (REQ-20260915-013-62x6): 한글 OS 계정을 그대로 적어 주면 그 줄을
+                # 그대로 친 사람이 규칙에 걸린다. 한글 이름은 표시 이름으로 간다.
+                _newname = user_name_from(u, (_git_identity() or {}).get("email", ""))
+                _add = (f"{s9_cmd('user add ' + _newname)}"
+                        + (f" --display {u}" if _newname != u else "")) if _newname else \
+                    f"{s9_cmd('user add <영문 id>')} --display {u}"
                 print(f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 "
-                      f"잇는다: s9 user attach <이름>" + (f" ({', '.join(known)})" if known else "")
-                      + f" · 새 사람이면: s9 user add {u}")
+                      f"잇는다: {s9_cmd('user attach <이름>')}"
+                      + (f" ({', '.join(known)})" if known else "")
+                      + f" · 새 사람이면: {_add}")
     except Exception:
         pass
     # 초대받은 프로젝트에 선다 (REQ-20260913-013-62x6) — 신원이 정해진 뒤라야 초대
