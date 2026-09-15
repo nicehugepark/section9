@@ -28,6 +28,11 @@ class RedRatchet(unittest.TestCase):
     def setUp(self):
         self.m = _load()
         self.red = {"at": 1000.0, "files": ["test_code_read_gate.py"]}
+        # 「실패한 파일이 그 실패 뒤에 commit 됐나」(red_fixed_since, REQ-20260915-008-62x6)는
+        # 실저장소의 이력을 본다 — at=1000(1970년) 뒤의 이력에는 그 파일이 늘 있어 이 단언이
+        # 갈린다. green_age 처럼 입력으로 세운다: 여기서는 「고쳐진 적 없음」. 이력 판정
+        # 자체는 tests/test_after_commit_red.py 가 임시 저장소에서 본다.
+        self.m.red_fixed_since = lambda red, files=None: False
 
     def test_t1_red_newer_than_green_blocks(self):
         """T1. 마지막 실패가 마지막 통과보다 새로우면 막는다 — 통과 없음도 막는다."""
