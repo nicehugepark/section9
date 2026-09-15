@@ -167,7 +167,7 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
     <span id="sv-chip" class="svchip" role="status" aria-live="polite"></span>
   </div>
   <div class="hrow2">
-    <div class="fgroup">
+    <div class="fgroup" id="fgroup">
       <input id="q" type="text" placeholder="검색…">
       <label class="chk" title="문서 본문(History 포함)까지 검색합니다 — Docs 탭에서는 일치한 줄을 함께 보여 줍니다">
         <input type="checkbox" id="q-body"> 본문</label>
@@ -179,6 +179,13 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
       <select id="f-type"><option value="">종류: 전체</option>
         <option>request</option><option>article</option><option>knowledge</option><option>question</option><option>session</option></select>
     </div>
+    <!-- 거르개 손잡이 — 손전화 폭(≤560px)에서만 선다 (REQ-20260916-011-2n7g).
+         그 폭에서 거르개 넷은 손끝 높이 44px 짜리 두 줄을 상시 먹는데, 한 번 정하면
+         세션 내내 그대로인 값이다. 접되 **걸린 것은 접힌 채로도 읽힌다** — 손잡이
+         오른쪽의 `.ffold-on` 이 지금 걸린 조건을 그대로 적는다(app.js foldSummary).
+         검색칸은 접지 않는다: 좁은 폭에서는 훑는 것보다 찾는 것이 빠르다. -->
+    <button id="fold-f" class="ffold" type="button" aria-expanded="false"
+      aria-controls="fgroup">거르개<span class="ffold-on" id="fold-f-on"></span></button>
     <div class="pgroup idcol">
       <!-- 설명은 네이티브 title 이 아니라 이 제품의 hovercard 가 맡는다
            (REQ-20260827-056). tabindex 는 마우스 없이도 그 카드에 닿기 위한 것 —

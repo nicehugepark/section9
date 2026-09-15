@@ -42,7 +42,7 @@
 .n-cmd::before,.gw-cmd::before,
 .gate-h summary::before,.reqstream summary::before,.audit .cap summary::before,
 .term details summary::before,
-.artmeta > summary::after{
+.artmeta > summary::after,.ffold::after{
   content:"";display:inline-block;flex:none;width:11px;height:11px;
   vertical-align:-1px;background-color:currentColor;
   /* **단축이 아니라 낱개 속성으로 적는다.** `mask:var(--mk) center/11px …` 는
@@ -60,6 +60,8 @@
 .term details summary::before{margin-right:4px}
 /* 요약 **뒤**에 서는 자리 — 틈은 앞에 준다 */
 .artmeta > summary::after{margin-left:4px}
+/* 거르개 손잡이의 마크는 줄 **끝**에 선다 — 틈은 `margin-left:auto` 가 준다
+   (header.css `.ffold::after`). 모양은 위의 사전에서, 자리는 그 파일에서. */
 
 /* ── 사전 ─────────────────────────────────────────────────────────
    모양 하나 = 줄 하나. 새 마크는 여기에만 더한다. 모양은 `:root` 의 변수로

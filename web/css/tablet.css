@@ -297,4 +297,90 @@
   .usagechip .useg.mail:has(.mk-clock){display:inline}
   .usagechip .useg.mail .addr{display:none}
   .who .wseg.where,.who .wseg.role{display:none}
+
+  /* ── 머리글이 창의 절반을 먹지 않게 (REQ-20260916-011-2n7g) ───────────────
+     실측 2026-09-16, 실제 맥 Safari 26.4 · 400x900: `.board` 의 화면 좌표 top 이
+     428px — 창의 47% 를 머리글이 먼저 쓰고 판에는 472px 만 남았다. 쌓인 것은
+     브랜드 1줄 · 탭 2줄 · 검색 1줄 · 거르개 1줄 · 사용량 2줄 · 신원 2줄이다.
+     아래 둘이 그중 네 줄을 두 줄로 줄인다(사용량·신원은 이 요청의 몫이 아니다 —
+     맨 아래 주석). 눈금을 새로 만들지 않고 560 에
+     얹는 까닭: 768px 태블릿 세로에서는 탭 두 줄·거르개 두 줄이어도 세로가
+     남는다 — 줄여야 하는 것은 손전화 폭이고, 560 은 이미 그 폭의 눈금이다
+     (바로 위 목록/판 쌓기 · notice.css 의 손잡이 접기). */
+
+  /* ① 브랜드와 탭이 한 줄 — 탭은 가로로 밀되 **밀 수 있다는 것이 보인다**
+     밀기 자체는 종전에도 있었으나 맥·iOS 는 겹쳐 뜨는 스크롤막대라 표시가 한
+     화소도 없었고, 바로 앞 요청(REQ-20260916-010)이 그 이유로 반려됐다 —
+     보이지 않는 길은 길이 아니다. 표시는 셋이다: 가장자리에서 잉크가 흐려지고
+     (색면이 아니라 mask 라 스킨 열 벌·톤 여섯을 그대로 따라간다), 다음 탭이
+     반쯤 잘려 보이고(스냅을 쓰지 않는 까닭이다 — 스냅은 잘린 자리를 가장자리에
+     맞춰 버려 「더 있다」를 지운다), 밀 수 있는 **쪽에만** 걸린다(끝에 닿으면
+     그쪽 흐림이 0 — 흐림의 유무가 곧 「더 있다/없다」다. 손잡이는 app.js
+     tabEdges).
+     탭을 고르개로 접지 않는 까닭: 탭은 길목이라 한눈에 보이는 것이 값이고
+     (header.css 머리말), 「글자 + 활성 밑줄」이라는 어휘를 스킨 열 벌이 각자
+     정의해 두었다. 글자를 깎아 여덟을 욱여넣는 길도 셈이 안 된다 — 라틴 49자
+     × 13px 에 안여백까지 491px 이라 400px 창의 탭 자리(264~368px)에 못 든다.
+     soft 스킨은 탭이 왼쪽 셸에 **세로로** 서므로 이 규칙에서 뺀다. */
+  .hrow1{flex-wrap:wrap;gap:0 10px;padding:10px 16px 0;align-items:center}
+  .brand{padding-bottom:0}
+  /* 서버 상태 칩은 제 줄로 내려온다 — `flex-basis` 가 아니라 `width` 로 적는
+     까닭은 soft 스킨이다: 그 셸의 머리 줄은 **세로 상자**라 기준 폭이 높이가
+     되어 버린다. `width` 는 가로 상자에서만 줄을 가르고 세로 상자에서는 그냥
+     폭이라, 한 줄로 두 자리를 다 옳게 말한다. (`:empty` 면 자리도 없다) */
+  .svchip{width:100%;margin-left:0;padding-bottom:8px}
+  :root:not([data-skin="soft"]) .tabs{
+    flex:1 1 0;min-width:0;flex-wrap:nowrap;
+    overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;
+    scrollbar-width:none;
+    /* 과녁(위 `.tabs button::after` 겹판)은 버튼 상자 밖으로 5px 나간다 —
+       `overflow-y:hidden` 이 그것을 잘라 먹으므로 안여백만큼 안으로 들여
+       겹판이 상자 안에 살게 하고, 보이는 자리는 음수 여백이 되돌린다. */
+    padding:var(--tap-y) 0;margin:calc(-1 * var(--tap-y)) 0;
+    /* 흐림 폭이 0 이면 어느 쪽도 안 지운다 — 손잡이가 켤 때만 자란다.
+       `black` 은 색이 아니라 **불투명**이다: 마스크가 읽는 것은 알파 하나뿐이라
+       스킨의 잉크색과는 아무 상관이 없다(그래서 토큰을 쓰지 않는다). */
+    --fade-l:0px;--fade-r:0px;
+    -webkit-mask-image:linear-gradient(to right,transparent 0,black var(--fade-l),
+      black calc(100% - var(--fade-r)),transparent 100%);
+    mask-image:linear-gradient(to right,transparent 0,black var(--fade-l),
+      black calc(100% - var(--fade-r)),transparent 100%)}
+  :root:not([data-skin="soft"]) .tabs::-webkit-scrollbar{display:none}
+  :root:not([data-skin="soft"]) .tabs.edge-l{--fade-l:16px}
+  :root:not([data-skin="soft"]) .tabs.edge-r{--fade-r:22px}
+  .tabs button,[data-skin] .tabs button{flex:0 0 auto;padding-bottom:10px}
+
+  /* ② 거르개 넷을 손잡이 하나 뒤로 — 검색칸은 남는다
+     거르개(사용자·내 것만·프로젝트·태그)는 한 번 정하면 세션 내내 그대로인
+     값인데 손끝 높이 44px 짜리 두 줄을 상시 먹는다. 검색은 다르다 — 이 폭에서는
+     목록을 훑는 것보다 찾는 것이 빠르다(스크롤 비용이 가장 큰 폭이다).
+     그래서 `.fgroup` 은 이 폭에서 상자 노릇을 그만두고(`display:contents`),
+     그 안의 항목들이 툴바 줄의 항목으로 직접 서서 자리를 따로 얻는다:
+     검색칸과 손잡이가 첫 줄을 나눠 쓰고, 거르개는 펼쳤을 때만 아래로 흐른다.
+     기준 폭 55%+38% 는 **셋째 항목이 첫 줄에 못 들도록** 고른 값이다 —
+     둘이 첫 줄을 채우면 거르개는 반드시 다음 줄에서 시작한다.
+     접힌 채로도 **무엇이 걸렸는지는 보인다**(app.js foldSummary) — 거르개가
+     켜진 줄 모르고 빈 목록을 「없다」로 읽는 일이 여기서 끊긴다. */
+  .hrow2{gap:8px 10px;padding:6px 16px;align-items:center;justify-content:flex-start}
+  .fgroup,[data-skin] .fgroup{display:contents}
+  .hrow2 #q,[data-skin] .hrow2 #q{order:1;width:auto;min-width:0}
+  .ffold{display:flex;order:2;min-width:0;min-height:var(--tap-min)}
+  /* 검색칸과 손잡이가 첫 줄을 나눠 쓰게 하는 기준 폭 — soft 스킨은 뺀다.
+     그 셸의 툴바는 세로 상자라 이 값이 폭이 아니라 **높이**가 되고, 손잡이
+     하나가 줄 높이의 38% 를 차지한다. 세로 상자에서는 넷이 이미 제 줄에
+     하나씩 서므로 나눌 줄이 없다 — 접기만 그대로 듣는다. */
+  :root:not([data-skin="soft"]) .hrow2 #q{flex:1 1 55%}
+  :root:not([data-skin="soft"]) .ffold{flex:1 1 38%}
+  .hrow2 .fgroup > :not(#q){order:3}
+  .hrow2:not(.fopen) .fgroup > :not(#q),
+  [data-skin] .hrow2:not(.fopen) .fgroup > :not(#q){display:none}
+
+  /* 사용량 칩과 신원 줄(`.pgroup.idcol`)은 이 요청에서 건드리지 않았다 —
+     둘이 이 폭에서 네 줄을 먹는 것은 사실이지만(사용량 2 · 신원 2), 그 접힘은
+     REQ-20260915-001-2n7g 이 세운 계약이고 실브라우저 시험이 400·340px 에서
+     그것을 재고 있다(tests/test_usage_chip_fit). 거기서 고친 결함이 하필
+     **이 폭에서 칩을 nowrap 으로 묶으면 머리글이 밀려난다**는 것이라,
+     한 줄로 줄이는 일은 그 계약을 실브라우저로 다시 재면서 해야 한다.
+     그 몫은 REQ-20260916-012-2n7g 로 따로 섰다. */
+  .pgroup.idcol{order:4;width:100%}
 }
