@@ -28104,7 +28104,67 @@ def _shot_pw_direct(runner):
     return nodes[-1], _shot_win_path(cli)
 
 
-def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit"):
+_SHOT_PW_DPR_SCRIPT_DOC = """배율을 주고 한 장 찍는 node 스크립트 (REQ-20260915-026).
+
+`playwright screenshot` CLI 에는 배율이 없다 — 배율은 브라우저 **컨텍스트**의 값이라
+API 로만 준다(실측 2026-09-15: `--device-scale-factor` 는 `unknown option`).
+맥 갈래가 파이썬 API 로 하는 것과 같은 자리를, 여기서는 node 로 한다.
+
+글자는 **ASCII 만** 쓴다: 이 스크립트는 WSL 에서 Windows node.exe 에 `-e` 로 건너가는데,
+한글·줄표가 섞인 긴 문자열이 그 사이에서 깨져 `SyntaxError: Invalid or unexpected token`
+으로 죽었다(실측 2026-09-15). 설명은 이 docstring 에 두고 코드는 ASCII 로 둔다.
+
+인자(`-e` 는 스크립트 경로가 없어 argv[1] 부터 곧 사용자 인자다):
+  <playwright 패키지 경로> <browser> <url> <out> <w> <h> <waitMs> <dpr>
+"""
+
+_SHOT_PW_DPR_SCRIPT = r"""
+const a = process.argv.slice(1);
+const [pkg, browser, url, out, w, h, wait, dpr] = a;
+const pw = require(pkg);
+(async () => {
+  const b = await (browser === "webkit" ? pw.webkit : pw.chromium).launch();
+  const ctx = await b.newContext({
+    viewport: {width: +w, height: +h}, deviceScaleFactor: +dpr});
+  const pg = await ctx.newPage();
+  try { await pg.goto(url, {waitUntil: "networkidle", timeout: 30000}); }
+  catch (e) { await pg.goto(url, {waitUntil: "load", timeout: 30000}); }
+  await pg.waitForTimeout(+wait);
+  await pg.screenshot({path: out});
+  await b.close();
+})().catch(e => { console.error(String(e && e.message || e)); process.exit(1); });
+"""
+
+
+SHOT_DPR_MIN, SHOT_DPR_MAX = 0.5, 4.0
+
+
+def _shot_dpr(raw):
+    """배율(deviceScaleFactor) 값을 읽는다 — 못 읽으면 ValueError (REQ-20260915-026).
+
+    규약은 마크를 **배율 1·1.25·1.5 에서 보라**고 한다(PROTOCOL 19조). 그런데
+    캡처에 배율을 줄 손잡이가 없어, 2026-09-15 의 화면 판정은 배율 1 만 보고
+    끝났다 — 화소 경계에 앉는 획은 거기서 안 보인다. Playwright 는 이 값을
+    이미 받고(`--device-scale-factor`), Chrome 도 같은 뜻의 깃발이 있다.
+
+    범위를 두는 까닭: 0 이나 음수는 브라우저가 창을 못 만들고, 큰 값은 그림이
+    통째로 메모리를 먹는다. **캡처를 걸기 전에** 막는다 — 브라우저를 띄운 뒤
+    실패하면 사람은 러너를 의심하게 된다."""
+    try:
+        v = float(str(raw).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"--dpr 는 숫자다(1 · 1.25 · 1.5): {raw!r}")
+    if not (SHOT_DPR_MIN <= v <= SHOT_DPR_MAX):
+        raise ValueError(f"--dpr 는 {SHOT_DPR_MIN}~{SHOT_DPR_MAX} 사이다: {v}")
+    return v
+
+
+def _shot_dpr_str(dpr):
+    """명령줄에 실을 글자 — 1.25 는 1.25 로, 2.0 은 2 로. 정수로 반올림하지 않는다."""
+    return ("%g" % float(dpr))
+
+
+def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit", dpr=1.0):
     """Playwright WebKit 캡처 명령줄 — 순수 함수(실행하지 않는다).
 
     REQ-093 에서 손으로 검증한 한 줄을 그대로 감싼다:
@@ -28118,6 +28178,21 @@ def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit"):
     w, h = _shot_size_wh(size)
     runner = runner or SHOT_WEBKIT_RUNNER_WIN
     direct = _shot_pw_direct(runner)
+    if float(dpr) != 1.0:
+        # **CLI 에는 배율이 없다** (실측 2026-09-15: `playwright screenshot --help` 의
+        # 옵션에 device-scale-factor 가 없고, 넣으면 `unknown option` 으로 죽는다).
+        # 배율은 브라우저 컨텍스트의 값이라 API 로만 준다 — 그래서 이 갈래에서는
+        # 같은 playwright 를 node 스크립트로 부른다(맥 갈래가 파이썬 API 로 하는 것과
+        # 같은 자리다). cmd.exe 를 거치는 판에서는 스크립트의 따옴표를 증명할 수
+        # 없어 거절한다 — 그 자리의 답은 `--engine chrome` 이다.
+        if not direct:
+            raise ValueError(
+                "--dpr 는 node 를 직접 부를 수 있을 때만 된다(러너 옆의 node.exe 가 "
+                "안 보인다). 이 판에서는 `--engine chrome --dpr <배율>` 로 찍어라")
+        node, cli = direct
+        pkg = cli[:-len("\\cli.js")] if cli.endswith("\\cli.js") else cli
+        return [node, "-e", _SHOT_PW_DPR_SCRIPT, pkg, browser, url, win_out,
+                str(w), str(h), str(int(wait)), _shot_dpr_str(dpr)]
     if direct:
         node, cli = direct
         return [node, cli, "screenshot", f"--browser={browser}",
@@ -28144,7 +28219,7 @@ def _shot_nav_retryable(stderr):
 SHOT_NAV_RETRIES = 3
 
 
-def _shot_webkit(url, size, wait, out, browser="webkit"):
+def _shot_webkit(url, size, wait, out, browser="webkit", dpr=1.0):
     """`--engine webkit|chromium` 경로 — 결과 PNG 경로를 찍거나 비-0 으로 끝난다.
 
     chromium 도 같은 Playwright 러너로 찍는다 (REQ-20260906-096): Playwright 는
@@ -28161,7 +28236,7 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
         mid = "/mnt/c/Temp/" + tmpname
     elif plat == "macOS":
         # 맥은 npx 러너가 아니라 이 파이썬의 playwright 로 찍는다 (REQ-20260911-002-2n7g)
-        return _shot_mac_playwright(url, size, wait, out, browser=browser)
+        return _shot_mac_playwright(url, size, wait, out, browser=browser, dpr=dpr)
     else:
         print(f"s9 shot: 이 환경({plat})에는 WebKit 경로가 없다 — WebKit 캡처는 "
               "Windows 또는 WSL 에서만 된다(리눅스 WebKit 은 root 권한의 시스템 "
@@ -28182,7 +28257,8 @@ def _shot_webkit(url, size, wait, out, browser="webkit"):
         except OSError:
             pass
     try:
-        cmd = _shot_webkit_cmd(url, size, wait, win_out, runner=runner_check, browser=browser)
+        cmd = _shot_webkit_cmd(url, size, wait, win_out, runner=runner_check,
+                               browser=browser, dpr=dpr)
     except ValueError as e:
         print(f"s9 shot: {e}", file=sys.stderr)
         sys.exit(2)
@@ -28238,6 +28314,7 @@ _SHOT_MAC_PW_SCRIPT = r"""
 import sys, time
 from playwright.sync_api import sync_playwright
 url, size, wait, out, browser = sys.argv[1:6]
+dpr = float(sys.argv[6]) if len(sys.argv) > 6 else 1.0
 w, h = [int(x) for x in size.split(",")]
 with sync_playwright() as p:
     if browser == "webkit":
@@ -28248,7 +28325,7 @@ with sync_playwright() as p:
         except Exception as e:
             print("channel=chrome 실패, 내장 chromium 으로: %s" % str(e).splitlines()[0], file=sys.stderr)
             b = p.chromium.launch()
-    pg = b.new_page(viewport={"width": w, "height": h})
+    pg = b.new_page(viewport={"width": w, "height": h}, device_scale_factor=dpr)
     try:
         pg.goto(url, wait_until="networkidle", timeout=30000)
     except Exception:
@@ -28259,7 +28336,7 @@ with sync_playwright() as p:
 """
 
 
-def _shot_mac_playwright(url, size, wait, out, browser="chromium"):
+def _shot_mac_playwright(url, size, wait, out, browser="chromium", dpr=1.0):
     """맥의 캡처 갈래 (REQ-20260911-002-2n7g, 맥미니 실측 2026-09-11 10:31): Google
     Chrome 의 `--headless --screenshot` 은 이 맥에서 data: URL 조차 60초 안에 끝나지
     않았다(옛·새 headless, GPU 플래그 유무 모두). Playwright 는 같은 Chrome 을
@@ -28271,7 +28348,8 @@ def _shot_mac_playwright(url, size, wait, out, browser="chromium"):
               + _shot_manual_hint(url), file=sys.stderr)
         sys.exit(3)
     os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
-    cmd = [sys.executable, "-c", _SHOT_MAC_PW_SCRIPT, url, size, str(wait), out, browser]
+    cmd = [sys.executable, "-c", _SHOT_MAC_PW_SCRIPT, url, size, str(wait), out,
+           browser, _shot_dpr_str(dpr)]
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=SHOT_WEBKIT_TIMEOUT)
     except subprocess.TimeoutExpired:
@@ -28377,8 +28455,13 @@ def cmd_shot(args):
         # 실측: data: URL 조차 60초) — 같은 Google Chrome 을 이 파이썬의 Playwright
         # (channel=chrome)로 띄워 찍는다. playwright 가 없을 때만 Chrome 자체 경로다.
         engine = "chromium"
+    try:
+        dpr = _shot_dpr(getattr(args, "dpr", 1) or 1)
+    except ValueError as e:
+        print(f"s9 shot: {e}", file=sys.stderr)
+        sys.exit(2)
     if engine in ("webkit", "chromium"):
-        return _shot_webkit(url, args.size, args.wait, out, browser=engine)
+        return _shot_webkit(url, args.size, args.wait, out, browser=engine, dpr=dpr)
 
     candidates = []
     if os.name == "nt":
@@ -28466,6 +28549,8 @@ def cmd_shot(args):
                         "--disable-extensions", "--disable-background-networking",
                         f"--screenshot={win_out}",
                         f"--window-size={args.size}",
+                        *([f"--force-device-scale-factor={_shot_dpr_str(dpr)}"]
+                          if dpr != 1.0 else []),
                         f"--virtual-time-budget={args.wait}", url],
                        capture_output=True, timeout=60)
     except subprocess.TimeoutExpired:
@@ -38157,6 +38242,9 @@ def main():
                     help="뷰포트 너비x높이 — 768x1024 또는 768,1024 (기본 1440,900)")
     sh.add_argument("--wait", default="3000",
                     help="캡처 전 대기 ms (async 렌더용, 기본 3000)")
+    sh.add_argument("--dpr", default="1",
+                    help="배율(deviceScaleFactor) — 1(기본)·1.25·1.5. 마크의 획이 "
+                         "화소 경계에 앉는지 보는 자리다 (0.5~4)")
     sh.add_argument("--engine", choices=("auto", "chrome", "chromium", "webkit"),
                     default="auto",
                     help="auto(기본) = Playwright 러너가 있으면 chromium, 없으면 chrome. "
