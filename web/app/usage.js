@@ -209,10 +209,23 @@ function renderUsageChip(el, d){
   (d.limits || []).forEach(x => { L[x.kind] = x; });
   const pct = x => x == null ? "—"
     : `<span class="${x.percent >= 90 ? "crit" : x.percent >= 70 ? "warn" : ""}">${x.percent}%</span>`;
-  el.innerHTML = `${esc(d.email || "?")}${d.stale ? " " + mk("clock") : ""}` +
-    ` · 5h ${pct(L.session)} · wk ${pct(L.weekly_all)}` +
-    (L.weekly_scoped
-      ? ` · ${esc((L.weekly_scoped.scope_name || "model").toLowerCase())} ${pct(L.weekly_scoped)}` : "");
+  /* 칩은 **덩이 단위로 접힌다** (REQ-20260915-001-2n7g). 한 줄로 이어 붙이고
+     `.usagechip{white-space:nowrap}` 으로 막아 두었더니, 이 상자의 min-content
+     폭이 글자 전체 폭(맥 Safari 실측 393px)이 되어 400px 창의 머리글
+     (400 - 좌우 안여백 44 = 356px)을 밀어냈다 — 문서 전체가 9px 가로로 넘치고
+     「fable 37%」의 끝이 잘렸다.
+     그래서 접히는 단위를 바꾼다: 덩이(`.useg`) 안은 nowrap 이라 「5h」와 그
+     숫자가 갈리지 않고, 덩이 **사이**에서만 접힌다. 이어짐을 알리는 `·` 는
+     앞 덩이 **끝**에 붙는다 — 앞에 붙이면 접힌 줄이 「· wk 34%」로 시작해
+     무엇의 이어짐인지 모르는 줄이 된다. 메일은 낱말 하나라 접을 자리가
+     없으므로 제 덩이에서만 마지막 수단으로 끊긴다(`.useg.mail`). */
+  const segs = [`${esc(d.email || "?")}${d.stale ? " " + mk("clock") : ""}`,
+                `5h ${pct(L.session)}`,
+                `wk ${pct(L.weekly_all)}`];
+  if (L.weekly_scoped)
+    segs.push(`${esc((L.weekly_scoped.scope_name || "model").toLowerCase())} ${pct(L.weekly_scoped)}`);
+  el.innerHTML = segs.map((s, i) =>
+    `<span class="useg${i ? "" : " mail"}">${s}${i < segs.length - 1 ? " ·" : ""}</span>`).join(" ");
 }
 
 /* 브라우저 탭 제목 = 워크스페이스명 · 선택 프로젝트 (REQ-20260824-064) —

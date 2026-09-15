@@ -65,9 +65,15 @@ function renderWhoami(){
   el.className = "who";
   // 어느 저장소의 화면인지 — 같은 노트북의 윈도우 네이티브·WSL 이 둘 다 「section9」
   // 라 이름만으로는 못 가른다 (REQ-20260906-055). 경로는 tooltip, OS 는 글자.
-  const where = w.os ? ` <span class="where" title="${esc(w.root || "")}">${esc(w.os)}</span>` : "";
-  el.innerHTML = `<b>${esc(w.user)}</b> @ ${esc(w.machine || "")}${where} [${esc(w.role || "member")}]`
-    + (asUser ? ` <span class="as">→ @${esc(asUser)} 시점</span>` : "");
+  const where = w.os ? ` <span class="wseg where" title="${esc(w.root || "")}">${esc(w.os)}</span>` : "";
+  /* 신원 줄도 **덩이 단위로 접힌다** (REQ-20260915-001-2n7g) — 바로 위 사용량
+     칩과 같은 기둥(.idcol)에 서고, 같은 이유(줄 전체가 nowrap)로 좁은 폭에서
+     머리글을 밀어냈다. 이름 · 「@ 컴퓨터」 · 권한이 각각 한 덩이라 「@」가
+     홀로 줄 끝에 남지 않는다. */
+  el.innerHTML = `<span class="wseg"><b>${esc(w.user)}</b></span> `
+    + `<span class="wseg">@ ${esc(w.machine || "")}</span>${where} `
+    + `<span class="wseg">[${esc(w.role || "member")}]</span>`
+    + (asUser ? ` <span class="wseg as">→ @${esc(asUser)} 시점</span>` : "");
   // 이 자리의 설명에 든 명령도 이 컴퓨터의 꼴이다 (REQ-20260915-013-62x6) —
   // index.html 의 글자는 첫 그림뿐이고, 신원이 오면 여기서 다시 적는다.
   el.title = "이 화면은 계정을 따로 묻지 않습니다 — 이 컴퓨터에서만 열리는 화면이라, "
