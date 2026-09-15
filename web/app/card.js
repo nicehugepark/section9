@@ -490,7 +490,7 @@ function lineageChip(r){
   const owner = String((r && r.user) || "");
   const o = String((r && r.origin) || "");
   let face = (o && o !== "human") ? originFace(r, true) : "";
-  if (!face && creator && creator !== owner) face = "@" + creator;
+  if (!face && creator && creator !== owner) face = personFace(creator);
   if (!face) return "";
   return `<span class="lin" title="${esc(lineageTell(r))}">`
     + `<span class="linv">${esc(madeBy(face))}</span></span>`;
@@ -502,10 +502,10 @@ function lineageTell(r){
   /* 손 위의 글은 칩과 **같은 얼굴**을 쓴다 (REQ-20260911-016) — 종전에는 칩이
      「designer」, 손 위의 글이 「nicehugepark … (에이전트 designer)」라 한 문서가
      두 이름으로 불렸다. 사람이 만든 문서에서는 그 계정이 곧 만든이다. */
-  const face = (o && o !== "human") ? originFace(r) : docCreator(r);
+  const face = (o && o !== "human") ? originFace(r) : personTitle(docCreator(r));
   const bits = [];
   if (face) bits.push(`만든 사람 ${face}`);
-  if (owner) bits.push(`맡은 사람 ${owner}`);
+  if (owner) bits.push(`맡은 사람 ${personTitle(owner)}`);
   /* 꼬리는 **얼굴이 아직 말하지 않은 것**만 붙인다 (REQ-20260911-016).
      종전에는 `originBits` 를 통째로 붙여, 얼굴을 한 자리에서 짓게 된 뒤로는
      「만든이 에이전트 designer (에이전트 designer)」로 같은 말을 두 번 했다.
@@ -530,12 +530,12 @@ function lineageRowHTML(r){
      @x」. 다르면 두 칸, 카드 조각과 한 규칙이다. */
   if (creator && creator === owner)
     cells.push(`<span class="lincap">만들고 맡은 사람</span>`
-      + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
+      + `<span${badgeAttrs(creator)} title="${esc(personTitle(creator))}">${badgeFace(creator)}</span>`);
   else {
     if (creator) cells.push(`<span class="lincap">만든 사람</span>`
-      + `<span class="badge" style="--ah:${tagHue(creator)}">${badgeFace(creator)}</span>`);
+      + `<span${badgeAttrs(creator)} title="${esc(personTitle(creator))}">${badgeFace(creator)}</span>`);
     if (owner) cells.push(`<span class="lincap">맡은 사람</span>`
-      + `<span class="badge" style="--ah:${tagHue(owner)}">${badgeFace(owner)}</span>`);
+      + `<span${badgeAttrs(owner)} title="${esc(personTitle(owner))}">${badgeFace(owner)}</span>`);
   }
   /* 기원은 **제 칸을 갖지 않는다** — 「만든 사람」 칸의 뒤에 붙는다.
      따로 세우면 라벨 없는 조각(「리드 · REQ-014 처리 중」)이 줄 끝에 떠서,
@@ -669,20 +669,36 @@ function assignBtnHTML(r){
    **밑으로도** 점선이 지나가, 원 아래 잘린 선이 깨진 그림처럼 보인다. 누를 수
    있다고 말하는 것은 이름이지 마크가 아니다. */
 function badgeFace(u){
-  return `<i class="av">${esc(String(u).slice(0, 1).toUpperCase())}</i>`
-    + `<span class="bnm">${esc(u)}</span>`;
+  const nm = personName(u);      // 이름, 없으면 id (state.js 한 곳)
+  return `<i class="av">${esc(nm.slice(0, 1).toUpperCase())}</i>`
+    + `<span class="bnm">${esc(nm)}</span>`;
 }
+/* 배지의 **겉**도 한 곳에서 난다 (REQ-20260915-031-62x6). 이름으로 설 때와 id 로
+   설 때는 같은 옷을 입지 않는다: id 는 계정 손잡이라 `@`+고정폭이 맞지만(디자인
+   언어 「사용자 표시 = @이름」), 이름은 사람이 쓴 글자다 — 한글에 고정폭을 주면
+   대체 글꼴로 떨어져 한 줄에 얼굴이 두 벌이 되고(s9-design 표 1절), `@박성진` 은
+   계정 아이디처럼 읽힌다. 색조는 **id 로 잰다** — 이름으로 키를 삼으면 이름이
+   바뀌는 날 사람과 색이 갈린다. */
+function badgeAttrs(u, extra){
+  return ` class="badge${personFull(u) ? " named" : ""}${extra ? " " + extra : ""}"`
+    + ` style="--ah:${tagHue(personId(u))}"`;
+}
+/* 조각 한 낱말로 설 때의 얼굴 — 이름이 있으면 이름, 없으면 종전의 `@id`. */
+const personFace = u => personFull(u) ? personName(u) : "@" + personId(u);
 function ownerBadgeHTML(r){
   const u = (r && r.user) || "?";
   const face = badgeFace(u);
-  const st = ` style="--ah:${tagHue(u)}"`;
+  const st = badgeAttrs(u);
   /* 손 위의 글은 계보 한 문장이다 (REQ-20260911-016 3차, designer ④): 좁은 카드에서
      이름이 머리글자 원으로 접히고(board.css @container 243px) 조각이 없는 92% 의
      카드에서도 「누가 만들고 누가 맡았나」가 여기서 읽힌다. */
-  const tell = (r && r.type === "request") ? lineageTell(r) : `맡은 사람 ${u}`;
+  /* 올려서 보이는 글에는 id 와 이름이 **함께** 선다 (personTitle) — 카드는
+     이름으로 읽고, 「그래서 계정이 무엇인가」는 손을 얹어 확인한다. */
+  const tell = (r && r.type === "request") ? lineageTell(r)
+    : `맡은 사람 ${personTitle(u)}`;
   if (!r || r.type !== "request" || TERMINAL.has(r.status))
-    return `<span class="badge"${st} title="${esc(tell)}">${face}</span>`;
-  return `<button type="button" class="badge asgnb"${st}`
+    return `<span${st} title="${esc(tell)}">${face}</span>`;
+  return `<button type="button"${badgeAttrs(u, "asgnb")}`
     + ` data-assign="${esc(r.id)}"`
     + ` title="${esc(tell)} — 눌러서 담당을 바꿉니다">${face}</button>`;
 }

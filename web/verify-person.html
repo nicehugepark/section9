@@ -1,0 +1,45 @@
+<!doctype html><meta charset="utf-8"><title>사람 이름 표기 검증</title>
+<!-- 이름이 있는 사람과 없는 사람이 **한 화면에** 서는 자리를 본다
+     (REQ-20260915-031-62x6). 서버가 이름을 아직 안 실을 수 있으므로,
+     아래 왼쪽 열(종전 그대로 @id)이 오른쪽 열과 나란히 서야 한다. -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/board.css">
+<link rel="stylesheet" href="css/actions.css">
+<link rel="stylesheet" href="css/calm.css">
+<link rel="stylesheet" href="css/skins.css">
+<style>
+ body{margin:0;padding:20px;background:var(--bg);color:var(--text);
+   font:13px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif}
+ h2{font:600 12px/1 system-ui;color:var(--muted);margin:22px 0 8px}
+ .m{display:flex;align-items:baseline;gap:8px;font-family:var(--mono);
+   font-size:11px;color:var(--muted);padding:6px 0;
+   border-bottom:1px solid var(--hairline)}
+ .m .ttl{font-family:inherit}
+ #zoom{zoom:5;width:150px;margin:12px 0;border:1px solid var(--border);padding:4px}
+ #zoom .m{display:block;border:0;padding:1px 0}
+</style>
+<div id="out"></div>
+<h2>5배 — 잉크와 밑선</h2>
+<div id="zoom"></div>
+<script>
+/* 서버가 실을 모양 그대로: {user, first_name, last_name, full} */
+window.__users = [
+  {user: "nicehugepark", first_name: "성진", last_name: "박", full: "박성진"},
+  {user: "user2", first_name: "Sujin", last_name: "Lee", full: "Sujin Lee"},
+  {user: "user1"},                       /* 이름을 아직 안 적은 사람 */
+];
+</script>
+<script src="app/const.js"></script>
+<script src="app/state.js"></script>
+<script src="app/card.js"></script>
+<script>
+const WHO = ["nicehugepark", "user2", "user1", "e7test"];
+const rows = WHO.map(u =>
+  `<div class="m mwho"><span${badgeAttrs(u)} title="${esc(personTitle(u))}">${badgeFace(u)}</span>`
+  + `<span class="ttl">맡은 사람 — 올리면 ${esc(personTitle(u))}</span></div>`).join("");
+document.getElementById("out").innerHTML =
+  ["ledger", "calm", "terminal", "grid"].map(sk =>
+    `<h2>skin=${sk}</h2><div data-skin="${sk}">${rows}</div>`).join("");
+document.getElementById("zoom").innerHTML = WHO.map(u =>
+  `<div class="m mwho"><span${badgeAttrs(u)}>${badgeFace(u)}</span></div>`).join("");
+</script>

@@ -794,6 +794,21 @@ span.proj{cursor:default}
 .urow .st{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase}
 .badge{color:var(--text);font-family:var(--mono);font-size:11px}
 .badge::before{content:"@"}
+/* 이름으로 선 배지에는 `@` 를 붙이지 않는다 (REQ-20260915-031-62x6).
+   `@` 는 **계정 아이디의 표식**이다 — 사람이 CLI·경로·문서 앞머리에서 다시
+   만나는 그 글자라 `@nicehugepark` 은 옳지만, `@박성진` 은 계정이 아닌 것을
+   계정처럼 읽힌다. 이름이 없는 사람은 종전대로 `@id` 로 서므로 이 규칙이
+   닿지 않는다 — 한 화면에 두 얼굴이 서지만, 그 둘은 실제로 다른 것이다.
+   자간은 되돌린다: 고정폭 메타 줄의 자간이 한글 음절 사이를 벌려 낱글자로
+   흩어 놓는다(s9-design 표 1절이 열 머리에서 적어 둔 그 함정). */
+.badge.named::before{content:none}
+/* 이름은 **본문체**로 선다. 고정폭 글꼴(`--mono`)에는 한글 얼굴이 없어
+   대체 글꼴로 떨어지고, 그 순간 한 줄 안에서 `Sujin Lee` 는 고정폭·`박성진` 은
+   다른 얼굴이 되어 잉크 무게가 갈린다(5배 확대로 확인). 가르는 자는 하나다 —
+   **기계가 읽는 글자는 고정폭, 사람이 쓴 글자는 본문체**. 그래서 이름 없는
+   사람의 `@id` 는 종전 그대로 고정폭으로 남는다: 그것은 계정이지 이름이 아니다. */
+.badge.named .bnm{font-family:var(--sans);letter-spacing:normal;
+  word-break:keep-all}
 /* 읽어야 하는 보조 글자는 `--muted` 다 (REQ-20260907-022 · 검수 중-4).
    `--faint` 는 어두운 tone 의 배경 위에서 3:1 아래로 떨어져 태그가 「있는지
    없는지」만 보이고 읽히지 않았다. `--faint` 는 구분선·자리 표시처럼 **읽지

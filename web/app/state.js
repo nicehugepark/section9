@@ -176,6 +176,58 @@ function tagHue(t){
   for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 360;
   return h;
 }   // 출처 표식 — 태그 UI에서 숨김
+
+/* ---- 사람의 이름은 이 두 함수에서만 난다 (REQ-20260915-032-62x6) ----------
+
+   이 제품은 사람을 **id** 로 다룬다 — `users/<id>/` 가 폴더 이름이고 문서
+   앞머리의 `user:` 이며 CLI 인자에 같은 글자로 다시 나온다. 그런데 사람이
+   화면에서 읽고 싶은 것은 id 가 아니라 제 이름이다. 그 둘을 자리마다 손으로
+   이으면 같은 사람이 카드에서는 이름, 옆 목록에서는 id 로 보이고 — 사람은 그
+   둘을 다른 사람으로 읽는다. 명령 표기에서 겪은 그대로다(`s9cmd`·`s9code`,
+   REQ-20260915-023-62x6).
+
+   규칙 셋:
+   · `personName(u)` — **사람이 읽는 자리**. 이름이 있으면 이름, 없으면 id.
+     「이름 없음」 같은 자리 표시자는 두지 않는다.
+   · `personTitle(u)` — **올려서 보이는 자리**. id 와 이름이 **함께** 선다.
+     올렸는데 이름만 다시 보이면 올린 값이 0 이다.
+   · id 가 필요한 자리(색 해시·`data-*` 값·API 인자)는 `personId(u)` 를 쓴다 —
+     이름으로 키를 삼으면 이름이 바뀌는 날 색과 짝이 갈린다.
+
+   받는 것은 **id 문자열이거나 서버가 실은 사람 객체**(`{user, first_name,
+   last_name, full}`) 둘 다다. 서버가 아직 이름을 안 실을 수 있으므로 없는
+   값은 빈 문자열로 떨어지고, 그때 화면은 **종전 그대로 id** 로 선다. */
+function personOf(u){
+  if (u && typeof u === "object") return u;
+  const id = String(u ?? "").trim();
+  if (!id) return null;
+  const hit = (window.__users || []).find(x => String(x.user || x.name || "") === id);
+  return hit || {user: id};
+}
+function personId(u){
+  const p = personOf(u);
+  return p ? String(p.user || p.name || "") : "";
+}
+/* full name 을 **잇는 규칙은 서버의 것**이다 — 성·이름의 순서는 그 사람의 말이
+   정하고, 그 판정은 프로필을 가진 쪽이 한다. 화면은 서버가 지은 `full` 을
+   그대로 쓰고, 아직 안 왔을 때만 성·이름으로 짓는다(한글은 성+이름을 붙이고
+   라틴은 이름 성 순으로 띄운다 — 사람이 쓴 글자만 쓰고 로마자를 지어내지 않는다). */
+function personFull(u){
+  const p = personOf(u);
+  if (!p) return "";
+  const full = String(p.full ?? "").trim();
+  if (full) return full;
+  const first = String(p.first_name ?? "").trim();
+  const last = String(p.last_name ?? "").trim();
+  if (!first || !last) return first || last;      // 한쪽만 있으면 그 한쪽이 이름이다
+  const c = last.charCodeAt(0);
+  return (c >= 0xAC00 && c <= 0xD7A3) ? last + first : first + " " + last;
+}
+const personName = u => personFull(u) || personId(u);
+const personTitle = u => {
+  const id = personId(u), full = personFull(u);
+  return full ? `${full} (${id})` : id;
+};
 let idBaseCount = new Map();
 function rebuildIdMap(){
   idBaseCount = new Map();
