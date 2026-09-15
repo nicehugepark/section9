@@ -265,6 +265,44 @@ class BranchReachesMain(unittest.TestCase):
         self.assertIn("담기지 않은 코드", out)
         self.assertIn("bin/loose.py", out)
 
+    # --- W. 자리를 거둘 때 이름도 거둔다 ---
+
+    def test_w1_rm_deletes_the_branch_when_nothing_is_stuck(self):
+        """자리를 거두면 이름도 거둔다 — 남으면 다음 스폰의 `worktree add -b` 가 선다."""
+        doc = self.mk()
+        self.mkwt(doc)
+        out = self.cli("worktree", "rm", "w-test")
+        self.assertIn("가지 wt/w-test 도 지웠다", out)
+        self.assertEqual(self.git("branch", "--list", "wt/w-test").strip(), "")
+
+    def test_w2_rm_keeps_a_branch_that_still_holds_code(self):
+        """main 에 없는 코드 commit 이 남은 가지는 지우지 않는다 — 그것이 소실이다."""
+        doc = self.mk()
+        wt = self.mkwt(doc)
+        self.wt_commit(wt, "bin/tool.py", "print(8)\n", "가지에서 고쳤다")
+        out = self.cli("worktree", "rm", "w-test")
+        self.assertIn("남겼다", out)
+        self.assertIn("--force", out)
+        self.assertIn("wt/w-test", self.git("branch", "--list", "wt/w-test"))
+
+    def test_w3_force_drops_it_and_says_what_was_dropped(self):
+        """--force 는 버리되 무엇을 버렸는지 적는다 — 이미 다른 구현이 main 에 섰을 때."""
+        doc = self.mk()
+        wt = self.mkwt(doc)
+        self.wt_commit(wt, "bin/tool.py", "print(9)\n", "가지에서 고쳤다")
+        out = self.cli("worktree", "rm", "w-test", "--force")
+        self.assertIn("--force 로 버렸다", out)
+        self.assertEqual(self.git("branch", "--list", "wt/w-test").strip(), "")
+
+    def test_w4_rm_works_after_the_place_is_already_gone(self):
+        """자리를 sweep 이 먼저 거둬도 이름을 치우러 온 사람을 오류로 돌려보내지 않는다."""
+        doc = self.mk()
+        path = self.mkwt(doc)
+        self.git("worktree", "remove", path)
+        out = self.cli("worktree", "rm", "w-test")
+        self.assertIn("자리는 이미 없다", out)
+        self.assertEqual(self.git("branch", "--list", "wt/w-test").strip(), "")
+
     def test_r2_is_code_path_draws_the_line(self):
         """코드와 데이터를 가르는 잣대는 한 벌이다 (담기지 않은 코드 가드와 같은 것)."""
         import importlib.util

@@ -38940,13 +38940,35 @@ def cmd_worktree(args):
         path = os.path.join(WORKTREE_HOME, name)
         r = subprocess.run(["git", "worktree", "remove", path],
                            capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT, timeout=60)
-        if r.returncode != 0:
+        if r.returncode != 0 and os.path.isdir(path):
             # 미커밋 변경이 있으면 git 이 막는다 — **그게 맞다.** 남의 작업을
             # 말없이 지우지 않는 것이 이 기능의 존재 이유다.
             die(f"제거하지 못했다: {(r.stderr or r.stdout).strip()}\n"
                 f"  commit 안 한 변경이 있으면 먼저 그 가지에 commit 하거나 옮겨라 — "
                 f"확인 없이 지우지 않는다.")
-        print(f"거뒀다: {path}")
+        # 자리가 이미 없어도(sweep 이 먼저 거뒀다) 이름은 남아 있을 수 있다 —
+        # 그 자리를 치우러 온 사람을 오류로 돌려보내지 않는다.
+        print(f"거뒀다: {path}" if r.returncode == 0 else f"자리는 이미 없다: {path}")
+        # 자리를 거두면 **이름도 거둔다** (REQ-20260916-009-2n7g). 가지가 남으면
+        # `git worktree add -b wt/<이름>` 이 「이미 있다」로 서서, 같은 요청의 다음
+        # 스폰이 worktree 를 못 받고 본 저장소로 떨어진다 — 그 자리가 조용해서
+        # 2026-09-16 까지 아무도 몰랐다. 다만 **가지에 main 에 없는 코드 commit 이
+        # 남아 있으면 지우지 않는다**: 그것이 곧 이 요청이 막으려는 소실이다.
+        branch = f"wt/{name}"
+        stuck = branch_unmerged_code(branch)
+        if stuck and not getattr(args, "force", False):
+            print(f"  가지 {branch} 는 남겼다 — main 에 없는 코드 commit "
+                  f"{len(stuck)}개가 있다: {_commit_list(stuck)}")
+            print(f"  옮기려면 `git merge {branch}`, 버릴 것이면 "
+                  f"`s9 worktree rm {name} --force`")
+            return
+        d = subprocess.run(["git", "branch", "-D", branch],
+                           capture_output=True, encoding="utf-8", errors="replace",
+                           cwd=ROOT, timeout=60)
+        if d.returncode == 0:
+            print(f"  가지 {branch} 도 지웠다 — 그 이름을 다시 쓸 수 있다"
+                  + (f" (main 에 없는 코드 commit {len(stuck)}개를 --force 로 버렸다)"
+                     if stuck else ""))
         return
     die(f"unknown worktree action: {act}")
 
@@ -39737,6 +39759,9 @@ def main():
                         help="코드만 갈라 작업할 자리 (데이터는 본 저장소 하나)")
     wt.add_argument("action", choices=["add", "ls", "rm", "merge", "sweep"])
     wt.add_argument("name", nargs="?")
+    wt.add_argument("--force", action="store_true",
+                    help="rm: main 에 없는 코드 commit 이 남은 가지도 지운다 "
+                         "(이미 다른 구현이 main 에 섰을 때)")
     wt.set_defaults(fn=cmd_worktree)
 
     cn = sub.add_parser("commit-note",
