@@ -245,9 +245,11 @@ tr.rowoff td{opacity:.45}
 .ferr{font-family:var(--mono);font-size:11px;color:var(--c-blocked);align-self:center;
   margin-left:4px}
 .emrow{display:flex;gap:6px;align-items:center;margin-bottom:6px}
-.emrow .em-rm{border:1px solid var(--border);background:var(--panel);color:var(--muted);
+/* 한 행을 지우는 버튼은 **한 부품**이다 (REQ-20260915-052-62x6) — 회사 이메일 행과
+   개인 선호 행이 같은 뜻의 손잡이를 가지므로 자리(.emrow)로 묶지 않는다. */
+.em-rm{border:1px solid var(--border);background:var(--panel);color:var(--muted);
   font-family:var(--mono);font-size:11px;padding:4px 8px;cursor:pointer;line-height:1.2}
-.emrow .em-rm:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
+.em-rm:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 .em-add{border:0;background:none;color:var(--faint);padding:2px 0;cursor:pointer;
   font-size:11px;font-family:var(--mono);text-align:left}
 .em-add:hover{color:var(--text);text-decoration:underline}

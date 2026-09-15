@@ -48,9 +48,17 @@ async function renderSettings(){
     // 「내 계정」이 맨 위다 (주인 지시 2026-09-13 19:05, REQ-20260913-026): 나 → 나 → 남 → 전체
     // 순서에서 「내가 누구인가」가 「어떻게 보이나」보다 앞이다.
     ["account", "내 계정", me
-      ? `@${me} 프로필·개인화${myMiss.length ? ` ⚠ 미기재 ${myMiss.length}` : ""}`
+      ? `@${me} 프로필·시간대·시크릿${myMiss.length ? ` ⚠ 미기재 ${myMiss.length}` : ""}`
       : "미등록 계정"],
     ["display", "디스플레이", "skin·tone·density (내 계정에 저장)"],
+    /* 「개인 선호」는 「디스플레이」 다음·「백그라운드 작업」 앞이다
+       (REQ-20260915-052-62x6). 묶음은 「나」 안이고 순서는 「나는 누구인가 →
+       어떻게 보이나 → **리드가 나를 어떻게 대하나** → 내가 없을 때」다.
+       「내 계정」 안의 아홉째 덩이였을 때는 세로 2,120px 아래라 레일에 이름조차
+       없었다 — 「백그라운드 작업」을 뽑아낸 근거와 같은 자다.
+       부제는 여기서도 상태를 겸한다(몇 개인지). */
+    ["pref", "개인 선호", prefNavSub(
+      me ? (data.users || []).find(x => x.name === me) : null)],
     /* 「백그라운드 작업」은 나 → 나 → 남 → 전체 순서의 둘째 자리다 (REQ-20260901-022;
        이름은 REQ-20260902-005 에서 「무인 작업」을 내리고 갈아 세웠다).
        「내 계정」 안에 아홉째 덩이로 얹지 않는 이유는 캡처가 근거다: 그 판은
@@ -139,6 +147,15 @@ function renderSettingsSection(meAdmin){
       <button class="gefix" type="button" id="uf-retry">다시 받기</button></p>`;
     const rt = $("#uf-retry");
     if (rt) rt.addEventListener("click", () => renderSettings());
+  } else if (settingsSection === "pref"){
+    if (!me){ v.innerHTML = `<p class="empty">이 OS 계정(${esc((window.__whoami||{}).user||"?")})은 미등록입니다 — 터미널에서 ${s9code("user add " + ((window.__whoami||{}).user || "<이름>"))} 으로 등록하세요.</p>`; return; }
+    const pu = (window.__users||[]).find(x => x.name === me);
+    // 못 받아 온 것과 계정이 없는 것은 다른 일이다 (「내 계정」과 같은 손잡이).
+    if (pu) showPrefForm(pu, v);
+    else v.innerHTML = `<p class="empty">계정 정보를 받아오지 못했습니다.
+      <button class="gefix" type="button" id="uf-retry">다시 받기</button></p>`;
+    const prt = $("#uf-retry");
+    if (prt) prt.addEventListener("click", () => renderSettings());
   } else if (settingsSection === "worker"){
     if (!me){ v.innerHTML = `<p class="empty">이 OS 계정(${esc((window.__whoami||{}).user||"?")})은 미등록입니다 — 터미널에서 ${s9code("user add " + ((window.__whoami||{}).user || "<이름>"))} 으로 등록하세요.</p>`; return; }
     const wu = (window.__users||[]).find(x => x.name === me);

@@ -3,7 +3,6 @@
 function showUserForm(u, host, isAdminEdit){
   if (!host) return;
   const cfg = u.config || {};
-  const prefs = Object.entries(cfg).filter(([k]) => k.startsWith("pref_"));
   /* 자리를 얻지 못한 값만 남긴다 (REQ-20260901-022).
      **자리를 얻은 키는 반드시 여기서 빠져야 한다** — 안 빼면 같은 값이 제 행과
      이 목록에 두 번 서고, 어느 쪽이 참인지 화면이 말하지 못한다. 그래서 목록을
@@ -131,17 +130,6 @@ function showUserForm(u, host, isAdminEdit){
       <button type="button" id="sec-ext-save">경로 저장</button>
     </div>
     <div class="secstate" id="sec-ext-state" aria-live="polite">불러오는 중…</div>` : ""}
-    <div class="cfg-h">개인 선호 — 리드 에이전트의 말투·작업 방식 (매 턴 자동 반영, REQ-20260824-006)</div>
-    <table class="metatbl" id="pf-table">
-      ${prefs.map(([k, v]) => `<tr data-pref="${esc(k)}">
-        <td>${esc(k.slice(5))}</td>
-        <td><input class="uf pf-val" value="${esc(String(v))}" placeholder="비우고 저장 = 삭제"></td>
-      </tr>`).join("")}
-      <tr><td><input class="uf" id="pf-key" placeholder="주제 (예: 말투)" style="width:130px"></td>
-          <td><input class="uf" id="pf-new" placeholder="내용 (예: 반말로 간결하게)"></td></tr>
-    </table>
-    <div class="acts"><button id="pf-save">선호 저장</button></div>
-    ${prefs.length ? "" : `<div class="path" style="margin-top:6px">아직 없음 — 프롬프트에서 말해도 되고("앞으로 반말로 해줘") 여기서 직접 추가해도 된다.</div>`}
     ${extraCfg.length ? `<div class="cfg-h">그 밖의 값</div>
     <div class="path secnote">화면이 아직 뜻을 모르는 값입니다 — 이름과 값은 그대로 쓰이고 있습니다. <b>빈 값으로 저장하면 지워집니다.</b></div>
     <table class="metatbl" id="xc-table">
@@ -700,20 +688,6 @@ function showUserForm(u, host, isAdminEdit){
       document.body.appendChild(box);
     }, 700);
   }
-  host.querySelector("#pf-save").addEventListener("click", async () => {
-    const sets = [];
-    host.querySelectorAll("#pf-table tr[data-pref]").forEach(tr => {
-      const k = tr.dataset.pref, val = tr.querySelector(".pf-val").value.trim();
-      if (val !== String(cfg[k] ?? "")) sets.push([k, val]);  // 빈 값 = 서버가 삭제
-    });
-    const nk = host.querySelector("#pf-key").value.trim();
-    if (nk) sets.push(["pref_" + nk.replace(/^pref_/, ""),
-                       host.querySelector("#pf-new").value.trim()]);
-    let ok = true;
-    for (const [k, val] of sets)
-      ok = (await postJSON("/api/user/config", {name: u.name, key: k, value: val})) && ok;
-    if (ok && sets.length) renderSettings();
-  });
   /* 그 밖의 값 (REQ-20260901-022) — 개인 선호 표와 **같은 부품·같은 손버릇**이다.
      JSON 한 줄을 행으로 편 것이 전부고, 새로 만든 것은 없다. 아는 키가 늘면
      이 목록에서 조용히 빠져 제 자리로 올라간다. */
@@ -731,3 +705,127 @@ function showUserForm(u, host, isAdminEdit){
   });
 }
 
+
+/* ===== 개인 선호 — Settings 레일의 제 판 (REQ-20260915-052-62x6) =====
+   종전에는 「내 계정」 판의 아홉째 덩이였다: 세로 2,120px 아래, 창 높이 900px 이면
+   세 번째 화면. 「백그라운드 작업」을 같은 판에서 뽑아낸 근거(덩이 여덟·1,400px)를
+   같은 자로 재면 여기가 더 깊다. 묶음은 여전히 「나」 안이라 「디스플레이」 다음·
+   「백그라운드 작업」 앞이다 — 나는 누구인가 → 어떻게 보이나 → 리드가 나를 어떻게
+   대하나 → 내가 없을 때.
+
+   값 칸이 `textarea` 인 것은 취향이 아니라 **데이터 유실의 처방**이다
+   (REQ-20260915-054-62x6): 한 줄짜리 `input` 은 브라우저가 값에서 줄바꿈을 지우고,
+   지워진 값은 저장값과 달라 보이므로 **열고 저장만 눌러도** 원본이 한 줄로 덮여
+   썼다. 이 자리에 `input` 을 되돌리지 마라. */
+
+function prefsOf(u){
+  return Object.entries((u && u.config) || {}).filter(([k]) => k.startsWith("pref_"));
+}
+
+/* 부제가 상태를 겸한다 (repoNavSub·workerNavSub 의 손버릇) — 레일만 봐도 몇 개인지 보인다. */
+function prefNavSub(u){
+  const ps = prefsOf(u);
+  if (!ps.length) return "아직 저장한 값이 없습니다";
+  const first = ps[0][0].slice(5);
+  return ps.length > 1 ? `${ps.length}개 — ${first} 외 ${ps.length - 1}개`
+                       : `1개 — ${first}`;
+}
+
+/* 보낼 것만 고른다 — 화면 없이도 재는 **순수 함수**다 (REQ-20260915-054-62x6).
+   줄바꿈이 든 값을 열고 아무것도 고치지 않은 채 저장하면 여기서 **빈 목록**이
+   나와야 한다: 하나라도 나오면 그 POST 가 원본을 덮어쓴다. 비교는 양쪽을 같은
+   자로 — 앞뒤 공백만 다른 값을 「고쳤다」로 보지 않는다. */
+function prefSets(rows, cfg, newKey, newVal){
+  const sets = [];
+  for (const r of rows){
+    const val = r.removed ? "" : String(r.value ?? "").trim();
+    if (val !== String(cfg[r.key] ?? "").trim()) sets.push([r.key, val]);
+  }
+  const nk = String(newKey || "").trim();
+  if (nk) sets.push(["pref_" + nk.replace(/^pref_/, ""), String(newVal || "").trim()]);
+  return sets;
+}
+
+function showPrefForm(u, host){
+  if (!host) return;
+  const cfg = u.config || {};
+  const prefs = prefsOf(u);
+  const row = ([k, v]) => `<tr data-pref="${esc(k)}">
+      <td>${esc(k.slice(5))}</td>
+      <td><textarea class="uf pf-val" rows="2" spellcheck="false"
+            aria-label="${esc(k.slice(5))} — 선호 내용">${esc(String(v))}</textarea></td>
+      <td class="pfrm"><button type="button" class="em-rm pf-rm">지우기</button></td></tr>`;
+  host.innerHTML = `<h1 style="margin:0 0 4px">개인 선호</h1>
+    <div class="path">말투나 보고 형식처럼 지켜 주었으면 하는 것을 적어 두는 자리입니다. 대화를 시작할 때마다 자동으로 전달되며, 이 계정으로 어디서 접속해도 따라옵니다.</div>
+    <div class="path">이 저장소를 보는 사람도 함께 읽을 수 있습니다 — 비밀번호나 키는 「내 계정」의 시크릿에 넣습니다.</div>
+    ${prefs.length ? "" : `<p class="empty">아직 저장한 개인 선호가 없습니다.<br>
+      말투나 답변 형식처럼 대화마다 지켜야 할 것을 적어 보세요 — 예: 주제 <b>말투</b>, 내용 <b>짧게 답하고 칭찬은 빼 주세요</b>.</p>`}
+    <table class="metatbl pftbl" id="pf-table">
+      ${prefs.map(row).join("")}
+      <tr id="pf-newrow">
+        <td><input class="uf" id="pf-key" aria-label="새 개인 선호 주제"
+              placeholder="주제 (예: 말투)"></td>
+        <td><textarea class="uf pf-val" id="pf-new" rows="2" spellcheck="false"
+              aria-label="새 개인 선호 내용" placeholder="내용 (예: 짧게 답하고 칭찬은 빼 주세요)"></textarea></td>
+        <td class="pfrm"></td></tr>
+    </table>
+    <div class="secmsg" id="pf-gone"></div>
+    <div class="acts"><button id="pf-save">저장하기</button></div>
+    <div class="secmsg" id="pf-msg" aria-live="polite"></div>`;
+
+  /* 값이 잘리면 「온전히 읽는다」가 거짓말이 된다 — 칸을 내용에 맞춰 편다
+     (실측: 세 줄짜리 값이 rows=2 상자에서 셋째 줄이 반쯤 잘렸다). 상한 240px 을
+     넘으면 그 안에서 스크롤한다. 8의 배수만 쓴다(비정수 배율에서 위아래가 다르게
+     반올림되지 않게). */
+  const fit = ta => {
+    ta.style.height = "auto";
+    ta.style.height = Math.min(Math.max(ta.scrollHeight, 48), 240) + "px";
+  };
+  host.querySelectorAll(".pf-val").forEach(ta => {
+    fit(ta);
+    ta.addEventListener("input", () => fit(ta));
+  });
+
+  const goneLine = () => {
+    const n = host.querySelectorAll("#pf-table tr.pfgone").length;
+    host.querySelector("#pf-gone").textContent =
+      n ? "지운 행은 저장을 눌러야 실제로 사라집니다." : "";
+  };
+  /* 지우기는 **저장 전까지 되돌릴 수 있다** — 확인 창 대신 되돌리기(s9-design 4절).
+     누른 글자가 텍스트 노드로 잡히는 자리라 evEl 로 한 번 올라간다. */
+  host.querySelector("#pf-table").addEventListener("click", e => {
+    const el = evEl(e.target);
+    if (!el || !el.classList.contains("pf-rm")) return;
+    const tr = el.closest("tr[data-pref]");
+    if (!tr) return;
+    const gone = tr.classList.toggle("pfgone");
+    tr.querySelector(".pf-val").disabled = gone;
+    el.textContent = gone ? "되돌리기" : "지우기";
+    goneLine();
+  });
+
+  host.querySelector("#pf-save").addEventListener("click", async () => {
+    const msg = host.querySelector("#pf-msg");
+    const rows = [...host.querySelectorAll("#pf-table tr[data-pref]")].map(tr => ({
+      key: tr.dataset.pref,
+      value: tr.querySelector(".pf-val").value,
+      removed: tr.classList.contains("pfgone")}));
+    const sets = prefSets(rows, cfg, host.querySelector("#pf-key").value,
+                          host.querySelector("#pf-new").value);
+    msg.className = "secmsg";
+    if (!sets.length){ msg.textContent = "바뀐 것이 없습니다."; return; }
+    msg.textContent = "저장하는 중…";
+    for (const [k, val] of sets){
+      const res = await postJSONRaw("/api/user/config", {name: u.name, key: k, value: val});
+      if (!res.ok){
+        msg.className = "secmsg bad";
+        msg.textContent = "저장하지 못했습니다 — " + res.error;
+        return;
+      }
+    }
+    const said = "저장했습니다.";
+    await renderSettings();   // 레일 부제(개수)까지 같이 고쳐 그린다
+    const after = document.querySelector("#pf-msg");
+    if (after) after.textContent = said;
+  });
+}

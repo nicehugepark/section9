@@ -114,7 +114,8 @@ class StreamSwitchUI(unittest.TestCase):
 
     def _block(self):
         i = self.src.index('<div class="cfg-h">대화 기록')
-        j = self.src.index('<div class="cfg-h">개인 선호')
+        # 「개인 선호」 절이 제 판으로 나가(REQ-20260915-052-62x6) 다음 절은 시크릿이다.
+        j = self.src.index('<div class="cfg-h">시크릿')
         return self.src[i:j]
 
     def _fn(self, name):

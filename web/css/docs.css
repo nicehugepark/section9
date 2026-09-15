@@ -292,6 +292,24 @@ audio.attmed{width:min(100%,560px);max-width:100%}
 .metatbl td:first-child{color:var(--faint);width:150px;white-space:nowrap;
   font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);
   padding-top:9px}
+/* 개인 선호 표 (REQ-20260915-052-62x6). 첫 칸은 열 머리가 아니라 **사람이 지은
+   낱말**이라 mono·uppercase·letter-spacing 을 이 표에서만 벗긴다 — 그 조합은 영어
+   주제를 「REVIEW」로 외치게 하고 한글 주제를 「직 접 실 행」으로 흩는다
+   (s9-design 「표」 1 의 확정값). 전역 .metatbl 은 건드리지 않는다. */
+/* 표를 값의 폭에 맞춰 닫는다 — 안 그러면 지우기 버튼만 오른쪽 끝으로 밀려 값과
+   200px 넘게 떨어져 선다(어느 행의 버튼인지 눈이 다시 짚어야 한다). */
+.pftbl{max-width:880px}
+.pftbl td:first-child{font-family:inherit;font-size:12px;font-weight:600;
+  text-transform:none;letter-spacing:.02em;color:var(--muted);width:130px;
+  white-space:normal;word-break:keep-all;padding-top:8px}
+.pftbl td.pfrm{width:76px;text-align:right;white-space:nowrap}
+/* 폭이 제일 필요한 값에 폭을 준다 — .uf 의 min(300px,100%) 를 이 칸에서만 넓히고,
+   줄바꿈이 살아남는 부품(textarea)으로 둔다 (REQ-20260915-054-62x6). */
+.pftbl .pf-val{width:100%;max-width:640px;min-height:48px;resize:vertical;
+  font:inherit;line-height:1.6}
+/* 지운 표시는 저장 전까지의 예고다 — 색면이 아니라 줄과 잉크 농도로 말한다. */
+.pftbl tr.pfgone td:first-child{text-decoration:line-through;color:var(--faint)}
+.pftbl tr.pfgone .pf-val{opacity:.55}
 .md h2{border-bottom:1px solid var(--border);padding-bottom:6px;margin-top:30px;
   font-size:15px;text-transform:uppercase;letter-spacing:.05em}
 .md h3{font-size:13px;color:var(--muted);margin-top:20px;font-family:var(--mono)}

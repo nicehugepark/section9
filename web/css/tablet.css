@@ -155,6 +155,9 @@
   .metatbl td{display:block;border-bottom:0;padding:0}
   .metatbl td:first-child{width:auto;white-space:normal;padding:9px 0 0}
   .metatbl td:last-child{padding:3px 0 10px}
+  /* 개인 선호의 지우기 칸은 쌓인 모드에서 76px 토막으로 남지 않는다 — 값 아래
+     제 줄로 서고 폭은 줄이 정한다 (REQ-20260915-052-62x6). */
+  .pftbl td.pfrm{width:auto;text-align:left;padding:0 0 10px}
 
   /* ── 「만든 사람 · 맡은 사람」 한 줄 ──
      `.lineage .lincell{min-width:0}` 이 셀을 0 까지 줄여, 366px 본문에서 라벨이
