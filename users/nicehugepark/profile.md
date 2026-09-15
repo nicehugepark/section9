@@ -306,3 +306,5 @@ display: nicehugepark
 - 2026-09-15T17:37:29+09:00 config pref_줄바꿈시험=(삭제) (by nicehugepark)
 - 2026-09-15T20:44:45+09:00 config trash_keep_days=10 (by nicehugepark)
 - 2026-09-15T20:44:45+09:00 config trash_keep_days=(삭제) (by nicehugepark)
+- 2026-09-15T20:50:43+09:00 config trash_keep_days=10 (by nicehugepark)
+- 2026-09-15T20:51:18+09:00 config trash_keep_days=(삭제) (by nicehugepark)
