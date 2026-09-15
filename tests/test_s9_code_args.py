@@ -222,7 +222,9 @@ class TestCodeArgs(unittest.TestCase):
                 r = subprocess.run([S9, "code"], capture_output=True, text=True,
                                    env=env2, timeout=30, stdin=subprocess.DEVNULL)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-                self.assertIn("등록돼 있지 않다", r.stdout)     # 문구는 REQ-20260906-075
+                # 문구는 REQ-20260906-075 → REQ-20260915-013-62x6 에서 넷을 소집해
+                # 다시 썼다: 존댓말 · 두 길은 두 줄 · 명령은 들여쓴 제 줄.
+                self.assertIn("아직 등록되어 있지 않습니다", r.stdout)
                 self.assertIn("s9 user attach", r.stdout)     # 이미 있는 이름에 잇는 길을 먼저 말한다
                 self.assertIn('["claude"', r.stdout)
 
