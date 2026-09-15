@@ -1,4 +1,4 @@
-/* notice.js — 신원 표시와 서버가 말하는 사실 — 낡은 코드·자동 복구·상태 칩·'내 것만' */
+/* notice.js — 신원 표시 · 알림 줄 · 자동 복구 · 진행 칩 · '내 것만' */
 "use strict";
 let asUser = "";
 function getMe(){
@@ -45,23 +45,6 @@ function updateProfileBadge(){
     ? `프로필 미기재: ${miss.join(" · ")} — Settings > 내 계정에서 입력하세요` : "";
 }
 
-/* 준비물로 막힌 Jira 발신함 (REQ-20260914-013-62x6) — 서버(whoami.jira_block)가 값을
-   실을 때만 그린다. 실제 사고: API token 이 만료된 뒤 발신함 112건이 닷새 동안 문서
-   프론트매터에만 실패를 적었고 화면에는 아무것도 서지 않았다. 여는 길은 화면의 글자
-   그대로(Settings › 외부 서비스 › Jira). 준비물이 채워져 발신함이 비면 키가 빠져 사라진다. */
-function jiraBlockHtml(w){
-  const jb = w && w.jira_block;
-  if (jb && jb.count){
-    return ` <span class="jblock">⚠ Jira 발신함 ${esc(String(jb.count))}건이 막혔습니다 — ${esc(jb.reason || "")} · Settings › 외부 서비스 › Jira</span>`;
-  }
-  /* 만료가 다가온 token (REQ-20260914-015-62x6) — 막히기 전에 같은 자리에 선다.
-     서버(whoami.jira_expiry)가 만료 7일 안·만료 뒤에만 싣는다. */
-  const je = w && w.jira_expiry;
-  if (je && je.line){
-    return ` <span class="jblock">⚠ ${esc(je.line)} · Settings › 외부 서비스 › Jira</span>`;
-  }
-  return "";
-}
 
 function renderWhoami(){
   const el = $("#whoami"), w = window.__whoami || {};
@@ -76,121 +59,264 @@ function renderWhoami(){
     el.textContent = "⚠ 내 계정을 받지 못했습니다";
     return;
   }
-  if (!w.registered){
-    el.className = "who warn";
-    el.innerHTML = `⚠ 미등록 계정 <b>${esc(w.user)}</b> @ ${esc(w.machine || "")} — 터미널에서 <code>s9 user add ${esc(w.user)}</code> 로 등록하세요` + jiraBlockHtml(w);
-    return;
-  }
+  /* 미등록 계정이라는 **사실**은 알림 줄이 말한다 (REQ-20260915-001-62x6) —
+     여기는 신원만 그린다. mono 10px 신원 라벨에 한글 문장을 넣으면 한글이 대체
+     글꼴로 떨어져 음절이 흩어졌고, 무엇보다 경고가 이름 안에 든 꼴이었다. */
   el.className = "who";
   // 어느 저장소의 화면인지 — 같은 노트북의 윈도우 네이티브·WSL 이 둘 다 「section9」
   // 라 이름만으로는 못 가른다 (REQ-20260906-055). 경로는 tooltip, OS 는 글자.
   const where = w.os ? ` <span class="where" title="${esc(w.root || "")}">${esc(w.os)}</span>` : "";
   el.innerHTML = `<b>${esc(w.user)}</b> @ ${esc(w.machine || "")}${where} [${esc(w.role || "member")}]`
-    + (asUser ? ` <span class="as">→ @${esc(asUser)} 시점</span>` : "")
-    + jiraBlockHtml(w);
+    + (asUser ? ` <span class="as">→ @${esc(asUser)} 시점</span>` : "");
 }
 
-/* ── 서버 코드 낡음 (REQ-20260826-011-62x6) ────────────────────────────────
-   구동 중인 serve 프로세스는 기동 시점의 bin/s9 를 그대로 물고 있다. 화면은
-   디스크에서 매번 읽히니 UI만 새로 보이고 서버 동작은 낡은 채 남는다 — 이
-   어긋남이 실제로 12시간 지속됐다(테스트는 디스크 코드를 직접 돌려 전부 통과).
-   **자동 재기동은 하지 않는다**: 재기동은 진행 중 요청과 SSE 를 끊는다. 화면은
-   사실과 명령까지만 주고 판단은 사람이 한다.
-   용어 주의: 터미널 뷰의 "stale" 은 **세션 무응답**을 뜻한다. 코드 낡음은 다른
-   사실이라 문구·식별자를 oldcode 로 갈랐다 — 두 경고가 같은 말을 쓰면 어느
-   쪽도 못 믿게 된다. */
-const OC_ACK = "s9oldcode_ack";   // 접어둔 서버 기동 시각 — 그 서버가 살아 있는 동안만 유효
-// ?oldcode=1: 진단·헤드리스 캡처용 상태 고정 (?guard·?conn·?nosse 선례). 이 알림도
-// 서버가 낡아야만 보이는데 그 상황은 캡처로 만들 수 없다 — 두 알림이 같이 떴을 때
-// 헤더가 얼마나 먹는지를 눈으로 재려면 훅이 필요하다 (REQ-20260827-017-62x6).
-const OC_FORCE = /[?&]oldcode=1/.test(location.search);
-/* 창으로 돌아올 때마다 이 둘을 다시 묻던 자리(boot.js 의 focus)가 20초 폴과 겹쳤다 —
-   짧게 오가면 왕복만 늘고 답은 같다. 8초 안의 물음은 방금 받은 답으로 답한다;
-   20초 폴은 이 선 밖이라 제 주기대로 돈다 (REQ-20260909-086). */
-const OC_FRESH = 8000;
-let ocInfo = null, ocSig = "", ocCopyT = null;
+/* ── 서버가 지금 무엇을 하고 있나 (serveinfo) ───────────────────────────────
+   긴 잡(테스트 스위트처럼 몇 분씩 무출력으로 도는 작업)과 동기화 사실을 싣는
+   자료다 — 둘 다 「돌아가고 있는가」라서 진행 칩(#sv-chip)이 그린다.
 
-const ocAck = () => { try{ return localStorage.getItem(OC_ACK); }catch(e){ return null; } };
-const ocSetAck = v => { try{
-  if (v) localStorage.setItem(OC_ACK, v); else localStorage.removeItem(OC_ACK);
-}catch(e){} };
+   「시작한 뒤 프로그램이 바뀌었다」는 원래 여기서 머리 3행 띠를 세웠는데
+   (REQ-20260826-011-62x6), 그 사실은 이제 알림 줄이 맡는다 — 서버가
+   /api/notices 로 주체·문장·여는 길까지 실어 주므로 화면이 문장을 지을 일이
+   없다. 자동 재기동을 하지 않는 판단은 그대로다: 재시작은 진행 중 요청과
+   실시간 연결을 끊으므로 화면은 사실과 명령까지만 주고 판단은 사람이 한다. */
+const OC_FRESH = 8000;   // 창으로 돌아올 때마다 다시 묻지 않는다 (REQ-20260909-086)
+let ocInfo = null;
 
-async function checkOldCode(){
-  let d = null;
-  // 나중 것(prio 1) — 판이 그려진 뒤에 줄을 선다. 못 받아도 안 알린다:
-  // 20초 폴이 스스로 메우고, 무응답은 "코드 낡음" 이 아니다 (아래 판정 참조).
-  d = await loadSupply("serveinfo", async () => {
+async function checkServeInfo(){
+  const d = await loadSupply("serveinfo", async () => {
     const r = await s9Fetch("/api/serveinfo", {cache: "no-store"});
     return r.ok ? await r.json() : null;
   }, {prio: 1, tries: 1, quiet: true, fresh: OC_FRESH});
-  // 강제 표시는 **가장 긴 경우**를 보여준다 — 두 파일이 다 바뀐 줄이 헤더를
-  // 얼마나 먹는지가 이 훅으로 재려던 것이다 (REQ-20260828-025).
-  if (OC_FORCE) d = {started: new Date(Date.now() - 4.2e6).toISOString(),
-                     stale: true, changed: ["bin/s9", "bin/s9-audit-prompt"]};
-  // 무응답은 "코드 낡음"이 아니다 — 재기동 중일 수도 있다. 서버 단절 표시는
-  // 터미널 뷰가 따로 한다. 여기서는 직전 판정을 그대로 두고 다음 폴을 기다린다.
-  if (!d || typeof d.stale !== "boolean") return;
+  // 무응답은 「아무 일 없음」이 아니다 — 직전 판정을 두고 다음 기회를 기다린다.
+  if (!d) return;
   ocInfo = d;
-  renderOldCode();
-  // 되풀이 실패 사실(sync_alert)은 같은 응답에 실려 온다 — 낡음 판정이 그대로여도
-  // 칩은 다시 그린다(같은 내용이면 renderSvChip 의 sig 가 되쓰기를 막는다).
   renderSvChip();
 }
 
-function renderOldCode(){
-  const el = $("#oldcode");
-  if (!el) return;
-  const d = ocInfo;
-  // 낡지 않았으면 흔적을 남기지 않는다. 상시 자리표시자를 두면 곧 안 읽힌다.
-  if (!d || !d.stale){
-    ocSetAck(null);
-    if (ocSig !== "off"){
-      ocSig = "off"; el.hidden = true; el.innerHTML = ""; renderSvChip();
-    }
-    return;
-  }
-  const folded = ocAck() === d.started;
-  const sig = d.started + "|" + folded;
-  if (sig === ocSig) return;   // 같은 내용 재작성 금지 (aria-live 재낭독·복사 피드백 소실)
-  ocSig = sig;
+/* ── 알림 줄 (REQ-20260915-001-62x6) ───────────────────────────────────────
+   머리 아래 한 줄에 **지금 참인 사실 중 사람이 알아야 할 것**을 전부 모은다.
+   앞서 이 사실들은 네 군데에 흩어져 있었다 — 신원 글자 안(발신함 막힘·token
+   만료), 머리 3행 띠(서버 재시작 필요), 브랜드 행 칩, 각 설정 판 안. 그중
+   신원 글자 안의 것이 실제 사고였다: 한 서비스의 이름이 화면 코드에 박혀
+   있어 서비스가 늘 때마다 화면을 고쳐야 했고, mono 10px 신원 라벨에 한글
+   문장을 넣어 음절이 흩어졌다.
+
+   그래서 계약을 하나로 세웠다: **서버가 `/api/notices` 로 주체·문장·여는 길·
+   언제부터·지문을 주고 화면은 그리기만 한다.** 화면 코드에 서비스 이름이 한
+   번도 나오지 않는 것이 「한 서비스 전용 문구 금지」의 구조적인 답이다 —
+   서비스가 늘어도 이 파일은 그대로다. 회귀는 tests/test_notice_rail.py 가 본다.
+
+   가르는 물음 하나: **잘못됐거나 채워야 하는가**(알림 줄) 아니면 **무언가
+   돌아가고 있는가**(진행 칩 `#sv-chip`). 테스트 4분째·세션 다시 시작 중은
+   읽고 나서 할 일이 없으므로 줄이 아니라 칩이다. */
+const N_ACK = "s9notice_ack";              // 닫아 둔 지문 — 조건이 바뀌면 다시 선다
+const N_ACK_MAX = 100;                     // 지문 상한 (오래된 것부터 밀려난다)
+const N_ACK_TTL = 30 * 24 * 3600 * 1000;   // 그보다 오래된 지문은 스스로 걷힌다
+const N_FRESH = 8000;                      // 방금 받은 답으로 답하는 창 (serveinfo 와 같다)
+const N_ROWS = 4;                          // 펼쳐도 네 줄까지 — 무한 목록 금지
+const N_SEV = {halt: 0, warn: 1, note: 2};
+// 서버가 다른 낱말을 실어도 뜻이 같으면 받는다 — 화면이 조용히 비는 것보다 낫다
+const N_SEV_ALIAS = {blocked: "halt", block: "halt", error: "halt", bad: "halt",
+  warning: "warn", caution: "warn", attention: "warn",
+  info: "note", notice: "note", ok: "note"};
+let nList = null, nOpen = false, nAll = false, nSig = "", nCopyT = null;
+
+const nSev = v => {
+  const s = String(v || "").toLowerCase();
+  return N_SEV[s] !== undefined ? s : (N_SEV_ALIAS[s] || "note");
+};
+/* 닫아 둔 것 — **알림 하나에 그때의 지문 하나**를 적는다(`{알림id: {s:지문, t:시각}}`).
+   지문은 그 알림을 참으로 만든 사실에서 서버가 짓는다: 지문이 달라지면 조건이
+   바뀐 것이므로 그 알림은 **다시 나타난다**. 「다시는 안 보기」가 아니라 「지금
+   이 사실에 한해 접어 두기」다.
+   앞서 `s9oldcode_ack`(기동 시각)과 `s9guard_ack`(사건 시각)이 같은 일을 따로따로
+   하고 있었다 — 새 장치가 아니라 이름과 자리를 하나로 모은 것이다. */
+function nAckMap(){
+  try{ const m = JSON.parse(localStorage.getItem(N_ACK) || "{}");
+       return (m && typeof m === "object") ? m : {}; }catch(e){ return {}; }
+}
+const nKey = it => String((it && (it.id || it.sig)) || "");
+const nAcked = (m, it) => {
+  const e = m[nKey(it)];
+  return !!(e && it.sig && e.s === it.sig);
+};
+/* 적어 둔 것이 **무한히 쌓이지 않는다** — 조건이 바뀌면 옛 지문은 두 번 다시
+   쓰이지 않는데, 지우는 자리가 없으면 저장소만 는다. */
+function nAckSave(m){
+  const cut = Date.now() - N_ACK_TTL;
+  let ent = Object.entries(m).filter(([, e]) => e && Number(e.t) > cut);
+  ent.sort((a, b) => b[1].t - a[1].t);
+  ent = ent.slice(0, N_ACK_MAX);
+  try{ localStorage.setItem(N_ACK, JSON.stringify(Object.fromEntries(ent))); }catch(e){}
+}
+const nParked = () => Object.keys(nAckMap()).length;
+
+/* 이 사실이 알림 줄에 이미 서 있는가 — 옛 자리(감시자 띠·진행 칩)가 같은 것을
+   두 번 말하지 않게 하는 물음이다. 서버가 알림을 주지 않는 옛 판에서는 언제나
+   거짓이라, 옛 자리가 그대로 제 일을 한다. */
+const noticeHas = pre =>
+  Array.isArray(nList) && nList.some(it => String((it || {}).id || "").startsWith(pre));
+
+async function checkNotices(){
+  let d = await loadSupply("notices", async () => {
+    const r = await s9Fetch("/api/notices", {cache: "no-store"});
+    return r.ok ? await r.json() : null;
+  }, {prio: 1, tries: 1, quiet: true, fresh: N_FRESH});
+  const fake = nDemo();
+  if (fake) d = {notices: fake};
+  // 못 받은 것을 「알림 없음」으로 읽지 않는다 — 옛 판정을 두고 다음 기회를 기다린다.
+  if (!d || !Array.isArray(d.notices)) return;
+  nList = d.notices;
+  renderNotices();
+  renderGuard();    // 같은 사실을 줄과 띠가 함께 말하지 않게
   renderSvChip();
-  if (folded){
-    // 접으면 줄이 사라진다 — 사실은 브랜드 행의 서버 상태 칩으로 내려간다
-    // (REQ-20260827-017). 줄을 남긴 채 글자만 줄이면 접기 버튼이 거짓말이 된다.
-    el.hidden = true; el.innerHTML = "";
+}
+
+/* 순서 — 세 기준을 차례로. ① 심각도 ② 여는 길이 있는 것(할 일이 있는 것이 위)
+   ③ 오래 서 있던 것(새것이 위로 오면 보던 줄이 매번 밀린다). */
+function nSorted(list){
+  return list.map((it, i) => [it, i]).sort((a, b) => {
+    const s = N_SEV[nSev(a[0].sev)] - N_SEV[nSev(b[0].sev)];
+    if (s) return s;
+    const g = (b[0].go ? 1 : 0) - (a[0].go ? 1 : 0);
+    if (g) return g;
+    const ta = Date.parse(a[0].since || "") || 0, tb = Date.parse(b[0].since || "") || 0;
+    if (ta !== tb) return ta - tb;
+    return a[1] - b[1];
+  }).map(x => x[0]);
+}
+/* 언제부터 — 오늘 시작한 것은 시각, 어제 이전은 「N일째」. 「새로 난 것인가 오래
+   서 있던 것인가」만 답하면 되는 자리라 시계는 하나(fmtWhen)를 그대로 쓴다. */
+function nWhen(iso){
+  const w = fmtWhen(iso);
+  if (!w) return "";
+  if (w.startsWith("오늘 ")) return w.slice(3);
+  const t = Date.parse(iso);
+  if (isNaN(t)) return w;
+  const n = Math.round((new Date().setHours(0,0,0,0) - new Date(t).setHours(0,0,0,0)) / 86400000);
+  return n > 0 ? (n + 1) + "일째" : w;
+}
+/* 여는 길은 **하나**다 — 화면 안이면 실제로 그 판을 여는 손잡이, 터미널이면
+   명령 버튼(누르면 복사). 갈 곳 없는 라벨은 손잡이로 세우지 않는다: 화면에
+   없는 손잡이를 적어 반려된 적이 있다(2026-09-07). */
+function nGoOf(go){
+  if (!go) return null;
+  if (typeof go === "string"){
+    const s = go.trim();
+    return /^(s9|git|gh|npm|python3?)\s/.test(s) ? {cmd: s} : null;
+  }
+  const cmd = String(go.cmd || go.command || "").trim();
+  const act = String(go.act || "").trim();   // 「무엇을 하러 가나」 — 손잡이의 귀띔
+  const label = String(go.label || go.text || "").trim();
+  if (cmd) return {cmd, label, act};
+  const target = String(go.target || go.to || go.tab || "").trim();
+  // 손잡이의 글자는 **어디로 가는가**다 — 화면에 실제로 있는 이름이라야 한다.
+  return (target && label) ? {target, label, act} : null;
+}
+const NGO_TABS = ["board","docs","graph","audit","stream","terminal","projects","settings"];
+const NGO_SETS = ["account","display","worker","users","repo","external","roster","about"];
+function nGoRun(target){
+  const parts = String(target || "").replace(/^#/, "").split(/[:/]/).filter(Boolean);
+  if (!parts.length) return;
+  if (parts[0] === "guardlog"){ gwOpen = true; renderGuard(); return; }
+  let tabName = "", sec = "";
+  if (NGO_TABS.includes(parts[0])){ tabName = parts[0]; sec = parts[1] || ""; }
+  else if (NGO_SETS.includes(parts[0])){ tabName = "settings"; sec = parts[0]; }
+  if (!tabName) return;
+  if (tabName === "settings" && NGO_SETS.includes(sec)) settingsSection = sec;
+  const b = document.querySelector('header [data-tab="' + tabName + '"]');
+  if (b) b.click();
+}
+
+function renderNotices(){
+  const el = $("#notices");
+  if (!el) return;
+  const ack = nAckMap();
+  const live = nSorted((nList || []).filter(it => it && it.say)
+    .filter(it => !(nAcked(ack, it) && nSev(it.sev) !== "halt")));
+  // 말할 것이 없으면 흔적을 남기지 않는다 — 빈 띠는 곧 배경이 되어 진짜 사고 때 안 읽힌다.
+  if (!live.length){
+    if (nSig !== "off"){ nSig = "off"; nOpen = false; nAll = false; el.innerHTML = ""; }
     return;
   }
-  el.hidden = false;
-  const at = String(d.started || "").slice(11, 16);
-  // 바뀐 파일은 서버가 알려준 것을 그대로 말한다 (REQ-20260828-025). 예전엔
-  // `bin/s9` 로 못 박혀 있었는데, 지문이 채팅 판정자(bin/s9-audit-prompt)까지
-  // 보게 된 지금 그 문구는 훅만 바뀐 경우에 거짓말이 된다.
-  const chg = Array.isArray(d.changed) && d.changed.length ? d.changed : ["bin/s9"];
-  el.innerHTML = `<span class="oc-t"><span class="oc-mark">${mk("warn")}</span>`
-    + ` 서버가 옛 코드로 실행 중입니다</span>`
-    + `<span class="oc-d">${at ? esc(at) + " 시작 이후 " : ""}`
-    + `${chg.map(f => `<code>${esc(f)}</code>`).join(" · ")} 가 바뀌었습니다`
-    + ` — 서버 쪽 변경은 재시작해야 동작합니다.</span>`
-    + `<span class="oc-act">`
-    +   `<span class="oc-note">재시작은 진행 중 요청·실시간 연결을 끊습니다</span>`
-    +   `<button class="oc-cmd" id="oc-cmd" title="클릭하면 복사됩니다 — 터미널에 붙여넣어 실행하세요">`
-    +     `s9 serve --restart</button>`
-    +   `<span class="oc-copied" id="oc-copied" role="status"></span>`
-    +   `<button class="oc-fold" id="oc-fold" title="이 서버가 재시작될 때까지 한 줄로 접어 둡니다">접기</button>`
-    + `</span>`;
-  $("#oc-cmd").addEventListener("click", ocCopyCmd);
-  $("#oc-fold").addEventListener("click", () => {
-    ocSetAck((ocInfo || {}).started || "1");
-    renderOldCode();
-  });
+  const parked = nParked();
+  const cap = nAll ? live.length : N_ROWS;
+  const shown = nOpen ? live.slice(0, cap) : live.slice(0, 1);
+  const sig = [live.length, nOpen, nAll, parked,
+    shown.map(it => nSev(it.sev) + (it.sig || it.say)).join("|")].join("#");
+  if (sig === nSig) return;   // 같은 내용 재작성 금지 (화면 낭독이 되풀이된다)
+  nSig = sig;
+  const rows = shown.map((it, i) => {
+    const sev = nSev(it.sev), go = nGoOf(it.go);
+    /* 주체는 제 칸에 서 있으므로 문장이 그 이름으로 시작하면 한 번만 적는다 —
+       서버는 제목을 「{서비스} token 만료 임박」처럼 짓는데, 그대로 이어 붙이면
+       주체 이름이 두 번 적힌다. 자르는 것은 **이름 그대로일 때만**이다. */
+    const src = String(it.source || "");
+    let say = String(it.say || "");
+    if (src && say.startsWith(src + " ")) say = say.slice(src.length + 1);
+    // 막힘은 닫히지 않는다 — 일이 막힌 이유를 감출 수 없다. 빈 칸은 같은 크기로 둔다.
+    const canX = sev !== "halt" && it.dismissible !== false && !!it.sig;
+    const act = go
+      ? (go.cmd
+        ? `<button class="n-cmd" data-ncmd="${i}"`
+          + ` title="누르면 복사됩니다 — 터미널에 붙여넣어 실행하세요">${esc(go.cmd)}</button>`
+          + `<span class="n-copied" data-ncp="${i}" role="status"></span>`
+        : `<button class="n-go" data-ngo="${i}"`
+          + (go.act ? ` title="${esc(go.act)}"` : "") + `>${esc(go.label)}</button>`)
+      : "";
+    const when = nWhen(it.since);
+    return `<div class="nrow ${sev}">`
+      + `<span class="mk mk-${sev} n-mark" aria-hidden="true"></span>`
+      + `<span class="n-txt">`
+      +   (src ? `<span class="n-src">${esc(src)}</span>` : "")
+      +   `<span class="n-say">${esc(say)}</span>`
+      +   (it.note ? `<span class="n-note">${esc(it.note)}</span>` : "")
+      +   `</span>`
+      + `<span class="n-act">${act}`
+      +   (when ? `<span class="n-when">${esc(when)}</span>` : "")
+      +   (canX
+          ? `<button class="n-x" data-nx="${i}" title="조건이 바뀔 때까지 접어 둡니다"`
+            + ` aria-label="이 알림 닫기">×</button>`
+          : `<span class="n-xgap" aria-hidden="true"></span>`)
+      + `</span></div>`;
+  }).join("");
+  const more = [];
+  if (!nOpen && live.length > 1)
+    more.push(`<button class="n-more" id="n-more">`
+      + `<span class="mk mk-fold" aria-hidden="true"></span> ${live.length - 1}건 더 보기</button>`);
+  if (nOpen){
+    if (live.length > cap)
+      more.push(`<button class="n-more" id="n-all">+ ${live.length - cap}개 더 보기</button>`);
+    more.push(`<button class="n-more" id="n-fold">`
+      + `<span class="mk mk-unfold" aria-hidden="true"></span> 접기</button>`);
+  }
+  // 닫아 둔 것은 살아 있는 알림이 하나라도 있을 때만 센다 — 되돌리는 자리는
+  // Settings › 디스플레이 한 줄이다(전부 닫혔으면 줄째 사라지므로 여기엔 못 둔다).
+  if (parked) more.push(`<span class="n-parked">닫은 알림 ${parked}건</span>`);
+  el.innerHTML = rows + (more.length ? `<div class="n-foot">${more.join("")}</div>` : "");
+  el.querySelectorAll("[data-ngo]").forEach(b =>
+    b.addEventListener("click", () => nGoRun((nGoOf(shown[+b.dataset.ngo].go) || {}).target)));
+  el.querySelectorAll("[data-ncmd]").forEach(b =>
+    b.addEventListener("click", () => nCopy(b, +b.dataset.ncmd)));
+  el.querySelectorAll("[data-nx]").forEach(b =>
+    b.addEventListener("click", () => {
+      const it = shown[+b.dataset.nx];
+      const m = nAckMap(); m[nKey(it)] = {s: it.sig, t: Date.now()}; nAckSave(m);
+      nSig = ""; renderNotices();
+    }));
+  const wire = (id, fn) => { const b = $("#" + id); if (b) b.addEventListener("click", fn); };
+  wire("n-more", () => { nOpen = true; renderNotices(); });
+  wire("n-all",  () => { nAll = true;  renderNotices(); });
+  wire("n-fold", () => { nOpen = false; nAll = false; renderNotices(); });
 }
 
 // 명령은 대신 실행하지 않는다 — 복사까지가 화면의 몫이다.
-async function ocCopyCmd(){
-  const cmd = "s9 serve --restart", out = $("#oc-copied");
+async function nCopy(btn, i){
+  const cmd = btn.textContent.trim();
+  const out = btn.parentNode.querySelector(`[data-ncp="${i}"]`);
   let ok = false;
   try{ await navigator.clipboard.writeText(cmd); ok = true; }catch(e){}
-  if (!ok){        // 클립보드 API가 막힌 브라우저 — 선택 상태로라도 넘겨준다
+  if (!ok){        // 클립보드 API 가 막힌 브라우저 — 선택 상태로라도 넘겨준다
     try{
       const ta = document.createElement("textarea");
       ta.value = cmd; ta.style.cssText = "position:fixed;opacity:0";
@@ -202,8 +328,45 @@ async function ocCopyCmd(){
   if (!out) return;
   out.textContent = ok ? "복사됨" : "복사 실패";
   out.style.color = ok ? "" : "var(--c-blocked)";
-  clearTimeout(ocCopyT);
-  ocCopyT = setTimeout(() => { out.textContent = ""; out.style.color = ""; }, 2000);
+  clearTimeout(nCopyT);
+  nCopyT = setTimeout(() => { out.textContent = ""; out.style.color = ""; }, 2000);
+}
+
+/* 닫아 둔 알림을 되돌린다 — Settings › 디스플레이의 한 줄이 부른다. */
+function noticeUnpark(){
+  try{ localStorage.removeItem(N_ACK); }catch(e){}
+  nSig = ""; renderNotices();
+}
+
+/* ?notices=<건수>[&nopen=1] — 손 없이 이 줄을 세운다 (?oldcode·?guard·?job 의
+   선례). 알림은 사고가 난 그 몇 분에만 존재해 파라미터 없이는 열 스킨 × 두 tone ×
+   좁은 폭을 찍을 수가 없다. 문장은 translator 의 최종 표(REQ-20260915-001-62x6
+   10:06) 글자 그대로이고, 주체·여는 길은 **값**이라 서버가 주는 자리를 흉내만 낸다. */
+function nDemo(){
+  const m = /[?&]notices=(\d+)/.exec(location.search);
+  if (!m) return null;
+  const n = Math.max(0, Math.min(3, +m[1]));
+  if (/[?&]nopen=1/.test(location.search)) nOpen = true;
+  const iso = (h, mi, dayBack) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (dayBack || 0));
+    d.setHours(h, mi, 0, 0);
+    return d.toISOString();
+  };
+  const all = [
+    {id: "jira:block", sev: "halt", source: "Jira", sig: "d1", since: iso(9, 5, 2),
+     say: "112건이 사흘째 못 갔습니다 — 빠진 것은 API token 입니다.",
+     go: {label: "외부 서비스 › Jira 열기", target: "settings:external:jira",
+          act: "준비물 채우기"}},
+    {id: "serve:oldcode", sev: "warn", source: "서버", sig: "d2", since: iso(9, 12, 0),
+     say: "09:12에 시작한 뒤 프로그램이 바뀌었습니다.",
+     note: "재시작은 진행 중 요청과 실시간 연결을 끊습니다",
+     go: {cmd: "s9 serve --restart"}},
+    {id: "supply:usage", sev: "note", source: "사용량", sig: "d3", since: iso(9, 40, 0),
+     say: "사용량 못 받음 — 지금은 남은 한도를 알 수 없습니다.",
+     note: "60초마다 다시 물어봅니다"},
+  ];
+  return all.slice(0, n);
 }
 
 /* ── 서버 자동 복구 (REQ-20260826-018-62x6) ────────────────────────────────
@@ -294,7 +457,8 @@ function renderGuard(){
      그래서 성공은 브랜드 행의 상태 칩 한 자리로 말하고, "왜 죽었나"의 답은 기록
      패널이 한다. 그 사이의 한 줄 요약은 칩과 기록 둘 다와 겹치는 잉여였다.
      접어 둔 경고도 줄을 비운다 — 줄이 남으면 접기 버튼이 거짓말이 된다. */
-  const line = st === "attention" && gwAck() !== ev.ts;
+  // 같은 사실을 줄과 띠가 함께 말하지 않는다 — 알림 줄이 있으면 그쪽이 맡는다.
+  const line = st === "attention" && gwAck() !== ev.ts && !noticeHas("guard:");
   const sig = [st, ev.ts, line, gwOpen, gwAll, [...gwOut].join()].join("|");
   if (sig === gwSig) return;   // 같은 내용 재작성 금지 (aria-live 재낭독·복사 피드백 소실)
   gwSig = sig;
@@ -519,20 +683,17 @@ function renderSvChip(){
       label: job.label, title: job.title,
       act: () => document.querySelector('header [data-tab="terminal"]')?.click()});
   const oc = ocInfo;
-  if (oc && oc.stale && ocAck() === oc.started)
-    items.push({tone: "sv-warn", mark: mk("warn"), label: "서버 재시작 필요",
-      title: "실행 중인 서버가 시작 당시 코드로 동작하고 있습니다 — 눌러서 자세히",
-      act: () => { ocSetAck(null); renderOldCode(); }});
-  /* sync 되풀이 실패 (REQ-20260907-005) — 같은 사유로 N회 연속 실패해 로컬 commit 이
-     push 되지 않은 사실. 서버가 임계를 넘긴 뒤 성공할 때까지만 싣고, 칩은 그 사실을
-     그대로 옮긴다(횟수는 라벨, 사유·다음 행동은 툴팁). 누르면 Terminal 로 간다. */
+  /* 동기화가 되풀이 실패한 사실 (REQ-20260907-005) — 같은 사유로 N회 연속 실패해
+     로컬 commit 이 push 되지 않은 사실. 서버가 임계를 넘긴 뒤 성공할 때까지만 싣고,
+     칩은 그 사실을 그대로 옮긴다(횟수는 라벨, 사유·다음 행동은 툴팁). 누르면
+     Terminal 로 간다. 알림 줄이 같은 사실을 실어 오면 그쪽이 맡는다. */
   const sa = oc && oc.sync_alert;
-  if (sa && sa.text)
-    items.push({tone: "sv-bad", mark: mk("warn"), label: sa.label || "sync 실패",
+  if (sa && sa.text && !noticeHas("sync:"))
+    items.push({tone: "sv-bad", mark: mk("warn"), label: sa.label || "동기화 멈춤",
       title: sa.text, seq: sa.since || "",
       act: () => document.querySelector('header [data-tab="terminal"]')?.click()});
   const d = gwInfo, st = gwState(d);
-  if (st === "attention" && gwAck() === d.last_death.ts)
+  if (st === "attention" && gwAck() === d.last_death.ts && !noticeHas("guard:"))
     items.push({tone: "sv-bad", mark: mk("warn"), label: "자동 복구 멈춤",
       title: "지금 서버가 종료되면 자동으로 다시 시작되지 않습니다 — 눌러서 자세히",
       act: () => { gwSetAck(null); renderGuard(); }});

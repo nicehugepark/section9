@@ -302,7 +302,7 @@ class EventsScreen(unittest.TestCase):
     STUBS = """
       const n = {catalog:0, code:0, guard:0, agents:0, doc:0, usage:0};
       globalThis.refreshCatalog = () => n.catalog++;
-      globalThis.checkOldCode = () => n.code++;
+      globalThis.checkServeInfo = () => n.code++;
       globalThis.checkGuard = () => n.guard++;
       globalThis.refreshUsage = () => n.usage++;
       globalThis.loadDoc = () => n.doc++;

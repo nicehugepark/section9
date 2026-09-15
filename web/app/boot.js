@@ -290,8 +290,13 @@ async function boot(){
      에이전트 목록 10초)을 **알림 채널 하나**로 바꾼다 (REQ-20260909-088).
      서버가 바뀐 것을 말해 주면 그때 그 자료만 받고, 남는 주기 폴은 채널이
      놓친 것을 메우는 60초 하나다. 채널 자체는 events_ch.js 에 있다. */
-  checkOldCode();
-  window.addEventListener("focus", checkOldCode);
+  checkServeInfo();
+  window.addEventListener("focus", checkServeInfo);
+  /* 알림 줄 (REQ-20260915-001-62x6) — 「지금 참인 사실 중 사람이 알아야 할 것」은
+     서버가 /api/notices 한 자리로 싣는다. 판이 선 뒤에 줄을 서고, 창으로 돌아온
+     손에도 다시 묻는다 — 자리를 비운 사이에 막힌 것이 있을 수 있다. */
+  checkNotices();
+  window.addEventListener("focus", checkNotices);
   // 자동 복구 기록 (REQ-20260826-018). focus 확인이 특히 중요하다 — 서버가 죽어
   // 있는 동안 폴은 실패하고, 사람이 화면으로 돌아오는 순간이 대개 복구 직후다.
   checkGuard();

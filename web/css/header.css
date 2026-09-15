@@ -65,40 +65,16 @@ header{background:var(--bg);border-bottom:1px solid var(--border);
 .who b{color:var(--text);font-weight:600}
 .who.warn{color:var(--c-blocked);white-space:normal}
 .who.warn code{font-family:var(--mono);border:1px solid var(--hairline);padding:0 3px}
-/* 준비물로 막힌 Jira 발신함 — 이름 옆 글자 색으로만 (REQ-20260914-013-62x6) */
-.who .jblock{color:var(--c-blocked);white-space:normal;margin-left:6px}
 .who .as{color:var(--c-review)}
 
-/* ── 서버 코드 낡음 알림 (REQ-20260826-011-62x6) ─────────────────────────────
-   구동 중인 serve 는 기동 시점의 bin/s9 를 물고 있고, 화면(web/index.html)은
-   디스크에서 매번 읽힌다 — 그래서 "UI 는 바뀌었는데 동작만 안 된다"가 된다.
-   낡았을 때만 나타나는 헤더 3행이다: stale=false 면 자리표시자도 남기지 않는다
-   (항상 보이는 경고는 정작 진짜일 때 안 읽힌다).
-   터미널 뷰의 "stale" 은 **세션 무응답**이라는 다른 사실이라, 여기서는 문구도
-   식별자도 oldcode 로 분리했다.
+/* ── 머리 3행 — 서버 자신에 대한 사실의 줄 ─────────────────────────────────
+   「서버가 옛 코드로 실행 중」 띠가 여기 살았는데, 그 사실은 알림 줄(notice.css)로
+   옮겼다 (REQ-20260915-001-62x6) — 외부 서비스·미등록 계정·동기화까지 흩어져 있던
+   것을 한 자리에 모으면서다. 이 상자는 감시자 알림(#guard)이 그대로 쓴다.
    색면·세로 띠 없이 마크(▲)와 글자색만으로 신호를 준다. */
 .hrow3{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 11px;
   padding:7px 22px;border-top:1px solid var(--hairline)}
 .hrow3[hidden]{display:none}
-.oc-mark{color:var(--c-inprogress);font-size:11px;line-height:1}
-.oc-t{font-size:12.5px;font-weight:600;color:var(--c-inprogress);letter-spacing:-.01em}
-.oc-d{font-size:12px;color:var(--muted)}
-.oc-d code{font-family:var(--mono);font-size:11px;color:var(--text)}
-.oc-act{margin-left:auto;display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
-.oc-cmd{font-family:var(--mono);font-size:11px;letter-spacing:.02em;
-  border:1px solid var(--border);background:var(--panel);color:var(--text);
-  padding:4px 9px;cursor:pointer}
-.oc-cmd:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
-.oc-cmd:hover::before{color:var(--bg)}
-/* 복사 피드백은 자리를 미리 잡아 둔다 — 글자가 늘며 줄이 밀리면 그 자체가 결함 */
-.oc-copied{display:inline-block;min-width:3.6em;font-family:var(--mono);font-size:10px;
-  letter-spacing:.04em;color:var(--c-done)}
-.oc-note{font-size:12px;color:var(--muted)}
-.oc-fold{border:0;background:none;cursor:pointer;font-family:var(--mono);
-  font-size:11px;letter-spacing:.04em;color:var(--muted);padding:3px 2px}
-.oc-fold:hover{color:var(--text);text-decoration:underline}
-.oc-cmd:focus-visible,.oc-fold:focus-visible{
-  outline:2px solid var(--text);outline-offset:1px}
 
 /* ── 서버 자동 복구 기록 (REQ-20260826-018-62x6) ───────────────────────────
    감시자는 죽은 서버를 되살릴 때마다 사유·직전 출력·연속 실패 횟수·되살리기까지의

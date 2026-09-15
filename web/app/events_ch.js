@@ -74,7 +74,8 @@ function evPull(key){
   if (key === "catalog"){
     if (typeof refreshCatalog === "function") refreshCatalog(true);
   }else if (key === "code"){
-    if (typeof checkOldCode === "function") checkOldCode();
+    if (typeof checkServeInfo === "function") checkServeInfo();
+    if (typeof checkNotices === "function") checkNotices();
   }else if (key === "guard"){
     if (typeof checkGuard === "function") checkGuard();
   }else if (key === "agents"){

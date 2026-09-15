@@ -97,6 +97,7 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
 <template id="s9-parts-css">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/header.css">
+<link rel="stylesheet" href="css/notice.css">
 <link rel="stylesheet" href="css/board.css">
 <link rel="stylesheet" href="css/docs.css">
 <link rel="stylesheet" href="css/project.css">
@@ -186,8 +187,9 @@ window.__S9_RETRY = {pending: 0, lost: [], on: true};
       <span id="whoami" class="who" title="이 화면은 계정을 따로 묻지 않습니다 — 이 컴퓨터에서만 열리는 화면이라, 서버를 띄운 계정을 그대로 씁니다. 다른 이름으로 보려면 터미널에서 s9 user attach 를 실행하세요"></span>
     </div>
   </div>
-  <!-- 서버 코드 낡음 알림 — 낡았을 때만 채워진다 (renderOldCode). 기본은 hidden. -->
-  <div class="hrow3" id="oldcode" role="status" aria-live="polite" hidden></div>
+  <!-- 알림 줄 — 「지금 참인 사실 중 사람이 알아야 할 것」이 전부 여기 선다.
+       서버가 /api/notices 로 주고 화면은 그리기만 한다 (web/app/notice.js). -->
+  <div class="nrail" id="notices" role="status" aria-live="polite"></div>
   <!-- 서버 자동 복구 알림 — 사건이 있었을 때만 채워진다 (renderGuard). 기본은 hidden.
        코드 낡음 알림 아래에 둔다: 그쪽은 지금 이 순간 잘못 돌고 있다는 사실이라
        사람의 손을 먼저 요구하고, 이쪽은 이미 지나간 일(또는 다음에 벌어질 일)이다. -->

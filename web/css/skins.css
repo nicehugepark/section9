@@ -23,8 +23,9 @@
 [data-skin="soft"] .hrow3{order:1;flex-direction:column;align-items:flex-start;
   gap:7px;padding:12px 14px}
 [data-skin="soft"] .hrow2{order:2}
-[data-skin="soft"] .oc-act{margin-left:0}
-[data-skin="soft"] .oc-copied{min-width:0}
+/* 알림 줄도 탭 바로 아래다 — 칠하는 자리는 notice.css 한 곳이라 여기서는 순서만
+   말한다(사이드바 폭에 맞춘 2열 접기도 그 파일에 있다). */
+[data-skin="soft"] .nrail{order:1}
 [data-skin="soft"] .pdiv{display:none}
 [data-skin="soft"] .pgroup{flex-direction:row;justify-content:space-between}
 [data-skin="soft"] .settings-panel{top:auto;bottom:14px;left:14px;right:auto;width:204px}
@@ -230,6 +231,7 @@
 [data-skin="glass"] .tabs button:hover{background:color-mix(in srgb, var(--text) 6%, transparent)}
 [data-skin="glass"] .tabs button.active{background:var(--gl-tint);color:var(--text)}
 [data-skin="glass"] .hrow2,[data-skin="glass"] .hrow3{border-top-color:var(--gl-hairline)}
+[data-skin="glass"] .nrail{border-top-color:var(--gl-hairline);--n-rule:var(--gl-hairline)}
 /* 패널 = 떠 있는 유리판: 반투명 + blur + 라운드 + 부드러운 그림자 */
 [data-skin="glass"] .stats,[data-skin="glass"] .board,[data-skin="glass"] .docs,
 [data-skin="glass"] .audit,[data-skin="glass"] .graphwrap,[data-skin="glass"] .depsum,[data-skin="glass"] .streamwrap,
@@ -339,6 +341,8 @@
 /* 알림 줄도 hrow2와 같은 백색 판 위에 둔다 — 고채도 필드 위 앰버는 대비가 무너진다 */
 [data-skin="field"] .hrow3{background:var(--panel);border-top:1px solid var(--fd-line);
   border-bottom:1px solid var(--fd-line)}
+[data-skin="field"] .nrail{background:var(--panel);border-top:1px solid var(--fd-line);
+  border-bottom:1px solid var(--fd-line);--n-rule:var(--fd-hair)}
 [data-skin="field"] .chk{color:var(--muted)}
 [data-skin="field"] .pdiv{background:var(--fd-line)}
 [data-skin="field"] .stats,[data-skin="field"] .docs,[data-skin="field"] .audit,
@@ -392,17 +396,16 @@
 [data-skin="cobalt"] .hrow2 .pbadge,[data-skin="cobalt"] .hrow2 .reqhint{color:#ffd27a}
 [data-skin="cobalt"] .hrow3{background:var(--cb-band2);border-top:1px solid var(--cb-edge);
   padding:7px 24px}
-[data-skin="cobalt"] .oc-mark,[data-skin="cobalt"] .oc-t{color:#ffd27a}
-[data-skin="cobalt"] .oc-d,[data-skin="cobalt"] .oc-note{color:var(--cb-ink-dim)}
-[data-skin="cobalt"] .oc-d code{color:var(--cb-ink)}
-[data-skin="cobalt"] .oc-cmd{background:transparent;border-color:var(--cb-edge);
-  color:var(--cb-ink);border-radius:7px}
-[data-skin="cobalt"] .oc-cmd::before{color:var(--cb-ink-dim)}
-[data-skin="cobalt"] .oc-cmd:hover{background:var(--cb-ink);color:var(--cb-band)}
-[data-skin="cobalt"] .oc-cmd:hover::before{color:var(--cb-band)}
-[data-skin="cobalt"] .oc-copied{color:#a7f3d0}
-[data-skin="cobalt"] .oc-fold,[data-skin="cobalt"] .oc-open{color:var(--cb-ink-dim)}
-[data-skin="cobalt"] .oc-fold:hover,[data-skin="cobalt"] .oc-open:hover{color:var(--cb-ink)}
+/* 알림 줄 — 앞서 이 자리에는 부품(.oc-*)을 다시 칠하는 열한 줄이 있었다. 부품은
+   notice.css 한 곳에서만 칠하고 스킨은 **토큰만** 갈아 끼운다: 짙은 남색 띠 위라
+   잉크를 밝기 보정본으로 바꾸면 그것으로 끝이다. 모서리 둥글기도 토큰이다.
+   회귀: tests/test_notice_rail.py (이 파일에 `.n-` 선택자가 없어야 한다). */
+[data-skin="cobalt"] .nrail{background:var(--cb-band2);
+  border-top:1px solid var(--cb-edge);padding:0 24px;
+  --n-ink:var(--cb-ink);--n-dim:var(--cb-ink-dim);--n-rule:var(--cb-edge);
+  --n-edge:var(--cb-edge);--n-face:transparent;--n-face-ink:var(--cb-band);
+  --n-round:7px;
+  --n-ink-halt:#ffb4b0;--n-ink-warn:#ffd27a;--n-ink-note:var(--cb-ink-dim)}
 [data-skin="cobalt"] .pdiv{background:var(--cb-edge)}
 [data-skin="cobalt"] .gear{background:transparent;border-color:var(--cb-edge);
   color:var(--cb-ink);border-radius:7px}
@@ -440,6 +443,7 @@
 [data-skin="grid"] .tabs button{padding:3px 11px 9px}
 [data-skin="grid"] .hrow2{padding:6px 14px}
 [data-skin="grid"] .hrow3{padding:5px 14px}
+[data-skin="grid"] .nrail{padding:0 14px}
 [data-skin="grid"] .stats,[data-skin="grid"] .board,[data-skin="grid"] .docs,
 [data-skin="grid"] .audit,[data-skin="grid"] .graphwrap,[data-skin="grid"] .depsum,[data-skin="grid"] .streamwrap{
   border-left:0;border-right:0;border-top:0}
@@ -612,6 +616,7 @@
 [data-skin="cork"] .tabs button.active{background:var(--panel);color:var(--text);
   box-shadow:var(--ck-shadow)}
 [data-skin="cork"] .hrow2,[data-skin="cork"] .hrow3{border-top-color:var(--ck-line)}
+[data-skin="cork"] .nrail{border-top-color:var(--ck-line);--n-rule:var(--ck-line)}
 [data-skin="cork"] .hrow2 input[type="text"],[data-skin="cork"] .hrow2 select{
   border-radius:6px;border-color:var(--ck-line)}
 [data-skin="cork"] .gear,[data-skin="cork"] .gmode,[data-skin="cork"] .acts button,

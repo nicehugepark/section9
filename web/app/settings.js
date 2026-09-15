@@ -107,9 +107,18 @@ function renderSettingsSection(meAdmin){
         ${d.opts.map(([val,txt]) => `<option value="${esc(val)}"${val===cur[d.attr]?" selected":""}>${esc(txt)}</option>`).join("")}
       </select></td></tr>`).join("");
     v.innerHTML = `<h1 style="margin:0 0 4px">디스플레이</h1>
-      <div class="path">${me ? `@${me} 계정에 저장 — 다른 기기에서도 적용됩니다.` : "미등록 계정 — s9 user add 로 등록하면 계정에 저장되어 기기 간 동기화됩니다. 지금은 이 브라우저에만 저장."}</div>
+      <div class="path">${me ? `@${me} 계정에 저장 — 다른 컴퓨터에서도 적용됩니다.` : "미등록 계정 — s9 user add 로 등록하면 계정에 저장되어 컴퓨터 간에 동기화됩니다. 지금은 이 브라우저에만 저장."}</div>
       <table class="metatbl">${rows}</table>
-      <div class="path">skin은 모양과 배치, tone은 색, density는 여백을 바꿉니다. 셋은 마음대로 섞어 쓸 수 있고, 고르면 바로 화면에 적용됩니다.</div>`;
+      <div class="path">skin은 모양과 배치, tone은 색, density는 여백을 바꿉니다. 셋은 마음대로 섞어 쓸 수 있고, 고르면 바로 화면에 적용됩니다.</div>
+      ${nParked() ? `<div class="path">닫은 알림 ${nParked()}건 —
+        <button class="gefix" type="button" id="n-unpark">닫은 알림 다시 보기</button></div>` : ""}`;
+    /* 닫아 둔 알림을 되돌리는 자리 (REQ-20260915-001-62x6). 알림 줄 안에는 둘
+       수 없다 — 전부 닫히면 그 줄이 통째로 사라지기 때문이다(빈 띠 금지).
+       닫은 것이 없으면 이 줄도 없다. */
+    const unpark = $("#n-unpark");
+    if (unpark) unpark.addEventListener("click", () => {
+      noticeUnpark(); renderSettingsSection(meAdmin);
+    });
     // 각 select에 change 바인딩 — render() 없이 값만 적용(재렌더로 select 파괴되던 버그 수정).
     // skin/density는 다른 탭 레이아웃에 영향 → Settings에 머무는 동안엔 즉시 CSS 반영으로 충분.
     v.querySelectorAll("select[data-dim]").forEach(sel => {

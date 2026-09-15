@@ -39,7 +39,7 @@
    둘이 된다. `::before` 로 서는 것은 원래 `content:"▸ "` 처럼 글자 뒤에 공백을
    달고 있었다: 공백은 폰트가 정하는 폭이라 스킨마다 어긋난다. 틈은 여백으로 준다. */
 .mk,
-.oc-cmd::before,.gw-cmd::before,
+.n-cmd::before,.gw-cmd::before,
 .gate-h summary::before,.reqstream summary::before,.audit .cap summary::before,
 .term details summary::before,
 .artmeta > summary::after{
@@ -55,7 +55,7 @@
   -webkit-mask-position:center;mask-position:center;
   -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
 /* 글자 앞에 설 때의 틈 — 카드·칩의 작은 눈금(4px)과 같다 */
-.oc-cmd::before,.gw-cmd::before,
+.n-cmd::before,.gw-cmd::before,
 .gate-h summary::before,.reqstream summary::before,.audit .cap summary::before,
 .term details summary::before{margin-right:4px}
 /* 요약 **뒤**에 서는 자리 — 틈은 앞에 준다 */
@@ -102,6 +102,14 @@
      경계 중심 차가 배율 1 에서 0.50 → 0.00, 1.5 에서 0.67 → 0.33 이 된다.
      1.5 의 0.33 은 줄 자체가 반 화소에 앉아 생기는 나머지다(계약 폭 0.5px). */
   --mk-clock-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Ccircle cx='5.5' cy='5.5' r='3' fill='none' stroke='%23000' stroke-width='1'/%3E%3Cpath d='M5.5 5.5V3.5M4 1.5h3' fill='none' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E");
+  /* 막힘 — 채운 사각. livedot 의 「사각 = 멎은 것」을 그대로 빌려 왔다(새 어휘를
+     짓지 않는다). 네 모서리가 전부 정수라 어느 배율에서도 획이 반 화소에 안 걸린다.
+     잉크 25px², 상자 안 자리 x 3..8 · y 4..9 — 잉크 중심 (5.5, 6.5). */
+  --mk-halt-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Crect x='3' y='4' width='5' height='5' fill='%23000'/%3E%3C/svg%3E");
+  /* 정보 — 속 빈 원. livedot 의 「원 = 도는 것」과 같은 어휘다. 획 1px, 테의 바깥
+     3.0/10.0 · 안 4.0/9.0 이 전부 정수다(사전 규칙 ②). 잉크 19px², 중심 (5.5, 6.5) —
+     ■ ▲ 와 한 자리에 선다. 세 마크의 실루엣이 달라 색 없이도 갈린다. */
+  --mk-note-src:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'%3E%3Ccircle cx='5.5' cy='6.5' r='3' fill='none' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E");
 }
 
 /* 제 요소로 서는 자리 */
@@ -111,9 +119,11 @@
 .mk-fold{--mk:var(--mk-fold-src)}
 .mk-unfold{--mk:var(--mk-unfold-src)}
 .mk-clock{--mk:var(--mk-clock-src)}
+.mk-halt{--mk:var(--mk-halt-src)}
+.mk-note{--mk:var(--mk-note-src)}
 
 /* 글자 앞에 서는 자리 — 어느 마크가 어디에 서는가. 모양은 위, 자리는 여기. */
-.oc-cmd::before,.gw-cmd::before{--mk:var(--mk-copy-src);color:var(--faint)}
+.n-cmd::before,.gw-cmd::before{--mk:var(--mk-copy-src);color:var(--faint)}
 .gate-h summary::before,.reqstream summary::before,
 .audit .cap summary::before,.term details summary::before,
 .artmeta > summary::after{--mk:var(--mk-fold-src)}

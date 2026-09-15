@@ -106,14 +106,19 @@ class TerminalFit(unittest.TestCase):
         a = self.fit()
         self.assertLessEqual(a["scroll"], a["inner"] + 2, a)
         self.assertLessEqual(a["bottom"], a["inner"] + 2, a)
-        self.ws.eval("(function(){const el=document.getElementById('oldcode'); el.hidden=false;"
-                     " el.innerHTML='<b>시험용 띠 — 서버가 옛 코드로 실행 중입니다</b>'; return true;})()")
+        # 서버가 실제로 알림을 주면 줄은 이미 차 있다 — 바꿔치기가 아니라
+        # **한 줄을 더해야** 「띠가 섰다」가 언제나 참이 된다.
+        self.ws.eval("(function(){const el=document.getElementById('notices');"
+                     " el.insertAdjacentHTML('beforeend', '<div class=\"nrow note\" id=\"fit-probe\">'"
+                     " + '<span class=\"n-mark\"></span><span class=\"n-txt\">시험용 한 줄</span>'"
+                     " + '<span class=\"n-act\"></span></div>'); return true;})()")
         time.sleep(0.6)
         b = self.fit()
         self.assertGreater(b["top"], a["top"], "띠를 세웠는데 판의 윗변이 안 내려갔다")
         self.assertLessEqual(b["scroll"], b["inner"] + 2, b)
         self.assertLessEqual(b["bottom"], b["inner"] + 2, "띠가 서자 판이 창 밖으로 밀렸다: %r" % b)
-        self.ws.eval("(function(){const el=document.getElementById('oldcode'); el.hidden=true; el.innerHTML=''; return true;})()")
+        self.ws.eval("(function(){const p=document.getElementById('fit-probe');"
+                     " if(p) p.remove(); return true;})()")
         time.sleep(0.6)
         c = self.fit()
         self.assertLessEqual(c["bottom"], c["inner"] + 2, c)
@@ -153,10 +158,12 @@ class TerminalFit(unittest.TestCase):
     #     채로 남았다 (REQ-20260909-079).
     def test_f4_the_pane_refits_when_the_banner_comes_and_goes(self):
         self.skinfit("grid")
-        show = ("(function(){const el=document.getElementById('oldcode'); el.hidden=false;"
-                " el.innerHTML='<b>시험용 띠 — 서버가 옛 코드로 실행 중입니다</b>'; return true;})()")
-        hide = ("(function(){const el=document.getElementById('oldcode'); el.hidden=true;"
-                " el.innerHTML=''; return true;})()")
+        show = ("(function(){const el=document.getElementById('notices');"
+            " el.insertAdjacentHTML('beforeend', '<div class=\"nrow note\" id=\"fit-probe\">'"
+            " + '<span class=\"n-mark\"></span><span class=\"n-txt\">시험용 한 줄</span>'"
+            " + '<span class=\"n-act\"></span></div>'); return true;})()")
+        hide = ("(function(){const p=document.getElementById('fit-probe');"
+            " if(p) p.remove(); return true;})()")
         meas = ("(function(){const r=document.getElementById('cc-root').getBoundingClientRect();"
                 "return {bottom:Math.round(r.bottom), inner:window.innerHeight,"
                 " scroll:document.documentElement.scrollHeight};})()")

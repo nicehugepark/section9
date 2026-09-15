@@ -136,8 +136,12 @@ class BootSupply(unittest.TestCase):
         with self.subTest("b9_lost_is_said_in_places_that_already_exist"):
             chip = grab(self.src, "renderSvChip")
             self.assertIn("supplyLost", chip, "헤더가 못 받은 값을 말하지 않는다")
-            # 새 띠를 세우지 않았다 — 알림 줄은 여전히 둘(oldcode · guard)뿐이다
-            self.assertEqual(self.src.count('class="hrow3"'), 2,
+            # 새 띠를 세우지 않았다 — 머리의 알림 자리는 여전히 둘이다
+            # (알림 줄 .nrail · 감시자 띠 .hrow3. 2026-09-15 에 「서버가 옛
+            #  코드로 실행 중」 띠가 알림 줄로 합쳐지며 이름만 바뀌었다,
+            #  REQ-20260915-001-62x6)
+            self.assertEqual(self.src.count('class="hrow3"')
+                             + self.src.count('class="nrail"'), 2,
                              "알림 띠를 새로 만들었다")
         with self.subTest("b10_empty_board_is_not_a_lost_board"):
             self.assertIn('supplyState("catalog") !== "ok"', self.render,

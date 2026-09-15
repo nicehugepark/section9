@@ -1,0 +1,138 @@
+/* notice.css — 알림 줄 (REQ-20260915-001-62x6)
+
+   머리 아래 한 줄에 「지금 참인 사실 중 사람이 알아야 할 것」을 전부 모은다.
+   돌아가고 있는 것(테스트 N분째·세션 다시 시작 중)은 이 줄이 아니라 브랜드 행의
+   진행 칩(`#sv-chip`)이 맡는다 — 가르는 물음 하나: **잘못됐거나 채워야 하는가,
+   아니면 무언가 돌아가고 있는가.**
+
+   **규칙 하나: 스킨은 토큰만 갈아 끼운다.** 부품(`.n-*`)을 칠하는 자리는 이
+   파일 한 곳이다. 앞선 `.oc-*` 는 스킨마다 다시 칠해져 있었고(cobalt 만 11줄),
+   같은 길을 가면 10 스킨 × 부품 여덟이 또 생긴다. 토큰은 `.nrail` 에 선다 —
+   `:root` 에 두면 파일 순서가 이기고 지는 자리가 되지만, 여기 두면 스킨의
+   `[data-skin=…] .nrail` 이 특이도로 언제나 이긴다.
+   회귀: tests/test_notice_rail.py (skins.css 에 `.n-` 선택자가 없어야 한다). */
+
+/* 줄 자체 — 알림이 없으면 **아무 흔적도 남기지 않는다**. `:empty` 가 테두리까지
+   걷는다. 상시 자리 표시자는 곧 배경이 되어 진짜 사고 때 안 읽힌다. */
+.nrail{
+  --n-ink:var(--text);              /* 읽어야 하는 글자 */
+  --n-dim:var(--muted);             /* 보조 글자 — 여는 길·시각·세는 것 */
+  --n-rule:var(--hairline);         /* 줄과 줄 사이 */
+  --n-edge:var(--border);           /* 명령 버튼 테두리 */
+  --n-face:var(--panel);            /* 명령 버튼 바탕 */
+  --n-face-ink:var(--bg);           /* 명령 버튼에 손이 얹혔을 때의 글자 */
+  --n-ink-halt:var(--c-blocked);    /* 막힘 — 일이 실제로 멈춰 있다 */
+  --n-ink-warn:var(--c-inprogress); /* 주의 — 곧 막힌다 · 지금 틀리게 동작한다 */
+  --n-ink-note:var(--muted);        /* 정보 — 알아 두면 되는 사실 */
+  --n-round:0;                      /* 모서리 — 둥근 언어의 스킨만 값을 준다 */
+  padding:0 22px;border-top:1px solid var(--n-rule);
+  max-height:30vh;overflow-y:auto}
+.nrail:empty,.nrail[hidden]{display:none}
+
+/* 알림 한 건 — 3열 격자. [마크 11px] [주체·문장] [여는 길·시각·닫기]
+   `margin-left:auto` 를 쓰지 않는다 — 접히는 줄에서 그것은 뜻을 가른다.
+   좁아지면 셋째 열이 통째로 글자 아래로 내려가 글자 열에 맞춰 선다.
+   손잡이의 **과녁**은 control.css 가 정한다(낱말 버튼 = md · 줄 안의 글자
+   손잡이 = sm 겹판). 여기서 다시 정하면 같은 급의 손잡이가 화면마다 달라진다 —
+   칠은 여기, 과녁은 거기. 그래서 줄 높이는 그 줄이 든 손잡이의 급이 정한다. */
+.nrow{display:grid;grid-template-columns:11px minmax(0,1fr) auto;
+  align-items:baseline;column-gap:8px;row-gap:5px;line-height:18px;
+  padding:7px 0;border-top:1px solid var(--n-rule)}
+.nrow:first-child{border-top:0}
+
+/* 마크 — 자리는 baseline 정렬이 잡는다. 상자를 px 로 밀지 않는다: 밀면 그 1px 이
+   배율 1.25·1.5 에서 갈린다(marks.css 규칙 ①·②). 높낮이는 11칸 안의 잉크
+   위치로 맞춘다 — 세 마크 모두 잉크 중심 6.5. */
+.n-mark{flex:none}
+.n-txt{min-width:0;word-break:keep-all}   /* 한글은 낱말이 안 끊긴다 */
+.n-src{font-family:var(--sans);font-size:12.5px;font-weight:600;
+  letter-spacing:-.01em;margin-right:7px}
+.n-say{font-family:var(--sans);font-size:12.5px;color:var(--n-ink)}
+/* 딸림 한 줄 — 「그래서 무엇이 함께 일어나나」. 서버가 실을 때만 서고, 읽는 글이
+   아니라 곁들이는 말이라 보조 잉크다. 문장 뒤에 이어 붙되 좁아지면 제 줄로 내려간다. */
+.n-note{font-family:var(--sans);font-size:11.5px;color:var(--n-dim);margin-left:7px}
+/* 심각도는 **마크와 주체 이름에만** 든다 — 문장은 언제나 읽는 잉크색이다.
+   긴 문장을 경고색으로 칠하면 열 스킨 어디서도 4.5:1 을 보장할 수 없고,
+   무엇보다 「읽어야 하는 글」과 「신호」가 서로를 지운다. */
+.nrow.halt .n-mark,.nrow.halt .n-src{color:var(--n-ink-halt)}
+.nrow.warn .n-mark,.nrow.warn .n-src{color:var(--n-ink-warn)}
+.nrow.note .n-mark,.nrow.note .n-src{color:var(--n-ink-note)}
+
+.n-act{display:flex;align-items:baseline;gap:10px;flex:none}
+/* 여는 길 ① 화면 안 — 누르면 **실제로 그 판이 열린다**. 경로를 글자로만 적지
+   않는다(2026-09-07 반려: 화면에 없는 손잡이를 적었다). */
+.n-go{border:0;background:none;cursor:pointer;font-family:var(--sans);
+  font-size:11.5px;color:var(--n-dim);padding:0;white-space:nowrap;
+  border-bottom:1px dotted var(--n-edge)}
+.n-go:hover{color:var(--n-ink);border-bottom-color:var(--n-ink)}
+/* 여는 길 ② 터미널 — 누르면 복사된다. 명령은 대신 실행하지 않는다. */
+.n-cmd{display:inline-flex;align-items:center;font-family:var(--mono);
+  font-size:11px;letter-spacing:.02em;border:1px solid var(--n-edge);
+  background:var(--n-face);color:var(--n-ink);padding:0 9px;cursor:pointer;
+  white-space:nowrap;border-radius:var(--n-round)}
+.n-cmd:hover{background:var(--n-ink);color:var(--n-face-ink);border-color:var(--n-ink)}
+.n-cmd:hover::before{color:var(--n-face-ink)}
+/* 복사 피드백은 자리를 미리 잡아 둔다 — 글자가 늘며 줄이 밀리면 그 자체가 결함 */
+.n-copied{display:inline-block;min-width:3.6em;font-family:var(--mono);
+  font-size:10px;letter-spacing:.04em;color:var(--c-done)}
+/* 언제부터 — 오늘 시작한 것은 시각, 어제 이전은 「N일째」. 「새로 난 것인가
+   오래 서 있던 것인가」만 답하면 되는 자리다. */
+.n-when{font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+  color:var(--n-dim);white-space:nowrap}
+/* 닫기 — 과녁은 크게, 칠은 작게(actions.css 가 세운 층 가르기).
+   막힘 알림에는 이 손잡이가 **없다** — 일이 막힌 이유를 감출 수 없다. 대신
+   같은 크기의 빈 칸(.n-xgap)을 두어 시각이 줄마다 한 열로 선다(실측: 배율
+   1·1.25·1.5 어디서나 세 줄의 「언제부터」 오른끝과 닫기 칸이 같은 x 에 선다).
+   이 둘만 `align-self:center` 인 까닭: 속이 빈 inline-flex 상자의 밑선은 **아래
+   끝**이라, 밑선 정렬에 끼면 20px 이 통째로 밑선 위로 올라가 그 줄만 키가 큰다. */
+.n-x,.n-xgap{width:var(--ctl-sm);height:var(--ctl-sm);flex:none;
+  display:inline-flex;align-items:center;justify-content:center;
+  align-self:center;min-width:var(--tap-min);min-height:var(--tap-min)}
+.n-x{border:0;background:none;cursor:pointer;color:var(--n-dim);
+  font-size:13px;line-height:1}
+.n-x:hover{color:var(--n-ink)}
+.n-xgap{pointer-events:none}
+
+/* 줄 끝 — 더 있음/접기와 닫아 둔 수. 성격이 다른 둘이라 한 묶음으로 싸고,
+   좁아지면 묶음째 제 줄을 갖는다(designer 규칙 2). */
+.n-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px;
+  border-top:1px solid var(--n-rule)}
+.nrail > .n-foot:first-child{border-top:0}
+/* 더 있음 / 접기 — 세는 것이지 경고가 아니라 잉크는 --n-dim 고정 */
+.n-more{border:0;background:none;cursor:pointer;font-family:var(--sans);
+  font-size:11.5px;color:var(--n-dim);display:flex;align-items:center;gap:5px;
+  padding:6px 0 8px}
+.n-more:hover{color:var(--n-ink);text-decoration:underline}
+/* 닫아 둔 것 — 살아 있는 알림이 하나라도 있을 때만 센다. 전부 닫혔으면 줄째
+   사라진다(빈 띠 금지). 되돌리는 자리는 Settings › 디스플레이 한 줄이다. */
+.n-parked{font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+  color:var(--n-dim);padding:6px 0 8px}
+.n-go:focus-visible,.n-cmd:focus-visible,.n-x:focus-visible,
+.n-more:focus-visible{outline:2px solid var(--n-ink);outline-offset:1px}
+
+/* 좁은 폭 ① 툴바보다 위로 (≤900px) — 400px 에서 툴바는 세 줄로 접히는데, 그
+   아래에 있으면 막힘 알림이 화면 밖으로 밀린다. header 를 세로 flex 로 세우고
+   자리를 명시한다(순서를 하나만 적으면 나머지가 전부 0 이라 앞으로 끌려온다).
+   soft 스킨은 제 셸에서 같은 일을 이미 하고 있다(skins.css). */
+@media (max-width:900px){
+  header{display:flex;flex-direction:column}
+  .hrow1{order:0}.nrail{order:1}.hrow2{order:2}.hrow3{order:3}.gwlog{order:4}
+}
+/* 좁은 폭 ② 손잡이 묶음이 통째로 글자 아래로 (≤560px) — 마크 열(11px)은 그대로라
+   여러 줄이 한 세로선에 서고, 접힌 둘째 줄은 글자 열에서 시작한다. */
+@media (max-width:560px){
+  /* 좁은 화면에서는 줄마다 두 줄로 접히므로 30vh 가 셋째 줄과 「접기」를 잘랐다
+     (실측 400x820: 잘린 자리가 스크롤 상자인 줄 모르면 반쯤 그려진 줄로 보인다).
+     이 폭에서 알림 줄은 툴바보다 위에 선 가장 급한 것이라 절반까지 준다. */
+  .nrail{padding:0 16px;max-height:50vh}
+  .nrow{grid-template-columns:11px minmax(0,1fr)}
+  .n-act{grid-column:2;flex-wrap:wrap;row-gap:6px}
+}
+
+/* 왼쪽 메뉴 셸(soft)에서는 이 줄이 232px 사이드바 안에 선다 — 폭이 좁은 폭과 같아
+   같은 꼴로 접는다. 스킨 파일이 아니라 여기 적는 까닭은 하나다: **부품을 칠하는
+   자리는 이 파일 한 곳**이고, 스킨이 부품을 다시 칠하기 시작하면 10 스킨 × 부품
+   여덟이 생긴다(앞선 `.oc-*` 가 그 길을 갔다). */
+[data-skin="soft"] .nrail{padding:8px 14px;max-height:34vh}
+[data-skin="soft"] .nrow{grid-template-columns:11px minmax(0,1fr)}
+[data-skin="soft"] .n-act{grid-column:2;flex-wrap:wrap;row-gap:6px}

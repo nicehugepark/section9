@@ -59,21 +59,22 @@ class HeaderNoticeArea(unittest.TestCase):
 
     def test_folded_notice_leaves_no_row(self):
         """접었는데 줄이 그대로 남으면 접는 버튼은 거짓말이다. 접힌 알림은
-        툴바 칩으로 내려가고 hrow3 는 비어야 한다."""
+        자리를 비워야 한다.
+
+        코드 낡음은 2026-09-15 에 알림 줄(.nrail)로 옮겼다 — 닫기의 규율은
+        거기서도 같고, 그쪽 계약은 tests/test_notice_rail.py 가 본다."""
         self.assertFalse('id="gw-open"' in self.src,
             "접힌 자동 복구 알림이 아직 헤더 줄에 남아 있다")
-        self.assertFalse('id="oc-open"' in self.src,
-            "접힌 코드 낡음 알림이 아직 헤더 줄에 남아 있다")
-        oc = self._fn("renderOldCode")
+        rail = self._fn("renderNotices")
         self.assertRegex(
-            oc, r"if\s*\(folded\)[\s\S]{0,220}?el\.hidden\s*=\s*true",
-            "접힌 코드 낡음이 줄을 비우지 않는다")
+            rail, r"if\s*\(!live\.length\)[\s\S]{0,220}?innerHTML\s*=\s*\"\"",
+            "닫아 살아 있는 알림이 없어졌는데 줄이 비지 않는다")
 
     def test_action_needed_still_gets_a_row(self):
         """줄이는 것과 지우는 것은 다르다. 사람이 손을 대야 끝나는 두 사실은
         여전히 헤더 줄로 말한다 — 여기서 절약하면 기능이 존재할 이유가 없다."""
-        self.assertRegex(self.src, r'<div class="hrow3" id="oldcode"',
-                         "코드 낡음 알림이 헤더 줄 자리를 잃었다")
+        self.assertRegex(self.src, r'<div class="nrail" id="notices"',
+                         "알림 줄이 헤더 자리를 잃었다 — 코드 낡음은 여기로 옮겼다")
         self.assertRegex(self.src, r'<div class="hrow3" id="guard"',
                          "자동 복구 경고가 헤더 줄 자리를 잃었다")
         body = self._fn("renderGuard")
@@ -130,10 +131,12 @@ class HeaderNoticeArea(unittest.TestCase):
         """접어 둔 경고는 칩을 눌러 되펼칠 수 있어야 한다 — 되돌릴 수 없는
         접기는 정보를 지우는 것과 같다."""
         body = self._fn("renderSvChip")
-        self.assertIn("ocSetAck(null)", body,
-                      "접어 둔 코드 낡음을 되펼치는 경로가 없다")
         self.assertIn("gwSetAck(null)", body,
                       "접어 둔 자동 복구 경고를 되펼치는 경로가 없다")
+        # 알림 줄에서 닫은 것은 Settings › 디스플레이의 한 줄이 되돌린다 —
+        # 전부 닫히면 줄째 사라지므로 되돌리는 손잡이를 줄 안에 둘 수 없다.
+        self.assertIn("noticeUnpark", self._fn("renderNotices") + self.src,
+                      "닫아 둔 알림을 되돌리는 길이 없다")
 
     # ---------- 시각 언어 ----------
 

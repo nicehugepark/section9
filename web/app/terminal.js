@@ -147,7 +147,7 @@ function renderTerminal(){
     <div class="ccinputrow"><span class="ccp">❯</span><textarea id="chat-in" rows="1" disabled placeholder="연결 중…"></textarea><button class="ccart" id="cc-art" title="새 아티클로 쓰기 — 이 말이 요청이 아니라 글 한 편이 됩니다" aria-pressed="false">✎</button><button class="ccclip" id="cc-clip" title="파일 첨부 — 그림·문서·영상·로그 무엇이든 (붙여넣기·드래그도 가능, 한 개 30MB까지)">📎</button><input type="file" id="cc-file" multiple hidden></div>
     <div class="ccpaste" id="cc-paste" role="status" hidden>다시 붙여넣으면 펼쳐집니다</div>
     <div class="ccstatus">
-      <div class="ccs1"><span class="ccmode">▶▶ <span id="cc-live" class="ccwarn">connecting</span><span id="cc-cmpk" class="cccmpk" hidden></span><span id="cc-tgt"></span></span><span id="cc-conn" class="ccconn" hidden></span><span class="r ccrc" title="Remote Control — 터미널에서 /rc 로 연결하면 폰·다른 기기에서도 이 세션과 대화할 수 있습니다">/rc</span></div>
+      <div class="ccs1"><span class="ccmode">▶▶ <span id="cc-live" class="ccwarn">connecting</span><span id="cc-cmpk" class="cccmpk" hidden></span><span id="cc-tgt"></span></span><span id="cc-conn" class="ccconn" hidden></span><span class="r ccrc" title="Remote Control — 터미널에서 /rc 로 연결하면 폰·다른 컴퓨터에서도 이 세션과 대화할 수 있습니다">/rc</span></div>
       <div class="ag ccmain" title="메인 타임라인으로 복귀"><span class="g">●</span> <b>main</b></div>
       <div id="cc-agents"></div>
       <div class="ag sub"><span class="g">○</span> <span id="cc-src">transcript</span><span class="r" id="cc-meta"></span></div>

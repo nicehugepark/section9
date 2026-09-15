@@ -97,10 +97,10 @@ function ghPrepSay(st){
   if (a.gh && a.token) return `gh 로그인과 ${key} 이 둘 다 있습니다${who}`;
   if (a.gh) return `gh 로 로그인했습니다${who}`;
   if (a.token) return `${key} 을 저장해 두었습니다${who}`;
-  return `gh 로 로그인하거나 외부 서비스 판에 ${key} 을 저장하면 됩니다.`;
+  return `gh 로 로그인하거나 외부 서비스에 ${key} 을 저장하면 됩니다.`;
 }
 
-// 준비물이 하나도 없나 — 그때만 「외부 서비스 판 열기」가 선다.
+// 준비물이 하나도 없나 — 그때만 「외부 서비스 열기」가 선다.
 const ghPrepNeeds = st => !((st && st.auth && st.auth.gh)
                          || (st && st.auth && st.auth.token));
 
@@ -127,7 +127,7 @@ function ghSectionHTML(){
           <div class="wsay"><div class="wmean" id="gh-state-why"><span
                  id="gh-prep"></span> <button type="button" class="more wmore"
                  id="gh-prep-go" data-sset="external" hidden
-                 >외부 서비스 판 열기</button></div>
+                 >외부 서비스 열기</button></div>
             <div class="wmsg hid" role="status" aria-live="polite"
                  id="gh-state-msg"></div></div>
           <div class="wfact" id="gh-state-fact"></div></td></tr>

@@ -52,7 +52,7 @@
    (칠을 원 안에 가두는 mask 와 한 몸이라 그 파일을 떠날 수 없다). */
 .acts button.deed:not(.ico),
 .more,
-.oc-cmd{min-height:var(--ctl-md)}
+.n-cmd{min-height:var(--ctl-md)}
 
 /* ---- sm — 줄 안의 글자 손잡이: 과녁만 얹는다 ---------------------------- */
 /* 겹판은 상자의 좌우 끝을 그대로 쓰고 세로로만 20px 를 편다. 가로를 넓히지
@@ -62,12 +62,12 @@
    뒤에 선 hovercard 를 가린다. */
 .card .pickdoc,
 .card .prio,.card .proj,.card .xref .jkey,
-.rvmore,.grpf,.pjnew,.oc-fold,
+.rvmore,.grpf,.pjnew,.n-go,.n-more,
 .typebar .tb,
 .doclist .row .id .prio{position:relative}
 .card .pickdoc::after,
 .card .prio::after,.card .proj::after,.card .xref .jkey::after,
-.rvmore::after,.grpf::after,.pjnew::after,.oc-fold::after,
+.rvmore::after,.grpf::after,.pjnew::after,.n-go::after,.n-more::after,
 .typebar .tb::after,
 .doclist .row .id .prio::after{content:"";position:absolute;left:0;right:0;
   top:50%;height:var(--ctl-sm);transform:translateY(-50%)}

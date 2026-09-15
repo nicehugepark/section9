@@ -60,6 +60,7 @@
   .hrow1{padding:12px 16px 0;gap:18px}
   .hrow2{padding:6px 16px;gap:10px 10px}
   .hrow3{padding:6px 16px}
+  .nrail{padding:0 16px}
   .hrow2 input[type="text"]{width:170px}
   .hrow2 select{max-width:170px}
   /* 필터도 손끝으로 누른다 — 네이티브 select 는 안여백이 아니라 높이로 잰다 */
