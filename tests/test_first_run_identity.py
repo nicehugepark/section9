@@ -88,5 +88,54 @@ class FirstRunIdentity(unittest.TestCase):
         self.assertIn("display", str(e.exception), "한글 이름이 갈 자리를 말하지 않는다")
 
 
+
+class TheDefaultSaysWhereItCameFrom(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_loader(
+            "s9_fri_src", importlib.machinery.SourceFileLoader("s9_fri_src", S9))
+        cls.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.m)
+
+    """기본값 옆에 출처가 선다 (REQ-20260915-013-62x6 반려, 주인 물음 2026-09-15).
+
+    「enter=nicehugepark 은 뭘 기준으로 띄워주는거야? 모든 사람들이 설치할 때
+    기본적으로 내 계정을 넣어주는거야? 실수로 엔터만 치면 다 내가 되어버리는건가?」
+    — 배포판에는 계정도 저장소도 들어 있지 않고 값은 그 컴퓨터의 것인데, 물음에는
+    결과만 보이고 어디서 왔는지가 안 보였다."""
+
+    def test_an_ascii_account_comes_from_the_account(self):
+        self.assertEqual(self.m.user_name_from_src("sjpark1", "who@ever.com"),
+                         ("sjpark1", "이 컴퓨터의 계정 이름"))
+
+    def test_a_korean_account_falls_back_to_the_git_email(self):
+        name, src = self.m.user_name_from_src("박성진", "nicehugepark@example.com")
+        self.assertEqual(name, "nicehugepark")
+        self.assertIn("git", src)
+
+    def test_with_neither_there_is_no_default_and_no_source(self):
+        self.assertEqual(self.m.user_name_from_src("박성진", ""), ("", ""))
+
+    def test_the_question_carries_the_source(self):
+        asked = []
+
+        def ask(q):
+            asked.append(q)
+            return "gildong"
+
+        self.m.first_run_identity("박성진", [], ask, email="nicehugepark@example.com",
+                             out=lambda *a: None)
+        self.assertIn("Enter=nicehugepark", asked[0])
+        self.assertIn("git 이메일", asked[0],
+                      "기본값이 어디서 왔는지가 물음에 없다 — 남의 계정으로 읽힌다")
+
+    def test_without_a_default_the_question_says_the_rule_instead(self):
+        asked = []
+        self.m.first_run_identity("박성진", [], lambda q: (asked.append(q), "gildong")[1],
+                             email="", out=lambda *a: None)
+        self.assertIn(self.m.USER_NAME_RULE, asked[0])
+        self.assertNotIn("Enter=", asked[0])
+
+
 if __name__ == "__main__":
     unittest.main()

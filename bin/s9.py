@@ -22185,11 +22185,23 @@ def user_name_from(raw, email=""):
     짐작으로 로마자를 만들지 않는다(사람 이름의 로마자 표기는 그 사람이 정한다).
     이미 그 사람이 정해 둔 영문 글자만 쓴다: ① OS 계정이 그대로 쓸 수 있으면 그것,
     ② git 이메일의 앞부분(`nicehugepark@…` → `nicehugepark`)."""
+    return user_name_from_src(raw, email)[0]
+
+
+def user_name_from_src(raw, email=""):
+    """위와 같은 후보에 **어디서 왔는지**를 붙여 돌려준다 — (이름, 출처).
+
+    첫 실행이 기본값만 내밀면 사람은 그것이 어디서 온 값인지 모른다. 실제 물음
+    (주인 2026-09-15, REQ-20260915-013-62x6 반려): 「enter=nicehugepark 은 뭘 기준으로
+    띄워주는거야? 모든 사람들이 설치할 때 기본적으로 내 계정을 넣어주는거야?」 —
+    배포판에는 계정도 저장소도 들어 있지 않고(zip 883 파일에 users·vault·.git 0),
+    값은 **그 컴퓨터의 것**이다. 그 사실을 물음 옆에 한 마디로 적으면 이 걱정이
+    생기지 않는다."""
     if user_name_ok(raw):
-        return str(raw)
+        return str(raw), "이 컴퓨터의 계정 이름"
     local = str(email or "").split("@")[0]
     keep = re.sub(r"[^A-Za-z0-9._-]", "", local)
-    return keep if user_name_ok(keep) else ""
+    return (keep, "이 컴퓨터의 git 이메일") if user_name_ok(keep) else ("", "")
 
 
 def do_user_add(name, role="member", display="", email="", machine=None,
@@ -26184,10 +26196,13 @@ def first_run_identity(u, known, ask, email="", out=print, tries=3):
     사람에게 다음 걸음을 적어 준다."""
     known = list(known or [])
     hint = f" — 이미 있는 이름: {', '.join(known)}" if known else ""
-    default = user_name_from(u, email)
+    default, src = user_name_from_src(u, email)
     for _ in range(max(1, tries)):
         q = (f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. "
-             + (f"이름(Enter={default})" if default else f"이름({USER_NAME_RULE})")
+             # 기본값 옆에 **출처**를 적는다 (REQ-20260915-013-62x6 반려): 어디서 온
+             # 값인지 안 보이면 「설치하는 사람마다 남의 계정이 뜨는 것 아닌가」로 읽힌다.
+             + (f"이름(Enter={default} — {src}에서)" if default
+                else f"이름({USER_NAME_RULE})")
              + hint + ": ")
         name = (ask(q) or "").strip() or default
         if user_name_ok(name):
