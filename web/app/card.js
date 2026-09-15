@@ -685,6 +685,12 @@ function badgeAttrs(u, extra){
 }
 /* 조각 한 낱말로 설 때의 얼굴 — 이름이 있으면 이름, 없으면 종전의 `@id`. */
 const personFace = u => personFull(u) ? personName(u) : "@" + personId(u);
+/* 손잡이가 없는 자리의 사람 배지 — 아티클의 쓴 사람처럼 **읽기만 하는** 자리다
+   (REQ-20260915-035-62x6). 문서 화면이 배지를 제 손으로 다시 지으면 같은 사람이
+   카드에서는 이름, 글 머리에서는 id 로 서고 — 사람은 그 둘을 다른 사람으로
+   읽는다. 겉·속·손 위의 글이 한 벌로 따라오도록 여기 한 줄로 둔다. */
+const personBadgeHTML = u =>
+  `<span${badgeAttrs(u)} title="${esc(personTitle(u))}">${badgeFace(u)}</span>`;
 function ownerBadgeHTML(r){
   const u = (r && r.user) || "?";
   const face = badgeFace(u);
@@ -2531,16 +2537,20 @@ function assignPick(row){
       empty = "프로젝트 목록을 받지 못했습니다 — 헤더의 다시 받기를 눌러 보세요.";
     }
   }
-  const items = users.map(u => ({key: u.name, label: u.name, cur: u.name === cur,
-                                 tag: u.display || "",
-                                 note: u.name === cur ? "지금 이것" : ""}));
+  /* 고르는 자리다 — **라벨은 이름, 값(`key`)은 id** (REQ-20260915-035-62x6).
+     값이 이름이 되는 순간 `/api/assign` 이 받는 글자가 갈린다. 이름으로 선
+     항목에는 계정을 곁들인다: 담당은 「그래서 누구인가」를 확인하고 누르는
+     자리라, 동명이인이 있는 날 이름만으로는 고를 수 없다. */
+  const pickItem = (u, name) => ({key: name, label: personName(u), cur: name === cur,
+                                  tag: personFull(u) ? "@" + name : "",
+                                  note: name === cur ? "지금 이것" : ""});
+  const items = users.map(u => pickItem(u, u.name));
   /* 지금 맡은 사람은 멤버가 아니어도 목록에 남는다 (옛 문서·멤버에서 빠진 뒤).
      창이 「지금 이것」을 두고 거짓말하면 누가 쥐고 있는지 알 길이 없다 —
      골라 봐야 값이 안 바뀌므로 확인은 잠긴 채다(s9choose 의 idle). */
   if (cur && !items.some(it => it.cur)){
-    const u = (window.__users || []).find(x => x.name === cur) || {};
-    items.unshift({key: cur, label: cur, cur: true,
-                   tag: u.display || "", note: "지금 이것"});
+    const u = (window.__users || []).find(x => x.name === cur) || {name: cur};
+    items.unshift({...pickItem(u, cur), cur: true, note: "지금 이것"});
   }
   return {items, empty, desc};
 }
@@ -2568,7 +2578,7 @@ async function assignDoc(id){
     pickNote: "맡을 사람",
     confirm: {ok: "담당 바꾸기",
               idle: "지금 맡은 사람 그대로입니다.",
-              say: it => `${it.key} 에게 넘깁니다. 이 컴퓨터가 쥐고 있던 진행도 함께 놓습니다.`},
+              say: it => `${personName(it.key)} 에게 넘깁니다. 이 컴퓨터가 쥐고 있던 진행도 함께 놓습니다.`},
     cancel: "그만두기"});
   if (!picked || !picked.key || picked.key === cur) return;
   try{

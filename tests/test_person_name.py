@@ -105,6 +105,47 @@ class PersonName(unittest.TestCase):
         self.assertIn("var(--sans)", m.group(0))
         self.assertNotIn("var(--mono)", m.group(0))
 
+    # ⑤ 사람이 읽는 자리는 모두 같은 한 함수를 지난다 (REQ-20260915-035-62x6)
+    def test_people_places_read_the_name(self):
+        """사람 칸·작성자·미리보기 머리는 이름으로 선다 — 자리마다 손으로 짓지 않는다."""
+        for parts, needle, where in (
+                (("app", "docs.js"), "personBadgeHTML(m.user", "아티클의 쓴 사람"),
+                (("app", "project.js"), "personName(m.user)", "프로젝트 멤버 표의 사람 칸"),
+                (("app", "dialog.js"), "personName(r.user)", "문서 미리보기의 머리줄"),
+                (("app", "tidy.js"), "personName(r.user", "휴지통·보관함 줄"),
+                (("app", "settings.js"), "personName(u)", "사용자 관리 목록"),
+        ):
+            self.assertIn(needle, _read(*parts),
+                          where + " 가 이름을 지나지 않습니다")
+
+    def test_badge_is_built_in_one_place(self):
+        """배지의 속을 손으로 다시 짓지 않는다 — 이니셜 마크는 badgeFace 한 곳."""
+        self.assertEqual(self.src.count('<i class="av">'), 1,
+                         "배지를 손으로 복제한 자리가 있습니다")
+        self.assertIn("const personBadgeHTML =", self.card,
+                      "읽기만 하는 자리의 사람 배지가 한 줄로 서 있지 않습니다")
+
+    # 기계가 읽는 값은 id 그대로 — 라벨만 이름이다
+    def test_machine_values_stay_the_id(self):
+        app = _read("app", "app.js")
+        m = re.search(r"const fill = \(sel, vals, label\) => \{[\s\S]*?\n  \};", app)
+        self.assertTrue(m, "필터를 채우는 자리가 없습니다")
+        self.assertIn("o.value = v;", m.group(0),
+                      "필터 값이 id 가 아닙니다 — 카탈로그의 user 와 글자가 갈립니다")
+        self.assertIn("o.textContent = face(v)", m.group(0),
+                      "필터의 보이는 글자가 이름을 지나지 않습니다")
+        self.assertIn('fill("#f-user", catalog.map(r => r.user), personName)', app,
+                      "사람 필터가 이름을 라벨로 쓰지 않습니다")
+        pick = re.search(r"const pickItem = [\s\S]*?\}\);", self.card)
+        self.assertTrue(pick, "담당 고르기의 항목을 짓는 자리가 없습니다")
+        self.assertIn("key: name", pick.group(0),
+                      "담당 고르기의 값이 id 가 아닙니다 — /api/assign 이 받는 글자가 갈립니다")
+        self.assertIn("label: personName(", pick.group(0),
+                      "담당 고르기의 라벨이 이름이 아닙니다")
+        prj = _read("app", "project.js")
+        for attr in ('data-pjmem="${esc(m.user)}"', 'data-pjrm="${esc(m.user)}"'):
+            self.assertIn(attr, prj, "DOM 키·API 인자가 id 가 아닙니다: " + attr)
+
     # 색조는 id 로 잰다
     def test_hue_is_keyed_on_the_id(self):
         m = re.search(r"function badgeAttrs\([\s\S]*?\n\}", self.card)

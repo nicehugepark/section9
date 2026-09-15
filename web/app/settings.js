@@ -158,8 +158,8 @@ function renderSettingsSection(meAdmin){
   } else if (settingsSection === "users"){
     if (!meAdmin){ v.innerHTML = `<p class="empty">사용자 관리는 admin만 가능합니다. (whoami=${esc((window.__whoami||{}).user||"?")})</p>`; return; }
     const list = (window.__users||[]).map(u => `<div class="urow" data-uname="${esc(u.name)}">
-        <span class="st">${esc(u.role)}</span> <b>${esc(u.display||u.name)}</b>
-        <span class="path">@${esc(u.name)} · ${esc((u.registered||"").slice(0,10))}</span>${
+        <span class="st">${esc(u.role)}</span> <b>${esc(personName(u))}</b>
+        <span class="path">${personFull(u) ? "@" + esc(u.name) + " · " : ""}${esc((u.registered||"").slice(0,10))}</span>${
           profileMissing(u).length ? `<span class="pbadge" title="프로필 미기재: ${esc(profileMissing(u).join(" · "))}">⚠</span>` : ""}</div>`).join("");
     // 못 받은 목록을 "등록된 사용자가 없다" 로 그리지 않는다 (REQ-20260828-039)
     v.innerHTML = `<h1 style="margin:0 0 10px">사용자 관리</h1>`
@@ -180,7 +180,8 @@ function renderSettingsSection(meAdmin){
       <select id="as-user" class="uf">
         <option value="">(내 시점 — 미리보기 해제)</option>
         ${(window.__users||[]).filter(x => x.name !== me).map(x =>
-          `<option value="${esc(x.name)}"${x.name===asUser?" selected":""}>@${esc(x.name)} [${esc(x.role)}] 시점으로 보기</option>`).join("")}
+          `<option value="${esc(x.name)}"${x.name===asUser?" selected":""}>${
+             personFull(x) ? esc(personName(x)) + " @" : "@"}${esc(x.name)} [${esc(x.role)}] 시점으로 보기</option>`).join("")}
       </select>
       <div id="uedit" style="margin-top:20px"></div>`;
     $("#as-user").addEventListener("change", e => {

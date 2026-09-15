@@ -608,9 +608,14 @@ function prjMemberRowHTML(m, p, c){
   const lastOwner = m.role === "owner" && prjOwnerCount(p) <= 1;
   const ownerLocked = m.role === "owner" && !c.canOwn;
   const self = m.user === c.me;
+  /* 사람 칸은 **이름**으로 선다 (REQ-20260915-035-62x6) — 목록에서 사람을 고르는
+     자리라 읽는 글자가 제 이름이어야 한다. 「그래서 계정이 무엇인가」는 손을
+     얹어 확인한다(personTitle). 값은 건드리지 않는다: `data-pjmem`·`data-pjrm`
+     과 API 인자는 id 그대로다. */
+  const face = esc(personName(m.user)), who = esc(personTitle(m.user));
   const name = self
-    ? `<span class="m-you">${esc(m.user)}</span> <span class="m-tag">· ${esc(PRJ_TEXT.you)}</span>`
-    : esc(m.user);
+    ? `<span class="m-you" title="${who}">${face}</span> <span class="m-tag">· ${esc(PRJ_TEXT.you)}</span>`
+    : `<span title="${who}">${face}</span>`;
   const stateCls = m.active === false ? "m-off" : "m-on";
   const state = m.active === false ? PRJ_TEXT.memOff : PRJ_TEXT.memOn;
   const untilTip = kind === "soon" ? PRJ_TEXT.expSoon(prjUntilDays(m, c.now)) : "";
@@ -645,7 +650,7 @@ function prjMemberRowHTML(m, p, c){
     + `<td class="m-state ${stateCls}">${esc(state)}</td>`
     + `<td><span class="acts pjcell"><button type="button" data-pjrm="${esc(m.user)}"`
       + `${lockWhy ? ` disabled title="${esc(lockWhy)}"` : ""}`
-      + ` aria-label="${esc(self ? PRJ_TEXT.leaveAria(p.slug) : PRJ_TEXT.rmAria(m.user))}">`
+      + ` aria-label="${esc(self ? PRJ_TEXT.leaveAria(p.slug) : PRJ_TEXT.rmAria(personName(m.user)))}">`
       + `${esc(self ? PRJ_TEXT.leaveBtn : PRJ_TEXT.rmBtn)}</button>`
       + `</span></td></tr>`;
 }
@@ -672,7 +677,8 @@ function prjMembersHTML(p, c){
   const addRow = c.canManage ? `<tr class="pjadd">`
     + `<td>${cand.length
         ? `<select class="pjc" data-pjnew="user">`
-          + cand.map(n => `<option>${esc(n)}</option>`).join("") + `</select>`
+          + cand.map(n => `<option value="${esc(n)}">${esc(personName(n))}</option>`).join("")
+          + `</select>`
         // 좋은 소식은 고장처럼 읽히지 않아야 한다 — 「추가할 사용자 없음」이 아니다
         : `<span class="m-tag">${esc(PRJ_TEXT.memAllIn)}</span>`}</td>`
     + (cand.length

@@ -913,7 +913,7 @@ async function loadDoc(id, bg, force){
       <article class="artdoc">
         <h1>${esc(m.title)}</h1>
         ${m.summary ? `<p class="artlede">${esc(m.summary)}</p>` : ""}
-        <div class="artby"><span class="badge" style="--ah:${tagHue(m.user||"?")}"><i class="av">${esc((m.user||"?").slice(0,1).toUpperCase())}</i>${esc(m.user||"?")}</span>
+        <div class="artby">${personBadgeHTML(m.user || "?")}
           <span>${esc((m.created||"").slice(0,10))}</span>
           <span class="path" title="${esc(m.id)}">${esc(shortId(m.id))}</span></div>
         <div class="md artmd">${md2html(artBody, m.id)}</div>

@@ -333,15 +333,22 @@ async function refreshCatalog(rerender, soft){
 }
 
 function fillFilters(){
-  const fill = (sel, vals) => {
+  /* `label` 이 있으면 **보이는 글자만** 그것으로 바꾼다 — `value` 는 그대로다
+     (REQ-20260915-035-62x6). 필터 값은 기계가 읽는 자리라(카탈로그의 `user` 와
+     글자가 같아야 걸린다) 이름이 값이 되면 아무것도 안 걸린다. 정렬도 보이는
+     글자로 한다: 목록에서 사람을 찾는 눈은 이름을 훑는다. */
+  const fill = (sel, vals, label) => {
     const el = $(sel), cur = el.value;
     while (el.options.length > 1) el.remove(1);
-    [...new Set(vals.filter(Boolean))].sort().forEach(v => {
-      const o = document.createElement("option"); o.value = o.textContent = v; el.appendChild(o);
-    });
+    const face = v => label ? label(v) : v;
+    [...new Set(vals.filter(Boolean))].sort((a, b) => face(a).localeCompare(face(b)))
+      .forEach(v => {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = face(v); el.appendChild(o);
+      });
     el.value = [...el.options].some(o => o.value === cur) ? cur : "";
   };
-  fill("#f-user", catalog.map(r => r.user));
+  fill("#f-user", catalog.map(r => r.user), personName);
   // 시스템 태그(생성 경로 표식)는 필터에서 숨긴다 (REQ-20260825-055 인접 지적:
   // auto-audit은 주제가 아니라 출처 — 문서에는 남기되 태그 UI는 의미 태그만)
   fill("#f-tag", catalog.flatMap(r => r.tags || []).filter(t => !SYS_TAGS.has(t)));
