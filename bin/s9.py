@@ -4179,6 +4179,194 @@ REVIEW_POINT_HELP = (
 )
 
 
+# ── review 는 담긴 것만 올린다 (REQ-20260915-044-62x6) ──────────────────────
+#
+# 실제 사고 2026-09-15: 고친 코드가 작업 트리에만 있는 채로 요청이 review 로
+# 올라갔다. 확인 포인트는 「commit 을 두 번 걸어 보라」였는데, 사람이 그 자리에서
+# 볼 수 있는 것은 아무것도 없었다 — 담기지 않은 것은 다른 컴퓨터에서는 없는
+# 것이고(REQ-20260910-038), 같은 컴퓨터에서도 다음 pull 한 번에 사라질 수 있다.
+# 글로 적힌 규칙이 세 번째로 지켜지지 않았으니 기계가 막는다.
+#
+# 세는 것은 **코드**뿐이다. 데이터 경로(vault/·users/·projects/·.s9-sync)는
+# 동기화가 늘 담는 자리라, 그것까지 세면 문서를 한 줄 고칠 때마다 review 가
+# 막힌다 — s9-guard 의 동시 작업 검사가 같은 이유로 같은 목록을 뺀다.
+#
+# 좁히는 까닭: 본 저장소의 작업 트리는 여럿이 함께 쓴다. 남의 미커밋 변경까지
+# 세면 아무도 review 를 못 올린다. 그래서 자리마다 답이 다르다 —
+#   · 요청 전용 worktree: 그 자리는 이 요청 하나의 것이다 → 전부 막는다
+#   · 본 저장소: 그 세션이 **고친** 파일로 좁혀 막고, 가릴 수 없는 나머지는
+#     막지 않고 History 에 한 줄로 알린다(조용히 넘기지는 않는다)
+UNCOMMITTED_SHOW = 8              # 문구에 이름을 적을 최대 개수
+TRANSCRIPT_MAX_BYTES = 64 * 1024 * 1024   # 이보다 크면 좁히지 않는다(모른다)
+EDIT_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+
+UNCOMMITTED_HELP = (
+    "review 는 담긴 것만 올린다 — 작업 트리에만 있는 것은 다른 컴퓨터에서는 "
+    "없는 것이다 (REQ-20260910-038). `s9 commit -m '<무엇을 고쳤나>' -- <경로>` "
+    "로 담은 뒤 다시 전이하라. 담을 것이 아니면 그 파일을 치우고, 사람 판정만 "
+    "남았으면 --force 와 사유를 함께 써라."
+)
+
+
+def _git_at(cwd, *argv, timeout=20):
+    """그 자리에서 git 한 번 — 성공한 stdout, 아니면 None(못 물었다)."""
+    try:
+        r = subprocess.run(["git", "-C", cwd, *argv], capture_output=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _git_common_dir(cwd):
+    """그 저장소의 공용 git 디렉토리(절대경로). 본 저장소와 그 worktree 는
+    이 값이 같다 — 「같은 저장소인가」를 묻는 유일한 물음이다."""
+    out = _git_at(cwd, "rev-parse", "--git-common-dir")
+    p = (out or "").strip()
+    if not p:
+        return ""
+    return os.path.realpath(p if os.path.isabs(p) else os.path.join(cwd, p))
+
+
+def work_tree_here(cwd=None):
+    """이 전이가 도는 작업 트리의 꼭대기. 아니면 "" (모른다).
+
+    section9 의 본 저장소이거나 그 worktree 일 때만 돌려준다 — 남의 저장소에서
+    부른 s9 가 그 저장소의 미커밋을 이 요청의 것으로 세면 안 된다."""
+    try:
+        cwd = cwd or os.getcwd()
+    except OSError:
+        cwd = ROOT
+    if not os.path.isdir(cwd):
+        cwd = ROOT
+    top = (_git_at(cwd, "rev-parse", "--show-toplevel") or "").strip()
+    if not top:
+        return ""
+    top = os.path.realpath(top)
+    mine = _git_common_dir(ROOT)
+    if not mine or _git_common_dir(top) != mine:
+        return ""
+    return top
+
+
+def uncommitted_code(tree):
+    """그 작업 트리에 담기지 않은 **코드** 파일 (저장소 상대경로, 정렬).
+
+    담아 둔 것(index)도 담기지 않은 것으로 센다 — staged 는 committed 가
+    아니고, 사람이 다른 컴퓨터에서 보는 것은 commit 뿐이다.
+    못 물으면 None(모른다) — 빈 목록(깨끗하다)과 가른다."""
+    out = _git_at(tree, "status", "--porcelain", "--untracked-files=all")
+    if out is None:
+        return None
+    data = tuple(x + "/" for x in SYNC_DATA_PATHS if not x.startswith("."))
+    paths = set()
+    for line in out.splitlines():
+        if len(line) < 4:
+            continue
+        rel = line[3:].strip()
+        if " -> " in rel:          # 이름 변경 — 도착지만 본다
+            rel = rel.split(" -> ", 1)[1].strip()
+        rel = rel.strip('"')
+        # state/ 는 이 컴퓨터의 살림살이이고 index/ 는 파생물이다 — 둘 다
+        # .gitignore 가 이미 막지만, 없는 자리에서도 코드로 세지 않는다.
+        if not rel or rel in SYNC_DATA_PATHS or rel.startswith(data) \
+                or rel.startswith(("state/", "index/", ".git")):
+            continue
+        paths.add(rel)
+    return sorted(paths)
+
+
+def _rel_under(tree, path):
+    """그 작업 트리 안의 경로면 저장소 상대경로로, 아니면 ""."""
+    if not path:
+        return ""
+    try:
+        top = os.path.realpath(tree)
+        full = os.path.realpath(path)
+    except OSError:
+        return ""
+    if full == top or not full.startswith(top + os.sep):
+        return ""
+    return os.path.relpath(full, top).replace("\\", "/")
+
+
+def transcript_edited_files(path, tree):
+    """transcript 가 기록한 **고친** 파일들 (저장소 상대경로 집합), 못 읽으면 None.
+
+    읽기는 만진 것이 아니다 — 파일을 쓰는 도구(EDIT_TOOLS)의 호출만 센다."""
+    try:
+        if os.path.getsize(path) > TRANSCRIPT_MAX_BYTES:
+            return None
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    out = set()
+    for raw in data.splitlines():
+        if b'"tool_use"' not in raw:
+            continue
+        try:
+            ev = json.loads(raw.decode("utf-8", "ignore"))
+        except ValueError:
+            continue
+        content = (ev.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for c in content:
+            if not isinstance(c, dict) or c.get("type") != "tool_use":
+                continue
+            if c.get("name") not in EDIT_TOOLS:
+                continue
+            rel = _rel_under(tree, (c.get("input") or {}).get("file_path") or "")
+            if rel:
+                out.add(rel)
+    return out
+
+
+def session_edited_files(tree, session=""):
+    """그 세션이 고친 파일들, 좁힐 길이 없으면 None.
+
+    하네스별로 갈리는 자리다 (PROTOCOL 0'): Claude 는 훅이 세션 바인딩에
+    `transcript_path` 를 적어 두므로 거기서 읽는다. 그것을 적지 않는 하네스
+    에서는 None 이고, 그때 이 검사는 막지 않고 알리기만 한다 — 좁힐 수 없는
+    자리에서 막으면 공유 작업 트리에서 아무도 review 를 못 올린다."""
+    sid = (session or os.environ.get("S9_SESSION") or "")[:8]
+    if not sid:
+        return None
+    b = read_binding(current_machine(), sid) or {}
+    tp = b.get("transcript_path") or ""
+    if not tp or not os.path.isfile(tp):
+        return None
+    return transcript_edited_files(tp, tree)
+
+
+def review_commit_faults(tree=None, session=""):
+    """review 진입에서 짚을 것 — (막을 것, 알릴 것).
+
+    막을 것: 이 요청의 것이라고 **말할 수 있는** 미커밋 코드.
+    알릴 것: 같은 작업 트리에 있으나 이 세션의 것인지 가릴 수 없는 미커밋 코드.
+    """
+    tree = tree or work_tree_here()
+    if not tree:
+        return [], []
+    stray = uncommitted_code(tree)
+    if not stray:
+        return [], []
+    if os.path.realpath(tree) != os.path.realpath(ROOT):
+        return stray, []      # 요청 전용 worktree — 여기 있는 것은 이 요청의 것이다
+    mine = session_edited_files(tree, session)
+    if mine is None:
+        return [], stray      # 좁힐 길이 없다 — 막지 않고 알린다
+    return ([p for p in stray if p in mine],
+            [p for p in stray if p not in mine])
+
+
+def _name_list(paths):
+    head = " · ".join(paths[:UNCOMMITTED_SHOW])
+    rest = len(paths) - UNCOMMITTED_SHOW
+    return head + (f" 외 {rest}개" if rest > 0 else "")
+
+
 def do_transition(doc_id, new_status, note="", user=None, force=False, auto=False,
                   judge=False, via=""):
     """상태 전이의 단일 코드 경로 — CLI(cmd_status)와 웹 서버(POST /api/status)가
@@ -4286,6 +4474,17 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
         if faults:
             raise ValueError(
                 "확인 포인트 " + " / ".join(faults) + ". " + REVIEW_POINT_HELP)
+    # 담기지 않은 코드 가드 (REQ-20260915-044-62x6): 사람이 판정하러 온 자리에
+    # 그 고침이 없으면 판정할 것이 없다. 사람 판정(judge)은 걸리지 않는다 —
+    # 승인·반려는 올리는 전이가 아니다.
+    _stray, _unsure = [], []
+    if new_status == "review" and meta.get("type") == "request" and not judge:
+        _stray, _unsure = review_commit_faults(
+            session=os.environ.get("S9_SESSION") or meta.get("session") or "")
+        if _stray and not force:
+            raise ValueError(
+                f"담기지 않은 코드 {len(_stray)}개 — {_name_list(_stray)}. "
+                + UNCOMMITTED_HELP)
     if note:
         note, _ = normalize_ids(note)  # short REQ-id → full-id (trigger_dependents 매칭 보장)
     if judge:
@@ -4300,6 +4499,15 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
     if _dropped_lease:
         entry += (f"- {ts} lease release {_dropped_lease.get('user')}@{_dropped_lease.get('machine')} "
                   f"(by {user}) — open 으로 되돌려 점유를 걷었다\n")
+    # 담기지 않은 코드는 조용히 넘어가지 않는다 — 막았거나, 문서에 한 줄로 남는다.
+    if _stray:
+        entry += (f"- {ts} 경고: 담기지 않은 코드 {len(_stray)}개를 --force 로 "
+                  f"지나갔다 — {_name_list(_stray)}\n")
+    if _unsure:
+        _say = (f"같은 작업 트리에 담기지 않은 코드 {len(_unsure)}개가 있다 "
+                f"(이 세션의 것인지 가릴 수 없었다) — {_name_list(_unsure)}")
+        entry += f"- {ts} 경고: {_say}\n"
+        print(f"s9: {_say}", file=sys.stderr)
     # done 인데 토큰이 어디에도 없으면 그 사실을 남긴다 (REQ-20260909-082) — 막지
     # 않는다. 원인은 대개 이 세션 밖에서 닫힌 것이다(다른 머신·CLI 전이만·자동
     # 생성 후속). 적어 두지 않으면 나중에 「왜 없나」를 문서에서 알 길이 없다.
