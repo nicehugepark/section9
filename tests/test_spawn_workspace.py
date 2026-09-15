@@ -290,6 +290,27 @@ class Decision(Repo):
         self.assertEqual(seen["cwd"], self.root,
                          "미커밋 코드가 있는데 worktree에 앉혔다")
 
+    # W10b. 눈으로 봐야 하는 검증은 사람이 켠 세션의 몫이다 (REQ-20260915-011-62x6).
+    #
+    # 실사고 2026-09-15: 맥 워처가 띄운 작업자가 Safari 를 못 띄우자 blocked 노트로
+    # 사람에게 permissions.allow 변경과 세션 재시작을 요구했다. 막힌 것은 그 자리의
+    # 도구 봉투이지 제품이 아니다 — 사람이 켠 세션은 그 앱을 그대로 연다.
+    def test_w10b_the_worker_is_told_to_hand_over_what_it_cannot_see(self):
+        meta = {"user": "alice", "machine": "testbox", "title": "t"}
+        seen = {}
+        with _spawn_patch(seen):
+            self.assertTrue(self.m._spawn_worker(self.doc_none, meta, "p", "rework"))
+        prompt = seen["argv"][seen["argv"].index("-p") + 1]
+        self.assertIn("[눈으로 봐야 하는 것은 넘겨라]", prompt)
+        self.assertIn("permissions.allow", prompt,
+                      "요구하지 말아야 할 것을 이름으로 짚지 않으면 다시 그것을 요구한다")
+        self.assertIn(f"status {self.doc_none} blocked --note", prompt,
+                      "넘기는 길(blocked)을 그 문서의 id 로 주지 않았다")
+        self.assertIn("--needs-machine", prompt, "다른 컴퓨터로 넘기는 길이 없다")
+        # 한 곳에서만 붙는다 — 프롬프트마다 옮겨 적으면 언젠가 한 경로가 빠지고,
+        # 그 경로의 작업자가 다시 사람에게 설정을 바꾸라고 요구한다.
+        self.assertEqual(prompt.count("[눈으로 봐야 하는 것은 넘겨라]"), 1)
+
     # W11. 스코프가 겹치지 않으면 갈라 준다 — 격리를 공짜로 버리지 않는다.
     def test_w11_disjoint_scope_still_gets_a_worktree(self):
         self.dirty("harness/side.md")

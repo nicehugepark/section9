@@ -11285,6 +11285,23 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
         f"`{s9bin} note {doc_id} --label response` 로 남기고 "
         f"`{s9bin} status {doc_id} blocked --note '<남은 일과 이어받는 법>'` 로 "
         "전이하라.")
+    # 눈으로 봐야 하는 검증은 **사람이 켠 세션의 몫**이다 (REQ-20260915-011-62x6).
+    #
+    # 실사고 2026-09-15: 맥의 워처가 띄운 작업자가 Safari 를 띄우지 못하자, blocked
+    # 노트로 사람에게 **`permissions.allow` 에 줄을 더하고 세션을 다시 시작하라**고
+    # 요구했다. 주인의 물음은 「맥에서 사파리를 직접 열고 조정하는 건 이미 됐던 건데
+    # 왜 갑자기 저런 걸 요구하나」였다 — 맞는 물음이다. 막힌 것은 **이 자리의 도구
+    # 봉투**이지 제품이 아니고, 사람이 켠 세션은 종전대로 그 앱을 연다. 봉투를
+    # 넓혀 달라는 요구가 아니라 자리를 넘기는 것이 맞다.
+    prompt = prompt + (
+        "\n\n[눈으로 봐야 하는 것은 넘겨라] 네 도구 봉투에는 앱·브라우저를 띄우는 "
+        "손이 없다(Safari.app 열기 · 화면을 눌러 보기 · 실기기 확인). 그런 검증에 "
+        "부딪히면 **사람에게 설정을 바꾸라고 요구하지 마라** — `permissions.allow` 에 "
+        "줄을 더하라거나 세션을 다시 시작하라는 안내는 답이 아니다. 사람이 켠 세션은 "
+        "그 앱을 그대로 연다. 할 일은 둘이다: 코드로 할 수 있는 것을 끝내고, 눈으로 "
+        f"봐야 하는 것만 `{s9bin} status {doc_id} blocked --note '<무엇을 어느 화면에서 "
+        "눈으로 봐야 하나 — 사람이 켠 세션이 집으면 된다>'` 로 넘겨라. 다른 컴퓨터에서 "
+        f"봐야 하면 `{s9bin} new request --needs-machine <컴퓨터> …` 로 세운다.")
     env = dict(os.environ)
     env.update(wt_env)
     env["S9_AUTO_RESUME"] = "1"
