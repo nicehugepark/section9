@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- REQ-20260915-063-62x6 검증 하니스 (same-origin 보조 페이지):
+     프로젝트 문서의 「휴지통으로」를 **실제로 눌러** 확인 창이 무엇을 말하는지
+     읽고, 「그만두기」로 되돌아온다. 아무것도 버리지 않는다.
+
+     goal 이 「확인 창이 요청 수를 말하고, 0이 아니면 보관을 권하며, 작업 폴더도
+     함께 간다고 말한다」이므로 그 세 문장이 실제로 뜨는지가 판정이다. -->
+<html><head><meta charset="utf-8"><title>verify project trash</title>
+<style>
+ html,body{margin:0;background:#111;color:#eee;font:13px/1.6 ui-monospace,monospace}
+ #out{padding:10px 14px;white-space:pre-wrap;font-size:14px}
+ .ok{color:#55c07a} .bad{color:#e06c5d} .hi{color:#d9b13b}
+ iframe{border:0;width:1400px;height:760px;background:#000}
+</style>
+</head><body>
+<div id="out">초기화…</div>
+<iframe id="f" src="/#projects/PRJ-20260908-001-62x6"></iframe>
+<script>
+const out = document.getElementById("out"), lines = [];
+const say = (s, c) => { lines.push(c ? `<span class="${c}">${s}</span>` : s);
+                        out.innerHTML = lines.join("\n"); };
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const wait = (fn, ms=20000, what="") => new Promise((res, rej) => {
+  const t0 = Date.now();
+  const t = setInterval(() => {
+    let v = null; try{ v = fn(); }catch(e){}
+    if (v){ clearInterval(t); res(v); }
+    else if (Date.now() - t0 > ms){ clearInterval(t); rej(new Error("timeout: " + what)); }
+  }, 120);
+});
+const sleep = ms => new Promise(s => setTimeout(s, ms));
+const verdicts = [];
+const check = (n, p, d) => { verdicts.push(p);
+  say(`  ${p ? "✓" : "✗"} ${esc(n)}${d ? "  — " + esc(d) : ""}`, p ? "ok" : "bad"); };
+
+const f = document.getElementById("f");
+let loads = 0;
+f.addEventListener("load", () => { loads++; if (loads === 1) run(); });
+
+function realClick(win, doc, el){
+  const r = el.getBoundingClientRect();
+  const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + r.height / 2);
+  const top = doc.elementFromPoint(cx, cy) || el;
+  const mk = t => new win.MouseEvent(t, {bubbles: true, cancelable: true, view: win,
+                                         clientX: cx, clientY: cy, button: 0});
+  top.dispatchEvent(mk("mousedown")); top.dispatchEvent(mk("mouseup"));
+  top.dispatchEvent(mk("click"));
+  return top;
+}
+
+async function run(){
+  const win = f.contentWindow, doc = f.contentDocument;
+  const errs = [];
+  win.addEventListener("error", e => errs.push(String(e.message)));
+  try{
+    say("프로젝트 문서 PRJ-20260908-001-62x6 (mp1) 를 열고 「휴지통으로」를 누른다", "hi");
+    const btn = await wait(() =>
+      [...doc.querySelectorAll('#viewer [data-tidy="rm1"]')][0], 20000, "휴지통으로 버튼");
+    check("프로젝트 문서 벨트에 「휴지통으로」가 선다", /휴지통으로/.test(btn.textContent),
+      btn.textContent.trim());
+    realClick(win, doc, btn);
+    const dlg = await wait(() => doc.querySelector(".dlgbox"), 15000, "확인 창");
+    await sleep(400);
+    const txt = dlg.textContent || "";
+    check("확인 창이 이 프로젝트를 가리키는 요청 수를 말한다",
+      /가리키는 요청이\s*\d+\s*건|가리키는 요청은 없습니다/.test(txt),
+      (txt.match(/가리키는 요청[^.]{0,40}/) || [""])[0]);
+    const n = +((txt.match(/가리키는 요청이\s*(\d+)\s*건/) || [])[1] || 0);
+    check("남는 것이 있으면 버리기 대신 보관을 권한다",
+      n > 0 ? /archived/.test(txt) : true,
+      n > 0 ? (txt.match(/끝난 프로젝트라면[^.]{0,50}/) || [""])[0] : "가리키는 요청 0건");
+    check("작업 폴더도 함께 간다고 말한다",
+      /작업 폴더/.test(txt) && /되돌리면 함께 돌아옵니다/.test(txt),
+      (txt.match(/작업 폴더[^.]{0,50}/) || [""])[0]);
+    check("되돌릴 곳을 말한다", /보관함 · 휴지통/.test(txt));
+    // 아무것도 버리지 않는다 — 그만두기로 나온다.
+    const cancel = [...dlg.querySelectorAll("button")]
+      .find(b => /그만두기/.test(b.textContent));
+    /* 휴지통으로는 **되돌릴 수 있는 일**이라 초점이 주 행동에서 시작하는 것이
+       이 제품의 규칙이다 (REQ-20260830-008: 되돌리면 원상복구고 잃는 것이
+       없으면 주 행동에 둔다). 「그만두기」에서 시작하는 것은 완전히 지우기 쪽이다. */
+    check("그만둘 길이 있고, 초점은 주 행동에서 시작한다 (되돌릴 수 있는 일)",
+      !!cancel && /휴지통으로 보내기/.test((doc.activeElement || {}).textContent || ""),
+      (doc.activeElement || {}).textContent);
+    if (cancel) realClick(win, doc, cancel);
+    await sleep(900);
+    /* 확인 창은 **하나를 다시 쓰는 요소**라 닫히면 사라지지 않고 hidden 이 된다
+       (web/app/dialog.js `done`). 없어지는 것으로 재면 늘 실패한다. */
+    const stillDlg = !!doc.querySelector(".dlgbox:not(.tidypanel):not([hidden])");
+    const stillDoc = !!doc.querySelector('#viewer [data-tidy="rm1"]');
+    check("그만두면 확인 창이 닫힌다", !stillDlg,
+      stillDlg ? "창이 남아 있다" : "닫혔다");
+    check("그만두면 아무것도 버려지지 않는다 — 문서가 그대로 열려 있다", stillDoc,
+      stillDoc ? "열려 있다" : "뷰어에서 사라졌다");
+    check("화면이 죽지 않았다", errs.length === 0, errs.join(" | "));
+  }catch(e){ check("하니스가 끝까지 갔다", false, String(e && e.message || e)); }
+  const bad = verdicts.filter(v => !v).length;
+  say(`\n판정: ${verdicts.length - bad}/${verdicts.length} 통과`, bad ? "bad" : "ok");
+}
+</script></body></html>
