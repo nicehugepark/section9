@@ -4,7 +4,7 @@
  "stream_mirror": "on",
  "timezone": "Asia/Seoul",
  "last_model_choice": "fable",
- "machine_fp": "2n7g",
+ "machine_fp": "62x6",
  "jira_site": "https://nicehugepark.atlassian.net",
  "jira_email": "nicehugepark@gmail.com",
  "pref_review": "리드가 스스로 판정할 수 있는 review(설계 권고 채택·기계 검증 끝난 구현·정책 기본값)는 사람에게 넘기지 말고 리드가 직접 done/반려로 닫는다 — 사람에게 남기는 것은 취향·방향·외부 사실뿐 (주인 지시 2026-09-09 13:03)",
@@ -12,5 +12,6 @@
  "jira_enabled": "on",
  "jira_token_expires": "2027-09-01",
  "auto_resume_model": "opus",
- "pref_직접실행": "git 명령을 포함해 리드가 할 수 있는 일은 사람에게 시키지 않는다(주인 지시 2026-09-14 14:00·14:19 「이런 건 제발 직접 좀 해」). 도구·분류기가 막으면 우회하지 말고 막힌 사실과 그것을 여는 설정 한 줄만 알린다."
+ "pref_직접실행": "git 명령을 포함해 리드가 할 수 있는 일은 사람에게 시키지 않는다(주인 지시 2026-09-14 14:00·14:19 「이런 건 제발 직접 좀 해」). 도구·분류기가 막으면 우회하지 말고 막힌 사실과 그것을 여는 설정 한 줄만 알린다.",
+ "ui_density": "compact"
 }
