@@ -8,10 +8,10 @@ machine: DESKTOP-TEHV1KR
 slug: trash-rail-check
 members: [{"user": "nicehugepark", "role": "owner", "since": "2026-09-15", "until": ""}]
 created: 2026-09-15T22:06:06+09:00
-updated: 2026-09-15T22:06:06+09:00
+updated: 2026-09-15T22:06:08+09:00
 creator: nicehugepark
 machine_fp: 62x6
-trashed: 2026-09-15T22:06:06+09:00
+trashed: 2026-09-15T22:06:09+09:00
 trashed_by: nicehugepark
 trashed_how: screen
 trashed_workdir: projects/.trash/trash-rail-check
@@ -21,3 +21,4 @@ trashed_workdir: projects/.trash/trash-rail-check
 
 ## History
 - 2026-09-15T22:06:06+09:00 created by nicehugepark (owner via dashboard)
+- 2026-09-15T22:06:08+09:00 restored (by nicehugepark)
