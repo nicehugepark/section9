@@ -78,7 +78,12 @@ class MachinesMarkThemselves(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="s9-pinghost-m-")
         os.makedirs(os.path.join(self.root, "state"), exist_ok=True)
-        self._saved = {k: os.environ.pop(k, None) for k in ("S9_PORT", "S9_ROOT")}
+        # S9_TESTS_NESTED 도 걷는다 (REQ-20260916-006-2n7g): 전체 실행의 샤드는
+        # 그 표를 달고 도는데, `start_dashboard()` 는 그 표를 보면 아무것도 띄우지
+        # 않고 돌아간다(REQ-20260915-014-2n7g) — 여기서 재는 것은 그 뒤의 기동
+        # 갈래라, 표를 안 걷으면 이 시험은 전체 실행에서만 진다.
+        self._saved = {k: os.environ.pop(k, None)
+                       for k in ("S9_PORT", "S9_ROOT", "S9_TESTS_NESTED")}
 
     def tearDown(self):
         for k, v in self._saved.items():

@@ -31571,6 +31571,19 @@ def _guard_ports(root=None):
     return sorted(out)
 
 
+# 시험이 쓰는 포트 대역 — `tests/portpool.py` 의 POOL_BASE 와 `bin/s9-doctor` 의
+# POOL_LO·POOL_HI 와 같은 값이어야 한다(그 두 자리가 이미 서로를 가리키고 있다).
+TEST_PORT_LO, TEST_PORT_HI = 18800, 23999
+
+
+def is_test_port(port):
+    """이 포트는 시험이 앉는 자리인가 — 사람의 대시보드는 여기 앉지 않는다."""
+    try:
+        return TEST_PORT_LO <= int(port) <= TEST_PORT_HI
+    except (TypeError, ValueError):
+        return False
+
+
 def serve_sweep_others(keep_port, root=None, out=None, wait=None):
     """**한 저장소에는 대시보드가 하나다** — 다른 포트에 남은 내 대시보드를 거둔다.
 
@@ -31583,10 +31596,32 @@ def serve_sweep_others(keep_port, root=None, out=None, wait=None):
 
     순서가 전부다 — 감시자를 먼저 물리고(물러난 것을 확인한 뒤) 서버를 내린다.
     거꾸로 하면 감시자가 그 사이에 새 서버를 띄운다(`--stop` 과 같은 규율).
-    돌려주는 것: 거둔 포트 목록."""
+    돌려주는 것: 거둔 포트 목록.
+
+    **시험이 앉은 자리는 자리를 옮기는 것이 아니다** (REQ-20260916-004-2n7g, 실측
+    2026-09-16 00:05:13): 9909 를 보던 감시자가 죽고 0바이트 중지 표식이 새로 생겼는데,
+    그때 사람이 한 일은 시험을 돌린 것뿐이었다. 이 함수의 뿌리는 부른 프로세스의 ROOT 라,
+    실 저장소를 뿌리로 가진 serve 가 9909 아닌 포트로 뜨면 그 자리에서 9909 를 거둔다.
+    시험 실행에서 그런 serve 가 뜨는 길은 둘 — ① 시험 모듈이
+    `os.environ.setdefault("S9_ROOT", tmp)` 로 뿌리를 세우는데 setdefault 라 부른 셸에
+    S9_ROOT 가 있으면 실 뿌리가 그대로 남는다(REQ 전용 worktree 세션은 S9_ROOT 가 본
+    저장소로 못박혀 있다) ② 서버를 띄우는 fixture 40여 곳 중 env 에 S9_ROOT 를 싣지
+    않는 자리. 둘 다 **풀 포트**로 뜬다 — 시험이 쓰는 포트는 거기서만 온다. 검사는
+    호출자가 아니라 이 함수 안에 선다(호출자마다 두면 새로 드는 호출자를 못 지킨다)."""
     import signal as _sig
     import time as _t
+    # 뿌리를 **명시로 받은** 호출은 그 뿌리 안을 시험하는 자리다(이 계약의 유닛
+    # 시험). 안쪽 실행 검사는 뿌리를 묻지 않고 도는 실제 기동에만 건다 — 전체
+    # 실행의 샤드는 S9_TESTS_NESTED=1 로 돌아, 거기까지 막으면 계약 자체를 잴 수
+    # 없다(실측 2026-09-16: serve_one_per_repo 4건이 전체 실행에서만 졌다).
+    told_root = root is not None
     root = root or ROOT
+    if is_test_port(keep_port) or \
+            (not told_root and os.environ.get("S9_TESTS_NESTED")):
+        if out:
+            out(f"{keep_port} 는 시험이 앉는 자리라 다른 포트를 거두지 않는다 "
+                f"— 사람의 대시보드는 그대로 둔다")
+        return []
     wait = GUARD_POLL_SEC * 4 if wait is None else wait
     stopped = []
     for p in _guard_ports(root):
