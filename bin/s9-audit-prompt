@@ -288,10 +288,45 @@ def _account_registered():
         return True
 
 CROSS_SESSION_MARK = "<cross-session-message"
+AGENT_MSG_MARK = "<agent-message"
 # 프롬프트 머리에 이것이 서면 사람이 친 말이 아니다 — 카드를 만들지 않는다(main 참조).
 NOT_HUMAN_MARKS = ("<task-notification>", "<system-reminder>",
-                   "[SYSTEM NOTIFICATION", CROSS_SESSION_MARK)
+                   "[SYSTEM NOTIFICATION", CROSS_SESSION_MARK, AGENT_MSG_MARK)
+
+# 이름을 아는 틀. 목록은 손으로 세는 것이라, 하네스가 틀을 하나 새로 만들 때마다
+# 같은 구멍이 다시 열린다 — 실제로 두 번 열렸다(cross-session 48건 · agent-message
+# 36건, 전부 휴지통행. REQ-20260915-072).
+KNOWN_FRAME_TAGS = ("task-notification", "system-reminder",
+                    "cross-session-message", "agent-message")
+KNOWN_FRAME_RE = re.compile(r"^<(?:%s)\b[^<>\n]*>" % "|".join(KNOWN_FRAME_TAGS))
+# 그래서 이름이 아니라 **생김새**로도 가른다: 하네스가 붙이는 틀은 첫 줄 전체가
+# `<이름-있는-태그 …>` 이고 이름에 하이픈이 있다. 사람이 친 말은 그렇게 시작하지
+# 않는다 — `<div class=…>` 처럼 하이픈 없는 태그나, 태그로 닫히지 않는 첫 줄은
+# 사람의 말로 본다(HTML 을 붙여 넣은 사람의 요청을 잃지 않기 위한 선이다).
+HARNESS_FRAME_RE = re.compile(r"^<[a-z][a-z0-9]*(?:-[a-z0-9]+)+(?:\s[^<>\n]*)?>$")
+# 태그가 아닌 틀 — 대괄호로 오는 시스템 통지.
+PLAIN_FRAME_MARKS = ("[SYSTEM NOTIFICATION",)
 _CROSS_ATTR_RE = re.compile(r'([A-Za-z][\w-]*)="([^"]*)"')
+
+
+def harness_frame(prompt):
+    """사람이 친 말이 아닌 턴이면 그 틀 이름, 아니면 "" (REQ-20260915-072).
+
+    이름을 아는 틀은 `>` 로 닫히기만 하면 되고(한 줄에 본문이 이어 붙어도 틀이다),
+    모르는 틀은 첫 줄 전체가 태그일 때만 틀로 본다. 그래서 「`<agent-message` 를
+    왜 못 막나?」처럼 사람이 그 이름을 입에 올린 말은 요청으로 그대로 선다.
+    """
+    head = (prompt.splitlines() or [""])[0].strip()
+    if prompt.startswith(PLAIN_FRAME_MARKS):
+        return head[:120]
+    m = KNOWN_FRAME_RE.match(head) or HARNESS_FRAME_RE.match(head)
+    return m.group(0) if m else ""
+
+
+def known_frame(prompt):
+    """그 틀을 이미 알고 있나 — 모르는 틀은 세션 문서에 이름을 남긴다."""
+    head = (prompt.splitlines() or [""])[0].strip()
+    return bool(prompt.startswith(PLAIN_FRAME_MARKS) or KNOWN_FRAME_RE.match(head))
 
 
 def cross_session_turn(env, prompt):
@@ -813,9 +848,18 @@ def main():
     #   · 다른 세션이 SendMessage 로 보낸 프롬프트(<cross-session-message …>,
     #     REQ-20260909-037: 「<cross-session-message f…」 제목의 REQ 가 여섯 번 섰다) —
     #     세션 문서에 한 줄만 남기고, 부르는 이름은 그대로 배운다(REQ-20260908-019).
-    if prompt.startswith(NOT_HUMAN_MARKS):
+    #   · 위임한 서브에이전트의 최종 보고(<agent-message from=…>, REQ-20260915-072:
+    #     9/15 하루에 31건이 서고 전부 1분 안에 휴지통으로 갔다) — 모델이 낸 말이다.
+    #   · 아직 목록에 없는 틀도 생김새로 가른다(harness_frame) — 목록만으로는 하네스가
+    #     틀을 새로 만들 때마다 같은 구멍이 다시 열린다.
+    frame = harness_frame(prompt)
+    if frame:
         if prompt.startswith(CROSS_SESSION_MARK):
             cross_session_turn(env, prompt)
+        elif not known_frame(prompt):
+            # 아직 목록에 없는 틀이다 — 삼키되 조용히 삼키지 않는다. 세션 문서에
+            # 이름을 남겨야 다음 사람이 「무엇이 새로 생겼나」를 찾을 수 있다.
+            run(env, "log", f"하네스 틀 수신 ({frame[:80]}) — 요청으로 세우지 않았다")
         emit("")
         return
 
