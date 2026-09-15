@@ -29774,7 +29774,7 @@ SD_MINE = "내 것"
 SD_IN_USE = "쓰는 중"
 SD_LEFT = "남겨진 것"
 SD_UNKNOWN = "모름"
-SD_PORT_RE = re.compile(r"-{1,2}p(?:ort)?[=\s]\s*(\d+)")
+SD_PORT_RE = re.compile(r"-{1,2}p(?:ort)?[=\s]*(\d+)")
 
 
 def _sd_dir():
@@ -29813,13 +29813,13 @@ def _sd_port_of(cmdline):
     return int(m.group(1)) if m else 0
 
 
-def _sd_processes():
+def _sd_processes(table=None):
     """지금 도는 safaridriver 들 — {pid: 포트}.
 
     판정은 **실행 파일 이름**으로 한다 — 명령줄에 "safaridriver" 가 들었는지로
     보면 `s9 safaridriver ls` 를 도는 제 자신이 목록에 실린다."""
     out = {}
-    for pid, cmd in (proc_table() or {}).items():
+    for pid, cmd in (table if table is not None else (proc_table() or {})).items():
         parts = (cmd or "").split()
         if not parts or os.path.basename(parts[0]) != "safaridriver":
             continue
@@ -29902,7 +29902,8 @@ def _sd_verdict(reg, me):
 def _sd_rows(me=None):
     """떠 있는 safaridriver 마다 한 줄. 프로세스가 사라진 기록은 여기서 거둔다."""
     me = me if me is not None else (os.environ.get("S9_SESSION") or "")
-    procs = _sd_processes()
+    table = proc_table() or {}       # 한 번만 훑는다 — 표 하나로 목록도 청소도 한다
+    procs = _sd_processes(table)
     rows = []
     for pid, port in sorted(procs.items(), key=lambda kv: (kv[1], kv[0])):
         reg = _sd_read_reg(port) if port else None
@@ -29912,7 +29913,7 @@ def _sd_rows(me=None):
         verdict, why = _sd_verdict(reg, me)
         rows.append({"pid": pid, "port": port, "age": _sd_age(pid),
                      "reg": reg, "verdict": verdict, "why": why})
-    if proc_table():
+    if table:
         # 프로세스 표를 실제로 읽었을 때만 거둔다 — 표가 비어 오는 판에서
         # 쓸어 버리면 살아 있는 드라이버가 전부 주인을 잃는다.
         live_ports = set(procs.values())
@@ -30059,9 +30060,10 @@ def cmd_safaridriver(args):
             if not port:
                 print("s9 safaridriver start: 쓸 포트를 못 찾았다", file=sys.stderr)
                 sys.exit(1)
-        mine = next((r for r in rows if r["port"] == port), None)
-        if mine:
-            print(f"이미 포트 {port} 에 떠 있다 (pid {mine['pid']}, {mine['verdict']}) "
+        standing = next((r for r in rows if r["port"] == port), None)
+        if standing:
+            print(f"이미 포트 {port} 에 떠 있다 "
+                  f"(pid {standing['pid']}, {standing['verdict']}) "
                   f"— http://127.0.0.1:{port}")
             return
         pid = _sd_spawn(port)
