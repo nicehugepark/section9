@@ -209,7 +209,12 @@ class NoticesFacts(unittest.TestCase):
 
     def test_s12_the_screen_builds_commands_in_one_place_too(self):
         """N3 — 화면 쪽 규칙은 web/app/state.js 의 s9cmd 한 곳이고, 미등록 안내는
-        그것을 쓴다(문자열로 박아 두면 다음 자리에서 또 리눅스 꼴이 샌다)."""
+        그것을 쓴다(문자열로 박아 두면 다음 자리에서 또 리눅스 꼴이 샌다).
+
+        **표기를 짓는 둘도 그 자리를 지난다** (REQ-20260915-023-62x6): `s9code` 는
+        `<code class="cmd">` 로 감싸고 `s9cmdq` 는 「 」로 경계를 주는데, 둘 다 속에서
+        `s9cmd` 를 부른다. 셋 중 하나면 이 계약을 지킨 것이다 — 이 시험이 `s9cmd(`
+        글자만 보던 탓에, 표기를 한 곳으로 모으는 고침이 여기서 막혔다."""
         web = os.path.join(HERE, "..", "web", "app")
         with open(os.path.join(web, "state.js"), encoding="utf-8") as f:
             state = f.read()
@@ -220,8 +225,9 @@ class NoticesFacts(unittest.TestCase):
                 src = f.read()
             for line in src.splitlines():
                 if "user add" in line or "user attach" in line:
-                    self.assertIn("s9cmd(", line,
-                                  f"{name}: 미등록 안내가 명령을 글자로 박았다 — {line.strip()[:80]}")
+                    self.assertTrue(any(mk in line for mk in
+                                        ("s9cmd(", "s9code(", "s9cmdq(")),
+                                    f"{name}: 미등록 안내가 명령을 글자로 박았다 — {line.strip()[:80]}")
 
     # ── S5 회귀: 서비스 이름은 값 자리 ───────────────────────────────────────
     def test_s5_service_name_only_as_a_value(self):

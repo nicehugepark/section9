@@ -46,7 +46,12 @@ def local_helpers():
 # sys.stdlib_module_names 는 플랫폼과 무관하게 이 이름들을 담는다. 두 갈래의 답이 같아야
 # 한다 — 그렇지 않으면 Windows 갈래 안에서 import winreg 하는 bin/s9_firstrun.py 가
 # 맥에서만 서드파티로 잡힌다 (REQ-20260915-002-2n7g, 맥 python 3.9.6 실측 2026-09-15).
-PLATFORM_ONLY = {"winreg", "msvcrt", "winsound", "_winapi", "nt", "msilib"}
+# `msilib` 은 여기 있었는데 걷었다 (2026-09-15, 원격 머신 python 3.13 실측): 3.13 이
+# 그것을 **표준에서 아예 뺐다**(PEP 594). 그러면 3.10+ 갈래의 답(sys.stdlib_module_names)
+# 에 없어 이 시험이 실패하는데, 실패가 말하는 것은 우리 코드의 결함이 아니라 판이 달라진
+# 사실이다. 이 집합이 담아야 하는 것은 **우리 소스가 실제로 import 하는** 그 운영체제
+# 전용 이름이고(지금은 bin/s9_firstrun.py 의 winreg 하나), msilib 은 아무도 안 쓴다.
+PLATFORM_ONLY = {"winreg", "msvcrt", "winsound", "_winapi", "nt"}
 
 
 def scan_stdlib_names():
