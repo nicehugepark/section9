@@ -22658,6 +22658,19 @@ def do_user_update(name, display=None, email=None, role=None, actor="",
     return changed
 
 
+PREF_VALUE_MAX = 500          # 개인 선호 한 줄의 상한 (REQ-20260915-050-62x6)
+# 화면과 기계가 제 자리에서 쓰는 설정 키 — 여기 없고 pref_ 도 아닌 키는 저장은
+# 되지만 대화에 실리지 않는다(REQ-20260915-056-62x6). 목록이 아니라 **안내의
+# 대상을 좁히는 자**다: 빠진 이름이 있어도 한 줄 더 찍힐 뿐 아무것도 막지 않는다.
+KNOWN_CONFIG_KEYS = (
+    "timezone", "digest_budget", "ui_skin", "ui_tone", "ui_density",
+    "stream_mirror", "stream_keep_days", "external_secrets_path",
+    "observe", "observe_until", "machine_fp", "jira_account_id",
+    "jira_site", "jira_token_expires", "last_model_choice",
+    "last_account_choice", "auto_resume", "auto_resume_apply",
+    "auto_resume_grace_sec", "s9code_args")
+
+
 def do_user_config_set(name, key, value, actor=""):
     """config/settings.json 키 설정 (빈 값 = 삭제). 변경은 profile Notes에 audit."""
     if not user_role(name):
@@ -22700,6 +22713,27 @@ def do_user_config_set(name, key, value, actor=""):
     _who = (actor or "").split()[0] if actor else ""
     if user_role(_who) == "viewer" and name != _who:
         raise ValueError(f"{VIEWER_DENIED_MSG} (남의 설정: {name})")
+    # **남의 설정은 본인이나 admin 만** (REQ-20260915-048-62x6, security-engineer
+    # 점검 2026-09-15): 대시보드 POST 는 이 판정을 이미 했지만 CLI 는 그 자리를
+    # 지나지 않아, 등록된 member 가 `s9 user config <남> pref_x '<문장>'` 로 남의
+    # 세션에 **매 턴 주입되는 지시문**을 넣을 수 있었다. 판정이 있어야 할 자리는
+    # 설정을 쓰는 단 하나의 함수인 여기다(REQ-20260902-029 가 role 에서 겪은 그
+    # 갈림 — 그때는 role 만 고치고 config 는 전수하지 않았다).
+    #
+    # **등록된 사람일 때만 잰다.** actor 자리에는 사람 이름이 아니라 이 컴퓨터의
+    # 동작이 오기도 한다(「dashboard model change」·「s9 env inherit」) — 그것은
+    # 남이 아니라 제 몫을 적는 길이라 종전대로 지나간다.
+    if _who and user_role(_who) and name != _who and user_role(_who) != "admin":
+        raise ValueError(f"@{name} 본인이나 admin 만 이 설정을 바꿀 수 있습니다 "
+                         f"(me=@{_who}).")
+    # 개인 선호 값의 상한 (REQ-20260915-050-62x6): 이 값은 **매 턴 프롬프트에
+    # 그대로 실린다** — 실측에서 5천자가 검사 없이 저장되고 전량 주입됐다(붙여넣기
+    # 사고 하나가 모든 턴의 자리를 먹는다). 줄바꿈은 막지 않는다: 사람이 줄을
+    # 나눠 적을 자리다. 기계가 적는 값(machine_fp 따위)은 이 상한을 타지 않는다.
+    if key.startswith("pref_") and value and len(str(value)) > PREF_VALUE_MAX:
+        raise ValueError(
+            f"개인 선호는 {PREF_VALUE_MAX}자까지입니다 — 지금 {len(str(value))}자. "
+            f"매 턴 대화 첫머리에 그대로 실리는 값이라 짧게 적어 주세요.")
     if key in ("observe", "observe_until"):
         who = (actor or "").split()[0] if actor else ""
         if user_role(who) != "admin":
@@ -22924,6 +22958,15 @@ def cmd_user(args):
             except ValueError as e:
                 die(str(e))
             print(f"{name}: {args.key} = {args.value}")
+            # **대화에 실리는 것은 pref_ 로 시작하는 키뿐이다** (REQ-20260915-056-62x6,
+            # quality-assurance 점검 2026-09-15): `s9 user config <나> 취향 '…'` 이
+            # 조용히 저장되고 화면에도 보이지만 주입 대상이 아니라, 사람은 저장된 줄
+            # 알고 「안 먹는다」고 느낀다. 막지는 않는다 — 기계가 적는 값도 같은 자리에
+            # 살기 때문이다. 화면은 이미 pref_ 를 붙여 준다.
+            if args.value and not args.key.startswith("pref_") \
+                    and args.key not in KNOWN_CONFIG_KEYS:
+                print(f"◌ 이 값은 대화에 실리지 않습니다 — 개인 선호로 쓰려면 "
+                      f"키를 pref_{args.key} 처럼 적어 주세요.")
         elif args.key:
             print(cfg.get(args.key, ""))
         else:
