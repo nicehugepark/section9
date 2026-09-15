@@ -1,5 +1,5 @@
 ---
-id: PRJ-20260915-001-62x6
+id: PRJ-20260915-002-62x6
 type: project
 title: 휴지통 손잡이 검증(임시)
 summary: REQ-20260915-064 검증용 — 끝나면 지웁니다
@@ -7,18 +7,18 @@ status: active
 machine: DESKTOP-TEHV1KR
 slug: trash-rail-check
 members: [{"user": "nicehugepark", "role": "owner", "since": "2026-09-15", "until": ""}]
-created: 2026-09-15T22:57:47+09:00
-updated: 2026-09-15T22:57:51+09:00
+created: 2026-09-15T22:59:37+09:00
+updated: 2026-09-15T22:59:40+09:00
 creator: nicehugepark
 machine_fp: 62x6
-trashed: 2026-09-15T22:57:52+09:00
+trashed: 2026-09-15T22:59:41+09:00
 trashed_by: nicehugepark
 trashed_how: screen
-trashed_workdir: projects/.trash/trash-rail-check-2
+trashed_workdir: projects/.trash/trash-rail-check-3
 ---
 
 ## Notes
 
 ## History
-- 2026-09-15T22:57:47+09:00 created by nicehugepark (owner via dashboard)
-- 2026-09-15T22:57:51+09:00 restored (by nicehugepark)
+- 2026-09-15T22:59:37+09:00 created by nicehugepark (owner via dashboard)
+- 2026-09-15T22:59:40+09:00 restored (by nicehugepark)
