@@ -294,6 +294,27 @@ def concurrent_token(fresh):
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:6]
 
 
+def in_request_worktree(root=None):
+    """이 자리가 요청 전용 worktree 인가 (REQ-20260916-013-2n7g).
+
+    `s9 worktree` 는 `<본 저장소>/state/worktrees/<이름>` 에 둔다. 그 안의 코드
+    파일은 **이 요청의 사본**이다 — 다른 요청의 작업자는 제 worktree 에서 돌아
+    이 파일에 닿을 수 없다. 규약도 그렇게 못박았다(REQ-20260915-044: 요청 전용
+    worktree 에서는 그 자리의 미커밋 코드 전부가 이 요청의 것).
+
+    그래서 mtime 이 새롭다는 사실은 그 자리에서 증거가 아니다. 종전에는 그것이
+    「다른 작업자가 붙어 있는 중에 그 사이 바뀐 파일」로 읽혀 커밋을 막았고,
+    빠져나가는 길은 환경변수 접두(S9_ALLOW_CONCURRENT=…)뿐이라 승인할 사람이
+    없는 무인 세션은 구조적으로 못 지나갔다 — 실제로 한 세션이 FRESH_SEC(15분)이
+    지나기를 기다려 넘어갔다. 그것은 해결이 아니라 대기다.
+
+    경로 모양으로만 판정한다 — 훅은 본체가 못 뜰 때도 돌아야 해서 git 에 묻지
+    않는다. 다른 자리에 둔 worktree 는 종전대로 검사를 받는다.
+    """
+    parts = os.path.abspath(root or ROOT).split(os.sep)
+    return len(parts) >= 3 and parts[-2] == "worktrees" and parts[-3] == "state"
+
+
 def fresh_staged(staged):
     """담긴 것 중 최근 FRESH_SEC 안에 바뀐 파일을 (경로, 나이초) 로 돌려준다.
 
@@ -606,7 +627,11 @@ def concurrent_flags(staged):
     if staged and all(is_data_path(f) for f in staged):
         return [], [], [], [], []
     workers = live_workers()
-    fresh = fresh_staged(staged) if workers else []
+    # 요청 전용 worktree 에서는 mtime 이 「내가 방금 고쳤다」는 뜻뿐이다
+    # (REQ-20260916-013-2n7g). 남이 담은 것을 보는 둘째 창은 그대로 선다 —
+    # 이 검사가 지키려는 것(남의 변경을 쓸어 담지 않기)은 그쪽이 맡는다.
+    fresh = (fresh_staged(staged)
+             if (workers and not in_request_worktree()) else [])
     stop, unknown = recent_foreign_commits(staged)
     names = sorted({f for f, _ in fresh} | {x[0] for x in stop})
     return workers, fresh, stop, unknown, names
@@ -630,6 +655,10 @@ def concurrent_gate(staged):
     나갔다. 코드가 한 파일이라도 섞이면 종전대로 본다.
     """
     workers, fresh, foreign, unknown, names = concurrent_flags(staged)
+    if workers and not fresh and in_request_worktree():
+        print("[s9-guard] 요청 전용 worktree 라 최근 변경 검사는 세우지 않는다 — "
+              "이 자리의 코드는 이 요청의 사본이다. 남이 담은 것은 그대로 본다 "
+              "(REQ-20260916-013-2n7g).", file=sys.stderr)
     for f, sha, age, subj, _who in unknown[:5]:
         # 막지는 않는다 — 다른 컴퓨터에서 온 commit 이 다 여기 든다. 다만
         # 짚어는 준다: 내가 덮으려는 것이 무엇인지는 보여야 한다.
