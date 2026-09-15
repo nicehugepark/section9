@@ -988,13 +988,33 @@ def start_dashboard():
     이후에는 Claude 세션 시작 훅(s9-audit-session)이 죽은 서버를 되살린다."""
     import socket
     import subprocess
+    # 안쪽 시험 실행은 바깥 세계를 건드리지 않는다 (REQ-20260915-014-2n7g).
+    # jobfile·tmp 청소가 이미 같은 표를 읽는다.
+    if os.environ.get("S9_TESTS_NESTED"):
+        say("대시보드는 띄우지 않습니다 — 시험 안쪽 실행입니다")
+        return
     port = int(os.environ.get("S9_PORT") or 0)
+    told = bool(port)          # 이 뿌리를 위해 누가 포트를 일러 줬나
     if not port:
         try:
             with open(os.path.join(ROOT, "state", "port"), encoding="utf-8") as f:
                 port = int(f.read().strip())
+            told = True
         except (OSError, ValueError):
             port = 9909
+    # **기본 포트는 이 설치본의 저장소 것이다** (REQ-20260915-014-2n7g, 실제 사고
+    # 2026-09-15 23:27·23:37): 시험이 임시 뿌리(S9_ROOT=/T/s9hook-…)로 이 스크립트를
+    # 돌리면 그 뿌리에는 state/port 가 없어 9909 로 떨어졌고, 그 자리에 세운
+    # supervisor 가 시험이 끝난 뒤에도 살아남아 9909 가 비는 순간 집었다 — 사람의
+    # 대시보드가 임시 디렉터리를 서비스하며 404 를 냈다. 남의 뿌리에 포트를 일러
+    # 주지 않았으면 띄우지 않는다: 어느 포트여야 하는지 우리가 모르는 것이고,
+    # 모를 때 고를 기본값이 하필 남의 자리다.
+    own = main_worktree_root(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if not told and os.path.realpath(ROOT) != os.path.realpath(own):
+        say(f"대시보드는 띄우지 않습니다 — {ROOT} 에 state/port 가 없어 기본 포트 "
+            f"{port} 로 떨어지는데, 그 포트는 이 컴퓨터의 다른 저장소 자리입니다. "
+            f"띄우려면 S9_PORT 를 주거나 그 뿌리의 state/port 에 포트를 적으세요.")
+        return
     try:
         socket.create_connection(("127.0.0.1", port), 0.5).close()
         say(f"대시보드 이미 실행 중: http://127.0.0.1:{port}/")
