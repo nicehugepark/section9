@@ -87,7 +87,7 @@ BLOCK = [
      "git restore(작업 트리)", WHY_WORKTREE),
     (r"\bgit\b[^|;&]*\bclean\b[^|;&]*\s-[a-zA-Z]*[fdx]", "git clean",
      WHY_WORKTREE),
-    # 커밋 검사 우회 (REQ-20260916-005). worktree 작업자의 봉투에는
+    # 커밋 검사 우회 (REQ-20260916-005). worktree 작업자의 프롬프트 템플릿에는
     # `Bash(git commit:*)` 가 들어 있고 그 무늬는 뒤에 오는 무엇이든 받는다 —
     # 옵션 하나로 s9-guard 전체가 지나가는데, 그 자리에 서 있는 검사가 없었다.
     # `-n` 은 짧은 옵션이라 묶일 수 있다(`-an`). 값을 받지 않는 commit 짧은
