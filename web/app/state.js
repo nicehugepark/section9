@@ -228,6 +228,21 @@ const personTitle = u => {
   const id = personId(u), full = personFull(u);
   return full ? `${full} (${id})` : id;
 };
+/* 이름이 **서는 자리는 이 한 줄을 지난다** (REQ-20260915-039-62x6).
+
+   얼굴(글꼴)을 자리마다 적으면 새 자리가 늘 때마다 또 갈린다 — 실제로 갈렸다:
+   배지만 본문체로 내렸더니 계보 칩·휴지통 줄·미리보기 머리줄·멤버 표의 같은
+   「박성진」이 고정폭으로 남아 대체 글꼴로 떨어졌고, 주인이 카드끼리 견주어
+   보고 「폰트가 다 다른데 의도된건가」로 짚었다. 그래서 **이름을 내는 함수가
+   표식(`.pnm`)을 함께 낸다** — 얼굴을 정하는 CSS 는 tokens.css 한 곳이다.
+
+   가르는 자는 종전 그대로다: 이름이 없으면 표식도 없다 — 그 자리에 서는 것은
+   계정 id 이고, 계정은 기계가 읽는 글자라 고정폭으로 남는다. */
+/* 뒤에 붙는 조사(`이`·`가`)는 **이름에 붙은 글자**라 이름과 한 얼굴로 선다 —
+   갈리면 한 낱말 안에서 얼굴이 두 벌이 된다(「박성진」+「이」). */
+const personNameHTML = (u, suffix) => personFull(u)
+  ? `<span class="pnm">${esc(personFull(u) + (suffix || ""))}</span>`
+  : esc(personName(u)) + esc(suffix || "");
 let idBaseCount = new Map();
 function rebuildIdMap(){
   idBaseCount = new Map();

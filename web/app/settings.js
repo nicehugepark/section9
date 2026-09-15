@@ -158,7 +158,7 @@ function renderSettingsSection(meAdmin){
   } else if (settingsSection === "users"){
     if (!meAdmin){ v.innerHTML = `<p class="empty">사용자 관리는 admin만 가능합니다. (whoami=${esc((window.__whoami||{}).user||"?")})</p>`; return; }
     const list = (window.__users||[]).map(u => `<div class="urow" data-uname="${esc(u.name)}">
-        <span class="st">${esc(u.role)}</span> <b>${esc(personName(u))}</b>
+        <span class="st">${esc(u.role)}</span> <b>${personNameHTML(u)}</b>
         <span class="path">${personFull(u) ? "@" + esc(u.name) + " · " : ""}${esc((u.registered||"").slice(0,10))}</span>${
           profileMissing(u).length ? `<span class="pbadge" title="프로필 미기재: ${esc(profileMissing(u).join(" · "))}">⚠</span>` : ""}</div>`).join("");
     // 못 받은 목록을 "등록된 사용자가 없다" 로 그리지 않는다 (REQ-20260828-039)

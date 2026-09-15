@@ -776,7 +776,7 @@ function showHover(a){
   /* 미리보기의 머리줄에는 **이름**이 선다 (REQ-20260915-035-62x6) — 같은 문서를
      카드에서 이름으로 읽고 손을 얹었을 때 id 로 바뀌면 다른 사람으로 읽힌다.
      계정은 줄 전체에 얹은 글(title)에서 확인한다. */
-  hovercard.innerHTML = `<div class="hid" title="${esc(personTitle(r.user))}">${esc(shortId(r.id))} · ${esc(personName(r.user))} · ${esc((r.updated||"").slice(0,10))}</div>
+  hovercard.innerHTML = `<div class="hid" title="${esc(personTitle(r.user))}">${esc(shortId(r.id))} · ${personNameHTML(r.user)} · ${esc((r.updated||"").slice(0,10))}</div>
     <div class="ht">${esc(r.title)}</div>
     ${r.summary ? `<div class="hs">${esc(r.summary)}</div>` : ""}
     <div class="hs" style="margin-top:4px"><span style="color:${SCOLOR[r.status]||"inherit"}">●</span> ${esc(r.status)}${r.project ? " · " + esc(r.project) : ""}</div>`;

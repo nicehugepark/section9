@@ -111,8 +111,9 @@ class PersonName(unittest.TestCase):
 
     def test_name_is_not_monospaced(self):
         """고정폭에는 한글 얼굴이 없다 — 이름은 본문체, 계정 id 는 고정폭."""
-        m = re.search(r"\.badge\.named \.bnm\{[^}]*\}", self.css)
-        self.assertTrue(m, ".badge.named .bnm 규칙이 없습니다")
+        tokens = _read("css", "tokens.css")
+        m = re.search(r"\.pnm\{[^}]*\}", tokens)
+        self.assertTrue(m, "이름의 얼굴을 정하는 .pnm 규칙이 tokens.css 에 없습니다")
         self.assertIn("var(--sans)", m.group(0))
         self.assertNotIn("var(--mono)", m.group(0))
 
@@ -121,10 +122,10 @@ class PersonName(unittest.TestCase):
         """사람 칸·작성자·미리보기 머리는 이름으로 선다 — 자리마다 손으로 짓지 않는다."""
         for parts, needle, where in (
                 (("app", "docs.js"), "personBadgeHTML(m.user", "아티클의 쓴 사람"),
-                (("app", "project.js"), "personName(m.user)", "프로젝트 멤버 표의 사람 칸"),
-                (("app", "dialog.js"), "personName(r.user)", "문서 미리보기의 머리줄"),
-                (("app", "tidy.js"), "personName(r.user", "휴지통·보관함 줄"),
-                (("app", "settings.js"), "personName(u)", "사용자 관리 목록"),
+                (("app", "project.js"), "personNameHTML(m.user)", "프로젝트 멤버 표의 사람 칸"),
+                (("app", "dialog.js"), "personNameHTML(r.user)", "문서 미리보기의 머리줄"),
+                (("app", "tidy.js"), "personNameHTML(r.user", "휴지통·보관함 줄"),
+                (("app", "settings.js"), "personNameHTML(u)", "사용자 관리 목록"),
         ):
             self.assertIn(needle, _read(*parts),
                           where + " 가 이름을 지나지 않습니다")
@@ -163,6 +164,54 @@ class PersonName(unittest.TestCase):
         self.assertTrue(m, "badgeAttrs 가 없습니다")
         self.assertIn("tagHue(personId(", m.group(0),
                       "색조가 id 가 아닌 것으로 매겨집니다")
+
+    # ⑥ 이름이 서는 자리는 **한 표식**을 지난다 (REQ-20260915-039-62x6)
+    def test_name_places_wear_the_mark(self):
+        """화면에 나는 이름은 personNameHTML 을 지나 `.pnm` 을 입는다.
+
+        얼굴을 자리마다 적으면 새 자리가 늘 때마다 갈린다 — 실제로 갈렸다:
+        배지만 본문체로 내렸더니 계보 칩·휴지통 줄·미리보기 머리줄·멤버 표의
+        같은 사람이 고정폭으로 남아 카드마다 다른 얼굴로 보였다.
+        """
+        self.assertIn("const personNameHTML = (u, suffix) => personFull(u)", self.state,
+                      "표식을 함께 내는 함수가 state.js 에 없습니다")
+        self.assertIn('<span class="pnm">', self.state,
+                      "이름의 표식(.pnm)을 내는 자리가 없습니다")
+        self.assertIn('<span class="bnm">${personNameHTML(u)}</span>', self.card,
+                      "배지의 이름이 표식을 지나지 않습니다")
+        self.assertIn("const faceHTML = named ? personNameHTML(creator, josa)", self.card,
+                      "계보 칩의 이름이 표식을 지나지 않습니다")
+        """이름을 **글로** 낼 때 표식을 건너뛴 자리가 없다.
+
+        `esc(personName(...))` 는 표식 없는 맨 이름이다 — 셀렉트의 `<option>`
+        (자식 태그를 둘 수 없다)과 낭독기용 `aria-label` 만 그 꼴로 남는다.
+        """
+        for fn in sorted(os.listdir(os.path.join(WEB, "app"))):
+            if not fn.endswith(".js") or fn == "state.js":
+                continue          # 짓는 자리 자신 — 표식을 내는 그 함수가 여기 있다
+            lines = _read("app", fn).splitlines()
+            for i, line in enumerate(lines, 1):
+                if "esc(personName(" not in line:
+                    continue
+                near = "\n".join(lines[max(0, i - 3):i + 1])   # 여러 줄에 걸친 템플릿
+                self.assertTrue("<option" in near or "aria-label" in near,
+                                f"web/app/{fn}:{i} 이 이름을 표식 없이 냅니다")
+
+    def test_name_face_is_decided_in_one_css_rule(self):
+        """얼굴을 정하는 CSS 는 한 곳이다 — tokens.css 의 `.pnm` 하나."""
+        css_dir = os.path.join(WEB, "css")
+        rules = []
+        for fn in sorted(os.listdir(css_dir)):
+            if not fn.endswith(".css"):
+                continue
+            body = re.sub(r"/\*.*?\*/", "", _read("css", fn), flags=re.S)
+            for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", body):
+                sel, decl = m.group(1).strip(), m.group(2)
+                if "font-family" in decl and re.search(r"\.(pnm|bnm|linv)\b", sel):
+                    rules.append((fn, sel))
+        self.assertEqual([(fn, sel) for fn, sel in rules], [("tokens.css", ".pnm")],
+                         "이름의 얼굴을 정하는 규칙이 한 곳이 아닙니다: %r" % (rules,))
+
 
 
 if __name__ == "__main__":

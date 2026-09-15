@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><title>이름의 얼굴 검증</title>
+<!-- 이름이 서는 자리가 **한 얼굴**로 서는지 본다 (REQ-20260915-039-62x6).
+     각 자리의 마크업은 화면이 실제로 내는 것 그대로이고, 얼굴을 정하는 것은
+     tokens.css 의 `.pnm` 한 규칙뿐이다. 이름 없는 사람(user1)은 고정폭 `@id`
+     로 남아야 한다 — 그것은 계정이지 이름이 아니다. -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/board.css">
+<link rel="stylesheet" href="css/actions.css">
+<link rel="stylesheet" href="css/tidy.css">
+<link rel="stylesheet" href="css/overlay.css">
+<link rel="stylesheet" href="css/project.css">
+<link rel="stylesheet" href="css/calm.css">
+<link rel="stylesheet" href="css/skins.css">
+<style>
+ body{margin:0;padding:14px;background:var(--bg);color:var(--text);
+   font:13px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif}
+ h2{font:600 11px/1 system-ui;color:var(--muted);margin:14px 0 6px}
+ .col{display:inline-block;vertical-align:top;width:47%;margin-right:2%;
+   background:var(--panel);padding:10px;border:1px solid var(--border)}
+ .row{padding:5px 0;border-bottom:1px solid var(--hairline)}
+ .cap{font-family:var(--mono);font-size:9px;color:var(--faint);text-transform:uppercase}
+</style>
+<div id="out"></div>
+<script>
+window.__users = [
+  {user: "nicehugepark", first_name: "성진", last_name: "박", full: "박성진"},
+  {user: "user2", first_name: "Sujin", last_name: "Lee", full: "Sujin Lee"},
+  {user: "user1"},
+];
+const esc = s => String(s ?? "").replace(/[&<>"]/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const P = u => (window.__users.find(x => x.user === u) || {user: u});
+const full = u => P(u).full || "";
+const nameHTML = u => full(u) ? `<span class="pnm">${esc(full(u))}</span>` : esc(u);
+const badge = u => `<span class="badge${full(u) ? " named" : ""}" style="--ah:200">`
+  + `<i class="av">${esc((full(u) || u).slice(0,1).toUpperCase())}</i>`
+  + `<span class="bnm">${nameHTML(u)}</span></span>`;
+const places = u => `
+  <div class="row"><span class="cap">카드 배지</span><br>${badge(u)}</div>
+  <div class="row"><span class="cap">계보 칩</span><br>
+    <span class="lin"><span class="linv">${full(u) && /[가-힣]$/.test(full(u)) ? `<span class="pnm">${esc(full(u))}이</span>` : nameHTML(u)} 만듦</span></span></div>
+  <div class="row"><span class="cap">미리보기 머리줄</span><br>
+    <span class="hovercard" style="all:unset"><span class="hid">REQ-20260915-039 · ${nameHTML(u)} · 2026-09-15</span></span></div>
+  <div class="row"><span class="cap">휴지통 줄</span><br>
+    <div class="tidypanel"><div class="titem"><div class="twhen">3시간 전 · ${nameHTML(u)} · request</div></div></div></div>
+  <div class="row"><span class="cap">멤버 표</span><br>
+    <span class="badge${full(u) ? " named" : ""}" style="--ah:40"><i class="av">${esc((full(u)||u).slice(0,1).toUpperCase())}</i><span class="bnm">${nameHTML(u)}</span></span></div>
+  <div class="row"><span class="cap">사용자 관리</span><br>
+    <div class="urow"><span class="st">owner</span> <b>${nameHTML(u)}</b></div></div>`;
+document.getElementById("out").innerHTML =
+  ["ledger", "calm"].map(sk => `<div class="col" data-skin="${sk}">
+     <h2>${sk}</h2>${["nicehugepark", "user2", "user1"].map(places).join("")}</div>`).join("");
+</script>

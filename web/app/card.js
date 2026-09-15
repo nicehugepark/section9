@@ -490,10 +490,21 @@ function lineageChip(r){
   const owner = String((r && r.user) || "");
   const o = String((r && r.origin) || "");
   let face = (o && o !== "human") ? originFace(r, true) : "";
-  if (!face && creator && creator !== owner) face = personFace(creator);
+  /* 칩의 얼굴도 **이름이면 이름의 표식**을 입는다 (REQ-20260915-039-62x6).
+     에이전트 이름(originFace)과 계정 `@id` 는 기계가 읽는 글자라 고정폭 그대로다 —
+     조사와 「만듦」은 칩의 글이니 그 자리의 얼굴을 따른다. */
+  let named = false;
+  if (!face && creator && creator !== owner){
+    face = personFace(creator);
+    named = !!personFull(creator);
+  }
   if (!face) return "";
+  let tail = madeBy(face).slice(face.length);     // 「이 만듦」·「 가 만듦」
+  let josa = "";
+  if (named && tail && tail[0] !== " "){ josa = tail[0]; tail = tail.slice(1); }
+  const faceHTML = named ? personNameHTML(creator, josa) : esc(face);
   return `<span class="lin" title="${esc(lineageTell(r))}">`
-    + `<span class="linv">${esc(madeBy(face))}</span></span>`;
+    + `<span class="linv">${faceHTML}${esc(tail)}</span></span>`;
 }
 // 손 위의 글과 낭독기가 함께 읽는 한 문장 — 조각이 줄인 것을 여기서 다 말한다.
 function lineageTell(r){
@@ -671,7 +682,7 @@ function assignBtnHTML(r){
 function badgeFace(u){
   const nm = personName(u);      // 이름, 없으면 id (state.js 한 곳)
   return `<i class="av">${esc(nm.slice(0, 1).toUpperCase())}</i>`
-    + `<span class="bnm">${esc(nm)}</span>`;
+    + `<span class="bnm">${personNameHTML(u)}</span>`;
 }
 /* 배지의 **겉**도 한 곳에서 난다 (REQ-20260915-031-62x6). 이름으로 설 때와 id 로
    설 때는 같은 옷을 입지 않는다: id 는 계정 손잡이라 `@`+고정폭이 맞지만(디자인

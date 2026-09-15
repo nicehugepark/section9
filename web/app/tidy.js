@@ -340,7 +340,7 @@ function tidyRender(){
         <div class="tid">${esc(shortId(r.id))}</div>
         <div class="ttl" title="${esc(r.title || "")}">${esc(r.title || "(제목 없음)")}</div>
         <div class="twhen" title="${esc(personTitle(r.user || "?"))}">${esc(tidyWhen(tidyTab === "trash" ? r.deleted : r.archived))}
-          · ${esc(personName(r.user || "?"))}${r.type ? " · " + esc(r.type) : ""}</div>
+          · ${personNameHTML(r.user || "?")}${r.type ? " · " + esc(r.type) : ""}</div>
       </div>
       <div class="acts">
         <button type="button" data-tidy="back" data-id="${esc(r.id)}"

@@ -96,3 +96,20 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 body{margin:0;font-family:var(--sans);
   background:var(--bg);color:var(--text);font-size:13.5px;-webkit-font-smoothing:antialiased}
 
+
+/* ---- 사람의 이름은 한 얼굴로 선다 (REQ-20260915-039-62x6) ----------------
+
+   가르는 자 하나: **기계가 읽는 글자는 고정폭(`--mono`), 사람이 쓴 글자는
+   본문체(`--sans`)**. 고정폭 글꼴에는 한글 얼굴이 없어 「박성진」이 대체 글꼴로
+   떨어지고, 그 순간 같은 사람이 카드마다 다른 얼굴로 보인다(주인 지적 2026-09-15:
+   「카드별로 이름의 폰트가 다 다른데 의도된건가」).
+
+   **얼굴을 정하는 자리는 이 규칙 하나다.** 이름이 서는 자리(배지 · 계보 칩 ·
+   문서 미리보기 머리줄 · 휴지통 줄 · 멤버 표 · 사용자 관리 …)는 제 CSS 에 글꼴을
+   적지 않고, 이름을 내는 함수(`personNameHTML`)가 함께 내는 표식 `.pnm` 을 입는다 —
+   그래야 새 자리가 늘어도 얼굴이 갈리지 않는다.
+
+   자간을 되돌리는 것은 고정폭 메타 줄의 자간(`letter-spacing:.02em`)이 한글 음절
+   사이를 벌려 낱글자로 흩어 놓기 때문이다. 이름 없는 사람의 `@id` 에는 이 표식이
+   붙지 않는다 — 그것은 계정이지 이름이 아니다. */
+.pnm{font-family:var(--sans);letter-spacing:normal;word-break:keep-all}

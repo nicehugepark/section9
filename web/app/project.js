@@ -612,7 +612,7 @@ function prjMemberRowHTML(m, p, c){
      자리라 읽는 글자가 제 이름이어야 한다. 「그래서 계정이 무엇인가」는 손을
      얹어 확인한다(personTitle). 값은 건드리지 않는다: `data-pjmem`·`data-pjrm`
      과 API 인자는 id 그대로다. */
-  const face = esc(personName(m.user)), who = esc(personTitle(m.user));
+  const face = personNameHTML(m.user), who = esc(personTitle(m.user));
   const name = self
     ? `<span class="m-you" title="${who}">${face}</span> <span class="m-tag">· ${esc(PRJ_TEXT.you)}</span>`
     : `<span title="${who}">${face}</span>`;
