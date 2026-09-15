@@ -1,0 +1,860 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 640a9262e..01b53da6d 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -3,7 +3,8 @@
+ #   git tag -a v0.9.0 -m '0.9.0 — ...'   # 판은 VERSION 파일과 같아야 한다(s9-release 가 확인)
+ #   git push origin v0.9.0
+ #
+-# 자산: section9-<ver>-linux-macos.tar.gz · section9-<ver>-windows-claude.zip · SHA256SUMS
++# 자산: section9-<ver>-linux-macos.tar.gz · section9-<ver>-windows.zip · SHA256SUMS
++#       이름은 한 규칙이다 — section9-<ver>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>.
+ # 노트: docs/RELEASE-NOTES.md 의 `## <ver>` 절 → 없으면 주석 태그의 메시지 → 없으면 기본 한 줄.
+ # 같은 태그로 다시 실행되면(릴리스가 이미 있으면) 자산만 --clobber 로 바꿔 올린다.
+ # 만드는 것은 bin/s9-release 하나다 — 로컬에서 같은 명령으로 같은 바이트가 나온다.
+diff --git a/README.md b/README.md
+index 595b0e9ab..7872bc450 100644
+--- a/README.md
++++ b/README.md
+@@ -38,7 +38,7 @@ Claude Code 로 일하는 사람의 **외부기억(external memory)**. 프롬프
+ ## 3. 설치 — 릴리스 파일로
+ 
+ GitHub Releases 의 압축 파일을 받아 풀고, 그 안에서 `bin/s9 code` 를 **한 번** 친다.
+-리눅스·맥은 `section9-<ver>-linux-macos.tar.gz`, Windows 는 `section9-<ver>-windows-claude.zip`
++리눅스·맥은 `section9-<ver>-linux-macos.tar.gz`, Windows 는 `section9-<ver>-windows.zip`
+ ([docs/guide-windows.md](docs/guide-windows.md)). 파일에는 코드만 들어 있고 `.git` 이 없다 —
+ 첫 실행이 저장소를 만든다.
+ 
+diff --git a/bin/s9-release b/bin/s9-release
+index 6b6a0330b..951e3ba53 100755
+--- a/bin/s9-release
++++ b/bin/s9-release
+@@ -2,9 +2,17 @@
+ """s9-release — 코드만 담은 배포판 둘을 dist/ 에 만든다 (REQ-20260913-006-62x6).
+ 
+   section9-<ver>-linux-macos.tar.gz   최상위 section9/ · 실행 비트 유지
+-  section9-<ver>-windows-claude.zip   최상위 section9/ · bin/*.cmd 는 CRLF
++  section9-<ver>-windows.zip          최상위 section9/ · bin/*.cmd 는 CRLF
+   SHA256SUMS                          `sha256sum -c SHA256SUMS` 로 검증
+ 
++이름은 한 규칙이다 — `section9-<버전>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>`.
++운영체제 칸에는 그 파일을 받는 운영체제만 들어간다(리눅스·맥은 한 파일이라 둘 다 적는다).
++확장자만 갈리는 이유는 형식이 실제로 다른 일을 하기 때문이다: tar.gz 는 실행 비트를
++싣고(유닉스가 그것 없이는 bin/s9 를 못 실행한다), zip 은 bin/*.cmd 를 CRLF 로 실어
++Windows 탐색기가 따로 도구 없이 푼다. 그 밖의 꼬리표(판·하네스 이름 따위)는 붙이지
++않는다 — 두 파일의 내용은 같은 commit 의 같은 코드라, 이름이 갈라야 하는 것은
++「어느 운영체제에서 받는가」 하나뿐이다. (REQ-20260914-009-62x6)
++
+ 원천은 `git archive <ref>` 하나다: .gitattributes 의 export-ignore(vault·users·
+ projects·state·scratchpad·.s9-sync)가 그대로 지켜지고, 작업 트리의 커밋하지
+ 않은 변경은 들어가지 않는다. 같은 commit 이면 같은 바이트다 — tar 안의 시각은
+@@ -186,7 +194,7 @@ def release_notes(ref, ver):
+         pass
+     return (f"section9 {ver}\n\n배포판\n"
+             f"- section9-{ver}-linux-macos.tar.gz — 리눅스·맥: 풀고 `bin/s9 code`\n"
+-            f"- section9-{ver}-windows-claude.zip — 윈도우(Claude): 풀고 `bin\\s9.cmd code`\n"
++            f"- section9-{ver}-windows.zip — 윈도우: 풀고 `bin\\s9.cmd code`\n"
+             f"- SHA256SUMS — `sha256sum -c SHA256SUMS`\n")
+ 
+ 
+@@ -195,7 +203,7 @@ def build(ref, ver, out):
+     check_contents(raw)
+     os.makedirs(out, exist_ok=True)
+     tgz = os.path.join(out, f"section9-{ver}-linux-macos.tar.gz")
+-    zp = os.path.join(out, f"section9-{ver}-windows-claude.zip")
++    zp = os.path.join(out, f"section9-{ver}-windows.zip")
+     write_targz(raw, tgz)
+     write_zip(raw, zp)
+     sums = os.path.join(out, "SHA256SUMS")
+diff --git a/bin/s9.py b/bin/s9.py
+index 88e1f2838..6f53733dd 100755
+--- a/bin/s9.py
++++ b/bin/s9.py
+@@ -25156,7 +25156,9 @@ def cmd_release(args):
+     spec = importlib.util.spec_from_file_location("s9_reltry", os.path.join(bindir, "s9_reltry.py"))
+     m = importlib.util.module_from_spec(spec)
+     spec.loader.exec_module(m)
+-    ok, _checks = m.release_try(ROOT, ref=args.ref, keep=args.keep)
++    ok, _checks = m.release_try(ROOT, ref=args.ref, keep=args.keep,
++                                from_release=getattr(args, "from_release", "") or "",
++                                shot=bool(getattr(args, "shot", False)))
+     sys.exit(0 if ok else 1)
+ 
+ 
+@@ -37112,6 +37114,11 @@ def main():
+     rl.add_argument("--ref", default="HEAD", help="git ref (기본 HEAD, 태그 v0.9.0 등)")
+     rl.add_argument("--out", default="", help="build: 산출 디렉토리 (기본 dist/)")
+     rl.add_argument("--keep", action="store_true", help="try: 푼 자리를 지우지 않는다")
++    rl.add_argument("--from-release", default="", metavar="TAG",
++                    help="try: 여기서 만들지 않고 GitHub 릴리스의 tar.gz 를 받아 "
++                         "SHA256SUMS 와 대조한 뒤 시험한다 (예: v0.9.0)")
++    rl.add_argument("--shot", action="store_true",
++                    help="try: 첫 실행한 대시보드를 Chrome·WebKit 으로 한 장씩 찍는다")
+     rl.set_defaults(fn=cmd_release)
+ 
+     # `s9 -h` 목록용 — 실제 인자는 main 이 argparse 앞에서 cmd_commit 에 넘긴다.
+diff --git a/bin/s9_invite.py b/bin/s9_invite.py
+index c2924c9ee..df3dc84fd 100644
+--- a/bin/s9_invite.py
++++ b/bin/s9_invite.py
+@@ -85,7 +85,7 @@ FALLBACK_TEXT = """{{inviter}} 님이 section9 의 「{{project}}」 프로젝
+ · 리눅스 / macOS / WSL: section9-<버전>-linux-macos.tar.gz 를 받아
+     tar xzf section9-<버전>-linux-macos.tar.gz
+     cd section9
+-· Windows (Claude Code Windows 판): section9-<버전>-windows-claude.zip 을 받아
++· Windows: section9-<버전>-windows.zip 을 받아
+     압축을 풀고 PowerShell 또는 cmd 로 그 폴더(section9)에 들어갑니다
+ 
+ ■ 합류 — 아래 한 줄이 저장소를 잇고 이 프로젝트에 넣어 줍니다
+@@ -106,7 +106,7 @@ FALLBACK_HTML = """<table role="presentation" width="600" cellpadding="0" cellsp
+ <tr><td style="padding:12px 0 4px 0;font-weight:600;color:#2b5fd9;">설치 — 릴리스 파일을 받아 풉니다</td></tr>
+ <tr><td style="padding:0 0 4px 0;"><a href="{{release_url}}" style="color:#2b5fd9;">{{release_url}}</a></td></tr>
+ <tr><td style="padding:0 0 4px 0;">리눅스 / macOS / WSL: <code>section9-&lt;버전&gt;-linux-macos.tar.gz</code> 를 받아 <code>tar xzf</code> 로 풀고 <code>cd section9</code></td></tr>
+-<tr><td style="padding:0 0 12px 0;">Windows (Claude Code Windows 판): <code>section9-&lt;버전&gt;-windows-claude.zip</code> 을 받아 압축을 풀고 PowerShell 또는 cmd 로 그 폴더(section9)에 들어갑니다</td></tr>
++<tr><td style="padding:0 0 12px 0;">Windows: <code>section9-&lt;버전&gt;-windows.zip</code> 을 받아 압축을 풀고 PowerShell 또는 cmd 로 그 폴더(section9)에 들어갑니다</td></tr>
+ <tr><td style="padding:12px 0 4px 0;font-weight:600;color:#2b5fd9;">합류 — 아래 한 줄이 저장소를 잇고 이 프로젝트에 넣어 줍니다</td></tr>
+ <tr><td style="padding:0 0 4px 0;">리눅스 / macOS / WSL</td></tr>
+ <tr><td style="padding:0 0 8px 0;"><code style="display:block;padding:8px 10px;border:1px solid #d9d9d9;font-size:13px;white-space:pre-wrap;word-break:break-all;">{{join_cmd_posix}}</code></td></tr>
+diff --git a/bin/s9_reltry.py b/bin/s9_reltry.py
+index 194ba06ee..00178a8db 100644
+--- a/bin/s9_reltry.py
++++ b/bin/s9_reltry.py
+@@ -4,6 +4,9 @@
+ python3·bin/s9-release 를 직접 못 부른다 — 배포판 실측이 「사람이 맥 앞에 앉을
+ 때까지」 막혀 있었다. 이 명령 하나가 그 절차 전부다:
+   ① bin/s9-release 로 tar.gz·zip·SHA256SUMS 를 만든다(코드만 — vault·users·projects 없음)
++     `--from-release <태그>` 면 만들지 않고 **GitHub 릴리스가 올린 그 파일**을 gh 로 받아
++     SHA256SUMS 와 대조한다 (REQ-20260914-009-62x6) — 사람이 받는 것과 같은 파일로 재야
++     릴리스 실측이 된다. curl·shasum 도 같은 이유로 부를 수 없어 여기 안에 둔다.
+   ② tar.gz 를 scratchpad/release-try/ 아래에 푼다(tarfile — 바깥 tar 불필요)
+   ③ 그 자리에서 `bin/s9 code --no-open` 을 claude 실행 직전까지(S9_CODE_DRYRUN=1) 돌린다 —
+      HOME·CLAUDE_CONFIG_DIR 은 임시 폴더라 사람의 설정을 건드리지 않는다
+@@ -11,6 +14,7 @@ python3·bin/s9-release 를 직접 못 부른다 — 배포판 실측이 「사
+   ⑤ 서버를 내리고 폴더를 지운다(--keep 이면 남긴다)
+ 출력은 사람이 읽는 보고다 — 가이드의 「예상 출력」과 맞춰 보는 자리.
+ """
++import hashlib
+ import json
+ import os
+ import shutil
+@@ -58,6 +62,56 @@ def build(root, ref, out, log):
+     return os.path.join(out, tars[0]) if tars else None
+ 
+ 
++def fetch(root, tag, out, log):
++    """릴리스 자산을 받는다 — (tar.gz 경로, SHA256SUMS 경로). 못 받으면 (None, None).
++
++    gh 로 받는 이유: 비공개 저장소여도 사람이 이미 로그인한 자격으로 받고, 자산 이름이
++    판마다 달라도 패턴으로 고를 수 있다.
++    """
++    argv = ["gh", "release", "download", tag, "--dir", out, "--clobber",
++            "--pattern", "*linux-macos.tar.gz", "--pattern", "SHA256SUMS"]
++    r = subprocess.run(argv, capture_output=True, encoding="utf-8", errors="replace",
++                       cwd=root, stdin=subprocess.DEVNULL)
++    for line in ((r.stdout or "") + (r.stderr or "")).splitlines():
++        log("  " + line)
++    if r.returncode != 0:
++        return None, None
++    tars = sorted(f for f in os.listdir(out) if f.endswith(".tar.gz"))
++    sums = os.path.join(out, "SHA256SUMS")
++    return (os.path.join(out, tars[0]) if tars else None,
++            sums if os.path.exists(sums) else None)
++
++
++def sha256_of(path):
++    h = hashlib.sha256()
++    with open(path, "rb") as f:
++        for block in iter(lambda: f.read(1 << 20), b""):
++            h.update(block)
++    return h.hexdigest()
++
++
++def sums_match(sums_path, tar_path):
++    """(같은가, 근거 한 줄) — SHA256SUMS 의 그 파일 줄과 받은 파일의 해시를 견준다.
++
++    줄 모양은 `sha256  이름`(shasum·sha256sum 공통)이고, 이름 앞의 `*`(binary 표시)와
++    경로는 떼고 본다. 그 파일 줄이 아예 없으면 **같지 않은 것으로 본다** — 대조하지
++    못한 것을 통과로 읽으면 검사가 없는 것과 같다.
++    """
++    want, name = "", os.path.basename(tar_path)
++    try:
++        with open(sums_path, encoding="utf-8") as f:
++            for ln in f:
++                parts = ln.split()
++                if len(parts) >= 2 and os.path.basename(parts[-1].lstrip("*")) == name:
++                    want = parts[0].strip()
++    except OSError:
++        return False, "SHA256SUMS 를 읽지 못했다"
++    if not want:
++        return False, f"SHA256SUMS 에 {name} 줄이 없다"
++    got = sha256_of(tar_path)
++    return got == want, f"받은 것 {got[:16]}… / SHA256SUMS {want[:16]}…"
++
++
+ def wait_http(url, timeout=40):
+     t0 = time.time()
+     while time.time() - t0 < timeout:
+@@ -69,8 +123,12 @@ def wait_http(url, timeout=40):
+     return None
+ 
+ 
+-def release_try(root, ref="HEAD", keep=False, log=print):
+-    """(전부 통과했나, 확인 목록) — 확인은 (이름, 통과 여부, 근거) 셋."""
++def release_try(root, ref="HEAD", keep=False, log=print, from_release="", shot=False):
++    """(전부 통과했나, 확인 목록) — 확인은 (이름, 통과 여부, 근거) 셋.
++
++    from_release: 태그(v0.9.0). 주면 ①이 「만들기」가 아니라 「받아서 해시 대조」가 된다.
++    shot: 첫 실행한 대시보드를 Chrome·WebKit 으로 한 장씩 찍는다(서버를 내리기 전).
++    """
+     base = os.path.join(root, TRY_DIR)
+     shutil.rmtree(base, ignore_errors=True)
+     dist, unpacked = os.path.join(base, "dist"), os.path.join(base, "unpacked")
+@@ -83,11 +141,25 @@ def release_try(root, ref="HEAD", keep=False, log=print):
+         checks.append((name, bool(ok), why))
+         log(("✓ " if ok else "✗ ") + name + (f" — {why}" if why else ""))
+ 
+-    log(f"① 배포판 만들기 (ref {ref})")
+-    tar_path = build(root, ref, dist, log)
+-    check("tar.gz 가 만들어졌다", tar_path, tar_path or "bin/s9-release 실패")
+-    if not tar_path:
+-        return False, checks
++    if from_release:
++        log(f"① 릴리스 {from_release} 의 자산 받기 (gh release download)")
++        tar_path, sums_path = fetch(root, from_release, dist, log)
++        check("tar.gz 를 받았다", tar_path,
++              (f"{os.path.basename(tar_path)} {os.path.getsize(tar_path)} bytes"
++               if tar_path else "gh release download 실패"))
++        if not tar_path:
++            return False, checks
++        same, why = (sums_match(sums_path, tar_path) if sums_path
++                     else (False, "SHA256SUMS 를 받지 못했다"))
++        check("SHA256SUMS 와 해시가 같다", same, why)
++        if not same:
++            return False, checks
++    else:
++        log(f"① 배포판 만들기 (ref {ref})")
++        tar_path = build(root, ref, dist, log)
++        check("tar.gz 가 만들어졌다", tar_path, tar_path or "bin/s9-release 실패")
++        if not tar_path:
++            return False, checks
+     with tarfile.open(tar_path) as tf:
+         names = tf.getnames()
+         data = [n for n in names if n.split("/")[1:2] and n.split("/")[1] in
+@@ -142,6 +214,21 @@ def release_try(root, ref="HEAD", keep=False, log=print):
+     root_ok = bool(who) and os.path.realpath(str(who.get("root") or "")) == os.path.realpath(site)
+     check("대시보드가 그 자리에서 답한다", root_ok,
+           f"root={who.get('root')}" if who else "응답 없음")
++    if shot and root_ok:
++        # 캡처는 base 밖에 둔다 — base 는 이 함수가 지우는 자리다(--keep 없으면).
++        # 엔진 둘은 규약이다: Chrome 만 보고 넘기지 않는다 (PROTOCOL 19조·browser-verify).
++        shots_dir = os.path.join(root, "scratchpad", "release-shots")
++        os.makedirs(shots_dir, exist_ok=True)
++        log(f"④ 그 대시보드 캡처 → {shots_dir}")
++        for engine in ("chrome", "webkit"):
++            dest = os.path.join(shots_dir, f"firstrun-{from_release or ref}-{engine}.png")
++            rs = subprocess.run([sys.executable, os.path.join(root, "bin", "s9"), "shot",
++                                 f"http://127.0.0.1:{port}/", "--out", dest, "--engine", engine],
++                                capture_output=True, encoding="utf-8", errors="replace",
++                                cwd=root, stdin=subprocess.DEVNULL, timeout=300)
++            got = os.path.exists(dest)
++            check(f"{engine} 로 캡처했다", got,
++                  dest if got else ((rs.stdout or "") + (rs.stderr or "")).strip()[-200:])
+     log("⑤ 서버 내리기")
+     subprocess.run([sys.executable, os.path.join(site, "bin", "s9"), "serve", "--stop"],
+                    cwd=site, env=env, capture_output=True, encoding="utf-8", errors="replace",
+diff --git a/docs/RELEASE-NOTES.md b/docs/RELEASE-NOTES.md
+index 6cf8ce5ce..916e0d855 100644
+--- a/docs/RELEASE-NOTES.md
++++ b/docs/RELEASE-NOTES.md
+@@ -6,7 +6,7 @@
+ 
+ 첫 배포판입니다. 압축 파일을 받아 풀고 명령 하나로 시작합니다.
+ 
+-- **받기** — GitHub 릴리스의 `section9-0.9.0-linux-macos.tar.gz`(Linux · macOS · WSL), `section9-0.9.0-windows-claude.zip`(Windows, Claude Code native), `SHA256SUMS`. 배포판에는 코드만 담깁니다(문서·사용자·상태는 담기지 않습니다).
++- **받기** — GitHub 릴리스의 `section9-0.9.0-linux-macos.tar.gz`(Linux · macOS · WSL), `section9-0.9.0-windows.zip`(Windows), `SHA256SUMS`. 배포판에는 코드만 담깁니다(문서·사용자·상태는 담기지 않습니다).
+ - **첫 실행** — 압축을 풀고 `bin/s9 code`(Windows 는 `bin\s9 code`) 한 번. 저장소를 스스로 세우고(혼자 쓰는 상태, GitHub 연동 없음) 설치 · 로그인 · 이름 등록 · 기본 프로젝트까지 갑니다. `s9-install` 을 몰라도 됩니다.
+ - **GitHub 잇기** — 대시보드 Settings › 저장소에서 새 저장소 만들기(public/private, 조직 선택) · 이미 있는 저장소 잇기 · 끊기. 준비물은 `gh` 로그인 또는 `GITHUB_TOKEN`. CLI 는 `s9 github status|link|create|unlink`.
+ - **초대** — Projects 탭 「+ 초대하기」로 이메일에 저장소 주소 · 설치 절차 · 합류 명령을 담아 보냅니다(SMTP 준비물은 Settings › 외부 서비스 › 이메일 보내기; 없으면 본문을 복사해 직접 보냅니다). CLI 는 `s9 project invite <slug> --to <email>`.
+diff --git a/docs/guide-windows.md b/docs/guide-windows.md
+index 52795a1d4..424aead30 100644
+--- a/docs/guide-windows.md
++++ b/docs/guide-windows.md
+@@ -52,24 +52,24 @@ Claude Code 설치 명령은 **어느 터미널에서 치느냐에 따라 다릅
+ 
+ 실행 디렉토리: `%USERPROFILE%\Downloads` (cmd.exe: `cd /d %USERPROFILE%\Downloads` · PowerShell: `cd $env:USERPROFILE\Downloads`).
+ 
+-배포판은 GitHub 릴리스에 붙습니다: `https://github.com/nicehugepark/section9/releases` **(실측 예정 — REQ-20260913-021 이 v0.9.0 릴리스를 실행한 뒤 링크가 열립니다)**. 파일 셋 중 이름이 `-windows-claude.zip` 으로 끝나는 것을 받습니다.
++배포판은 GitHub 릴리스에 붙습니다: `https://github.com/nicehugepark/section9/releases` **(실측 예정 — REQ-20260913-021 이 v0.9.0 릴리스를 실행한 뒤 링크가 열립니다)**. 파일 셋 중 이름이 `-windows.zip` 으로 끝나는 것을 받습니다.
+ 
+ | 파일 | 누가 받나 |
+ | --- | --- |
+-| `section9-0.9.0-windows-claude.zip` | **이 장(A)** — `bin\*.cmd` 가 CRLF 로 들어 있습니다 |
++| `section9-0.9.0-windows.zip` | **이 장(A)** — `bin\*.cmd` 가 CRLF 로 들어 있습니다 |
+ | `section9-0.9.0-linux-macos.tar.gz` | B장(WSL)·리눅스·맥 |
+ | `SHA256SUMS` | 받은 파일이 온전한지 확인할 때 |
+ 
+ 브라우저에서 받아도 되고, 터미널에서 받아도 됩니다. Windows 10 1803 이후에는 `curl.exe` 와 `tar.exe` 가 기본으로 들어 있습니다(이 컴퓨터 실측: curl 8.21.0 · bsdtar 3.8.8).
+ 
+ ```
+-curl.exe -L -o section9-0.9.0-windows-claude.zip https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-windows-claude.zip
++curl.exe -L -o section9-0.9.0-windows.zip https://github.com/nicehugepark/section9/releases/download/v0.9.0/section9-0.9.0-windows.zip
+ ```
+ 
+ **하지 말 것**
+ 
+ - PowerShell 에서는 `curl` 이 아니라 **`curl.exe`** 라고 칩니다. PowerShell 5.1 의 `curl` 은 `Invoke-WebRequest` 의 별칭이라 `-L -o` 옵션을 모릅니다.
+-- 릴리스 페이지에 GitHub 이 자동으로 붙이는 `Source code (zip)` 은 받지 않습니다. 이름에 `windows-claude` 가 든 파일이 우리가 만든 배포판입니다.
++- 릴리스 페이지에 GitHub 이 자동으로 붙이는 `Source code (zip)` 은 받지 않습니다. 이름이 `section9-` 로 시작해 `-windows.zip` 으로 끝나는 파일이 우리가 만든 배포판입니다.
+ 
+ ### A-2. `%USERPROFILE%\section9` 에 풀기
+ 
+@@ -78,7 +78,7 @@ curl.exe -L -o section9-0.9.0-windows-claude.zip https://github.com/nicehugepark
+ zip 안의 최상위 폴더 이름이 `section9\` 이므로, **홈 디렉토리에 풀면 곧바로 `%USERPROFILE%\section9` 가 됩니다.**
+ 
+ ```
+-tar -xf section9-0.9.0-windows-claude.zip -C %USERPROFILE%
++tar -xf section9-0.9.0-windows.zip -C %USERPROFILE%
+ ```
+ 
+ PowerShell 이면 `-C $env:USERPROFILE`. 탐색기에서 zip 을 오른쪽 클릭 → **압축 풀기…** → 대상을 `C:\Users\<계정>` 으로 두어도 같습니다.
+@@ -415,7 +415,7 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
+ | `~/section9` | `%USERPROFILE%\section9` | PowerShell 은 `$env:USERPROFILE\section9` |
+ | `bin/s9 code` | `bin\s9 code` | PATHEXT 가 `s9.cmd` 로 잇습니다(A-3) |
+ | `bin/s9-install` | `bin\s9-install.cmd` | `s9 code` 가 필요할 때 스스로 부르므로 보통 직접 칠 일이 없습니다 |
+-| `section9-0.9.0-linux-macos.tar.gz` · `tar -xzf` | `section9-0.9.0-windows-claude.zip` · `tar -xf` | 둘 다 최상위 폴더 `section9/` |
++| `section9-0.9.0-linux-macos.tar.gz` · `tar -xzf` | `section9-0.9.0-windows.zip` · `tar -xf` | 둘 다 최상위 폴더 `section9/` |
+ | `ss -ltnp \| grep 9909` | `netstat -ano \| findstr :9909` | 포트 점유 확인 |
+ | `xdg-open <url>` | `start <url>` | 브라우저 열기 |
+ | `export S9_PORT=9911` | `set S9_PORT=9911` | PowerShell 은 `$env:S9_PORT=9911` |
+diff --git a/docs/guide.md b/docs/guide.md
+index 7cb99855f..03c804f8b 100644
+--- a/docs/guide.md
++++ b/docs/guide.md
+@@ -52,14 +52,14 @@ Claude Code 는 Pro · Max · Team · Enterprise 또는 Console 계정이 필요
+ 
+ | 갈래 | 무엇을 받나 | 누구에게 맞나 |
+ | --- | --- | --- |
+-| **릴리스 파일** (이 장의 기본) | GitHub Releases 의 `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows-claude.zip`(Windows). 코드만 들어 있고 `.git` 이 없습니다 — 첫 실행이 저장소를 만듭니다 | 처음 쓰는 모든 사람 |
++| **릴리스 파일** (이 장의 기본) | GitHub Releases 의 `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows.zip`(Windows). 코드만 들어 있고 `.git` 이 없습니다 — 첫 실행이 저장소를 만듭니다 | 처음 쓰는 모든 사람 |
+ | **소스** | `git clone` 한 section9 저장소(또는 그 fork) | section9 자체를 고치거나 개발 흐름을 따르는 사람 — 2.5 절 |
+ 
+ 예시는 풀어 놓은 자리를 `~/section9` 로 통일합니다. 실제로는 아무 경로나 됩니다 — 푼 그 디렉토리가 곧 작업 공간이고, **이 가이드의 모든 `bin/s9 …` 명령은 그 디렉토리 안에서 실행**합니다.
+ 
+ ### 2.1 리눅스
+ 
+-절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows-claude.zip`(Windows) · `SHA256SUMS`(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
++절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 `bin/s9 code` 까지 실제로 실행). 릴리스 파일 이름 셋은 `bin/s9-release` 가 정합니다: `section9-0.9.0-linux-macos.tar.gz`(리눅스·맥) · `section9-0.9.0-windows.zip`(Windows) · `SHA256SUMS`(검증용). 이름은 `section9-<버전>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>` 한 규칙입니다. 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 2.5 절(소스)로 시작합니다.
+ 
+ 0 **준비물을 확인합니다** (어느 디렉토리에서나) 
+ 
+@@ -208,7 +208,7 @@ bin/s9 code
+ 
+ ### 2.3 Windows 와 WSL
+ 
+-Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.0-windows-claude.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
++Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.0-windows.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
+ 
+ WSL 은 리눅스입니다 — WSL 셸 안에서 2.1 을 그대로 따르되, 파일을 WSL 의 홈(`~`) 안에 두고 Windows 드라이브(`/mnt/c/…`)에 두지 마십시오. 그 자리의 git 은 느리고 파일 권한 표시가 어긋납니다. 브라우저는 Windows 쪽 것이 저절로 열립니다.
+ 
+diff --git a/tests/test_release_archive.py b/tests/test_release_archive.py
+index 50cb3daf3..beec329db 100644
+--- a/tests/test_release_archive.py
++++ b/tests/test_release_archive.py
+@@ -7,10 +7,16 @@ track 하는 자기 문서(vault)·사용자(users)·프로젝트 자료(project
+ 하네스가 아니라 이 설치의 데이터라 배포판에 들어가면 안 된다.
+ 
+ 두 번째 겹(B*): `bin/s9-release` 가 그 archive 로 배포판 둘을 만든다 —
+-section9-<ver>-linux-macos.tar.gz 와 section9-<ver>-windows-claude.zip. 최상위는
++section9-<ver>-linux-macos.tar.gz 와 section9-<ver>-windows.zip. 최상위는
+ section9/, zip 의 bin/*.cmd 는 CRLF, 같은 commit 이면 같은 sha256. 판은 VERSION
+ 파일 하나에서 나와 `s9 --version` 과 화면(Settings › 시스템)이 같은 값을 읽는다.
+ 
++세 번째 겹(B8): 이름은 운영체제마다 다른 규칙을 쓰지 않는다 (REQ-20260914-009-62x6,
++주인 물음 「배포용 압축파일 네이밍룰이 os별로 다른 이유가 있나?」). 규칙 하나 —
++`section9-<버전>-<쓰는 운영체제>.<그 운영체제의 기본 압축 형식>`. 확장자가 갈리는
++것은 형식이 실제로 다른 일을 하기 때문이고(tar.gz 는 실행 비트, zip 은 CRLF),
++그 밖의 꼬리표는 붙지 않는다.
++
+ 실행: python3 tests/ release_archive
+ """
+ import importlib.machinery
+@@ -97,7 +103,7 @@ class TheReleaseBuild(unittest.TestCase):
+         cls.res = build(cls.out)
+         cls.ver = version_file()
+         cls.tgz = os.path.join(cls.out, f"section9-{cls.ver}-linux-macos.tar.gz")
+-        cls.zip = os.path.join(cls.out, f"section9-{cls.ver}-windows-claude.zip")
++        cls.zip = os.path.join(cls.out, f"section9-{cls.ver}-windows.zip")
+         cls.tar_members = []
+         cls.zip_names = []
+         if os.path.exists(cls.tgz):
+@@ -214,6 +220,34 @@ class TheReleaseBuild(unittest.TestCase):
+         self.assertIn("<td>버전</td>", js, "Settings › 시스템 판에 「버전」 줄이 없다")
+         self.assertIn("(window.__whoami||{}).version", js, "화면이 서버의 version 값을 읽지 않는다")
+ 
++    def test_b11_one_naming_rule_for_every_os(self):
++        """이름은 `section9-<버전>-<운영체제>.<그 운영체제의 기본 형식>` 하나다.
++
++        주인 물음 2026-09-14 「배포용 압축파일 네이밍룰이 os별로 다른 이유가 있나?」
++        (REQ-20260914-009-62x6) — 없었다. Windows 것에만 `-claude` 꼬리표가 붙어
++        운영체제마다 규칙이 갈려 보였다. 두 겹으로 지킨다: 만들어진 이름이 한 규칙에
++        맞는가, 그리고 옛 이름이 문서·코드 어딘가에 남아 있지 않은가.
++        """
++        rule = re.compile(r"^section9-" + re.escape(self.ver) + r"-(linux-macos|windows)\.(tar\.gz|zip)$")
++        for p in (self.tgz, self.zip):
++            self.assertRegex(os.path.basename(p), rule)
++        self.assertEqual(sorted(n for n in os.listdir(self.out) if n != "SHA256SUMS"),
++                         [f"section9-{self.ver}-linux-macos.tar.gz", f"section9-{self.ver}-windows.zip"],
++                         "dist/ 에 규칙 밖의 파일이 있다")
++
++    def test_b12_the_old_windows_name_is_gone_everywhere(self):
++        """옛 이름이 문서·코드에 남아 있으면 사람이 없는 파일을 받으러 간다.
++
++        찾는 말은 여기서 이어 붙인다 — 이 시험 파일 자신이 그 말을 글자로 품으면
++        제가 저를 잡는다.
++        """
++        needle = "windows" + "-claude"
++        r = subprocess.run(["git", "grep", "-lI", needle, "--",
++                            "bin", "web", "harness", "tests", "docs", ".github", "README.md"],
++                           cwd=ROOT, capture_output=True, text=True)
++        self.assertEqual(r.returncode, 1,
++                         f"옛 이름 {needle} 가 남아 있다 — 문서가 없는 파일을 가리킨다:\n" + r.stdout)
++
+ 
+ if __name__ == "__main__":
+     unittest.main(verbosity=2)
+diff --git a/tests/test_release_try.py b/tests/test_release_try.py
+index eee954c55..2ac195835 100644
+--- a/tests/test_release_try.py
++++ b/tests/test_release_try.py
+@@ -6,9 +6,11 @@
+ 
+ 실행: python3 tests/ release_try
+ """
++import importlib.util
+ import os
+ import subprocess
+ import sys
++import tempfile
+ import unittest
+ 
+ HERE = os.path.dirname(os.path.abspath(__file__))
+@@ -17,6 +19,14 @@ S9 = os.path.join(REPO, "bin", "s9")
+ TRY = os.path.join(REPO, "scratchpad", "release-try")
+ 
+ 
++def reltry():
++    spec = importlib.util.spec_from_file_location(
++        "s9_reltry", os.path.join(REPO, "bin", "s9_reltry.py"))
++    m = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(m)
++    return m
++
++
+ class ReleaseTry(unittest.TestCase):
+     @classmethod
+     def setUpClass(cls):
+@@ -45,5 +55,48 @@ class ReleaseTry(unittest.TestCase):
+         self.assertFalse(os.path.exists(TRY), TRY)
+ 
+ 
++class Sums(unittest.TestCase):
++    """받은 파일과 SHA256SUMS 대조 (REQ-20260914-009-62x6) — 맥의 백그라운드 작업자는
++    shasum 을 부를 수 없어 이 판정이 s9 안에 있다. 망이 필요 없는 단위 시험이다."""
++
++    def setUp(self):
++        self.m = reltry()
++        self.d = tempfile.mkdtemp(prefix="reltry-sums-")
++        self.tar = os.path.join(self.d, "section9-0.9.0-linux-macos.tar.gz")
++        with open(self.tar, "wb") as f:
++            f.write(b"section9")
++        self.sha = self.m.sha256_of(self.tar)
++        self.sums = os.path.join(self.d, "SHA256SUMS")
++
++    def write(self, text):
++        with open(self.sums, "w", encoding="utf-8") as f:
++            f.write(text)
++
++    def test_s1_the_same_hash_passes(self):
++        """정상: SHA256SUMS 의 해시가 받은 파일과 같으면 통과."""
++        self.write(f"{self.sha}  {os.path.basename(self.tar)}\n")
++        same, why = self.m.sums_match(self.sums, self.tar)
++        self.assertTrue(same, why)
++
++    def test_s2_a_binary_star_and_a_path_still_match(self):
++        """경계: 이름 앞의 `*`(binary 표시)와 경로가 붙어 있어도 같은 파일로 본다."""
++        self.write(f"{self.sha} *dist/{os.path.basename(self.tar)}\n")
++        self.assertTrue(self.m.sums_match(self.sums, self.tar)[0])
++
++    def test_s3_a_missing_line_is_not_a_pass(self):
++        """경계: 그 파일 줄이 없으면 통과가 아니다 — 대조하지 못한 것을 통과로 읽지 않는다."""
++        self.write(f"{self.sha}  section9-0.9.0-windows.zip\n")
++        same, why = self.m.sums_match(self.sums, self.tar)
++        self.assertFalse(same)
++        self.assertIn("없다", why)
++
++    def test_s4_a_different_hash_fails(self):
++        """실패: 해시가 다르면 실패로 판정하고 근거에 양쪽 앞자리를 적는다."""
++        self.write("0" * 64 + f"  {os.path.basename(self.tar)}\n")
++        same, why = self.m.sums_match(self.sums, self.tar)
++        self.assertFalse(same)
++        self.assertIn(self.sha[:16], why)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/users/nicehugepark/profile.md b/users/nicehugepark/profile.md
+index 35126d6e6..fd87b8d27 100644
+--- a/users/nicehugepark/profile.md
++++ b/users/nicehugepark/profile.md
+@@ -6,7 +6,7 @@ role: admin
+ emails: ["claude01.pfe@example.invalid"]
+ github: nicehugepark
+ os_accounts: ["sjpark1", "sjpark", "seongjinpark"]
+-machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-14T14:19:55+09:00", "last_recv": "2026-09-14T19:18:08+09:00", "takes": true}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-14T19:17:42+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-14T19:10:26+09:00", "takes": true, "last_recv": "2026-09-14T19:17:26+09:00", "uncommitted": 13}]
++machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpark1", "first": "2026-08-27T21:58:53+09:00", "last": "2026-09-14T14:19:55+09:00", "last_recv": "2026-09-14T19:18:08+09:00", "takes": true}, {"machine": "eek-p620", "os": "Linux", "account": "sjpark", "first": "2026-09-06T01:31:21+09:00", "last": "2026-09-11T10:09:07+09:00", "last_recv": "2026-09-14T19:17:42+09:00", "takes": true}, {"machine": "Seongjinui-Macmini.local", "os": "macOS", "account": "seongjinpark", "first": "2026-09-06T14:09:06+09:00", "last": "2026-09-14T21:05:40+09:00", "takes": true, "last_recv": "2026-09-14T19:17:26+09:00", "uncommitted": 13}]
+ machines: ["eek-p620", "Seongjinui-Macmini.local"]
+ ---
+ 
+diff --git a/vault/requests/2026/09/REQ-20260909-055-62x6.md b/vault/requests/2026/09/REQ-20260909-055-62x6.md
+index 0f1e262f6..5efe80863 100644
+--- a/vault/requests/2026/09/REQ-20260909-055-62x6.md
++++ b/vault/requests/2026/09/REQ-20260909-055-62x6.md
+@@ -14,7 +14,7 @@ relates_why: {}
+ tags: ["terminal"]
+ created: 2026-09-09T13:06:40+09:00
+ status_since: 2026-09-09T13:09:00+09:00
+-updated: 2026-09-14T19:12:42+09:00
++updated: 2026-09-14T20:25:40+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260909-069-62x6.md b/vault/requests/2026/09/REQ-20260909-069-62x6.md
+index 9a565c19f..37411b62a 100644
+--- a/vault/requests/2026/09/REQ-20260909-069-62x6.md
++++ b/vault/requests/2026/09/REQ-20260909-069-62x6.md
+@@ -13,7 +13,7 @@ project: section9
+ relates_why: {}
+ created: 2026-09-09T13:57:34+09:00
+ status_since: 2026-09-09T13:58:15+09:00
+-updated: 2026-09-14T19:12:42+09:00
++updated: 2026-09-14T20:25:40+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260909-096-62x6.md b/vault/requests/2026/09/REQ-20260909-096-62x6.md
+index 95cb1a730..3081db4ee 100644
+--- a/vault/requests/2026/09/REQ-20260909-096-62x6.md
++++ b/vault/requests/2026/09/REQ-20260909-096-62x6.md
+@@ -14,7 +14,7 @@ parent: REQ-20260909-092-62x6
+ relates_why: {}
+ created: 2026-09-09T16:41:26+09:00
+ status_since: 2026-09-09T16:42:03+09:00
+-updated: 2026-09-14T19:12:42+09:00
++updated: 2026-09-14T20:25:40+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: derived
+diff --git a/vault/requests/2026/09/REQ-20260911-003-2n7g.md b/vault/requests/2026/09/REQ-20260911-003-2n7g.md
+index 6c9793059..baeeefae8 100644
+--- a/vault/requests/2026/09/REQ-20260911-003-2n7g.md
++++ b/vault/requests/2026/09/REQ-20260911-003-2n7g.md
+@@ -12,7 +12,7 @@ relates_why: {}
+ tags: ["auto-audit", "assets", "terminal", "attached", "png", "image"]
+ created: 2026-09-11T10:08:50+09:00
+ status_since: 2026-09-11T10:12:03+09:00
+-updated: 2026-09-14T19:12:42+09:00
++updated: 2026-09-14T20:25:40+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260911-011-62x6.md b/vault/requests/2026/09/REQ-20260911-011-62x6.md
+index 3da54d3c7..9f2e50de7 100644
+--- a/vault/requests/2026/09/REQ-20260911-011-62x6.md
++++ b/vault/requests/2026/09/REQ-20260911-011-62x6.md
+@@ -13,7 +13,7 @@ relates_why: {}
+ tags: ["auto-audit", "assets", "terminal", "test", "attached", "png", "image"]
+ created: 2026-09-11T15:12:54+09:00
+ status_since: 2026-09-11T15:13:10+09:00
+-updated: 2026-09-14T19:12:42+09:00
++updated: 2026-09-14T20:25:40+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260911-016-62x6.md b/vault/requests/2026/09/REQ-20260911-016-62x6.md
+index 97afec22a..efc3d0db4 100644
+--- a/vault/requests/2026/09/REQ-20260911-016-62x6.md
++++ b/vault/requests/2026/09/REQ-20260911-016-62x6.md
+@@ -19,7 +19,7 @@ relates_why: {}
+ tags: ["auto-audit", "assets", "dashboard", "terminal", "attached", "png", "image"]
+ created: 2026-09-11T20:41:59+09:00
+ status_since: 2026-09-13T09:20:54+09:00
+-updated: 2026-09-14T18:30:40+09:00
++updated: 2026-09-14T20:31:16+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-001-2n7g.md b/vault/requests/2026/09/REQ-20260913-001-2n7g.md
+index 57f537dfb..e3ca55332 100644
+--- a/vault/requests/2026/09/REQ-20260913-001-2n7g.md
++++ b/vault/requests/2026/09/REQ-20260913-001-2n7g.md
+@@ -18,7 +18,7 @@ relates_why: {}
+ tags: ["auto-audit"]
+ created: 2026-09-13T11:07:00+09:00
+ status_since: 2026-09-13T11:09:06+09:00
+-updated: 2026-09-14T18:25:14+09:00
++updated: 2026-09-14T20:22:07+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-001-62x6.md b/vault/requests/2026/09/REQ-20260913-001-62x6.md
+index ae230dd76..1550ea8e6 100644
+--- a/vault/requests/2026/09/REQ-20260913-001-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-001-62x6.md
+@@ -18,7 +18,7 @@ relates_why: {"REQ-20260912-004-62x6": "맥·WSL 차이의 원인이 이 되풀
+ tags: ["auto-audit", "assets", "terminal", "attached", "png", "image"]
+ created: 2026-09-13T09:08:50+09:00
+ status_since: 2026-09-13T09:29:40+09:00
+-updated: 2026-09-14T18:26:05+09:00
++updated: 2026-09-14T20:26:11+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-003-62x6.md b/vault/requests/2026/09/REQ-20260913-003-62x6.md
+index 8f4c90d2a..7ec50ef9b 100644
+--- a/vault/requests/2026/09/REQ-20260913-003-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-003-62x6.md
+@@ -19,7 +19,7 @@ relates_why: {}
+ tags: ["auto-audit", "docs", "sync", "dashboard"]
+ created: 2026-09-13T17:19:26+09:00
+ status_since: 2026-09-13T17:27:22+09:00
+-updated: 2026-09-14T18:47:24+09:00
++updated: 2026-09-14T20:48:03+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-004-62x6.md b/vault/requests/2026/09/REQ-20260913-004-62x6.md
+index e3e8c9c1a..958176854 100644
+--- a/vault/requests/2026/09/REQ-20260913-004-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-004-62x6.md
+@@ -18,7 +18,7 @@ relates_why: {}
+ tags: ["auto-audit"]
+ created: 2026-09-13T17:26:11+09:00
+ status_since: 2026-09-13T17:36:05+09:00
+-updated: 2026-09-14T18:47:24+09:00
++updated: 2026-09-14T20:48:03+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-005-62x6.md b/vault/requests/2026/09/REQ-20260913-005-62x6.md
+index 9c52cf634..efb38b3f4 100644
+--- a/vault/requests/2026/09/REQ-20260913-005-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-005-62x6.md
+@@ -18,7 +18,7 @@ relates_why: {}
+ tags: ["auto-audit", "docs"]
+ created: 2026-09-13T17:26:33+09:00
+ status_since: 2026-09-13T17:44:36+09:00
+-updated: 2026-09-14T18:47:24+09:00
++updated: 2026-09-14T20:48:03+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-026-62x6.md b/vault/requests/2026/09/REQ-20260913-026-62x6.md
+index f50aa610b..2e825e6b7 100644
+--- a/vault/requests/2026/09/REQ-20260913-026-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-026-62x6.md
+@@ -17,7 +17,7 @@ relates_why: {}
+ tags: ["auto-audit", "session", "attached", "png", "image"]
+ created: 2026-09-13T19:05:44+09:00
+ status_since: 2026-09-13T19:07:52+09:00
+-updated: 2026-09-14T19:13:42+09:00
++updated: 2026-09-14T20:17:32+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-028-62x6.md b/vault/requests/2026/09/REQ-20260913-028-62x6.md
+index ae8dcde54..c58895191 100644
+--- a/vault/requests/2026/09/REQ-20260913-028-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-028-62x6.md
+@@ -18,7 +18,7 @@ relates_why: {}
+ tags: ["auto-audit", "assets", "docs", "sync", "attached", "png", "image"]
+ created: 2026-09-13T20:24:47+09:00
+ status_since: 2026-09-13T20:59:16+09:00
+-updated: 2026-09-14T18:58:09+09:00
++updated: 2026-09-14T20:58:43+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-029-62x6.md b/vault/requests/2026/09/REQ-20260913-029-62x6.md
+index b5abf5122..8694db9c1 100644
+--- a/vault/requests/2026/09/REQ-20260913-029-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-029-62x6.md
+@@ -14,7 +14,7 @@ relates_why: {}
+ tags: ["auto-audit", "dashboard"]
+ created: 2026-09-13T20:42:06+09:00
+ status_since: 2026-09-14T01:20:09+09:00
+-updated: 2026-09-14T18:58:09+09:00
++updated: 2026-09-14T20:58:43+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-030-62x6.md b/vault/requests/2026/09/REQ-20260913-030-62x6.md
+index e90e7c642..6fb7531ec 100644
+--- a/vault/requests/2026/09/REQ-20260913-030-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-030-62x6.md
+@@ -15,7 +15,7 @@ relates_why: {}
+ tags: ["auto-audit"]
+ created: 2026-09-13T20:55:09+09:00
+ status_since: 2026-09-13T20:55:51+09:00
+-updated: 2026-09-14T19:08:48+09:00
++updated: 2026-09-14T20:08:53+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-031-62x6.md b/vault/requests/2026/09/REQ-20260913-031-62x6.md
+index 817842e78..221f671eb 100644
+--- a/vault/requests/2026/09/REQ-20260913-031-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-031-62x6.md
+@@ -18,7 +18,7 @@ relates_why: {}
+ tags: ["auto-audit", "dashboard", "docs"]
+ created: 2026-09-13T21:05:30+09:00
+ status_since: 2026-09-13T22:17:36+09:00
+-updated: 2026-09-14T19:13:42+09:00
++updated: 2026-09-14T20:18:33+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260913-032-62x6.md b/vault/requests/2026/09/REQ-20260913-032-62x6.md
+index 67c24f8f4..c0b72cc64 100644
+--- a/vault/requests/2026/09/REQ-20260913-032-62x6.md
++++ b/vault/requests/2026/09/REQ-20260913-032-62x6.md
+@@ -17,7 +17,7 @@ relates_why: {}
+ tags: ["terminal", "assets", "docs", "attached", "png", "image"]
+ created: 2026-09-13T21:26:11+09:00
+ status_since: 2026-09-13T21:43:46+09:00
+-updated: 2026-09-14T18:39:50+09:00
++updated: 2026-09-14T20:39:55+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260914-001-62x6.md b/vault/requests/2026/09/REQ-20260914-001-62x6.md
+index 45b17d8b2..b174868fc 100644
+--- a/vault/requests/2026/09/REQ-20260914-001-62x6.md
++++ b/vault/requests/2026/09/REQ-20260914-001-62x6.md
+@@ -19,7 +19,7 @@ relates_why: {}
+ tags: ["dashboard", "attached", "png", "image", "py", "code", "design", "docs"]
+ created: 2026-09-14T10:25:07+09:00
+ status_since: 2026-09-14T11:03:07+09:00
+-updated: 2026-09-14T18:38:48+09:00
++updated: 2026-09-14T20:38:54+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260914-002-62x6.md b/vault/requests/2026/09/REQ-20260914-002-62x6.md
+index 4d898f674..88b03db89 100644
+--- a/vault/requests/2026/09/REQ-20260914-002-62x6.md
++++ b/vault/requests/2026/09/REQ-20260914-002-62x6.md
+@@ -19,7 +19,7 @@ relates_why: {"REQ-20260913-021-62x6": "릴리스 압축에 마크·파비콘이
+ tags: ["design", "attached", "png", "image", "py", "code", "dashboard"]
+ created: 2026-09-14T11:03:07+09:00
+ status_since: 2026-09-14T18:42:38+09:00
+-updated: 2026-09-14T19:08:35+09:00
++updated: 2026-09-14T20:18:33+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260914-007-62x6.md b/vault/requests/2026/09/REQ-20260914-007-62x6.md
+index bbbf4a652..d59ad7819 100644
+--- a/vault/requests/2026/09/REQ-20260914-007-62x6.md
++++ b/vault/requests/2026/09/REQ-20260914-007-62x6.md
+@@ -15,7 +15,7 @@ relates_why: {}
+ tags: ["auto-audit", "assets", "terminal", "attached", "png", "image"]
+ created: 2026-09-14T14:18:45+09:00
+ status_since: 2026-09-14T14:21:11+09:00
+-updated: 2026-09-14T18:30:40+09:00
++updated: 2026-09-14T20:31:16+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/requests/2026/09/REQ-20260914-008-62x6.md b/vault/requests/2026/09/REQ-20260914-008-62x6.md
+index 75e1287d5..8050dc445 100644
+--- a/vault/requests/2026/09/REQ-20260914-008-62x6.md
++++ b/vault/requests/2026/09/REQ-20260914-008-62x6.md
+@@ -16,7 +16,7 @@ relates_why: {"REQ-20260913-021-62x6": "이 요청의 마지막 단계인 git ta
+ tags: ["auto-audit", "sync"]
+ created: 2026-09-14T14:19:10+09:00
+ status_since: 2026-09-14T14:21:21+09:00
+-updated: 2026-09-14T18:47:05+09:00
++updated: 2026-09-14T20:31:17+09:00
+ priority: 50
+ creator: nicehugepark
+ origin: human
+diff --git a/vault/sessions/2026/09/SES-20260910-004-2n7g.md b/vault/sessions/2026/09/SES-20260910-004-2n7g.md
+index fd953a85c..2c601a878 100644
+--- a/vault/sessions/2026/09/SES-20260910-004-2n7g.md
++++ b/vault/sessions/2026/09/SES-20260910-004-2n7g.md
+@@ -10,7 +10,7 @@ session: 78c0656e
+ project: section9
+ tags: ["session-log"]
+ created: 2026-09-10T22:40:03+09:00
+-updated: 2026-09-14T12:47:01+09:00
++updated: 2026-09-14T21:08:02+09:00
+ harness_session: bridge:session_01XcfoCjPR2fj9raxdQtohSC
+ ---
+ 
+@@ -119,3 +119,9 @@ harness_session: bridge:session_01XcfoCjPR2fj9raxdQtohSC
+ - 2026-09-13T21:07:27+09:00 세션 기동 — 수신 대기 arm (by nicehugepark)
+ - 2026-09-13T21:14:39+09:00 서브에이전트 중간보고 생략 (161자) (by nicehugepark)
+ - 2026-09-14T12:47:01+09:00 agent_type 없는 SubagentStop 생략 (181자) — 위임이 아니다 (by nicehugepark)
++- 2026-09-14T21:05:38+09:00 session end [other] cwd=/Users/seongjinpark/section9 (by nicehugepark)
++- 2026-09-14T21:05:40+09:00 session start [resume] cwd=/Users/seongjinpark/section9 (by nicehugepark)
++- 2026-09-14T21:06:38+09:00 세션 기동 — 수신 대기 arm (by nicehugepark)
++- 2026-09-14T21:06:40+09:00 agent_type 없는 SubagentStop 생략 (24자) — 위임이 아니다 (by nicehugepark)
++- 2026-09-14T21:06:51+09:00 agent_type 없는 SubagentStop 생략 (31자) — 위임이 아니다 (by nicehugepark)
++- 2026-09-14T21:08:02+09:00 cross-session 메시지 수신 (from Section9 bootstrap inbox monitor) (by nicehugepark)
+diff --git a/vault/sessions/2026/09/SES-20260913-012-2n7g.md b/vault/sessions/2026/09/SES-20260913-012-2n7g.md
+index 6ea3e293b..488c8cce8 100644
+--- a/vault/sessions/2026/09/SES-20260913-012-2n7g.md
++++ b/vault/sessions/2026/09/SES-20260913-012-2n7g.md
+@@ -10,7 +10,7 @@ session: 3f5d72bc
+ project: section9
+ tags: ["session-log"]
+ created: 2026-09-13T21:07:34+09:00
+-updated: 2026-09-14T09:53:18+09:00
++updated: 2026-09-14T21:07:57+09:00
+ harness_session: bridge:session_013GttR1gbkZULsGPp9VN4MD
+ ---
+ 
+@@ -25,3 +25,4 @@ harness_session: bridge:session_013GttR1gbkZULsGPp9VN4MD
+ - 2026-09-14T09:53:06+09:00 세션 기동 — 수신 대기 arm (by nicehugepark)
+ - 2026-09-14T09:53:07+09:00 서브에이전트 중간보고 생략 (22자) (by nicehugepark)
+ - 2026-09-14T09:53:18+09:00 서브에이전트 중간보고 생략 (22자) (by nicehugepark)
++- 2026-09-14T21:07:57+09:00 cross-session 메시지 수신 (from Section9 bootstrap inbox monitor) (by nicehugepark)
+diff --git a/web/guide.html b/web/guide.html
+index 1a176ee18..c7b70a7e8 100644
+--- a/web/guide.html
++++ b/web/guide.html
+@@ -214,13 +214,13 @@ section9 은 AI 작업의 <b>외부기억(모든 것이 문서로 남음)</b>이
+ <h3>두 갈래 — 릴리스 파일과 소스</h3>
+ <div class="tblwrap"><table>
+   <tr><th style="width:200px">갈래</th><th>무엇을 받나</th><th style="width:250px">누구에게 맞나</th></tr>
+-  <tr><td><b>릴리스 파일</b> (이 장의 기본)</td><td>GitHub Releases 의 <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows-claude.zip</code>(Windows). 코드만 들어 있고 <code>.git</code> 이 없습니다 — 첫 실행이 저장소를 만듭니다</td><td>처음 쓰는 모든 사람</td></tr>
++  <tr><td><b>릴리스 파일</b> (이 장의 기본)</td><td>GitHub Releases 의 <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows.zip</code>(Windows). 코드만 들어 있고 <code>.git</code> 이 없습니다 — 첫 실행이 저장소를 만듭니다</td><td>처음 쓰는 모든 사람</td></tr>
+   <tr><td><b>소스</b></td><td><code>git clone</code> 한 section9 저장소(또는 그 fork)</td><td>section9 자체를 고치거나 개발 흐름을 따르는 사람 — <a href="#install-src">2.5 절</a></td></tr>
+ </table></div>
+ <p class="dim">예시는 풀어 놓은 자리를 <code>~/section9</code> 로 통일합니다. 실제로는 아무 경로나 됩니다 — 푼 그 디렉토리가 곧 작업 공간이고, <b>이 가이드의 모든 <code>bin/s9 …</code> 명령은 그 디렉토리 안에서 실행</b>합니다.</p>
+ 
+ <h3 id="install-linux">2.1 리눅스</h3>
+-<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows-claude.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
++<p class="dim">절차는 Ubuntu 22.04(WSL2)에서 실측했습니다(2026-09-13 — 릴리스 모양으로 푼 임시 자리에서 <code>bin/s9 code</code> 까지 실제로 실행). 릴리스 파일 이름 셋은 <code>bin/s9-release</code> 가 정합니다: <code>section9-0.9.0-linux-macos.tar.gz</code>(리눅스·맥) · <code>section9-0.9.0-windows.zip</code>(Windows) · <code>SHA256SUMS</code>(검증용). 이름은 <code>section9-&lt;버전&gt;-&lt;쓰는 운영체제&gt;.&lt;그 운영체제의 기본 압축 형식&gt;</code> 한 규칙입니다. 아래 주소가 404 를 내면 아직 릴리스가 올라가지 않았거나 저장소가 private 이라 브라우저 로그인이 필요한 것입니다 — 그때는 <a href="#install-src">2.5 절</a>(소스)로 시작합니다.</p>
+ <div class="step"><div class="num">0</div><div class="body">
+   <b>준비물을 확인합니다</b> <span class="dim">(어느 디렉토리에서나)</span>
+   <pre><code>git --version        # git version 2.x
+@@ -343,7 +343,7 @@ bin/s9 code</code></pre>
+ </ul>
+ 
+ <h3 id="install-windows">2.3 Windows 와 WSL</h3>
+-<p>Windows 는 별도 문서입니다 — <a href="https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md" target="_blank" rel="noopener">docs/guide-windows.md</a>. <b>Windows native</b>(파일 <code>section9-0.9.0-windows-claude.zip</code> · <code>bin\s9.cmd code</code>)와 <b>WSL</b> 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.</p>
++<p>Windows 는 별도 문서입니다 — <a href="https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md" target="_blank" rel="noopener">docs/guide-windows.md</a>. <b>Windows native</b>(파일 <code>section9-0.9.0-windows.zip</code> · <code>bin\s9.cmd code</code>)와 <b>WSL</b> 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.</p>
+ <p class="dim">WSL 은 리눅스입니다 — WSL 셸 안에서 <a href="#install-linux">2.1</a> 을 그대로 따르되, 파일을 WSL 의 홈(<code>~</code>) 안에 두고 Windows 드라이브(<code>/mnt/c/…</code>)에 두지 마십시오. 그 자리의 git 은 느리고 파일 권한 표시가 어긋납니다. 브라우저는 Windows 쪽 것이 저절로 열립니다.</p>
+ 
+ <h3 id="after-first-run">2.4 첫 실행 뒤 — 공통</h3>
