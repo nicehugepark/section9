@@ -29979,7 +29979,10 @@ def _sd_kill(pid, grace=3.0):
             return True
         _t.sleep(0.1)
     try:
-        os.kill(pid, _sig.SIGKILL)
+        # 회수 신호는 `sig_kill()` 한 곳을 지난다 — 윈도우에는 SIGKILL 이
+        # 없어서 이름을 그대로 쓰면 그 판에서 AttributeError 로 죽는다
+        # (REQ-20260903-005). 여기는 맥 전용 경로지만 규율은 파일 전체다.
+        os.kill(pid, sig_kill())
     except OSError:
         pass
     _t.sleep(0.2)
