@@ -988,11 +988,6 @@ def start_dashboard():
     이후에는 Claude 세션 시작 훅(s9-audit-session)이 죽은 서버를 되살린다."""
     import socket
     import subprocess
-    # 안쪽 시험 실행은 바깥 세계를 건드리지 않는다 (REQ-20260915-014-2n7g).
-    # jobfile·tmp 청소가 이미 같은 표를 읽는다.
-    if os.environ.get("S9_TESTS_NESTED"):
-        say("대시보드는 띄우지 않습니다 — 시험 안쪽 실행입니다")
-        return
     port = int(os.environ.get("S9_PORT") or 0)
     told = bool(port)          # 이 뿌리를 위해 누가 포트를 일러 줬나
     if not port:
@@ -1013,13 +1008,24 @@ def start_dashboard():
     # 떨어질 일이 없으니 물을 것도 없다. 맨 앞에서 묻던 것을 쓰는 자리로 옮겼다
     # (REQ-20260916-002-2n7g): 그 물음이 `subprocess.run(["git", …])` 이라,
     # 기동만 닫아 둔 시험에서 쓰지도 않을 답을 구하다 터졌다.
+    # 막는 것은 **일러 주지 않은 채 기본값으로 떨어지는 것**뿐이다 (REQ-20260916-007-2n7g,
+    # 실측 2026-09-16 00:43): 안쪽 시험 검사를 맨 앞에 두었더니 포트를 일러 준 시험
+    # (test_port_pin_ghost 의 a2 — 임시 뿌리에 state/port 를 적고 부른다)까지 돌려보내
+    # 전체 회차에서 깨졌다. 포트를 일러 줬으면 그 자리는 이미 정해진 자리라 남의 것이 아니다.
     if not told:
         own = main_worktree_root(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        why = ""
         if os.path.realpath(ROOT) != os.path.realpath(own):
-            say(f"대시보드는 띄우지 않습니다 — {ROOT} 에 state/port 가 없어 기본 포트 "
-                f"{port} 로 떨어지는데, 그 포트는 이 컴퓨터의 다른 저장소 자리입니다. "
-                f"띄우려면 S9_PORT 를 주거나 그 뿌리의 state/port 에 포트를 적으세요.")
+            why = (f"{ROOT} 에 state/port 가 없어 기본 포트 {port} 로 떨어지는데, "
+                   f"그 포트는 이 컴퓨터의 다른 저장소 자리입니다")
+        elif os.environ.get("S9_TESTS_NESTED"):
+            # 안쪽 시험 실행은 바깥 세계를 건드리지 않는다 — jobfile·임시자리
+            # 청소가 이미 같은 표를 읽는다.
+            why = f"시험 안쪽 실행이라 기본 포트 {port} 를 집지 않습니다"
+        if why:
+            say(f"대시보드는 띄우지 않습니다 — {why}. 띄우려면 S9_PORT 를 주거나 "
+                f"그 뿌리의 state/port 에 포트를 적으세요.")
             return
     try:
         socket.create_connection(("127.0.0.1", port), 0.5).close()

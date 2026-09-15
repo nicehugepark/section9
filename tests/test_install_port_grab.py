@@ -45,12 +45,17 @@ class DefaultPortBelongsToThisCheckout(unittest.TestCase):
     def setUpClass(cls):
         cls.src = start_dashboard_src()
 
-    def test_1_nested_test_run_starts_nothing(self):
-        """5. 안쪽 시험 실행(S9_TESTS_NESTED)이면 어떤 경우에도 안 띄운다."""
+    def test_1_nested_check_sits_inside_the_untold_branch(self):
+        """5. 안쪽 시험 검사는 「포트를 일러 주지 않았을 때」 안에 선다 (REQ-20260916-007-2n7g).
+
+        맨 앞에 두었더니 포트를 일러 준 시험까지 돌려보내 전체 회차가 깨졌다.
+        막을 것은 기본값으로 떨어지는 것이지 시험 안에서 띄우는 것이 아니다."""
         head = self.src[:self.src.index("port = int(os.environ")]
-        self.assertIn("S9_TESTS_NESTED", head,
-                      "S9_TESTS_NESTED 검사가 포트를 정하기 전에 서야 한다")
-        self.assertIn("return", head, "그 검사는 돌려보내야 한다")
+        self.assertNotIn("S9_TESTS_NESTED", head,
+                         "안쪽 검사가 포트를 정하기 전에 서면 일러 준 포트까지 막는다")
+        gate = self.src[self.src.index("if not told:"):]
+        self.assertIn("S9_TESTS_NESTED", gate[:gate.index("subprocess.Popen")],
+                      "안쪽 검사가 not told 갈래 안에 있어야 한다")
 
     def test_2_foreign_root_without_a_told_port_starts_nothing(self):
         """4. 남의 뿌리인데 포트를 일러 주지 않았으면 안 띄운다 — 이번 사고."""
@@ -145,12 +150,25 @@ class ItActuallyDoesNotSpawn(unittest.TestCase):
         self.assertEqual(calls, [], f"남의 뿌리에서 서버를 띄웠다: {out}")
         self.assertIn("state/port", out, f"사유를 말하지 않았다: {out}")
 
-    def test_7_nested_run_spawns_nothing(self):
-        """5. S9_TESTS_NESTED 면 안 띄운다."""
+    def test_7_nested_run_without_a_told_port_spawns_nothing(self):
+        """5. 안쪽 시험 실행 + 일러 준 포트 없음 → 안 띄운다."""
         root = tempfile.mkdtemp(prefix="s9portgrab-")
         calls, out = self.run_start(root, {"S9_TESTS_NESTED": "1", "S9_PORT": None})
         self.assertEqual(calls, [], f"시험 안쪽인데 서버를 띄웠다: {out}")
-        self.assertIn("시험", out)
+        # 사유가 둘 중 어느 것인지는 묻지 않는다 — 임시 뿌리는 남의 뿌리이기도 해서
+        # 먼저 걸리는 쪽이 말한다. 순서는 위 test_1 이 구조로 잡는다.
+        self.assertIn("띄우지 않습니다", out, f"사유를 말하지 않았다: {out}")
+
+    def test_7b_nested_run_with_a_told_port_does_spawn(self):
+        """5b. 안쪽 시험이어도 포트를 일러 줬으면 띄운다 (REQ-20260916-007-2n7g).
+
+        test_port_pin_ghost 의 a2 가 정확히 이 모양이다 — 임시 뿌리에 state/port 를
+        적어 두고 start_dashboard 를 불러 세워지는 argv 를 본다."""
+        root = tempfile.mkdtemp(prefix="s9portgrab-")
+        calls, out = self.run_start(root, {"S9_TESTS_NESTED": "1",
+                                           "S9_PORT": "29098"})
+        self.assertEqual(len(calls), 1, f"일러 준 포트인데 안 띄웠다: {out}")
+        self.assertIn("29098", [str(x) for x in calls[0]], calls[0])
 
     def test_8_told_port_does_spawn(self):
         """2. 포트를 일러 주면 남의 뿌리여도 종전대로 띄운다 — 막는 것은 기본값뿐이다."""
