@@ -384,7 +384,13 @@ class SyncStatusSurface(unittest.TestCase):
             a = src.index("멈춤 표시와 복구 (REQ-20260902-025)")
             b = src.index("# 문서 의미 병합 (REQ-20260902-024")
             zone = src[a:b]
+            # 구역을 두 주석으로 찾으므로, 그 주석이 옮겨지면 이 검사가 빈 자리를 보며
+            # 헛통과할 수 있다 — 구역이 실제로 그 코드를 담고 있는지 먼저 본다
+            # (REQ-20260915-007-2n7g: 이 검사가 잡아낸 것은 진짜 결함이었다 — 보관함
+            #  명령이 이 구역 안에 들어와 있었다. 검사가 헛돌면 다음에는 못 잡는다).
+            self.assertGreater(len(zone), 2000, "구역이 너무 짧다 — 경계 주석이 옮겨졌나")
             self.assertIn("def sync_resolve", zone)
+            self.assertIn("def sync_rescue", zone)
             for bad in ('"--hard"', '"checkout"', '"stash"', '"restore"', '"clean"'):
                 self.assertNotIn(bad, zone, bad)
         with self.subTest("s16_panel_paints_line_by_text_color_only"):

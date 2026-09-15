@@ -14889,145 +14889,6 @@ def sync_rescue():
 
 
 # ----------------------------------------------------------------------------
-# 보관함 (REQ-20260915-007-2n7g)
-#
-# 동기화의 pull 은 `rebase --autostash` 라, 커밋하지 않은 작업이 있으면 잠시
-# 보관함(git stash)으로 걷어 간다. 되돌리지 못한 것이 남으면 대시보드가 「치워 둔
-# 작업」으로 세는데, 그것을 비우는 길이 여태 날 git 뿐이었다 — 그리고 그 길은 검사
-# 둘이 서로 어긋나 막혀 있었다: 저장소의 s9-git-gate 는 `S9_GIT_OK=1` 을 요구하고,
-# 하네스의 자동 승인 층은 명령 앞에 붙은 환경변수를 우회 시도로 본다(실측 2026-09-15,
-# REQ-20260915-012-62x6 이 그 자리에서 사람 손을 기다렸다). 그래서 s9 가 맡는다.
-#
-# 사람의 확인을 대신하는 것은 **잃지 않았다는 증거**다: 지우기 전에 그 보관함의
-# patch 가 저장소에 담겨 있는지 보고, 없으면 state/sync-rescue/ 로 먼저 뽑는다.
-
-def stash_entries():
-    """보관함 항목 — [{ref, sha, at, subject, archived}]. archived 는 그 patch 가
-    담긴 자리(요청 첨부 또는 sync-rescue)의 경로, 없으면 빈 문자열."""
-    out = []
-    r = _sync_git("stash", "list", "--format=%gd%x09%H%x09%aI%x09%gs", timeout=10)
-    if r.returncode != 0:
-        return out
-    for ln in r.stdout.splitlines():
-        ref, _, rest = ln.partition("\t")
-        sha, _, rest = rest.partition("\t")
-        at, _, subj = rest.partition("\t")
-        if not ref.strip():
-            continue
-        out.append({"ref": ref.strip(), "sha": sha.strip(), "at": at.strip(),
-                    "subject": subj.strip(), "archived": stash_archived(sha.strip())})
-    return out
-
-
-def stash_archived(sha):
-    """이 보관함이 patch 로 담긴 자리 — 이름에 짧은 해시가 든 .patch 를 찾는다.
-
-    담는 쪽(요청 첨부·sync-rescue)이 `autostash-<시각>-<짧은해시>.patch` 로 이름을
-    지어 왔다. 이름으로 찾는 이유는 내용 비교가 못 미더워서다 — 같은 작업이라도
-    바탕 commit 이 옮겨 가면 patch 의 문맥 줄이 달라진다."""
-    short = (sha or "")[:8]
-    if len(short) < 8:
-        return ""
-    for base in (os.path.join(ROOT, "vault"), _SYNC_RESCUE_DIR):
-        if not os.path.isdir(base):
-            continue
-        for dp, _dn, fns in os.walk(base):
-            for fn in fns:
-                if fn.endswith(".patch") and short in fn:
-                    return os.path.relpath(os.path.join(dp, fn), ROOT)
-    return ""
-
-
-def stash_save_patch(entry):
-    """보관함 하나를 state/sync-rescue/autostash-<시각>-<짧은해시>.patch 로 뽑는다."""
-    r = _sync_git("stash", "show", "-p", "--include-untracked", entry["ref"], timeout=60)
-    body = r.stdout or ""
-    if r.returncode != 0 or not body.strip():
-        return "", (r.stderr or "").strip()[:200] or "patch 가 비어 있다"
-    os.makedirs(_SYNC_RESCUE_DIR, exist_ok=True)
-    stamp = re.sub(r"[^0-9T]", "", (entry.get("at") or "")[:19]) or now_iso()[:19]
-    path = os.path.join(_SYNC_RESCUE_DIR, f"autostash-{stamp}-{entry['sha'][:8]}.patch")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(body)
-    return os.path.relpath(path, ROOT), ""
-
-
-def stash_drop(which):
-    """보관함 하나를 지운다 — 담긴 자리가 없으면 먼저 뽑아 두고 지운다.
-
-    반환 dict(ok, ref, archived, saved, error). `which` 는 번호(0)나 ref(stash@{0}).
-    """
-    items = stash_entries()
-    if not items:
-        return {"ok": False, "error": "보관함이 비어 있다"}
-    key = str(which).strip()
-    hit = None
-    for i, e in enumerate(items):
-        if key == e["ref"] or key == str(i) or key == e["sha"][:8]:
-            hit = e
-            break
-    if hit is None:
-        have = " · ".join(f"{i}: {e['ref']} {e['at'][:16]}" for i, e in enumerate(items))
-        return {"ok": False, "error": f"그런 항목이 없다 — 지금 있는 것: {have}"}
-    saved = ""
-    if not hit["archived"]:
-        saved, err = stash_save_patch(hit)
-        if not saved:
-            return {"ok": False, "error": f"뽑지 못해 지우지 않았다: {err}"}
-    r = _sync_git("stash", "drop", hit["ref"], timeout=20)
-    if r.returncode != 0:
-        return {"ok": False, "error": (r.stderr or r.stdout).strip()[:200]}
-    left = stash_entries()
-    if not left and os.path.exists(SYNC_ORPHAN_STASH):
-        # 마지막 하나였다 — 되돌리지 못한 것을 적어 둔 표식도 함께 걷는다.
-        # 그러지 않으면 알림이 없는 보관함을 계속 센다(_sync_autostash_left 는 둘의 큰 쪽).
-        try:
-            os.remove(SYNC_ORPHAN_STASH)
-        except OSError:
-            pass
-    _sync_log(f"stash drop {hit['ref']} ({hit['sha'][:8]}) "
-              f"{'담긴 자리 ' + hit['archived'] if hit['archived'] else '뽑아 둠 ' + saved}")
-    return {"ok": True, "ref": hit["ref"], "sha": hit["sha"][:8],
-            "archived": hit["archived"], "saved": saved, "left": len(left)}
-
-
-def cmd_stash(args):
-    act = getattr(args, "action", None) or "ls"
-    if act == "ls":
-        items = stash_entries()
-        if not items:
-            print("보관함이 비어 있다")
-            return
-        for i, e in enumerate(items):
-            where = f"담긴 자리 {e['archived']}" if e["archived"] else "담긴 자리 없음 — drop 이 먼저 뽑는다"
-            print(f"{i}  {e['ref']}  {e['at'][:19]}  {e['sha'][:8]}  {e['subject']}\n     {where}")
-        return
-    if act == "show":
-        items = stash_entries()
-        key = str(getattr(args, "which", "") or "0")
-        for i, e in enumerate(items):
-            if key in (e["ref"], str(i), e["sha"][:8]):
-                r = _sync_git("stash", "show", "-p", "--include-untracked", e["ref"], timeout=60)
-                sys.stdout.write(r.stdout)
-                return
-        die("그런 항목이 없다 — `s9 stash ls` 로 번호를 본다")
-    if act == "drop":
-        which = getattr(args, "which", "")
-        if which in (None, ""):
-            die("어느 것을 지울지 번호를 준다 — `s9 stash ls` 로 본다")
-        res = stash_drop(which)
-        if not res.get("ok"):
-            die(res.get("error") or "실패")
-        if res["archived"]:
-            print(f"지웠다 {res['ref']} ({res['sha']}) — patch 는 {res['archived']} 에 있다")
-        else:
-            print(f"지웠다 {res['ref']} ({res['sha']}) — 담긴 자리가 없어 {res['saved']} 로 먼저 뽑아 두었다")
-        print(f"남은 보관함 {res['left']}건")
-        return
-    die(f"모르는 동작: {act}")
-
-
-# ----------------------------------------------------------------------------
 # 문서 의미 병합 (REQ-20260902-024, DOC-20260902-001 D8)
 #
 # 같은 문서를 두 머신이 고치면(note+전이·note+set·note+note) 줄 단위 3-way 는
@@ -15320,6 +15181,145 @@ def cmd_commit(argv):
     """`s9 commit [-m|-F] [--hunks patch] [--wait 초] -- <경로…>` — main 이 argparse 앞에서
     넘긴다(`--` 뒤의 옵션도 받아야 하므로). 종료 코드는 모듈이 정한다."""
     return commit_module().main(list(argv or []))
+
+
+# ----------------------------------------------------------------------------
+# 보관함 (REQ-20260915-007-2n7g)
+#
+# 동기화의 pull 은 `rebase --autostash` 라, 커밋하지 않은 작업이 있으면 잠시
+# 보관함(git stash)으로 걷어 간다. 되돌리지 못한 것이 남으면 대시보드가 「치워 둔
+# 작업」으로 세는데, 그것을 비우는 길이 여태 날 git 뿐이었다 — 그리고 그 길은 검사
+# 둘이 서로 어긋나 막혀 있었다: 저장소의 s9-git-gate 는 `S9_GIT_OK=1` 을 요구하고,
+# 하네스의 자동 승인 층은 명령 앞에 붙은 환경변수를 우회 시도로 본다(실측 2026-09-15,
+# REQ-20260915-012-62x6 이 그 자리에서 사람 손을 기다렸다). 그래서 s9 가 맡는다.
+#
+# 사람의 확인을 대신하는 것은 **잃지 않았다는 증거**다: 지우기 전에 그 보관함의
+# patch 가 저장소에 담겨 있는지 보고, 없으면 state/sync-rescue/ 로 먼저 뽑는다.
+
+def stash_entries():
+    """보관함 항목 — [{ref, sha, at, subject, archived}]. archived 는 그 patch 가
+    담긴 자리(요청 첨부 또는 sync-rescue)의 경로, 없으면 빈 문자열."""
+    out = []
+    r = _sync_git("stash", "list", "--format=%gd%x09%H%x09%aI%x09%gs", timeout=10)
+    if r.returncode != 0:
+        return out
+    for ln in r.stdout.splitlines():
+        ref, _, rest = ln.partition("\t")
+        sha, _, rest = rest.partition("\t")
+        at, _, subj = rest.partition("\t")
+        if not ref.strip():
+            continue
+        out.append({"ref": ref.strip(), "sha": sha.strip(), "at": at.strip(),
+                    "subject": subj.strip(), "archived": stash_archived(sha.strip())})
+    return out
+
+
+def stash_archived(sha):
+    """이 보관함이 patch 로 담긴 자리 — 이름에 짧은 해시가 든 .patch 를 찾는다.
+
+    담는 쪽(요청 첨부·sync-rescue)이 `autostash-<시각>-<짧은해시>.patch` 로 이름을
+    지어 왔다. 이름으로 찾는 이유는 내용 비교가 못 미더워서다 — 같은 작업이라도
+    바탕 commit 이 옮겨 가면 patch 의 문맥 줄이 달라진다."""
+    short = (sha or "")[:8]
+    if len(short) < 8:
+        return ""
+    for base in (os.path.join(ROOT, "vault"), _SYNC_RESCUE_DIR):
+        if not os.path.isdir(base):
+            continue
+        for dp, _dn, fns in os.walk(base):
+            for fn in fns:
+                if fn.endswith(".patch") and short in fn:
+                    return os.path.relpath(os.path.join(dp, fn), ROOT)
+    return ""
+
+
+def stash_save_patch(entry):
+    """보관함 하나를 state/sync-rescue/autostash-<시각>-<짧은해시>.patch 로 뽑는다."""
+    r = _sync_git("stash", "show", "-p", "--include-untracked", entry["ref"], timeout=60)
+    body = r.stdout or ""
+    if r.returncode != 0 or not body.strip():
+        return "", (r.stderr or "").strip()[:200] or "patch 가 비어 있다"
+    os.makedirs(_SYNC_RESCUE_DIR, exist_ok=True)
+    stamp = re.sub(r"[^0-9T]", "", (entry.get("at") or "")[:19]) or now_iso()[:19]
+    path = os.path.join(_SYNC_RESCUE_DIR, f"autostash-{stamp}-{entry['sha'][:8]}.patch")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(body)
+    return os.path.relpath(path, ROOT), ""
+
+
+def stash_drop(which):
+    """보관함 하나를 지운다 — 담긴 자리가 없으면 먼저 뽑아 두고 지운다.
+
+    반환 dict(ok, ref, archived, saved, error). `which` 는 번호(0)나 ref(stash@{0}).
+    """
+    items = stash_entries()
+    if not items:
+        return {"ok": False, "error": "보관함이 비어 있다"}
+    key = str(which).strip()
+    hit = None
+    for i, e in enumerate(items):
+        if key == e["ref"] or key == str(i) or key == e["sha"][:8]:
+            hit = e
+            break
+    if hit is None:
+        have = " · ".join(f"{i}: {e['ref']} {e['at'][:16]}" for i, e in enumerate(items))
+        return {"ok": False, "error": f"그런 항목이 없다 — 지금 있는 것: {have}"}
+    saved = ""
+    if not hit["archived"]:
+        saved, err = stash_save_patch(hit)
+        if not saved:
+            return {"ok": False, "error": f"뽑지 못해 지우지 않았다: {err}"}
+    r = _sync_git("stash", "drop", hit["ref"], timeout=20)
+    if r.returncode != 0:
+        return {"ok": False, "error": (r.stderr or r.stdout).strip()[:200]}
+    left = stash_entries()
+    if not left and os.path.exists(SYNC_ORPHAN_STASH):
+        # 마지막 하나였다 — 되돌리지 못한 것을 적어 둔 표식도 함께 걷는다.
+        # 그러지 않으면 알림이 없는 보관함을 계속 센다(_sync_autostash_left 는 둘의 큰 쪽).
+        try:
+            os.remove(SYNC_ORPHAN_STASH)
+        except OSError:
+            pass
+    _sync_log(f"stash drop {hit['ref']} ({hit['sha'][:8]}) "
+              f"{'담긴 자리 ' + hit['archived'] if hit['archived'] else '뽑아 둠 ' + saved}")
+    return {"ok": True, "ref": hit["ref"], "sha": hit["sha"][:8],
+            "archived": hit["archived"], "saved": saved, "left": len(left)}
+
+
+def cmd_stash(args):
+    act = getattr(args, "action", None) or "ls"
+    if act == "ls":
+        items = stash_entries()
+        if not items:
+            print("보관함이 비어 있다")
+            return
+        for i, e in enumerate(items):
+            where = f"담긴 자리 {e['archived']}" if e["archived"] else "담긴 자리 없음 — drop 이 먼저 뽑는다"
+            print(f"{i}  {e['ref']}  {e['at'][:19]}  {e['sha'][:8]}  {e['subject']}\n     {where}")
+        return
+    if act == "show":
+        items = stash_entries()
+        key = str(getattr(args, "which", "") or "0")
+        for i, e in enumerate(items):
+            if key in (e["ref"], str(i), e["sha"][:8]):
+                r = _sync_git("stash", "show", "-p", "--include-untracked", e["ref"], timeout=60)
+                sys.stdout.write(r.stdout)
+                return
+        die("그런 항목이 없다 — `s9 stash ls` 로 번호를 본다")
+    if act == "drop":
+        which = getattr(args, "which", "")
+        if which in (None, ""):
+            die("어느 것을 지울지 번호를 준다 — `s9 stash ls` 로 본다")
+        res = stash_drop(which)
+        if not res.get("ok"):
+            die(res.get("error") or "실패")
+        if res["archived"]:
+            print(f"지웠다 {res['ref']} ({res['sha']}) — patch 는 {res['archived']} 에 있다")
+        else:
+            print(f"지웠다 {res['ref']} ({res['sha']}) — 담긴 자리가 없어 {res['saved']} 로 먼저 뽑아 두었다")
+        print(f"남은 보관함 {res['left']}건")
+        return
+    die(f"모르는 동작: {act}")
 
 
 def cmd_sync(args):
