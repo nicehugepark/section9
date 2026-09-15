@@ -251,5 +251,3 @@ python3 tests/ --local guide_repo    # 파일 이름 조각으로 골라 실행
 | [docs/05-web-dashboard.md](docs/05-web-dashboard.md) · [06-auto-audit.md](docs/06-auto-audit.md) | 대시보드·프롬프트 자동 기록 훅 |
 | [docs/07-users.md](docs/07-users.md) · [08-git-sync.md](docs/08-git-sync.md) · [09-install-and-authz.md](docs/09-install-and-authz.md) | 사용자·git 동기화·설치와 인가 |
 | [docs/10-context-bootstrap.md](docs/10-context-bootstrap.md) · [11-windows.md](docs/11-windows.md) | 세션 시작 주입·Windows |
-
-> Copyright (c) 2026 Seongjin Park (nicehugepark). 모든 권리를 유보합니다 — 별도의 서면 허가 없이는 어떤 사용·복제·수정·배포도 허가되지 않습니다.
