@@ -14,6 +14,11 @@
   "hostname": "DESKTOP-TEHV1KR",
   "root": "/home/sjpark1/section9"
  },
+ "ma1w": {
+  "first_seen": "2026-09-15T13:29:33+09:00",
+  "hostname": "Seongjinui-Macmini.local",
+  "root": "/Users/seongjinpark/section9/state/worktrees/w-915-001-2n7g"
+ },
  "rwy1": {
   "first_seen": "2026-09-11T09:07:01+09:00",
   "hostname": "eek-p620",
