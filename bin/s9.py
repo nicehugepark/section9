@@ -653,6 +653,16 @@ def _notice_fill(tpl, vals):
     return tpl
 
 
+def s9_cmd(rest):
+    """화면·알림이 보여 주는 s9 명령 한 줄 — **이 서버가 도는 컴퓨터의 꼴**이다
+    (REQ-20260915-013-62x6, 주인 지적 2026-09-15 13:12: 네이티브 Windows 의 안내가
+    전부 리눅스·맥 꼴이었다). 붙여 넣어 실행할 수 없는 명령은 안내가 아니다 —
+    Windows 에는 PATH 에 s9 가 없고 폴더 안에서 `bin\\s9` 로 부른다(가이드 Windows
+    편 A-3). 명령을 짓는 자리는 여기 하나다; 화면 쪽의 같은 규칙은 web/app/state.js
+    의 s9cmd 이고 둘은 whoami 의 os 를 같이 본다."""
+    return ("bin\\s9 " if os_platform() == "Windows" else "s9 ") + str(rest).strip()
+
+
 def _notice_row(nid, sev, source, key, vals, go, since, sig):
     title, body, note = NOTICE_TEXT[key]
     vals = {"서비스": source, **vals}
@@ -717,7 +727,7 @@ def _oldcode_notices(now):
     since = datetime.datetime.fromtimestamp(since_ts).astimezone().isoformat(timespec="seconds")
     return [_notice_row("server:oldcode", "warn", "서버", "oldcode",
                         {"시각": str(SERVE_STARTED)[11:16]},
-                        {"kind": "cmd", "text": "s9 serve --restart"},
+                        {"kind": "cmd", "text": s9_cmd("serve --restart")},
                         since=since, sig=_notice_sig("oldcode", SERVE_STARTED))]
 
 
@@ -759,14 +769,14 @@ def _sync_notices():
         out.append(_notice_row("sync:fail", "halt", "동기화",
                                "sync_fail" if pending > 0 else "sync_fail0",
                                {"N": int(a.get("count") or 0), "M": pending},
-                               {"kind": "cmd", "text": "s9 sync"},
+                               {"kind": "cmd", "text": s9_cmd("sync")},
                                since=a.get("since") or _notice_epoch(),
                                sig=_notice_sig("sync", "fail", a.get("stage"),
                                                a.get("kind"), a.get("count"))))
     n, oldest = _sync_autostash_left()
     if n:
         out.append(_notice_row("sync:autostash", "warn", "동기화", "autostash", {"N": n},
-                               {"kind": "cmd", "text": "s9 doctor"},
+                               {"kind": "cmd", "text": s9_cmd("doctor")},
                                since=oldest or _notice_epoch(),
                                sig=_notice_sig("sync", "autostash", n)))
     return out
@@ -783,7 +793,7 @@ def notices_info(now=None):
     if not w.get("registered"):
         raw = str(w.get("user") or "")
         rows.append(_notice_row("identity:unreg", "halt", "이 컴퓨터", "unregistered",
-                                {"계정": raw}, {"kind": "cmd", "text": f"s9 user add {raw}"},
+                                {"계정": raw}, {"kind": "cmd", "text": s9_cmd(f"user add {raw}")},
                                 since=_notice_epoch(),
                                 sig=_notice_sig("identity", "unreg", raw)))
     rows += _jira_notices(w.get("user", "") if w.get("registered") else "", now)

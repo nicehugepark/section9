@@ -149,6 +149,15 @@ function thawDocOrder(){ docRank = null; }
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+/* 화면이 보여 주는 s9 명령은 **이 서버가 도는 컴퓨터의 것**이다
+   (REQ-20260915-013-62x6, 주인 지적 2026-09-15: 네이티브 Windows 의 안내가 전부
+   리눅스·맥 꼴이라 붙여 넣어도 실행되지 않았다). Windows 에는 PATH 에 s9 가 없고
+   폴더 안에서 `bin\s9` 로 부른다(가이드 Windows 편 A-3). 서버의 OS 는 whoami 가
+   이미 싣고 온다(os: Windows · WSL · linux · macOS) — 아직 안 왔으면 종전 꼴이다.
+   서버 쪽의 같은 규칙은 bin/s9.py 의 s9_cmd 이고, 둘은 같은 값을 본다. */
+const s9cmd = rest =>
+  (((window.__whoami || {}).os === "Windows") ? "bin\\s9 " : "s9 ") + String(rest ?? "").trim();
+
 // uid 표시 축약 (REQ-20260825-031/-034): 지문 접미(-xxxx)는 같은
 // (타입-날짜-순번)이 실제로 겹칠 때만 보여준다 — git 짧은 해시 원리.
 // 참조(data-doc)는 항상 전문 uid, 축약은 렌더 시점에만.

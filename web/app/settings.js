@@ -107,7 +107,7 @@ function renderSettingsSection(meAdmin){
         ${d.opts.map(([val,txt]) => `<option value="${esc(val)}"${val===cur[d.attr]?" selected":""}>${esc(txt)}</option>`).join("")}
       </select></td></tr>`).join("");
     v.innerHTML = `<h1 style="margin:0 0 4px">디스플레이</h1>
-      <div class="path">${me ? `@${me} 계정에 저장 — 다른 컴퓨터에서도 적용됩니다.` : "미등록 계정 — s9 user add 로 등록하면 계정에 저장되어 컴퓨터 간에 동기화됩니다. 지금은 이 브라우저에만 저장."}</div>
+      <div class="path">${me ? `@${me} 계정에 저장 — 다른 컴퓨터에서도 적용됩니다.` : `미등록 계정 — ${s9cmd("user add")} 로 등록하면 계정에 저장되어 컴퓨터 간에 동기화됩니다. 지금은 이 브라우저에만 저장.`}</div>
       <table class="metatbl">${rows}</table>
       <div class="path">skin은 모양과 배치, tone은 색, density는 여백을 바꿉니다. 셋은 마음대로 섞어 쓸 수 있고, 고르면 바로 화면에 적용됩니다.</div>
       ${nParked() ? `<div class="path">닫은 알림 ${nParked()}건 —
@@ -130,7 +130,7 @@ function renderSettingsSection(meAdmin){
   } else if (settingsSection === "roster"){
     showRoster(v);
   } else if (settingsSection === "account"){
-    if (!me){ v.innerHTML = `<p class="empty">이 OS 계정(${esc((window.__whoami||{}).user||"?")})은 미등록입니다 — 터미널에서 <code>s9 user add ${esc((window.__whoami||{}).user||"&lt;이름&gt;")}</code> 으로 등록하세요. 다른 이름의 기존 계정에 연결하려면 <code>s9 user attach &lt;이름&gt;</code>.</p>`; return; }
+    if (!me){ v.innerHTML = `<p class="empty">이 OS 계정(${esc((window.__whoami||{}).user||"?")})은 미등록입니다 — 터미널에서 <code>${esc(s9cmd("user add " + ((window.__whoami||{}).user || "<이름>")))}</code> 으로 등록하세요. 다른 이름의 기존 계정에 연결하려면 <code>${esc(s9cmd("user attach <이름>"))}</code>.</p>`; return; }
     const u = (window.__users||[]).find(x => x.name === me);
     // 못 받아 왔을 때 빈 판을 두면 "설정이 사라졌다"로 읽힌다 — 서버가 목록을
     // 안 준 것과 계정이 없는 것은 다른 일이고, 다시 시도할 손잡이를 줘야 한다.
@@ -140,7 +140,7 @@ function renderSettingsSection(meAdmin){
     const rt = $("#uf-retry");
     if (rt) rt.addEventListener("click", () => renderSettings());
   } else if (settingsSection === "worker"){
-    if (!me){ v.innerHTML = `<p class="empty">이 OS 계정(${esc((window.__whoami||{}).user||"?")})은 미등록입니다 — 터미널에서 <code>s9 user add ${esc((window.__whoami||{}).user||"&lt;이름&gt;")}</code> 으로 등록하세요.</p>`; return; }
+    if (!me){ v.innerHTML = `<p class="empty">이 OS 계정(${esc((window.__whoami||{}).user||"?")})은 미등록입니다 — 터미널에서 <code>${esc(s9cmd("user add " + ((window.__whoami||{}).user || "<이름>")))}</code> 으로 등록하세요.</p>`; return; }
     const wu = (window.__users||[]).find(x => x.name === me);
     // 못 받아 온 것과 계정이 없는 것은 다른 일이다 (「내 계정」과 같은 손잡이).
     if (wu) showWorkerCfg(wu, v);
@@ -451,7 +451,7 @@ async function showRoster(v){
   html += me
     ? group(ROSTER_SCOPE.user[0], ROSTER_SCOPE.user[1], "user", me, mine,
             addForm("user", me, mine.length ? "" : "내가 만든 에이전트·스킬이 없습니다. 추가하면 어느 프로젝트에서나 씁니다."))
-    : `<div class="cfg-h">내 것</div><p class="empty">미등록 계정입니다 — 터미널에서 <code>s9 user add &lt;이름&gt;</code> 으로 등록하면 내 에이전트·스킬을 둘 수 있습니다.</p>`;
+    : `<div class="cfg-h">내 것</div><p class="empty">미등록 계정입니다 — 터미널에서 <code>${esc(s9cmd("user add <이름>"))}</code> 으로 등록하면 내 에이전트·스킬을 둘 수 있습니다.</p>`;
   /* 프로젝트는 얼마든지 늘어난다 — 그래서 범위는 **한 묶음**이고, 그 안에서
      프로젝트를 고른다. 묶음을 프로젝트 수만큼 늘어놓으면 열 개짜리 저장소에서는
      이 판이 열 번 반복되는 목록이 된다.

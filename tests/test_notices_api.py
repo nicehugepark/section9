@@ -186,6 +186,43 @@ class NoticesFacts(unittest.TestCase):
         self.m.do_user_add("ghost")
         self.assertEqual(self.notices(), [])
 
+    # ── S11 명령은 이 컴퓨터의 것 (REQ-20260915-013-62x6) ──────────────────
+    def test_s11_the_command_follows_the_machine_it_runs_on(self):
+        """N1·N2 — 붙여 넣어 실행할 수 없는 명령은 안내가 아니다. Windows 에는 PATH 에
+        s9 가 없어 폴더 안에서 `bin\\s9` 로 부른다(가이드 Windows 편 A-3). 주인 지적
+        2026-09-15: 네이티브 Windows 의 안내가 전부 리눅스·맥 꼴이었다."""
+        m = self.m
+        real = m.os_platform
+        try:
+            m.os_platform = lambda: "Windows"
+            self.assertEqual(m.s9_cmd("serve --restart"), "bin\\s9 serve --restart")
+            os.environ["S9_USER"] = "ghost"
+            self.assertEqual(self.notices()[0]["go"],
+                             {"kind": "cmd", "text": "bin\\s9 user add ghost"})
+            for plat in ("linux", "macOS", "WSL"):
+                m.os_platform = lambda plat=plat: plat
+                self.assertEqual(m.s9_cmd("serve --restart"), "s9 serve --restart")
+                self.assertEqual(self.notices()[0]["go"],
+                                 {"kind": "cmd", "text": "s9 user add ghost"})
+        finally:
+            m.os_platform = real
+
+    def test_s12_the_screen_builds_commands_in_one_place_too(self):
+        """N3 — 화면 쪽 규칙은 web/app/state.js 의 s9cmd 한 곳이고, 미등록 안내는
+        그것을 쓴다(문자열로 박아 두면 다음 자리에서 또 리눅스 꼴이 샌다)."""
+        web = os.path.join(HERE, "..", "web", "app")
+        with open(os.path.join(web, "state.js"), encoding="utf-8") as f:
+            state = f.read()
+        self.assertIn("const s9cmd =", state, "화면 쪽 s9cmd 가 없다")
+        self.assertIn('"bin\\\\s9 "', state, "Windows 꼴이 s9cmd 안에 없다")
+        for name in ("settings.js", "notice.js"):
+            with open(os.path.join(web, name), encoding="utf-8") as f:
+                src = f.read()
+            for line in src.splitlines():
+                if "user add" in line or "user attach" in line:
+                    self.assertIn("s9cmd(", line,
+                                  f"{name}: 미등록 안내가 명령을 글자로 박았다 — {line.strip()[:80]}")
+
     # ── S5 회귀: 서비스 이름은 값 자리 ───────────────────────────────────────
     def test_s5_service_name_only_as_a_value(self):
         m = self.m

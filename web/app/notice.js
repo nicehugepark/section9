@@ -68,6 +68,11 @@ function renderWhoami(){
   const where = w.os ? ` <span class="where" title="${esc(w.root || "")}">${esc(w.os)}</span>` : "";
   el.innerHTML = `<b>${esc(w.user)}</b> @ ${esc(w.machine || "")}${where} [${esc(w.role || "member")}]`
     + (asUser ? ` <span class="as">→ @${esc(asUser)} 시점</span>` : "");
+  // 이 자리의 설명에 든 명령도 이 컴퓨터의 꼴이다 (REQ-20260915-013-62x6) —
+  // index.html 의 글자는 첫 그림뿐이고, 신원이 오면 여기서 다시 적는다.
+  el.title = "이 화면은 계정을 따로 묻지 않습니다 — 이 컴퓨터에서만 열리는 화면이라, "
+    + "서버를 띄운 계정을 그대로 씁니다. 다른 이름으로 보려면 터미널에서 "
+    + s9cmd("user attach") + " 를 실행하세요";
 }
 
 /* ── 서버가 지금 무엇을 하고 있나 (serveinfo) ───────────────────────────────
@@ -867,7 +872,7 @@ function syncMineToggle(){
     ? `@${me} 가 활성 멤버로 있는 프로젝트의 문서만 봅니다 — Board·Docs·Graph 에 함께 적용됩니다`
     : supplyLost("whoami")
       ? "내 계정을 받지 못했습니다 — 헤더의 다시 받기를 눌러 보세요"
-      : "미등록 계정 — s9 user add 로 등록하면 내 프로젝트만 볼 수 있습니다";
+      : `미등록 계정 — ${s9cmd("user add")} 로 등록하면 내 프로젝트만 볼 수 있습니다`;
 }
 
 /* ── 받아 오는 값은 전부 이 경로를 지난다 (REQ-20260828-039-62x6) ────────────

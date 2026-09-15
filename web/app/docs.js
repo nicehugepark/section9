@@ -1208,7 +1208,7 @@ function answerBtnHTML(m){
   // 빈손은 문서에도 남는다 — 새로고침·다른 탭에서도 「다시 찾기」여야 한다.
   const again = answerMiss.has(m.id) || m.agent_answer === "miss";
   const tip = `질문한 시각 앞뒤의 작업 기록을 모아 답을 맞춰 이 문서에 붙입니다`
-    + ` · 터미널에서는 s9 note ${shortId(m.id)} '…' --label answer`;
+    + ` · 터미널에서는 ${s9cmd(`note ${shortId(m.id)} '…' --label answer`)}`;
   return `<button type="button" class="deed ansbtn" data-answer="${esc(m.id)}"`
     + ` title="${esc(tip)}"><span class="ansin">${again ? "다시 찾기" : "답 찾기"}</span>`
     + ANS_SIZER + `</button>`;

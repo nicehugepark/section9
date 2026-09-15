@@ -430,7 +430,7 @@ function renderMyStrip(){
   let body;
   if (!mp.length){
     body = `<div class="ms-note">@${esc(me)}가 멤버인 활성 프로젝트가 없습니다 —
-      <code>s9 project member add &lt;slug&gt; ${esc(me)}</code> 또는 토글 해제${
+      <code>${esc(s9cmd("project member add <slug> " + me))}</code> 또는 토글 해제${
       expiredN ? ` · 만료된 멤버십 ${expiredN}건` : ""}</div>`;
   } else {
     const open = expanded.has("mystrip");
