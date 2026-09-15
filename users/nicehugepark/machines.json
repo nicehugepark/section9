@@ -28,5 +28,10 @@
   "first_seen": "2026-09-06T01:34:43+09:00",
   "hostname": "eek-p620",
   "root": "/home/sjpark/section9"
+ },
+ "wm8e": {
+  "first_seen": "2026-09-15T14:16:42+09:00",
+  "hostname": "DESKTOP-TEHV1KR",
+  "root": "/home/sjpark1/section9/state/worktrees/w-915-020-62x6"
  }
 }

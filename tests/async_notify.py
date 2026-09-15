@@ -1,6 +1,6 @@
 """백그라운드 전체 실행의 결과가 스스로 도착한다 (REQ-20260906-029).
 
-post-commit 이 띄운 전체 실행은 로그(state/tests-async/<sha7>.log)에만 남았다 —
+post-commit 이 띄운 전체 실행은 로그(state/tests-async/<sha>.log)에만 남았다 —
 리드가 Monitor 로 결과를 기다리다 세 번 놓쳤다(2026-09-06). 그래서 전체 판정이
 끝나는 자리에서 결과를 **밀어 넣는다**:
 
@@ -12,8 +12,10 @@ post-commit 이 띄운 전체 실행은 로그(state/tests-async/<sha7>.log)에�
    state/tests-pending-red.json 에 {shas, files, at, req} 로 적어 두고, 요청은
    (a) 다음 회차도 같은 파일이 실패할 때 즉시(note_failure) 또는 (b) 30분이 지나도록
    통과 회차가 없을 때 serve 워처 틱(pending_red_tick)이 세운다. 통과가 오면 지운다.
-   세운 요청은 그 사이의 sha 를 모두 적고, 각 sha 의 state/tests-async/<sha7>.req
-   표식에 id 를 남긴다(같은 묶음에 요청은 하나).
+   세운 요청은 그 사이의 sha 를 모두 적고, 각 sha 의 state/tests-async/<sha>.req
+   표식에 id 를 남긴다(같은 묶음에 요청은 하나). 그 <sha> 는 post-commit 이 로그를
+   지을 때 쓴 `git rev-parse --short` 의 값 그대로다 — 자르면 가리키는 로그가 없다
+   (REQ-20260915-020).
 
 post-commit(백그라운드) 이 넘긴 `S9_TESTS_ASYNC=1` 이 있을 때만 움직인다 — 사람이 터미널에서 손으로
 돌린 실행은 이미 눈앞에서 결과를 보고 있으니 조용하다. sha 는 `S9_TESTS_ASYNC_SHA`
@@ -66,10 +68,21 @@ def _git(root, *a):
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
-def commit_sha7(root, env=None):
+def commit_sha(root, env=None):
+    """로그·표식의 이름이 되는 sha — **자르지 않는다** (REQ-20260915-020).
+
+    이 값은 사람이 읽는 라벨이 아니라 **파일 이름**이다. post-commit(bin/s9-guard)
+    이 `git rev-parse --short` 로 로그를 `state/tests-async/<그 값>.log` 에 만드는데,
+    길이는 git 이 저장소 크기에 따라 정한다 — 이 저장소는 7 자로는 더 이상 유일하지
+    않아 9 자(`c3ec38946`)를 낸다. 여기서 `[:7]` 로 자르면 알림과 후속 요청이
+    `c3ec389.log` 를 가리키고, 그 파일은 **없다**.
+
+    실제 사고 2026-09-15: 그렇게 선 REQ-20260915-020-62x6 을 집은 작업자가
+    가리키는 로그를 열지 못했다. 사람이 읽는 짧은 꼴은 `ran_label` 이 따로 만든다.
+    """
     env = env if env is not None else os.environ
     sha = (env.get(ENV_SHA) or "").strip()
-    return sha[:7] if sha else (_git(root, "rev-parse", "--short", "HEAD") or "")[:7]
+    return sha or (_git(root, "rev-parse", "--short", "HEAD") or "")
 
 
 def commit_req(root, sha):
@@ -336,7 +349,10 @@ def notify_full_result(ok, red=(), took=0.0, n_files=0, where="로컬", root=Non
         return None
     root = root or REPO
     red = [f for f in red if f]
-    sha = (sha or commit_sha7(root, env) or "head")[:7]
+    # 자르지 않는다 — 이 sha 는 로그(`state/tests-async/<sha>.log`)와 표식(`.req`)의
+    # **파일 이름**이고, 그 이름은 post-commit 이 지은 그대로여야 연다. 사람이 읽는
+    # 짧은 꼴은 ran_label 이 만든다 (REQ-20260915-020).
+    sha = sha or commit_sha(root, env) or "head"
     label = ran_label(sha, ran_sha)
     req = req if req is not None else commit_req(root, sha)
     secs = int(round(took))
