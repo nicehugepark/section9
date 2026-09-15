@@ -140,5 +140,38 @@ class PrefInjection(unittest.TestCase):
                 "additionalContext", "")
             self.assertIn("개인 설정: 없음", c)
 
+
+class UnreadableIsNotAbsent(unittest.TestCase):
+    """**「없음」과 「못 읽음」은 다른 일이다** (REQ-20260915-055-62x6).
+
+    부재는 이미 명시 지시로 나간다(REQ-20260824-016) — 침묵이면 모델이 직전
+    대화의 관성을 따르기 때문이다. 그런데 조회가 실패한 자리만 빈 문자열이라,
+    장애가 「설정 없음」과 구별되지 않은 채 같은 관성으로 흘렀다. 2026-09-15
+    점검(quality-assurance D3·D4 · architect D4)이 같은 자리를 짚었다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_loader(
+            "s9_hook_unread",
+            importlib.machinery.SourceFileLoader("s9_hook_unread", HOOK))
+        cls.h = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.h)
+
+    def test_an_unknown_person_says_it_could_not_read(self):
+        got = self.h.prefs_context(dict(os.environ), "nobody-does-not-exist")
+        self.assertIn("읽지 못했다", got)
+        self.assertNotIn("개인 설정: 없음", got)
+
+    def test_no_subject_stays_quiet(self):
+        """주체를 못 가리는 때는 종전대로 조용하다 — 물어볼 사람이 정해지지 않았다."""
+        self.assertEqual(self.h.prefs_context(dict(os.environ), ""), "")
+        self.assertEqual(self.h.prefs_context(dict(os.environ), "(미등록)"), "")
+
+    def test_the_two_messages_are_different(self):
+        self.assertNotEqual(self.h.PREFS_UNREADABLE.strip(), "")
+        self.assertNotIn("없음", self.h.PREFS_UNREADABLE)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -545,20 +545,31 @@ def session_role(env):
         return ""
 
 
+PREFS_UNREADABLE = (" ◈ 개인 설정을 읽지 못했다 — 이 턴에는 그 사람의 말투·방식을 "
+                    "모른다. 기본 말투로 답하고, 설정이 필요해 보이면 사람에게 "
+                    "`s9 user config <이름>` 로 확인하라고 알려라. ")
+
+
 def prefs_context(env, who):
     """현재 요청 주체의 개인 선호(user config의 pref_* 키) → 주입 컨텍스트.
     말투·응답 형식·작업 방식 등 하네스 공통이 아닌 사용자별 설정 (REQ-20260824-006).
-    없거나 조회 실패면 빈 문자열 — 기존 컨텍스트 불변."""
-    name = (who or "").split()[0].strip()
+
+    **「없음」과 「못 읽음」은 다른 일이다** (REQ-20260915-055-62x6, 2026-09-15 점검):
+    없음은 이미 명시 지시로 나가는데(아래 REQ-20260824-016) 못 읽음은 빈 문자열이라
+    아무것도 안 실렸다 — 그 침묵은 「설정 없음」과 구별되지 않아 모델이 직전 대화의
+    관성을 따른다. 조회가 실패했으면 **실패했다고 말한다**. 주체를 못 가리는 때
+    (이름이 비었거나 사람이 아닌 표시)는 종전대로 조용하다 — 그때는 물어볼 사람이
+    정해지지 않았다."""
+    name = (who or "").split()[0].strip() if (who or "").strip() else ""
     if not name or name.startswith("("):
         return ""
     out = run(env, "user", "config", name)
     if out.returncode != 0:
-        return ""
+        return PREFS_UNREADABLE
     try:
         cfg = json.loads(out.stdout)
     except ValueError:
-        return ""
+        return PREFS_UNREADABLE
     prefs = {k[5:]: str(v) for k, v in cfg.items()
              if k.startswith("pref_") and v}
     if not prefs:
@@ -688,7 +699,9 @@ def turn_prefs():
         who = cur.stdout.strip() if cur.returncode == 0 else ""
         return prefs_context(env, who) if who else ""
     except Exception:
-        return ""
+        # 여기의 침묵도 같은 결함이었다 — 장애를 「설정 없음」으로 삼킨다
+        # (REQ-20260915-055-62x6). 못 읽었으면 못 읽었다고 말한다.
+        return PREFS_UNREADABLE
 
 
 def _stamp_who():
