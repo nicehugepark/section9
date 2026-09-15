@@ -201,8 +201,33 @@ def write_green_stamp(repo=None, stamp=None):
 # 안쪽 실행(S9_TESTS_NESTED)은 둘 다 지나친다 — 바깥이 이미 그 검사를 지났고,
 # 여기서 또 잠그면 자기 자신을 기다린다.
 _MOD_RE = re.compile(r"\((test_[A-Za-z0-9_]+)\.")
+
+
+def _machine_root(repo):
+    """실행 잠금이 사는 자리 — worktree 면 본 저장소 (REQ-20260916-005-2n7g).
+
+    잠금이 checkout 마다 따로 있으면 **같은 컴퓨터에서 전체 회차 둘이 서로를 못
+    본다.** 실측 2026-09-16 00:29: 본 저장소의 회차와 작업자 worktree 의 회차가
+    각각 샤드 여덟으로 동시에 돌아, 한 회차는 메모리가 말라 죽고 살아남은
+    회차는 헛된 실패 둘(test_port_pin_ghost · test_link_newtab)을 냈다. 그
+    빨강이 커밋 차단으로 다음 사람까지 막았다. CPU 도 메모리도 포트도 컴퓨터
+    하나의 것이니, 「이미 돌고 있나」를 묻는 자리도 컴퓨터 하나에 한 벌이어야 한다.
+
+    worktree 는 `s9 worktree` 가 `<본 저장소>/state/worktrees/<이름>` 에 둔다 —
+    그 모양일 때만 올라간다. git 에 묻지 않는 이유는 이 함수가 import 때 돌기
+    때문이다(REQ-20260916-002-2n7g: 쓰지도 않을 git 호출이 시험을 깼다). 다른
+    자리에 둔 worktree 는 종전처럼 제 잠금을 쓴다 — 넓히지 않는다.
+    """
+    parts = os.path.abspath(repo).split(os.sep)
+    if len(parts) >= 3 and parts[-2] == "worktrees" and parts[-3] == "state":
+        cand = os.sep.join(parts[:-3])
+        if os.path.isdir(os.path.join(cand, "bin")):
+            return cand
+    return repo
+
+
 REUSE_DIR = os.path.join(REPO, "state", "tests-green")
-RUN_LOCKS = os.path.join(REPO, "state", "jobs")
+RUN_LOCKS = os.path.join(_machine_root(REPO), "state", "jobs")
 REUSE_WAIT_SEC = int(os.environ.get("S9_TESTS_WAIT") or 1800)
 
 
