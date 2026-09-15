@@ -133,7 +133,10 @@ class SyncAlert(unittest.TestCase):
         self.assertIn("훅 오류", text)
         self.assertIn("SyntaxWarning", text)
         self.assertIn("commit 5개가 push 되지 않았습니다", text)
-        self.assertIn("`s9 sync`", text)
+        # 다음 행동은 `s9 sync`(한 번 더 오간다)가 아니라 `s9 sync --status`
+        # (무엇이 걸렸는지 본다)다 (REQ-20260915-009-2n7g): 실패를 보고 있는
+        # 사람에게 필요한 것은 한 번 더 시도하는 것이 아니라 사유다.
+        self.assertIn("`s9 sync --status`", text)
         for bad in ("막혔", "섰다", "죽었", "멈췄"):
             self.assertNotIn(bad, text)
         fact = self.m.sync_alert_fact(s, pending=5)

@@ -6974,9 +6974,13 @@ def _pull_if_stale():
         before = _sync_git("rev-parse", "HEAD").stdout.strip()
         r = _sync_pull_cmd(timeout=8)
         if r.returncode != 0:
+            # 충돌이면 되돌리기 전에 적는다 (REQ-20260915-009-2n7g) — 충돌한
+            # 자리가 없으면 빈 사전을 돌려주고 아무것도 쓰지 않는다.
+            _sync_conflict_record()
             _sync_abort_rebase()
         else:
             _sync_pull_stamp()
+            sync_conflict_clear()
             # 바뀐 문서만 (REQ-20260902-035 §3) — 기준 커밋을 못 얻었으면
             # index_sync_range 가 전량으로 물러난다.
             index_sync_range(before)
@@ -13316,8 +13320,16 @@ def _sync_log(msg):
 
 
 def _sync_git(*argv, timeout=6):
+    """이 저장소에 대고 git 을 부른다.
+
+    `core.quotepath=false` 를 못박는다 (REQ-20260915-009-2n7g): git 은 기본으로
+    한글 경로를 `"tests/\\353\\230\\220.py"` 처럼 8진수로 감싸 내놓는다. 이
+    저장소의 문서·시험 이름은 대부분 한글이라, 경로 목록을 받아 제 경로와
+    맞춰 보는 자리(충돌 목록 ↔ 지목한 것)가 전부 어긋난다 — 지목해 놓고도
+    「지목하지 않은 것도 충돌한다」가 나온다."""
     import subprocess
-    return subprocess.run(["git", "-C", ROOT, *argv], capture_output=True,
+    return subprocess.run(["git", "-C", ROOT, "-c", "core.quotepath=false", *argv],
+                          capture_output=True,
                           encoding="utf-8", errors="replace", timeout=timeout)
 
 
@@ -13543,6 +13555,112 @@ def _sync_reclaim_autostash(before):
     except OSError:
         pass
     return ""
+
+
+_SYNC_CONFLICT_LAST = os.path.join(ROOT, "state", "sync-conflict", "last.json")
+_SYNC_CONFLICT_DIFF_MAX = 4000      # 두 본의 차이를 적는 상한 (글자)
+
+
+def _sync_conflict_record():
+    """rebase 를 되돌리기 **전에** 무엇이 충돌했는지 적어 둔다 (REQ-20260915-009-2n7g).
+
+    실제 사고 2026-09-15 17:13~18:55: 맥과 다른 컴퓨터가 같은 시험 파일의 같은
+    줄을 각각 고쳤다(값은 같고 주석이 달랐다). 그 뒤 1시간 40분 동안 `_pull` 이
+    240초마다 충돌하고 곧바로 `_sync_abort_rebase()` 로 물러났는데, **되돌리기는
+    충돌 정보를 함께 지운다** — 화면에 남은 것은 「충돌」이라는 낱말 하나였고,
+    못 받은 커밋이 112건까지 쌓이도록 무엇이 걸렸는지 아무 데도 없었다. 사람이
+    두 번 물어서야(「이건 왜 또 막힌거야」) 드러났다.
+
+    되돌리기 직전에만 읽히는 것을 적는다: 충돌한 경로 · 되감던 내 commit ·
+    그 경로를 마지막으로 만진 origin 쪽 commit · **두 본의 차이**. 차이를 함께
+    적는 것이 이 기록의 값이다 — 이번 사고에서 그 차이는 주석 두 줄이었고,
+    보였다면 판정은 즉시였다.
+
+    무엇도 던지지 않는다. 기록을 만들다 실패하는 것이 pull 을 멈출 이유는 없다.
+    """
+    try:
+        paths = [ln.strip() for ln in _sync_git(
+            "diff", "--name-only", "--diff-filter=U").stdout.splitlines()
+            if ln.strip()]
+        if not paths:
+            return {}
+        stopped = ""
+        for rb, name in ((".git/rebase-merge", "stopped-sha"),
+                         (".git/rebase-apply", "original-commit")):
+            try:
+                with open(os.path.join(ROOT, rb, name), encoding="utf-8") as f:
+                    stopped = f.read().strip()
+                break
+            except OSError:
+                continue
+        def _one(rev, path=None):
+            argv = ["log", "-1", "--format=%h\t%cI\t%s", rev]
+            if path:
+                argv += ["--", path]
+            out = (_sync_git(*argv).stdout or "").strip().split("\t")
+            if len(out) < 3:
+                return {}
+            return {"sha": out[0], "ts": out[1], "subject": out[2]}
+        # rebase 안에서는 HEAD 가 origin 쪽(onto)이다 — 그쪽에서 그 파일을
+        # 마지막으로 만진 commit 이 「남이 담은 것」이다.
+        files = []
+        for p in paths[:20]:
+            d = _sync_git("diff", "--no-color", "--unified=1",
+                          f":2:{p}", f":3:{p}").stdout or ""
+            files.append({"path": p, "theirs": _one("HEAD", p),
+                          "diff": d[:_SYNC_CONFLICT_DIFF_MAX]})
+        rec = {"ts": now_iso(), "paths": paths,
+               "mine": _one(stopped) if stopped else {}, "files": files}
+        os.makedirs(os.path.dirname(_SYNC_CONFLICT_LAST), exist_ok=True)
+        with open(_SYNC_CONFLICT_LAST, "w", encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False, indent=1)
+        return rec
+    except Exception:
+        return {}
+
+
+def _sync_path_is_doc(rel):
+    """이 경로가 vault 문서인가 — 문서는 id 로, 그 밖은 경로로 확정한다."""
+    r = str(rel or "").replace("\\", "/")
+    return r.startswith("vault/") and r.endswith(".md")
+
+
+def sync_conflict_last():
+    """마지막으로 적어 둔 충돌. 없으면 빈 사전."""
+    try:
+        with open(_SYNC_CONFLICT_LAST, encoding="utf-8") as f:
+            rec = json.load(f)
+        return rec if isinstance(rec, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def sync_conflict_clear():
+    """pull 이 성공하면 지운다 — 지나간 충돌을 계속 짚고 있으면 그 줄은 거짓이다."""
+    try:
+        os.remove(_SYNC_CONFLICT_LAST)
+    except OSError:
+        pass
+
+
+def sync_conflict_words(rec=None):
+    """충돌 기록을 사람이 읽는 줄로. 없으면 빈 목록."""
+    rec = sync_conflict_last() if rec is None else (rec or {})
+    files = rec.get("files") or []
+    if not files:
+        return []
+    mine = rec.get("mine") or {}
+    out = []
+    for f in files[:5]:
+        th = f.get("theirs") or {}
+        out.append(f"  {f.get('path', '')}"
+                   + (f"  ← 남: {th.get('sha', '')} {th.get('subject', '')[:50]}"
+                      if th.get("sha") else ""))
+    if mine.get("sha"):
+        out.append(f"  내 commit: {mine['sha']} {mine.get('subject', '')[:50]}")
+    if len(files) > 5:
+        out.append(f"  … 그 밖 {len(files) - 5}개")
+    return out
 
 
 def _sync_abort_rebase():
@@ -14115,7 +14233,12 @@ def sync_run(reason="", transport=True):
                 if pl.returncode == 0:
                     _sync_pull_stamp()
                     _sync_streak_clear("pull")
+                    sync_conflict_clear()
                 if pl.returncode != 0:
+                    # 되돌리기가 충돌 정보를 함께 지운다 — 그 전에 적는다
+                    # (REQ-20260915-009-2n7g).
+                    if kind == "conflict":
+                        _sync_conflict_record()
                     _sync_abort_rebase()
                     _sync_streak_record(kind, pl.stderr, stage="pull")
                     if kind == "untracked" and attempt == 0:
@@ -14702,11 +14825,24 @@ def sync_alert_text(alert, pending=0):
     word = SYNC_ALERT_WORD.get(alert.get("kind", ""), alert.get("kind", "") or "?")
     line = (alert.get("line") or "").strip()
     stage = alert.get("stage") or "pull"
+    # 충돌이면 **무엇이** 걸렸는지까지 싣는다 (REQ-20260915-009-2n7g). 종전에는
+    # 「`s9 sync` 로 확인하세요」로 끝나, 칩을 눌러도 파일 이름 하나 나오지
+    # 않았다 — 실제 사고 2026-09-15 에 사람이 두 번 물어서야 드러났다.
+    more = ""
+    if alert.get("kind") == "conflict":
+        rec = sync_conflict_last()
+        names = (rec.get("paths") or [])[:3]
+        if names:
+            more = (" 걸린 자리: " + " · ".join(names)
+                    + (f" 외 {len(rec['paths']) - 3}개"
+                       if len(rec.get("paths") or []) > 3 else "")
+                    + ".")
     return (f"sync {stage} 이 {int(alert.get('count') or 0)}회 연속 실패 — "
             f"{word}({alert.get('kind', '')})"
             + (f": {line}" if line else "")
-            + f". 로컬 commit {int(pending or 0)}개가 push 되지 않았습니다. "
-            f"`s9 sync` 로 확인하세요.")
+            + f". 로컬 commit {int(pending or 0)}개가 push 되지 않았습니다."
+            + more
+            + " `s9 sync --status` 로 확인하세요.")
 
 
 def sync_alert_fact(streak=None, pending=None):
@@ -14994,6 +15130,17 @@ def sync_status_hint(st):
     """멈춤 줄 뒤에 서는 **다음 행동** 한 토막."""
     k = st.get("kind")
     if k == "conflict":
+        # 「충돌」 한 낱말로는 무엇을 해야 할지 알 수 없다 (REQ-20260915-009-2n7g).
+        # 되돌리기 전에 적어 둔 것이 있으면 파일과 양쪽 commit 을 그대로 짚고,
+        # 코드 파일이면 `--paths` 를, 문서면 종전의 id 를 준다.
+        rec = sync_conflict_last()
+        paths = rec.get("paths") or []
+        if paths:
+            code = [p for p in paths if not _sync_path_is_doc(p)]
+            how = (f"`s9 sync resolve --paths {code[0]} --take mine|theirs`"
+                   if code else "`s9 sync resolve <id> --take mine|theirs`")
+            return ("충돌한 자리:\n" + "\n".join(sync_conflict_words(rec))
+                    + f"\n차이를 보려면 `s9 sync --status --json`, 확정은 {how}")
         return "`s9 sync resolve <id> --take mine|theirs` 로 한쪽을 확정"
     if k == "protected":
         return "이 branch 는 직접 push 가 막혀 있다 — PR 로 보내거나 규칙을 확인"
@@ -15068,8 +15215,15 @@ def _rebase_in_progress():
             or os.path.exists(os.path.join(gd, "rebase-apply")))
 
 
-def sync_resolve(doc_ids, take):
-    """드라이버가 못 푼 충돌 문서를 한쪽으로 확정하고 rebase 를 잇는다.
+def sync_resolve(doc_ids, take, paths=None):
+    """드라이버가 못 푼 충돌을 한쪽으로 확정하고 rebase 를 잇는다.
+
+    문서는 id 로, **코드 파일은 `paths` 로** 지목한다 (REQ-20260915-009-2n7g).
+    종전에는 id 만 받아, 코드 파일이 충돌하면 여기서 댈 것이 없었다 — 실제
+    사고 2026-09-15 에 사람이 `s9 sync resolve` 를 치고 받은 답은 「확정할
+    문서 id 가 없다」 한 줄이었고, 결국 손으로 git rebase 를 걸어야 했다.
+    id 와 경로는 한 회차에 섞어 줄 수 있다 — 코드와 문서가 같이 충돌하는
+    자리가 있다.
 
     두 머신이 같은 문서를 달리 고치면 전송 루프의 pull --rebase 가 충돌로
     서고(잔재는 abort), 그 뒤로는 push 도 pull 도 막힌 채 밀린다. 여기서는
@@ -15085,8 +15239,9 @@ def sync_resolve(doc_ids, take):
     if take not in ("mine", "theirs"):
         raise ValueError("--take 는 mine | theirs 다")
     ids = [d for d in (doc_ids or []) if d]
-    if not ids:
-        raise ValueError("확정할 문서 id 가 없다")
+    rawpaths = [p for p in (paths or []) if p]
+    if not ids and not rawpaths:
+        raise ValueError("확정할 것이 없다 — 문서 id 나 --paths <파일> 을 주어라")
     if sync_mode() != "remote":
         return {"ok": False, "error": "remote 모드가 아니다 — 충돌은 바깥과 "
                                       "오갈 때만 생긴다"}
@@ -15099,6 +15254,20 @@ def sync_resolve(doc_ids, take):
         if not p:
             return {"ok": False, "error": f"{d}: 문서를 찾지 못했다"}
         rels[os.path.relpath(p, ROOT)] = d
+    # 경로는 저장소 안이어야 한다 — 바깥을 가리키는 것을 index 에서 읽어
+    # 쓰기 시작하면 이 명령이 저장소 밖에 파일을 쓰는 길이 된다.
+    for raw in rawpaths:
+        ap = os.path.abspath(os.path.join(ROOT, os.path.expanduser(raw)))
+        try:
+            rel = os.path.relpath(ap, ROOT)
+        except ValueError:
+            rel = ".."
+        if rel.startswith("..") or os.path.isabs(rel):
+            return {"ok": False, "error": f"{raw}: 저장소 밖의 경로다"}
+        rel = rel.replace("\\", "/")
+        if _sync_git("ls-files", "--error-unmatch", "--", rel).returncode != 0:
+            return {"ok": False, "error": f"{raw}: 이 저장소가 추적하지 않는 경로다"}
+        rels[rel] = rel
     lock = _sync_lock_take()
     if not lock:
         return {"ok": False, "error": "동기화가 실행 중이다 — 잠시 뒤 다시"}
@@ -15127,9 +15296,13 @@ def sync_resolve(doc_ids, take):
             others = [c for c in conflicted if c not in rels]
             if others:
                 _sync_git("rebase", "--abort", timeout=10)
-                oid = [(os.path.splitext(os.path.basename(c))[0]) for c in others]
+                # 문서는 id 로 되돌려 준다(그것으로 다시 지목하니까). 코드 파일은
+                # id 가 없으니 **경로 그대로** 돌려준다 — 그대로 `--paths` 에
+                # 넣을 수 있어야 한다 (REQ-20260915-009-2n7g).
+                oid = [os.path.splitext(os.path.basename(c))[0]
+                       if _sync_path_is_doc(c) else c for c in others]
                 return {"ok": False, "others": oid,
-                        "error": "지목하지 않은 문서도 충돌한다: "
+                        "error": "지목하지 않은 것도 충돌한다: "
                                  + " ".join(oid) + " — 함께 지목해 다시"}
             for rel in conflicted:
                 did = rels[rel]
@@ -15141,8 +15314,11 @@ def sync_resolve(doc_ids, take):
                             "(추가/삭제 충돌) — 손으로 확인"}
                 try:
                     os.makedirs(_SYNC_CONFLICT_DIR, exist_ok=True)
+                    # 경로로 지목한 것은 `did` 가 경로라 그대로 쓰면 하위 폴더를
+                    # 만든다 — 구분자를 눕혀 한 파일로 둔다.
+                    stem = did.replace("/", "%").replace("\\", "%")
                     for tag, body in (("mine", mine.stdout), ("theirs", ours.stdout)):
-                        sp = os.path.join(_SYNC_CONFLICT_DIR, f"{did}.{tag}.md")
+                        sp = os.path.join(_SYNC_CONFLICT_DIR, f"{stem}.{tag}.md")
                         with open(sp, "w", encoding="utf-8") as fh:
                             fh.write(body)
                         saved.append(sp)
@@ -15169,6 +15345,7 @@ def sync_resolve(doc_ids, take):
         except Exception:
             pass
         _sync_log(f"resolve {' '.join(resolved)} --take {take}")
+        sync_conflict_clear()   # 푼 충돌을 계속 짚고 있으면 그 줄은 거짓이다
     except subprocess.TimeoutExpired:
         _sync_git("rebase", "--abort", timeout=10)
         return {"ok": False, "error": "시간 초과 — rebase 를 되돌렸다"}
@@ -15674,7 +15851,8 @@ def cmd_sync(args):
     if getattr(args, "action", None) == "resolve":
         try:
             res = sync_resolve(getattr(args, "ids", None) or [],
-                               getattr(args, "take", "") or "")
+                               getattr(args, "take", "") or "",
+                               paths=getattr(args, "paths", None) or [])
         except ValueError as e:
             die(str(e))
         if getattr(args, "json", False):
@@ -38854,6 +39032,9 @@ def main():
                     help="resolve: 충돌 문서를 한쪽으로 확정하고 rebase 를 잇는다 · "
                          "rescue: 미전송 commit 을 state/sync-rescue/*.patch 로 뽑는다")
     sy.add_argument("ids", nargs="*", help="resolve: 확정할 문서 id")
+    sy.add_argument("--paths", nargs="+", metavar="파일",
+                    help="resolve: 문서가 아닌 파일(코드·설정)을 경로로 지목한다 — "
+                         "id 와 함께 줄 수 있다")
     sy.add_argument("--take", choices=["mine", "theirs"],
                     help="resolve: mine=내 로컬 본 · theirs=origin 본")
     sy.add_argument("--quiet", action="store_true",
