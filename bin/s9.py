@@ -19013,9 +19013,17 @@ def here_requests(platform=None, rows=None, machine=None, user=None):
         # `s9 next → claim` 을 시키므로, 여기서 빼지 않으면 첫 세션이 안내 1 을 집는다.
         if "onboarding" in (r.get("tags") or []):
             continue
-        # 다른 컴퓨터의 신선한 리스 — 세 갈래 모두에 선다. 담당 머신이 이
-        # 컴퓨터라도, 저쪽이 지금 쥐고 있으면 지금 집을 것은 아니다.
-        if doc_lease_verdict(r, local, want="list")[1] == "busy-elsewhere":
+        # 신선한 남의 리스 — 세 갈래 모두에 선다. 담당 머신이 이 컴퓨터라도,
+        # 누가 지금 쥐고 있으면 지금 집을 것은 아니다.
+        #
+        # **거부 코드를 골라 보지 않는다** (REQ-20260915-004-2n7g, 실제 사고
+        # 2026-09-15): 종전엔 `busy-elsewhere` 하나만 걸렀다. 그래서 같은
+        # 컴퓨터의 다른 세션이 쥔 문서(`busy-local`)와 같은 컴퓨터의 다른
+        # 사람이 쥔 문서(`busy-user`)는 걸러지지 않고 「착수: s9 status …
+        # in-progress」로 올랐다 — 13:42 에 세션 A 가 집은 요청을 13:58 에
+        # 같은 맥의 세션 B 가 그 줄을 보고 집어, 두 세션이 같은 파일을 고쳤다.
+        # 판정은 리스 함수가 이미 다 한다; 여기서는 **허용인가**만 본다.
+        if not doc_lease_verdict(r, local, want="list")[0]:
             continue
         mine = doc_owner(r) == str(who or "")
         want_m = str(r.get("needs_machine") or "").strip()
@@ -25389,7 +25397,18 @@ def _notify_here(doc_id, text, every=3600):
         return ""
     try:
         path = locate(doc_id)
-        owner = doc_owner(read_doc(path)[0]) if path else ""
+        meta = read_doc(path)[0] if path else {}
+        owner = doc_owner(meta) if path else ""
+        # **이미 누가 쥐고 있으면 아무도 깨우지 않는다** (REQ-20260915-004-2n7g,
+        # 실제 사고 2026-09-15 13:58): 이 통지는 라이브 세션을 하나 골라
+        # 「집어 직접 착수하라」고 적는데, 고르는 자리가 문서의 리스를 보지
+        # 않았다. 세션 A 가 16분째 고치고 있던 요청의 통지가 같은 맥의 세션 B
+        # 에게 갔고, B 는 그대로 집어 같은 파일을 덮었다. 쥔 세션이 이
+        # 컴퓨터에서 실행 중이면 이 통지는 할 말이 없다 — 그 세션이 곧 작업자다.
+        _ls = doc_lease(meta)
+        if _ls and doc_lease_fresh(_ls) and _session_alive_here(_ls.get("session")):
+            _auto_log(f"NOTIFY-SKIP(leased) {doc_id} -> {str(_ls.get('session'))[:8]}")
+            return ""
         b = chat_target(None, user=owner or None)
         sid = (b or {}).get("session", "")
         if not sid or not _inbox_watch_alive(sid):

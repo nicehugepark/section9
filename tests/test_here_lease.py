@@ -79,6 +79,27 @@ class HereLease(unittest.TestCase):
         return {r["id"] for r in self.m.here_requests(platform=platform,
                                                       machine=machine, user=user)}
 
+    def here_as(self, session, alive, machine="testbox", user="tester"):
+        """세션 <session> 의 자리에서 본 목록. `alive` 는 **리스를 쥔 세션이**
+        이 컴퓨터에서 실행 중인가 — 그 판정(_session_alive_here)은 바인딩 파일과
+        수신 대기를 읽으므로 시험에서는 그 한 함수만 갈아 끼운다."""
+        import contextlib
+        real_facts = self.m.local_facts
+
+        def facts(u=None):
+            d = dict(real_facts(u))
+            d["session"] = session
+            return d
+
+        with contextlib.ExitStack() as st:
+            st.callback(setattr, self.m, "local_facts", real_facts)
+            st.callback(setattr, self.m, "_session_alive_here",
+                        self.m._session_alive_here)
+            self.m.local_facts = facts
+            self.m._session_alive_here = lambda sid: bool(alive)
+            return {r["id"] for r in self.m.here_requests(
+                platform="Linux", machine=machine, user=user)}
+
     # H1. 다른 컴퓨터가 지금 쥐고 있으면 이 자리의 목록에 오르지 않는다
     def test_h1_fresh_lease_elsewhere_is_not_here(self):
         rid = self.new("저쪽이 쥔 것", status="in-progress")
@@ -111,6 +132,32 @@ class HereLease(unittest.TestCase):
         rid = self.new("이 판의 것", "--needs-os", "Linux", status="in-progress")
         self.set_lease(rid, "otherbox")
         self.assertNotIn(rid, self.here())
+
+    # H7. 같은 컴퓨터의 다른 세션이 쥐고 있으면 오르지 않는다 (REQ-20260915-004-2n7g)
+    #     실제 사고 2026-09-15: A 가 13:42 에 집은 요청을 13:58 에 같은 맥의 B 가
+    #     이 줄을 보고 집어, 두 세션이 같은 파일을 고쳤다.
+    def test_h7_live_session_on_this_machine_holds_it(self):
+        rid = self.new("옆 세션이 쥔 것", status="in-progress")
+        self.set_lease(rid, "testbox")          # 리스의 세션은 ssss1111
+        self.assertNotIn(rid, self.here_as("dddd2222", alive=True))
+
+    # H8. 쥔 세션 자신에게는 그대로 보인다 — 제 일이 목록에서 사라지면 안 된다
+    def test_h8_the_holder_still_sees_its_own(self):
+        rid = self.new("내 세션이 쥔 것", status="in-progress")
+        self.set_lease(rid, "testbox")
+        self.assertIn(rid, self.here_as("ssss1111", alive=True))
+
+    # H9. 쥔 세션이 죽었으면 같은 담당자의 다른 세션에 다시 오른다(takeover-local)
+    def test_h9_dead_holder_returns_to_the_same_user(self):
+        rid = self.new("죽은 세션이 쥔 것", status="in-progress")
+        self.set_lease(rid, "testbox")
+        self.assertIn(rid, self.here_as("dddd2222", alive=False))
+
+    # H10. 같은 컴퓨터라도 담당자가 다른 사람이면 오르지 않는다(busy-user)
+    def test_h10_another_user_on_this_machine(self):
+        rid = self.new("남이 쥔 것", status="in-progress")
+        self.set_lease(rid, "testbox", user="somebody")
+        self.assertNotIn(rid, self.here_as("dddd2222", alive=False))
 
     # H6. 회귀 — 리스가 없는 open 요청은 여전히 담당자의 아무 컴퓨터에나 오른다
     #     (REQ-20260910-009 ③ 가 이 한 줄 때문에 좁아지면 안 된다)

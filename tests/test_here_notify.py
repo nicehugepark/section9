@@ -148,6 +148,31 @@ class HereNotify(unittest.TestCase):
             self.assertEqual(sent, [("REQ-20260912-009-t", "상한")])
             self.assertEqual(m._notify_flush(), 0, "보낸 표가 남아 다시 보낸다")
 
+    def test_n9_a_held_request_wakes_nobody(self):
+        """③ — 리스를 쥔 세션이 이 컴퓨터에서 실행 중이면 통지하지 않는다.
+
+        실제 사고 2026-09-15 13:58 (REQ-20260915-004-2n7g): 세션 A 가 16분째
+        고치고 있던 요청의 「집어 직접 착수하라」 통지가 같은 맥의 세션 B 에게
+        갔고, B 가 그대로 집어 같은 파일을 덮었다. 고르는 자리가 문서의 리스를
+        보지 않은 것이 전부다."""
+        m = self.m
+        inbox = os.path.join(self.tmp, "inbox-held.jsonl")
+        held = {"user": "tester", "machine": "thisbox", "session": "aaaa1111",
+                "since": m.now_iso(), "renewed": m.now_iso()}
+        with mock.patch.object(m, "locate", lambda _i: "/x/doc.md"), \
+             mock.patch.object(m, "read_doc", lambda _p: ({"lease": held, "user": "tester"}, "")), \
+             mock.patch.object(m, "_session_alive_here", lambda sid: sid == "aaaa1111"), \
+             mock.patch.object(m, "chat_target", lambda *_a, **_k: {"session": "bbbb2222"}), \
+             mock.patch.object(m, "_inbox_watch_alive", lambda _s: True), \
+             mock.patch.object(m, "chat_inbox_path", lambda sid, make=False: inbox):
+            self.assertEqual(m._notify_here("REQ-20260915-004-t", "상한"), "",
+                             "쥔 세션이 있는데 다른 세션을 깨운다")
+            self.assertFalse(os.path.exists(inbox))
+            # 쥔 세션이 죽었으면 종전대로 알린다 — 그때는 이어받을 자리가 맞다
+            with mock.patch.object(m, "_session_alive_here", lambda sid: False):
+                self.assertEqual(m._notify_here("REQ-20260915-004-t", "상한"), "bbbb2222")
+            self.assertTrue(os.path.exists(inbox))
+
     def test_n5_next_json_marks_claimed_and_the_hook_lists_the_rest(self):
         """③ — s9 next --json 이 claimed 를 실고, 훅이 안 잡힌 것만 매 턴 짚는다."""
         src = open(S9 + ".py", encoding="utf-8").read()
