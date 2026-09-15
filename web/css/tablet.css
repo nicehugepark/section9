@@ -176,3 +176,19 @@
   .tabs{flex:0 1 auto;flex-wrap:wrap}
   .tabs button,[data-skin] .tabs button{padding-left:9px;padding-right:9px}
 }
+
+/* ── 손전화 폭: 목록과 판을 위아래로 쌓는다 (REQ-20260915-019-62x6) ──────────
+   Docs·Settings 는 같은 그릇(.docs = 목록 + 판)을 쓴다. 목록 폭의 최소가
+   256px 이라 400px 화면에서는 판이 98px 만 남아, 어느 절을 열어도 글이 제
+   자리에서 잘렸다(실측 2026-09-15: #sview 의 폭 98px, 내 계정·시스템 모두).
+   이 폭에서는 나란히 설 자리가 없으니 목록을 판 위로 올린다 — 목록은 제 높이의
+   절반까지만 쓰고(고르는 자리), 나머지는 판이 쓴다(읽는 자리). 세로 구분선은
+   가로 구분선으로 바뀐다. 560px 은 알림 줄이 손잡이를 접는 그 폭과 같은 눈금이다. */
+@media (max-width:560px){
+  /* 세로로 쌓을 때는 `align-items:flex-start`(가로 배치의 규칙)를 풀어야 한다 —
+     그대로 두면 목록과 판이 **글자 폭만큼만** 넓어진다(실측 2026-09-15: 목록 232px ·
+     내 계정 판 36px). 가로에서는 위 끝을 맞추는 값이지만 세로에서는 폭을 정한다. */
+  .docs{flex-direction:column;align-items:stretch}
+  .doclist,[data-skin] .doclist{width:auto;max-height:42vh;
+    border-right:0;border-bottom:1px solid var(--border)}
+}
