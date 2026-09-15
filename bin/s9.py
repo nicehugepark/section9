@@ -32008,9 +32008,18 @@ def jira_outbox_tick(now=None, limit=5, **kw):
         return credentials_back and "준비물" in str(r.get("last_error") or "")
 
     done, keep, n = [], [], 0
+    # 같은 문서의 항목은 실린 순서를 지킨다 — 상태(push)가 못 나갔으면 그 문서의 코멘트
+    # (result)도 이번 틱에는 보내지 않는다 (REQ-20260915-007-62x6, 실제 발생 2026-09-15
+    # 11:24: 상태 push 가 미뤄진 사이 「완료: 승인」 코멘트가 먼저 가서 2분 동안 Jira 의
+    # 상태는 판정인데 코멘트는 완료였다 — 사람은 그것을 「연동이 안 된다」로 읽었다).
+    held = set()
     for r in rows:
+        if r.get("id") in held:
+            keep.append(r)
+            continue
         if n >= limit or not _due(r):
             keep.append(r)
+            held.add(r.get("id"))
             continue
         n += 1
         res = (jira_status_push(r["id"], actor="watcher", **kw) if r.get("kind") == "push"
@@ -32026,6 +32035,7 @@ def jira_outbox_tick(now=None, limit=5, **kw):
         r["next_at"] = now + min(JIRA_BACKOFF_MAX, 30 * (2 ** (a - 1)))
         r["last_error"] = res.get("error", "")
         keep.append(r)
+        held.add(r.get("id"))     # 실패한 문서의 뒤 항목도 이번 틱에는 기다린다
         done.append((r["id"], False))
     jira_outbox_write(keep)       # 성공·건너뜀은 빠지고, 실패는 다음 때와 함께 남는다
     try:
