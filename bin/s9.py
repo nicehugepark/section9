@@ -29891,9 +29891,11 @@ def _sd_verdict(reg, me):
     sid = str(reg.get("session") or "")
     if sid and me and sid[:8] == me[:8]:
         return SD_MINE, "이 세션이 띄웠다"
+    if not sid:
+        return SD_UNKNOWN, "기록에 주인 세션이 적히지 않았다"
     b = _sd_binding_of(sid)
     if not b:
-        return SD_UNKNOWN, f"주인 세션 {sid[:8] or '미상'} 의 바인딩이 이 머신에 없다"
+        return SD_UNKNOWN, f"주인 세션 {sid[:8]} 의 바인딩이 이 머신에 없다"
     if chat_alive(b):
         return SD_IN_USE, f"주인 세션 {sid[:8]} 이 떠 있다"
     return SD_LEFT, f"주인 세션 {sid[:8]} 이 끝났다"
@@ -30099,7 +30101,8 @@ def cmd_safaridriver(args):
             sys.exit(1)
         if target[0]["verdict"] == SD_IN_USE and not force:
             print(f"s9 safaridriver quit: 포트 {port} 는 {target[0]['why']} — "
-                  "끊으면 그 검증이 잃는다. 그래도 거두려면 --force.", file=sys.stderr)
+                  "거두면 그쪽 검증이 중단된다. 그래도 거두려면 --force.",
+                  file=sys.stderr)
             sys.exit(1)
     elif getattr(args, "mine", False):
         target = [r for r in rows if r["verdict"] == SD_MINE]
