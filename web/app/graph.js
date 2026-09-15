@@ -110,7 +110,7 @@ function graphEmptyState(rows){
   if (!catalog.length)
     return {fix:null,
       msg:"아직 기록된 문서가 없다. 요청을 하나 만들면 여기에 점으로 나타난다.",
-      note:`터미널에서 <code>${esc(s9cmd("new request"))}</code> 로 첫 요청을 만들 수 있다.`};
+      note:`터미널에서 ${s9code("new request")} 로 첫 요청을 만들 수 있다.`};
   // 켰는데도 화면이 그대로면 화면이 그렇게 말한다 (2026-08-27 반려 재작업).
   // 같은 문장을 말없이 다시 그리는 것이 반려의 직접 원인이었다 — 사용자는
   // 컨트롤이 죽은 줄 안다. 켠 것만 인정한다(끄는 건 의도적 축소다).

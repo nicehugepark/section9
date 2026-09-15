@@ -72,7 +72,7 @@ function renderWhoami(){
   // index.html 의 글자는 첫 그림뿐이고, 신원이 오면 여기서 다시 적는다.
   el.title = "이 화면은 계정을 따로 묻지 않습니다 — 이 컴퓨터에서만 열리는 화면이라, "
     + "서버를 띄운 계정을 그대로 씁니다. 다른 이름으로 보려면 터미널에서 "
-    + s9cmd("user attach") + " 를 실행하세요";
+    + s9cmdq("user attach") + " 를 실행하세요";
 }
 
 /* ── 서버가 지금 무엇을 하고 있나 (serveinfo) ───────────────────────────────
@@ -210,9 +210,15 @@ function nGoOf(go){
     const s = go.trim();
     return /^(s9|git|gh|npm|python3?)\s/.test(s) ? {cmd: s} : null;
   }
-  const cmd = String(go.cmd || go.command || "").trim();
+  /* 서버는 여는 길을 `{kind:"cmd", text:…}` 로 싣는다(bin/s9.py `_notice_row`).
+     이 자리가 `cmd`·`command` 두 이름만 읽어, **명령 버튼이 한 번도 서지 않았다**
+     (REQ-20260915-024-62x6 로 드러남 — 알림 줄의 오른쪽에 시각만 홀로 남아 있던
+     까닭이다). 서버가 쓰는 이름을 읽는다: kind 가 cmd 면 text 가 명령이다. */
+  const kind = String(go.kind || "").trim();
+  const cmd = String(go.cmd || go.command
+    || (kind === "cmd" ? (go.text || "") : "")).trim();
   const act = String(go.act || "").trim();   // 「무엇을 하러 가나」 — 손잡이의 귀띔
-  const label = String(go.label || go.text || "").trim();
+  const label = String(go.label || (kind === "cmd" ? "" : go.text) || "").trim();
   if (cmd) return {cmd, label, act};
   const target = String(go.target || go.to || go.tab || "").trim();
   // 손잡이의 글자는 **어디로 가는가**다 — 화면에 실제로 있는 이름이라야 한다.
@@ -251,6 +257,11 @@ function renderNotices(){
     shown.map(it => nSev(it.sev) + (it.sig || it.say)).join("|")].join("#");
   if (sig === nSig) return;   // 같은 내용 재작성 금지 (화면 낭독이 되풀이된다)
   nSig = sig;
+  /* 닫기의 빈 칸(.n-xgap)은 **맞출 열이 실제로 있을 때만** 선다
+     (REQ-20260915-024-62x6). 보이는 줄이 전부 막힘이면 그 열에는 잉크가 하나도
+     없어, 20px 빈 칸이 시각을 줄 오른끝에서 밀어낸 자리만 남는다. */
+  el.classList.toggle("has-x",
+    shown.some(it => nSev(it.sev) !== "halt" && it.dismissible !== false && !!it.sig));
   const rows = shown.map((it, i) => {
     const sev = nSev(it.sev), go = nGoOf(it.go);
     /* 주체는 제 칸에 서 있으므로 문장이 그 이름으로 시작하면 한 번만 적는다 —
@@ -872,7 +883,7 @@ function syncMineToggle(){
     ? `@${me} 가 활성 멤버로 있는 프로젝트의 문서만 봅니다 — Board·Docs·Graph 에 함께 적용됩니다`
     : supplyLost("whoami")
       ? "내 계정을 받지 못했습니다 — 헤더의 다시 받기를 눌러 보세요"
-      : `미등록 계정 — ${s9cmd("user add")} 로 등록하면 내 프로젝트만 볼 수 있습니다`;
+      : `미등록 계정 — ${s9cmdq("user add")} 로 등록하면 내 프로젝트만 볼 수 있습니다`;
 }
 
 /* ── 받아 오는 값은 전부 이 경로를 지난다 (REQ-20260828-039-62x6) ────────────

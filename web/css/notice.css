@@ -92,9 +92,16 @@
    맞출 열이 없으므로 아래 두 자리에서 걷힌다.
    이 둘만 `align-self:center` 인 까닭: 속이 빈 inline-flex 상자의 밑선은 **아래
    끝**이라, 밑선 정렬에 끼면 20px 이 통째로 밑선 위로 올라가 그 줄만 키가 큰다. */
+/* 줄의 **마지막 잉크는 여백 선 위에 선다** (REQ-20260915-024-62x6). × 는 20px
+   상자 가운데 선 5px 글리프라, 상자를 여백 선(22px)에 맞추면 잉크는 그보다 7px
+   안쪽에서 끝난다 — 바로 위 계정 줄의 오른끝(실측 1920 폭: 1897)과 어긋나 보이는
+   까닭이다. 상자를 7px 씩 양옆으로 내어 **잉크**를 그 선에 세운다: 오른쪽은 줄의
+   여백(22px) 안이라 밀지 않고, 왼쪽 같은 값은 시각과의 틈을 종전 그대로 둔다
+   (s9-design 2절 — 간격은 상자가 아니라 잉크 사이로 잰다). 빈 칸도 같은 값을
+   받아야 시각이 줄마다 한 열에 선다. 과녁은 상자 밖 겹판이라 44px 그대로다. */
 .n-x,.n-xgap{width:var(--ctl-sm);height:var(--ctl-sm);flex:none;
   display:inline-flex;align-items:center;justify-content:center;
-  align-self:center;position:relative}
+  align-self:center;position:relative;margin-left:-7px;margin-right:-7px}
 .n-x{border:0;background:none;cursor:pointer;color:var(--n-dim);
   font-size:13px;line-height:1}
 /* 손가락 환경의 44px 과녁은 **상자를 키우지 않고 상자 밖으로 넓힌다**. 상자째
@@ -110,6 +117,13 @@
   width:var(--tap-min);height:var(--tap-min);transform:translate(-50%,-50%)}
 .n-x:hover{color:var(--n-ink)}
 .n-xgap{pointer-events:none}
+/* 그 빈 칸은 **잉크가 든 닫기 열이 실제로 있을 때만** 선다 (REQ-20260915-024-62x6,
+   주인 지적 2026-09-15: 「경고 줄의 시간 위치가 너무 이상하다」). 보이는 줄이 전부
+   막힘이면 닫기 열에는 잉크가 하나도 없고, 빈 칸 20px 만이 시각을 줄의 오른끝에서
+   밀어낸다 — 실측 1920 폭: 시각의 오른끝 1866, 바로 위 계정 줄의 오른끝 1897.
+   맞출 열이 없으면 걷는다(좁은 폭·soft 가 같은 사유로 이미 걷고 있다). 그러면
+   시각의 잉크가 줄의 여백 선(22px) 위에 서서 위 블록과 한 세로선을 이룬다. */
+.nrail:not(.has-x) .n-xgap{display:none}
 
 /* 줄 끝 — 더 있음/접기와 닫아 둔 수. 성격이 다른 둘이라 한 묶음으로 싸고,
    좁아지면 묶음째 제 줄을 갖는다(designer 규칙 2). */
@@ -155,7 +169,7 @@
      안고 있으니 그만큼 되돌려 이 줄의 다른 틈과 같은 눈금에 맞춘다(s9-design 2절:
      간격은 상자가 아니라 잉크로 잰다 · actions.css 의 왼쪽 당김과 같은 자). 과녁은
      상자 밖 겹판이라 이 당김에도 44px 그대로다. */
-  .n-x{margin-left:-6px}
+  .n-x{margin-left:-6px;margin-right:0}
 }
 
 /* 왼쪽 메뉴 셸(soft)에서는 이 줄이 232px 사이드바 안에 선다 — 폭이 좁은 폭과 같아
@@ -166,4 +180,4 @@
 [data-skin="soft"] .nrow{grid-template-columns:11px minmax(0,1fr)}
 [data-skin="soft"] .n-act{grid-column:2;flex-wrap:wrap;row-gap:6px}
 [data-skin="soft"] .n-xgap{display:none}
-[data-skin="soft"] .n-x{margin-left:-6px}
+[data-skin="soft"] .n-x{margin-left:-6px;margin-right:0}

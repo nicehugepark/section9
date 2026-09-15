@@ -157,6 +157,13 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g,
    서버 쪽의 같은 규칙은 bin/s9.py 의 s9_cmd 이고, 둘은 같은 값을 본다. */
 const s9cmd = rest =>
   (((window.__whoami || {}).os === "Windows") ? "bin\\s9 " : "s9 ") + String(rest ?? "").trim();
+/* 명령의 **표기**도 이 한 곳에서 난다 (REQ-20260915-023-62x6, 주인 지적
+   2026-09-15: 「문장인지 명령어인지 구분이 되지 않는다」). 호출부마다 손으로
+   <code> 를 감싸면 감싼 자리와 안 감싼 자리가 갈린다 — 문장 안에 세울 때는
+   s9code, 마크업이 못 들어가는 자리(title 툴팁)에서는 s9cmdq 를 쓴다.
+   s9cmd 는 **붙여 넣을 글자 그대로**라, 복사 버튼·입력값은 그대로 쓴다. */
+const s9code = rest => `<code class="cmd">${esc(s9cmd(rest))}</code>`;
+const s9cmdq = rest => `「${s9cmd(rest)}」`;
 
 // uid 표시 축약 (REQ-20260825-031/-034): 지문 접미(-xxxx)는 같은
 // (타입-날짜-순번)이 실제로 겹칠 때만 보여준다 — git 짧은 해시 원리.

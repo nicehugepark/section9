@@ -102,8 +102,7 @@ function depSummaryHTML(rows){
       <p class="dsempty">지금 다른 요청 때문에 멈춘 요청이 없습니다
         <span class="enext">어떤 요청에 선행을 걸면 이 자리와 왼쪽 그래프에 함께 나타납니다 —
           선행을 거는 자리는 아직 터미널뿐입니다</span>
-        <code>${esc(s9cmd("link <막힌 요청>"))}
-  --blocked-by &lt;선행&gt;</code></p>
+        ${s9code("link <막힌 요청>\n  --blocked-by <선행>")}</p>
       ${note}</aside>`;
   }
   // ?depall: 진단·헤드리스 캡처용 — 표 전체 펼침 (클릭 불가 환경 검증, ?mpanel 과 동형)
