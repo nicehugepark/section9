@@ -29556,6 +29556,196 @@ def _shot_manual_hint(url):
             f"수동 확인: `xdg-open {url}`")
 
 
+# ── 맥의 캡처 경로: CDP (REQ-20260916-018-2n7g) ─────────────────────────────
+# 맥의 Chrome `--headless --screenshot` 은 끝나지 않는다(REQ-20260911-002-2n7g).
+# 그 자리를 Playwright(channel=chrome)로 우회해 두었는데, 이 파이썬에 playwright
+# 가 없는 맥에서는 chrome·chromium·webkit 세 갈래가 **모두** 막혀 400px 화면을
+# 눈으로 볼 길이 그 컴퓨터에 없었다. 없는 것은 브라우저가 아니라 캡처 경로
+# 하나다 — 같은 Chrome 을 CDP 로는 띄운다(tests/cdpreal.py 가 실측에 쓴다).
+# 그래서 `Page.captureScreenshot` 한 자리를 stdlib 만으로 여기에 둔다.
+SHOT_CDP_TIMEOUT = 60       # 브라우저가 CDP 를 열기까지 기다리는 상한(초)
+
+
+class _ShotWS:
+    """CDP 용 최소 WebSocket — stdlib 만 (tests/cdpreal.WS 와 같은 뼈대).
+
+    훅·CLI 는 남의 패키지 없이 돌아야 해서 여기에 따로 둔다. 두 곳이 갈리면
+    시험(test_shot_cdp)이 잡는다."""
+
+    def __init__(self, url, timeout=30):
+        import base64
+        import socket as _s
+        m = re.match(r"ws://([^/:]+):(\d+)(/.*)$", url)
+        if not m:
+            raise ValueError(f"CDP 주소를 못 읽었다: {url!r}")
+        host, port, path = m.group(1), int(m.group(2)), m.group(3)
+        self.sock = _s.create_connection((host, port), timeout=timeout)
+        self.sock.settimeout(timeout)
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall(
+            (f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"
+             "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+             f"Sec-WebSocket-Key: {key}\r\n"
+             "Sec-WebSocket-Version: 13\r\n\r\n").encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            d = self.sock.recv(4096)
+            if not d:
+                raise ConnectionError("CDP 핸드셰이크 중 끊겼다")
+            buf += d
+        head, _, rest = buf.partition(b"\r\n\r\n")
+        if b" 101 " not in head.split(b"\r\n", 1)[0]:
+            raise ConnectionError(f"CDP 업그레이드 거절: {head[:80]!r}")
+        self.buf, self.next_id = rest, 0
+
+    def close(self):
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+    def _read(self, n):
+        while len(self.buf) < n:
+            d = self.sock.recv(65536)
+            if not d:
+                raise ConnectionError("CDP 연결이 끊겼다")
+            self.buf += d
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def _frame(self, payload):
+        import struct as _st
+        data = payload.encode()
+        mask = os.urandom(4)
+        n = len(data)
+        head = b"\x81"
+        if n < 126:
+            head += bytes([0x80 | n])
+        elif n < (1 << 16):
+            head += bytes([0x80 | 126]) + _st.pack(">H", n)
+        else:
+            head += bytes([0x80 | 127]) + _st.pack(">Q", n)
+        return head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+
+    def _recv(self):
+        import struct as _st
+        b0, b1 = self._read(2)
+        n = b1 & 0x7F
+        if n == 126:
+            n = _st.unpack(">H", self._read(2))[0]
+        elif n == 127:
+            n = _st.unpack(">Q", self._read(8))[0]
+        return self._read(n).decode("utf-8", "replace")
+
+    def call(self, method, params=None, timeout=60):
+        self.next_id += 1
+        mid = self.next_id
+        self.sock.settimeout(timeout)
+        self.sock.sendall(self._frame(json.dumps(
+            {"id": mid, "method": method, "params": params or {}})))
+        while True:
+            msg = json.loads(self._recv())
+            if msg.get("id") == mid:
+                if "error" in msg:
+                    raise RuntimeError(f"{method}: {msg['error']}")
+                return msg.get("result", {})
+
+
+def _shot_cdp(url, size, wait, out, dpr=1.0, browser=None):
+    """맥에서 Chrome 을 CDP 로 띄워 PNG 한 장. 성공이면 0, 아니면 비-0.
+
+    `--headless --screenshot` 이 매달리는 자리를 대신한다 — 매달리지 않게
+    모든 걸음에 시한을 둔다(SHOT_CDP_TIMEOUT). 띄운 브라우저와 임시 프로필은
+    끝날 때 거둔다: 남기면 다음 실행이 그 자리를 만난다."""
+    import base64
+    import shutil as _sh
+    import subprocess
+    import tempfile
+    import time as _t
+    import urllib.request as _u
+    exe = browser or next(iter(_shot_mac_candidates()), None)
+    if not exe:
+        # 문구는 종전 Chrome 갈래와 같은 모양이다 — 판 이름이 들어가야 사람이
+        # 어디를 볼지 안다(test_shot_mac 의 mac_none_hint 가 지킨다).
+        print(f"s9 shot: 브라우저를 찾지 못했습니다({os_platform()}). "
+              f"{_shot_manual_hint(url)}", file=sys.stderr)
+        return 3
+    w, h = _shot_size_wh(size)
+    port = next_free_port()
+    # 표식은 Chrome 갈래와 **같은 것**을 쓴다 — 캡처 프로필을 골라 회수하는
+    # 기존 위생 장치(_reclaim_shot_procs · _sweep_before_shot · H14 의
+    # 「프로필은 프로세스마다」)가 이 길에도 그대로 걸린다.
+    marker = f"s9shot-{os.getpid()}"
+    prof = tempfile.mkdtemp(prefix=marker + "-")
+    proc = None
+    ws = None
+    try:
+        proc = subprocess.Popen(
+            [exe, "--headless=new", f"--remote-debugging-port={port}",
+             f"--user-data-dir={prof}", f"--window-size={w},{h}",
+             "--no-first-run", "--no-default-browser-check",
+             "--disable-extensions", "--disable-gpu", "about:blank"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, start_new_session=True)
+        end = _t.time() + SHOT_CDP_TIMEOUT
+        target = None
+        while _t.time() < end:
+            if proc.poll() is not None:
+                print(f"s9 shot: 브라우저가 곧바로 끝났다(rc={proc.returncode}) — "
+                      f"{_shot_manual_hint(url)}", file=sys.stderr)
+                return 4
+            try:
+                with _u.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=2) as r:
+                    rows = json.loads(r.read().decode("utf-8", "replace"))
+                target = next((t for t in rows if t.get("type") == "page"
+                               and t.get("webSocketDebuggerUrl")), None)
+                if target:
+                    break
+            except Exception:
+                pass
+            _t.sleep(0.3)
+        if not target:
+            print(f"s9 shot: {SHOT_CDP_TIMEOUT}초 안에 CDP 가 안 열렸다 — "
+                  f"{_shot_manual_hint(url)}", file=sys.stderr)
+            return 5
+        ws = _ShotWS(target["webSocketDebuggerUrl"], timeout=SHOT_CDP_TIMEOUT)
+        ws.call("Page.enable")
+        ws.call("Emulation.setDeviceMetricsOverride",
+                {"width": w, "height": h, "deviceScaleFactor": float(dpr),
+                 "mobile": False})
+        ws.call("Page.navigate", {"url": url})
+        # 탐색이 끝나기를 기다리는 자리 — `wait` 은 사람이 준 안정화 시간이다.
+        _t.sleep(max(0.5, float(wait or 0) / 1000.0))
+        res = ws.call("Page.captureScreenshot", {"format": "png",
+                                                 "captureBeyondViewport": False})
+        raw = base64.b64decode(res.get("data", ""))
+        if not raw:
+            print("s9 shot: 캡처가 비어서 왔다", file=sys.stderr)
+            return 6
+        os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+        with open(out, "wb") as f:
+            f.write(raw)
+        print(out)
+        return 0
+    except Exception as e:
+        print(f"s9 shot: CDP 캡처 실패({e}) — {_shot_manual_hint(url)}",
+              file=sys.stderr)
+        return 7
+    finally:
+        if ws is not None:
+            ws.close()
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=10)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        _sh.rmtree(prof, ignore_errors=True)
+
+
 def _shot_size(raw):
     """`--size` 를 쉼표꼴 "W,H" 하나로 세운다 (REQ-20260913-005-2n7g).
 
@@ -29595,11 +29785,15 @@ def cmd_shot(args):
         # 맞는다(REQ-20260906-096). 없으면 종전 Chrome --screenshot 경로.
         runner = {"Windows": SHOT_WEBKIT_RUNNER_WIN, "WSL": SHOT_WEBKIT_RUNNER_WSL}.get(os_platform())
         engine = "chromium" if runner and os.path.exists(runner) else "chrome"
-    if engine == "chrome" and os_platform() == "macOS" and _playwright_available():
+    mac_cdp = False
+    if engine == "chrome" and os_platform() == "macOS":
         # 맥의 Chrome `--headless --screenshot` 은 끝나지 않는다(REQ-20260911-002-2n7g
-        # 실측: data: URL 조차 60초) — 같은 Google Chrome 을 이 파이썬의 Playwright
-        # (channel=chrome)로 띄워 찍는다. playwright 가 없을 때만 Chrome 자체 경로다.
-        engine = "chromium"
+        # 실측: data: URL 조차 60초). playwright 가 있으면 같은 Google Chrome 을
+        # 그것으로 띄워 찍고, **없으면 CDP 로 찍는다** (REQ-20260916-018-2n7g) —
+        # 종전에는 여기서 Chrome 자체 경로로 떨어져 세 갈래가 모두 막혔고, 그
+        # 컴퓨터에는 화면을 눈으로 볼 길이 없었다.
+        engine = "chromium" if _playwright_available() else "chrome"
+        mac_cdp = engine == "chrome"
     try:
         dpr = _shot_dpr(getattr(args, "dpr", 1) or 1)
     except ValueError as e:
@@ -29607,6 +29801,11 @@ def cmd_shot(args):
         sys.exit(2)
     if engine in ("webkit", "chromium"):
         return _shot_webkit(url, args.size, args.wait, out, browser=engine, dpr=dpr)
+    if mac_cdp:
+        rc = _shot_cdp(url, args.size, args.wait, out, dpr=dpr)
+        if rc:
+            sys.exit(rc)
+        return
 
     candidates = []
     if os.name == "nt":

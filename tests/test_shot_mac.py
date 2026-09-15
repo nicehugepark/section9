@@ -75,9 +75,25 @@ def run_shot(present):
             return False
         return real_exists(p)
 
+    picked = []
+
+    def fake_cdp(url, size, wait, out, dpr=1.0, browser=None):
+        """CDP 갈래를 가로채 **고른 실행 파일**만 남긴다 (REQ-20260916-018-2n7g).
+        브라우저를 실제로 띄우는 것은 이 시험의 몫이 아니다 — 고르는 규칙만 잰다."""
+        exe = browser or next(iter(mod._shot_mac_candidates()), None)
+        if not exe:
+            print(f"s9 shot: 브라우저를 찾지 못했습니다({mod.os_platform()}). "
+                  f"{mod._shot_manual_hint(url)}", file=sys.stderr)
+            return 3
+        picked.append(exe)
+        with open(out, "wb") as f:
+            f.write(b"\x89PNG")
+        return 0
+
     err, code = io.StringIO(), None
     with mock.patch.object(mod, "os_platform", lambda: "macOS"), \
          mock.patch.object(mod, "_playwright_available", lambda: False), \
+         mock.patch.object(mod, "_shot_cdp", fake_cdp), \
          mock.patch.object(subprocess, "run", fake_run), \
          mock.patch.object(mod.os.path, "exists", exists), \
          mock.patch.object(mod.shutil, "which", lambda n: None), \
@@ -92,28 +108,33 @@ def run_shot(present):
         os.remove(args.out)
     except OSError:
         pass
-    return calls, code, err.getvalue()
+    return (picked[0] if picked else None), code, err.getvalue()
 
 
 class TestShotMac(unittest.TestCase):
     def test_mac_candidates_found(self):
-        """정상: /Applications 의 Chrome 을 찾아 headless 캡처 명령을 만든다."""
-        calls, code, err = run_shot({CHROME})
+        """정상: /Applications 의 Chrome 을 찾아 그 브라우저로 캡처한다.
+
+        **무엇으로 찍는가가 바뀌었다** (REQ-20260916-018-2n7g). 종전에는 그
+        후보로 `--headless --screenshot` 명령을 만들었는데, 맥에서 그 명령은
+        끝나지 않는다(REQ-20260911-002-2n7g) — 그래서 playwright 가 없는 맥은
+        같은 브라우저를 CDP 로 띄워 찍는다. 여기서 재는 것은 그대로다:
+        **어느 실행 파일을 고르는가**(/Applications 먼저, 그다음 ~/Applications).
+        """
+        exe, code, err = run_shot({CHROME})
         self.assertIsNone(code, err)
-        self.assertEqual(calls[0][0], CHROME, calls)
-        self.assertIn("--headless=new", calls[0])
-        self.assertTrue(any(a.startswith("--screenshot=") for a in calls[0]), calls[0])
-        calls, code, _ = run_shot({HOME_EDGE})       # ~/Applications 만 있어도 잡힌다
+        self.assertEqual(exe, CHROME, err)
+        exe, code, _ = run_shot({HOME_EDGE})       # ~/Applications 만 있어도 잡힌다
         self.assertIsNone(code)
-        self.assertEqual(calls[0][0], HOME_EDGE)
-        calls, _c, _e = run_shot({CHROME, HOME_EDGE})  # 둘 다면 /Applications 먼저
-        self.assertEqual(calls[0][0], CHROME)
+        self.assertEqual(exe, HOME_EDGE)
+        exe, _c, _e = run_shot({CHROME, HOME_EDGE})  # 둘 다면 /Applications 먼저
+        self.assertEqual(exe, CHROME)
 
     def test_mac_none_hint(self):
         """실패: 후보가 없으면 판별 문구와 맥의 여는 명령으로 비-0."""
-        calls, code, err = run_shot(set())
+        exe, code, err = run_shot(set())
         self.assertEqual(code, 3, err)
-        self.assertEqual(calls, [])
+        self.assertIsNone(exe)
         self.assertIn("macOS", err)
         self.assertIn(f"open {URL}", err)
         self.assertNotIn("WSL이면", err)

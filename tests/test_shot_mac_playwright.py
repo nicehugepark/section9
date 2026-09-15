@@ -42,10 +42,17 @@ class ShotMacPlaywright(unittest.TestCase):
         self.assertIn("_shot_mac_playwright(", body)
 
     def test_p2_mac_chrome_engine_goes_to_playwright(self):
-        """정상 — 맥에서 engine chrome(auto 포함)은 playwright 가 있으면 Playwright(channel=chrome) 갈래다."""
+        """정상 — 맥에서 engine chrome(auto 포함)은 playwright 가 있으면 Playwright(channel=chrome) 갈래다.
+
+        갈림이 한 줄에서 두 줄로 바뀌었다 (REQ-20260916-018-2n7g): 종전에는
+        playwright 가 있을 때만 chromium 으로 갈아타고 없으면 맥에서 끝나지 않는
+        Chrome 갈래로 떨어졌는데, 이제 없으면 CDP 로 간다. 여기서 재는 것은
+        그대로다 — **있으면 chromium** 이다."""
         i = SRC.index("def cmd_shot(")
         body = SRC[i:i + 2500]
-        self.assertIn('engine == "chrome" and os_platform() == "macOS" and _playwright_available()', body)
+        self.assertIn('engine == "chrome" and os_platform() == "macOS"', body)
+        self.assertIn('engine = "chromium" if _playwright_available() else "chrome"', body)
+        self.assertIn("mac_cdp", body, "playwright 가 없을 때 갈 자리가 없다")
 
     def test_p3_chrome_timeout_is_one_line_not_a_traceback(self):
         """경계 — Chrome --screenshot 이 60초를 넘기면 사실 한 줄로 끝난다."""

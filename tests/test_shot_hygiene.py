@@ -90,7 +90,12 @@ def run_shot(alive=0, run_side_effect=None, args=None, make_out=True):
         return False if str(p).startswith("/mnt/c/Program Files") else real_exists(p)
 
     code = None
-    with mock.patch.object(subprocess, "run", fake_run), \
+    # **이 시험이 재는 것은 Chrome 갈래의 위생이다** — 어느 판에서 돌든 그 갈래로
+    # 가게 판을 못 박는다 (REQ-20260916-018-2n7g). 종전에는 안 박혀 있어, 맥에서
+    # 돌리면 맥 갈래로 새 버렸다(그 전까지는 맥도 Chrome 갈래로 떨어져서 티가
+    # 안 났다). 판을 박지 않은 시험은 「어느 컴퓨터에서 돌았나」에 답이 걸린다.
+    with mock.patch.object(mod, "os_platform", lambda: "Linux"), \
+         mock.patch.object(subprocess, "run", fake_run), \
          mock.patch.object(mod, "_playwright_available", lambda: False), \
          mock.patch.object(mod.os.path, "exists", no_win_browser), \
          mock.patch.object(mod.shutil, "which",
@@ -155,7 +160,8 @@ class TestShotProfile(unittest.TestCase):
                 f.write(b"\x89PNG")
             return mock.Mock(returncode=0)
 
-        with mock.patch.object(subprocess, "run", fake_run), \
+        with mock.patch.object(mod, "os_platform", lambda: "Linux"), \
+             mock.patch.object(subprocess, "run", fake_run), \
          mock.patch.object(mod, "_playwright_available", lambda: False), \
              mock.patch.object(mod.os.path, "exists", no_win_browser), \
              mock.patch.object(mod.shutil, "which",
@@ -205,7 +211,8 @@ class TestShotCap(unittest.TestCase):
                 f.write(b"\x89PNG")
             return mock.Mock(returncode=0)
 
-        with mock.patch.object(subprocess, "run", fake_run), \
+        with mock.patch.object(mod, "os_platform", lambda: "Linux"), \
+             mock.patch.object(subprocess, "run", fake_run), \
          mock.patch.object(mod, "_playwright_available", lambda: False), \
              mock.patch.object(mod.os.path, "exists", no_win_browser), \
              mock.patch.object(mod.shutil, "which",
@@ -228,7 +235,8 @@ class TestShotCap(unittest.TestCase):
             return (False if str(p).startswith("/mnt/c/Program Files")
                     else real_exists(p))
 
-        with mock.patch.object(subprocess, "run",
+        with mock.patch.object(mod, "os_platform", lambda: "Linux"), \
+             mock.patch.object(subprocess, "run",
                                lambda *a, **kw: mock.Mock(returncode=0)), \
              mock.patch.object(mod, "_playwright_available", lambda: False), \
              mock.patch.object(mod.os.path, "exists", no_win_browser), \
