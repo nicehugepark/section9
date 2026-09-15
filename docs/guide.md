@@ -971,7 +971,7 @@ bin/s9 code
 
 - `s9 reset` 은 터미널에서 `reset` 이라고 쳐야 진행합니다. 터미널이 아닌 곳에서는 `--yes` 가 필수입니다. 
 - **옛 환경의 승계** — 설치 전 CLAUDE.md·메모리에 있던 줄 가운데 가져올 것을 고르려면 `s9 env inherit <시각|latest>`. 고른 줄은 개인 선호 `pref_승계` 로 들어갑니다. 옛 흔적(예전 transcript 등)을 치우려면 `s9 env move`, 되돌리려면 `s9 env unmove` — 저널을 남기고 옮기므로 되돌아옵니다. 
-- 저장소 자체를 지우려면 그냥 디렉토리를 지웁니다. 백업은 저장소 밖(`~/.local/state/section9/`)에 있어 함께 지워지지 않습니다. 
+- 저장소 자체를 지우려면 **대시보드 서버를 먼저 내리고**(`s9 serve --stop` — Windows 는 폴더의 `section9-stop.cmd` 를 두 번 눌러도 됩니다) 디렉토리를 지웁니다. 백업은 저장소 밖(`~/.local/state/section9/`)에 있어 함께 지워지지 않습니다. Windows 에서는 `uninstall` 이 바탕화면·시작 메뉴의 바로 가기 「section9」도 함께 걷습니다 — 이 폴더를 가리키는 것만입니다. 절차 전문은 `docs/guide-windows.md` A-8. 
 
 ## 8. 문제 해결
 

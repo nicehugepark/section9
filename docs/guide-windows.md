@@ -1,6 +1,6 @@
 # section9 Windows 가이드 — 순수 Windows 와 WSL
 
-verified 2026-09-15 · 기준 버전 0.9.1 (`s9 --version` → `section9 0.9.1`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행), 그리고 Claude Code native 로그인 실측 REQ-20260913-024(2026-09-13, 공식 설치기 `install.ps1` · `claude.exe` 2.1.270 · 같은 컴퓨터), 그리고 v0.9.0 릴리스 자산의 첫 실행 실측 REQ-20260913-021(2026-09-14, 같은 컴퓨터 — WSL 에서 받은 파일의 `SHA256SUMS` 대조, Windows 쪽 cmd.exe 에서 릴리스 zip 의 첫 실행 dry run), 그리고 탐색기에서 두 번 눌러 시작하는 실측 REQ-20260915-006-62x6(2026-09-15, 같은 컴퓨터 — 배포판 zip 을 `C:\Temp\s9exp` 에 풀고 새 콘솔 창으로 `section9.cmd`·`section9-dashboard.cmd` 를 dry run, 바로 가기 둘의 속성 확인) · Windows native 에서 아직 재지 않은 것은 그 자리에 「아직 재지 않았습니다」로 적었고, 무엇을 언제 어디서 쟀는지와 함께 맨 뒤 D장의 표 둘에 모았습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
+verified 2026-09-15 · 기준 버전 0.9.1 (`s9 --version` → `section9 0.9.1`) · 실측 근거: Windows native 실측 REQ-20260903-005 (2026-09-03, Python 3.12.10, 한글 계정 경로) 와 이 문서를 쓰며 같은 컴퓨터의 cmd.exe·PowerShell 5.1 에서 확인한 것(2026-09-13), 그리고 zip 첫 실행 실측 REQ-20260913-016(2026-09-13, Windows 11 10.0.26200 · Python 3.12.10 · git 2.55.0.windows.4 · 한글 계정 경로 · WSL 에서 cmd.exe 로 실행), 그리고 Claude Code native 로그인 실측 REQ-20260913-024(2026-09-13, 공식 설치기 `install.ps1` · `claude.exe` 2.1.270 · 같은 컴퓨터), 그리고 v0.9.0 릴리스 자산의 첫 실행 실측 REQ-20260913-021(2026-09-14, 같은 컴퓨터 — WSL 에서 받은 파일의 `SHA256SUMS` 대조, Windows 쪽 cmd.exe 에서 릴리스 zip 의 첫 실행 dry run), 그리고 탐색기에서 두 번 눌러 시작하는 실측 REQ-20260915-006-62x6(2026-09-15, 같은 컴퓨터 — 배포판 zip 을 `C:\Temp\s9exp` 에 풀고 새 콘솔 창으로 `section9.cmd`·`section9-dashboard.cmd` 를 dry run, 바로 가기 둘의 속성 확인), 그리고 끄기·지우기 실측 REQ-20260915-006-62x6(2026-09-15, 같은 컴퓨터 — `section9-stop.cmd` 로 감시자·서버를 내리고 무응답 확인, 바로 가기 걷기는 임시 폴더로 확인) · Windows native 에서 아직 재지 않은 것은 그 자리에 「아직 재지 않았습니다」로 적었고, 무엇을 언제 어디서 쟀는지와 함께 맨 뒤 D장의 표 둘에 모았습니다 · 설계 사실의 원천: `docs/11-windows.md` · 화면 사용법·카드·동기화처럼 OS 와 무관한 내용은 `docs/guide.md`
 
 이 문서는 **Windows 컴퓨터에 section9 을 처음 설치해 첫 실행까지 가는 사람**을 위한 절차서입니다. 준비물 확인(A-0)에서만 터미널(cmd.exe 또는 PowerShell)을 열고, 그다음은 탐색기에서 두 번 누르는 것으로 갑니다(A-3). GitHub 계정은 나중에 이어도 되고(C장), Claude 구독(Pro·Max·Team·Enterprise 중 하나)은 첫 세션을 열 때 필요합니다.
 
@@ -103,7 +103,7 @@ dir %USERPROFILE%\section9\bin\s9.cmd
 실행 자리: 탐색기에서 `%USERPROFILE%\section9` 폴더(A-2 에서 푼 곳). 터미널은 필요 없습니다.
 
 1. 탐색기 주소창에 `%USERPROFILE%\section9` 를 넣고 Enter.
-2. 폴더 맨 위의 **`section9.cmd`** 를 두 번 누릅니다. 탐색기가 확장자를 숨기면 이름이 `section9`, 종류가 「Windows 명령 스크립트」인 파일입니다 — 옆의 `section9-dashboard`(대시보드만 여는 것, A-6)와 헷갈리지 마십시오.
+2. 폴더 맨 위의 **`section9.cmd`** 를 두 번 누릅니다. 탐색기가 확장자를 숨기면 이름이 `section9`, 종류가 「Windows 명령 스크립트」인 파일입니다 — 옆의 `section9-dashboard`(대시보드만 여는 것, A-6)·`section9-stop`(대시보드 서버를 내리는 것, A-8)과 헷갈리지 마십시오.
 3. 제목이 `section9` 인 검은 콘솔 창이 뜨고, 그 창에서 첫 실행이 아래 목록의 순서대로 진행됩니다. **끝날 때까지 창을 닫지 마십시오.** 창의 마지막이 Claude Code 화면입니다 — 로그인 안내(`/login`)가 나오면 그대로 따릅니다.
 4. 실패하면 창이 닫히지 않습니다: `section9 ended with exit code <숫자> -- read the lines above, then press a key.` 뒤에 `계속하려면 아무 키나 누르십시오 . . .` 가 남습니다. 위의 줄을 읽고(A-7 의 증상 표) 키를 누르면 창이 닫힙니다. 성공한 실행은 Claude Code 를 끝낼 때(`/exit`) 창이 저절로 닫힙니다.
 
@@ -200,6 +200,7 @@ PowerShell 한 줄(사용자 변수만 고칩니다):
 | 세션 열기 | 바탕화면·시작 메뉴의 바로 가기 **section9**(또는 폴더의 `section9.cmd`)를 두 번 누르기 — 명령으로는 `bin\s9 code`. 다시 열면 진행 중 작업 요약(digest)을 자동으로 넘겨받습니다 |
 | 대시보드만 | 폴더의 `section9-dashboard.cmd` 를 두 번 누르기 — 서버가 없으면 띄우고 브라우저를 연 뒤 창이 저절로 닫힙니다(이미 떠 있으면 `대시보드 실행 중: http://127.0.0.1:9909/` 한 줄, 실측 2026-09-15). 명령으로는 `bin\s9 code --no-claude`, 주소는 `http://127.0.0.1:9909` — 서버는 재부팅 뒤에도 다음 실행이 다시 띄웁니다 |
 | 서버를 새 코드로 | `bin\s9 serve --restart` |
+| 끄기 | 창은 `exit` 또는 창의 ×(대시보드는 계속 답합니다) · 대시보드 서버까지 내리려면 폴더의 `section9-stop.cmd` 를 두 번 누르기(명령으로는 `bin\s9 serve --stop`) — 지우는 절차는 A-8 |
 | 진단 | `bin\s9 doctor` |
 | 캡처 | `bin\s9 shot http://127.0.0.1:9909` — `%ProgramFiles%` 아래의 `chrome.exe` 또는 `msedge.exe` 를 씁니다 |
 
@@ -255,6 +256,44 @@ s9: Python 3 not found. Install it, then run this again.
 | 스킬·에이전트가 복사본 | symlink 권한이 없어 복사된 경우 저장소 갱신이 바로 반영되지 않습니다. `git pull` 뒤 post-merge 훅이 설치를 다시 실행해 복사본을 갱신합니다 |
 | 파일 잠금 없음 | `fcntl` 이 없는 판이라 잠그는 자리(시험 단일 실행 등)는 잠그지 않고 그냥 실행됩니다 |
 | `s9 tunnel` 미지원 | 터널 감시자가 `sh` 를 필요로 합니다. 터널이 필요하면 WSL 판을 쓰거나, 터미널에서 `ssh -N -L 127.0.0.1:<로컬포트>:127.0.0.1:<원격포트> <호스트>` 를 직접 띄웁니다 |
+
+
+### A-8. 끄기 · 지우기
+
+끄는 자리가 **둘**입니다. 창(Claude Code)을 닫아도 **대시보드 서버는 일부러 남습니다** — 진행 중인 요청을 이어받는 백그라운드 작업과 워처가 그 위에서 돌기 때문입니다. 컴퓨터를 껐다 켜면 서버도 없어지고, 다음 실행이 다시 띄웁니다.
+
+| 무엇을 끄나 | 어떻게 | 뒤에 남는 것 |
+| --- | --- | --- |
+| 세션(검은 창) | 창에서 `exit`, 또는 창의 × | 대시보드는 계속 답합니다 (`http://127.0.0.1:9909`) |
+| 대시보드 서버 | 폴더의 **`section9-stop.cmd`** 를 두 번 누르기 (명령으로는 `bin\s9 serve --stop`) | 아무것도 실행되지 않습니다. 문서·설정은 그대로입니다 |
+| 잠깐 멈춘 뒤 다시 | `section9-stop.cmd` → 바로 가기 **section9** 두 번 누르기 | — |
+
+시작과 마찬가지로 **끄는 것도 두 번 누르면 됩니다** — 터미널을 열 일이 없습니다. 이 파일은 **감시자를 먼저 물리고** 서버를 내립니다(감시자를 안 물리면 몇 초 뒤 되살아납니다). 창에 이렇게 찍히고 저절로 닫힙니다 (실측 2026-09-15, 이 컴퓨터의 Windows 에서 배포판 zip 을 풀어 `section9-dashboard.cmd` 로 띄운 뒤 `section9-stop.cmd` 로 내림 — 종료코드 0, 그 뒤 `http://127.0.0.1:9932` 무응답):
+
+```
+감시자에 중지를 알렸다 (pid 27676) — 종료를 기다린다…
+감시자 종료됨
+대시보드 정지: 포트 9932 (서버 1개) — 다시 띄우려면 `s9 serve --supervise`
+```
+
+실패했을 때만 창이 남아 종료코드를 보여 줍니다(시작·대시보드 파일과 같은 규칙).
+
+**통째로 지우기** — 서버를 먼저 내리고, 설치가 놓은 것을 걷고, 폴더를 지웁니다. 앞의 둘은 section9 폴더 안에서:
+
+```
+section9-stop.cmd                :: 또는 bin\s9 serve --stop
+bin\s9 uninstall --dry-run       :: 무엇을 걷을지 먼저 봅니다
+bin\s9 uninstall
+```
+
+그 다음 탐색기에서 `%USERPROFILE%\section9` 폴더를 지웁니다(Shift+Delete 는 휴지통을 거치지 않습니다). PATH 에 `bin` 을 넣었으면(A-5) **설정 › 시스템 › 정보 › 고급 시스템 설정 › 환경 변수** 에서 그 줄도 지웁니다.
+
+- `uninstall` 이 걷는 것: Claude 훅 항목 · `s9-agnt-*`·`s9-skl-*` 스킬과 에이전트 · git 훅 · 설치 표식, 그리고 **바탕화면·시작 메뉴의 바로 가기 「section9」**(이 폴더를 가리키는 것만 — 다른 폴더의 section9 이 만든 같은 이름은 남깁니다). 실측 2026-09-15: 이 컴퓨터의 Windows 에서 임시 폴더로 만들고 걷어 확인.
+- `uninstall` 이 **건드리지 않는 것**: 저장소와 문서(vault) · 자격증명(Claude 로그인·GitHub) · 여러분의 다른 훅. 그래서 폴더를 지우는 것은 사람의 손으로 남겨 둡니다 — 문서가 그 안에 있기 때문입니다.
+- 설치 전 Claude 설정은 `uninstall` 이 함께 되돌립니다(`--keep` 이면 두고 갑니다). 백업은 저장소 밖(`%USERPROFILE%\.local\state\section9\backups`)에 있어 폴더를 지워도 남습니다 — 이 컴퓨터의 Windows 에서 경로를 찍어 확인했습니다(2026-09-15).
+- 문서는 살리고 기계 상태만 처음으로 돌리려면 지우지 말고 `bin\s9 reset` (가이드 7장).
+
+**Claude Code 자체**는 section9 이 설치한 것이 아니라 그대로 남습니다 — 지우려면 `npm uninstall -g @anthropic-ai/claude-code` (설치한 방식에 따라 다릅니다).
 
 ---
 
@@ -418,6 +457,7 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 | 11 | C-2 | 초대 명령 `s9 project invite` 와 `POST /api/project/invite`(SMTP 스텁, 시험 10/10) · Projects 탭 「+ 초대하기」 창 — Chromium·WebKit 에서 SMTP 스텁으로 실제 발송 1통까지(캡처 4장) | 2026-09-13 · WSL | REQ-20260913-010 · 012 |
 | 12 | C-2 | `bin/s9 code --join <url> --project <slug>` 첫 실행 — 로컬 bare 저장소를 GitHub 삼아 합류·멱등·다른 URL 거부·문서 있는 자리 거부, 시험 10/10 | 2026-09-13 · WSL | REQ-20260913-013 |
 | 13 | A-3 · A-6 | 탐색기 두 번 누르기와 같은 실행(`start` 로 새 콘솔 창)으로 `section9.cmd` dry run — 저장소·설치·바로 가기 둘(바탕화면·시작 메뉴, 대상·작업 폴더·아이콘 확인)·대시보드(9931), 창이 닫힌 뒤에도 대시보드 응답; `section9-dashboard.cmd` 는 「실행 중」 한 줄 뒤 닫히고 대시보드 유지; `serve --stop` 으로 내림 — A-3 에 출력 전문 | 2026-09-15 · Windows native | REQ-20260915-006-62x6 |
+| 14 | A-8 | 끄기·지우기 — 배포판 zip 을 `C:\Temp\s9stop` 에 풀어 `section9-dashboard.cmd` 로 띄우고(9932, 응답 200) `section9-stop.cmd` 를 같은 방식으로 실행: 감시자·서버가 내려가고 종료코드 0, 그 뒤 무응답(000). 바로 가기 걷기는 임시 폴더로 만들고 걷어 확인 — 이 폴더를 가리키는 것만 지우고 다른 폴더의 같은 이름은 남겼다. 백업 자리(`%USERPROFILE%\.local\state\section9\backups`)는 Windows 의 Python 으로 찍어 확인 | 2026-09-15 · Windows native | REQ-20260915-006-62x6 |
 
 ### D-2. Windows native 에서 아직 재지 않은 것
 
@@ -429,6 +469,7 @@ zip·tar.gz 로 시작한 section9 은 **혼자 쓰는 상태**(`.s9-sync` = `lo
 | 4 | C-1 | `winget install GitHub.cli` 와 `gh auth login` 의 Windows 흐름 | 이 컴퓨터의 Windows 에 `gh` 가 없어 재지 않았다(REQ-20260913-016 노트) |
 | 5 | C-1 | Windows 판 대시보드에서 GitHub 연동 누르기 · `bin\s9 github …` | WSL 에서만 쟀다(D-1 의 9·10). Windows 의 토큰 helper 는 Git for Windows 의 sh 에 기댄다 — 미검증(REQ-20260913-008 노트) |
 | 6 | C-2 | `bin\s9 code --join …` 의 Windows 출력과 합류 뒤 첫 화면 | WSL 에서 시험으로만 쟀다(D-1 의 12). REQ-20260913-013 노트: 「Windows 는 실행하지 못했다 — `--needs-machine` 요청으로」 |
+| 7 | A-8 | `bin\s9 uninstall` 전체(훅·스킬·에이전트 걷기)를 Windows 의 실제 설치에서 돌린 것 | 돌리면 이 컴퓨터의 설치가 지워진다. 바로 가기를 걷는 부분만 임시 폴더로 갈라 쟀고(D-1 의 14), 나머지는 시험 13건(`tests/test_win_launcher.py`)과 리눅스의 `--dry-run` 으로 확인했다 |
 | 7 | C-2 | 실제 메일 서버(SMTP)로의 초대 메일 발송 — 어느 판이든 | SMTP 준비물이 없어 스텁으로 쟀다(REQ-20260913-010: 실제 발송은 준비물이 생긴 뒤 한 통 보내 본다) |
 
 ## 부록. 리눅스 명령 ↔ Windows 명령 대조표

@@ -649,6 +649,27 @@ def uninstall(home=None, root=None, bring_back=True, dry_run=False, out=None):
     # ⑤ 표식·목록
     _rm(os.path.join(root, "state", "installed_at"), "marker")
     _rm(placed_manifest_path(home), "manifest")
+    # ⑤' Windows 바로 가기 — 첫 실행이 놓은 것이니 걷는 것도 여기다
+    #    (REQ-20260915-006-62x6). 걷지 않으면 폴더를 지운 뒤 바탕화면에 아무 데도
+    #    닿지 않는 바로 가기가 남는다. 다른 폴더의 section9 을 가리키는 것은 남긴다.
+    kept_lnk = []
+    if os.name == "nt":
+        try:
+            fr = _load_sibling("s9_firstrun", "s9_firstrun.py")
+            if dry_run:
+                for _label, d in fr.shortcut_dirs():
+                    p_lnk = os.path.join(d, fr.SHORTCUT_NAME)
+                    if os.path.isfile(p_lnk):
+                        removed.append(("shortcut", p_lnk))
+            else:
+                res = fr.remove_shortcuts(root)
+                for p_lnk in res.get("removed") or []:
+                    removed.append(("shortcut", p_lnk))
+                kept_lnk = res.get("kept") or []
+                if res.get("error"):
+                    out(f"  ⚠ 바로 가기를 걷지 못했다: {res['error']} — 바탕화면·시작 메뉴에서 직접 지운다")
+        except Exception as e:      # 걷기가 지우기를 막지 않는다
+            out(f"  ⚠ 바로 가기를 걷지 못했다: {e} — 바탕화면·시작 메뉴에서 직접 지운다")
     # ⑥ 되돌리기 — 설치 전 백업이 있으면
     back = None
     if bring_back:
@@ -665,6 +686,8 @@ def uninstall(home=None, root=None, bring_back=True, dry_run=False, out=None):
         out(f"  {'(예정) ' if dry_run else ''}설치 전 백업 {back['which']} 을 되돌렸다 — 원위치의 새 파일은 .s9-conflict-<시각> 으로 이름을 바꿔 두었다")
     elif back and back.get("error"):
         out(f"  ⚠ 되돌리기 실패: {back['error']} — `s9 env` 의 되돌리기로 다시")
+    for p_lnk in kept_lnk:
+        out(f"  남김 shortcut: {p_lnk} — 다른 폴더의 section9 을 가리킨다")
     out(f"section9 uninstall {'미리보기' if dry_run else '완료'} — 저장소·문서·자격증명·백업은 그대로다. "
         f"다시 쓰려면 bin/s9-install.")
     return {"removed": removed, "brought_back": back}

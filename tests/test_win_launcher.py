@@ -30,7 +30,7 @@ from unpacked import load as _load  # noqa: E402
 
 RELEASE = os.path.join(ROOT, "bin", "s9-release")
 FIRSTRUN = os.path.join(ROOT, "bin", "s9_firstrun.py")
-LAUNCHERS = ("section9.cmd", "section9-dashboard.cmd")
+LAUNCHERS = ("section9.cmd", "section9-dashboard.cmd", "section9-stop.cmd")
 PREFIX = "section9/"
 
 
@@ -61,7 +61,10 @@ def read(name):
 
 
 class TheLaunchersInTheRelease(unittest.TestCase):
-    """S1 · S2 · S3 · S4 — 두 .cmd 의 계약과 배포판에서의 모양."""
+    """S1 · S2 · S3 · S4 — 세 .cmd(시작·대시보드·끄기)의 계약과 배포판에서의 모양.
+
+    끄기(section9-stop.cmd)는 REQ-20260915-006-62x6 의 반려로 늘었다 — 두 번 눌러
+    시작하는데 끄는 것만 명령을 쳐야 하면 같은 사람이 그 자리에서 막힌다."""
 
     @classmethod
     def setUpClass(cls):
@@ -91,7 +94,8 @@ class TheLaunchersInTheRelease(unittest.TestCase):
 
     def test_s2_each_launcher_moves_home_and_calls_s9_cmd(self):
         """S2. 제 폴더로 이동한 뒤 bin\\s9.cmd 를 `call` 로 부른다 — 시작은 code, 대시보드는 code --no-claude."""
-        for name, tail in (("section9.cmd", "code %*"), ("section9-dashboard.cmd", "code --no-claude %*")):
+        for name, tail in (("section9.cmd", "code %*"), ("section9-dashboard.cmd", "code --no-claude %*"),
+                           ("section9-stop.cmd", "serve --stop %*")):
             text = read(name).decode("ascii")
             self.assertIn('cd /d "%~dp0"', text, f"{name}: 제 폴더로 이동하지 않는다")
             self.assertIn('call "%~dp0bin\\s9.cmd" ' + tail, text, f"{name}: bin\\s9.cmd 를 부르는 줄이 다르다")
@@ -227,6 +231,100 @@ class TheShortcuts(unittest.TestCase):
         self.assertLess(body.index("s9-install"), body.index("ensure_shortcuts(ROOT)"))
         self.assertIn("바로 가기를 만들지 못했다", body)
         self.assertNotIn('die(f"바로 가기', body)
+
+
+class TheShortcutsGoAwayToo(unittest.TestCase):
+    """S10~S13 — 걷기는 놓기의 대칭이다 (REQ-20260915-006-62x6, 주인 지적 2026-09-15:
+    「끄는 법, 삭제하는 법 등에 대해서는 가이드가 없는 것 같다」). 걷지 않으면 폴더를
+    지운 뒤 바탕화면에 아무 데도 닿지 않는 바로 가기가 남는다."""
+
+    def setUp(self):
+        self.fr = _load("s9_firstrun_rmlnk", FIRSTRUN)
+        self.tmp = tempfile.mkdtemp(prefix="s9rmlnk-")
+        self.root = os.path.join(self.tmp, "section9")
+        os.makedirs(self.root)
+        self.target = os.path.join(self.root, "section9.cmd")
+        self.desk = os.path.join(self.tmp, "home", "Desktop")
+        self.menu = os.path.join(self.tmp, "home", "Programs")
+        for d in (self.desk, self.menu):
+            os.makedirs(d)
+        self.dirs = [("바탕화면", self.desk), ("시작 메뉴", self.menu)]
+        self.calls = []
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def lnk(self, where, points_at):
+        """가짜 .lnk — 본문이 곧 그 바로 가기의 TargetPath 다."""
+        p = os.path.join(where, "section9.lnk")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(points_at)
+        return p
+
+    def fake_run(self, rc=0):
+        """WScript.Shell 대신 — 본문의 대상과 같은 것만 지우고 그 경로를 찍는다."""
+        def run(argv, **kw):
+            self.calls.append((argv, kw))
+            body = TheShortcuts.script(argv)
+            want = re.search(r"\$s\.TargetPath -ne '([^']+)'", body).group(1)
+            out = []
+            for p in re.findall(r"'([^']+\.lnk)'", body):
+                if os.path.isfile(p) and open(p, encoding="utf-8").read() == want:
+                    os.remove(p)
+                    out.append(p)
+            return subprocess.CompletedProcess(argv, rc, ("\r\n".join(out) + "\r\n").encode(),
+                                               b"boom\r\n" if rc else b"")
+        return run
+
+    def test_s10_removes_both_with_one_powershell_call(self):
+        """S10. 정상: 둘 다 이 저장소를 가리키면 PowerShell 한 번으로 둘 다 걷는다."""
+        made = [self.lnk(self.desk, self.target), self.lnk(self.menu, self.target)]
+        res = self.fr.remove_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
+        self.assertEqual(res["error"], "")
+        self.assertEqual(sorted(res["removed"]), sorted(made))
+        self.assertEqual(res["kept"], [])
+        self.assertEqual(len(self.calls), 1)
+        argv, kw = self.calls[0]
+        self.assertEqual(argv[:5], ["powershell", "-NoProfile", "-NonInteractive",
+                                    "-ExecutionPolicy", "Bypass"])
+        self.assertEqual(kw.get("stdin"), subprocess.DEVNULL)
+        for p in made:
+            self.assertFalse(os.path.exists(p))
+
+    def test_s11_another_folders_shortcut_is_left_alone(self):
+        """S11. 경계: 다른 폴더의 section9 을 가리키는 같은 이름은 남긴다 — 설치가 놓은 것만 걷는다."""
+        mine = self.lnk(self.desk, self.target)
+        other = self.lnk(self.menu, os.path.join(self.tmp, "other", "section9.cmd"))
+        res = self.fr.remove_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
+        self.assertEqual(res["removed"], [mine])
+        self.assertEqual(res["kept"], [other])
+        self.assertTrue(os.path.isfile(other))
+
+    def test_s12_nothing_to_do_and_failures_come_back_as_one_line(self):
+        """S12. 실패: 지울 것 없음 · powershell 없음 · rc≠0 — 전부 한 줄로 돌아온다(예외 없음)."""
+        res = self.fr.remove_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
+        self.assertEqual((res["skipped"], res["removed"], len(self.calls)), ("none", [], 0))
+        self.lnk(self.desk, self.target)
+
+        def missing(argv, **kw):
+            raise FileNotFoundError("powershell")
+        res = self.fr.remove_shortcuts(self.root, run=missing, is_windows=True, dirs=self.dirs)
+        self.assertEqual(res["error"], "powershell 이 없다")
+        res = self.fr.remove_shortcuts(self.root, run=self.fake_run(rc=1), is_windows=True, dirs=self.dirs)
+        self.assertIn("rc=1", res["error"])
+        self.assertIn("boom", res["error"])
+        res = self.fr.remove_shortcuts(self.root, run=self.fake_run(), is_windows=False, dirs=self.dirs)
+        self.assertEqual(res["skipped"], "not-windows")
+
+    def test_s13_uninstall_sweeps_them_and_never_dies_on_it(self):
+        """S13. 회귀: uninstall 이 걷는 목록에 바로 가기가 있고, 걷기가 지우기를 막지 않는다."""
+        with open(os.path.join(ROOT, "bin", "s9-install"), encoding="utf-8") as f:
+            src = f.read()
+        body = src[src.index("def uninstall("):]
+        body = body[:body.index("\ndef ", 10)]
+        self.assertIn("remove_shortcuts(root)", body)
+        self.assertIn('("shortcut"', body)
+        self.assertIn("except Exception", body)      # 바로 가기 때문에 uninstall 이 죽지 않는다
 
 
 if __name__ == "__main__":

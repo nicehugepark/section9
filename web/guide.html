@@ -1078,7 +1078,7 @@ cd ~/section9 &amp;&amp; bin/s9-install</code></pre>
 <ul>
   <li><code>s9 reset</code> 은 터미널에서 <code>reset</code> 이라고 쳐야 진행합니다. 터미널이 아닌 곳에서는 <code>--yes</code> 가 필수입니다.</li>
   <li><b>옛 환경의 승계</b> — 설치 전 CLAUDE.md·메모리에 있던 줄 가운데 가져올 것을 고르려면 <code>s9 env inherit &lt;시각|latest&gt;</code>. 고른 줄은 개인 선호 <code>pref_승계</code> 로 들어갑니다. 옛 흔적(예전 transcript 등)을 치우려면 <code>s9 env move</code>, 되돌리려면 <code>s9 env unmove</code> — 저널을 남기고 옮기므로 되돌아옵니다.</li>
-  <li>저장소 자체를 지우려면 그냥 디렉토리를 지웁니다. 백업은 저장소 밖(<code>~/.local/state/section9/</code>)에 있어 함께 지워지지 않습니다.</li>
+  <li>저장소 자체를 지우려면 <strong>대시보드 서버를 먼저 내리고</strong>(<code>s9 serve --stop</code> — Windows 는 폴더의 <code>section9-stop.cmd</code> 를 두 번 눌러도 됩니다) 디렉토리를 지웁니다. 백업은 저장소 밖(<code>~/.local/state/section9/</code>)에 있어 함께 지워지지 않습니다. Windows 에서는 <code>uninstall</code> 이 바탕화면·시작 메뉴의 바로 가기 「section9」도 함께 걷습니다 — 이 폴더를 가리키는 것만입니다. 절차 전문은 <code>docs/guide-windows.md</code> A-8.</li>
 </ul>
 </section>
 

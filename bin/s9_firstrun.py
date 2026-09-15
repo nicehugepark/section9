@@ -473,6 +473,70 @@ def shortcut_script(root, paths):
     return "\n".join(lines) + "\n"
 
 
+def remove_shortcut_script(root, paths):
+    """바로 가기를 걷는 PowerShell 본문 — **이 저장소를 가리키는 것만**.
+
+    지운 경로를 한 줄씩 찍는다. 다른 폴더의 section9(배포판을 둘 둔 컴퓨터)이 만든
+    같은 이름의 바로 가기는 대상이 아니다 — 설치가 놓은 것만 걷는다는 규율이 여기서도
+    같다. 없는 파일·읽을 수 없는 파일은 조용히 지나간다(걷기가 지우기를 막지 않는다)."""
+    target = os.path.join(root, LAUNCHER)
+    lines = ["$ErrorActionPreference = 'Stop'",
+             "$sh = New-Object -ComObject WScript.Shell",
+             "foreach ($p in @(" + ", ".join(_ps_quote(p) for p in paths) + ")) {",
+             "  if (-not (Test-Path -LiteralPath $p)) { continue }",
+             "  try { $s = $sh.CreateShortcut($p) } catch { continue }",
+             "  if ($s.TargetPath -ne " + _ps_quote(target) + ") { continue }",
+             "  Remove-Item -LiteralPath $p -Force",
+             "  Write-Output $p",
+             "}"]
+    return "\n".join(lines) + "\n"
+
+
+def remove_shortcuts(root, run=None, is_windows=None, dirs=None, timeout=60):
+    """바탕화면·시작 메뉴의 section9.lnk 를 걷는다 — uninstall 이 부른다.
+
+    ensure_shortcuts 의 대칭이다(REQ-20260915-006-62x6, 주인 지적 2026-09-15 13:11:
+    「끄는 법, 삭제하는 법 등에 대해서는 가이드가 없는 것 같다」). 설치가 놓은 것을
+    걷지 않으면 폴더를 지운 뒤 바탕화면에 아무 데도 닿지 않는 바로 가기가 남는다.
+
+    돌려주는 것: {"removed": [지운 경로…], "skipped": 사유, "error": 한 줄}.
+    skipped: not-windows · none(지울 것이 없다). 예외를 밖으로 내지 않는다."""
+    res = {"removed": [], "skipped": "", "error": ""}
+    win = (os.name == "nt") if is_windows is None else bool(is_windows)
+    if not win:
+        res["skipped"] = "not-windows"
+        return res
+    have = [p for p in (os.path.join(d, SHORTCUT_NAME) for _, d in (dirs or shortcut_dirs()))
+            if os.path.isfile(p)]
+    if not have:
+        res["skipped"] = "none"
+        return res
+    argv = powershell_argv(remove_shortcut_script(root, have))
+    run = run or subprocess.run
+    try:
+        r = run(argv, capture_output=True, stdin=subprocess.DEVNULL, timeout=timeout)
+    except FileNotFoundError:
+        res["error"] = "powershell 이 없다"
+        return res
+    except subprocess.TimeoutExpired:
+        res["error"] = f"powershell 이 {timeout}초 안에 끝나지 않았다"
+        return res
+    except (OSError, ValueError) as e:
+        res["error"] = str(e)
+        return res
+    if r.returncode != 0:
+        err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        res["error"] = f"powershell rc={r.returncode}" + (f": {err[-1].strip()}" if err else "")
+        return res
+    out = (r.stdout or b"").decode("utf-8", "replace")
+    res["removed"] = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    # 남은 것은 다른 저장소를 가리키는 바로 가기다 — 지우지 않은 사실을 말한다.
+    res["kept"] = [p for p in have if os.path.isfile(p)]
+    if not res["removed"]:
+        res["skipped"] = "none"
+    return res
+
+
 def powershell_argv(script):
     """따옴표·한글 경로를 셸에 맡기지 않는다 — 본문을 UTF-16LE base64 로 넘긴다(-EncodedCommand)."""
     enc = base64.b64encode(script.encode("utf-16-le")).decode("ascii")

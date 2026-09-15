@@ -41,8 +41,8 @@ PREFIX = "section9/"
 # 배포판에 있어서는 안 되는 것 / 반드시 있어야 하는 것 — tests/test_release_archive.py 와 같은 표
 DATA_DIRS = ("vault", "users", "projects", "state", "scratchpad", ".s9-sync")
 CODE_DIRS = ("bin", "web", "harness", "tests", "docs")
-# bin/*.cmd 와 최상위 *.cmd(탐색기에서 두 번 누르는 section9.cmd · section9-dashboard.cmd,
-# REQ-20260915-006-62x6) — cmd.exe 는 LF 만인 배치 파일에서 라벨 이동을 못 한다
+# bin/*.cmd 와 최상위 *.cmd(탐색기에서 두 번 누르는 section9.cmd · section9-dashboard.cmd ·
+# section9-stop.cmd, REQ-20260915-006-62x6) — cmd.exe 는 LF 만인 배치 파일에서 라벨 이동을 못 한다
 CRLF_RE = re.compile(r"^section9/(?:bin/)?[^/]+\.cmd$")
 SEMVER_TAG_RE = re.compile(r"^v(\d+\.\d+\.\d+)$")
 
@@ -197,7 +197,7 @@ def release_notes(ref, ver):
     return (f"section9 {ver}\n\n배포판\n"
             f"- section9-{ver}-linux-macos.tar.gz — 리눅스·맥: 풀고 `bin/s9 code`\n"
             f"- section9-{ver}-windows.zip — 윈도우(Claude): 풀고 탐색기에서 `section9.cmd` 두 번 누르기"
-            f"(또는 `bin\\s9.cmd code`)\n"
+            f"(또는 `bin\\s9.cmd code`). 끄는 것은 `section9-stop.cmd`\n"
             f"- SHA256SUMS — `sha256sum -c SHA256SUMS`\n")
 
 
