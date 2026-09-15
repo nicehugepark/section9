@@ -382,22 +382,43 @@ def _index_entries(paths):
     return out
 
 
+def _unmerged_paths(paths):
+    """공유 index 에 stage 1·2·3 으로 남아 있는 경로들.
+
+    merge 가 충돌한 뒤 사람이 파일을 풀고 `s9 commit` 으로 마무리하면, 그 commit 은
+    임시 index 로 이뤄지므로 공유 index 에는 stage 1·2·3 이 그대로 남는다 — merge 는
+    끝났는데(MERGE_HEAD 없음) `git status` 만 UU 로 남아, 그 다음 사람의 pathspec
+    없는 `git commit` 이 「해결되지 않았다」로 선다 (REQ-20260916-009-2n7g 실측
+    2026-09-16). 아래에서 이 자리를 새 HEAD 로 맞춘다."""
+    r = git("ls-files", "-u", "-z", "--", *paths)
+    if r.returncode != 0:
+        return set()
+    out = set()
+    for rec in r.stdout.split("\0"):
+        if rec:
+            out.add(rec.partition("\t")[2])
+    return out
+
+
 def reconcile_shared_index(old, new, paths, err):
     """commit 뒤 공유 index 의 그 경로를 새 HEAD 에 맞춘다 — **옛 HEAD 와 같은
     항목만**(아무도 담지 않은 것). 남이 담아 둔 항목(index ≠ 옛 HEAD)은 그대로.
+    끝난 merge 가 남긴 미해결 항목(stage 1·2·3)도 맞춘다 — 그것은 남의 add 가 아니라
+    잔재다.
     반환: 맞춘 경로 목록."""
     if not paths:
         return []
     before = _tree_entries(old, paths)
     after = _tree_entries(new, paths)
     idx = _index_entries(paths)
+    unmerged = _unmerged_paths(paths)
     lines = []
     fixed = []
     for p in paths:
         o = before.get(p)
         n = after.get(p)
         i = idx.get(p)
-        if (i[1] if i else None) != (o[1] if o else None):
+        if p not in unmerged and (i[1] if i else None) != (o[1] if o else None):
             continue                    # 남의 add 다 — 건드리지 않는다
         if (i[1] if i else None) == (n[1] if n else None):
             continue                    # 이미 같다

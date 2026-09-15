@@ -51,6 +51,10 @@ def local_helpers():
 # 에 없어 이 시험이 실패하는데, 실패가 말하는 것은 우리 코드의 결함이 아니라 판이 달라진
 # 사실이다. 이 집합이 담아야 하는 것은 **우리 소스가 실제로 import 하는** 그 운영체제
 # 전용 이름이고(지금은 bin/s9_firstrun.py 의 winreg 하나), msilib 은 아무도 안 쓴다.
+# 같은 자리를 REQ-20260915-003-2n7g 가 가지에서 따로 고쳐(POSIX 전용 이름까지 넓게
+# 담는 OTHER_PLATFORM_STDLIB) 2026-09-16 에 합칠 때 충돌했고, 위의 좁힘이 나중 결정이라
+# 이쪽을 남겼다 — 그 요청의 목표(맥에서 winreg 를 서드파티로 보지 않는다)는 이쪽으로도
+# 충족된다 (REQ-20260916-009-2n7g).
 PLATFORM_ONLY = {"winreg", "msvcrt", "winsound", "_winapi", "nt"}
 
 
