@@ -137,8 +137,8 @@ class TheSentencesComeFromTheState(unittest.TestCase):
         self.assertFalse(need)
         s, need = say(False, False)
         self.assertEqual(
-            s, "gh 로 로그인하거나 외부 서비스 판에 GITHUB_TOKEN 을 저장하면 됩니다.")
-        self.assertTrue(need, "준비물이 없을 때만 「외부 서비스 판 열기」가 선다")
+            s, "gh 로 로그인하거나 외부 서비스에 GITHUB_TOKEN 을 저장하면 됩니다.")
+        self.assertTrue(need, "준비물이 없을 때만 「외부 서비스 열기」가 선다")
 
     def test_g5_a_locked_hand_shows_the_servers_own_sentence(self):
         """G5. 막힌 사유는 서버의 문장 그대로 — 화면이 제 문장을 짓지 않는다."""

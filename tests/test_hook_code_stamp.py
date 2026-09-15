@@ -156,17 +156,54 @@ class HookStamp(unittest.TestCase):
 
 class Banner(unittest.TestCase):
     """화면도 바뀐 파일을 서버가 말한 대로 말한다 — 문구가 `bin/s9` 로 못
-    박혀 있으면 훅만 바뀐 경우에 거짓말이 된다."""
+    박혀 있으면 훅만 바뀐 경우에 거짓말이 된다.
 
-    def test_h12_banner_names_reported_files(self):
-        body = open(index_path(),
-                    encoding="utf-8").read()
-        i = body.index("서버가 옛 코드로 실행 중입니다")
-        seg = body[max(0, i - 700):i + 700]
-        self.assertIn("d.changed", seg,
-                      "서버가 알려준 바뀐 파일을 쓰지 않는다")
-        self.assertNotIn("<code>bin/s9</code> 가 바뀌었습니다", seg,
-                         "파일 이름이 문구에 못 박혀 있다")
+    2026-09-15 부터 이 사실은 화면이 세우던 띠가 아니라 `/api/notices`
+    (notices_info → _oldcode_notices) 가 싣는 알림 한 줄이다(REQ-20260915-001-62x6,
+    주인 승인 11:24). 문구는 서버가 stale_parts 로 판정한 뒤에 만들고, 화면은
+    받은 줄을 그대로 세운다 — 그러니 계약도 서버 쪽에서 본다."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="s9hookstamp-")
+        os.makedirs(os.path.join(self.root, "state"), exist_ok=True)
+        self.m = _load("s9_hookband_" + os.path.basename(self.root), S9)
+        self.m.ROOT = self.root
+
+    # H12. 훅만 바뀐 서버의 알림은 「bin/s9 가 바뀌었다」고 말하지 않는다 — 판정은
+    #      stale_parts(두 파일)이고, 문구는 바뀐 파일을 지어내지 않는다
+    def test_h12_notice_does_not_blame_the_wrong_file(self):
+        m = self.m
+        cur = m.running_code_stamp()
+        m.SERVE_STARTED = "2026-09-15T10:00:00+09:00"
+        m.SERVE_CODE_STAMP = {"s9": cur["s9"], "hook": {"mtime": 1.0, "size": 10}}
+        rows = m._oldcode_notices(1_800_000_000.0)
+        self.assertEqual([r["id"] for r in rows], ["server:oldcode"],
+                         "훅만 바뀐 서버에 대해 알림이 서지 않는다 — 이 결함이 놓치던 그 경우")
+        n = rows[0]
+        self.assertEqual(n["sev"], "warn")
+        self.assertNotIn("bin/s9", n["say"], "파일 이름이 문구에 못 박혀 있다 — 훅만 바뀌었는데 bin/s9 를 탓한다")
+        self.assertEqual(n["go"]["kind"], "cmd")
+        self.assertIn("--restart", n["go"]["text"], "무엇을 하라는지 말하지 않는다")
+
+    # H13. 둘 다 그대로면 알림도 없고, 서버가 아닌 자리(기동 시각 없음)에서는 단정하지 않는다
+    def test_h13_fresh_or_not_a_server_is_silent(self):
+        m = self.m
+        cur = m.running_code_stamp()
+        m.SERVE_STARTED = "2026-09-15T10:00:00+09:00"
+        m.SERVE_CODE_STAMP = dict(cur)
+        self.assertEqual(m._oldcode_notices(1_800_000_000.0), [])
+        m.SERVE_STARTED = ""
+        m.SERVE_CODE_STAMP = {"s9": cur["s9"], "hook": {"mtime": 1.0, "size": 10}}
+        self.assertEqual(m._oldcode_notices(1_800_000_000.0), [],
+                         "서버가 아닌 자리에서 낡았다고 단정했다")
+
+    # H14. 화면은 띠를 스스로 세우지 않는다 — 문구를 두 곳에 두면 언젠가 갈린다
+    def test_h14_screen_does_not_hardcode_the_band(self):
+        body = open(index_path(), encoding="utf-8").read()
+        self.assertNotIn("<code>bin/s9</code> 가 바뀌었습니다", body,
+                         "파일 이름이 화면 문구에 못 박혀 있다")
+        self.assertNotIn("서버가 옛 코드로 실행 중입니다", body,
+                         "옛 띠 문구가 화면에 남아 있다 — 이 사실은 알림 줄(/api/notices)이 싣는다")
 
 
 if __name__ == "__main__":
