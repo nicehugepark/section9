@@ -241,5 +241,61 @@ class DataOnlyCommits(unittest.TestCase):
                          "코드가 섞였는데 검사를 건너뛰었다 — 남의 변경이 쓸려 담긴다")
 
 
+class TheCommitterIsNotAnother(unittest.TestCase):
+    """커밋을 거는 당사자를 「다른 작업자」로 세지 않는다 (REQ-20260915-021).
+
+    2026-09-15: worktree 에서 도는 무인 작업자가 제가 고친 파일을 담아 commit
+    하자 검사가 막았고, 목록에 선 그 작업자가 커밋을 거는 프로세스 자신이었다.
+    빠져나가는 길은 환경변수 접두라 무인 세션의 allowlist 에 안 맞고, 승인할
+    사람도 없다 — 구조적으로 통과할 수 없는 검사였다.
+    """
+
+    def _workers(self, *lines):
+        class R:
+            stdout = "\n".join(lines) + "\n"
+        with mock.patch.object(g.subprocess, "run", return_value=R()):
+            return g.live_workers()
+
+    def test_my_own_line_is_dropped(self):
+        me = os.getpid()
+        self.assertEqual(
+            self._workers("- REQ-x (백그라운드 작업 pid %d, 3분째)" % me), [],
+            "커밋하는 당사자가 목록에 남았다 — 자기 자신에게 막힌다")
+
+    def test_someone_else_stays(self):
+        other = [p for p in range(2, 4000) if p not in g.self_and_ancestors()][0]
+        line = "- REQ-y (백그라운드 작업 pid %d, 3분째)" % other
+        self.assertEqual(self._workers(line), [line],
+                         "남을 뺐다 — 남의 미완성이 이 커밋에 쓸려 담긴다")
+
+    def test_a_subagent_line_has_no_pid_and_stays(self):
+        line = "- 서브에이전트 (세션 abc12345, 1분째) abc.jsonl"
+        self.assertEqual(self._workers(line), [line],
+                         "서브에이전트는 같은 트리를 만지는 진짜 다른 주체다")
+
+    def test_only_me_means_no_worker_at_all(self):
+        """목록의 유일한 줄이 나면 gate 는 환경변수 없이 통과한다."""
+        me = os.getpid()
+        class R:
+            stdout = "- REQ-x (백그라운드 작업 pid %d, 3분째)\n" % me
+        with mock.patch.object(g.subprocess, "run", return_value=R()), \
+                mock.patch.object(g, "fresh_staged") as fresh:
+            self.assertIsNone(g.concurrent_gate(["bin/s9.py"]))
+        self.assertEqual(fresh.call_count, 0)
+
+
+class WhoIsMe(unittest.TestCase):
+    def test_i_am_in_my_own_set(self):
+        self.assertIn(os.getpid(), g.self_and_ancestors())
+
+    def test_my_parent_is_too(self):
+        ppid = g._parent_pid(os.getpid())
+        self.assertTrue(ppid > 0, "부모 pid 를 못 읽었다")
+        self.assertIn(ppid, g.self_and_ancestors())
+
+    def test_an_unreadable_parent_is_zero_not_a_guess(self):
+        self.assertEqual(g._parent_pid(2 ** 31 - 1), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
