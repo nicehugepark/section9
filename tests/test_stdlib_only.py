@@ -41,18 +41,16 @@ def local_helpers():
             and n != "__main__.py"}
 
 
-def stdlib_names():
-    """표준 라이브러리 최상위 모듈 이름 집합.
+# Windows 에서만 설치되는 표준 모듈. 맥·리눅스에는 그 파일이 없어 아래 폴백이 디렉터리를
+# 훑어도 이름이 나오지 않는데, 3.10+ 의 sys.stdlib_module_names 는 플랫폼과 무관하게 이
+# 이름들을 담는다. 두 갈래의 답이 같아야 한다 — 그렇지 않으면 Windows 갈래 안에서
+# import winreg 하는 bin/s9_firstrun.py 가 맥에서만 서드파티로 잡힌다
+# (REQ-20260915-002-2n7g, 맥 python 3.9.6 실측 2026-09-15).
+WINDOWS_ONLY = {"winreg", "msvcrt", "winsound", "_winapi", "nt", "msilib"}
 
-    `sys.stdlib_module_names` 는 3.10 에서 생겼다 — 맥의 기본 python3 는 3.9
-    (CommandLineTools) 라 그 속성이 없어 이 스모크 시험이 AttributeError 로 오류나고
-    커밋 검사가 모든 code 커밋을 막았다 (REQ-20260906-011-2n7g, 맥 실측 2026-09-06).
-    3.9 이하에서는 같은 답을 파일 시스템에서 만든다: 내장 모듈 ∪ stdlib 디렉터리의
-    .py/패키지 ∪ lib-dynload 의 확장 모듈.
-    """
-    names = getattr(sys, "stdlib_module_names", None)
-    if names:
-        return set(names)
+
+def scan_stdlib_names():
+    """표준 라이브러리 이름을 파일 시스템에서 만든다 — 3.9 이하의 폴백."""
     import sysconfig
     out = set(sys.builtin_module_names)
     for key in ("stdlib", "platstdlib"):
@@ -73,7 +71,22 @@ def stdlib_names():
                     out.add(n.split(".")[0])
                 elif os.path.isdir(os.path.join(sub, n)) and n != "site-packages":
                     out.add(n)
-    return out
+    return out | WINDOWS_ONLY
+
+
+def stdlib_names():
+    """표준 라이브러리 최상위 모듈 이름 집합.
+
+    `sys.stdlib_module_names` 는 3.10 에서 생겼다 — 맥의 기본 python3 는 3.9
+    (CommandLineTools) 라 그 속성이 없어 이 스모크 시험이 AttributeError 로 오류나고
+    커밋 검사가 모든 code 커밋을 막았다 (REQ-20260906-011-2n7g, 맥 실측 2026-09-06).
+    3.9 이하에서는 같은 답을 파일 시스템에서 만든다: 내장 모듈 ∪ stdlib 디렉터리의
+    .py/패키지 ∪ lib-dynload 의 확장 모듈 ∪ Windows 전용 모듈.
+    """
+    names = getattr(sys, "stdlib_module_names", None)
+    if names:
+        return set(names)
+    return scan_stdlib_names()
 
 
 class TestStdlibOnly(unittest.TestCase):
@@ -102,6 +115,27 @@ class TestStdlibOnly(unittest.TestCase):
                         bad.append(f"{os.path.relpath(path, ROOT)}: import {m}")
         self.assertFalse(bad, "표준 라이브러리 밖 import 발견 — pyproject.toml에 "
                               "의존성 선언 + 정책 결정 없이 금지:\n" + "\n".join(bad))
+
+    def test_the_fallback_knows_windows_only_modules(self):
+        """3.9 폴백이 Windows 전용 표준 모듈을 안다 — 이 python 의 판과 무관하게 재 본다."""
+        scanned = scan_stdlib_names()
+        for m in sorted(WINDOWS_ONLY):
+            self.assertIn(m, scanned, m)
+        for m in ("os", "json", "sqlite3"):     # 폴백이 훑기도 여전히 한다
+            self.assertIn(m, scanned, m)
+
+    def test_windows_only_modules_pass_the_third_party_check(self):
+        """Windows 갈래 안의 import winreg 는 서드파티가 아니다 (맥 3.9 에서 나던 실패)."""
+        allowed = stdlib_names() | local_helpers()
+        for m in sorted(WINDOWS_ONLY):
+            self.assertIn(m, allowed, m)
+
+    def test_the_310_branch_is_untouched(self):
+        """3.10+ 에서는 sys.stdlib_module_names 그대로다 — 폴백이 그 목록을 덮어쓰지 않는다."""
+        names = getattr(sys, "stdlib_module_names", None)
+        if not names:
+            self.skipTest("이 python 은 3.9 이하라 그 갈래가 없다")
+        self.assertEqual(stdlib_names(), set(names))
 
     def test_sources_found(self):
         # 가드가 빈 목록을 검사하며 헛통과하지 않는지
