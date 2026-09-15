@@ -10,6 +10,7 @@ machine_accounts: [{"machine": "DESKTOP-TEHV1KR", "os": "WSL", "account": "sjpar
 machines: ["eek-p620", "Seongjinui-Macmini.local"]
 first_name: 성진
 last_name: 박
+display: nicehugepark
 ---
 
 ## Notes
@@ -295,3 +296,7 @@ last_name: 박
 - 2026-09-15T13:01:32+09:00 config jira_token_expires=2027-09-01 (by nicehugepark via dashboard)
 - 2026-09-15T15:39:10+09:00 config ui_density=compact (by nicehugepark via dashboard)
 - 2026-09-15T16:13:49+09:00 updated first_name, last_name (by nicehugepark)
+- 2026-09-15T16:55:35+09:00 updated display (by nicehugepark via dashboard)
+- 2026-09-15T16:55:50+09:00 config ui_skin=calm (by nicehugepark via dashboard)
+- 2026-09-15T16:56:03+09:00 config ui_density=normal (by nicehugepark via dashboard)
+- 2026-09-15T16:56:29+09:00 updated display (by nicehugepark via dashboard)
