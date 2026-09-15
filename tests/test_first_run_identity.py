@@ -129,6 +129,16 @@ class TheDefaultSaysWhereItCameFrom(unittest.TestCase):
         self.assertIn("git 이메일", asked[0],
                       "기본값이 어디서 왔는지가 물음에 없다 — 남의 계정으로 읽힌다")
 
+    def test_it_says_why_there_is_no_default(self):
+        """기본값이 없는 까닭을 먼저 말한다 — 이 컴퓨터에 git 이메일이 없고 계정
+        이름이 폴더 이름이 될 수 없으면 내밀 값이 아무것도 없다. 규칙만 적으면
+        사람은 제 계정 이름이 왜 안 되는지 모른 채 Enter 만 친다(2026-09-15 실제)."""
+        asked = []
+        self.m.first_run_identity("박성진", [], lambda q: (asked.append(q), "gildong")[1],
+                                  email="", out=lambda *a: None)
+        self.assertIn("박성진", asked[0], "무엇이 안 되는지가 물음에 없다")
+        self.assertIn("쓸 수 없다", asked[0], "왜 기본값이 없는지가 물음에 없다")
+
     def test_without_a_default_the_question_says_the_rule_instead(self):
         asked = []
         self.m.first_run_identity("박성진", [], lambda q: (asked.append(q), "gildong")[1],

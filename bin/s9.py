@@ -26198,12 +26198,22 @@ def first_run_identity(u, known, ask, email="", out=print, tries=3):
     hint = f" — 이미 있는 이름: {', '.join(known)}" if known else ""
     default, src = user_name_from_src(u, email)
     for _ in range(max(1, tries)):
-        q = (f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. "
-             # 기본값 옆에 **출처**를 적는다 (REQ-20260915-013-62x6 반려): 어디서 온
-             # 값인지 안 보이면 「설치하는 사람마다 남의 계정이 뜨는 것 아닌가」로 읽힌다.
-             + (f"이름(Enter={default} — {src}에서)" if default
-                else f"이름({USER_NAME_RULE})")
-             + hint + ": ")
+        if default:
+            # 기본값 옆에 **출처**를 적는다 (REQ-20260915-013-62x6 반려): 어디서 온
+            # 값인지 안 보이면 「설치하는 사람마다 남의 계정이 뜨는 것 아닌가」로 읽힌다.
+            q = (f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. "
+                 f"이름(Enter={default} — {src}에서)" + hint + ": ")
+        elif not user_name_ok(u):
+            # 기본값이 없는 까닭을 **먼저** 말한다 (같은 반려의 뒷면): 이 컴퓨터에
+            # git 이메일이 없고 계정 이름은 폴더 이름이 될 수 없으면 내밀 값이
+            # 아무것도 없다. 그때 규칙만 적으면 사람은 왜 제 계정 이름이 안 되는지
+            # 모른 채 Enter 만 치게 된다 — 2026-09-15 에 실제로 그랬다.
+            q = (f"◌ 이 컴퓨터의 계정 이름({u})은 폴더 이름이 되는 id 로 쓸 수 없다 "
+                 f"— {USER_NAME_RULE}. 쓸 이름을 적어 달라"
+                 f"(한글 이름은 다음에 따로 묻는다)" + hint + ": ")
+        else:
+            q = (f"◌ 이 컴퓨터의 계정({u})은 section9 에 등록돼 있지 않다. "
+                 f"이름({USER_NAME_RULE})" + hint + ": ")
         name = (ask(q) or "").strip() or default
         if user_name_ok(name):
             return ("attach" if name in known else "add"), name
