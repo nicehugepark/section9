@@ -19122,8 +19122,8 @@ def next_pickup(user=None, all_users=False):
     # 방금 이 컴퓨터로 옮겨진 것(리스는 내 것인데 아무 세션도 안 집음)은
     # 진전이 있어 stalled 에 없다 — 그 한 줄을 여기서 더한다 (REQ-20260909-010).
     seen = {r["id"] for r in rows}
-    rows += [r for r in handoff_rows(local_facts(user))["incoming"]
-             if r["id"] not in seen]
+    incoming = handoff_rows(local_facts(user))["incoming"]
+    rows += [r for r in incoming if r["id"] not in seen]
     if not all_users:
         # 담당자·머신 판정은 한 함수 (REQ-20260902-016) — 종전 user 비교는
         # 남의 머신에서 만든 내 문서까지 권했고, 워처와 다른 답을 냈다.
@@ -19131,7 +19131,13 @@ def next_pickup(user=None, all_users=False):
     if not rows:
         return None
     stall = {r["id"]: r for r in rows}
-    cands = [r for r in load_catalog() if r["id"] in stall]
+    # 담당 컴퓨터 축 — here_requests 와 같은 술어(machine_axis_ok).
+    # stalled 행에는 needs_machine 이 실리지 않으므로 카탈로그 행에서 본다.
+    # 이관(handoff)으로 이 컴퓨터에 온 것은 지나간다: 사람이 화면에서
+    # 「이 컴퓨터에서 이어서 하기」를 누른 자리라 못보다 사람의 손이 앞선다.
+    moved = {r["id"] for r in incoming}
+    cands = [r for r in load_catalog()
+             if r["id"] in stall and (r["id"] in moved or machine_axis_ok(r))]
     if not cands:
         return None
     top = work_order(cands)[0]
@@ -19439,7 +19445,6 @@ def here_requests(platform=None, rows=None, machine=None, user=None):
     here = platform or os_platform()
     mach = machine or current_machine()
     who = user if user is not None else resolve_user()
-    ok = {here} | ({"Linux"} if here == "WSL" else set())
     local = dict(local_facts(who))
     local["machine"] = mach
     out = []
@@ -19463,20 +19468,42 @@ def here_requests(platform=None, rows=None, machine=None, user=None):
         # 판정은 리스 함수가 이미 다 한다; 여기서는 **허용인가**만 본다.
         if not doc_lease_verdict(r, local, want="list")[0]:
             continue
-        mine = doc_owner(r) == str(who or "")
-        want_m = str(r.get("needs_machine") or "").strip()
-        if want_m:
-            if want_m == mach and mine:
-                out.append(r)
+        # 담당 컴퓨터 축은 한 술어에 모여 있다 (REQ-20260915-011-2n7g) —
+        # 이 목록과 `s9 next`(next_pickup)가 같은 답을 내야 두 컴퓨터가 같은
+        # 요청을 잡지 않는다. 무인 스폰 검사는 같은 갈래를 제 거부 사유
+        # (needs_machine·needs_os)와 함께 말해야 해서 제 자리에 남는다.
+        if not machine_axis_ok(r, mach, here):
             continue
-        need = str(r.get("needs_os") or "").strip()
-        if need:
-            if need in ok:
-                out.append(r)
-            continue
-        if mine:
+        # 담당자 검사는 ①·③ 에만 선다. needs_os 갈래(②)는 「이 판이면
+        # 아무나」인 옛 축이라 종전대로 담당자를 보지 않는다.
+        if (not str(r.get("needs_machine") or "").strip()
+                and str(r.get("needs_os") or "").strip()):
+            out.append(r)
+        elif doc_owner(r) == str(who or ""):
             out.append(r)
     return work_order(out) if out else []
+
+
+def machine_axis_ok(row, machine=None, platform=None):
+    """이 요청을 **이 컴퓨터**가 해도 되는가 — 담당 컴퓨터 축 하나 (REQ-20260915-011-2n7g).
+
+    갈래는 here_requests 가 쓰던 그것 그대로다: `needs_machine` 이 적혀 있으면
+    그 컴퓨터에서만, 없고 `needs_os` 만 있으면 그 판에서, 둘 다 없으면 어디서나.
+    담당자(소유)는 보지 않는다 — 그것은 `is_mine` 의 몫이고, 두 축을 한 함수에
+    섞으면 부르는 쪽마다 다르게 쓴다.
+
+    이 술어를 따로 세운 이유는 `next_pickup` 이 이 축 밖에 있었기 때문이다
+    (실측 2026-09-15 22:51): 맥의 `s9 next` 가 DESKTOP-TEHV1KR 에 묶인
+    REQ-20260915-081-62x6 을 「이어받기」로 권했다. 그 자리가 보던 것은 담당자와
+    문서 리스뿐인데, 리스는 CLAIM_GRACE(30분)가 지나면 저절로 풀린다 — 저쪽
+    세션이 30분 조용하기만 하면 남의 컴퓨터의 일이 이 컴퓨터의 후보로 올라왔다.
+    세션 기동 프롬프트는 그 줄을 보고 claim 하라고 지시하므로, 문서를 열어 보지
+    않았다면 두 컴퓨터가 같은 요청을 잡았다(2026-09-11 과 같은 사고).
+    """
+    want_m = str((row or {}).get("needs_machine") or "").strip()
+    if want_m:
+        return want_m == str(machine or current_machine())
+    return needs_os_matches((row or {}).get("needs_os"), platform)
 
 
 def needs_os_matches(need, platform=None):
