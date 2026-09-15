@@ -9,6 +9,11 @@
   "hostname": "eek-p620",
   "root": "/home/sjpark/section9/state/worktrees/w-911-001-t8rc"
  },
+ "5anw": {
+  "first_seen": "2026-09-15T13:23:38+09:00",
+  "hostname": "Seongjinui-Macmini.local",
+  "root": "/Users/seongjinpark/section9/state/worktrees/w-915-012-62x6"
+ },
  "62x6": {
   "first_seen": "2026-09-02T16:42:14+09:00",
   "hostname": "DESKTOP-TEHV1KR",
