@@ -235,9 +235,13 @@ class NoticesFacts(unittest.TestCase):
         self.assertEqual(len(ns), 1, ns)
         n = ns[0]
         self.assertEqual(n["sev"], "halt")
-        self.assertEqual(n["say"], "동기화 멈춤 — 3번 잇따라 실패해 커밋 0건이 아직 못 갔습니다.")
+        # 경계 — push 할 커밋이 없으면(M=0) 「커밋 0건」이 아니라 사실만 말한다
+        self.assertEqual(n["say"], "동기화 멈춤 — 문서가 원격에 가지 못하고 있습니다.")
         self.assertEqual(n["go"], {"kind": "cmd", "text": "s9 sync"})
         self.assertEqual(n["since"], "2026-09-14T08:00:00+09:00")
+        m._sync_pending_count = lambda: 5               # 못 간 커밋이 있으면 표 문장 그대로
+        n = self.by_source("동기화")[0]
+        self.assertEqual(n["say"], "동기화 멈춤 — 3번 잇따라 실패해 커밋 5건이 아직 못 갔습니다.")
         st.success("push")
         st.save()
         self.assertEqual(self.by_source("동기화"), [])

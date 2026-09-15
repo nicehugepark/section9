@@ -580,6 +580,9 @@ NOTICE_TEXT = {
     "oldcode": ("서버 재시작 필요", "{시각}에 시작한 뒤 프로그램이 바뀌었습니다.",
                 "재시작은 진행 중 요청과 실시간 연결을 끊습니다"),
     "sync_fail": ("동기화 멈춤", "{N}번 잇따라 실패해 커밋 {M}건이 아직 못 갔습니다.", ""),
+    # push 할 커밋이 없는 실패(commit 단계) — 「커밋 0건이 못 갔습니다」는 사람에게 틀린
+    # 말이라 리드 판정(2026-09-15 10:3x)대로 사실만 적는다
+    "sync_fail0": ("동기화 멈춤", "문서가 원격에 가지 못하고 있습니다.", ""),
     "autostash": ("치워 둔 작업", "동기화가 잠시 치워 둔 {N}건이 아직 남아 있습니다.", ""),
 }
 
@@ -752,8 +755,10 @@ def _sync_notices():
     except Exception:
         a = None
     if a:
-        out.append(_notice_row("sync:fail", "halt", "동기화", "sync_fail",
-                               {"N": int(a.get("count") or 0), "M": int(a.get("pending") or 0)},
+        pending = int(a.get("pending") or 0)
+        out.append(_notice_row("sync:fail", "halt", "동기화",
+                               "sync_fail" if pending > 0 else "sync_fail0",
+                               {"N": int(a.get("count") or 0), "M": pending},
                                {"kind": "cmd", "text": "s9 sync"},
                                since=a.get("since") or _notice_epoch(),
                                sig=_notice_sig("sync", "fail", a.get("stage"),
