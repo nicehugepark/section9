@@ -41,6 +41,14 @@ def local_helpers():
             and n != "__main__.py"}
 
 
+# 그 운영체제에만 설치되는 표준 라이브러리 — 파일이 없어도 표준이다.
+# `sys.stdlib_module_names`(3.10+)는 플랫폼과 무관한 한 목록이라 이것들을 담지만,
+# 아래 폴백은 디스크를 훑으므로 맥·리눅스에서는 이 이름들이 통째로 빠진다. 그러면
+# Windows 갈래 안에서 import 하는 우리 파일이 서드파티로 잡힌다 (REQ-20260915-002-2n7g,
+# 맥 실측 2026-09-15: bin/s9_firstrun.py 의 `import winreg` 하나로 전체 테스트가 실패).
+PLATFORM_ONLY = {"winreg", "msvcrt", "winsound", "_winapi", "nt", "msilib"}
+
+
 def stdlib_names():
     """표준 라이브러리 최상위 모듈 이름 집합.
 
@@ -48,13 +56,13 @@ def stdlib_names():
     (CommandLineTools) 라 그 속성이 없어 이 스모크 시험이 AttributeError 로 오류나고
     커밋 검사가 모든 code 커밋을 막았다 (REQ-20260906-011-2n7g, 맥 실측 2026-09-06).
     3.9 이하에서는 같은 답을 파일 시스템에서 만든다: 내장 모듈 ∪ stdlib 디렉터리의
-    .py/패키지 ∪ lib-dynload 의 확장 모듈.
+    .py/패키지 ∪ lib-dynload 의 확장 모듈 ∪ 다른 운영체제 전용 모듈(PLATFORM_ONLY).
     """
     names = getattr(sys, "stdlib_module_names", None)
     if names:
         return set(names)
     import sysconfig
-    out = set(sys.builtin_module_names)
+    out = set(sys.builtin_module_names) | PLATFORM_ONLY
     for key in ("stdlib", "platstdlib"):
         d = sysconfig.get_paths().get(key)
         if not d or not os.path.isdir(d):
@@ -102,6 +110,24 @@ class TestStdlibOnly(unittest.TestCase):
                         bad.append(f"{os.path.relpath(path, ROOT)}: import {m}")
         self.assertFalse(bad, "표준 라이브러리 밖 import 발견 — pyproject.toml에 "
                               "의존성 선언 + 정책 결정 없이 금지:\n" + "\n".join(bad))
+
+    def test_fallback_knows_other_platforms_stdlib(self):
+        """3.9 폴백도 다른 운영체제 전용 표준 모듈을 안다 (REQ-20260915-002-2n7g).
+
+        디스크를 훑는 폴백은 맥·리눅스에 파일이 없는 winreg 를 못 본다. 3.10+ 에서도
+        그 갈래를 강제로 태워 본다 — 이 머신이 3.10 으로 올라가도 검사가 남아야 한다."""
+        had = hasattr(sys, "stdlib_module_names")
+        saved = getattr(sys, "stdlib_module_names", None)
+        if had:
+            del sys.stdlib_module_names
+        try:
+            names = stdlib_names()
+        finally:
+            if had:
+                sys.stdlib_module_names = saved
+        for m in ("winreg", "msvcrt", "winsound"):
+            self.assertIn(m, names, m)
+        self.assertIn("os", names)     # 폴백이 통째로 비어 헛통과하지 않는지
 
     def test_sources_found(self):
         # 가드가 빈 목록을 검사하며 헛통과하지 않는지
