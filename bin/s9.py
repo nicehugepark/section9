@@ -25951,6 +25951,85 @@ def browser_open_cmd(url, _which=None, _plat=None):
     return None
 
 
+def open_place_cmd(what, path, _which=None, _plat=None):
+    """이 저장소의 자리를 여는 명령 (REQ-20260915-015-62x6) — argv 만 돌려준다.
+
+    주인 지적 2026-09-15 13:36: 한 컴퓨터에서 여러 section9 이 동시에 돌 수 있으니
+    「이 대시보드가 어느 폴더의 것인가」가 보여야 하고, 그 자리를 **거기서 열 수**
+    있어야 한다. browser_open_cmd 와 같은 규율이다 — 고르는 일과 부르는 일을 가른다
+    (시험이 프로세스를 띄우지 않고 선택만 본다).
+
+    what: "folder"(파일 탐색기) · "terminal"(그 폴더에서 시작하는 터미널).
+    아무 후보도 없으면 None — 부르는 쪽이 「붙여 넣을 한 줄」로 물러난다."""
+    import shutil
+    which = _which or shutil.which
+    plat = _plat or os_platform()
+    if what == "folder":
+        if plat == "macOS":
+            cands = [["open", path]]
+        elif plat == "Windows":
+            cands = [["explorer", path]]
+        elif plat == "WSL":
+            # 리눅스 도구로 열면 리눅스 안에서 열려 사람 눈에 안 보인다 —
+            # 윈도우 탐색기가 볼 수 있는 경로로 바꿔 윈도우 쪽에서 연다.
+            win = path
+            try:
+                r = subprocess.run(["wslpath", "-w", path], capture_output=True,
+                                   text=True, timeout=5)
+                if r.returncode == 0 and r.stdout.strip():
+                    win = r.stdout.strip()
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
+            cands = [["explorer.exe", win]]
+        else:
+            cands = [["xdg-open", path], ["gio", "open", path]]
+    elif what == "terminal":
+        import shlex as _shlex
+        q = _shlex.quote(path)
+        inner = f"cd {q} && exec ${{SHELL:-bash}} -i"
+        if plat == "macOS":
+            say = inner.replace("\\", "\\\\").replace('"', '\\"')
+            cands = [["osascript",
+                      "-e", f'tell application "Terminal" to do script "{say}"',
+                      "-e", 'tell application "Terminal" to activate']]
+        elif plat == "Windows":
+            cands = [["cmd", "/c", "start", "", "cmd", "/k", f"cd /d {path}"]]
+        elif plat == "WSL":
+            cands = [["cmd.exe", "/c", "start", "", "wsl.exe", "-e", "bash", "-lc", inner]]
+        else:
+            cands = [[t, "-e", "bash", "-lc", inner]
+                     for t in ("x-terminal-emulator", "gnome-terminal", "konsole", "xterm")]
+    else:
+        return None
+    for c in cands:
+        if which(c[0]):
+            return c
+    return None
+
+
+def open_place(what, root=None):
+    """폴더·터미널을 그 자리에서 연다 — {ok, mode, cmd, reason}.
+
+    창을 못 여는 환경(도구가 없거나 머리 없는 서버)에서는 막다른 길을 만들지 않는다:
+    `mode="manual"` 과 **사람이 붙여 넣을 한 줄**을 준다 (세션 깨우기·계정 추가와 같은 꼴)."""
+    root = root or ROOT
+    manual = (f"cd {root}" if what == "terminal"
+              else (f"explorer {root}" if os_platform() == "Windows" else f"open {root}"))
+    if what not in ("folder", "terminal"):
+        return {"ok": False, "reason": f"모르는 자리: {what}"}
+    cmd = open_place_cmd(what, root)
+    if not cmd:
+        return {"ok": False, "mode": "manual", "cmd": manual,
+                "reason": "이 환경에서는 창을 열 수 없다 — 터미널에서 직접 실행"}
+    try:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "mode": "manual", "cmd": manual, "reason": str(e)}
+    return {"ok": True, "mode": "spawned", "cmd": " ".join(cmd),
+            "reason": ("파일 탐색기를 열었다" if what == "folder" else "터미널을 열었다")}
+
+
 def browser_open(url, out=print):
     """대시보드를 연다 — 최선 노력. 껐거나 열 도구가 없으면 조용히 False.
 
@@ -36125,6 +36204,13 @@ def cmd_serve(args):
                     # 계정 추가는 로그인 화면이 필요하다 — 창을 여기서 연다
                     # (REQ-20260827-079). 로그인이 끝나면 목록에 저절로 뜬다.
                     self._json(account_add_terminal())
+                elif parsed.path == "/api/open":
+                    # 이 대시보드가 쓰는 폴더를 그 자리에서 연다
+                    # (REQ-20260915-015-62x6). **경로는 클라이언트에서 받지
+                    # 않는다** — 언제나 이 서버의 ROOT 다. 화면이 경로를 보내면
+                    # 받으면 이 손잡이로 아무 폴더나 열 수 있게 된다.
+                    res = open_place(str(req.get("what") or "").strip())
+                    self._json(res, 200 if res.get("ok") else 409)
                 elif parsed.path == "/api/session/restart":
                     # 모델·effort·계정 변경 = 같은 대화 재개 재기동 (REQ-037)
                     res = restart_session(

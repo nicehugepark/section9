@@ -208,10 +208,46 @@ function renderSettingsSection(meAdmin){
     const byType = {}, byStatus = {};
     c.forEach(r => { byType[r.type]=(byType[r.type]||0)+1;
       if(r.type==="request") byStatus[r.status]=(byStatus[r.status]||0)+1; });
+    /* 이 대시보드가 **어느 폴더의 것인가** (REQ-20260915-015-62x6, 주인 지적
+       2026-09-15: 「한 머신에서도 여러개의 section9이 실행될 수 있다는 사실을
+       알게됐네」). 종전에는 `~/section9` 이라는 글자가 박혀 있어, 폴더가 여럿일
+       때 이 칸이 답해야 할 것을 답하지 못했다. 값은 whoami.root(절대 경로)다 —
+       축약하지 않는다: `~` 로는 두 폴더를 가를 수 없다.
+       파일을 여는 앱 이름은 그 컴퓨터의 것으로 부른다(tech-writer 판정
+       2026-09-15): Windows·WSL 「파일 탐색기」 · macOS 「Finder」 · 그 밖
+       「파일 관리자」(배포판마다 실물 이름이 갈려 고유 이름을 댈 수 없다). */
+    const wi = window.__whoami || {};
+    const root = wi.root || "";
+    const fileApp = wi.os === "macOS" ? "Finder"
+      : (wi.os === "Windows" || wi.os === "WSL") ? "파일 탐색기" : "파일 관리자";
+    const stopCmd = s9cmd("serve --stop");
     v.innerHTML = `<h1 style="margin:0 0 10px">시스템</h1>
       <table class="metatbl">
         <tr><td>버전</td><td>${esc((window.__whoami||{}).version || "—")}</td></tr>
-        <tr><td>저장소</td><td class="path">~/section9 (이 컴퓨터의 md 파일 + git 동기화)</td></tr>
+        <tr><td>저장소</td><td>
+          ${root ? `<div class="svpath">${esc(root)}</div>`
+                 : `<div class="svpath none">경로를 아직 받지 못했습니다 — 서버를 다시 시작해 보세요.</div>`}
+          <div class="svnote">이 화면이 읽고 쓰는 폴더입니다. 폴더마다 따로 띄울 수 있어,
+            열려 있는 다른 창은 다른 폴더일 수 있습니다.</div>
+          <div class="acts dacts svacts">
+            <button class="deed" data-open="folder"${root ? "" : ' aria-disabled="true"'}
+              title="이 폴더를 ${esc(fileApp)}에서 엽니다">폴더 열기</button>
+            <button class="deed" data-open="terminal"${root ? "" : ' aria-disabled="true"'}
+              title="이 폴더에서 터미널을 엽니다 — s9 명령을 바로 칠 수 있습니다">터미널 열기</button>
+          </div>
+          <p class="svtell" id="sv-tell" role="status" hidden></p>
+        </td></tr>
+        <tr><td>이 서버</td><td>
+          <div class="svpath">localhost${location.port ? ":" + esc(location.port) : ""}</div>
+          <div class="svnote">브라우저를 닫아도 계속 돌아갑니다. 종료하려면 위 폴더에서 아래 한 줄을
+            실행하세요 — 문서·설정은 그대로 남고, 다시 띄우면 이 자리로 돌아옵니다.</div>
+          <div class="acts dacts svacts">
+            <button class="deed svcmd" data-cp="${esc(stopCmd)}"
+              title="누르면 복사됩니다 — 터미널에 붙여넣어 실행하세요"><span class="mk mk-copy"
+              aria-hidden="true"></span>${esc(stopCmd)}</button>
+            <span class="svcp" role="status"></span>
+          </div>
+        </td></tr>
         <tr><td>문서 수</td><td>${c.length} — request ${byType.request||0}, knowledge ${byType.knowledge||0}, session ${byType.session||0}</td></tr>
         <tr><td>요청 상태</td><td>${Object.entries(byStatus).map(([k,n])=>`${k} ${n}`).join(" · ")||"(없음)"}</td></tr>
         <tr><td>등록 사용자</td><td>${(window.__users||[]).map(u=>`@${esc(u.name)}[${esc(u.role)}]`).join(" ")||"(없음)"}</td></tr>
@@ -227,7 +263,57 @@ function renderSettingsSection(meAdmin){
         읽기 = 자유, 쓰기 = 상태 옮기기만(CLI와 동일 함수 경유, History에 [via dashboard]).<br>
         탭/문서/설정 이동은 URL 해시로 기록되어 브라우저 뒤로가기·딥링크 지원.
       </div>`;
+    v.querySelectorAll("[data-cp]").forEach(b =>
+      b.addEventListener("click", () => svCopy(b)));
+    v.querySelectorAll("[data-open]").forEach(b =>
+      b.addEventListener("click", () => svOpen(b)));
   }
+}
+
+/* 명령은 대신 실행하지 않는다 — 복사까지가 화면의 몫이다(notice.js 의 명령 복사와
+   같은 길). 종료를 화면이 눌러 버리면 방금 누른 그 화면이 먼저 죽는다. */
+let svCopyT = null;
+async function svCopy(btn){
+  const out = btn.parentNode.querySelector(".svcp");
+  const ok = await prjCopy(btn.dataset.cp || "");
+  if (!out) return;
+  out.textContent = ok ? "복사됨" : "복사 실패";
+  out.style.color = ok ? "" : "var(--c-blocked)";
+  clearTimeout(svCopyT);
+  svCopyT = setTimeout(() => { out.textContent = ""; out.style.color = ""; }, 2000);
+}
+
+/* 폴더·터미널을 그 자리에서 연다 (REQ-20260915-015-62x6). **경로는 보내지 않는다** —
+   서버가 제 ROOT 를 연다(보내면 이 손잡이로 아무 폴더나 열 수 있게 된다). 못 여는
+   환경(원격으로 열어 둔 화면·창 없는 서버)에서는 고장이 아니라 결과를 말하고
+   붙여 넣을 한 줄을 준다. */
+async function svOpen(btn){
+  if (btn.getAttribute("aria-disabled") === "true") return;
+  const tell = $("#sv-tell"), label = btn.textContent;
+  btn.setAttribute("aria-disabled", "true");
+  // 보통은 곧바로 열리므로 처음부터 「여는 중」을 적지 않는다 — 400ms 를 넘겨
+  // 느낀 뒤에만 말한다(정적 문구는 멈춘 것처럼 읽힌다).
+  const slow = setTimeout(() => { btn.textContent = "여는 중…"; }, 400);
+  let r = null;
+  try{
+    const res = await fetch("/api/open", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({what: btn.dataset.open})});
+    r = await res.json();
+  }catch(e){}
+  clearTimeout(slow);
+  btn.textContent = label; btn.removeAttribute("aria-disabled");
+  if (!tell) return;
+  if (r && r.ok){ tell.hidden = true; return; }
+  const cmd = (r && r.cmd) || "";
+  tell.hidden = false;
+  tell.innerHTML = `<span>${btn.dataset.open === "folder"
+      ? "이 컴퓨터에서는 폴더 창을 열 수 없습니다." : "이 컴퓨터에서는 터미널 창을 열 수 없습니다."}`
+    + `${cmd ? " 아래 한 줄을 터미널에 붙여넣으세요." : ""}</span>`
+    + (cmd ? `<button class="deed svcmd" data-cp="${esc(cmd)}"><span class="mk mk-copy"`
+           + ` aria-hidden="true"></span>${esc(cmd)}</button><span class="svcp" role="status"></span>` : "");
+  tell.querySelectorAll("[data-cp]").forEach(b =>
+    b.addEventListener("click", () => svCopy(b)));
 }
 
 /* ------- 머신·계정 이력 (REQ-20260827-066) -------

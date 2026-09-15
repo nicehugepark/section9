@@ -163,6 +163,35 @@ tr.rowoff td{opacity:.45}
 .cfg-h{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
   margin:26px 0 4px;font-weight:600;font-family:var(--mono);
   border-top:1px solid var(--border);padding-top:14px}
+/* ── 시스템 판: 이 대시보드가 쓰는 저장소 (REQ-20260915-015-62x6) ───────────
+   한 컴퓨터에서 section9 이 여럿 돌 수 있으니 이 판은 **어느 폴더의 것인가**를
+   먼저 말한다. 경로는 기계 문자열이라 낱말 지키기(keep-all)의 예외이고, 긴
+   Windows 경로가 표를 밀지 않게 `anywhere` 로 끊는다 — `break-word` 는 최소 폭을
+   줄이지 못해 표가 통째로 넓어진다. 읽는 것(경로)과 누르는 것(손잡이)은 한 줄에
+   섞지 않고 제 줄을 갖는다. */
+.svpath{font-family:var(--mono);font-size:12px;color:var(--text);
+  overflow-wrap:anywhere;line-height:1.5}
+.svpath.none{font-family:var(--sans);color:var(--muted)}
+.svnote{font-size:11px;color:var(--muted);line-height:1.55;
+  word-break:keep-all;margin-top:4px}
+/* 손잡이 띠는 문서 머리의 것(.acts.dacts)을 그대로 입는다 — 새 부품 없음. */
+.svacts{margin-top:8px}
+/* 기다리는 동안: 색면·경고 없이 잉크만 한 급 낮춘다. */
+.svacts .deed[aria-disabled="true"]{cursor:default;color:var(--muted);
+  border-color:var(--hairline);background:var(--panel)}
+.svacts .deed[aria-disabled="true"]:hover{background:var(--panel);
+  color:var(--muted);border-color:var(--hairline)}
+/* 붙여넣을 한 줄 — 얼굴은 낱말 버튼 그대로이고 글꼴만 mono 다. 알림 줄의
+   `.n-cmd` 를 그대로 쓰지 않는 까닭: 그 부품의 색은 알림 줄 안에서만 정의된
+   `--n-ink` 를 보므로 판 위에서는 hover 반전이 풀린다. */
+.svcmd{font-family:var(--mono);font-size:11px;letter-spacing:0;
+  display:inline-flex;align-items:center;gap:5px}
+.svcmd .mk{width:11px;height:11px;flex:none}
+.svcp{font-size:11px;color:var(--muted)}
+/* 못 연 자리 — 고장이 아니라 정직한 결과다. 면도 테두리도 없고 줄만 있다. */
+.svtell{margin:8px 0 0;font-size:11.5px;line-height:1.6;color:var(--muted);
+  word-break:keep-all;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+
 /* ------- 시간대 고르기 (REQ-20260828-029) -------
    한 줄에 적는 것은 **이름과 지금 몇 시인가** 둘뿐이다. 오프셋은 적지 않는다 —
    손목시계에 +09:00 은 안 적혀 있고, 시각이 그것보다 정확하게 같은 말을 한다.
