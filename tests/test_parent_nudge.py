@@ -116,15 +116,37 @@ class ParentNudge(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
 
     # S3 -------------------------------------------------------------
-    def test_s3_nudge_only_for_human_without_parent_or_root(self):
+    def test_s3_nudge_for_any_bare_request_regardless_of_origin(self):
+        """**입구로 가르지 않는다** (REQ-20260916-002, 실제 사고 2026-09-16).
+
+        전에는 `origin == "human"` 만 짚었다. 그 전제는 「에이전트가 세운 요청은
+        규약이 --parent 를 요구한다」였는데 지켜지지 않아서, 백그라운드 작업자가
+        세운 parent 없는 요청 하나가 전체 테스트를 실패시키면서 화면의 어느
+        목록에도 안 떴다. 결함의 뜻은 하나다 — parent 도 root 도 없다.
+        좁히는 것은 입구가 아니라 **시행일**의 몫이다.
+        """
         base = {"id": "REQ-20990101-001", "type": "request", "status": "in-progress",
-                "title": "t", "summary": "s", "tags": []}
-        self.assertIn("parent 가 없습니다", self.m.parent_nudge({**base, "origin": "human"}))
-        self.assertEqual(self.m.parent_nudge({**base, "origin": "agent"}), "")
-        self.assertEqual(self.m.parent_nudge({**base}), "", "origin 없는 옛 문서는 짚지 않는다")
+                "title": "t", "summary": "s", "tags": [], "created": "2099-01-01"}
+        for origin in ("human", "agent", "derived"):
+            with self.subTest(origin=origin):
+                self.assertIn("parent 가 없습니다",
+                              self.m.parent_nudge({**base, "origin": origin}))
+        self.assertIn("parent 가 없습니다", self.m.parent_nudge({**base}),
+                      "origin 이 없어도 parent 가 없으면 결함이다")
         self.assertEqual(self.m.parent_nudge({**base, "origin": "human", "parent": self.A}), "")
         self.assertEqual(self.m.parent_nudge({**base, "origin": "human", "root": "true"}), "")
         self.assertEqual(self.m.parent_nudge({**base, "origin": "human", "status": "cancelled"}), "")
+
+    # S3' 시행일 — 매 턴 짚는 자리는 그 앞의 것을 들이밀지 않는다
+    def test_s3b_the_nudge_is_silent_for_documents_older_than_the_enforce_date(self):
+        base = {"id": "REQ-20260101-001", "type": "request", "status": "in-progress",
+                "title": "t", "summary": "s", "tags": [], "origin": "human"}
+        self.assertEqual(self.m.parent_nudge({**base, "created": "2026-01-01"}), "",
+                         "시행일 앞의 것은 backfill 몫이라 매 턴 짚지 않는다")
+        self.assertIn("parent 가 없습니다",
+                      self.m.parent_nudge({**base, "created": self.m.PARENT_ENFORCE_FROM}))
+        self.assertIn("parent 가 없습니다", self.m.parent_nudge({**base, "created": ""}),
+                      "날짜를 못 읽으면 짚는 쪽이다 — 조용한 통과를 만들지 않는다")
 
     # S4 -------------------------------------------------------------
     def test_s4_candidates_ranked_by_word_overlap(self):
@@ -154,7 +176,12 @@ class ParentNudge(unittest.TestCase):
         self.assertNotIn("parent 가 없습니다", res.stdout + res.stderr)
 
     # S6 -------------------------------------------------------------
-    def test_s6_linkcheck_parents_lists_only_bare_human_requests(self):
+    def test_s6_linkcheck_parents_lists_every_bare_request(self):
+        """입구와 무관하게 parent·root 없는 요청을 전부 세운다 (REQ-20260916-002).
+
+        `self.A` 는 `--origin` 없이 세운 요청이라 전에는 목록에서 빠졌다 —
+        짚는 목록과 막는 시험이 서로 다른 집합을 보던 그 자리다.
+        """
         rooted = self.mk("뿌리 목록 시험", "s", "--root", "--origin", "human")
         child = self.mk("자식 목록 시험", "s", "--parent", self.A, "--origin", "human")
         gone = self.mk("취소 목록 시험", "s", "--origin", "human")
@@ -162,7 +189,8 @@ class ParentNudge(unittest.TestCase):
         out = self.cli("linkcheck", "--parents").stdout
         ids = [ln.split()[1] for ln in out.splitlines() if ln.startswith("- ")]
         self.assertIn(self.X, ids)
-        for absent in (rooted, child, gone, self.A):
+        self.assertIn(self.A, ids, "입구로 가르지 않는다 — parent 가 없으면 선다")
+        for absent in (rooted, child, gone):
             self.assertNotIn(absent, ids, out)
         self.assertEqual(ids, sorted(ids, key=lambda i: self.meta(i)["created"]), "생성일 순이 아니다")
         far = self.cli("linkcheck", "--parents", "--since", "2999-01-01", "--quiet").stdout

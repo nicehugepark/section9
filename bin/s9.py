@@ -660,6 +660,15 @@ NOTICE_TEXT = {
     # 그 둘을 또 적으면 한 줄에 같은 말이 세 번 선다 (REQ-20260915-061-62x6,
     # 주인 물음 2026-09-15: 「동기화 치워 둔 작업 — 동기화가 잠시 치워 둔 1건이…」).
     "autostash": ("치워 둔 작업", "{N}건을 아직 되돌리지 못했습니다.", ""),
+    # 바깥 주소에 열린 서버 (REQ-20260916-003-62x6) — 이 서버에는 인증이 없다.
+    # 「쓰기」는 화면에 서는 말이 아니라 사람이 하는 일로 적는다(고치기).
+    "open_write": ("바깥에서도 고칠 수 있음",
+                   "{주소} 에 열려 있고 고치기까지 열어 두었습니다 — "
+                   "이 주소에 닿는 누구나 문서를 고칩니다.",
+                   "닫으려면 서버를 다시 시작합니다"),
+    "outside_bind": ("바깥에서 열리는 주소",
+                     "{주소} 에 열려 있어 고치기는 막혀 있습니다.",
+                     "이 화면에서 고치려면 127.0.0.1 로 다시 시작합니다"),
 }
 
 # 화면 안 자리 — target 은 「settings:<왼쪽 목록 id>[:<절>]」. 왼쪽 목록 id 는
@@ -807,6 +816,29 @@ def _oldcode_notices(now):
                         since=since, sig=_notice_sig("oldcode", SERVE_STARTED))]
 
 
+def _bind_notices():
+    """⑤ 바깥 주소에 열린 서버 (REQ-20260916-003-62x6).
+
+    `--host 0.0.0.0` 은 「루프백 바인드 = 브라우저 사용자 = 서버 기동 계정」
+    전제를 깬다. 그 자리에서 **조용히 도는 것이 가장 나쁜 경우**라, 고치기가
+    막혔든 열렸든 화면이 그 사실을 말한다. 서버가 아닌 자리(기동 지문 없음)
+    에서는 말하지 않는다 — CLI 는 bind 한 것이 없다."""
+    if not SERVE_STARTED or bind_is_loopback():
+        return []
+    addr = SERVE_HOST or "?"
+    if SERVE_OPEN_WRITE:
+        return [_notice_row("server:openwrite", "halt", "서버", "open_write",
+                            {"주소": addr},
+                            {"kind": "cmd", "text": s9_cmd("serve --restart")},
+                            since=_notice_epoch(),
+                            sig=_notice_sig("openwrite", addr))]
+    return [_notice_row("server:outsidebind", "note", "서버", "outside_bind",
+                        {"주소": addr},
+                        {"kind": "cmd", "text": s9_cmd("serve --restart")},
+                        since=_notice_epoch(),
+                        sig=_notice_sig("outsidebind", addr))]
+
+
 def _stash_already_in_tree(ref):
     """그 보관함의 내용이 이미 작업 트리에 서 있는가 (REQ-20260915-060-62x6).
 
@@ -906,6 +938,7 @@ def notices_info(now=None):
                                 sig=_notice_sig("identity", "unreg", raw)))
     rows += _jira_notices(w.get("user", "") if w.get("registered") else "", now)
     rows += _oldcode_notices(now)
+    rows += _bind_notices()
     rows += _sync_notices()
     return {"notices": notices_sorted(rows)}
 
@@ -18673,8 +18706,11 @@ def parent_nudge(meta, session=""):
     if not _parentless_row({**meta, "root": doc_root(meta), "origin": doc_origin(meta)}):
         return ""
     # 매 턴 짚는 자리는 시행일 뒤만 본다 — 옛 문서 395건을 턴마다 들이밀면
-    # 짚는 문장 자체가 소음이 되고, 그러면 아무도 안 읽는다.
-    if (meta.get("created") or "")[:10] < PARENT_ENFORCE_FROM:
+    # 짚는 문장 자체가 소음이 되고, 그러면 아무도 안 읽는다. 다만 **날짜를 못
+    # 읽으면 짚는 쪽**이다: 빈 값을 옛 문서로 치면 모양이 깨진 문서가 조용히
+    # 빠져나간다 — 조용한 통과가 이 라운드에서 고친 결함의 모양 그것이다.
+    created = (meta.get("created") or "")[:10]
+    if created and created < PARENT_ENFORCE_FROM:
         return ""
     rid = meta.get("id", "")
     msg = (f"⚠ {rid} 에 parent 가 없습니다 — 파생이면 `s9 link {rid} --parent <REQ>`, "
@@ -20982,6 +21018,52 @@ def host_header_ok(host, bind=None):
     elif h.count(":") == 1:              # 127.0.0.1:9909 · localhost:9909
         h = h.rsplit(":", 1)[0]
     return h in ("localhost", "::1") or bool(re.fullmatch(r"127(\.\d{1,3}){3}", h))
+
+
+# 운영자가 이 실행에서 쓰기를 밖으로 **명시적으로** 열었나 (REQ-20260916-003-62x6).
+# 기본은 False — 루프백이 아닌 주소에 bind 하면 쓰기 라우트가 통째로 막힌다.
+SERVE_OPEN_WRITE = False
+
+
+def origin_ok(origin, site, host):
+    """이 쓰기가 **우리 화면에서** 왔나 — CSRF 차단 (REQ-20260916-003-62x6).
+
+    공격: 사람이 연 아무 웹페이지가 `fetch('http://127.0.0.1:9909/api/chat',
+    {method:'POST', mode:'no-cors', body:'…'})` 한 줄을 실행한다. Host 는
+    `127.0.0.1:9909` 그대로라 `host_header_ok` 는 통과하고(그것은 DNS
+    리바인딩만 본다), 신원은 `whoami_info` 가 OS 계정에서 파생하니 그 줄은
+    서버 기동 계정의 쓰기가 된다. 그렇게 들어간 채팅 한 줄은 훅이 「사용자
+    메시지로 간주해 처리하라」로 리드에 주입한다.
+
+    구분점은 **브라우저가 스스로 붙이는 두 헤더**다. 브라우저는 cross-site
+    POST 에 `Origin` 을 반드시 싣고(no-cors 도, form 도), 최신 브라우저는
+    `Sec-Fetch-Site` 까지 싣는다 — 페이지의 스크립트는 둘 다 지울 수 없다.
+
+    ⚠ 헤더가 **둘 다 없으면 통과**다. 그것은 브라우저가 아니라 같은
+    컴퓨터의 프로세스(CLI·시험·curl)이고, 그 프로세스는 이미 이 저장소
+    파일을 직접 고칠 수 있다 — 거기에 막을 것이 없다.
+    """
+    site = str(site or "").strip().lower()
+    if site and site not in ("same-origin", "none"):
+        return False                     # cross-site · same-site
+    origin = str(origin or "").strip()
+    if not origin:
+        return True                      # 브라우저가 아니다
+    if origin.lower() == "null":
+        return False                     # sandbox iframe · file:// — 출처가 없다
+    import urllib.parse as _up
+    try:
+        u = _up.urlsplit(origin)
+    except ValueError:
+        return False
+    if u.scheme not in ("http", "https") or not u.netloc:
+        return False
+    # 우리 자신의 origin 인가. 서버는 제 바깥 이름을 모르니 **그 요청이 말한
+    # Host** 와 맞춘다 — 같은 화면에서 온 요청은 둘이 글자까지 같다.
+    # scheme 은 보지 않는다: 서버는 앞에 TLS 종단이 섰는지 모르고, 다른
+    # scheme 의 같은 host:port 를 가지려면 우리가 듣는 그 포트를 남이 쥐어야
+    # 한다 — 그럴 수 없다.
+    return u.netloc.lower() == str(host or "").strip().lower()
 
 # 서버가 기동 시점 코드를 **메모리에 들고 도는** 파일들 (REQ-20260828-025).
 # 이름은 지문 파일(state/serve-code.json)에 그대로 쓰이므로 바꾸지 마라 —
@@ -26708,7 +26790,7 @@ def _launched_here(root, port):
     return int(d.get("port") or 0) == int(port) and pid_alive(d.get("pid"))
 
 
-def guard_argv(port, host):
+def guard_argv(port, host, open_write=False):
     """감시자가 자기를 다시 실행할 때의 인자.
 
     `--supervise` 를 함께 남긴다: 이 프로세스가 `ps` 에서 무엇으로 읽히는지가
@@ -26719,10 +26801,15 @@ def guard_argv(port, host):
 
     함수로 둔 것은 시험이 소스 글자를 대조하지 않게 하기 위해서다
     (DOC-20260907-002) — 불러서 인자를 확인하면 된다.
+
+    `--open-write` 는 **운영자가 연 것을 그대로 물려주는** 자리다
+    (REQ-20260916-003-62x6): 이 인자가 빠지면 감시자가 서버를 되살릴 때마다
+    경계가 말없이 바뀐다. 기본은 닫힘이므로 빠뜨려도 위험이 열리지는 않는다.
     """
     return [sys.executable, os.path.abspath(__file__), "serve", "--supervise",
             "--guard-run", "--port-auto",
-            "--port", str(int(port)), "--host", str(host)]
+            "--port", str(int(port)), "--host", str(host)] + (
+        ["--open-write"] if open_write else [])
 
 
 def _port_ghost_is_ours(port, root=None):
@@ -32095,9 +32182,12 @@ def _guard_record(port, event, human, detail=None, root=None):
     return rec
 
 
-def _guard_spawn_child(port, host, root=None):
+def _guard_spawn_child(port, host, root=None, open_write=False):
     """감시 대상 자식 = 평범한 `s9 serve`. 출력은 serve.log 로 그대로 흘린다
-    (파이프를 쓰지 않는다 — 감시자가 죽었을 때 자식이 파이프에 갇히지 않도록)."""
+    (파이프를 쓰지 않는다 — 감시자가 죽었을 때 자식이 파이프에 갇히지 않도록).
+
+    `open_write` 는 감시자가 물려받은 운영자의 결정이다 (REQ-20260916-003-62x6)
+    — 되살린 서버의 경계가 죽기 전과 같아야 한다."""
     import subprocess
     p = _guard_paths(port, root)
     os.makedirs(p["state"], exist_ok=True)
@@ -32112,7 +32202,7 @@ def _guard_spawn_child(port, host, root=None):
     try:
         return subprocess.Popen(
             [sys.executable, os.path.abspath(__file__), "serve", "--host", host,
-             "--port", str(port)],
+             "--port", str(port)] + (["--open-write"] if open_write else []),
             stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, env=env)
     finally:
         lf.close()
@@ -32181,7 +32271,7 @@ def _guard_sick_why(res):
 
 def serve_guard_loop(port, host="127.0.0.1", root=None, spawn=None,
                      sleep=None, clock=None, max_rounds=None, _ready=None,
-                     _pick=None):
+                     _pick=None, open_write=False):
     """감시 루프. 반환값은 종료 사유 문자열.
 
     spawn/sleep/clock 은 테스트 주입점이다 — 실제 시간을 쓰지 않고 백오프·
@@ -32194,7 +32284,7 @@ def serve_guard_loop(port, host="127.0.0.1", root=None, spawn=None,
     ready = _ready or (lambda h, p: dashboard_ready(h, p))
     pick = _pick or (lambda: next_free_port())
     strikes, last_probe = 0, None
-    spawn = spawn or (lambda: _guard_spawn_child(port, host, root))
+    spawn = spawn or (lambda: _guard_spawn_child(port, host, root, open_write))
     p = _guard_paths(port, root)
     fails = 0
     rounds = 0
@@ -32501,7 +32591,7 @@ def serve_sweep_others(keep_port, root=None, out=None, wait=None):
     return stopped
 
 
-def _guard_main(port, host="127.0.0.1", root=None):
+def _guard_main(port, host="127.0.0.1", root=None, open_write=False):
     """분리된 감시자 프로세스의 본체."""
     lock = _guard_lock(port, root)
     if lock is None:
@@ -32516,7 +32606,7 @@ def _guard_main(port, host="127.0.0.1", root=None):
     _guard_record(port, "start", f"{port} 감시 시작 (pid {os.getpid()})",
                   {"pid": os.getpid(), "host": host}, root)
     try:
-        why = serve_guard_loop(port, host, root)
+        why = serve_guard_loop(port, host, root, open_write=open_write)
     except BaseException as e:                    # 감시자의 죽음도 기록으로 남긴다
         _guard_record(port, "guard-error", f"{port} 감시자 자신이 중단됐다: {e!r}",
                       root=root)
@@ -32530,7 +32620,7 @@ def _guard_main(port, host="127.0.0.1", root=None):
     return 0
 
 
-def _guard_detach(port, host="127.0.0.1", root=None):
+def _guard_detach(port, host="127.0.0.1", root=None, open_write=False):
     """감시자를 사용자 세션에서 떼어 기동한다. 이미 감시 중이면 아무것도 하지
     않는다(멱등). 반환: 띄웠으면 True.
 
@@ -32558,7 +32648,7 @@ def _guard_detach(port, host="127.0.0.1", root=None):
     # `--supervise` 를 함께 남긴다: 이 프로세스가 `ps` 에서 무엇으로 읽히는지가
     # 곧 사람과 코드가 감시자를 찾는 이름이다(진단·시험이 그 낱말로 센다).
     # `--guard-run` 은 "여기서는 다시 떼지 말고 제자리에서 돌라"는 뜻일 뿐이다.
-    argv = guard_argv(port, host)
+    argv = guard_argv(port, host, open_write)
     ok = spawn_detached(argv, out_path=p["log"], cwd=root or ROOT)
     if not ok:
         _guard_record(port, "guard-error", f"{port} 감시자 기동 실패", root=root)
@@ -36074,13 +36164,15 @@ def cmd_serve(args):
     if getattr(args, "guard_run", False):
         # 떨어져 나온 감시자가 들어오는 진입점 — `_guard_detach` 가 이 인자로
         # 부른다. 여기서는 **다시 떼지 않는다**: 떼면 자기를 무한히 띄운다.
-        return _guard_main(args.port, args.host)
+        return _guard_main(args.port, args.host,
+                           open_write=bool(getattr(args, "open_write", False)))
     if getattr(args, "supervise", False):
         held = _guard_alive(args.port)
         if held is not None:
             print(f"이미 감시 중: 포트 {args.port} (감시자 pid {held})")
             return
-        if _guard_detach(args.port, args.host):
+        if _guard_detach(args.port, args.host,
+                         open_write=bool(getattr(args, "open_write", False))):
             print(f"대시보드 감시 시작: 포트 {args.port} "
                   f"(사망 사유·재기동 기록 state/serve-guard.log)")
         else:
@@ -37000,6 +37092,41 @@ def cmd_serve(args):
                        "http://127.0.0.1:<port>/ 로 접속하라.".encode())
             return True
 
+        def _write_guard(self):
+            """쓰기(POST)의 두 겹 (REQ-20260916-003-62x6). 막았으면 True.
+
+            이 서버에는 인증이 한 겹도 없다 — 신원은 `whoami_info` 가 OS
+            계정에서 파생하고, 그 전제는 「루프백 바인드 = 브라우저 사용자 =
+            서버 기동 계정」이다. 그 전제가 깨지는 길이 둘이라 검사도 둘이다.
+
+            ① **바깥 주소에 bind 했다** — `--host 0.0.0.0` 은 그 주소에 닿는
+               누구나 브라우저 사용자가 되게 한다. 읽기는 그대로 두고 쓰기만
+               막는다; 운영자가 `--open-write` 로 명시해 열었으면 연 것이고,
+               그때는 알림 줄이 열렸다고 말한다(`_bind_notices`).
+            ② **남의 페이지가 우리 주소로 쏜다** — `origin_ok` 의 주석 참조.
+
+            둘 다 403 이다: 숨길 것이 없고(공격자는 이미 붙어 있다), 사람이
+            이 응답을 보면 원인을 바로 알아야 한다.
+            """
+            if not bind_is_loopback() and not SERVE_OPEN_WRITE:
+                self._json({"ok": False, "error":
+                            f"이 서버는 {SERVE_HOST or '?'} 에 bind 해 읽기만 "
+                            f"합니다 — 고치기는 "
+                            f"{s9_cmd('serve --restart --open-write')} 로 "
+                            f"엽니다"}, 403)
+                return True
+            if not origin_ok(self.headers.get("Origin"),
+                             self.headers.get("Sec-Fetch-Site"),
+                             self.headers.get("Host")):
+                self._json({"ok": False, "error":
+                            "다른 페이지에서 온 요청은 받지 않습니다 "
+                            f"(Origin={self.headers.get('Origin') or '없음'}, "
+                            f"Sec-Fetch-Site="
+                            f"{self.headers.get('Sec-Fetch-Site') or '없음'})"},
+                           403)
+                return True
+            return False
+
         def do_GET(self):
             if self._host_guard():
                 return
@@ -37105,6 +37232,12 @@ def cmd_serve(args):
                             # section9 이 답한다. 그것을 내 것으로 읽으면 남의
                             # 화면을 내 것으로 안다.
                             "root": ROOT,
+                            # 이 서버의 경계 (REQ-20260916-003-62x6) — 어느
+                            # 주소에 bind 했나, 루프백 전제가 서 있나, 쓰기가
+                            # 밖으로 열렸나. 알림 줄이 읽는 사실과 같은 값이다.
+                            "bind": SERVE_HOST,
+                            "loopback": bind_is_loopback(),
+                            "open_write": bool(SERVE_OPEN_WRITE),
                             "code_stamp": SERVE_CODE_STAMP,
                             "disk_stamp": cur,
                             "changed": stale_parts(SERVE_CODE_STAMP, cur),
@@ -37971,7 +38104,10 @@ def cmd_serve(args):
             self._json({"ok": True})
 
         def do_POST(self):
-            if self._host_guard():
+            # 쓰기의 경계는 라우트마다가 아니라 **여기 한 곳**이다
+            # (REQ-20260916-003-62x6) — 엔드포인트별로 갈리면 다음에 늘어나는
+            # 라우트가 검사 없이 선다. 계측(/api/perf)도 예외가 아니다.
+            if self._host_guard() or self._write_guard():
                 return
             # 화면의 계측은 **행동이 아니다** (REQ-20260913-034-62x6). 바로 아래
             # 한 줄이 폴링 지문을 굴리므로, 계측이 그 줄을 지나면 문서를 열
@@ -38602,11 +38738,16 @@ def cmd_serve(args):
     # 것 전부**다 — bin/s9 와 채팅 판정자가 있는 bin/s9-audit-prompt
     # (REQ-20260828-025).
     global SERVE_CODE_STAMP, SERVE_STARTED, SERVE_HOST, POLL_SNAPSHOT_SEC
+    global SERVE_OPEN_WRITE
     SERVE_CODE_STAMP = running_code_stamp()
     SERVE_STARTED = now_iso()
     # 실제로 바인드한 주소를 박아 둔다 (REQ-20260828-028) — 루프백 전제에
     # 기대는 라우트(/api/code)와 리바인딩 방어가 이 값 하나로 갈린다.
     SERVE_HOST = args.host
+    # 바깥 주소에서도 고칠 수 있게 할 것인가 (REQ-20260916-003-62x6). 이
+    # 실행의 결정이라 설정 파일에 남기지 않는다 — 인증 없는 쓰기를 여는
+    # 일이 다음 기동에 조용히 따라오면 안 된다.
+    SERVE_OPEN_WRITE = bool(getattr(args, "open_write", False))
     # 폴링 스냅샷은 **서버에서만** 켠다 (REQ-20260831-002) — 브라우저 재시도
     # 폭풍(실측 95연결)이 몇 연결이든 무거운 목록 계산은 TTL 당 한 번이다.
     # CLI 는 기본 0 그대로: 한 번 묻고 끝나는 프로세스에 낡음을 들이지 않는다.
@@ -40516,6 +40657,10 @@ def main():
     sv.add_argument("--stop-guard", action="store_true", dest="stop_guard",
                     help="감시자만 종료한다 (서버는 그대로)")
     sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--open-write", action="store_true", dest="open_write",
+                    help="루프백이 아닌 주소에 bind 했을 때도 고치기를 연다 "
+                         "(기본은 읽기만 — 이 서버에는 인증이 없어, 그 주소에 "
+                         "닿는 누구나 문서를 고치게 된다)")
     sv.add_argument("--port", type=int, default=None)
     sv.set_defaults(fn=cmd_serve)
 
