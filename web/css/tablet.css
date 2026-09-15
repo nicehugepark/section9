@@ -29,6 +29,32 @@
 @media (max-width:1180px){.tabs button::after,.stats .stat::after{content:""}}
 @media (pointer:coarse){.tabs button::after,.stats .stat::after{content:""}}
 
+/* 사용량 칩도 그 자리다 (REQ-20260916-015-2n7g). 400px 에서 이 손잡이의 누를 수
+   있는 높이가 12px 이었다 — 10.5px 글자 한 줄의 상자 그대로다. 전부터 그랬지만
+   전과 달라진 것은 **그 칩이 이제 무엇을 여는 손잡이**라는 점이다: 012 에서
+   손전화 폭의 메일이 줄에서 물러나, 그 글자를 보는 길은 이 칩을 눌러 카드를
+   여는 것뿐이 되었다. 누르기 어려운 12px 이 그 글자에 닿는 단 하나의 손잡이다.
+
+   탭과 같은 손버릇으로 푼다 — 보이는 글자 줄은 그대로 두고 누를 자리만 위아래로
+   편다. 상자를 키우는 길은 재 보고 접었다: 400x820 머리글이 310px(창의 38%)이고
+   칩 하나를 44px 상자로 만들면 342px(42%)이 된다 — 012 가 「창의 47%」를 결함으로
+   세워 끌어내린 그 자리로 되돌아간다.
+
+   탭과 다른 것 하나. 탭의 상자는 이미 36px 이라 `--tap-y`(5px)만큼 펴면 닿지만,
+   12px 상자는 그렇게 펴 봐야 22px 이다. 그래서 눈금을 직접 물려 가운데에서
+   위아래로 편다 — control.css 의 sm 급이 줄 안의 글자 손잡이에 쓰는 그 꼴이다.
+   좌우로는 늘리지 않는다(이 줄의 오른끝이 곧 머리글의 오른쪽 안여백이다).
+
+   아래로 펴진 16px 은 바로 밑 신원 줄에 얹힌다 — 그 줄은 과녁이 아니라 덮어도
+   오조작이 없고, 뜻으로도 맞다(같은 「내 계정」 묶음이고 눌러서 열리는 것이 그
+   계정 카드다). 위로 펴진 16px 이 필터를 덮는 것은 다른 이야기라 그 폭에서
+   묶음 사이 틈을 그만큼 연다(아래 `.hrow2`). */
+.usagechip{position:relative}
+.usagechip::after{content:none;position:absolute;left:0;right:0;top:50%;
+  height:var(--tap-min);transform:translateY(-50%)}
+@media (max-width:1180px){.usagechip::after{content:""}}
+@media (pointer:coarse){.usagechip::after{content:""}}
+
 /* 타입바는 목록 안쪽 붙박이라 위로 넓힌 과녁이 스크롤 상자에 잘린다 — 상자 자체를
    키우는 수밖에 없는데, 이 띠는 접힌다. 접힌 줄 수만큼 값을 곱해 물기 때문에
    44px 을 그대로 주면 띠 하나가 레일 위쪽 137px(21%)을 가져갔다.
@@ -58,7 +84,12 @@
      세로 768px 화면에서 헤더가 175px(23%)이었다. 좌우 여백을 줄여 필터가 한 줄에
      더 들어가게 하고, 늘어난 손끝 높이만큼을 그 자리에서 되찾는다. */
   .hrow1{padding:12px 16px 0;gap:18px}
-  .hrow2{padding:6px 16px;gap:10px 10px}
+  /* 세로 틈만 16px 인 까닭 (REQ-20260916-015-2n7g): 이 줄이 접히면 사용량 칩이
+     필터 묶음 바로 아래로 내려오는데, 칩의 과녁은 제 상자 밖으로 위아래 16px
+     펴진다. 틈이 10px 이면 그 겹판이 마지막 거르개를 6px 덮어, 거르개를
+     누르려던 손끝이 계정 카드를 연다. 틈을 과녁만큼 열면 두 손잡이가 제 자리를
+     온전히 갖는다 — 머리글이 6px 자라지만 그것이 겹치지 않는 값이다. */
+  .hrow2{padding:6px 16px;gap:16px 10px}
   .hrow3{padding:6px 16px}
   .nrail{padding:0 16px}
   .hrow2 input[type="text"]{width:170px}
@@ -176,7 +207,21 @@
      붙이는 것은 calm 의 `[data-skin="calm"] .tabs button` 과 같은 급을 만들려는
      것이고, 이 파일이 뒤에 서므로 같은 급이면 이긴다. */
   .hrow1{flex-wrap:wrap;gap:0 14px}
+  /* 접힌 탭 줄 **사이**도 과녁만큼 연다 (REQ-20260916-015-2n7g). 탭의 과녁은
+     상자 밖으로 위아래 `--tap-y` 씩 펴지므로(위 「과녁은 칠이 아니다」 절), 줄
+     틈이 2px 이면 아랫줄 탭의 겹판이 윗줄 탭의 **상자**를 5px 먹는다 — 실측
+     2026-09-16 400px: 윗줄 여섯 중 아랫줄과 가로가 겹치는 셋(Board·Docs·Graph)만
+     과녁이 37px 이었고, 그 밑동을 누르면 Projects 가 열린다. 겹판 둘 몫으로
+     열면 여덟이 모두 온전한 과녁을 갖는다. 가로 틈은 그대로 2px 이다(좌우로는
+     펴지 않으므로 겹칠 것이 없다).
+
+     `[data-skin] .tabs` 를 함께 적는 것은 스킨들이 제 틈을 적어 두었기 때문이다
+     — soft 는 탭을 세로 메뉴로 세우고(`gap:3px`), glass 는 `gap:6px` 다. 둘 다
+     겹판 둘 몫(10px)보다 좁아, 특이도를 맞추지 않으면 그 스킨에서만 과녁이 도로
+     깎인다(실측 2026-09-16 soft 400px: 세로로 쌓인 탭 일곱이 모두 39px). 이
+     파일이 뒤에 서므로 같은 급이면 이긴다 — 탭 안여백이 쓰는 그 손버릇이다. */
   .tabs{flex:0 1 auto;flex-wrap:wrap}
+  .tabs,[data-skin] .tabs{row-gap:calc(2 * var(--tap-y))}
   .tabs button,[data-skin] .tabs button{padding-left:9px;padding-right:9px}
 }
 

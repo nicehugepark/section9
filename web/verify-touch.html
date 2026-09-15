@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko" data-theme="light" data-skin="ledger" data-density="normal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>손끝 과녁 — verify (REQ-20260916-015-2n7g)</title>
+<!-- 실제 화면과 **같은 캐스케이드**다 — 조각을 이어 붙인 순서가 index.html 그대로라야
+     여기서 통과한 것이 저기서도 통과한다. 조각이 늘면 index.html 과 함께 늘린다. -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/header.css">
+<link rel="stylesheet" href="css/notice.css">
+<link rel="stylesheet" href="css/board.css">
+<link rel="stylesheet" href="css/docs.css">
+<link rel="stylesheet" href="css/project.css">
+<link rel="stylesheet" href="css/terminal.css">
+<link rel="stylesheet" href="css/graph.css">
+<link rel="stylesheet" href="css/responsive.css">
+<link rel="stylesheet" href="css/actions.css">
+<link rel="stylesheet" href="css/marks.css">
+<link rel="stylesheet" href="css/control.css">
+<link rel="stylesheet" href="css/skins.css">
+<link rel="stylesheet" href="css/density.css">
+<link rel="stylesheet" href="css/calm.css">
+<link rel="stylesheet" href="css/tidy.css">
+<link rel="stylesheet" href="css/overlay.css">
+<link rel="stylesheet" href="css/tablet.css">
+<style>
+  /* 과녁은 눈에 안 보인다 — 겹판은 칠하지 않는 층이라 캡처에 아무것도 남지 않는다.
+     그래서 이 자(尺)를 켠다: `?target` 을 붙이면 손잡이마다 제 과녁을 옅은 점선으로
+     두른다. 이 규칙은 이 검증 자에만 있고 제품 CSS 에는 없다. */
+  [data-target="on"] .tabs button::after,
+  [data-target="on"] .usagechip::after,
+  [data-target="on"] .hrow2 input[type="text"],
+  [data-target="on"] .hrow2 select,
+  [data-target="on"] .hrow2 .chk{outline:1px dashed #d05a2a;outline-offset:0}
+  .vnote{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+    padding:10px 16px;line-height:1.7;border-top:1px solid var(--hairline)}
+  .vnote b{color:var(--text)}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow1">
+    <div class="brand">section9</div>
+    <div class="tabs">
+      <button data-tab="board" class="active">Board</button>
+      <button data-tab="docs">Docs</button>
+      <button data-tab="graph">Graph</button>
+      <button data-tab="audit">Audit</button>
+      <button data-tab="stream">Stream</button>
+      <button data-tab="terminal">Terminal</button>
+      <button data-tab="projects">Projects</button>
+      <button data-tab="settings">Settings</button>
+    </div>
+    <span id="sv-chip" class="svchip" role="status"></span>
+  </div>
+  <div class="hrow2">
+    <div class="fgroup">
+      <input id="q" type="text" placeholder="검색…">
+      <label class="chk"><input type="checkbox" id="q-body"> 본문</label>
+      <select id="f-user"><option>사용자: 전체</option></select>
+      <label class="chk" id="mine-wrap"><input type="checkbox" id="f-mine"> 내 것만</label>
+      <select id="f-project"><option>프로젝트: 전체</option></select>
+      <select id="f-tag"><option>태그: 전체</option></select>
+      <select id="f-type"><option>종류: 전체</option></select>
+    </div>
+    <div class="pgroup idcol">
+      <span id="usage-chip" class="usagechip" tabindex="0" role="button"
+        ><span class="useg mail"><span class="addr">claude01.pfe@dev.itcen.com</span> ·</span> <span class="useg">5h <span>29%</span> ·</span> <span class="useg">wk <span>34%</span> ·</span> <span class="useg">fable <span>37%</span></span></span>
+      <span id="whoami" class="who"><span class="wseg"><b>nicehugepark</b></span> <span class="wseg at" title="macOS · /Users/seongjinpark/section9">@ Seongjinui-Macmini.local</span> <span class="wseg where" title="/Users/seongjinpark/section9">macOS</span> <span class="wseg role">[owner]</span></span>
+    </div>
+  </div>
+  <div class="nrail" id="notices" role="status"></div>
+</header>
+<p class="vnote">
+  <b>손끝 과녁 44px</b> — 창을 400px 로 줄이고 보라.
+  사용량 칩의 글자 줄은 12px 그대로이고, 누를 자리만 위아래로 펴져 44px 이 된다.
+  주소 끝에 <b>?target</b> 을 붙이면 그 과녁이 점선으로 보인다.
+  접힌 탭 줄 사이가 벌어진 것도 같은 까닭이다 — 아랫줄 탭의 과녁이 윗줄 탭의 밑동을
+  먹지 않게.
+</p>
+<script>
+  if (location.search.indexOf("target") >= 0)
+    document.body.dataset.target = "on";
+</script>
+</body>
+</html>
