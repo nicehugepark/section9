@@ -300,3 +300,6 @@ display: nicehugepark
 - 2026-09-15T16:55:50+09:00 config ui_skin=calm (by nicehugepark via dashboard)
 - 2026-09-15T16:56:03+09:00 config ui_density=normal (by nicehugepark via dashboard)
 - 2026-09-15T16:56:29+09:00 updated display (by nicehugepark via dashboard)
+- 2026-09-15T17:35:04+09:00 config pref_줄바꿈시험=첫 줄
+둘째 줄
+셋째 줄 (by nicehugepark)
