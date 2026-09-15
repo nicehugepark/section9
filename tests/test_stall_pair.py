@@ -397,6 +397,10 @@ class StallRendersTheSame(unittest.TestCase):
             # 조각 목록이 화면을 이어 붙이는 자리다(이 파일 위 주석의 그 규율).
             g("personOf"), g("personId"), g("personFull"),
             _const(self.src, "personName"), _const(self.src, "personTitle"),
+            # 이름의 **얼굴**을 내는 자리 (REQ-20260915-039-62x6) — badgeFace 가
+            # 이것을 부른다. 위 넷만 싣고 이것을 빼면 node 가
+            # `personNameHTML is not defined` 로 죽고 이 반의 50건이 함께 진다.
+            _const(self.src, "personNameHTML"),
             g("badgeFace"), g("badgeAttrs"), g("ownerBadgeHTML"),
             # 프로젝트 자리 (REQ-20260906-053) — 메타 줄의 조각, 없으면 render 가 멎는다
             g("projBtnHTML"),
