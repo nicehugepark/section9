@@ -643,6 +643,17 @@ def red_files_from(text):
     return out
 
 
+def last_started_file(text):
+    """샤드가 **마지막으로 시작한** 시험의 파일 — 끊긴 자리다 (REQ-20260916-003-2n7g).
+
+    unittest 는 시험을 시작할 때 `이름 (test_모듈.클래스.이름) ... ` 을 먼저
+    찍고 결과를 뒤에 붙인다. 그래서 샤드가 죽으면 출력의 마지막 그 표시가
+    **죽은 자리**다. 하나도 없으면 빈 문자열 — 지어내지 않는다.
+    """
+    ms = list(re.finditer(r"\((test_[A-Za-z0-9_]+)\.[A-Za-z0-9_]+", text or ""))
+    return ms[-1].group(1) + ".py" if ms else ""
+
+
 def should_retry(red):
     """실패한 파일이 적을 때만(≤3) 그것만 한 번 더 돈다 — 넷 이상은 코드 결함이다.
 
@@ -856,9 +867,21 @@ def run_sharded(pats, jobs, bump=None, skip=()):
                         pass
                     pr.wait(timeout=10)
                     ok = False
-                    red.extend(f for f in group if f not in red)
-                    print(f"[상한] 샤드가 {int(SHARD_TIMEOUT_SEC)}초를 넘겨 죽였다: "
-                          f"{' '.join(group)}", file=sys.stderr)
+                    # 멈춘 자리 하나만 적는다 — 같은 샤드의 나머지는 돌지 못한
+                    # 것이지 진 것이 아니다 (REQ-20260916-003-2n7g).
+                    out.flush()
+                    try:
+                        stuck = last_started_file(
+                            open(out.name, encoding="utf-8", errors="replace").read())
+                    except OSError:
+                        stuck = ""
+                    if stuck and stuck not in red:
+                        red.append(stuck)
+                    print(f"[상한] 샤드가 {int(SHARD_TIMEOUT_SEC)}초를 넘겨 죽였다 — "
+                          + (f"{stuck} 에서 멈췄다." if stuck
+                             else "어디서 멈췄는지 출력에 없다.")
+                          + f" 같은 샤드의 나머지 {max(len(group) - 1, 0)}개는 "
+                            f"돌지 못한 것이지 진 것이 아니다.", file=sys.stderr)
                     done_files += len(group)
                     continue
                 still.append((pr, out, group))
@@ -875,8 +898,29 @@ def run_sharded(pats, jobs, bump=None, skip=()):
                     text = ""
                 sys.stderr.write(text)
                 found = red_files_from(text)
-                red.extend(f for f in (found or list(group)) if f not in red)
-                print(f"실패한 샤드: {' '.join(group)}", file=sys.stderr)
+                if found:
+                    red.extend(f for f in found if f not in red)
+                    print(f"실패한 샤드: {' '.join(group)}", file=sys.stderr)
+                else:
+                    # 진 시험이 하나도 없는데 샤드가 끝났다 — 진 것이 아니라
+                    # **끊긴** 것이다 (REQ-20260916-003-2n7g, 실제 사고 2026-09-15
+                    # 23:30). 종전에는 `found or list(group)` 로 물러나 그 샤드의
+                    # 파일 **전부**를 red 로 적었다: 그날 66개가 커밋 차단에 실렸고
+                    # 그중 진 것은 하나도 없었다. 65명에게 고칠 것 없는 것을 고치라고
+                    # 말한 셈이다.
+                    # 아는 것만 적는다 — 끊긴 자리 하나. 나머지는 「돌지 못했다」이지
+                    # 「졌다」가 아니다. 그 하나는 곧 좁혀서-다시 실행이 단독으로
+                    # 돌려 보고, 통과하면 간헐 실패로 기록되고 회차는 통과가 된다.
+                    # 이 줄에 나머지 파일 이름을 늘어놓지 마라 — 커밋 검사가
+                    # 출력에서 경로를 줍는다(s9-guard 의 gate_failure_paths).
+                    where = last_started_file(text)
+                    if where and where not in red:
+                        red.append(where)
+                    print(f"[끊김] 샤드가 진 시험 없이 끝났다 (종료 {pr.returncode}) — "
+                          + (f"{where} 에서 끊겼다." if where
+                             else "어디서 끊겼는지 출력에 없다.")
+                          + f" 같은 샤드의 나머지 {max(len(group) - 1, 0)}개는 "
+                            f"돌지 못한 것이지 진 것이 아니다.", file=sys.stderr)
         pending = still
     for pr, out, _g in procs:
         try:
