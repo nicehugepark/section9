@@ -304,3 +304,5 @@ display: nicehugepark
 - 2026-09-15T16:56:29+09:00 updated display (by nicehugepark via dashboard)
 - 2026-09-15T17:35:04+09:00 config pref_줄바꿈시험=첫 줄
 - 2026-09-15T17:37:29+09:00 config pref_줄바꿈시험=(삭제) (by nicehugepark)
+- 2026-09-15T20:44:45+09:00 config trash_keep_days=10 (by nicehugepark)
+- 2026-09-15T20:44:45+09:00 config trash_keep_days=(삭제) (by nicehugepark)
