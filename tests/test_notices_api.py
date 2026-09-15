@@ -310,6 +310,12 @@ class NoticesFacts(unittest.TestCase):
         # rebase --autostash 가 되돌리지 못한 것과 같은 꼴 — 메시지가 autostash 다
         sha = run("stash", "create").strip()
         run("stash", "store", "-m", "autostash", sha)
+        # **작업 트리에서는 그 변경이 사라져 있어야** 진짜 「되돌리지 못한 것」이다
+        # (REQ-20260915-060-62x6). `stash create/store` 는 트리를 되돌리지 않으므로
+        # 여기서 손으로 되돌린다 — 그러지 않으면 이 표본은 「이미 트리에 있는
+        # 보관함」이 되고, 그것은 사람이 할 일이 없는 자리라 이제 세지 않는다.
+        with open(os.path.join(self.root, "f.txt"), "w") as f:
+            f.write("a\n")
         ns = self.by_source("동기화")
         self.assertEqual(len(ns), 1, ns)
         n = ns[0]

@@ -804,6 +804,27 @@ def _oldcode_notices(now):
                         since=since, sig=_notice_sig("oldcode", SERVE_STARTED))]
 
 
+def _stash_already_in_tree(ref):
+    """그 보관함의 내용이 이미 작업 트리에 서 있는가 (REQ-20260915-060-62x6).
+
+    판정은 git 에게 맡긴다 — 그 patch 를 **거꾸로** 적용해 보아 깨끗이 맞으면
+    지금 트리에 그 내용이 이미 있다는 뜻이다(적용하지 않는다: `--check`).
+    못 읽거나 판정이 안 서면 False — 모르는 것을 「담겼다」로 세면 사람이
+    되돌리지 못한 작업을 조용히 잃는다."""
+    if not ref:
+        return False
+    try:
+        p = _sync_git("stash", "show", "-p", "--include-untracked", ref, timeout=30)
+        if p.returncode != 0 or not (p.stdout or "").strip():
+            return False
+        r = subprocess.run(["git", "apply", "--reverse", "--check", "-"],
+                           input=p.stdout, capture_output=True, encoding="utf-8",
+                           errors="replace", cwd=ROOT, timeout=30)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def _sync_autostash_left():
     """보관함(git stash)에 남은 autostash 건수와 가장 오래된 것의 시각 — bin/s9-doctor
     sync_info 의 셈과 같다(doctor 는 s9 를 import 하지 않아 둘이 같은 git 을 읽는다).
@@ -812,14 +833,25 @@ def _sync_autostash_left():
         return 0, ""
     n, oldest = 0, ""
     try:
-        r = _sync_git("stash", "list", "--format=%aI%x09%gs")
+        r = _sync_git("stash", "list", "--format=%gd%x09%aI%x09%gs")
         if r.returncode == 0:
             for ln in r.stdout.splitlines():
-                at, _, subj = ln.partition("\t")
-                if subj.strip().endswith("autostash"):
-                    n += 1
-                    if at and (not oldest or at < oldest):
-                        oldest = at.strip()
+                ref, _, rest = ln.partition("\t")
+                at, _, subj = rest.partition("\t")
+                if not subj.strip().endswith("autostash"):
+                    continue
+                # **이미 담긴 것은 남은 것이 아니다** (REQ-20260915-060-62x6,
+                # 주인 물음 2026-09-15: 「정말 의미가 있는 경고인가?」). 동기화가
+                # 커밋 **직전**의 파일을 잠시 치우면, 그 뒤 그 내용이 커밋돼도
+                # 보관함에는 그대로 남아 경고가 계속 떴다 — 실측에서 그 보관함이
+                # 들고 있던 것은 이미 HEAD 에 한 글자도 다르지 않게 담긴 파일
+                # 하나였다. 사람이 할 일이 없는 경고는 다음 경고까지 함께 못
+                # 믿게 만든다.
+                if _stash_already_in_tree(ref.strip()):
+                    continue
+                n += 1
+                if at and (not oldest or at < oldest):
+                    oldest = at.strip()
     except Exception:
         pass
     try:
