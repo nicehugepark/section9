@@ -20,6 +20,8 @@ import tempfile
 import time
 import unittest
 
+import portpool
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.join(HERE, "..", "bin", "s9")
 
@@ -52,10 +54,11 @@ class SafariDriverLive(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _free_port(self):
-        for p in range(4740, 4780):
-            if not self.m._sd_port_busy(p):
-                return p
-        self.skipTest("쓸 포트를 못 찾았다")
+        """포트는 **스위트의 풀**에서 받는다 (portpool, REQ-20260825-100).
+
+        손으로 고른 대역을 쓰면 샤드 둘이 같은 번호를 집어 간헐 실패가 된다 —
+        `tests/test_port_pool.py` 가 그 규율을 파일 단위로 지킨다."""
+        return portpool.free_port()
 
     def test_z1_spawn_list_age_and_reap(self):
         """정상 — 실제로 한 바퀴: 띄우고, 목록에서 찾고, 나이를 재고, 거둔다."""
