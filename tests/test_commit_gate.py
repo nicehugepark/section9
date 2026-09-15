@@ -120,7 +120,18 @@ class CommitGate(unittest.TestCase):
         return name if os.path.exists(p) else None
 
     def test_commit_gate(self):
-        """CommitGate 의 계약을 한 항목으로 — 검사는 그대로다."""
+        """CommitGate 의 계약을 한 항목으로 — 검사는 그대로다.
+
+        **어느 자리에서 돌든 같은 답을 내야 한다** (REQ-20260916-015-2n7g 에서
+        드러났다). 최근 변경 검사는 요청 전용 worktree 에서는 서지 않는데
+        (REQ-20260916-013-2n7g — 그 자리의 미커밋 코드는 전부 이 요청의 것이다),
+        이 시험이 그 사실을 모른 채 「막힌다」만 재고 있었다. 그래서 worktree
+        안에서 돌리면 코드가 옳은데도 두 갈래가 실패했다 — 시험이 제가 선 자리에
+        걸리면 그 자리의 작업자는 아무것도 담을 수 없다.
+
+        고침은 **자리를 시험이 정하는 것**이다: 막는 갈래는 본 저장소인 척하고,
+        세우지 않는 갈래는 worktree 인 척한다. 둘 다 계약이므로 둘 다 잰다.
+        """
         with self.subTest("g1_worker_plus_fresh_file_blocks"):
             import time
             rel = "tests/test_commit_gate.py"          # 방금 쓴 이 파일
@@ -130,12 +141,26 @@ class CommitGate(unittest.TestCase):
             # 물려받은 채 테스트를 돌렸고, 검사가 통과하는 바람에 "막힌다"는
             # 이 계약이 무너졌다. 주변 환경에 기대는 테스트는 조용히 거짓이 된다.
             with mock.patch.dict(os.environ, {}, clear=False), \
+                 mock.patch.object(self.m, "in_request_worktree",
+                                   return_value=False), \
                  mock.patch.object(self.m, "live_workers",
                                    return_value=["- REQ-x (무인 작업자 pid 1, 1분째)"]):
                 os.environ.pop(self.m.OVERRIDE, None)
                 with self.assertRaises(SystemExit) as cm:
                     self.m.concurrent_gate([rel])
             self.assertEqual(cm.exception.code, 1)
+        with self.subTest("g1b_request_worktree_does_not_stand"):
+            # 같은 상황인데 자리만 다르다 — 이 자리의 미커밋 코드는 전부 이
+            # 요청의 것이라 「남이 방금 고쳤다」가 성립하지 않는다.
+            rel = "tests/test_commit_gate.py"
+            os.utime(os.path.join(self.m.ROOT, rel), None)
+            with mock.patch.dict(os.environ, {}, clear=False), \
+                 mock.patch.object(self.m, "in_request_worktree",
+                                   return_value=True), \
+                 mock.patch.object(self.m, "live_workers",
+                                   return_value=["- REQ-x (무인 작업자 pid 1, 1분째)"]):
+                os.environ.pop(self.m.OVERRIDE, None)
+                self.m.concurrent_gate([rel])          # 예외 없이 통과
         with self.subTest("g2_no_worker_no_block"):
             rel = "tests/test_commit_gate.py"
             with mock.patch.object(self.m, "live_workers", return_value=[]):
@@ -172,7 +197,9 @@ class CommitGate(unittest.TestCase):
             # 집합에서 나온 표를 받는다 — 표를 얻는 유일한 길이 목록을 보는 것이다.
             rel = "tests/test_commit_gate.py"
             os.utime(os.path.join(self.m.ROOT, rel), None)
-            with mock.patch.object(self.m, "live_workers",
+            with mock.patch.object(self.m, "in_request_worktree",
+                                   return_value=False), \
+                 mock.patch.object(self.m, "live_workers",
                                    return_value=["- REQ-x (pid 1)"]):
                 with mock.patch.dict(os.environ, {self.m.OVERRIDE: "1"}):
                     with self.assertRaises(SystemExit):
