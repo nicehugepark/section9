@@ -185,6 +185,25 @@ class NoticeRail(unittest.TestCase):
                        % (sev, sev, sev),
                 "%s 의 잉크가 마크와 주체 이름 밖으로 나갔다" % sev)
 
+    # ── 과녁은 상자가 아니다 (REQ-20260915-010-62x6) ───────────────────
+    def test_tap_target_does_not_grow_the_box(self):
+        """44px 과녁은 겹판으로 넓힌다 — 상자째 키우면 접히는 폭에서 제 줄로
+        내려앉아 44px 빈 띠가 되고 시각과 닫기가 30px 넘게 벌어진다
+        (실측 2026-09-15 맥, chromium·webkit 같은 자리)."""
+        rules = strip_comments(self.css)
+        box = re.search(r"\.n-x,\.n-xgap\{([^}]*)\}", rules)
+        self.assertIsNotNone(box, "닫기와 빈 칸의 상자 규칙이 없다")
+        self.assertNotIn("min-width:var(--tap-min)", box.group(1),
+                         "과녁으로 상자를 키웠다 — 접히는 폭에서 빈 띠가 된다")
+        self.assertNotIn("min-height:var(--tap-min)", box.group(1),
+                         "과녁으로 상자를 키웠다 — 접히는 폭에서 빈 띠가 된다")
+        self.assertRegex(rules, r"\.n-x::after\{[^}]*width:var\(--tap-min\)",
+                         "손가락이 닿을 44px 겹판이 없다")
+        # 보이는 손잡이가 보이지 않는 겹판을 이긴다 — 두 줄로 접히는 폭에서
+        # 겹판이 윗줄 손잡이의 아랫단을 덮어 복사 대신 닫기가 먹었다
+        self.assertRegex(rules, r"\.n-go,\.n-cmd\{[^}]*z-index:1",
+                         "겹판이 손잡이를 덮는다 — 손잡이가 위에 서야 한다")
+
 
 if __name__ == "__main__":
     unittest.main()
