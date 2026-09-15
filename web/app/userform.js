@@ -34,7 +34,22 @@ function showUserForm(u, host, isAdminEdit){
     <div class="path">users/${esc(u.name)}/profile.md · 등록 ${esc((u.registered||"?").slice(0,16))} @ ${esc(u.registered_on||"?")}</div>
     <h1 style="margin:6px 0 14px">@${esc(u.name)}</h1>
     <table class="metatbl">
-      <tr><td>display</td><td><input class="uf" id="uf-display" value="${esc(u.display)}"></td></tr>
+      <!-- 사람을 부르는 이름 (REQ-20260915-029-62x6, 주인 지적 2026-09-15 16:47:
+           「설치할 때는 성·이름을 받는데 정작 settings 에는 구분이 없다」).
+           세 칸의 관계: display 는 **사람이 직접 쓴 표기**라 있으면 그것이 이기고,
+           비어 있으면 성·이름을 그 사람의 말 순서로 이어 부른다(서버의
+           user_full_name 한 함수). 그래서 성·이름 칸은 display 바로 아래 선다 —
+           (이 주석에 백틱을 쓰지 마라: 이 자리는 템플릿 문자열 안이라 백틱 하나가
+           문자열을 끊어 이 파일이 통째로 SyntaxError 로 죽는다 — 실측 2026-09-15.)
+           무엇이 무엇을 대신하는지가 위아래로 읽힌다. -->
+      <tr><td>display</td><td><input class="uf" id="uf-display" value="${esc(u.display)}"
+        placeholder="비우면 성·이름으로 부릅니다"></td></tr>
+      <tr><td>성</td><td><input class="uf" id="uf-last" value="${esc(u.last_name||"")}"
+        placeholder="예: 박"></td></tr>
+      <tr><td>이름</td><td><input class="uf" id="uf-first" value="${esc(u.first_name||"")}"
+        placeholder="예: 성진"></td></tr>
+      <tr><td>부르는 이름</td><td><span class="path" id="uf-full">${esc(u.full || "—")}</span>
+        <span class="path">— 카드와 목록에 이 이름이 섭니다. 비면 id(@${esc(u.name)})로 섭니다</span></td></tr>
       <tr><td>회사 이메일</td><td id="uf-emails">
         ${seedEmails.map(em => emRowHTML(em)).join("")}
         <button type="button" class="em-add" id="uf-em-add">+ 이메일 추가</button>${seedEmails.length ? "" : reqhint}
@@ -160,6 +175,8 @@ function showUserForm(u, host, isAdminEdit){
     const emails = [...host.querySelectorAll("#uf-emails .em-val")]
       .map(i => i.value.trim()).filter(Boolean);
     const body = {name: u.name, display: host.querySelector("#uf-display").value.trim(),
+                  last_name: host.querySelector("#uf-last").value.trim(),
+                  first_name: host.querySelector("#uf-first").value.trim(),
                   emails,  // legacy email 단수는 더 보내지 않음 — 서버는 미전달 필드 무변경
                   github: host.querySelector("#uf-github").value.trim(),
                   github_org: host.querySelector("#uf-github-org").value.trim()};

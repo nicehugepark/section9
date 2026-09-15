@@ -55,10 +55,21 @@ class PersonName(unittest.TestCase):
             self.assertIn(fn, self.state, "이름을 짓는 함수가 state.js 에 없습니다: " + fn)
 
     def test_callers_do_not_join_names_by_hand(self):
-        """호출부가 성·이름을 제 손으로 잇지 않는다 — 규칙은 한 곳에만."""
+        """호출부가 성·이름을 제 손으로 잇지 않는다 — 규칙은 한 곳에만.
+
+        예외 하나: **고치는 폼**(web/app/userform.js)은 성·이름 두 칸을 그대로
+        읽고 그대로 보낸다 — 거기가 사람이 그 값을 쓰는 자리다(REQ-20260915-029-62x6,
+        주인 지적 2026-09-15 16:47: 「settings 에는 성·이름 구분이 없네」). 그 폼도
+        **잇지는 않는다**: 이어 부르는 이름은 서버가 지어 보낸 full 을 보여 준다.
+        """
         body = self.src.replace(self.state, "")
+        form = _read("app", "userform.js")
+        body = body.replace(form, "")
         hits = re.findall(r"first_name|last_name", body)
         self.assertEqual(hits, [], "state.js 밖에서 성·이름을 직접 읽습니다: %r" % hits)
+        # 폼도 잇지 않는다 — 이어 붙이는 글자가 거기 있으면 규칙이 두 벌이 된다.
+        self.assertNotRegex(form, r"(first_name|last_name)[^\n]*\+",
+                            "고치는 폼이 성·이름을 제 손으로 잇습니다")
 
     # ② 카드의 주체는 이름
     def test_badge_face_reads_the_name(self):
