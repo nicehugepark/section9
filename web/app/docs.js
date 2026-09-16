@@ -7,6 +7,15 @@ let docReach = {}, docReachKey = "";
 /* 「답 없는 것만」 좁혀 보는 중인가 (REQ-20260907-042). 파생 가능한 값이 아니라
    사람이 누른 사실이라 여기 하나만 산다 — 목록·손잡이가 같은 값을 읽는다. */
 let unansOnly = false;
+/* 찾기에 걸린 **휴지통 문서** (REQ-20260915-093-62x6). 살아 있는 결과가 다 끝난
+   뒤 목록 끝에 접힌 한 줄로 서고, 누를 때만 펼친다 — 버린 것의 수는 검색어마다
+   크게 갈려서(product-owner 실측: 흔한 낱말 4.3%, 폐기된 주제어 「cross-session」
+   57%), 늘 펼쳐 두면 어떤 낱말에서는 살아 있는 결과가 덮인다. 접힌 한 줄은 두
+   경우에 같은 모양이다.
+   접힘은 **찾기마다** 새로 정한다: 살아 있는 결과가 0 이면 펼친 채로 선다 —
+   빈손으로 끝내지 않는 것이 이 자리의 목적이다. */
+const TRASH_FOLD = "trashfind";
+let trashFoldKey = null;
 /* 손잡이의 두 얼굴을 **한 곳에서** 짓는다 — 누르는 자리와 되돌리는 자리가 같으니
    글자도 한 함수에서 나온다(두 벌로 지으면 한 벌만 고쳐진다).
    어휘는 이 목록이 이미 쓰는 글자 손잡이(「N개 더 보기」)와 같은 계보다. */
@@ -200,6 +209,28 @@ function docPatchRows(wrap, parts){
   return true;
 }
 
+/* 찾기에 걸린 **휴지통 문서** 한 줄 (REQ-20260915-093-62x6).
+
+   새 부품이 아니다 — 목록의 `.row` 를 그대로 쓰고, 세 자리만 달리 채운다:
+   ① 오른쪽 상태 칸(`.st`)이 상태 대신 「휴지통」을 말한다(그 문서의 status 는
+   버린 뒤로는 사실이 아니다), ② 번호 칸의 글자 손잡이(`.seloff` — 고른 줄의
+   「닫기」가 쓰는 그 자리)가 되돌리는 손이 된다, ③ 걸린 줄은 살아 있는 줄과
+   같은 재료(`snipHTML`)로 짓는다.
+
+   줄을 눌러 여는 길은 주지 않는다 — 버린 문서는 카탈로그에 없어서 오른쪽 판이
+   열지 못한다. 없는 길을 손잡이로 그리는 대신 걸린 줄을 보여 준다: 되돌릴지
+   정하는 데 필요한 것이 그 줄이다. */
+function trashRowHTML(r, snipHTML){
+  const sid = shortId(r.id);
+  return `<div class="row trashed">
+    <span class="st ko">휴지통</span>
+    <div class="id">${esc(sid)}<button type="button" class="seloff"
+      data-tidy="restore1" data-id="${esc(r.id)}"
+      title="이 문서를 문서 목록으로 되돌립니다"
+      aria-label="${esc(sid)} 되돌리기">되돌리기</button></div>
+    <div>${esc(r.title || "(제목 없음)")}</div>${snipHTML(r)}</div>`;
+}
+
 async function renderDocs(rows){
   const gen = renderGen;
   /* 사람이 방금 고른 문서인지를 **맨 위에서** 읽고 즉시 끈다 — 아래에 await 가
@@ -207,11 +238,15 @@ async function renderDocs(rows){
      되감거나 사람이 고른 문서가 옛 스크롤에 붙는다 (REQ-20260829-012 반려). */
   const fresh = docFresh; docFresh = false;
   const q = $("#q").value.trim();
-  let matchMap = null;
+  let matchMap = null, trashHits = [];
   if ($("#q-body").checked && q){
     const data = await (await s9Fetch("/api/search?q=" + encodeURIComponent(q) + "&" + meQ())).json();
     if (renderStale(gen)) return;   // 기다리는 사이 다른 화면을 그렸다 (REQ-20260908-056)
     matchMap = Object.fromEntries(data.results.map(r => [r.id, r.matches]));
+    /* 버린 것은 카탈로그에 없다 — 걸러 내지 말고 **따로 들고 간다**.
+       종전에는 이 한 줄(`rows.filter`)이 버린 것을 그대로 버렸고, 그래서
+       「cross-session」 86건 중 46건이 화면에 한 번도 서지 않았다. */
+    trashHits = data.results.filter(r => r.trashed_doc);
     rows = rows.filter(r => matchMap[r.id]);
     $("#count").textContent = `${rows.length} matches (body search)`;
   }
@@ -314,11 +349,14 @@ async function renderDocs(rows){
      목록의 머리·꼬리(만들기·보관 접힘)를 함께 아는 것은 `prjListHTML` 하나이고,
      그 목록이 사는 자리는 이제 Projects 탭이다. 경로가 둘이면 어느 쪽이 맞는지
      묻게 된다. */
+  // 첨부에서 온 줄이면 어느 파일인지 밝힌다 (REQ-20260827-005) — 파일
+  // 이름 없이 줄 번호만 보이면 문서 본문의 그 줄로 읽힌다.
+  // 버린 줄도 같은 재료를 쓴다 (REQ-20260915-093-62x6): 걸린 줄이 그 문서를
+  // 되돌릴지 정하는 유일한 단서라, 두 벌로 지으면 한쪽만 고쳐진다.
+  const snipHTML = r => matchMap?.[r.id] ? matchMap[r.id].slice(0, 3).map(m =>
+    `<div class="snip">${m.file ? `<span class="snipf">📎 ${esc(m.file)}</span>` : ""}${m.n}: ${hl(m.text, q)}</div>`).join("") : "";
   const rowHTML = r => {
-      // 첨부에서 온 줄이면 어느 파일인지 밝힌다 (REQ-20260827-005) — 파일
-      // 이름 없이 줄 번호만 보이면 문서 본문의 그 줄로 읽힌다.
-      const snips = matchMap?.[r.id] ? matchMap[r.id].slice(0, 3).map(m =>
-        `<div class="snip">${m.file ? `<span class="snipf">📎 ${esc(m.file)}</span>` : ""}${m.n}: ${hl(m.text, q)}</div>`).join("") : "";
+      const snips = snipHTML(r);
       // 질문에는 상태 축이 없다 — 색은 상태가 아니라 "답이 남았는가"를 말한다.
       // 미답이 타입색으로 도드라지고 답한 질문은 물러난다: 목록을 훑을 때 눈에
       // 걸려야 하는 것은 아직 답이 없는 질문 쪽이다 (REQ-20260826-017).
@@ -376,6 +414,39 @@ async function renderDocs(rows){
     for (const r of shown) parts.push({k: "row:" + r.id, h: rowHTML(r)});
     if (grp.length > shown.length)
       parts.push({k: "more:" + g, h: `<button class="more" data-expand="grp:${g}">${grp.length - shown.length}개 더 보기</button>`});
+  }
+  /* 버린 것은 **맨 뒤에 접혀** 선다 (REQ-20260915-093-62x6).
+
+     새 묶음도 새 거르개도 만들지 않는다 — 목록이 이미 쓰는 접기(`.more` +
+     `data-expand`) 그대로다. 여섯 번째 묶음을 세우면 검색어의 95% 에서 0~3건짜리
+     묶음이 자리를 오르내리고, 다섯 묶음 안에 섞으면 57% 인 검색어에서 살아 있는
+     결과가 덮인다(product-owner 실측).
+
+     접힘은 찾기마다 새로 정한다: 살아 있는 결과가 0 이면 펼친 채로 선다 —
+     사람이 그 문서를 찾는 것은 버렸다는 사실 자체를 잊었기 때문이라, 빈손을
+     주면 「없다」로 읽고 돌아선다. */
+  /* 머리의 거르개는 버린 줄에도 걸린다 (REQ-20260915-093-62x6) — 사람·프로젝트·
+     종류를 좁혔는데 접힌 줄만 46건 그대로면 그 수가 거짓말을 한다. 낱말 조건은
+     본문 찾기가 이미 걸어 놓았고, 태그는 휴지통 행이 들고 오지 않는 값이라
+     여기서 재지 않는다(없는 값으로 거르면 전부 떨어진다). */
+  const tfUser = $("#f-user").value, tfPrj = $("#f-project").value;
+  const tfType = typeAxisOff() ? "" : $("#f-type").value;
+  const tfMine = mineActive() ? new Set(mineProjects().map(x => x.slug)) : null;
+  trashHits = trashHits.filter(r =>
+    (!tfUser || r.user === tfUser) && (!tfPrj || r.project === tfPrj)
+    && (!tfType || r.type === tfType) && (!tfMine || tfMine.has(r.project)));
+  if (trashHits.length){
+    const liveN = Object.values(groups).reduce((a, g) => a + g.length, 0);
+    if (trashFoldKey !== okey){
+      trashFoldKey = okey;
+      expanded.delete(TRASH_FOLD);
+      if (!liveN) expanded.add(TRASH_FOLD);
+    }
+    const open = expanded.has(TRASH_FOLD);
+    parts.push({k: "trashfold", h: `<button class="more" data-expand="${TRASH_FOLD}"
+      aria-expanded="${open}">휴지통에 ${trashHits.length}건 더 있습니다</button>`});
+    if (open) for (const r of trashHits)
+      parts.push({k: "trow:" + r.id, h: trashRowHTML(r, snipHTML)});
   }
   const list = parts.map(p => p.h).join("");
   // 백그라운드 catalog 갱신(15s 폴링)이 뷰어를 파괴하지 않도록 doclist만 교체 —

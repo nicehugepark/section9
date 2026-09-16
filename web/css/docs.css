@@ -110,6 +110,25 @@
 /* 목록 제목도 어절째 접는다 (REQ-20260907-021) — 식별자 줄(.row .id)은 그대로다 */
 .doclist .row>div:nth-child(3){font-size:13px;margin-top:1px;
   word-break:keep-all;overflow-wrap:break-word}
+/* 찾기에 걸린 휴지통 줄 (REQ-20260915-093-62x6).
+
+   새 부품이 아니라 `.row` 의 한 얼굴이다 — 색면도 띠도 없이 **잉크만** 물러난다:
+   제목은 보조 잉크로, 오른쪽 칸의 「휴지통」은 그 줄이 어디 있는 문서인지를
+   말한다. 살아 있는 줄과 나란히 서도 어느 쪽이 지금 것인지 한눈에 갈린다.
+
+   누를 수 없는 줄이라 손가락 모양과 hover 틴트를 거둔다 — 그 둘은 「여기를
+   누르세요」라는 약속이고, 이 줄에서 누를 것은 되돌리는 손 하나뿐이다. */
+.doclist .row.trashed{cursor:default}
+.doclist .row.trashed:hover{background:none}
+.doclist .row.trashed>div:nth-child(3){color:var(--muted)}
+/* 번호 칸의 잉크를 한 급 올린다 — 되돌리는 손이 이 칸의 색을 물려받는데
+   `--faint` 는 **읽어야 하는 글자에 쓰지 않는 잉크**다(s9-design 5). 이 줄에서
+   유일하게 누를 것이 그 손이라, 화면에서 가장 옅게 그릴 자리가 아니다. */
+.doclist .row.trashed .id{color:var(--muted)}
+/* `+` 는 여는 손짓이라 편 뒤에는 접는 손짓으로 바꾼다 — 프로젝트 목록의 보관
+   묶음(project.css)이 이미 쓰는 그 규칙이다. */
+.doclist .more[aria-expanded="true"]::before{content:"− "}
+
 /* 위 여백은 판이 아니라 **제목 줄**이 가진다 (REQ-20260828-009). 스크롤 컨테이너에
    윗 패딩이 남아 있으면 붙박이 제목 위에 본문이 스쳐 지나가는 띠가 생긴다. */
 .viewer{--vpad:34px;flex:1;padding:0 var(--vpad) 24px;min-height:300px;

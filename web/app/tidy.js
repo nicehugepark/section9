@@ -776,6 +776,11 @@ async function tidyAct(what, el){
     tidyDecorate(); return;
   }
   if (what === "none"){ tidySel.clear(); tidyDecorate(); return; }
+  /* 찾기 결과에 선 휴지통 줄의 되돌리는 손 (REQ-20260915-093-62x6).
+     `back` 과 나누는 까닭은 그것이 **판 안의 탭**(tidyTab)을 보고 보관함인지
+     휴지통인지 정하기 때문이다 — 판을 연 적 없는 화면에서 그 값은 아무것도
+     말하지 않는다. 지나는 길은 같다: `/api/docs/tidy` 의 restore 와 docsChanged. */
+  if (what === "restore1"){ await tidySend("restore", [id]); return; }
   if (what === "arch1"){ await tidySend("archive", [id]); return; }
   if (what === "unarch1"){ await tidySend("unarchive", [id]); return; }
   if (what === "rm1"){
