@@ -335,6 +335,44 @@ class TheIrreversibleHandDoesNotStandInEveryRow(unittest.TestCase):
                       "좁혀 보고 있을 때도 전량을 지운다는 사실을 말하지 않는다")
 
 
+class TheSettingsRailShowsWhereYouAre(unittest.TestCase):
+    """설정 레일에서 지금 열어 둔 절이 눈에 보인다 (REQ-20260916-016-62x6).
+
+    그 줄은 문서 목록과 같은 `.doclist` 안에 살지만 **두 칸**이라(제목 + 설명)
+    문서 줄의 표시 규칙이 닿지 않았다 — `.id` 가 없어 ● 가 안 서고
+    `nth-child(3)` 이 없어 굵기도 안 섰다. 그래서 「보관함 · 휴지통」을 열어 둔
+    화면인데 레일의 그 줄이 다른 줄과 똑같았다(리드가 캡처에서 확인).
+
+    **새 표시를 짓지 않는다** — 이 화면이 이미 쓰는 셋(● · 잉크 한 급 · 굵기)
+    중 둘을 그 줄 모양에 맞춰 그대로 쓴다.
+    """
+
+    def setUp(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "..", "web", "css", "docs.css"),
+                  encoding="utf-8") as f:
+            self.css = f.read()
+
+    def test_the_selected_rail_row_gets_the_same_mark(self):
+        self.assertIn('.doclist .row.sel[data-sset]>div:first-child::before',
+                      self.css, "설정 레일의 고른 줄에 ● 가 안 선다")
+        i = self.css.index('.doclist .row.sel[data-sset]>div:first-child::before')
+        self.assertIn('content:"●"', self.css[i:i + 200])
+        # 색은 박지 않고 물려받는다 — 줄을 반전하는 스킨에서 사라지지 않게
+        self.assertIn("currentColor", self.css[i:i + 200])
+
+    def test_the_selected_rail_row_is_a_step_bolder(self):
+        i = self.css.index('.doclist .row.sel[data-sset]>div:first-child{')
+        self.assertIn("font-weight:650", self.css[i:i + 120])
+
+    def test_the_row_height_is_not_touched(self):
+        """고르는 순간 줄 높이가 변하면 그것이 곧 레일이 흔들리는 것이다."""
+        i = self.css.index('.doclist .row.sel[data-sset]')
+        seg = self.css[i:i + 400]
+        for bad in ("padding:", "margin:", "height:", "border:"):
+            self.assertNotIn(bad, seg, "높이·여백을 건드린다: %s" % bad)
+
+
 if __name__ == "__main__":
     unittest.main()
 

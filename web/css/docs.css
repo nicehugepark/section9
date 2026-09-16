@@ -77,6 +77,15 @@
 .doclist .row.sel .id::before{content:"●";margin-right:6px;font-size:7px;
   vertical-align:2px;color:currentColor}
 .doclist .row.sel>div:nth-child(3){font-weight:650}
+/* 설정 레일의 줄에도 같은 언어를 준다 (REQ-20260916-016-62x6). 그 줄은 같은
+   `.doclist` 안에 살지만 **두 칸**이라(제목 + 설명) 위 규칙이 닿지 않는다 —
+   `.id` 가 없어 ● 가 안 서고 `nth-child(3)` 이 없어 굵기도 안 선다. 그래서
+   설정 레일에서는 지금 열어 둔 절이 다른 줄과 똑같아 보였다(리드가 캡처에서
+   확인, designer 가 짚음). 새 표시를 짓지 않는다 — 위에 적힌 셋 중 ①●과
+   ③굵기를 이 줄 모양에 맞춰 그대로 쓴다. 높이·여백은 건드리지 않는다. */
+.doclist .row.sel[data-sset]>div:first-child{font-weight:650;color:var(--text)}
+.doclist .row.sel[data-sset]>div:first-child::before{content:"●";margin-right:6px;
+  font-size:7px;vertical-align:2px;color:currentColor}
 /* 푸는 손잡이 — **푸는 대상 줄 안**에 산다 (REQ-20260829-012 → -20260831-007).
 
    전에는 맨 위에 못 박은 줄의 머리글(「지금 보는 문서 … 닫기」)에 있었다. 그
