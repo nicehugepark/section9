@@ -5368,10 +5368,78 @@ def cmd_snapshot(args):
             print(f"- {nm}  {len(have)}벌  최신 {have[-1].split('-')[0]}")
 
 
-def _auto_log(msg):
+# 되풀이를 접는 자리 (REQ-20260916-006-62x6). 실측 2026-09-16 09시대: 한 시간에
+# 1,090줄이 쌓였고 그중 같은 글자가 **105번씩** 되풀이됐다(요청 다섯 × 105,
+# 파일 1.9MB). 워처가 30초마다 같은 거절을 다시 적는데 물러남이 없었다.
+# 접되 **입은 막지 않는다**: 되풀이가 이어져도 10분에 한 줄은 적는다 —
+# 조용한 것과 멎은 것이 밖에서 같아 보이면 안 된다.
+AUTO_LOG_HEARTBEAT_SEC = 600
+AUTO_LOG_STATE = "spawn-repeat.json"
+
+
+def _epoch_iso(ts):
+    """epoch → 이 기계의 시각 글자 (now_iso 와 같은 꼴). 못 읽으면 "?"."""
     try:
-        with open(os.path.join(_auto_dir(), "spawn.log"), "a", encoding="utf-8") as f:
-            f.write(f"{now_iso()} {msg}\n")
+        return datetime.datetime.fromtimestamp(
+            float(ts)).astimezone().isoformat(timespec="seconds")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "?"
+
+
+def _auto_log_key(msg):
+    """되풀이를 세는 단위 — 앞 두 낱말(무엇을·어느 요청에)."""
+    return " ".join(str(msg or "").split()[:2])
+
+
+def _auto_log(msg, now=None):
+    """스폰 판정을 한 줄로 남긴다 — **같은 사유는 접어서**.
+
+    판정 자체는 한 글자도 바꾸지 않는다. 바꾸는 것은 적는 법이다.
+    """
+    import time as _t
+    nowt = _t.time() if now is None else now
+    path = os.path.join(_auto_dir(), "spawn.log")
+    key, line = _auto_log_key(msg), str(msg or "")
+    st, closing = {}, ""
+    sp = os.path.join(_auto_dir(), AUTO_LOG_STATE)
+    try:
+        with open(sp, encoding="utf-8") as f:
+            st = json.load(f)
+        if not isinstance(st, dict):
+            st = {}
+    except (OSError, ValueError):
+        st = {}                       # 못 읽어도 로그는 적힌다 (c5)
+    rec = st.get(key) if isinstance(st.get(key), dict) else None
+    if rec and rec.get("msg") == line:
+        rec["n"] = int(rec.get("n") or 1) + 1
+        rec["last"] = nowt
+        quiet = nowt - float(rec.get("said") or 0) < AUTO_LOG_HEARTBEAT_SEC
+        st[key] = rec
+        _auto_log_save(sp, st)
+        if quiet:
+            return                    # 접는다 (c1)
+        rec["said"] = nowt
+        st[key] = rec
+        _auto_log_save(sp, st)
+        line = f"{line}  [같은 사유 {rec['n']}번째]"     # 10분마다 한 줄 (c2)
+    else:
+        if rec and int(rec.get("n") or 1) > 1:          # 바뀌면 앞의 것을 닫는다 (c3)
+            closing = (f"{_epoch_iso(nowt)} REPEAT-END {key} "
+                       f"같은 사유 {rec['n']}번 — "
+                       f"{_epoch_iso(rec.get('first'))} ~ {_epoch_iso(rec.get('last'))}\n")
+        st[key] = {"msg": line, "n": 1, "first": nowt, "last": nowt, "said": nowt}
+        _auto_log_save(sp, st)
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(closing + f"{_epoch_iso(nowt)} {line}\n")
+    except OSError:
+        pass
+
+
+def _auto_log_save(path, st):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False)
     except OSError:
         pass
 
