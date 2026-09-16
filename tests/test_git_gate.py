@@ -33,9 +33,9 @@ GATE = os.path.join(ROOT, "bin", "s9-git-gate")
 
 
 def run(cmd, cwd=None, raw=None, auto=False):
-    """검사를 한 번 돌린다. `auto` 는 사람이 없는 자리(무인 작업자 세션).
+    """검사를 한 번 돌린다. `auto` 는 사람이 없는 자리(백그라운드 작업자 세션).
 
-    격리: 이 스위트가 무인 작업자 세션에서 돌 때 상속된 S9_AUTO_RESUME 이
+    격리: 이 스위트가 백그라운드 작업자 세션에서 돌 때 상속된 S9_AUTO_RESUME 이
     판정을 바꾸면, 같은 시험이 자리마다 다른 답을 낸다 — 늘 지운 뒤 건다."""
     payload = raw if raw is not None else json.dumps(
         {"tool_name": "Bash", "tool_input": {"command": cmd},
@@ -154,7 +154,7 @@ class TheGateStands(unittest.TestCase):
             # 자리에서는 「사람의 확인을 받아 붙인다」가 거짓이 된다.
             r = run("S9_GIT_OK=1 git stash pop", auto=True)
             self.assertEqual(2, r.returncode, "무인 세션에서 우회가 통했다")
-            self.assertIn("무인 작업자", r.stderr)
+            self.assertIn("백그라운드 작업자", r.stderr)
             self.assertIn("blocked", r.stderr, "다음에 할 것이 안 적혀 있다")
         with self.subTest("g5_a_broken_payload_does_not_block_the_world"):
             self.assertEqual(0, run("", raw="this is not json").returncode)

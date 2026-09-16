@@ -74,15 +74,21 @@ class ResumeItemTest(unittest.TestCase):
         for k in ("actor", "item", "result", "transcript"):
             self.assertIn(k, out["pending"][0])
 
+    # 로그의 살림살이 파일은 스폰의 자취가 아니다 (REQ-20260916-006-62x6):
+    # `_auto_log` 가 같은 사유의 되풀이를 접으려고 이 파일에 몇 번째인지를
+    # 적는다. 재는 것은 「프로세스를 띄웠나」이므로 요청별 스폰 기록만 센다.
+    AUTO_BOOKKEEPING = {"_global.json", "spawn-repeat.json"}
+
     def test_r5_no_spawn_without_flag(self):
         """기본은 출력만 — 조회 한 번이 프로세스를 띄우면 사고가 난다."""
         self.seed()
         r = self.s9run("resume-item", self.doc)
         self.assertNotIn("spawn", r.stdout.lower())
         auto = os.path.join(self.root, "state", "auto_resume")
-        self.assertFalse(
-            [f for f in os.listdir(auto) if f.endswith(".json")]
-            if os.path.isdir(auto) else [])
+        left = ([f for f in os.listdir(auto)
+                 if f.endswith(".json") and f not in self.AUTO_BOOKKEEPING]
+                if os.path.isdir(auto) else [])
+        self.assertFalse(left, "조회 한 번이 스폰 기록을 남겼다: %s" % left)
 
     def test_r7_legacy_doc_without_contributions(self):
         r = self.s9run("resume-item", self.doc)

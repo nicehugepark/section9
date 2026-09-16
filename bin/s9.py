@@ -15398,6 +15398,11 @@ def _sync_streak_request(alert, pending=0):
              "--goal", (f"자동 {stage} 이 다시 성공하고, 진 사유가 고쳐져 "
                         f"같은 연속 실패가 이어지지 않는다"),
              "--size", "M", "--project", "section9",
+             # 기계가 스스로 올린 사고는 **뿌리**다 (REQ-20260916-006-62x6):
+             # 이어 붙일 앞 요청이 없고(사람이 시킨 일이 아니다), 계보를 비워
+             # 두면 parent 없는 요청으로 서서 전체 테스트를 실패시킨다 —
+             # 실제로 REQ-20260916-012-62x6 이 그렇게 섰다.
+             "--root",
              "--tag", "sync", "--origin", "agent"],
             input=body, capture_output=True, encoding="utf-8",
             errors="replace", timeout=20)

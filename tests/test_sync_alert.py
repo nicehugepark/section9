@@ -168,5 +168,26 @@ class SyncAlert(unittest.TestCase):
         del bindings
 
 
+class TheMachineRaisedRequestIsARoot(unittest.TestCase):
+    """기계가 스스로 올린 사고는 뿌리로 선다 (REQ-20260916-006-62x6).
+
+    실제 사고 2026-09-16: `_sync_streak_request` 가 계보 없이 요청을 세워
+    REQ-20260916-012-62x6 이 parent 도 root 도 없이 섰고, 그날의 전체 테스트가
+    test_no_orphan_requests 로 그 한 건에 걸려 실패했다. 이어 붙일 앞 요청이
+    없는 것이 맞다 — 사람이 시킨 일이 아니다. 그러니 비워 두는 것이 아니라
+    **뿌리라고 말해야** 한다.
+    """
+
+    def test_the_sync_streak_request_is_created_as_a_root(self):
+        src = open(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "bin", "s9.py"),
+            encoding="utf-8").read()
+        i = src.index("def _sync_streak_request(")
+        seg = src[i:i + 2500]
+        self.assertIn('"--root"', seg,
+                      "기계가 올린 사고가 계보 없이 선다 — parent 도 root 도 없는 "
+                      "요청이 되어 전체 테스트를 실패시킨다")
+
+
 if __name__ == "__main__":
     unittest.main()
