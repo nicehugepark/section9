@@ -11651,7 +11651,8 @@ WORKER_ALLOWED_SUBCOMMANDS = (
     "callname", "claim", "commit", "commit-note", "contrib", "delegate-target",
     "digest", "doctor", "handoff", "inbox", "index", "init", "jira", "last",
     "link", "linkcheck", "log", "loose", "ls", "merge-doc", "metrics", "new",
-    "next", "normalize", "note", "now", "peer", "perf", "project", "reopened",
+    "next", "normalize", "note", "now", "peer", "perf", "preview", "project",
+    "reopened",
     "resume-item", "restore", "review", "rm", "safaridriver", "search",
     "serve", "serve-stale", "set", "shapes", "shot", "show", "snapshot",
     "stalled", "stash", "status", "stream", "sync", "tag", "terms", "tokens",
@@ -30812,6 +30813,254 @@ def _shot_size(raw):
     sys.exit(2)
 
 
+# ── s9 preview — 이 자리의 web/ 을 임시로 띄워 캡처 (REQ-20260916-014-62x6) ──
+#
+# worktree 에서 도는 작업자에게는 제가 고친 화면을 볼 길이 없었다: 9909 서버는
+# **본 저장소의** web/ 을 서비스하고(ROOT/web), 작업자의 프롬프트 템플릿은
+# `s9` 로 시작하는 줄만 받아 `S9_ROOT=… bin/s9 serve` 도 `python3 -m http.server`
+# 도 거부됐다. 실제로 2026-09-16 11:05 designer 가 고친 뒤 찍은 캡처에 제 변경이
+# 없었다.
+#
+# 그래서 길을 **s9 의 하위명령 하나**로 세운다. 앞에 세우는 것은 얇은 preview 서버다:
+#   · 이 자리(cwd 가 든 저장소, 또는 --from)의 web/ 아래 파일 → 여기서 낸다
+#   · 그 밖의 전부(/api/· /stream· 첨부) → 본 저장소가 띄워 둔 서버로 넘긴다
+# 그래서 화면은 **내 web/ + 진짜 데이터**가 된다. 9909 은 건드리지 않는다.
+#
+# 수명은 구조로 잡는다 — 서버는 이 프로세스 안의 데몬 스레드라 명령이 끝나면
+# 함께 사라진다(부모가 사라진 서버가 남을 자리가 없다). 캡처가 매달리는 경우만
+# 남으므로 --ttl 로 그 자리를 끊는다.
+PREVIEW_TTL_DEFAULT = 180
+PREVIEW_PORT_LO, PREVIEW_PORT_HI = 9951, 9990   # 서버·감시자의 9910~9950 밖
+PREVIEW_PROXY_TIMEOUT = 30
+PREVIEW_TYPES = {
+    ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml",
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".ico": "image/x-icon", ".webp": "image/webp",
+    ".woff": "font/woff", ".woff2": "font/woff2", ".map": "application/json",
+    ".txt": "text/plain; charset=utf-8",
+}
+
+
+def preview_root(start=None):
+    """띄울 web/ 이 있는 자리 — cwd 에서 위로 올라가며 처음 만나는
+    `web/index.html` 을 가진 디렉터리. 못 찾으면 ROOT.
+
+    cwd 로 정하는 것이 핵심이다: 작업자가 부르는 `s9` 는 **본 저장소의**
+    bin/s9 라서(프롬프트 템플릿이 그 경로로 선다) ROOT 는 언제나 본 저장소를
+    가리킨다. 작업자가 고친 자리는 그 명령이 도는 곳, 곧 cwd 다."""
+    d = os.path.abspath(start or os.getcwd())
+    while True:
+        if os.path.isfile(os.path.join(d, "web", "index.html")):
+            return d
+        nd = os.path.dirname(d)
+        if nd == d:
+            return ROOT
+        d = nd
+
+
+def preview_upstream_port(root=None):
+    """정적 파일 말고 전부를 넘길 서버의 포트 — 이 저장소가 띄워 둔 그 서버
+    (state/serve-code.json, pid 가 살아 있을 때). 없으면 0."""
+    try:
+        with open(os.path.join(root or ROOT, "state", "serve-code.json"),
+                  encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return 0
+    p = int(d.get("port") or 0)
+    return p if p and pid_alive(d.get("pid")) else 0
+
+
+def preview_handler(web_root, upstream_port, host="127.0.0.1"):
+    """preview 서버의 핸들러 클래스 — (정적은 web_root, 나머지는 upstream)."""
+    import http.server
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    webdir = os.path.realpath(os.path.join(web_root, "web"))
+    shell = os.path.join(webdir, "index.html")
+
+    class PreviewHandler(http.server.BaseHTTPRequestHandler):
+        # HTTP/1.0: 응답 끝 = 연결 끝. 넘김이 길이를 모르는 응답(SSE)을 그대로
+        # 흘려보낼 수 있고, 남은 연결이 프로세스 종료를 붙잡지 않는다.
+        protocol_version = "HTTP/1.0"
+
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, ctype, body):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            if self.command != "HEAD":
+                try:
+                    self.wfile.write(body)
+                except OSError:
+                    pass
+
+        def _static_path(self, path):
+            """이 자리의 web/ 안에서 낼 파일 — 밖이면 None.
+
+            realpath 로 본다: 접두 검사만으로는 심링크가 새 나간다
+            (본 서버가 REQ-20260828-028 에서 배운 것과 같은 규율)."""
+            rel = urllib.parse.unquote(path).lstrip("/")
+            if path in ("/", "/index.html"):
+                rel = "index.html"
+            fp = os.path.realpath(os.path.join(webdir, rel))
+            if fp != webdir and not fp.startswith(webdir + os.sep):
+                return None
+            if not os.path.isfile(fp):
+                return None
+            if os.path.splitext(fp)[1].lower() not in PREVIEW_TYPES:
+                return None
+            return fp
+
+        def _serve_static(self, path):
+            """냈으면 True. 묶음 경로는 껍데기가 선언한 순서로 굽는다."""
+            if path in ("/css/all.css", "/app/all.js"):
+                sub = "css" if path.startswith("/css/") else "app"
+                ent = web_bundle_response(sub, shell, root=web_root)
+                if ent is None:
+                    return False
+                self._send(200, "text/javascript; charset=utf-8" if sub == "app"
+                           else "text/css; charset=utf-8", ent["body"])
+                return True
+            fp = self._static_path(path)
+            if not fp:
+                return False
+            with open(fp, "rb") as f:
+                body = f.read()
+            self._send(200, PREVIEW_TYPES[os.path.splitext(fp)[1].lower()], body)
+            return True
+
+        def _proxy(self):
+            if not upstream_port:
+                self._send(503, "text/plain; charset=utf-8",
+                           ("이 자리의 web/ 밖은 본 저장소 서버로 넘기는데 "
+                            "그 서버가 없다 — `s9 serve` 로 띄우거나 "
+                            "`--upstream <포트>` 로 짚어라.").encode())
+                return
+            # **여기서 한 번 본다** (REQ-20260916-003-62x6 의 쓰기 경계가 이
+            # 자리에서 얇아지지 않게): 아래에서 Origin 을 떼므로, 떼기 전에
+            # 그 값을 이 포트 기준으로 재 둔다. Sec-Fetch-Site 를 안 싣는 옛
+            # 브라우저에서는 떼고 나면 본 서버가 「브라우저가 아니다」로 읽어
+            # 통과시키는데, 그 한 갈래가 이 포트를 우회로 만든다.
+            if self.command not in ("GET", "HEAD") and not origin_ok(
+                    self.headers.get("Origin"),
+                    self.headers.get("Sec-Fetch-Site"),
+                    self.headers.get("Host")):
+                self._send(403, "application/json; charset=utf-8", json.dumps(
+                    {"ok": False,
+                     "error": "다른 페이지에서 온 요청은 받지 않습니다 (preview)"},
+                    ensure_ascii=False).encode())
+                return
+            n = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(n) if n else None
+            req = urllib.request.Request(
+                f"http://{host}:{upstream_port}{self.path}",
+                data=body, method=self.command)
+            for k, v in self.headers.items():
+                # Origin 은 **떼고 Sec-Fetch-Site 는 그대로 넘긴다**: 브라우저가
+                # 보는 출처는 이 preview 서버의 포트라 본 서버의 교차출처 검사가 쓰기를
+                # 막는다. 그렇다고 출처를 본 서버 것으로 지어내면 이 포트가
+                # 남의 페이지에게 그 검사를 우회하는 길이 된다 — 남의 페이지가
+                # 쏘면 Sec-Fetch-Site 가 cross-site 로 오고, 그 값은 그대로
+                # 가므로 본 서버가 종전대로 막는다.
+                if k.lower() in ("host", "origin", "content-length",
+                                 "accept-encoding", "connection"):
+                    continue
+                req.add_header(k, v)
+            try:
+                with urllib.request.urlopen(req, timeout=PREVIEW_PROXY_TIMEOUT) as r:
+                    self.send_response(r.status)
+                    for k, v in r.headers.items():
+                        if k.lower() in ("transfer-encoding", "connection",
+                                         "content-length"):
+                            continue
+                        self.send_header(k, v)
+                    self.end_headers()
+                    while True:
+                        chunk = r.read(8192)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+            except urllib.error.HTTPError as e:
+                self._send(e.code, e.headers.get("Content-Type",
+                                                 "text/plain; charset=utf-8"),
+                           e.read())
+            except OSError:
+                pass
+            except Exception as e:
+                self._send(502, "text/plain; charset=utf-8",
+                           f"넘김 실패({upstream_port}): {e}".encode())
+
+        def _handle(self):
+            path = urllib.parse.urlparse(self.path).path or "/"
+            if self.command in ("GET", "HEAD") and self._serve_static(path):
+                return
+            self._proxy()
+
+        do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = _handle
+
+    return PreviewHandler
+
+
+def preview_serve(web_root, upstream_port, host="127.0.0.1"):
+    """preview 서버를 띄우고 (서버, 포트). 데몬 스레드라 이 프로세스와 함께 죽는다."""
+    import http.server
+    port = next_free_port(PREVIEW_PORT_LO, PREVIEW_PORT_HI, host=host)
+    if not port:
+        return None, 0
+    srv = http.server.ThreadingHTTPServer(
+        (host, port), preview_handler(web_root, upstream_port, host=host))
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, port
+
+
+def cmd_preview(args):
+    web_root = os.path.abspath(args.from_dir) if args.from_dir else preview_root()
+    if not os.path.isfile(os.path.join(web_root, "web", "index.html")):
+        print(f"s9 preview: {web_root} 에 web/index.html 이 없다 — "
+              f"--from <저장소 자리> 로 짚어라.", file=sys.stderr)
+        sys.exit(2)
+    upstream = int(args.upstream) if args.upstream else preview_upstream_port()
+    srv, port = preview_serve(web_root, upstream)
+    if not port:
+        print(f"s9 preview: 빈 포트가 없다 ({PREVIEW_PORT_LO}~{PREVIEW_PORT_HI}).",
+              file=sys.stderr)
+        sys.exit(2)
+    ttl = max(5, int(args.ttl or PREVIEW_TTL_DEFAULT))
+    # 캡처가 매달려도 여기서 끊는다 — 남는 서버는 이 저장소가 이미 겪은 사고다.
+    _t = threading.Timer(ttl, lambda: os._exit(3))
+    _t.daemon = True
+    _t.start()
+    path = args.path if args.path.startswith("/") else "/" + args.path
+    url = f"http://127.0.0.1:{port}{path}"
+    print(f"s9 preview: {web_root}/web → {url}"
+          + (f" (그 밖은 {upstream} 으로 넘긴다)" if upstream
+             else " (넘길 서버 없음 — 정적만)"), file=sys.stderr)
+    if args.check:
+        import urllib.request as _rq
+        with _rq.urlopen(url, timeout=10) as r:
+            body = r.read()
+        print(f"check port={port} status={r.status} bytes={len(body)}")
+        srv.shutdown()
+        return
+    shot = argparse.Namespace(
+        url=url, out=args.out or os.path.join(tmp_dir(), "s9-preview.png"),
+        size=args.size, wait=args.wait, dpr=args.dpr, engine=args.engine)
+    try:
+        cmd_shot(shot)
+    finally:
+        srv.shutdown()
+
+
 def cmd_shot(args):
     """UI 검증용 스크린샷 — WSL 이면 Windows Chrome, 맥이면 /Applications 의
     Chrome 을 headless 로 구동해 PNG 생성.
@@ -40898,6 +41147,28 @@ def main():
     pj.add_argument("--print", dest="print_body", action="store_true",
                     help="invite: 메일 본문을 stdout 으로 (직접 보내는 길 — 초대로 기록한다)")
     pj.set_defaults(fn=cmd_project)
+
+    pv = sub.add_parser(
+        "preview",
+        help="이 자리(cwd)의 web/ 을 임시 서버로 띄워 캡처 — worktree 작업자용")
+    pv.add_argument("path", nargs="?", default="/", help="띄울 경로 (기본 /)")
+    pv.add_argument("--from", dest="from_dir",
+                    help="web/ 이 있는 저장소 자리 (기본: cwd 에서 위로 찾는다)")
+    pv.add_argument("--out", help="PNG 경로 (기본: 임시 자리의 s9-preview.png)")
+    pv.add_argument("--upstream",
+                    help="정적 파일 밖을 넘길 서버의 포트 (기본: 이 저장소가 띄운 서버)")
+    pv.add_argument("--ttl", default=str(PREVIEW_TTL_DEFAULT),
+                    help=f"이 초를 넘기면 끊는다 (기본 {PREVIEW_TTL_DEFAULT}) — "
+                         "이 서버는 명령보다 오래 살지 않는다")
+    pv.add_argument("--check", action="store_true",
+                    help="브라우저 없이 스스로 한 번 받아 보고 끝낸다(진단용)")
+    pv.add_argument("--size", default=SHOT_SIZE_DEFAULT,
+                    help="뷰포트 너비x높이 (기본 1440,900)")
+    pv.add_argument("--wait", default="3000", help="캡처 전 대기 ms (기본 3000)")
+    pv.add_argument("--dpr", default="1", help="배율 (1·1.25·1.5)")
+    pv.add_argument("--engine", choices=("auto", "chrome", "chromium", "webkit"),
+                    default="auto", help="s9 shot 과 같다")
+    pv.set_defaults(fn=cmd_preview)
 
     sh = sub.add_parser("shot", help="headless 스크린샷 (WSL=Windows Chrome) — UI 검증용")
     sh.add_argument("url")
