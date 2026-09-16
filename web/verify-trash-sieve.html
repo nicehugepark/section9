@@ -59,7 +59,7 @@ function realClick(win, doc, el){
 // 결함(커서가 튀어 두 글자를 못 치는 것)이 드러나지 않는다.
 async function type(win, doc, text){
   for (const ch of text){
-    const box = doc.querySelector(".tidypanel .tq");
+    const box = doc.querySelector(".tidyui .tq");
     if (!box) throw new Error("검색 칸이 사라졌다 — 다시 그리며 놓쳤다");
     box.focus();
     box.value += ch;
@@ -68,9 +68,9 @@ async function type(win, doc, text){
   }
 }
 
-const rows = d => d.querySelectorAll(".tidypanel .titem").length;
-const footText = d => (d.querySelector(".tidypanel .tfoot .path") || {}).textContent || "";
-const overBtn = d => d.querySelector('.tidypanel [data-tidy="purgeold"]');
+const rows = d => d.querySelectorAll(".tidyui .titem").length;
+const footText = d => (d.querySelector(".tidyui .tfoot .path") || {}).textContent || "";
+const overBtn = d => d.querySelector('.tidyui [data-tidy="purgeold"]');
 
 async function run(){
   const win = f.contentWindow, doc = f.contentDocument;
@@ -93,46 +93,54 @@ async function run(){
     check("「저장소」 바로 다음 줄이다",
       (nav.previousElementSibling || {}).dataset?.sset === "repo",
       (nav.previousElementSibling || {}).textContent);
-    check("화면을 바꾸는 절은 아니다 — sel 을 받지 않는다",
-      !nav.classList.contains("sel") && !nav.hasAttribute("data-sset"));
-    check("여는 것이 판이라고 말한다 — haspopup · 닫힌 상태",
-      nav.getAttribute("aria-haspopup") === "dialog"
-      && nav.getAttribute("aria-expanded") === "false");
+    check("레일의 다른 줄들과 같은 길로 간다 — 절의 이름표를 갖는다",
+      nav.dataset.sset === "tidy" && !nav.hasAttribute("aria-haspopup"),
+      nav.dataset.sset);
     check("아이콘이 아니라 글자다 — 보이는 글자가 곧 읽어 줄 이름이다",
       /보관함 · 휴지통/.test(nav.textContent) && !nav.hasAttribute("aria-label"),
       nav.getAttribute("title"));
     const chip = nav;
     realClick(win, doc, chip);
-    await wait(() => doc.querySelector(".tidypanel"), 20000, "판");
+    await wait(() => doc.querySelector(".tidyui"), 20000, "보관함 · 휴지통");
     await sleep(600);
+    // 이 자리에서 여는 것은 **화면**이다 (REQ-20260916-015-62x6) — 떠 있는 판이
+    // 아니라 Settings 의 한 절로 서고, 왼쪽 레일은 그대로 보인다.
+    check("Settings 에서는 판이 아니라 화면으로 선다",
+      !doc.querySelector(".tidypanel") && !!doc.querySelector("#sview.tidypane")
+      && !!doc.querySelector("#view .doclist"));
+    check("닫는 손잡이가 없다 — 돌아갈 길은 레일이다",
+      !doc.querySelector('.tidyui [data-tidy="close"]'));
     // 휴지통 탭으로 옮긴다 — 판은 비어 있지 않은 쪽부터 연다.
-    const tab = doc.querySelector('.tidypanel [data-ttab="trash"]');
+    const tab = doc.querySelector('.tidyui [data-ttab="trash"]');
     if (tab) realClick(win, doc, tab);
     /* 목록이 **닿을 때까지** 기다린다 — 받아 오기 전의 판은 「이 목록을 받지
        못했습니다」 한 줄이라, 고정 시간만 세고 재면 느린 날에 거르개도 줄도
        없는 화면을 재게 된다(그날 이 하니스가 실제로 그렇게 어긋났다). */
-    await wait(() => doc.querySelector(".tidypanel .tq") || rows(doc) > 0,
+    await wait(() => doc.querySelector(".tidyui .tq") || rows(doc) > 0,
                20000, "휴지통 목록");
     await sleep(400);
-    check("판이 뜨면 손잡이가 「열려 있다」고 말한다",
-      chip.getAttribute("aria-expanded") === "true");
-    check("그 손잡이로 연 판이 보관함·휴지통 판이다",
-      !!doc.querySelector(".tidypanel .tidytabs"),
-      (doc.querySelector(".tidypanel .dlgcap") || {}).textContent);
+    /* 이 줄은 **고른 줄**이 된다 (REQ-20260916-015-62x6) — 판을 여는 손잡이가
+       아니라 절로 가는 줄이라, 열림·닫힘이 아니라 지금 그 절에 서 있다는 표시를
+       갖는다. 레일의 다른 줄들과 같은 문법이다. */
+    check("들어간 줄에 고른 표시가 선다",
+      chip.classList.contains("sel"), chip.className);
+    check("그 줄이 연 것이 보관함·휴지통 화면이다",
+      !!doc.querySelector("#sview.tidypane .tidytabs"),
+      (doc.querySelector("#sview.tidypane h1") || {}).textContent);
     await sleep(200);
     const n0 = rows(doc);
     const tabText = () =>
-      (doc.querySelector('.tidypanel .tidytabs [data-ttab="trash"]') || {}).textContent || "";
+      (doc.querySelector('.tidyui .tidytabs [data-ttab="trash"]') || {}).textContent || "";
     say(`휴지통 ${n0}건으로 시작 · 탭「${esc(tabText().trim())}」`, "hi");
-    const chips = doc.querySelectorAll('.tidypanel [data-tidy="who"]').length;
-    check("검색 칸이 선다", !!doc.querySelector(".tidypanel .tq"));
+    const chips = doc.querySelectorAll('.tidyui [data-tidy="who"]').length;
+    check("검색 칸이 선다", !!doc.querySelector(".tidyui .tq"));
     /* 기록이 0건인 갈래는 세우지 않는다 — 눌러도 빈 목록인 칸은 손잡이가
        아니라 함정이다 (designer 실측). 그래서 칩은 0개이거나 3개다. */
     check("거르개는 아예 없거나 셋이다 — 눌러도 빈 칸을 그리지 않는다",
       chips === 0 || chips === 3, `칩 ${chips}개`);
 
     // ── 거르개 (설 때만)
-    const who = v => doc.querySelector(`.tidypanel [data-tidy="who"][data-who="${v}"]`);
+    const who = v => doc.querySelector(`.tidyui [data-tidy="who"][data-who="${v}"]`);
     if (chips === 3){
     realClick(win, doc, who("screen")); await sleep(250);
     const nScreen = rows(doc);
@@ -145,8 +153,8 @@ async function run(){
     const nCli = rows(doc);
     check("「명령으로 버린 것」이 갈라 낸다", nCli > 0 && nCli < n0, `→ ${nCli}`);
     check("두 갈래가 서로 다른 것을 집는다",
-      doc.querySelector(".tidypanel .titem .tid").textContent.trim() !== "",
-      doc.querySelector(".tidypanel .titem .tid").textContent.trim());
+      doc.querySelector(".tidyui .titem .tid").textContent.trim() !== "",
+      doc.querySelector(".tidyui .titem .tid").textContent.trim());
 
     realClick(win, doc, who("all")); await sleep(250);
     check("「전체」로 돌아오면 다시 전량이다", rows(doc) === n0, `→ ${rows(doc)}`);
@@ -154,28 +162,28 @@ async function run(){
 
     /* ── 검색 (한 자씩). 칠 글자는 **첫 행의 번호**에서 얻는다 — 고정 낱말을
        박아 두면 그 문서가 사라진 날 하니스가 제품 결함처럼 실패한다. */
-    const first = doc.querySelector(".tidypanel .titem .tid").textContent.trim();
+    const first = doc.querySelector(".tidyui .titem .tid").textContent.trim();
     const term = first.slice(-3);
     await type(win, doc, term);
     await sleep(250);
     const nq = rows(doc);
     check("친 글자마다 목록이 좁아진다", nq > 0 && nq < n0, `→ ${nq}`);
     check("친 글자가 칸에 그대로 남는다",
-      (doc.querySelector(".tidypanel .tq") || {}).value === term,
-      (doc.querySelector(".tidypanel .tq") || {}).value);
+      (doc.querySelector(".tidyui .tq") || {}).value === term,
+      (doc.querySelector(".tidyui .tq") || {}).value);
 
     // ── 걸러서 0 인 자리
     await type(win, doc, "없는말");
     await sleep(250);
     check("0 건이면 이유를 말하고 푸는 손을 준다",
-      rows(doc) === 0 && !!doc.querySelector('.tidypanel [data-tidy="clearq"]'),
-      (doc.querySelector(".tidypanel .tempty") || {}).textContent?.trim().slice(0, 40));
-    realClick(win, doc, doc.querySelector('.tidypanel [data-tidy="clearq"]'));
+      rows(doc) === 0 && !!doc.querySelector('.tidyui [data-tidy="clearq"]'),
+      (doc.querySelector(".tidyui .tempty") || {}).textContent?.trim().slice(0, 40));
+    realClick(win, doc, doc.querySelector('.tidyui [data-tidy="clearq"]'));
     await sleep(250);
     check("「조건 지우기」가 전량으로 되돌린다", rows(doc) === n0, `→ ${rows(doc)}`);
 
     // ── 바닥
-    const labels = [...doc.querySelectorAll(".tidypanel .titem .acts button")]
+    const labels = [...doc.querySelectorAll(".tidyui .titem .acts button")]
       .map(b => b.textContent.trim());
     check("행의 되돌리는 손이 양 탭에서 「문서 목록으로」 하나다",
       labels.includes("문서 목록으로") && !labels.includes("보관 해제"),
@@ -185,7 +193,7 @@ async function run(){
     /* 수명은 **넘긴 것이 있을 때만** 말한다 — 0 인데 날수를 적으면 숫자만 서고
        뒤따르는 일이 없다. 이 저장소의 지금 휴지통은 가장 오래된 것이 30일 안이라,
        0 인 쪽이 지금 볼 수 있는 모습이다. */
-    const marks = doc.querySelectorAll(".tidypanel .tover").length;
+    const marks = doc.querySelectorAll(".tidyui .tover").length;
     check("넘긴 것이 없으면 날수도 손잡이도 세우지 않는다",
       marks > 0 ? (!!overBtn(doc) && /완전히 지우기/.test(overBtn(doc).textContent))
                 : (!overBtn(doc) && !footText(doc).includes("넘긴")),

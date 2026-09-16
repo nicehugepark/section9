@@ -158,6 +158,18 @@ class TheScreenSaysItBefore(unittest.TestCase):
         self.assertIn('tidySend("keep"', seg, "서버의 같은 길로 안 간다")
         self.assertIn("r.auto_purge", seg, "무엇을 남기는지 서버 판정을 안 읽는다")
 
+    def test_the_handles_stand_only_in_the_trash_tab(self):
+        """휴지통의 수를 말하는 손이 보관함 탭에 서지 않는다.
+
+        실제로 보였다 (REQ-20260916-015 의 캡처): 보관함 탭 바닥에 「기계가 만든
+        28건 완전히 지우기」가 섰다 — 073 을 세울 때 빠뜨린 조건이다.
+        """
+        for mark in ('data-tidy="keepauto"', 'data-tidy="purgeauto"'):
+            i = self.src.index(mark)
+            seg = self.src[max(0, i - 260):i]
+            self.assertIn('tidyTab === "trash"', seg,
+                          "%s 가 보관함 탭에서도 선다" % mark)
+
     def test_the_promise_is_not_made_when_there_is_nothing(self):
         # 지키지 않을 약속은 적지 않는다
         i = self.src.index("const footLine")

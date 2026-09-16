@@ -169,7 +169,7 @@ async function tidySend(op, ids, extra){
      레일에서는 안 됐다. 「문서가 바뀌었다」 신호 한 곳(app.js docsChanged)을
      지나므로, 목록이 셋이 되는 날에도 이 줄은 그대로다. */
   await docsChanged();
-  if (tidyBox) tidyRender();
+  tidyRender();   // 어느 자리에 서 있든 (안 서 있으면 아무 일도 하지 않는다)
   tidyDecorate();
   return res;
 }
@@ -229,13 +229,18 @@ function tidyNavSub(){
 
 /* 레일의 줄을 settings.js 가 그리지 않고 여기서 내주는 것은, 수를 쥔 쪽이
    자기 줄을 붙인다는 이 조각의 규칙 때문이다(Docs 타입바·Projects 레일과 같다).
-   레일의 다른 줄들과 같은 얼굴(.row + .path)로 서되, 화면을 바꾸는 절이 아니라
-   판을 여는 손잡이라 button 이고 sel 을 받지 않는다 — 레일 맨 아래 「가이드 열기」
-   가 a 로 같은 자리에 선다. */
+   레일의 다른 줄들과 같은 얼굴(.row + .path)로 선다.
+
+   이 줄은 **판을 여는 손잡이가 아니라 절로 가는 줄**이다 (REQ-20260916-015-62x6,
+   주인 2026-09-16: 「settings의 휴지통 메뉴를 눌렀을 때는 팝업이 아닌 일반
+   화면으로」). 그래서 이름표가 `data-sset` 이고, 레일의 다른 줄들과 똑같은 길을
+   지난다 — 고른 줄 표시(.sel)·주소(#settings/tidy)·뒤로가기가 전부 그 길에
+   이미 있다. 여기서 제 길을 한 벌 더 들면 언젠가 한 벌만 고쳐진다.
+   button 인 것은 그대로 둔다: 키보드로 짚어 Enter 로 들어가는 줄이다. */
 function tidyNavRow(){
-  return `<button type="button" class="row" id="tidy-nav" data-tidy="open"`
-    + ` aria-haspopup="dialog" aria-expanded="false"`
-    + ` title="${TIDY_NAV_T}">`
+  const on = typeof settingsSection !== "undefined" && settingsSection === TIDY_SECT;
+  return `<button type="button" class="row${on ? " sel" : ""}" id="tidy-nav"`
+    + ` data-sset="${TIDY_SECT}" title="${TIDY_NAV_T}">`
     + `<div>보관함 · 휴지통</div>`
     + `<div class="path">${esc(tidyNavSub())}</div></button>`;
 }
@@ -277,8 +282,12 @@ function prjTrashPaint(){
       head.insertAdjacentHTML("beforeend", `<span class="pjtail"></span>`);
       tail = head.querySelector(".pjtail");
     }
+    /* 판을 여는 손잡이라고 **스스로 밝힌다** — 열림·닫힘을 말하는 tidyOpenersExpanded
+       가 이름이 아니라 이 표시로 손잡이를 찾기 때문이다 (REQ-20260916-015-62x6:
+       Settings 레일의 줄이 절로 가는 줄이 되면서 그 표시를 내려놓았다). */
     tail.insertAdjacentHTML("beforeend", `<button type="button" class="pjtrash"`
-      + ` data-tidy="open" data-narrow="project"></button>`);
+      + ` data-tidy="open" data-narrow="project"`
+      + ` aria-haspopup="dialog" aria-expanded="false"></button>`);
     el = tail.querySelector(".pjtrash");
   }
   if (el.textContent !== "휴지통") el.textContent = "휴지통";
@@ -500,6 +509,25 @@ function tidyUndoHTML(){
    **어느 한 손잡이를 이름으로 찾지 않는다**: 판을 여는 자리는 Settings 레일·
    Projects 레일·무르는 줄 셋이고, 그중 하나가 옮겨 갈 때마다 이 줄이 따라
    깨졌다. 판을 여는 손잡이라고 스스로 밝힌 것(aria-haspopup)을 전부 물린다. */
+/* ---- 서는 자리가 둘이다 (REQ-20260916-015-62x6) ----
+
+   Settings 레일에서 온 사람은 이미 판을 떠나 설정을 보러 온 것이라 화면이 바뀌어도
+   잃을 것이 없다 — 거기서는 Settings 의 **한 절**로 선다. Projects 레일이나 무르는
+   줄에서 온 사람은 목록을 보다 누른 것이라 보던 자리를 잃으면 안 된다 — 거기서는
+   지금처럼 **떠 있는 판**이다. 그리는 몸통은 하나이고 머리와 바닥만 갈린다.
+
+   어느 자리에 그릴지는 **한 곳에서** 판정한다. 그리는 손마다 제 자리를 물으면
+   자리가 손 수만큼 늘고, 그중 하나는 언젠가 빈 화면에 그린다. */
+const TIDY_SECT = "tidy";      // Settings 레일에서 이 절의 이름 (주소에도 이 글자)
+function tidyPaneHost(){
+  if (typeof tab === "undefined" || tab !== "settings") return null;
+  if (typeof settingsSection === "undefined" || settingsSection !== TIDY_SECT) return null;
+  return document.getElementById("sview");
+}
+// 떠 있는 판이 먼저다 — 둘이 함께 서는 일은 없지만(화면을 옮기면 판이 닫힌다),
+// 순서를 정해 두지 않으면 그 한 번의 겹침에서 어느 쪽이 갈릴지 모른다.
+function tidyHost(){ return tidyBox || tidyPaneHost(); }
+
 /* 판이 열릴 때 서 있던 화면 — 거기서 떠나면 판도 따라 닫는다. */
 let tidyAt = "";
 function tidyNavAway(now){ if (tidyBox && now !== tidyAt) tidyClose(); }
@@ -520,7 +548,9 @@ function tidyClose(){
 }
 
 function tidyRender(){
-  if (!tidyBox) return;
+  const host = tidyHost();
+  if (!host) return;
+  const pane = host !== tidyBox;   // 화면으로 선 자리인가
   const all = tidyTab === "trash" ? tidyTrash : tidyArch;
   const rows = tidyRows();
   const lost = rows === null;
@@ -630,10 +660,20 @@ function tidyRender(){
           : `<div class="tempty">${tidyTab === "trash"
               ? "휴지통이 비어 있습니다." : "보관한 문서가 없습니다."}${emptyNext()}</div>`)
       : rows.map(item).join("");
-  tidyBox.innerHTML = `<div class="dlghead">` + DLG_GRIP + `
+  /* 머리와 바닥만 자리에 따라 갈린다 (REQ-20260916-015-62x6). 떠 있는 판은
+     닫아야 할 것이라 잡는 자리·ESC·「닫기」를 갖는다. 화면으로 선 절에는 닫을
+     것이 없다 — 돌아갈 길은 왼쪽 레일의 다른 줄이고, 없는 길을 버튼으로 지어내지
+     않는다(s9-design R6). 제목은 Settings 의 다른 절과 **같은 부품**으로 선다
+     (h1 + .path) — 같은 뜻의 원소가 자리마다 다른 얼굴을 쓰면 한 화면이 두 벌이
+     된다(전 스킨 검수 규칙 1). */
+  const head = pane
+    ? `<h1 style="margin:0 0 4px">보관함 · 휴지통</h1>
+      <div class="path">치운 문서가 여기 있습니다 — 되돌리면 문서 목록으로 돌아갑니다.</div>`
+    : `<div class="dlghead">` + DLG_GRIP + `
       <span class="dlgcap">보관함 · 휴지통</span>
       <span class="dlgdoc">치운 문서가 여기 있습니다 — 되돌리면 문서 목록으로 돌아갑니다.</span>
-      <span class="dlgesc"><kbd>ESC</kbd> 닫기</span></div>
+      <span class="dlgesc"><kbd>ESC</kbd> 닫기</span></div>`;
+  host.innerHTML = head + `
     <div class="tidytabs">
       <button type="button" data-tidy="tab" data-ttab="archived"
         class="${tidyTab === "archived" ? "on" : ""}">보관함${cnt(tidyArch)}</button>
@@ -646,9 +686,13 @@ function tidyRender(){
       <span class="path">${tidyTab === "trash" ? footLine()
         : "보관한 문서는 그대로 있습니다. 목록에서만 내려와 있습니다."}</span>
       <div class="acts">
-        ${tidyAuto.n && tidyAuto.on
+        <!-- 이 둘은 **휴지통의 수**를 말하는 손이라 그 탭에서만 선다
+             (REQ-20260916-015-62x6 에서 designer 가 짚었고 캡처에 그대로
+             보였다 — 보관함 탭에 「기계가 만든 28건 완전히 지우기」가 섰다.
+             REQ-20260915-073 을 세울 때 리드가 빠뜨린 조건이다). -->
+        ${tidyTab === "trash" && tidyAuto.n && tidyAuto.on
           ? `<button type="button" data-tidy="keepauto">남겨두기</button>` : ""}
-        ${tidyAuto.n && !tidyAuto.on
+        ${tidyTab === "trash" && tidyAuto.n && !tidyAuto.on
           ? `<button type="button" class="gone" data-tidy="purgeauto">기계가 만든 ${
               tidyAuto.n}건 완전히 지우기</button>` : ""}
         ${over.length
@@ -666,7 +710,8 @@ function tidyRender(){
               narrowed
                 ? `휴지통 비우기 · 거른 것과 상관없이 전부 ${all.length}건`
                 : `휴지통 비우기 · 전부 ${all.length}건`}</button>` : ""}
-        <button type="button" data-tidy="close">닫기</button></div></div>`;
+        ${pane ? "" : `<button type="button" data-tidy="close">닫기</button>`}
+      </div></div>`;
 }
 
 /* 판을 여는 손마다 청하는 것이 다르다 (REQ-20260915-064-62x6): Settings 레일은
@@ -701,7 +746,9 @@ async function tidyOpen(want){
   }
   tidyAsked(tab, type);
   tidyBox = document.createElement("div");
-  tidyBox.className = "hovercard dlgbox tidypanel";
+  // `tidyui` 는 **몸통**의 이름이다 — 판과 절이 같은 부품을 쓰므로 그 부품의
+  // 모양은 이 한 이름에 걸린다 (`tidypanel` 은 떠 있는 판만의 것: 폭·자리).
+  tidyBox.className = "hovercard dlgbox tidypanel tidyui";
   tidyBox.setAttribute("role", "dialog");
   tidyBox.setAttribute("aria-label", "보관함과 휴지통");
   tidyOpenersExpanded(true);
@@ -722,6 +769,26 @@ async function tidyOpen(want){
     if (!na && nt) tidyTab = "trash";
     else if (na && !nt) tidyTab = "archived";
   }
+  tidyRender();
+  tidyDecorate();
+}
+
+/* Settings 의 한 절로 설 때 — settings.js 가 그 자리를 그릴 때 부른다
+   (REQ-20260916-015-62x6). `tidyOpen` 과 나란한 짝이고 규칙도 같다: 들어올
+   때마다 좁힘을 처음으로 돌리고, 아무것도 안 청했으니 받아 온 뒤 비어 있지
+   않은 쪽을 고른다. 다른 것은 셋뿐이다 — 붙일 상자를 만들지 않고(자리는 이미
+   서 있다), 끌지 않고, 닫지 않는다. */
+async function tidyPaneRender(host){
+  if (!host) return;
+  host.classList.add("tidyui", "tidypane");
+  tidyAsked("", "");
+  tidyRender();
+  await tidyFetch();
+  const na = (tidyArch || []).length, nt = (tidyTrash || []).length;
+  if (!na && nt) tidyTab = "trash";
+  else if (na && !nt) tidyTab = "archived";
+  // 받아 오는 사이에 다른 절로 갔으면 여기서 그릴 자리가 없다 — tidyRender 가
+  // 자리를 다시 물어 스스로 물러난다(이 함수가 그 판정을 한 벌 더 들지 않는다).
   tidyRender();
   tidyDecorate();
 }
@@ -756,7 +823,8 @@ async function tidyAct(what, el){
   if (what === "q"){
     tidyQ = el.value || "";
     tidyRender();
-    const box = tidyBox && tidyBox.querySelector(".tq");
+    const h = tidyHost();
+    const box = h && h.querySelector(".tq");
     if (box){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
     return;
   }

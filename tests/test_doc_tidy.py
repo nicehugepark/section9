@@ -511,8 +511,10 @@ class TidyHandleNamesBothPlaces(unittest.TestCase):
                       "반대쪽도 비었으면 둘째 줄은 서지 않는다")
         css = open(os.path.join(HERE, "..", "web", "css", "tidy.css"),
                    encoding="utf-8").read()
-        self.assertIn(".tidypanel .tempty .tsub{", css)
-        self.assertNotIn(".tidypanel .tempty{padding:22px 16px;color:var(--faint)",
+        # 몸통의 이름은 `.tidyui` 다 — 판과 절이 같은 부품을 쓰므로
+        # (REQ-20260916-015-62x6), `.tidypanel` 은 떠 있는 판만의 것(폭·자리)이다
+        self.assertIn(".tidyui .tempty .tsub{", css)
+        self.assertNotIn(".tidyui .tempty{padding:22px 16px;color:var(--faint)",
                          css, "빈 상태는 읽어야 하는 글자다 — --faint 금지")
 
 
@@ -634,3 +636,128 @@ class TidyRailHandleSaysNoNumber(unittest.TestCase):
         self.assertIn('el.textContent = "휴지통"', body)
         self.assertNotRegex(body, r"aria-label[^\n]*\$\{n\}",
                             "화면에 없는 수를 화면낭독기만 듣는다")
+
+
+class TidyStandsInTwoPlaces(unittest.TestCase):
+    """같은 몸통이 **자리에 따라** 판이 되기도 화면이 되기도 한다
+    (REQ-20260916-015-62x6, 주인 2026-09-16: 「settings의 휴지통 메뉴를 눌렀을
+    때는 팝업이 아닌 일반 화면으로 보이게 해줘」).
+
+    Settings 레일에서 온 사람은 이미 판을 떠나 설정을 보러 온 것이라 화면이
+    바뀌어도 잃을 것이 없다 — 거기서는 Settings 의 한 절로 선다. Projects 레일이나
+    무르는 줄에서 온 사람은 목록을 보다 누른 것이라 보던 자리를 잃으면 안 된다 —
+    거기서는 떠 있는 판 그대로다.
+
+    글자로 재지 않는다 — `web/app/tidy.js` 를 node 로 **실행해** 두 자리에
+    실제로 그려진 것을 잰다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = os.path.join(HERE, "..", "web", "app", "tidy.js")
+
+    def draw(self):
+        """두 자리에 한 번씩 그리고, 그려진 것과 레일의 줄을 돌려준다."""
+        stub = """
+globalThis.esc = s => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+globalThis.shortId = s => String(s);
+globalThis.personNameHTML = s => String(s);
+globalThis.personTitle = s => String(s);
+globalThis.DLG_GRIP = '<span class="dlggrip"></span>';
+globalThis.catFind = () => null;
+globalThis.projects = [];
+globalThis.selectedDoc = "";
+const mk = () => ({className: "", innerHTML: "", dataset: {},
+  classList: {names: [], add(...a){ this.names.push(...a); },
+              contains(n){ return this.names.includes(n); }},
+  setAttribute(){}, remove(){}, querySelector(){ return null; },
+  querySelectorAll(){ return []; }});
+const BY_ID = {};
+globalThis.document = {
+  addEventListener(){}, getElementById: id => BY_ID[id] || null,
+  querySelector(){ return null; }, querySelectorAll(){ return []; },
+  createElement: mk, body: {appendChild(){}}};
+globalThis.window = {addEventListener(){}};
+globalThis.MK = mk; globalThis.BY_ID = BY_ID;
+"""
+        drive = """
+const rows = [
+  {id: "REQ-1", title: "버린 요청", user: "kim", deleted: "2026-09-16T01:00:00"},
+  {id: "REQ-2", title: "또 버린 것", user: "kim", deleted: "2026-09-16T02:00:00"}];
+tidyArch = [{id: "DOC-9", title: "보관한 것", user: "kim",
+             archived: "2026-09-15T01:00:00"}];
+tidyTrash = rows;
+tidyTab = "trash";
+
+// ① Settings 의 한 절로 — 자리는 이미 서 있고(#sview), 상자를 만들지 않는다
+globalThis.tab = "settings"; globalThis.settingsSection = "tidy";
+const sview = MK(); BY_ID.sview = sview;
+sview.classList.add("tidyui", "tidypane");
+tidyRender();
+const navOn = tidyNavRow();
+
+// ② 목록을 보다 누른 자리 — 떠 있는 판 그대로
+globalThis.tab = "board"; globalThis.settingsSection = "account";
+tidyBox = MK();
+tidyRender();
+const navOff = tidyNavRow();
+
+console.log(JSON.stringify({pane: sview.innerHTML, box: tidyBox.innerHTML,
+                            navOn, navOff}));
+"""
+        js = stub + open(self.src, encoding="utf-8").read() + drive
+        d = tempfile.mkdtemp(prefix="s9tidyplace-")
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        f = os.path.join(d, "run.js")
+        with open(f, "w", encoding="utf-8") as fh:
+            fh.write(js)
+        r = subprocess.run([NODE, f], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_p1_the_settings_rail_row_goes_to_a_section(self):
+        """P1. 레일의 줄은 판을 여는 손잡이가 아니라 **절로 가는 줄**이다 —
+        레일의 다른 줄들과 같은 길(주소·고른 표시·뒤로가기)을 지난다."""
+        got = self.draw()
+        self.assertIn('data-sset="tidy"', got["navOn"], "절의 이름표가 없다")
+        self.assertNotIn('data-tidy="open"', got["navOn"],
+                         "아직 판을 여는 손잡이다")
+        self.assertNotIn("aria-haspopup", got["navOn"],
+                         "화면을 바꾸는 줄이 판을 연다고 말한다")
+        self.assertIn(" sel", got["navOn"], "그 절에 서 있는데 고른 표시가 없다")
+        self.assertNotIn(" sel", got["navOff"], "다른 절에 있는데 고른 표시가 섰다")
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_p2_in_settings_it_is_a_screen_not_a_floating_panel(self):
+        """P2. Settings 에서는 그 자리의 보통 화면이다 — 잡아 끄는 머리도,
+        ESC 도, 「닫기」도 없다. 돌아갈 길은 왼쪽 레일의 다른 줄이다."""
+        got = self.draw()
+        self.assertIn("<h1", got["pane"], "다른 절과 같은 제목이 안 섰다")
+        self.assertNotIn("dlghead", got["pane"], "떠 있는 판의 머리가 남았다")
+        self.assertNotIn("ESC", got["pane"], "닫으라는 말이 남았다")
+        self.assertNotIn('data-tidy="close"', got["pane"],
+                         "닫는 손잡이가 화면에 남았다 — 닫을 것이 없다")
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_p3_the_other_openers_keep_the_floating_panel(self):
+        """P3. 목록을 보다 누른 자리는 그대로 떠 있는 판이다 — 보던 자리를
+        잃으면 안 되기 때문이다."""
+        got = self.draw()
+        self.assertIn("dlghead", got["box"], "판의 머리가 사라졌다")
+        self.assertIn("ESC", got["box"], "ESC 로 닫는다는 말이 사라졌다")
+        self.assertIn('data-tidy="close"', got["box"], "닫는 손잡이가 사라졌다")
+
+    @unittest.skipIf(NODE is None, "node 가 없다")
+    def test_p4_both_places_keep_every_hand(self):
+        """P4. 자리가 달라져도 손은 그대로다 — 두 탭 · 되돌리기 · 완전히
+        지우기 · 거르개와 검색 · 바닥의 약속 한 줄."""
+        got = self.draw()
+        for where, html in (("화면", got["pane"]), ("판", got["box"])):
+            self.assertIn('data-ttab="archived"', html, f"{where}: 보관함 탭이 없다")
+            self.assertIn('data-ttab="trash"', html, f"{where}: 휴지통 탭이 없다")
+            self.assertIn('data-tidy="back"', html, f"{where}: 되돌리는 손이 없다")
+            self.assertIn('data-tidy="purgeall"', html, f"{where}: 휴지통 비우기가 없다")
+            self.assertIn('class="tq"', html, f"{where}: 찾는 칸이 없다")
+            self.assertIn("tfoot", html, f"{where}: 바닥 줄이 없다")

@@ -31,7 +31,7 @@ async function postJSON(url, body){
   return res.ok;
 }
 
-let settingsSection = "account";  // account | display | worker | users | repo | about — 첫 항목이 기본 판이다 (REQ-20260913-026)
+let settingsSection = "account";  // account | display | worker | users | repo | tidy | about — 첫 항목이 기본 판이다 (REQ-20260913-026)
 
 async function renderSettings(){
   const gen = renderGen;
@@ -173,6 +173,11 @@ function renderSettingsSection(meAdmin){
     if (wrt) wrt.addEventListener("click", () => renderSettings());
   } else if (settingsSection === "external" || settingsSection === "jira"){
     showJiraPanel(v, me);        // "jira" 는 옛 주소 — 같은 판을 연다
+  } else if (settingsSection === TIDY_SECT){
+    /* 「보관함 · 휴지통」은 이 파일이 그리지 않는다 (REQ-20260916-015-62x6) —
+       목록과 수를 쥔 tidy.js 가 제 절을 그린다(레일의 줄도 거기서 내준다).
+       여기서 한 벌 더 그리면 판과 절이 다른 말을 하게 된다. */
+    tidyPaneRender(v);
   } else if (settingsSection === "repo"){
     /* 계정을 가리지 않는다 — **읽기는 자유**이고 저장소는 계정과 무관하다.
        누를 자격은 서버가 응답의 `can` 으로 따로 말하고, 못 누르는 사람에게는
