@@ -11504,6 +11504,56 @@ WORKTREE_GIT_TOOLS = ["Bash(git add:*)", "Bash(git commit:*)",
                       "Bash(git log:*)"]
 
 
+# 무인 작업자가 **못 부르는** s9 하위명령 (REQ-20260916-004-62x6).
+#
+# 실제 결함 2026-09-16: 봉투가 `Bash(<ROOT>/bin/s9:*)` 한 줄이라 s9 의 모든
+# 하위명령이 들어왔는데, 그 안에 **임의 명령 실행기**가 있었다 —
+# `s9 secret run -- sh -c '<무엇이든>'` 은 치환한 argv 를 그대로 실행한다.
+# 적용 모드(auto_resume_apply)가 꺼져 있어도, 즉 「읽기만 하는 봉투」라고
+# 적어 둔 그 자리에서도 무엇이든 실행됐다. 봉투를 **명령 이름**으로 정했는데
+# 그 명령 하나가 범용 실행기였던 것이다 — 그러면 권한 목록은 경계가 아니다.
+#
+# 그래서 봉투는 하위명령 단위로 선다. 네 갈래를 뺀다:
+#   ① 인자를 다시 실행하는 것 — secret(run) · tunnel(ssh) · code · resume
+#      (`s9 code -- <claude 인자>` · `s9 resume <sid> -p '<프롬프트>'` 는
+#      **제 봉투를 스스로 고른 새 세션**을 띄운다)
+#   ② 봉투 자체를 바꾸는 것 — config(apply --with-permissions) ·
+#      user(`user config <사람> auto_resume_apply on` · `s9code_args`) ·
+#      account(로그인 계정) · env(설치 전 설정 되돌리기) · uninstall(훅 제거)
+#   ③ 바깥에 저장소·계정을 만드는 것 — instance · github · release
+#   ④ 되돌릴 수 없는 것 — reset(state/ 비우기) · purge(휴지통 완전 삭제)
+# 나머지는 전부 준다 — 문서·상태·조회·커밋·캡처는 작업자의 일이다.
+#
+# 목록이 갈리지 않게 시험(test_worker_envelope)이 **등록된 하위명령 전부가
+# 둘 중 한쪽에 있는지** 본다: 새 하위명령을 더하면 분류할 때까지 실패한다.
+WORKER_DENIED_SUBCOMMANDS = (
+    "secret", "tunnel", "code", "resume",
+    "config", "user", "account", "env", "uninstall",
+    "instance", "github", "release",
+    "reset", "purge",
+)
+WORKER_ALLOWED_SUBCOMMANDS = (
+    "agents", "approvals", "archive", "assets", "assign", "bind", "blocked",
+    "callname", "claim", "commit", "commit-note", "contrib", "delegate-target",
+    "digest", "doctor", "handoff", "inbox", "index", "init", "jira", "last",
+    "link", "linkcheck", "log", "loose", "ls", "merge-doc", "metrics", "new",
+    "next", "normalize", "note", "now", "peer", "perf", "project", "reopened",
+    "resume-item", "restore", "review", "rm", "safaridriver", "search",
+    "serve", "serve-stale", "set", "shapes", "shot", "show", "snapshot",
+    "stalled", "stash", "status", "stream", "sync", "tag", "terms", "tokens",
+    "trash", "unarchive", "untitled", "workers", "worktree",
+)
+
+
+def worker_s9_tools(s9bin):
+    """무인 작업자 봉투의 s9 줄 — 하위명령마다 한 줄.
+
+    `Bash(<s9>:*)` 한 줄로는 경계가 되지 못한다(위 주석). 하위명령 단위로
+    적으면 빠진 이름은 **막히는** 쪽으로 틀린다 — 작업자가 그 명령을 못 부를
+    뿐 임의 실행으로는 새지 않는다."""
+    return [f"Bash({s9bin} {c}:*)" for c in WORKER_ALLOWED_SUBCOMMANDS]
+
+
 # 리스가 막았을 때 **사람 앞에 나가는 문장** (REQ-20260909-099).
 #
 # 리스 판정이 돌려주는 `why` 는 터미널의 말이다 — "…가 쥐고 있다" ·
@@ -11738,12 +11788,25 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
         # LEASE_RESERVE_SEC 짜리 예약으로 본다.
         lease_take(doc_id, sorted(scope))
     s9bin = os.path.join(ROOT, "bin", "s9")
-    # 봉투: 기본 = DOC-20260823-003 심사 준수 allowlist(읽기 + s9).
+    # 봉투: 기본 = DOC-20260823-003 심사 준수 allowlist(읽기 + s9의 안전한
+    # 하위명령). s9 는 **하위명령마다 한 줄**이다 — 이름 한 줄로 주면 그 안의
+    # 실행기(`secret run`)까지 딸려 온다 (WORKER_DENIED_SUBCOMMANDS 주석).
     # 옵트인 적용 모드 = 편집 자동승인 + 검증 명령 허용 (캡·킬스위치 유지).
-    perm = ["--allowedTools", "Read", "Glob", "Grep", f"Bash({s9bin}:*)"]
+    perm = ["--allowedTools", "Read", "Glob", "Grep"] + worker_s9_tools(s9bin)
     if cfg.get("auto_resume_apply"):
+        # `cp` 는 걷었다 (REQ-20260916-004-62x6): `Bash(cp <ROOT>/web/:*)` 는
+        # 출처만 web/ 으로 묶고 **목적지가 자유**라, 워크스페이스에서 만든
+        # 파일을 `~/.claude/settings.json` 같은 바깥 자리로 옮길 수 있었다.
+        # 이 스위치의 뜻은 "이 워크스페이스의 파일을 고쳐도 좋다"이고, 그
+        # 손은 acceptEdits 의 Write·Edit 이 준다 — 그쪽은 작업 디렉터리 밖을
+        # 건드릴 때 사람에게 묻는다. 바깥으로 나가는 복사는 그 뜻에 없었다.
+        #
+        # 솔직히 적어 둔다: **적용 모드의 봉투도 경계가 아니다.** 파일을 고칠
+        # 수 있고 `tests/` 를 실행할 수 있으면 그 둘을 이어 무엇이든 실행할 수
+        # 있다(tests/x.py 를 쓰고 돌리면 된다). 경계는 **기본 봉투**이고,
+        # 적용 모드는 사람이 그 사실을 알고 켜는 스위치다(기본 꺼짐).
         perm = ["--permission-mode", "acceptEdits"] + perm + \
-               ["Bash(python3 tests/:*)", f"Bash(cp {ROOT}/web/:*)"]
+               ["Bash(python3 tests/:*)"]
     # gh 는 **따로** 켠다 (REQ-20260827-076). auto_resume_apply 에 끼워 넣지
     # 않는 이유: 그 스위치의 뜻은 "이 워크스페이스의 파일을 고쳐도 좋다"이고,
     # gh 의 뜻은 "**바깥 서비스의 설정을 바꿔도 좋다**"다. 하나를 켰다고 다른
