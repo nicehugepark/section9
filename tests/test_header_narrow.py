@@ -126,26 +126,45 @@ class HeaderNarrow(unittest.TestCase):
             self.narrow, r"\.tabs::-webkit-scrollbar\{[^}]*display:none",
             "옛 WebKit 에서 탭 줄 막대가 그대로 선다")
 
-    def test_side_shell_skin_keeps_its_vertical_tabs(self):
-        """soft 스킨의 탭은 왼쪽 셸에 **세로로** 선다 — 거기에 가로 밀기를
-        얹으면 셸이 무너진다. 규칙에서 빼 둔 것을 지운 적이 없어야 한다."""
+    def test_the_side_shell_skin_folds_at_this_width_like_the_others(self):
+        """**soft 도 이 폭에서는 머리글을 위로 올린다** (REQ-20260916-009-62x6).
+
+        전에는 정반대였다 — soft 의 탭은 왼쪽 세로 셸에 서므로 가로 밀기
+        규칙에서 **뺀다**가 이 자리의 계약이었다. 그 전제 아래 아무도 보지
+        않은 것이 있었다: 그 셸이 400px 창에서도 232px 을 그대로 써서 판에
+        돌아온 안쪽 폭이 **114px** 이었다(나머지 아홉 스킨은 338~346px).
+        화면의 58% 가 길잡이다.
+
+        판정(product-owner): ≤560px 에서 「나란히 선 것을 쌓는다」는 이미 두 번
+        선 규칙이고(목록·판 REQ-20260915-019-62x6 · 판의 열 REQ-20260916-010-2n7g),
+        세로 셸도 같은 갈래의 「나란히」다 — 새 규칙이 아니라 선 규칙의 적용이다.
+        스킨의 정체성은 자리가 있는 폭에서의 모습이지 400px 에서 쓸 수 없을
+        권리가 아니다. 561px 이상의 soft 는 세로 셸 그대로다.
+        """
         self.assertIn('.tabs', self.narrow)
         m = re.search(r"([^\n{]*)\.tabs\{[^}]*overflow-x:auto", self.narrow)
         self.assertIsNotNone(m)
-        self.assertIn('not([data-skin="soft"])', m.group(1),
-                      "soft 스킨(세로 탭)이 가로 밀기 규칙에서 빠져 있지 않다")
+        self.assertNotIn('not([data-skin="soft"])', m.group(1),
+                         "soft 를 가로 밀기에서 다시 빼 놓았다 — 그 폭에서 판이 "
+                         "114px 로 돌아간다")
+        self.assertRegex(self.narrow, r'\[data-skin="soft"\] main\{[^}]*margin-left:0',
+                         "soft 의 232px 세로 셸 자리가 이 폭에서 안 접힌다")
+        self.assertRegex(self.narrow, r'\[data-skin="soft"\] header\{[^}]*overflow:visible',
+                         "세로 셸의 overflow 를 **단축으로** 되돌리지 않았다 — 한 축만 "
+                         "visible 로 적으면 머리글이 스크롤 상자로 남고, 그 상자의 "
+                         "min-height:auto 는 0 이라 판 탭에서 툴바가 눌려 잘린다")
 
-    def test_no_flex_basis_leaks_into_the_vertical_toolbar(self):
-        """soft 스킨의 툴바는 **세로 상자**다(왼쪽 셸) — 거기서 `flex-basis`
-        는 폭이 아니라 **높이**가 된다. 검색칸과 손잡이가 첫 줄을 나눠 쓰게
-        하는 기준 폭이 그 스킨으로 새면 손잡이 하나가 줄 높이의 38% 를
-        가져간다. 줄을 가르는 값은 `width` 로 적거나 soft 를 빼야 한다."""
-        for m in re.finditer(r"([^\n{]*)\{([^}]*)\}", self.narrow):
-            sel, body = m.group(1).strip(), m.group(2)
-            if "flex-basis:100%" in body.replace(" ", "") or \
-                    re.search(r"flex:[^;]*\d%", body):
-                self.assertIn('not([data-skin="soft"])', sel,
-                              "세로 상자로 새는 기준 폭: %s" % sel[:70])
+    def test_no_skin_exception_is_left_in_this_width(self):
+        """이 폭의 규칙에 `:not([data-skin="soft"])` 예외가 남지 않는다.
+
+        예외가 하나라도 남아 있으면 soft 만 011 이 만든 좁은 폭 머리글을 못
+        받는다 — 위 시험이 재는 자리 말고 다른 데서 같은 구멍이 다시 열린다.
+        (product-owner 완료 조건 ④)
+        """
+        left = [ln.strip() for ln in self.narrow.splitlines()
+                if 'not([data-skin="soft"])' in ln]
+        self.assertEqual([], left,
+                         "soft 예외가 남아 있다: " + " · ".join(left[:3]))
 
     # ---------- ② 거르개는 접히고 검색은 남는다 ----------
 

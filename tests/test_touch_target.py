@@ -119,6 +119,22 @@ MEASURE_JS = """
                '.hrow2 .chk', '#usage-chip'].join(',');
   const seen = n => n.getClientRects().length > 0;
   const REACH = 70;          // 44 를 넉넉히 넘는 자 — 값이 아니라 한계다
+  // 가로로 미는 줄 안의 손잡이는 쉼 자리에서 줄 밖에 있을 수 있다
+  // (REQ-20260916-009-62x6). 011 이 손전화 폭의 탭 줄을 미는 줄로 만들었고,
+  // 400px 에서는 여덟 중 다섯만 줄 안에 선다 — 나머지 셋은 상자가 36px 인데
+  // 과녁이 0 으로 나왔다. 0 은 「작다」가 아니라 「그 좌표에 없다」다:
+  // elementFromPoint 는 잘려 나간 자리를 짚지 못한다. 손은 밀어서 만난다.
+  // 그래서 재기 전에 그 줄을 밀어 손잡이를 안으로 들인다. 눈금은 그대로
+  // 44px 이고, 밀어도 안 들어오는 손잡이는 여전히 0 이다 — 무를 것은 자
+  // 가 아니라 자를 댈 자리다.
+  const reveal = n => {
+    for (let p = n.parentElement; p; p = p.parentElement) {
+      if (p.scrollWidth > p.clientWidth + 1) {
+        n.scrollIntoView({inline: 'nearest', block: 'nearest'});
+        return;
+      }
+    }
+  };
   const hit = n => {
     const r = n.getBoundingClientRect();
     const x = Math.round((r.left + r.right) / 2);
@@ -139,6 +155,7 @@ MEASURE_JS = """
   const handles = [];
   for (const n of head.querySelectorAll(sel)) {
     if (!seen(n)) continue;
+    reveal(n);
     const r = n.getBoundingClientRect();
     handles.push({
       name: (n.id ? '#' + n.id
@@ -172,12 +189,13 @@ MEASURE_JS = """
 # (`[data-skin="glass"] .tabs{gap:6px}` · soft 는 세로 메뉴라 `gap:3px`). 과녁이
 # 겹치는지는 그 값에 걸리므로, 기본 스킨 하나만 재면 「고쳤다」가 한 스킨의
 # 사실이 된다 — 벨트 글리프 때의 그 함정이다(s9-design).
-# soft 만 창을 길게 잡는 까닭: 이 스킨의 셸은 왼쪽 세로 띠라 탭 여덟이 세로로
-# 쌓이고, 400x820 에서는 사용량 칩이 창 밑끝(y809)에 걸린다 — 과녁이 아니라
-# **창**이 잘라 25px 로 읽힌다. 재려는 것이 창 높이가 아니므로 그 축을 연다.
-PHONE_TALL = (400, 1400)
+# soft 도 이 폭에서는 다른 스킨과 같은 창으로 잰다 (REQ-20260916-009-62x6).
+# 창을 1400px 로 길게 잡았던 까닭은 이 스킨의 셸이 왼쪽 세로 띠여서 탭 여덟이
+# 세로로 쌓이고 사용량 칩이 400x820 의 밑끝에 걸렸기 때문인데, 이제 560px
+# 이하에서는 그 셸을 접고 가로 머리글로 선다 — 쌓이는 것이 없으니 축을 열
+# 까닭도 없다.
 CASES = (("phone", PHONE, "ledger"), ("desk", DESK, "ledger"),
-         ("phone_glass", PHONE, "glass"), ("phone_soft", PHONE_TALL, "soft"))
+         ("phone_glass", PHONE, "glass"), ("phone_soft", PHONE, "soft"))
 # 손끝이 오는 갈래 — 여기서만 눈금이 선다
 TOUCH_CASES = ("phone", "phone_glass", "phone_soft")
 

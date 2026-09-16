@@ -308,6 +308,45 @@
      남는다 — 줄여야 하는 것은 손전화 폭이고, 560 은 이미 그 폭의 눈금이다
      (바로 위 목록/판 쌓기 · notice.css 의 손잡이 접기). */
 
+  /* ⓪ soft 의 세로 셸은 이 폭에서 접고 머리글을 위로 올린다 (REQ-20260916-009-62x6)
+     soft 는 머리글을 왼쪽에 고정한 232px 세로 셸로 세운다(skins.css 머리).
+     그 232px 이 400px 창에서도 그대로 남아 판에 돌아온 안쪽 폭이 114px 이었다 —
+     화면의 58% 가 길잡이다(나머지 아홉 스킨은 338~346px).
+     이 폭에서 「나란히 선 것을 쌓는다」는 이미 두 번 선 판정이다(목록·판
+     REQ-20260915-019-62x6 · 판의 열 REQ-20260916-010-2n7g). 세로 셸도 같은
+     갈래의 「나란히」라 같은 눈금에서 같은 답을 받는다 — 새 규칙이 아니다.
+     셸을 좁히는 길(아이콘 레일)은 이 스킨의 탭이 **글자**라 쓸 수 없고, 덮어
+     여는 서랍은 soft 에만 있는 손잡이를 하나 더 만든다. 스킨은 재질을 바꾸고
+     자리는 바꾸지 않는다(s9-design 전 스킨 검수 1) — 그래서 접는 것은 셸뿐이고
+     재질(둥근 카드·pill·옅은 칠)은 그대로 둔다.
+     접고 나면 아래 ①② 가 soft 를 뺄 까닭이 없어진다 — 그 예외도 함께 거뒀다. */
+  /* `overflow` 를 **단축으로** 되돌리는 까닭: 세로 셸은 제 안에서 스크롤하고
+     (`overflow-y:auto`) 232px 밖으로 나가는 신원 줄을 잘랐다(`overflow-x:hidden`,
+     skins.css). 한 축만 `visible` 로 적으면 다른 축이 `hidden` 이라 그 축도
+     `auto` 로 되돌아간다 — 머리글이 스크롤 상자로 남는다. 그리고 스크롤 상자의
+     `min-height:auto` 는 내용이 아니라 **0** 이라, 판 탭에서 몸통이 세로 flex 가
+     되는 순간(`html.boardfit body`, board.css) 머리글이 74px 로 눌려 툴바가
+     잘렸다 — 실측 400x900, 안의 내용은 172px. 두 축을 함께 되돌린다. */
+  [data-skin="soft"] header{position:sticky;left:auto;top:0;bottom:auto;
+    width:auto;border-right:0;border-bottom:1px solid var(--border);
+    overflow:visible;background:var(--bg)}
+  [data-skin="soft"] main{margin-left:0}
+  [data-skin="soft"] .hrow1{flex-direction:row;align-items:center;
+    gap:0 10px;padding:10px 16px 0}
+  [data-skin="soft"] .hrow2{flex-direction:row;align-items:center;
+    gap:8px 10px;padding:6px 16px;border-top:1px solid var(--hairline)}
+  [data-skin="soft"] .hrow3{order:3;flex-direction:row;padding:7px 16px}
+  [data-skin="soft"] .tabs{flex-direction:row;gap:2px}
+  /* 세로 목록의 어휘(왼쪽 정렬·둥근 칠·제 줄)를 가로 줄의 어휘로 되돌린다 —
+     밑줄은 베이스가 그린다. 안여백은 ② 의 `.tabs button` 이 이어 적는다. */
+  [data-skin="soft"] .tabs button{text-align:center}
+  [data-skin="soft"] .pgroup{flex-direction:column;align-items:flex-end;
+    gap:2px;border-top:0;padding-top:0}
+  [data-skin="soft"] .hrow2 input[type="text"],
+  [data-skin="soft"] .hrow2 select{width:auto}
+  [data-skin="soft"] .settings-panel{top:auto;bottom:auto;left:16px;right:16px;
+    width:auto}
+
   /* ① 브랜드와 탭이 한 줄 — 탭은 가로로 밀되 **밀 수 있다는 것이 보인다**
      밀기 자체는 종전에도 있었으나 맥·iOS 는 겹쳐 뜨는 스크롤막대라 표시가 한
      화소도 없었고, 바로 앞 요청(REQ-20260916-010)이 그 이유로 반려됐다 —
@@ -321,15 +360,12 @@
      (header.css 머리말), 「글자 + 활성 밑줄」이라는 어휘를 스킨 열 벌이 각자
      정의해 두었다. 글자를 깎아 여덟을 욱여넣는 길도 셈이 안 된다 — 라틴 49자
      × 13px 에 안여백까지 491px 이라 400px 창의 탭 자리(264~368px)에 못 든다.
-     soft 스킨은 탭이 왼쪽 셸에 **세로로** 서므로 이 규칙에서 뺀다. */
+     soft 도 이 폭에서는 셸을 접고 가로 줄로 서므로 함께 받는다(위 ⓪). */
   .hrow1{flex-wrap:wrap;gap:0 10px;padding:10px 16px 0;align-items:center}
   .brand{padding-bottom:0}
-  /* 서버 상태 칩은 제 줄로 내려온다 — `flex-basis` 가 아니라 `width` 로 적는
-     까닭은 soft 스킨이다: 그 셸의 머리 줄은 **세로 상자**라 기준 폭이 높이가
-     되어 버린다. `width` 는 가로 상자에서만 줄을 가르고 세로 상자에서는 그냥
-     폭이라, 한 줄로 두 자리를 다 옳게 말한다. (`:empty` 면 자리도 없다) */
+  /* 서버 상태 칩은 제 줄로 내려온다. (`:empty` 면 자리도 없다) */
   .svchip{width:100%;margin-left:0;padding-bottom:8px}
-  :root:not([data-skin="soft"]) .tabs{
+  .tabs,[data-skin] .tabs{
     flex:1 1 0;min-width:0;flex-wrap:nowrap;
     overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;
     scrollbar-width:none;
@@ -345,9 +381,9 @@
       black calc(100% - var(--fade-r)),transparent 100%);
     mask-image:linear-gradient(to right,transparent 0,black var(--fade-l),
       black calc(100% - var(--fade-r)),transparent 100%)}
-  :root:not([data-skin="soft"]) .tabs::-webkit-scrollbar{display:none}
-  :root:not([data-skin="soft"]) .tabs.edge-l{--fade-l:16px}
-  :root:not([data-skin="soft"]) .tabs.edge-r{--fade-r:22px}
+  .tabs::-webkit-scrollbar,[data-skin] .tabs::-webkit-scrollbar{display:none}
+  .tabs.edge-l,[data-skin] .tabs.edge-l{--fade-l:16px}
+  .tabs.edge-r,[data-skin] .tabs.edge-r{--fade-r:22px}
   .tabs button,[data-skin] .tabs button{flex:0 0 auto;padding-bottom:10px}
 
   /* ② 거르개 넷을 손잡이 하나 뒤로 — 검색칸은 남는다
@@ -365,12 +401,11 @@
   .fgroup,[data-skin] .fgroup{display:contents}
   .hrow2 #q,[data-skin] .hrow2 #q{order:1;width:auto;min-width:0}
   .ffold{display:flex;order:2;min-width:0;min-height:var(--tap-min)}
-  /* 검색칸과 손잡이가 첫 줄을 나눠 쓰게 하는 기준 폭 — soft 스킨은 뺀다.
-     그 셸의 툴바는 세로 상자라 이 값이 폭이 아니라 **높이**가 되고, 손잡이
-     하나가 줄 높이의 38% 를 차지한다. 세로 상자에서는 넷이 이미 제 줄에
-     하나씩 서므로 나눌 줄이 없다 — 접기만 그대로 듣는다. */
-  :root:not([data-skin="soft"]) .hrow2 #q{flex:1 1 55%}
-  :root:not([data-skin="soft"]) .ffold{flex:1 1 38%}
+  /* 검색칸과 손잡이가 첫 줄을 나눠 쓰게 하는 기준 폭. soft 를 빼 두었던
+     까닭(그 셸의 툴바가 세로 상자라 이 값이 폭이 아니라 높이가 된다)은 위 ⓪
+     이후로 성립하지 않는다 — 이 폭의 soft 툴바도 가로 상자다. */
+  .hrow2 #q,[data-skin] .hrow2 #q{flex:1 1 55%}
+  .ffold,[data-skin] .ffold{flex:1 1 38%}
   .hrow2 .fgroup > :not(#q){order:3}
   .hrow2:not(.fopen) .fgroup > :not(#q),
   [data-skin] .hrow2:not(.fopen) .fgroup > :not(#q){display:none}
@@ -382,5 +417,12 @@
      **이 폭에서 칩을 nowrap 으로 묶으면 머리글이 밀려난다**는 것이라,
      한 줄로 줄이는 일은 그 계약을 실브라우저로 다시 재면서 해야 한다.
      그 몫은 REQ-20260916-012-2n7g 로 따로 섰다. */
-  .pgroup.idcol{order:4;width:100%}
+  /* 사용량 칩의 겹판은 12px 상자 한가운데에서 위아래로 16px 씩 펴진다(위
+     `.usagechip::after`). 아래로 펴진 몫은 신원 줄에 얹혀도 되지만 위로 펴진
+     16px 은 바로 위 줄을 덮는다 — 그 줄에 검색칸이 서고, 400px 실측에서
+     검색칸의 과녁이 상자 44px 인데 36px 이었다(REQ-20260916-009-62x6).
+     `.hrow2` 의 줄 사이 틈이 8px 뿐이라 나머지 8px 을 칩이 먹은 것이다.
+     그래서 이 묶음만 8px 을 더 내려 겹판이 펴질 16px 을 온전히 연다 — 거르개를
+     펼친 상태에서도 칩 바로 위에 서는 것은 이 묶음의 윗변이라 한 자리로 족하다. */
+  .pgroup.idcol{order:4;width:100%;margin-top:8px}
 }
