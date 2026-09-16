@@ -1876,11 +1876,79 @@ def jira_verdict(j):
     return _v("jira", "Jira", "ok", f"Jira: 준비물 OK · 발신함 {n}건")
 
 
+def watcher_info(root=None, now=None):
+    """워처가 마지막으로 돈 때 (REQ-20260916-006-62x6).
+
+    doctor 는 s9 를 import 하지 않는다(s9 가 못 뜰 때도 써야 한다) — 상태
+    파일을 직접 읽는다. 맡기기가 꺼져 있으면 「멎었다」가 아니라 「꺼져 있다」다:
+    끈 것을 고장이라고 말하면 그다음부터 아무도 이 줄을 안 읽는다.
+    """
+    import time as _t
+    base = root or ROOT
+    on = None
+    try:                    # 이 기계의 사람 중 하나라도 맡기기를 켰나
+        udir = os.path.join(base, "users")
+        for nm in os.listdir(udir):
+            cfg = os.path.join(udir, nm, "config.json")
+            try:
+                with open(cfg, encoding="utf-8") as f:
+                    v = str((json.load(f) or {}).get("auto_resume", "")).lower()
+            except (OSError, ValueError):
+                continue
+            if v in ("on", "true", "1", "yes"):
+                on = True
+                break
+            on = on or False
+    except OSError:
+        pass
+    age = None
+    try:
+        with open(os.path.join(base, "state", "auto_resume",
+                               "watch-beat.json"), encoding="utf-8") as f:
+            last = float((json.load(f) or {}).get("last") or 0)
+        if last > 0:
+            age = max(0.0, (_t.time() if now is None else now) - last)
+    except (OSError, ValueError, TypeError):
+        age = None
+    return {"on": on, "age": age}
+
+
+def watcher_verdict(w):
+    """맡기기를 켰는데 회차가 멎었으면 그것만으로 일이 통째로 선다.
+
+    실제 사고 2026-09-16: 서버가 멎어 **9시간 10분** 동안 회차가 한 번도 없었고
+    그 사이 이 컴퓨터 몫 요청 아홉이 아무도 집지 않은 채 있었다 — 보드에는
+    아무 표시도 없었다. 조용한 것과 멎은 것이 밖에서 같아 보였다."""
+    if w.get("on") is False:
+        return _v("watcher", "맡기기", "ok",
+                  "맡기기: 꺼져 있다 — 백그라운드 작업자를 띄우지 않는다")
+    age = w.get("age")
+    if age is None:
+        return _v("watcher", "맡기기", "warn",
+                  "맡기기: 워처가 돈 자취가 없다",
+                  "서버가 한 번도 안 떴거나 이 판이 처음이다 — `s9 serve` 로 띄워라.")
+    mins = int(age // 60)
+    if age >= 1800:
+        return _v("watcher", "맡기기", "critical",
+                  f"맡기기: 워처가 {mins}분째 한 회차도 안 돌았다 — "
+                  f"이 컴퓨터 몫 요청을 아무도 집지 않는다",
+                  "서버가 멎으면 워처도 함께 멎는다. `s9 serve --restart` 로 "
+                  "다시 띄우고, 그 사이 밀린 것은 `s9 next` 로 확인하라.")
+    if age >= 300:
+        return _v("watcher", "맡기기", "warn",
+                  f"맡기기: 마지막 워처 회차가 {mins}분 전이다 "
+                  f"(평소 30초마다)",
+                  "서버가 바쁘거나 막 뜨는 중일 수 있다 — 한 번 더 보라.")
+    return _v("watcher", "맡기기", "ok",
+              f"맡기기: 워처가 돌고 있다 (마지막 회차 {int(age)}초 전)")
+
+
 def system_checks():
     return [boot_verdict(boot_info()),
             tmp_verdict(tmp_info()),
             disk_verdict(disk_info()),
             serve_verdict(serve_info()),
+            watcher_verdict(watcher_info()),
             repo_verdict(repo_info()),
             sync_verdict(sync_info()),
             jira_verdict(jira_info()),

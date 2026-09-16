@@ -13067,6 +13067,39 @@ def dead_turn_tick(bindings=None, now=None, send=None, state_path=None, live=Non
     return resumed
 
 
+# 워처가 돌고 있나 (REQ-20260916-006-62x6). 실제 사고 2026-09-16: 서버가 멎어
+# **9시간 10분** 동안 워처 회차가 한 번도 없었는데 보드에는 아무 표시도 없었다.
+# 멎은 것과 조용한 것이 밖에서 같아 보이면 사람은 그날 아침에야 안다.
+# 회차마다 한 줄을 덮어 쓴다 — 쌓지 않으므로 이 파일은 늘 한 줄이다.
+WATCH_BEAT = "watch-beat.json"
+WATCH_BEAT_WARN_SEC = 300       # 30초마다 도는 것이 5분 쉬면 이상하다
+WATCH_BEAT_STOP_SEC = 1800      # 30분이면 멎은 것으로 본다
+
+
+def _watch_beat(now=None):
+    """워처 회차의 자취 한 줄 — 최선 노력(적지 못해도 회차는 돈다)."""
+    import time as _t
+    try:
+        with open(os.path.join(_auto_dir(), WATCH_BEAT), "w",
+                  encoding="utf-8") as f:
+            json.dump({"last": float(_t.time() if now is None else now)}, f)
+    except OSError:
+        pass
+
+
+def watch_beat_age(now=None):
+    """마지막 워처 회차로부터 몇 초 — 자취가 없으면 None(아직 한 번도 안 돌았다)."""
+    import time as _t
+    try:
+        with open(os.path.join(_auto_dir(), WATCH_BEAT), encoding="utf-8") as f:
+            last = float((json.load(f) or {}).get("last") or 0)
+    except (OSError, ValueError, TypeError):
+        return None
+    if last <= 0:
+        return None
+    return max(0.0, (_t.time() if now is None else now) - last)
+
+
 def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None,
                     _spawn=None):
     """이 자리의 open 요청을 워처가 집는다 (REQ-20260909-012 · REQ-20260910-016).
@@ -13077,6 +13110,7 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
     """
     import time as _time
     nowt = now or _time.time()
+    _watch_beat(nowt)       # 이 회차가 돌았다는 사실 (REQ-20260916-006-62x6)
     mach = machine or current_machine()
     local = dict(local_facts(user))
     local["machine"] = mach
