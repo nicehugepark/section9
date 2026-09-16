@@ -604,6 +604,9 @@ function dlgDragBind(){}
 function dlgPosPlaceFor(){}
 function dlgScreen(){ return "docs"; }
 async function tidyFetch(){}
+// 판이 세우는 이력 항목은 이 시험의 관심 밖이다 — 그 계약은
+// tests/test_tidy_back.py 가 가짜 이력으로 따로 잰다 (REQ-20260915-012-2n7g).
+function tidyHistOpen(){}
 function tidyClose(){ tidyBox = null; tidyType = ""; }
 globalThis.document = {
   createElement: () => ({className: "", setAttribute(){}, remove(){}}),

@@ -530,17 +530,53 @@ function tidyHost(){ return tidyBox || tidyPaneHost(); }
 
 /* 판이 열릴 때 서 있던 화면 — 거기서 떠나면 판도 따라 닫는다. */
 let tidyAt = "";
-function tidyNavAway(now){ if (tidyBox && now !== tidyAt) tidyClose(); }
+function tidyNavAway(now){ if (tidyBox && now !== tidyAt) tidyClose("nav"); }
 
 function tidyOpenersExpanded(on){
   document.querySelectorAll('[data-tidy="open"][aria-haspopup="dialog"]')
     .forEach(el => el.setAttribute("aria-expanded", on ? "true" : "false"));
 }
 
-function tidyClose(){
+/* ---- 뒤로가기는 판만 무른다 (REQ-20260915-012-2n7g) ----
+
+   맥 Safari 실측 2026-09-15: 판을 열고 뒤로가기를 누르면 판이 닫히면서 **보던
+   화면에서도 함께 나갔다**. 판이 이력에 아무 자리도 차지하지 않아서, 뒤로가기가
+   무를 것이라고는 직전 화면밖에 없었던 것이다 — 사람은 「방금 연 판」을 물렀는데
+   화면은 「방금 있던 탭」까지 물렸다.
+
+   그래서 판을 열 때 이력 항목 하나를 세운다. 주소는 그대로 둔다(`location.href`):
+   이 항목은 화면을 가리키는 것이 아니라 **판이 떠 있다는 사실**이고, 주소를 바꾸면
+   그 주소로 들어온 사람에게도 판이 열려야 한다는 약속이 새로 생긴다.
+
+   항목은 반드시 **하나**다. 세운 뒤에는 그것이 아직 남아 있는지를 이 파일이
+   기억하고(`tidyHist`), 닫는 길마다 그 항목을 어떻게 할지가 갈린다:
+
+     사람이 닫았다(ESC·닫기·판 밖·다시 누르기)  되물린다 — 안 물리면 뒤로가기
+                                                 한 번이 아무 일도 하지 않는
+                                                 빈 항목으로 남는다.
+     뒤로가기가 닫았다(pop)                      그 항목은 이미 쓰였다. 되물리면
+                                                 앞 화면까지 나간다.
+     화면을 옮겨 닫았다(nav)                     되물리면 그 화면 이동 자체가
+                                                 무효가 된다. 그냥 놓는다 —
+                                                 주소가 같은 항목이라 뒤로가기는
+                                                 떠나온 화면을 그대로 되돌린다. */
+let tidyHist = false;             // 판이 세운 이력 항목이 아직 남아 있는가
+function tidyHistOpen(){
+  if (tidyHist || typeof history === "undefined") return;
+  try{ history.pushState({s9: "tidy"}, "", location.href); tidyHist = true; }catch(e){}
+}
+function tidyHistDone(how){
+  const mine = tidyHist;
+  tidyHist = false;
+  if (!mine || how === "pop" || how === "nav") return;
+  try{ history.back(); }catch(e){}
+}
+
+function tidyClose(how){
   if (!tidyBox) return;
   tidyBox.remove(); tidyBox = null;
   tidyOpenersExpanded(false);
+  tidyHistDone(how);
   /* 밖에서 들고 온 좁힘은 판과 함께 끝난다 (REQ-20260915-064-62x6) — 남겨 두면
      다음에 헤더의 전역 손잡이로 연 사람이 「휴지통 127」을 누르고 세 줄을 본다. */
   tidyType = "";
@@ -748,6 +784,7 @@ async function tidyOpen(want){
   tidyBox = document.createElement("div");
   // `tidyui` 는 **몸통**의 이름이다 — 판과 절이 같은 부품을 쓰므로 그 부품의
   // 모양은 이 한 이름에 걸린다 (`tidypanel` 은 떠 있는 판만의 것: 폭·자리).
+  tidyHistOpen();   // 뒤로가기가 무를 칸 — 그리기 전에 세운다
   tidyBox.className = "hovercard dlgbox tidypanel tidyui";
   tidyBox.setAttribute("role", "dialog");
   tidyBox.setAttribute("aria-label", "보관함과 휴지통");
@@ -1036,6 +1073,12 @@ document.addEventListener("input", e => {
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && tidyBox){ e.stopPropagation(); tidyClose(); }
 }, true);
+
+/* 뒤로가기 (REQ-20260915-012-2n7g). 판이 떠 있으면 이력의 맨 위 칸은 판이 세운
+   것이므로, 이 뒤로가기는 판을 무르는 손이다 — 판만 닫고 주소·화면은 그대로 둔다
+   (같은 주소로 세운 칸이라 라우터가 이어서 돌아도 같은 화면을 다시 그린다).
+   판이 없으면 이 이력은 우리 것이 아니다 — 남의 뒤로가기를 가로채지 않는다. */
+window.addEventListener("popstate", () => { if (tidyBox) tidyClose("pop"); });
 
 /* 진단 손잡이 — 이 화면이 이미 쓰는 어휘다(`?vscroll` · `?dlg` · `?stall`).
    화면 검증은 **눌러 본 화면**이어야 하는데 캡처에는 누를 손이 없다. 그래서
