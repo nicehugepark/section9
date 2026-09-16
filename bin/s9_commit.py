@@ -45,6 +45,7 @@ commit-msg · post-commit)은 그대로 돈다: `--no-verify` 는 어디에도 �
 종료 코드: 0 성공 · 1 git/훅 거부 · 2 인자·내용 거부(경로 없음·변경 없음·메시지 없음·
 patch 범위 밖) · 3 기다림 초과(sync 회차 또는 다른 commit 이 --wait 안에 안 끝남).
 """
+import json
 import os
 import re
 import shutil
@@ -61,6 +62,66 @@ GIT_ENV_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
                 "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
                 "GIT_COMMON_DIR", "GIT_PREFIX", "GIT_INDEX_VERSION",
                 "GIT_QUARANTINE_PATH")
+# **같은 것을 두 번째 걸기 전에 읽었는가** (REQ-20260916-008-62x6, 규약 17조).
+# 실제 사고 2026-09-16 11:2x: 리드가 거부당한 commit 을 **세 번** 다시 걸었다 —
+# 출력을 꼬리 몇 줄만 보고 「동시 작업 검사구나」로 읽었는데 진짜 사유는 그 위에
+# 있었다(시험 예산). 고친 것이 하나도 없는 채로 다시 거는 것은 재시도가 아니라
+# 읽지 않은 것이다. 막지 않는다 — 한 줄 짚는다.
+_REFUSE_MARK = os.path.join("state", "commit-refused.json")
+_REFUSE_WINDOW_SEC = 900
+
+
+def _refusal_path(root):
+    return os.path.join(root, _REFUSE_MARK)
+
+
+def _paths_fingerprint(root, paths):
+    """담으려는 파일들의 지금 내용 지문 — 고친 것이 있으면 값이 달라진다."""
+    import hashlib
+    h = hashlib.sha1()
+    for p in sorted(str(x) for x in (paths or [])):
+        h.update(p.encode("utf-8", "replace"))
+        try:
+            with open(os.path.join(root, p), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b"?")
+    return h.hexdigest()
+
+
+def _remember_refusal(root, paths):
+    """거부당한 사실과 그때의 파일 지문을 남긴다 — 최선 노력."""
+    try:
+        os.makedirs(os.path.dirname(_refusal_path(root)), exist_ok=True)
+        with open(_refusal_path(root), "w", encoding="utf-8") as f:
+            json.dump({"at": time.time(),
+                       "fp": _paths_fingerprint(root, paths),
+                       "paths": sorted(str(x) for x in (paths or []))}, f)
+    except OSError:
+        pass
+
+
+def unread_refusal(root, paths, now=None):
+    """직전 거부 뒤 **아무것도 안 고치고** 같은 것을 다시 거는가 — 짚을 한 줄."""
+    try:
+        with open(_refusal_path(root), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return ""
+    nowt = time.time() if now is None else now
+    if nowt - float(d.get("at") or 0) > _REFUSE_WINDOW_SEC:
+        return ""
+    if sorted(str(x) for x in (paths or [])) != list(d.get("paths") or []):
+        return ""
+    if _paths_fingerprint(root, paths) != d.get("fp"):
+        return ""                      # 고쳤다 — 그것이 재시도다
+    mins = int(max(0.0, nowt - float(d.get("at") or 0)) // 60)
+    return ("◈ 규약 17조 — 조금 전({}분 전) 같은 것이 거부됐고 그 뒤로 고친 파일이 "
+            "없습니다. 다시 거는 것이 아니라 **읽을 때**입니다: 거부 출력을 "
+            "통째로(꼬리 몇 줄 말고) 읽고 왜 졌는지 한 줄로 말할 수 있어야 "
+            "합니다. (경고일 뿐 막지 않습니다)").format(mins)
+
+
 _TOKEN_RE = re.compile(r"S9_ALLOW_CONCURRENT=([0-9a-f]{4,})")
 
 USAGE = ("usage: s9 commit [-m 메시지 | -F 파일] [--hunks <patch>] [--wait 초] -- <경로…>\n"
@@ -503,6 +564,9 @@ def do_commit(paths, message, hunks=None, wait=90.0, out=None, err=None):
                 print("HEAD 대비 변경이 없다: " + " ".join(paths), file=err)
                 return 2
             print("담는 것 (HEAD 대비): " + " ".join(staged), file=out)
+            _unread = unread_refusal(rt, staged)
+            if _unread:
+                print(_unread, file=err)
             # 동시 작업 표 — 같은 임시 index 로 한 번 계산해 이 실행에 쓴다.
             guard = os.path.join(code_root(), "bin", "s9-guard")
             if os.path.isfile(guard):
@@ -533,6 +597,7 @@ def do_commit(paths, message, hunks=None, wait=90.0, out=None, err=None):
                           file=err)
                 else:
                     print(f"git commit 이 거부됐다 (exit {rc})", file=err)
+                _remember_refusal(rt, paths)
                 return 1
             new = git("rev-parse", "HEAD").stdout.strip()
             parent = git("rev-parse", "HEAD~1").stdout.strip()

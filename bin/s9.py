@@ -4574,6 +4574,31 @@ def branch_land(branch, why=""):
     return True, f"가지 {branch} 의 commit 을 {base} 으로 옮겼다"
 
 
+# goal 근거가 시험뿐인가 (REQ-20260916-008-62x6). 「눌러 봤다·열어 봤다·찍었다·
+# 쳐 봤다」처럼 **사람이 받을 것을 직접 본** 자취가 하나라도 있으면 짚지 않는다.
+_EVID_DIRECT = re.compile(
+    r"눌러|열어|열고|찍|캡처|쳐 |쳐서|쳐 봤|직접|화면에서|실행해|돌려 ?봤|"
+    r"눈으로|보았다|봤다|대조|읽어 ?봤")
+_EVID_TESTS = re.compile(r"시험|테스트|통과|tests?/|pytest")
+
+
+def goal_evidence_nudge(goal, note):
+    """done 근거가 시험뿐이면 짚을 한 줄, 아니면 "" (막지 않는다).
+
+    goal 자체가 시험·통과를 말하는 요청(「실패한 파일이 통과한다」)은 시험이 곧
+    사람이 받을 것이라 짚지 않는다 — 옳은 것을 짚으면 그다음부터 아무도 안 읽는다.
+    """
+    n, g = str(note or ""), str(goal or "")
+    if not _EVID_TESTS.search(n) or _EVID_DIRECT.search(n):
+        return ""
+    if _EVID_TESTS.search(g):
+        return ""                      # goal 이 시험이다 — 시험이 곧 근거다
+    return ("◈ 규약 13조 — 이 done 의 근거가 시험뿐입니다. 「시험 N건 통과」는 "
+            "코드가 도는 증거이지 사람이 받을 것이 섰다는 증거가 아닙니다: "
+            "화면이면 열어 보고, 명령이면 쳐 보고, 저장이면 값이 앉는 것을 본 뒤 "
+            "그 한 줄을 근거에 더하세요. (경고일 뿐 막지 않습니다)")
+
+
 def do_transition(doc_id, new_status, note="", user=None, force=False, auto=False,
                   judge=False, via=""):
     """상태 전이의 단일 코드 경로 — CLI(cmd_status)와 웹 서버(POST /api/status)가
@@ -4659,6 +4684,15 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
                 f"완료 후. 검증해 체크하거나 시나리오를 개정하라 (예외는 --force)"
                 + (" (055가 0/1로 done된 재발 방지 가드, REQ-20260824-058)"
                    if new_status == "done" else ""))
+    # **근거가 시험뿐이면 한 줄 짚는다** — 막지 않는다 (REQ-20260916-008-62x6).
+    # 규약 13조: 「시험 N건 통과」는 코드가 도는 증거이지 사람이 받을 것이 섰다는
+    # 증거가 아니다. 실측 2026-09-16: 최근 done 전이 40건 중 13건(33%)이 근거로
+    # 시험만 댔다. 그중 몇은 goal 자체가 시험이라 옳으므로 **그 경우는 짚지
+    # 않는다** — 짚는 것은 goal 이 시험이 아닌데 근거가 시험뿐일 때다.
+    if new_status == "done" and meta.get("type") == "request" and note:
+        say = goal_evidence_nudge(meta.get("goal") or "", note)
+        if say:
+            print(say, file=sys.stderr)
     # note 단일라인 정규화: History status 라인이 개행에 깨지면 reopened/reqstream 파싱 실패
     note = re.sub(r"\s+", " ", note).strip() if note else ""
     # 일하지 않고 닫는 유일한 길에는 **근거 지목**이 붙는다 (REQ-20260907-044).
