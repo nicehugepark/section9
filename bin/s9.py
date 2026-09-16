@@ -27887,7 +27887,11 @@ def cmd_code(args):
               else "◌ 저장소를 새로 세웠으니 s9-install 을 다시 실행한다(git 훅)…")
         bindir = os.path.dirname(os.path.realpath(__file__))
         r = subprocess.run([sys.executable, os.path.join(bindir, "s9-install")],
-                           stdin=subprocess.DEVNULL)
+                           stdin=subprocess.DEVNULL,
+                           # 왜 돌렸는지 설치 기록에 남긴다 (REQ-20260915-083-62x6)
+                           env={**os.environ, "S9_INSTALL_WHY":
+                                ("s9 code: 훅 미설치" if not hooked
+                                 else "s9 code: 저장소를 새로 세움")})
         if r.returncode != 0:
             die("s9-install 실패 — 수동 실행 후 다시 시도하라: bin/s9-install")
         print("◌ 설치 완료 — 지금 시작하는 세션부터 자동 audit이 적용된다.")

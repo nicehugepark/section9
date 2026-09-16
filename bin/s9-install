@@ -17,6 +17,7 @@ import re
 import os
 import stat
 import shutil
+import time
 import subprocess
 import sys
 
@@ -372,8 +373,17 @@ def _write_placed(home=None):
     prev = _read_placed(home)
     keys = sorted(set(prev.get("settings_keys") or []) | SET_BY_US)
     rules = sorted(set(prev.get("permissions_allow") or []) | set(ALLOW_ADDED))
+    # **누가 왜 돌렸는지 남긴다** (REQ-20260915-083-62x6). 2026-09-15 22:17 과
+    # 2026-09-16 10:19 에 세션 도중 설치가 다시 돌아 로스터가 한꺼번에 다시
+    # 써졌는데, 남은 자취가 파일 시각뿐이라 「어느 경로에서 불렸나」를 뒤에서
+    # 알 길이 없었다. 지난 회차를 덮지 않고 마지막 다섯 회차를 들고 간다.
+    runs = [r for r in (prev.get("runs") or []) if isinstance(r, dict)][-4:]
+    runs.append({"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                 "why": (os.environ.get("S9_INSTALL_WHY") or "").strip()[:200],
+                 "pid": os.getpid(), "ppid": os.getppid(),
+                 "cwd": os.getcwd()[:200], "items": len(PLACED)})
     data = {"placed": PLACED, "collided": COLLIDED, "root": ROOT, "settings_keys": keys,
-            "permissions_allow": rules}
+            "permissions_allow": rules, "runs": runs}
     with open(placed_manifest_path(home), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
 
@@ -385,6 +395,66 @@ def _ours(path, prev_placed):
     if os.path.isdir(path) and os.path.exists(os.path.join(path, ".section9-copy")):
         return True
     return any(e.get("path") == path for e in prev_placed)
+
+
+def _place_atomic(src, dst):
+    """`dst` 를 **한순간도 비우지 않고** src 로 바꾼다 (REQ-20260915-083-62x6).
+
+    실제 사고 2026-09-15 22:17 · 2026-09-16 10:19. 종전에는 우리 것이면 먼저
+    `os.remove(dst)` 하고 그다음에 `os.symlink` 을 걸었다 — 그 둘 사이에 그
+    이름은 **없다**. 로스터 서른 개를 그렇게 한 바퀴 도는 동안 Claude 가 그
+    디렉터리를 읽으면 목록이 비거나 반만 찬 채로 잡힌다. 실제로 이 세션에서
+    「s9-agnt-* 를 더는 못 쓴다」가 떴다가 곧 「다시 쓴다」가 떴고, 리드는 그
+    틈에 역할 에이전트를 세우지 못해 정의를 손으로 넣었다. 주인 눈에는
+    에이전트와 스킬이 사라진 것으로 보였다.
+
+    그래서 **옆에 만들고 제자리로 옮긴다**: `os.replace` 는 같은 파일 시스템
+    안에서 원자적이라(POSIX·Windows 모두) 그 이름이 비는 순간이 없다.
+    반환: "link" 또는 "copy".
+    """
+    tmp = os.path.join(os.path.dirname(dst),
+                       ".s9-place-%s-%d" % (os.path.basename(dst), os.getpid()))
+    _place_clear(tmp)
+    try:
+        try:
+            os.symlink(src, tmp)
+            how = "link"
+        except OSError:
+            # Windows 비관리자 등 symlink 불가 → 복사 fallback (마커로 소유 표시)
+            if os.path.isdir(src):
+                shutil.copytree(src, tmp)
+                open(os.path.join(tmp, ".section9-copy"), "w",
+                     encoding="utf-8").close()
+            else:
+                shutil.copy2(src, tmp)
+            how = "copy"
+        # 디렉터리 위에는 `os.replace` 가 서지 않는다 — 그 한 갈래만 옛것을 옆으로
+        # 물린 뒤 옮긴다. 비는 창이 두 번의 rename 사이로 줄어든다(지웠다 다시
+        # 만드는 것보다 훨씬 짧다).
+        if os.path.isdir(dst) and not os.path.islink(dst):
+            aside = tmp + ".old"
+            _place_clear(aside)
+            os.replace(dst, aside)
+            try:
+                os.replace(tmp, dst)
+            finally:
+                _place_clear(aside)
+        else:
+            os.replace(tmp, dst)
+        return how
+    finally:
+        _place_clear(tmp)
+
+
+def _place_clear(path):
+    """임시 자리를 비운다 — 없으면 아무 일도 아니다."""
+    try:
+        if os.path.islink(path) or os.path.isfile(path):
+            os.remove(path)
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+    except OSError:
+        pass
 
 
 def link_into(src_dir, dst_dir, label, kind=None):
@@ -407,29 +477,17 @@ def link_into(src_dir, dst_dir, label, kind=None):
             continue
         src = os.path.join(src_dir, name)
         dst = os.path.join(dst_dir, name)
-        if os.path.lexists(dst) and _ours(dst, prev):
-            if os.path.islink(dst) or os.path.isfile(dst):
-                os.remove(dst)
-            else:
-                shutil.rmtree(dst)  # 우리가 복사한 항목 → 갱신
-        elif os.path.lexists(dst):
+        ours = os.path.lexists(dst) and _ours(dst, prev)
+        if os.path.lexists(dst) and not ours:
             stem = os.path.splitext(name)[0] if os.path.isfile(src) else name
             COLLIDED.append({"kind": kind, "name": stem, "theirs": dst})
             say(f"  겹침: {name} 은 이미 당신의 것이 있다 — 그대로 두고 우리 것은 놓지 않는다")
             continue
-        try:
-            os.symlink(src, dst)
-            PLACED.append({"kind": kind, "name": name, "path": dst, "how": "link"})
-            say(f"  {label}: {name} -> ~/.claude/{os.path.basename(dst_dir)}/")
-        except OSError:
-            # Windows 비관리자 등 symlink 불가 → 복사 fallback (마커로 소유 표시)
-            if os.path.isdir(src):
-                shutil.copytree(src, dst)
-                open(os.path.join(dst, ".section9-copy"), "w", encoding="utf-8").close()
-            else:
-                shutil.copy2(src, dst)
-            PLACED.append({"kind": kind, "name": name, "path": dst, "how": "copy"})
-            say(f"  {label}: {name} (copy fallback) -> {dst}")
+        how = _place_atomic(src, dst)
+        PLACED.append({"kind": kind, "name": name, "path": dst, "how": how})
+        say(f"  {label}: {name}"
+            + (" (copy fallback)" if how == "copy" else "")
+            + f" -> ~/.claude/{os.path.basename(dst_dir)}/")
         placed_now.add(dst)
     # 저장소를 가리키는데 원천이 사라진 링크(예: s9-design 이 흡수한 ux-craft) → 걷는다
     for fn in os.listdir(dst_dir):
