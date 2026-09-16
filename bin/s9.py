@@ -37232,16 +37232,20 @@ def cmd_serve(args):
                             # section9 이 답한다. 그것을 내 것으로 읽으면 남의
                             # 화면을 내 것으로 안다.
                             "root": ROOT,
-                            # 이 서버의 경계 (REQ-20260916-003-62x6) — 어느
-                            # 주소에 bind 했나, 루프백 전제가 서 있나, 쓰기가
-                            # 밖으로 열렸나. 알림 줄이 읽는 사실과 같은 값이다.
-                            "bind": SERVE_HOST,
-                            "loopback": bind_is_loopback(),
-                            "open_write": bool(SERVE_OPEN_WRITE),
                             "code_stamp": SERVE_CODE_STAMP,
                             "disk_stamp": cur,
                             "changed": stale_parts(SERVE_CODE_STAMP, cur),
                             "stale": stamp_is_stale(SERVE_CODE_STAMP, cur),
+                            # 이 서버의 경계 (REQ-20260916-003-62x6) — 어느
+                            # 주소에 bind 했나, 루프백 전제가 서 있나, 고치기가
+                            # 밖으로 열렸나. 알림 줄이 읽는 사실과 같은 값이다.
+                            # ⚠ 지문 넷(started·code_stamp·disk_stamp·stale)
+                            #   **아래**에 둔다: 두 시험이 이 라우트 머리부터
+                            #   900자 창 안에서 그 이름들을 찾는다
+                            #   (test_stale_serve · test_hook_code_stamp).
+                            "bind": SERVE_HOST,
+                            "loopback": bind_is_loopback(),
+                            "open_write": bool(SERVE_OPEN_WRITE),
                             # 긴 잡 (REQ-20260830-022) — 헤더 칩이 그린다.
                             # 새 API 를 열지 않는다: 이 응답은 이미 20초마다 온다.
                             "jobs": jobs_running(),
