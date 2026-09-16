@@ -26,7 +26,15 @@ class HookScope(unittest.TestCase):
         # 훅이 실린 저장소를 임시로 하나 만든다 — 기본 루트는 훅 파일의 위치에서 나온다
         cls.root = tempfile.mkdtemp(prefix="s9scope-")
         os.makedirs(os.path.join(cls.root, "bin"))
-        for name in ("s9", "s9.py", *HOOKS):
+        # `s9.py` 는 곁의 `s9_*.py` 를 **import 때** 부른다 (REQ-20260916-018-62x6:
+        # s9_ctx.py 의 bind 장치). 골라서 복사하면 그 자리에서 s9 가 통째로 안
+        # 뜨고, 훅은 조용히 빈 출력을 낸다 — 이 시험이 실제로 그렇게 졌다.
+        # 그래서 이름을 세지 않고 `s9*` 를 통째로 데려온다: 다음에 형제가 하나
+        # 더 늘어도 이 줄은 그대로다.
+        for name in sorted(set(
+                [f for f in os.listdir(BIN)
+                 if f == "s9" or (f.startswith("s9") and f.endswith(".py"))]
+                + list(HOOKS))):
             shutil.copy2(os.path.join(BIN, name), os.path.join(cls.root, "bin", name))
         cls.env = {k: v for k, v in os.environ.items() if not k.startswith("S9_")}
         cls.env["S9_PORT"] = "1"
