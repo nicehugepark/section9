@@ -11499,6 +11499,12 @@ def chat_notify_transition(doc_id, old, new, note, actor):
 # worktree 워커에게만 더 주는 손 — 담고·박고·보는 것까지다.
 # push 는 바깥으로 나가는 일이고, checkout·reset·stash 는 남의 작업을 지우는
 # 손이라 주지 않는다. worktree 안이라 해도 그 셋은 자기 것을 지운다.
+#
+# **무늬는 옵션을 못 가른다** (REQ-20260916-005): `Bash(git commit:*)` 는
+# `commit` 뒤에 오는 무엇이든 받으므로 `--no-verify` 한 줄로 pre-commit
+# (s9-guard)·commit-msg 가 통째로 꺼진다 — 허용 목록 문법으로는 「그 옵션만
+# 빼고」를 적을 수 없다. 그래서 그 자리는 여기가 아니라 PreToolUse 훅
+# (bin/s9-git-gate)이 지킨다: 여기는 무엇을 줄지, 거기는 어떻게 쓸지를 본다.
 WORKTREE_GIT_TOOLS = ["Bash(git add:*)", "Bash(git commit:*)",
                       "Bash(git status:*)", "Bash(git diff:*)",
                       "Bash(git log:*)"]
