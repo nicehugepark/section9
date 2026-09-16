@@ -93,13 +93,22 @@ def commit_req(root, sha):
     id」로 튕긴다 (REQ-20260910-051, 실제 사고 2026-09-10). 여기서 한 번 푼다 —
     후보가 하나면 정식 id 로, 여럿이면 짧은 꼴 그대로(부르는 쪽이 그때 물러난다).
     """
-    m = REQ_RE.search(_git(root, "log", "-1", "--format=%B", sha) if sha else "")
-    if not m:
+    text = _git(root, "log", "-1", "--format=%B", sha) if sha else ""
+    found = REQ_RE.findall(text) or []
+    if not found:
         return ""
+    # **컴퓨터 표식이 붙은 것을 먼저 고른다** (REQ-20260916-014-62x6, 실제 사고
+    # 2026-09-16 12:18): 메시지 **첫** id 를 집으면, 본문이 다른 요청을 근거로
+    # 인용할 때 그쪽이 잡힌다 — 그날 리드가 본문에 짧은 꼴
+    # `REQ-20260916-003` 을 적었고, 그 번호가 두 컴퓨터에 있어 노트가 「모호한
+    # id」로 튕겼다. 이 저장소의 관례는 마지막 줄에 정식 id 를 적는 것이므로
+    # 표식이 붙은 것을 우선하고, 그 안에서는 **마지막** 것을 고른다.
+    full = [x for x in found if re.search(r"-[0-9a-z]{4}$", x)]
+    pick = full[-1] if full else found[0]
     try:
-        return _load_s9(root).full_doc_id(m.group(0)) or m.group(0)
+        return _load_s9(root).full_doc_id(pick) or pick
     except Exception:
-        return m.group(0)
+        return pick
 
 
 def _s9_bin(root):

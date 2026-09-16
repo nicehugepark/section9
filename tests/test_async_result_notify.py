@@ -408,6 +408,47 @@ class TheLogPointerNamesAFileThatExists(unittest.TestCase):
                       "넘기는 값이 로그 이름과 다른 변수다")
 
 
+class TheCommitIdIsThePropperOne(unittest.TestCase):
+    """메시지 본문이 다른 요청을 인용해도 **이 commit 의 요청**을 고른다.
+
+    실제 사고 2026-09-16 12:18: 리드가 commit 본문에 근거로 짧은 꼴
+    `REQ-20260916-003` 을 적었다(정식 id 는 마지막 줄의 `…-014-62x6`). 통지가
+    **첫** id 를 집어 그 번호를 찾았고, 같은 번호가 두 컴퓨터에 있어
+    「모호한 id」로 노트가 튕겼다 — 결과를 아무 데도 못 남겼다.
+
+    관례: 이 저장소는 마지막 줄에 정식 id(컴퓨터 표식 포함)를 적는다.
+    """
+
+    def pick(self, text):
+        import importlib.machinery, importlib.util, os, re as _re
+        here = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(here, "async_notify.py")
+        spec = importlib.util.spec_from_loader(
+            "an_pick", importlib.machinery.SourceFileLoader("an_pick", path))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        found = m.REQ_RE.findall(text) or []
+        if not found:
+            return ""
+        full = [x for x in found if _re.search(r"-[0-9a-z]{4}$", x)]
+        return full[-1] if full else found[0]
+
+    def test_a_quoted_short_id_does_not_win(self):
+        msg = ("preview: 어쩌고\n\n오늘 세운 경계(REQ-20260916-003)가 얇아지지 "
+               "않게\nREQ-20260916-014-62x6\n")
+        self.assertEqual("REQ-20260916-014-62x6", self.pick(msg))
+
+    def test_the_last_full_id_wins_when_several(self):
+        msg = "고침 (REQ-20260915-073-62x6 · REQ-20260915-076-62x6)\nREQ-20260916-014-62x6\n"
+        self.assertEqual("REQ-20260916-014-62x6", self.pick(msg))
+
+    def test_a_short_only_message_still_works(self):
+        self.assertEqual("REQ-20260910-009", self.pick("고침\nREQ-20260910-009\n"))
+
+    def test_no_id_is_empty(self):
+        self.assertEqual("", self.pick("아무 id 도 없는 메시지"))
+
+
 if __name__ == "__main__":
     unittest.main()
 
