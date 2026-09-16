@@ -13768,6 +13768,10 @@ def _sync_pull_cmd(timeout=8):
     except Exception:
         staged = []
     stash_before = (_sync_git("rev-parse", "-q", "--verify", "refs/stash").stdout or "").strip()
+    # 여기는 **평평하게** 얹는다 — `--rebase-merges` 로는 못 고친다(REQ-20260916-013,
+    # 시험 test_worktree_merge_sync 가 그것을 잡았다): 병합을 다시 만들 때 가지를
+    # 다시 merge 하므로 같은 충돌이 되살아난다. 고칠 자리는 이쪽이 아니라 병합을
+    # **만드는** 쪽이다 — `worktree_merge` 가 이제 곧은 줄로 거둔다.
     r = _sync_git("rebase", "--autostash", "-q", "@{u}", timeout=timeout)
     if r.returncode == 0:
         # rebase 는 끝났는데 보관함이 남았으면 되돌리기가 실패한 것이다 (REQ-20260914-003-62x6)
@@ -39679,18 +39683,56 @@ def worktree_merge(name):
             return False, f"{name}: 제거하지 못했다 — {(r.stderr or r.stdout).strip()}"
         _worktree_forget(name)
         return True, f"{name}: 합칠 commit 이 없어 그대로 거뒀다"
-    r = subprocess.run(["git", "merge", "--no-ff", st["branch"], "-m",
-                        f"worktree 합치기: {name}"],
-                       capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT, timeout=120)
+    # **병합 commit 을 만들지 않는다** (REQ-20260916-013-62x6, 실제 사고
+    # 2026-09-16 09:29~10:00). 종전에는 `merge --no-ff` 로 거뒀는데, 그 병합에
+    # 담긴 사람의 충돌 해결을 **다음 회차의 sync 가 버렸다**: sync 는 원격 위에
+    # 로컬 commit 을 평평하게 다시 얹으므로 가지 commit 이 하나씩 replay 되며
+    # 같은 충돌이 되살아난다 — 그날 sync 가 10회 연속 지고 로컬 commit 16개가
+    # 원격에 못 갔다. sync 쪽에 `--rebase-merges` 를 붙이는 길은 시험이
+    # 반려했다(병합을 다시 만들 때 가지를 다시 merge 하므로 같은 자리다).
+    # 그러니 **곧은 줄로 거둔다**: 가지를 main 위에 얹고(그 자리에서 한 번만
+    # 풀면 된다) 본줄은 그냥 앞으로 감는다. 이 저장소는 애초에 main 에 곧장
+    # 미는 판이라(projects/section9/CONTEXT.md) 병합 자국이 남을 까닭도 없다.
+    base = _worktree_base_branch()
+    r = subprocess.run(["git", "rebase", base, st["branch"]],
+                       capture_output=True, encoding="utf-8", errors="replace",
+                       cwd=st["path"], timeout=300)
     if r.returncode != 0:
-        return False, (f"{name}: 합치지 못했다 — {(r.stderr or r.stdout).strip()}\n"
-                       f"  충돌은 숨겨진 소실보다 낫다. 풀고 다시 불러라.")
+        subprocess.run(["git", "rebase", "--abort"], capture_output=True,
+                       encoding="utf-8", errors="replace",
+                       cwd=st["path"], timeout=60)
+        return False, (f"{name}: {base} 위에 얹지 못했다 — "
+                       f"{(r.stderr or r.stdout).strip()}\n"
+                       f"  충돌은 숨겨진 소실보다 낫다. 그 worktree({st['path']})에서 "
+                       f"`git rebase {base} {st['branch']}` 를 풀고 다시 불러라.")
+    r = subprocess.run(["git", "merge", "--ff-only", st["branch"]],
+                       capture_output=True, encoding="utf-8", errors="replace",
+                       cwd=ROOT, timeout=120)
+    if r.returncode != 0:
+        return False, (f"{name}: 앞으로 감지 못했다 — {(r.stderr or r.stdout).strip()}\n"
+                       f"  얹은 사이에 {base} 가 움직였다. 다시 불러라.")
     subprocess.run(["git", "worktree", "remove", st["path"]],
                    capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT, timeout=60)
     subprocess.run(["git", "branch", "-D", st["branch"]],
                    capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT, timeout=60)
     _worktree_forget(name)
     return True, f"{name}: 합치고 거뒀다 (commit {st['ahead']}개)"
+
+
+def _worktree_base_branch():
+    """가지를 얹을 본줄 — 원격의 기본 가지, 못 읽으면 main (REQ-20260916-013)."""
+    import subprocess
+    try:
+        r = subprocess.run(["git", "symbolic-ref", "-q", "--short",
+                            "refs/remotes/origin/HEAD"],
+                           capture_output=True, encoding="utf-8",
+                           errors="replace", cwd=ROOT, timeout=10)
+        n = (r.stdout or "").strip()
+        if r.returncode == 0 and n.startswith("origin/"):
+            return n[len("origin/"):]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "main"
 
 
 def _worktree_autocommit(name, own=None):
