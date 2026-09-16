@@ -826,6 +826,20 @@ function tidyPrjWarn(ids){
     }).join("");
 }
 
+/* 진행 중인 것을 버릴 때는 **그것부터 말한다** (REQ-20260915-074-62x6).
+   실측 2026-09-16: 휴지통 137건 중 셋이 `in-progress` 였다 — 보드는 「하는 중」
+   이라 하고 휴지통은 「버렸다」고 하는, 한 문서에 대한 두 말이다. 버리는 것은
+   그만두는 것이니 서버가 그 자리에서 취소로 적는데(do_rm), 사람이 그것을
+   **누르기 전에** 알아야 한다. 누른 뒤에 알면 그것은 통보다. */
+function tidyInProgressWarn(ids){
+  const live = ids.map(catFind).filter(
+    r => r && r.type === "request" && r.status === "in-progress");
+  if (!live.length) return "";
+  return `<p><b>${live.length === 1 ? "이 요청은 진행 중입니다"
+    : live.length + "건이 진행 중입니다"}</b> — 버리면 `
+    + `<b>취소</b>로 바뀝니다. 되돌려도 진행 중으로는 돌아오지 않습니다.</p>`;
+}
+
 function tidyConfirmRm(ids){
   const prj = ids.length === 1 && (catFind(ids[0]) || {}).type === "project";
   return s9dlg({kind: "confirm", cap: "휴지통", stop: false,
@@ -837,6 +851,7 @@ function tidyConfirmRm(ids){
       /* 도착지를 말할 때는 **지금 화면에 있는 글자**를 그대로 짚는다 — 없는 손잡이를
          가리키면 찾다 말고 반려한다(규약 12조 ②). 자리가 Settings 레일로 옮겨서
          이 문장도 함께 옮긴다 (REQ-20260915-077-62x6). */
+      + tidyInProgressWarn(ids)
       + `<p>목록에서 사라지지만 Settings 의 <b>「보관함 · 휴지통」</b>에서 `
       + `되돌릴 수 있습니다.</p>`,
     ok: "휴지통으로 보내기", cancel: "그만두기"});

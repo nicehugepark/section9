@@ -23058,6 +23058,27 @@ def _workdir_trash_target(slug):
     return src, dst
 
 
+def _rm_cancel_live(doc_id, path, reason=""):
+    """버리는 요청이 진행 중이면 취소로 적는다 (REQ-20260915-074-62x6).
+
+    `open` 은 그대로 둔다 — 시작한 적 없는 것을 버리는 것은 모순이 아니다
+    (실측: 휴지통 open 124건). 모순은 `in-progress` 뿐이었다.
+    최선 노력이다 — 여기서 지면 버리기 자체를 막지 않는다.
+    """
+    try:
+        meta, _b = read_doc(path)
+    except (OSError, ValueError):
+        return ""
+    if meta.get("type") != "request" or meta.get("status") != "in-progress":
+        return ""
+    why = ("버려서 그만둔다" + (f" (사유: {reason})" if reason else ""))
+    try:
+        do_transition(meta.get("id") or doc_id, "cancelled", note=why, auto=True)
+    except Exception:
+        return ""
+    return "in-progress"
+
+
 def do_rm(doc_id, reason="", user=None, how="cli"):
     """문서 삭제 = tombstone (REQ-20260825-031/-006 승인): 파일을 소거하지 않고
     같은 디렉토리의 .trash/ 로 옮긴다. 카탈로그·목록에서는 사라지지만 발번
@@ -23071,6 +23092,12 @@ def do_rm(doc_id, reason="", user=None, how="cli"):
     추측이 아니라 부른 자리가 아는 사실이고, 판의 거르개가 이 값으로 갈린다."""
     path = find_path(doc_id)
     _write_gate(path, None)     # 지우기도 쓰기다 (REQ-20260902-028)
+    # **진행 중인 것을 버리면 진행 중인 채로 두지 않는다** (REQ-20260915-074-62x6).
+    # 실측 2026-09-16: 휴지통의 137건 중 셋이 `in-progress` 였다 — 보드는 「하는
+    # 중」이라 하고 휴지통은 「버렸다」고 하는, 한 문서에 대한 두 말이다. 버리는
+    # 것은 그만두는 것이니 그 자리에서 취소로 적는다. 전이는 `do_transition`
+    # 한 곳을 지나가므로 History·클레임 해제·연동이 모두 따라온다.
+    _rm_cancel_live(doc_id, path, reason)
     wsrc = wdst = ""
     try:
         meta, body = read_doc(path)
