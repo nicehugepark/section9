@@ -29802,6 +29802,37 @@ def _shot_webkit_install_guide():
         "&& node-v22.23.2-win-x64\\npm.cmd i playwright\"   # node.exe 직접 호출용(url 의 &·? 가 그대로 간다)\n")
 
 
+# 러너는 도는데 캡처가 진 까닭을 **한 줄로** (REQ-20260915-097-62x6).
+# 짝은 (무늬, 사람에게 할 말)이고 위에서부터 처음 맞는 것 하나만 쓴다.
+SHOT_FAIL_HINTS = (
+    (r"Executable doesn'?t exist|playwright install|browserType\.launch.*ENOENT",
+     "브라우저 알맹이가 아직 안 받아졌다 — `cmd.exe /c {runner} install {engine}` "
+     "한 줄이면 된다(러너는 이미 있다)."),
+    # 러너가 제 말로 적는 꼴도 함께 본다 — Playwright 의 `net::ERR_…` 만 보면
+    # 「Could not connect to server」를 놓친다(리드 실측 2026-09-16).
+    (r"ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_SOCKET_NOT_CONNECTED"
+     r"|Could not connect to server|ERR_CONNECTION_RESET",
+     "그 주소가 답하지 않는다 — 서버가 떠 있나 보라(`s9 serve --restart`). "
+     "엔진 문제가 아니다."),
+    (r"net::ERR_FILE_NOT_FOUND|ERR_ACCESS_DENIED",
+     "그 파일에 닿지 못한다 — 윈도우 쪽 브라우저는 WSL 경로(/tmp/…)를 못 읽는다. "
+     "서버로 띄워 http:// 로 찍어라."),
+    (r"Timeout.*exceeded|TimeoutError",
+     "그 화면이 시간 안에 안 그려졌다 — `--wait` 를 늘려 보라. 엔진 문제가 아니다."),
+    (r"EBUSY|EPERM|being used by another process|locked",
+     "다른 실행이 같은 자리를 쥐고 있다 — 잠시 뒤 다시 찍어라(캡처 둘이 겹쳤다)."),
+)
+
+
+def _shot_fail_hint(tail, engine="webkit"):
+    """실패한 글에서 **무엇이 없는지** 한 줄. 못 읽으면 솔직히 모른다고 한다."""
+    for pat, say in SHOT_FAIL_HINTS:
+        if re.search(pat, str(tail or ""), re.I):
+            return "→ " + say.format(runner=SHOT_WEBKIT_RUNNER_WIN, engine=engine)
+    return ("→ 무엇이 없어서인지 위 글로는 못 읽었다. 러너 자체가 없으면 이 명령이 "
+            "설치 절차를 낸다 — 지금은 러너는 있고 실행이 졌다.")
+
+
 def _shot_size_wh(size):
     """`--size` 를 (폭, 높이) 로. chrome 꼴 `1440,900` 과 `1440x1024` 둘 다 받는다."""
     parts = re.split(r"[x,×]", str(size).strip().lower(), maxsplit=1)
@@ -30008,9 +30039,19 @@ def _shot_webkit(url, size, wait, out, browser="webkit", dpr=1.0):
               f"{' '.join(cmd)}", file=sys.stderr)
         sys.exit(3)
     if r.returncode != 0:
-        tail = (r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()[-800:]
-        print(f"s9 shot: {browser} 캡처 실패 (exit {r.returncode}): {' '.join(cmd)}\n{tail}\n"
-              + _shot_webkit_install_guide(), file=sys.stderr, end="")
+        # **진단은 전문을 보고, 화면에는 꼬리만 낸다** (REQ-20260915-097-62x6):
+        # Playwright 는 사유를 첫 줄에 적고 그 아래에 긴 call log 를 붙인다 —
+        # 꼬리 800자만 보면 사유가 잘려 나가 「못 읽었다」가 된다(리드 실측).
+        whole = (r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()
+        tail = whole[-800:]
+        # **설치 안내를 통째로 쏟지 않는다** (REQ-20260915-097-62x6, 실제 사고
+        # 2026-09-15 23:08): 러너는 있는데 실행이 진 자리에서 여덟 줄짜리 설치
+        # 절차를 내면, 사람은 「설치가 안 됐구나」로 읽고 22:45 까지 잘 찍던 것을
+        # 다시 깐다. 러너가 아예 없을 때는 위(29977)에서 이미 절차를 낸다 —
+        # 여기는 **왜 졌는지**를 한 줄로 말할 자리다.
+        print(f"s9 shot: {browser} 캡처 실패 (exit {r.returncode}): {' '.join(cmd)}\n"
+              f"{tail}\n{_shot_fail_hint(whole, engine=browser)}\n",
+              file=sys.stderr, end="")
         sys.exit(3)
     if mid is not None:
         if not os.path.exists(mid):
