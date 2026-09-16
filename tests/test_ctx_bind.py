@@ -91,5 +91,55 @@ class TheParentStillAnswersToTheOldNames(unittest.TestCase):
         self.assertNotIn("s9_s9_ctx", sys.modules)
 
 
+class TheSyncPrivatesLiveInTheirOwnFile(unittest.TestCase):
+    """조각 2 — 동기화 전용 열일곱이 제 파일로 갔고 **코드는 안 바뀌었다**
+    (REQ-20260916-019-62x6).
+
+    까닭: `bin/s9.py` 가 그 파일을 **제 globals 로 exec** 한다. 그래서 그
+    함수들의 `__globals__` 가 부모의 사전 그 자체이고, 시험이
+    `mock.patch.object(m, "…")` 로 갈아 끼운 것이 그대로 보인다.
+
+    사본으로 꽂는 길은 실제로 담았다가 되돌렸다 — 30개 이름 중 12개를 시험이
+    갈아 끼운다(ROOT 20개 파일 · current_machine 19개). 배운 규칙은
+    「이름이 갈아 끼워지나」가 아니라 **「옮긴 코드가 그 이름을 부르나」**다.
+    """
+
+    MOVED = ("_ago_word", "_conflict_label", "_rebase_in_progress",
+             "_session_docs", "commit_module", "git_run",
+             "harness_id_from_transcript", "machine_recv_beat",
+             "note_call_name", "parse_cross_session", "resolve_call_names")
+
+    def setUp(self):
+        self.m = _load("s9_p2", S9)
+
+    def test_the_parent_still_answers_to_them(self):
+        for n in self.MOVED:
+            with self.subTest(n=n):
+                self.assertTrue(callable(getattr(self.m, n, None)),
+                                "%s 가 s9.py 에서 사라졌다" % n)
+
+    def test_they_were_compiled_from_the_other_file(self):
+        """추적이 그 파일을 가리킨다 — 옮긴 것이지 베낀 것이 아니다."""
+        f = self.m.parse_cross_session.__code__.co_filename
+        self.assertTrue(f.endswith("s9_sync.py"), f)
+
+    def test_a_moved_function_actually_runs(self):
+        self.assertEqual("", self.m.parse_cross_session("사람이 친 말") or "")
+        self.assertEqual(
+            ("bridge:x", "맥"),
+            self.m.parse_cross_session(
+                '<cross-session-message from="bridge:x" from-name="맥">\n안녕'))
+        self.assertEqual("없음", self.m._ago_word(0, 1_700_000_000.0))
+
+    def test_patching_the_parent_is_seen_by_the_moved_code(self):
+        """**사고의 본체** — 이것이 안 되면 조각 2 는 못 선다."""
+        from unittest import mock
+        with mock.patch.object(self.m, "_conflict_label", lambda *a, **k: "가짜"):
+            self.assertEqual("가짜", self.m._conflict_label("x"))
+
+    def test_the_moved_code_shares_the_parents_namespace(self):
+        self.assertIs(self.m.git_run.__globals__, vars(self.m))
+
+
 if __name__ == "__main__":
     unittest.main()
