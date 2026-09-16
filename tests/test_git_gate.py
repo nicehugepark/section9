@@ -29,12 +29,19 @@ ROOT = os.path.dirname(HERE)
 GATE = os.path.join(ROOT, "bin", "s9-git-gate")
 
 
-def run(cmd, cwd=None, raw=None):
+def run(cmd, cwd=None, raw=None, auto=False):
+    """검사를 한 번 돌린다. `auto` 는 사람이 없는 자리(무인 작업자 세션).
+
+    격리: 이 스위트가 무인 작업자 세션에서 돌 때 상속된 S9_AUTO_RESUME 이
+    판정을 바꾸면, 같은 시험이 자리마다 다른 답을 낸다 — 늘 지운 뒤 건다."""
     payload = raw if raw is not None else json.dumps(
         {"tool_name": "Bash", "tool_input": {"command": cmd},
          "cwd": cwd or ROOT})
+    env = {k: v for k, v in os.environ.items() if k != "S9_AUTO_RESUME"}
+    if auto:
+        env["S9_AUTO_RESUME"] = "1"
     return subprocess.run([GATE], input=payload, capture_output=True,
-                          text=True, timeout=30)
+                          text=True, timeout=30, env=env)
 
 
 # 낱말을 이 파일에 그대로 적으면 이 시험을 **고치는 명령** 자체가 검사에
@@ -114,6 +121,38 @@ class TheGateStands(unittest.TestCase):
                     2, run(f"git -C {ROOT} stash", cwd=td).returncode)
         with self.subTest("g4_the_conscious_override_passes"):
             self.assertEqual(0, run("S9_GIT_OK=1 git stash pop").returncode)
+
+        # ---- 인자를 다시 실행하는 명령 (REQ-20260916-004-62x6) --------------
+        # `s9` 는 인터프리터가 아니라 따옴표 본문이 **글**로 지워졌는데,
+        # `secret run` 하위명령은 그 글을 실제로 실행한다 — 2026-09-01 사고와
+        # 같은 결과가 검사를 그대로 지나갔다.
+        with self.subTest("g11_arg_reexecutors_are_read_as_commands"):
+            for cmd in ('bin/s9 secret run -- sh -c "%s"' % BAD,
+                        '%s/bin/s9 secret run -- bash -c "%s"' % (ROOT, BAD),
+                        'timeout 60 bash -c "%s"' % BAD,
+                        'stdbuf -o0 sh -c "%s"' % BAD):
+                r = run(cmd)
+                self.assertEqual(2, r.returncode,
+                                 "받은 글자를 다시 실행하는 명령을 놓쳤다: %s" % cmd)
+        with self.subTest("g12_prose_about_the_executor_still_passes"):
+            # 이 결함을 **문서로 남기는 명령** 자체가 막히면, 고친 값이 없다.
+            for cmd in ('bin/s9 note REQ-1 "s9 secret run -- sh -c \'%s\' 은 금지"'
+                        % BAD,
+                        "bin/s9 note REQ-1 --label x 'secret run 이 실행기다' "
+                        "--body '%s 를 쓰지 마라'" % BAD):
+                r = run(cmd)
+                self.assertEqual(0, r.returncode,
+                                 "글을 명령으로 읽었다: %s\n%s" % (cmd, r.stderr))
+        with self.subTest("g13_lookalike_names_are_not_interpreters"):
+            # 이름 끝을 못박기 전에는 `shred`·`shutdown` 까지 인터프리터였다.
+            self.assertEqual(0, run('shred -u "%s"' % BAD).returncode)
+        with self.subTest("g14_the_override_does_not_work_unattended"):
+            # 훅은 사람의 Bash 와 모델의 Bash 를 구별하지 못한다 — 사람이 없는
+            # 자리에서는 「사람의 확인을 받아 붙인다」가 거짓이 된다.
+            r = run("S9_GIT_OK=1 git stash pop", auto=True)
+            self.assertEqual(2, r.returncode, "무인 세션에서 우회가 통했다")
+            self.assertIn("무인 작업자", r.stderr)
+            self.assertIn("blocked", r.stderr, "다음에 할 것이 안 적혀 있다")
         with self.subTest("g5_a_broken_payload_does_not_block_the_world"):
             self.assertEqual(0, run("", raw="this is not json").returncode)
             self.assertEqual(0, run("", raw=json.dumps(

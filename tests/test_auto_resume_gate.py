@@ -122,10 +122,18 @@ class TestReworkWatcher(unittest.TestCase):
         # (REQ-20260824-004: 이 이음새가 무검증이라 중복 스폰 결함이 통과했었다)
         prompt_arg = [s for s in argv[0] if isinstance(s, str) and R in s][0]
         self.assertIn(f"last {R}", prompt_arg)
-        # A1/A2 (REQ-20260824-005): allowlist 봉투 + 패치 전달 지시
+        # A1/A2 (REQ-20260824-005): allowlist 봉투 + 패치 전달 지시.
+        # s9 는 **하위명령마다 한 줄**이다 (REQ-20260916-004-62x6): 명령 이름
+        # 통짜로 주면 그 안의 실행기(`secret run`)까지 딸려 와 목록이 경계가
+        # 되지 못한다. 그러니 여기서 재는 것도 둘이다 — 부를 수는 있는가,
+        # 통짜 줄은 없는가.
         self.assertIn("--allowedTools", argv[0], argv[0])
         self.assertTrue(any(isinstance(s, str) and s.startswith("Bash(")
-                            and s.endswith("/bin/s9:*)") for s in argv[0]), argv[0])
+                            and s.endswith("/bin/s9 status:*)")
+                            for s in argv[0]), argv[0])
+        self.assertFalse(any(isinstance(s, str)
+                             and s.endswith("/bin/s9:*)") for s in argv[0]),
+                         "명령 이름 통짜 줄이 살아 있다")
         self.assertIn("--label patch", prompt_arg)
 
         # W3. 클레임된 REQ → 스폰 안 함 (신선한 세션의 active_reqs 등록)
