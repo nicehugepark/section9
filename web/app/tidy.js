@@ -46,6 +46,11 @@ let tidyUndo = null;
 let tidyQ = "";                       // 검색어 (id·제목)
 let tidyWho = "all";                  // all | screen | cli
 let tidyKeepDays = 0;                 // 서버가 말한 수명 (0 = 끈 상태)
+/* 저절로 지워질 것 (REQ-20260915-073-62x6) — 기계가 만들고 사람이 한 번도 보지
+   않은 채 1분 안에 버려진 것. 수도 날수도 **서버가 판정해서** 보낸다: 화면이
+   같은 잣대를 한 벌 더 들면 언젠가 한 벌만 고쳐지고, 되돌릴 수 없는 일에서 그
+   차이는 사고가 된다. */
+let tidyAuto = {n: 0, days: 0, on: false};
 /* 종류 좁힘 — "" 또는 문서 종류 한 가지 (REQ-20260915-064-62x6). 위의 둘과 달리
    판 안에서 켜지지 않는다: **밖에서 부른 손이** 들고 온다. Projects 레일의
    「휴지통 n」이 그 손이고, 그 손이 센 수와 판이 보이는 줄 수가 같아야 해서
@@ -114,6 +119,10 @@ async function tidyFetch(){
       // 수명은 서버가 말한다 — 화면이 30 을 제 손에 쥐면 설정을 바꾼
       // 사람과 화면이 서로 다른 약속을 하게 된다 (REQ-20260915-062-62x6).
       tidyKeepDays = Math.max(0, +j.keep_days || 0);
+      // 자동으로 사라질 것의 수와 날수 — 서버가 판정해 보낸다 (REQ-20260915-073-62x6)
+      tidyAuto = {n: Math.max(0, +j.auto_purge || 0),
+                  days: Math.max(0, +j.auto_purge_after_days || 0),
+                  on: !!j.auto_purge_on};
       return j.rows;
     }),
   ]);
@@ -152,7 +161,7 @@ async function tidySend(op, ids, extra){
      한 일과 실제로 옮겨진 문서만 적는다 — 일부가 넘어졌으면 넘어진 것은 위
      알림이 이름으로 말하고, 이 줄은 간 것만 센다. */
   const said = {rm: "rm", archive: "archive", restore: "back",
-                unarchive: "back", purge: "purge"}[op];
+                unarchive: "back", purge: "purge"}[op];   // keep 은 무를 것이 없다
   if (said && moved.length) tidyUndo = {op: said, ids: moved};
   await tidyFetch();
   /* 목록은 둘이고 무효화는 하나다 (REQ-20260910-005). 여기서 카탈로그만 다시
@@ -526,6 +535,19 @@ function tidyRender(){
        약속은 「완전히 지우기」 확인 창이 그 자리에서 이미 하므로 여기서 빼면
        두 줄이 한 줄이 된다. 수는 손잡이가 말하니 문장은 약속만 맡는다.
        연어도 고쳤다: 누르는 것은 버튼이지 「지우는 것」이 아니다(translator). */
+    /* 저절로 사라지는 것이 **하나 생겼다** (REQ-20260915-073-62x6): 기계가
+       만들고 사람이 한 번도 보지 않은 채 1분 안에 버려진 것. 그것이 있으면
+       그 약속을 먼저 말한다 — 지워진 뒤에 아는 것은 통보다. 없으면 그 말을
+       하지 않는다(지키지 않을 약속은 적지 않는다). */
+    if (tidyAuto.n && tidyAuto.on)
+      return `기계가 만들고 바로 버린 <b>${tidyAuto.n}</b>건은`
+           + ` ${tidyAuto.days}일 뒤 저절로 지워집니다`
+           + ` — 남길 것은 「남겨두기」를 누르세요.`;
+    /* 스스로 지우는 것이 꺼져 있을 때 (기본값) — 수는 말하되 약속은 하지
+       않는다. 지우는 손은 사람이 누른다. */
+    if (tidyAuto.n)
+      return `기계가 만들고 바로 버린 것이 <b>${tidyAuto.n}</b>건 있습니다`
+           + ` — 저절로 사라지지는 않습니다.`;
     if (over.length)
       return `${tidyKeepDays}일을 넘긴 것도 저절로 사라지지 않습니다`
            + ` — 사람이 눌러야 지워집니다.`;
@@ -615,6 +637,11 @@ function tidyRender(){
       <span class="path">${tidyTab === "trash" ? footLine()
         : "보관한 문서는 그대로 있습니다. 목록에서만 내려와 있습니다."}</span>
       <div class="acts">
+        ${tidyAuto.n && tidyAuto.on
+          ? `<button type="button" data-tidy="keepauto">남겨두기</button>` : ""}
+        ${tidyAuto.n && !tidyAuto.on
+          ? `<button type="button" class="gone" data-tidy="purgeauto">기계가 만든 ${
+              tidyAuto.n}건 완전히 지우기</button>` : ""}
         ${over.length
           ? `<button type="button" class="gone" data-tidy="purgeold">넘긴 ${
               over.length}건 완전히 지우기</button>` : ""}
@@ -755,11 +782,22 @@ async function tidyAct(what, el){
     await tidySend(tidyTab === "trash" ? "restore" : "unarchive", [id]);
     return;
   }
-  if (what === "purge" || what === "purgeall" || what === "purgeold"){
+  /* 「남겨두기」 — 저절로 지워질 것을 자동에서 **영영** 뺀다
+     (REQ-20260915-073-62x6). 되돌릴 수 없는 일을 막는 손이라 되묻지 않는다:
+     한 번 더 묻는 창은 위험한 쪽에 두는 것이고, 이것은 안전한 쪽이다. */
+  if (what === "keepauto"){
+    const ids = (tidyTrash || []).filter(r => r.auto_purge).map(r => r.id);
+    if (!ids.length) return;
+    await tidySend("keep", ids);
+    return;
+  }
+  if (what === "purge" || what === "purgeall" || what === "purgeold"
+      || what === "purgeauto"){
     /* 「정리하기」는 **전량에서** 수명을 넘긴 것만 집는다 — 거르개로 좁힌
        화면에서 눌러도 지워지는 것은 바닥이 센 그 수 그대로다. */
     const ids = what === "purge" ? [id]
-      : (tidyTrash || []).filter(r => what === "purgeall" || r.overdue)
+      : (tidyTrash || []).filter(r => what === "purgeall"
+          || (what === "purgeauto" ? r.auto_purge : r.overdue))
                          .map(r => r.id);
     if (!ids.length) return;
     /* 되돌릴 수 없는 유일한 층이라 여기서만 한 번 더 묻는다. 무엇이 사라지는지

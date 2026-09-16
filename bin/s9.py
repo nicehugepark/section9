@@ -9353,7 +9353,13 @@ def trash_keep_days(user=None):
     macOS·Windows·Drive 가 다 30일을 쓴다. 확립어를 따르는 것은 취향이
     아니라, 사람이 이미 아는 모형을 다시 배우게 하지 않기 위해서다.
     **지우는 것은 자동이 아니다** — 수명을 넘긴 건수를 판이 말하고, 비우는
-    손은 사람이 누른다. 되돌릴 수 없는 일에 사람의 손이 한 번 들어간다."""
+    손은 사람이 누른다. 되돌릴 수 없는 일에 사람의 손이 한 번 들어간다.
+
+    예외는 하나뿐이고 여기 적는다 (REQ-20260915-073-62x6): **기계가 만들고
+    사람이 한 번도 보지 않은 채 1분 안에 버려진 것**은 자동으로 지운다
+    (`auto_purge_candidate`). 그것은 애초에 사람의 문서가 아니었다 — 사람이
+    지킬 것이 없는 자리에 사람의 손을 요구하면 그 손잡이가 소음이 된다.
+    그 자리에도 사람의 손은 남는다: 화면이 미리 말하고 「남겨두기」가 있다."""
     try:
         v = (user_config(user or resolve_user(None)) or {}).get("trash_keep_days")
         return max(0, int(v)) if v not in (None, "") else TRASH_KEEP_DAYS
@@ -13111,6 +13117,11 @@ def here_watch_tick(now=None, grace=None, platform=None, machine=None, user=None
     import time as _time
     nowt = now or _time.time()
     _watch_beat(nowt)       # 이 회차가 돌았다는 사실 (REQ-20260916-006-62x6)
+    try:                    # 수명을 넘긴 자동의 몫 (REQ-20260915-073-62x6)
+        auto_purge_tick(now=nowt, me=user or "")
+    except Exception:
+        pass
+
     mach = machine or current_machine()
     local = dict(local_facts(user))
     local["machine"] = mach
@@ -22801,9 +22812,9 @@ def trash_entries():
                 continue
             p = os.path.join(dirpath, fn)
             try:
-                meta, _ = read_doc(p)
+                meta, _body = read_doc(p)
             except Exception:
-                meta = {}
+                meta, _body = {}, ""
             try:
                 mt = datetime.datetime.fromtimestamp(
                     os.path.getmtime(p)).replace(microsecond=0).isoformat()
@@ -22833,6 +22844,10 @@ def trash_entries():
                 "trashed_how": str(meta.get("trashed_how") or ""),
                 "path": os.path.relpath(p, ROOT),
                 "home": os.path.relpath(os.path.dirname(dirpath), ROOT),
+                # 자동 비우기 판정이 보는 두 사실 (REQ-20260915-073-62x6) —
+                # 화면이 같은 술어를 한 벌 더 들지 않게 여기서 실어 보낸다.
+                "untouched": _untouched_body(_body),
+                "auto_purge_keep": bool(meta.get("auto_purge_keep")),
             })
     out.sort(key=lambda e: e["deleted"], reverse=True)
     return out
@@ -22871,6 +22886,164 @@ def trash_overdue(ents, keep_days):
     return out
 
 
+# ── 기계가 만들고 바로 버린 것 (REQ-20260915-073-62x6) ────────────────────
+# designer 실측 2026-09-15: 휴지통 122건 중 66건이 틀 제목이었고 그중 53건은
+# 만들어진 지 1분 안에 버려졌다(표본: 17:38:36 만들고 17:38:42 삭제, 6초).
+# 나이로 가르면 사람이 하루 넘게 들고 있다 버린 것까지 함께 지운다 — 그래서
+# **셋을 모두** 만족할 때만 자동의 몫이다. 하나라도 어긋나면 손대지 않는다.
+#   ① 제목이 기계가 붙인 틀로 시작한다
+#   ② 만든 지 60초 안에 버려졌다 — 사람이 읽고 판단할 시간이 없었다는 증거
+#   ③ 노트·첨부·상태 전이가 하나도 없다 — 아무도 손대지 않았다
+# 그리고 사람이 한 번 「남겨두기」를 누른 것은 영영 자동에서 빠진다.
+AUTO_PURGE_WITHIN_SEC = 60
+AUTO_PURGE_AFTER_DAYS = 7
+# 훅의 `harness_frame` 과 **같은 생김새**다 (bin/s9-audit-prompt). 두 벌이지만
+# 한쪽은 프롬프트를, 한쪽은 이미 적힌 제목을 본다 — 제목은 20자에서 잘려 오므로
+# 닫는 `>` 가 없을 수 있어 여는 쪽만 본다.
+_FRAME_TITLE_RE = re.compile(r"^\s*<[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b")
+
+
+def frame_title(title):
+    """이 제목은 기계가 붙인 틀인가 — 사람이 지은 제목은 이렇게 시작하지 않는다."""
+    return bool(_FRAME_TITLE_RE.match(str(title or "")))
+
+
+def _untouched_body(body):
+    """아무도 손대지 않았나 — 노트도 전이도 없다.
+
+    `## Notes` 아래에 `### ` 로 서는 노트가 하나도 없고, `## History` 의 줄이
+    만든 한 줄뿐일 때만 참이다. 첨부는 노트로 들어오므로 여기서 함께 걸린다.
+    """
+    text = str(body or "")
+    notes = text.split("## Notes", 1)[-1].split("## History", 1)[0] \
+        if "## Notes" in text else ""
+    if any(ln.startswith("### ") for ln in notes.splitlines()):
+        return False
+    hist = text.split("## History", 1)[-1] if "## History" in text else ""
+    lines = [ln for ln in hist.splitlines() if ln.strip().startswith("- ")]
+    return len(lines) <= 1
+
+
+def auto_purge_candidate(entry, now=None):
+    """이 휴지통 행이 **기계가 만들고 바로 버린 것**인가 (REQ-20260915-073-62x6).
+
+    셋을 모두 만족할 때만 참이다. 되돌릴 수 없는 일이라 좁은 쪽으로 틀린다.
+    """
+    if entry.get("auto_purge_keep"):
+        return False                       # 사람이 남겨두기를 눌렀다
+    if not frame_title(entry.get("title")):
+        return False
+    created = _trash_when(entry.get("created"))
+    gone = _trash_when(entry.get("deleted"))
+    if created is None or gone is None:
+        return False                       # 모르면 손대지 않는다
+    if not (0 <= (gone - created).total_seconds() <= AUTO_PURGE_WITHIN_SEC):
+        return False
+    return bool(entry.get("untouched"))
+
+
+def auto_purge_due(entry, now=None):
+    """자동의 몫이면서 **버린 지 그 날수를 넘겼나** — 실제로 지울 것."""
+    if not auto_purge_candidate(entry):
+        return False
+    gone = _trash_when(entry.get("deleted"))
+    if gone is None:
+        return False
+    ref = now or datetime.datetime.now().astimezone()
+    if gone.tzinfo is None:
+        gone = gone.replace(tzinfo=ref.tzinfo)
+    return (ref - gone).total_seconds() >= AUTO_PURGE_AFTER_DAYS * 86400
+
+
+def trash_auto_purge_on(user=None):
+    """사람이 없는 자리에서 스스로 지워도 되나 — **기본은 아니오**.
+
+    켜면 `auto_purge_candidate` 셋을 모두 만족하고 예고가 7일을 넘긴 것만
+    지운다. 꺼 두면 그 수를 화면이 말하고 지우는 손은 사람이 누른다.
+    """
+    try:
+        v = (user_config(user or resolve_user(None)) or {}).get("trash_auto_purge")
+    except Exception:
+        return False
+    return str(v).strip().lower() in ("on", "true", "1", "yes")
+
+
+AUTO_PURGE_EVERY_SEC = 3600     # 한 시간에 한 번이면 넉넉하다 (7일 뒤 지우는 일이다)
+_AUTO_PURGE_AT = [0.0]
+# **약속을 보인 적 없는 것은 지우지 않는다** (REQ-20260915-073-62x6, 실제 사고
+# 2026-09-16 10:39): 7일을 「버린 때」로만 재면, 이 규칙이 서기 전에 버려진 것은
+# 규칙이 서는 순간 이미 7일을 넘긴 상태다 — 화면이 「7일 뒤 지웁니다」를 처음
+# 띄운 그 순간에 함께 지워진다. 리드가 그것을 실제로 냈고 13건이 사라졌다
+# (git 에서 되살렸다). 그래서 시계가 둘이다: 버린 때, 그리고 **이 컴퓨터가 그
+# 약속을 처음 말한 때**. 둘 다 7일을 넘겨야 지운다.
+AUTO_PURGE_NOTICE = "auto-purge-notice.json"
+
+
+def auto_purge_notice_at(now=None, mark=True):
+    """이 컴퓨터가 자동 비우기 약속을 **처음 말한 때**(epoch). 없으면 지금 찍는다."""
+    import time as _t
+    nowt = _t.time() if now is None else now
+    path = os.path.join(_auto_dir(), AUTO_PURGE_NOTICE)
+    try:
+        with open(path, encoding="utf-8") as f:
+            v = float((json.load(f) or {}).get("since") or 0)
+        if v > 0:
+            return v
+    except (OSError, ValueError, TypeError):
+        pass
+    if not mark:
+        return 0.0
+    try:
+        os.makedirs(_auto_dir(), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"since": nowt}, f)
+    except OSError:
+        pass
+    return nowt
+
+
+def auto_purge_tick(now=None, me="", every=AUTO_PURGE_EVERY_SEC):
+    """수명을 넘긴 **자동의 몫**을 지운다 (REQ-20260915-073-62x6). 지운 id 목록.
+
+    여기서만 자동으로 지운다. 대상은 `auto_purge_candidate` 셋을 모두 만족하고
+    버린 지 7일을 넘긴 것뿐이고, 지운 것은 한 줄씩 남긴다 — 되돌릴 수 없는 일에
+    자취가 없으면 나중에 아무도 판정할 수 없다.
+    """
+    import time as _t
+    nowt = _t.time() if now is None else now
+    if nowt - _AUTO_PURGE_AT[0] < every:
+        return []
+    _AUTO_PURGE_AT[0] = nowt
+    # **기본은 끔** (REQ-20260915-073-62x6, 실제 사고 2026-09-16 10:39): 이
+    # 저장소에는 「지우는 것은 자동이 아니다 — 되돌릴 수 없는 일에 사람의 손이
+    # 한 번 들어간다」가 이미 규칙으로 있다(`trash_keep_days`). 그 규칙과
+    # 이 요청의 goal 이 부딪히는데, **되돌릴 수 없는 쪽의 판정을 코드가 혼자
+    # 하지 않는다.** 그래서 잣대·예고·남겨두기는 다 서고, 사람이 없는 자리에서
+    # 스스로 지우는 것만 사람이 켜야 돈다. 켜는 자리는 계정 설정 한 줄이다.
+    if not trash_auto_purge_on(me or None):
+        return []
+    # 약속을 말한 지 그 날수를 넘기기 전에는 한 건도 지우지 않는다
+    since = auto_purge_notice_at(now=nowt)
+    if nowt - since < AUTO_PURGE_AFTER_DAYS * 86400:
+        return []
+    gone = []
+    try:
+        rows = trash_entries()
+    except Exception:
+        return []
+    for e in rows:
+        try:
+            if not auto_purge_due(e):
+                continue
+            do_purge(e["id"], user=me or None)
+        except Exception:
+            continue
+        gone.append(e["id"])
+        _auto_log(f"AUTO-PURGE {e['id']} 기계가 만들고 1분 안에 버려진 것 — "
+                  f"{AUTO_PURGE_AFTER_DAYS}일을 넘겨 지웠다")
+    return gone
+
+
 def trash_payload(me=""):
     """휴지통 응답 한 벌 (REQ-20260915-084-62x6). 화면·시험이 같은 것을 본다.
 
@@ -22883,7 +23056,14 @@ def trash_payload(me=""):
     over = {e["id"] for e in trash_overdue(rows, keep)}
     for e in rows:
         e["overdue"] = e["id"] in over
-    return {"ok": True, "keep_days": keep, "rows": rows}
+        # 자동의 몫인가 / 오늘 지울 것인가 (REQ-20260915-073-62x6)
+        e["auto_purge"] = auto_purge_candidate(e)
+        e["auto_purge_due"] = e["auto_purge"] and auto_purge_due(e)
+    return {"ok": True, "keep_days": keep, "rows": rows,
+            "auto_purge_after_days": AUTO_PURGE_AFTER_DAYS,
+            "auto_purge_on": trash_auto_purge_on(me or None),
+            "auto_purge": sum(1 for e in rows if e["auto_purge"]),
+            "auto_purge_due": sum(1 for e in rows if e["auto_purge_due"])}
 
 
 def _trash_find(doc_id):
@@ -23253,7 +23433,24 @@ def cmd_purge(args):
     _each_report(done, failed, "purged (영구)")
 
 
-DOC_OPS = ("archive", "unarchive", "rm", "restore", "purge")
+def do_trash_keep(doc_id, entry=None):
+    """「남겨두기」 — 이 문서를 자동 비우기에서 **영영** 뺀다 (REQ-20260915-073-62x6).
+
+    표를 문서 자신에 적는다: 동기화가 문서를 컴퓨터 사이로 나르므로 표도 함께
+    간다. 옆에 목록을 두면 그 목록은 이 컴퓨터에만 있고, 다른 컴퓨터의 워처가
+    같은 문서를 지운다.
+    """
+    ent = entry or next((e for e in trash_entries() if e["id"] == doc_id), None)
+    if not ent:
+        raise ValueError("휴지통에 없다")
+    path = os.path.join(ROOT, ent["path"])
+    meta, body = read_doc(path)
+    meta["auto_purge_keep"] = True
+    write_doc(path, meta, body)
+    return meta.get("id") or doc_id
+
+
+DOC_OPS = ("archive", "unarchive", "rm", "restore", "purge", "keep")
 
 
 def docs_bulk(op, ids, actor="", reason=""):
@@ -23270,14 +23467,17 @@ def docs_bulk(op, ids, actor="", reason=""):
         if not i:
             continue
         try:
-            if op in ("restore", "purge"):
+            if op in ("restore", "purge", "keep"):
                 ent = next((e for e in trash_entries() if e["id"] == i), None)
                 if not ent:
                     raise ValueError("휴지통에 없다")
                 if actor and not doc_visible(ent, actor):
                     raise ValueError("권한 없음")
-                done.append(do_restore(i, actor) if op == "restore"
-                            else do_purge(i, actor))
+                if op == "keep":
+                    done.append(do_trash_keep(i, ent))
+                else:
+                    done.append(do_restore(i, actor) if op == "restore"
+                                else do_purge(i, actor))
             else:
                 p = locate(i)
                 if not p:
