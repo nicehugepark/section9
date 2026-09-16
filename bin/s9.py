@@ -36097,37 +36097,60 @@ def graph_data():
     return {"nodes": nodes, "edges": edges}
 
 # 본문 grep — CLI `s9 search --body` 와 같은 의미론 (모든 term AND 매치)
+def _search_row(row, terms):
+    """이 문서가 낱말을 다 품고 있나 — 품으면 걸린 줄까지 (없으면 None)."""
+    try:
+        with open(os.path.join(ROOT, row["path"]), encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return None
+    # 문서 본문 + 첨부 추출 본문 사이드카 — CLI `search --body` 와
+    # 같은 한 곳(asset_texts)에서 읽는다 (REQ-20260826-020).
+    segs = [("", text)] + asset_texts(
+        os.path.join(ROOT, row["path"]), row["id"])
+    if not all(any(t in s.lower() for _n, s in segs) for t in terms):
+        return None
+    matches = []
+    for name, s in segs:
+        for i, line in enumerate(s.splitlines(), 1):
+            if any(t in line.lower() for t in terms):
+                m = {"n": i, "text": line.strip()[:160]}
+                if name:
+                    m["file"] = name   # 첨부에서 나온 줄
+                matches.append(m)
+                if len(matches) >= 8:
+                    break
+        if len(matches) >= 8:
+            break
+    return matches
+
+
 def search_data(query):
+    """찾기 — **휴지통에 든 것도 함께**  (REQ-20260915-093-62x6).
+
+    product-owner: 「한참 뒤 어디 갔지」 여정의 첫 행동은 Docs 검색인데 검색은
+    `.trash` 를 보지 않았다. 빈손이 되면 사람은 그 문서가 **없다**고 읽고,
+    Settings 의 휴지통까지 가 볼 생각을 못 한다 — 버렸다는 것 자체를 잊었기
+    때문에 찾는 것이다.
+
+    버린 것은 **뒤에** 세운다: 살아 있는 문서가 먼저이고, 휴지통 것은 「그래도
+    이런 게 있다」로 이어진다. 행에는 `trashed` 표를 실어 화면이 그 사실과
+    되돌리는 손을 세울 수 있게 한다.
+    """
     terms = [t.lower() for t in query.split() if t]
     if not terms:
         return {"results": []}
-    results = []
+    results, trashed = [], []
     for row in load_catalog():
-        try:
-            with open(os.path.join(ROOT, row["path"]), encoding="utf-8") as f:
-                text = f.read()
-        except OSError:
-            continue
-        # 문서 본문 + 첨부 추출 본문 사이드카 — CLI `search --body` 와
-        # 같은 한 곳(asset_texts)에서 읽는다 (REQ-20260826-020).
-        segs = [("", text)] + asset_texts(
-            os.path.join(ROOT, row["path"]), row["id"])
-        if not all(any(t in s.lower() for _n, s in segs) for t in terms):
-            continue
-        matches = []
-        for name, s in segs:
-            for i, line in enumerate(s.splitlines(), 1):
-                if any(t in line.lower() for t in terms):
-                    m = {"n": i, "text": line.strip()[:160]}
-                    if name:
-                        m["file"] = name   # 첨부에서 나온 줄
-                    matches.append(m)
-                    if len(matches) >= 8:
-                        break
-            if len(matches) >= 8:
-                break
-        results.append({**row, "matches": matches})
-    return {"results": results}
+        m = _search_row(row, terms)
+        if m is not None:
+            results.append({**row, "matches": m})
+    for ent in trash_entries():
+        m = _search_row(ent, terms)
+        if m is not None:
+            trashed.append({**ent, "matches": m, "trashed_doc": True})
+    return {"results": results + trashed,
+            "trashed": len(trashed)}
 
 # 모든 SES 문서의 History 라인 → 이벤트 타임라인
 JSON_GZIP_MIN = 4096   # 이보다 작은 본문은 압축하지 않는다 — 헤더가 본문보다 커진다
