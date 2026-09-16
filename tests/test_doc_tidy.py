@@ -294,6 +294,47 @@ class TidyBarStable(unittest.TestCase):
         self.assertNotIn("bar2.innerHTML !== html", tail)
 
 
+class TheIrreversibleHandDoesNotStandInEveryRow(unittest.TestCase):
+    """되돌릴 수 없는 손은 목록에서 되풀이해 서지 않는다 (REQ-20260915-076-62x6).
+
+    실측 2026-09-15: 휴지통 127행에 「완전히 지우기」가 **127번** 붉게 섰다.
+    그 판에서 사람이 누르려는 것은 거의 언제나 되돌리기인데, 그 옆에 못
+    되돌리는 손이 같은 크기로 서 있으면 손이 미끄러질 자리가 127개가 된다.
+
+    하나를 지우는 길은 없어지지 않는다 — 「고르기」로 집어 띠에서 누른다.
+    고르는 행동 하나가 사이에 끼어 실수를 막는다.
+    """
+
+    def setUp(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "..", "web", "app", "tidy.js"),
+                  encoding="utf-8") as f:
+            self.src = f.read()
+
+    def test_no_row_carries_a_purge_handle(self):
+        i = self.src.index("const item = r =>")
+        row = self.src[i:self.src.index("const typeChip", i)]
+        self.assertNotIn('data-tidy="purge"', row,
+                         "행마다 되돌릴 수 없는 손이 선다")
+        self.assertIn('data-tidy="back"', row, "되돌리는 손까지 없앴다")
+
+    def test_the_picked_bar_still_offers_it(self):
+        self.assertIn('data-tidy="purgesel"', self.src,
+                      "행에서 내리기만 하고 지우는 길을 없앴다")
+        i = self.src.index('data-tidy="purgesel"')
+        self.assertIn('tidyTab === "trash"', self.src[max(0, i - 400):i],
+                      "휴지통 탭이 아닌 데서도 선다")
+
+    def test_the_empty_all_handle_says_its_reach(self):
+        i = self.src.index('data-tidy="purgeall"')
+        seg = self.src[i:i + 700]
+        self.assertIn("휴지통 비우기", seg, "확정 사전의 낱말이 사라졌다")
+        self.assertIn("전부", seg, "지우는 범위를 글자가 말하지 않는다")
+        self.assertIn("all.length", seg, "몇 건인지 말하지 않는다")
+        self.assertIn("narrowed", seg,
+                      "좁혀 보고 있을 때도 전량을 지운다는 사실을 말하지 않는다")
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -357,8 +357,13 @@ function tidyDecorate(){
            버튼에서 읽혀야 확인 창을 덜 무서워한다(s9-design 4절). */
         + `<button type="button" data-tidy="all">이 목록 전부 고르기</button>`
         + `<button type="button" class="off" data-tidy="none"${off}>고른 것 해제</button>`
-        + `<button type="button" data-tidy="archive"${off}>보관함으로</button>`
-        + `<button type="button" data-tidy="rm"${off}>휴지통으로</button>`;
+        + (tidyTab === "trash"
+            /* 행에서 내린 손이 여기 한 자리에 선다 (REQ-20260915-076-62x6).
+               목적어를 데리고 서고, 수를 그 자리에서 말한다. */
+            ? `<button type="button" class="gone" data-tidy="purgesel"${off}>`
+              + `고른 ${n}건 완전히 지우기</button>`
+            : `<button type="button" data-tidy="archive"${off}>보관함으로</button>`
+              + `<button type="button" data-tidy="rm"${off}>휴지통으로</button>`);
       /* 바꿀 때만 다시 그린다 — 비교는 innerHTML 이 아니라 **서명**으로 한다
          (REQ-20260907-028 실제 사고). 브라우저는 `disabled` 를 `disabled=""` 로
          되돌려 주므로 아직 하나도 안 골랐을 때(n=0) innerHTML 비교가 매번 어긋났고,
@@ -587,8 +592,12 @@ function tidyRender(){
       <div class="acts">
         <button type="button" data-tidy="back" data-id="${esc(r.id)}"
           title="문서 목록으로 되돌립니다">문서 목록으로</button>
-        ${tidyTab === "trash" ? `<button type="button" class="gone" data-tidy="purge"
-          data-id="${esc(r.id)}" title="영구히 지웁니다 — 되돌릴 수 없습니다">완전히 지우기</button>` : ""}
+        <!-- 되돌릴 수 없는 손은 **행마다 서지 않는다** (REQ-20260915-076-62x6).
+             실측: 휴지통 127행에 「완전히 지우기」가 127번 붉게 섰다. 그 폭에서
+             사람이 누르려는 것은 거의 언제나 되돌리기인데, 그 옆에 못 되돌리는
+             손이 같은 크기로 서 있으면 손이 미끄러질 자리가 127개가 된다.
+             하나를 지우는 길은 남는다: 「고르기」로 집어 띠에서 누른다 — 고르는
+             행동 하나가 사이에 끼어 실수를 막는다. -->
       </div></div>`;
   /* 좁히는 손 한 줄 — 검색 칸과 거르개 셋 (REQ-20260915-062-62x6).
      휴지통 탭에만, 그리고 받은 것이 있을 때만 선다: 못 받은 자리에 거르개를
@@ -646,7 +655,17 @@ function tidyRender(){
           ? `<button type="button" class="gone" data-tidy="purgeold">넘긴 ${
               over.length}건 완전히 지우기</button>` : ""}
         ${tidyTab === "trash" && all && all.length
-          ? `<button type="button" class="gone" data-tidy="purgeall">휴지통 비우기</button>` : ""}
+          ? `<button type="button" class="gone" data-tidy="purgeall">${
+              /* **글자가 범위를 말한다** (REQ-20260915-076-62x6): 이 손은 거르개로
+                 좁힌 화면에서도 전량을 지운다. 「휴지통 비우기」만 적으면 눈앞의
+                 세 건을 지우는 줄 알고 누른다 — 되돌릴 수 없는 일에서 그 오해는
+                 한 번으로 끝난다. 좁혀 보고 있을 때는 그 사실을 먼저 말한다. */
+              /* 낱말은 확정 사전의 **「휴지통 비우기」 그대로**다 (test_doc_tidy
+                 s5) — 범위는 그 뒤에 덧붙인다. 사전을 고치는 것은 tech-writer 의
+                 판정이 드는 일이고, 여기서 필요한 것은 범위를 말하는 것뿐이다. */
+              narrowed
+                ? `휴지통 비우기 · 거른 것과 상관없이 전부 ${all.length}건`
+                : `휴지통 비우기 · 전부 ${all.length}건`}</button>` : ""}
         <button type="button" data-tidy="close">닫기</button></div></div>`;
 }
 
@@ -792,10 +811,11 @@ async function tidyAct(what, el){
     return;
   }
   if (what === "purge" || what === "purgeall" || what === "purgeold"
-      || what === "purgeauto"){
+      || what === "purgeauto" || what === "purgesel"){
     /* 「정리하기」는 **전량에서** 수명을 넘긴 것만 집는다 — 거르개로 좁힌
        화면에서 눌러도 지워지는 것은 바닥이 센 그 수 그대로다. */
     const ids = what === "purge" ? [id]
+      : what === "purgesel" ? [...tidySel]
       : (tidyTrash || []).filter(r => what === "purgeall"
           || (what === "purgeauto" ? r.auto_purge : r.overdue))
                          .map(r => r.id);
