@@ -26,6 +26,37 @@ import time
 import zlib
 
 
+def _sibling(name):
+    """곁의 모듈을 **파일 경로로** 올린다 (DOC-20260916-003-62x6).
+
+    `sys.path` 에 기대지 않는다: 시험 345개가 `SourceFileLoader` 로 이 파일을
+    올리고 그때 `bin/` 이 경로에 없을 수 있다. `sys.modules` 에도 넣지 않는다 —
+    시험은 `S9_ROOT` 를 바꿔 이 파일을 **다시 올리는 것**으로 격리하는데,
+    자식이 캐시되면 그 격리가 무너진다.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "s9_" + name,
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), name + ".py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+# 이음매 (REQ-20260916-018-62x6, 설계 DOC-20260916-003-62x6). 여기 있던 여섯이
+# `bin/s9_ctx.py` 로 갔고 **같은 이름으로 다시 선다** — `s9.now_iso()` 를 부르는
+# 시험 345개가 그대로 듣는다. 값은 옮긴 여섯이 아니라 **장치**다: 자식이 부모를
+# import 하지 않고 부모가 제 이름공간을 건네므로, 다음 조각(동기화 전용 17개)이
+# 전역과 남의 함수에 엉킨 채로도 옮겨진다.
+_ctx = _sibling("s9_ctx")
+die = _ctx.die
+now_iso = _ctx.now_iso
+current_machine = _ctx.current_machine
+_iso_epoch = _ctx._iso_epoch
+_notice_sig = _ctx._notice_sig
+_notice_epoch = _ctx._notice_epoch
+
+
 # 윈도우에서 출력을 UTF-8 로 고정한다 (REQ-20260903-005). 이 도구들의 출력은
 # 거의 다 한국어인데, 파이프로 받으면 파이썬이 콘솔 코드페이지(한국어 윈도우는
 # cp949)로 인코딩한다 — 실측에서 그 출력을 UTF-8 로 읽은 쪽이 통째로 깨졌다
@@ -178,15 +209,6 @@ def s9_port(root=None):
         return 9909
 
 
-def now_iso():
-    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-
-
-def die(msg):
-    print(f"s9: error: {msg}", file=sys.stderr)
-    sys.exit(1)
-
-
 def safe_name(s):
     return re.sub(r"[^\w.@-]", "_", s)
 
@@ -242,10 +264,6 @@ def release_lock():
 
 
 # ---------------------------------------------------- user / session binding
-
-def current_machine():
-    return os.environ.get("S9_MACHINE") or socket.gethostname()
-
 
 def binding_path(machine, session):
     return os.path.join(STATE, f"{safe_name(machine)}__{safe_name(session)}.json")
@@ -684,20 +702,13 @@ NOTICE_GO = {
     "github": {"kind": "screen", "label": "저장소 열기", "target": "settings:repo"},
 }
 
+# 이름공간을 건넨다 — 사전 **자체**를 쥐므로 뒤에 정해지는 이름
+# (`SERVE_STARTED` 등)도 그대로 보인다.
+_ctx.bind(globals())
+
 _KO_DAYS = {1: "하루", 2: "이틀", 3: "사흘", 4: "나흘", 5: "닷새",
             6: "엿새", 7: "이레", 8: "여드레", 9: "아흐레", 10: "열흘"}
 _NOTICE_EPOCH = now_iso()     # 서버가 아닌 자리(CLI·시험)에서 since 의 바닥
-
-
-def _notice_epoch():
-    """시작 시각을 따로 적어 두지 않은 조건(미등록 계정 등)의 since — 서버가 뜬
-    때. 같은 서버가 도는 동안은 값이 바뀌지 않아 「N일째」가 폴마다 바뀌지 않는다."""
-    return SERVE_STARTED or _NOTICE_EPOCH
-
-
-def _notice_sig(*parts):
-    import hashlib
-    return hashlib.sha1("|".join(str(p) for p in parts).encode("utf-8")).hexdigest()[:12]
 
 
 def _ko_age(sec):
@@ -7167,13 +7178,6 @@ _SYNC_PULL_TS = os.path.join(ROOT, "state", ".sync-pull.ts")
 def doc_lease(meta):
     l = (meta or {}).get("lease")
     return dict(l) if isinstance(l, dict) else {}
-
-
-def _iso_epoch(v):
-    try:
-        return datetime.datetime.fromisoformat(str(v)).timestamp()
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def doc_lease_fresh(lease, now=None):
