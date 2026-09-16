@@ -91,5 +91,55 @@ class TheParentStillAnswersToTheOldNames(unittest.TestCase):
         self.assertNotIn("s9_s9_ctx", sys.modules)
 
 
+class TheSyncPrivatesMovedWithoutBeingRewritten(unittest.TestCase):
+    """조각 2 — 동기화 전용 열일곱이 옮겨졌고 **코드는 안 바뀌었다**
+    (REQ-20260916-019-62x6).
+
+    그럴 수 있는 까닭이 bind 다: 부모가 이름을 자식의 전역으로 꽂으므로
+    `ROOT` 를 `g("ROOT")` 로 바꿀 필요가 없다. 고른 근거는 센 값이다 —
+    그 열일곱이 필요로 하는 35개 중 **늦게 정해지는 것이 0개**다.
+    """
+
+    MOVED = ("_ago_word", "_conflict_label", "_rebase_in_progress",
+             "_session_docs", "commit_module", "git_run",
+             "harness_id_from_transcript", "machine_recv_beat",
+             "note_call_name", "parse_cross_session", "resolve_call_names")
+
+    def setUp(self):
+        self.m = _load("s9_p2", S9)
+
+    def test_the_parent_still_answers_to_them(self):
+        for n in self.MOVED:
+            with self.subTest(n=n):
+                self.assertTrue(callable(getattr(self.m, n, None)),
+                                "%s 가 s9.py 에서 사라졌다" % n)
+
+    def test_they_really_live_in_the_child(self):
+        for n in self.MOVED:
+            with self.subTest(n=n):
+                self.assertIs(getattr(self.m, n), getattr(self.m._sync_mod, n))
+
+    def test_the_child_sees_the_parents_names(self):
+        # 이름이 꽂혔다 — 옮긴 코드가 그대로 도는 까닭
+        self.assertEqual(self.m.ROOT, self.m._sync_mod.ROOT)
+        self.assertTrue(callable(self.m._sync_mod._sync_git))
+
+    def test_a_moved_function_actually_runs(self):
+        # 글자가 아니라 **동작**을 잰다 — 부모의 전역·함수를 그대로 쓴다
+        self.assertEqual("", self.m.parse_cross_session("사람이 친 말") or "")
+        got = self.m.parse_cross_session(
+            '<cross-session-message from="bridge:x" from-name="맥">\n안녕')
+        self.assertEqual(("bridge:x", "맥"), got)
+        self.assertEqual("없음", self.m._ago_word(0, 1_700_000_000.0))
+
+    def test_the_child_stands_without_the_parent(self):
+        """순환이 없다 — 자식만 따로 올려도 선다(부모를 import 하지 않으므로)."""
+        child = _load("s9sync_alone", os.path.join(HERE, "..", "bin", "s9_sync.py"))
+        self.assertTrue(callable(child.parse_cross_session))
+        # 아직 아무 이름도 안 꽂혔다 — 부모가 건네야 도는 함수는 NameError 다
+        with self.assertRaises(NameError):
+            child.git_run(["status"])
+
+
 if __name__ == "__main__":
     unittest.main()
