@@ -14619,7 +14619,18 @@ def _sync_poll_record(result, now=None, ms=0, path=None):
     return rec
 
 
-def sync_poll(timeout=8):
+# 폴이 기다려 주는 시간 (REQ-20260917-001-2n7g). 8초였는데 이 저장소의 fetch 가
+# 그 자를 넘나든다 — 맥미니 실측 2026-09-17, `git fetch origin` 다섯 번:
+# 7.34 · 3.23 · 2.00 · 4.81 · 5.30 초. 폴이 부르는 `pull --ff-only` 는 그 fetch 에
+# 앞으로 감기까지 더한 것이라, fetch 만으로 7.34 초가 나온 회차는 상한을 넘겼다.
+# 다섯 중 하나가 상한에서 0.7 초 안에 들었다.
+# 20 초인 까닭: 잰 값의 최댓값에 약 2.7 배다. 더 늘리지 않는 것은 폴이 동기화
+# 잠금을 쥐고 도는 동안 `s9 commit` 이 기다리기 때문이다 — 자를 늘리는 것과
+# 남을 세워 두는 것을 맞바꾸는 자리라, 실측을 덮는 선에서 멈춘다.
+SYNC_POLL_TIMEOUT_SEC = 20
+
+
+def sync_poll(timeout=SYNC_POLL_TIMEOUT_SEC):
     """수신 — fetch + fast-forward 만 (REQ-20260902-023). 쓰지 않는 머신도 남의
     변경을 본다. 로컬 커밋이 앞서 있어 ff 가 안 되면 조용히 건너뛴다(전송 루프의
     rebase 가 푼다). 화면의 pull 손잡이와 **같은 git 명령**을 쓴다.
@@ -14738,7 +14749,7 @@ def _sync_reattach_clear(path=None):
         pass
 
 
-def _sync_poll_once(timeout=8):
+def _sync_poll_once(timeout=SYNC_POLL_TIMEOUT_SEC):
     """폴 한 번의 알맹이 — 기록은 sync_poll 이 한다."""
     import time as _time
     if sync_mode() != "remote":
@@ -14763,6 +14774,16 @@ def _sync_poll_once(timeout=8):
     try:
         before = _sync_git("rev-parse", "HEAD").stdout.strip()
         r = git_run(["pull", "--ff-only"], timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # **시간 안에 못 끝낸 것은 못 닿은 것이 아니다** (REQ-20260917-001-2n7g).
+        # 종전에는 아래 `except Exception` 이 이것까지 삼켜 「net」으로 적었고,
+        # 화면은 「origin 에 닿지 못합니다」를 띄웠다 — 사람이 네트워크를 보러
+        # 가는데 망은 멀쩡하고 다음 회차는 그냥 성공한다(실측 2026-09-17: 폴
+        # 이벤트가 net·ok·net·ok 로 엇갈렸다). 바로 아래 sync_poll_classify 의
+        # 주석이 같은 계보의 사고를 적고 있다 — 그때 dirty·diverged 를 갈랐고
+        # 시간 초과만 net 에 남아 있었다.
+        _SYNC_POLL_LAST["error"] = f"{timeout}초 안에 끝나지 않았다"
+        return "timeout"
     except Exception as e:
         _SYNC_POLL_LAST["error"] = str(e)[:200]
         return "net"
@@ -14897,6 +14918,10 @@ SYNC_RECV_ALERT_SEC = 900        # 이만큼이면 붉은 글자 + 훅 주입 1�
 SYNC_RECV_WORD = {               # 받기가 막힌 사유의 낱말 (폴의 반환값)
     "net": "받기 실패 — origin 에 닿지 못합니다",
     "diverged": "받기 막힘 — 로컬 커밋이 앞서 ff 가 안 됩니다",
+    # 시간 초과는 못 닿은 것과 **다른 사실**이다 (REQ-20260917-001-2n7g) — 낱말이
+    # 사람이 할 일을 가른다: 못 닿으면 네트워크를 보고, 시간이 모자라면 기다린다.
+    # 다음 회차가 대개 그냥 받으므로 「실패」라 부르지 않는다.
+    "timeout": "받는 중 — 지난 회차가 시간 안에 못 끝냈습니다",
 }
 _LEVEL_RANK = {"": 0, "late": 1, "stale": 2}
 _SYNC_STALL_SEEN = os.path.join(ROOT, "state", ".sync-stall-seen")
@@ -15523,6 +15548,11 @@ def sync_status_hint(st):
                     "정리하면 다시 받는다")
         if rk == "net":
             return "origin 에 닿지 못한다 — 네트워크·인증을 확인하고 `s9 sync`"
+        if rk == "timeout":
+            # 다음 회차가 대개 그냥 받는다 — 네트워크를 보러 보내지 않는다
+            # (REQ-20260917-001-2n7g). 계속 이러면 자가 짧은 것이다.
+            return ("받는 데 시간이 걸린다 — 다음 회차를 기다려라. 계속 이러면 "
+                    "`s9 sync --stats` 로 폴에 걸리는 시간을 본다")
         return ("받는 쪽이 멈췄다 — `s9 sync` 로 한 번 당기고, 그래도 안 받으면 "
                 "`s9 serve --restart` (최근 폴 기록은 `s9 sync --stats`)")
     return "`s9 sync` 로 다시 밀고, 계속 밀리면 `s9 sync --status` 로 사유 확인"
