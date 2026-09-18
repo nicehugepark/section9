@@ -237,8 +237,12 @@ class TheStillFacesHaveDepth(unittest.TestCase):
     절대 좌표로 못박지 않는 까닭: 마크는 이제 이름 붙은 버전으로 갈아 끼운다
     (REQ-20260914-002-62x6). 버전이 바뀌면 좌표는 달라지지만 **얼굴의 비율**은
     그대로여야 한다 — 그것이 주인이 고른 것이다. 그래서 좌표가 아니라 비율을 잰다.
-      · 점 지름은 돔 지름의 8~14% (큰 새김 8% · 작은 새김 13%)
-      · 점 셋은 정삼각이고, 무게중심이 돔 지름의 13~17% 만큼 아래
+      · 점 지름은 돔 지름의 7.5~14% (큰 새김 8% · 작은 새김 13%)
+      · 점 셋은 정삼각이고, 무게중심이 돔 지름의 13~19% 만큼 아래
+    아래 문턱 8%→7.5% 와 처짐 상한 17%→19% 는 주인이 화면을 보며 넓힌 것이다
+    (2026-09-18 18:56, REQ-20260918-015-62x6: 「지금보다 더 작고 더 모여있고, 더
+    아래쪽에 위치해야한다」). 얼굴의 비율은 주인이 고르는 것이라, 자가 주인의 눈을
+    막는 자리에서는 자를 옮긴다.
     """
 
     def face(self, src):
@@ -251,14 +255,18 @@ class TheStillFacesHaveDepth(unittest.TestCase):
              for g in DOT.findall(src[m.end():])][:3]
         self.assertEqual(len(d), 3, "점이 셋이 아니다")
         dd = R * 2
-        self.assertTrue(0.08 <= d[0][2] * 2 / dd <= 0.14,
-                        "점 지름이 돔 지름의 8~14%% 밖이다: %.3f" % (d[0][2] * 2 / dd))
-        side = abs(d[1][0] - d[0][0])
-        self.assertAlmostEqual((d[2][1] - d[0][1]) / side, 0.866, delta=0.02,
-                               msg="점 셋이 정삼각이 아니다")
+        self.assertTrue(0.075 <= d[0][2] * 2 / dd <= 0.14,
+                        "점 지름이 돔 지름의 7.5~14%% 밖이다: %.3f" % (d[0][2] * 2 / dd))
+        # 세 변을 **순서와 무관하게** 잰다 (REQ-20260918-015-62x6) — 얼굴이
+        # 위 2·아래 1 에서 위 1·아래 2 로 뒤집히면서 d[0]·d[1] 이 윗변이라는
+        # 전제가 깨졌다. 정삼각인지는 변의 길이만 보면 배치와 상관없이 갈린다.
+        sides = sorted(math.hypot(d[i][0] - d[j][0], d[i][1] - d[j][1])
+                       for i, j in ((0, 1), (1, 2), (2, 0)))
+        self.assertLess(sides[-1] - sides[0], sides[-1] * 0.03,
+                        "점 셋이 정삼각이 아니다: %r" % [round(x, 3) for x in sides])
         drop = (sum(p[1] for p in d) / 3 - cy) / dd
-        self.assertTrue(0.13 <= drop <= 0.17,
-                        "점 무리의 중심이 돔 지름의 13~17%% 아래가 아니다: %.3f" % drop)
+        self.assertTrue(0.13 <= drop <= 0.19,
+                        "점 무리의 중심이 돔 지름의 13~19%% 아래가 아니다: %.3f" % drop)
 
     def test_n5_the_lens_is_shaded_and_the_three_dots_keep_their_ratios(self):
         for name in ("mark.svg", "favicon.svg", "logo.svg"):
