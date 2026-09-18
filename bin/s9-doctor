@@ -66,6 +66,13 @@ S9_CLI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "s9")
 # Jira 발신함이 준비물로 막힘 (REQ-20260914-013-62x6): 20건이 쌓였거나 하루를 넘겼으면
 # critical — 실제 사고는 112건·닷새였다. 그 아래는 warn.
 JIRA_BLOCK_CRIT_N, JIRA_BLOCK_CRIT_SEC = 20, 86400
+# 나간 판과 지금 코드의 거리를 재는 선 (REQ-20260918-006-62x6). 코드 commit 수나
+# 날수 중 하나만 넘어도 말한다 — 하루에 백 건이 들어가는 날과 한 달에 세 건이
+# 들어가는 달이 둘 다 있기 때문이다.
+RELEASE_DRIFT_N, RELEASE_DRIFT_DAYS = 20, 7
+# 배포판에 담기지 않는 자리 — .gitattributes 의 export-ignore 와 같은 표다.
+# 여기만 바뀐 commit 은 받는 사람에게 갈 것이 없으므로 거리로 세지 않는다.
+RELEASE_DATA_DIRS = ("vault", "users", "projects", "state", "scratchpad", ".s9-sync")
 
 
 def _envint(name, default):
@@ -984,6 +991,45 @@ def hooks_verdict(h):
               " ".join(advice))
 
 
+def release_verdict(x):
+    """나간 판과 지금 코드의 거리 — 네 갈래.
+
+    ① 판을 낸 적 없음(태그 없음) → ok. 받아서 쓰는 설치가 여기다.
+    ② VERSION 을 올렸는데 그 태그가 없음 → warn. 판만 올리고 태그를 안 따면
+       배포판은 만들어지지 않는다 — 워크플로는 태그 push 로만 돈다.
+    ③ 나간 판 뒤로 코드가 선을 넘게 쌓임 → warn.
+    ④ 그 밖 → ok, 거리를 그대로 적는다."""
+    if not isinstance(x, dict):
+        return _v("release", "배포", "unknown", "배포: 상태를 읽지 못했다",
+                  "`git tag -l 'v[0-9]*'` 이 도는지 보라.")
+    tag = x.get("tag")
+    ver = x.get("version") or "?"
+    if not tag:
+        return _v("release", "배포", "ok", "배포: 판을 낸 적이 없다")
+    n = int(x.get("commits") or 0)
+    days = x.get("days")
+    age = f" · {int(days)}일" if days is not None else ""
+    if not x.get("tagged"):
+        return _v("release", "배포", "warn",
+                  f"배포: VERSION 은 {ver} 인데 태그 v{ver} 가 없다 — "
+                  f"나간 판은 {tag} 그대로다",
+                  f"배포판은 태그 push 로만 만들어진다"
+                  f"(.github/workflows/release.yml). "
+                  f"`git tag -a v{ver} -m '...' && git push origin v{ver}`")
+    over = n >= RELEASE_DRIFT_N or (days is not None and days >= RELEASE_DRIFT_DAYS and n > 0)
+    if over:
+        return _v("release", "배포", "warn",
+                  f"배포: 나간 판 {tag} 뒤로 코드 commit {n}개{age} — "
+                  f"받는 사람은 이 코드를 못 받는다",
+                  "VERSION 을 올리고 docs/RELEASE-NOTES.md 에 그 절을 쓴 뒤 "
+                  "태그를 따라. 가이드가 새 기능을 적는데 배포판에 없으면 "
+                  "받은 사람에게는 「파일이 사라졌다」로 보인다"
+                  "(REQ-20260918-006-62x6).")
+    tail = (f" · 뒤로 코드 commit {n}개{age}" if n
+            else " · 코드가 그 판과 같다")
+    return _v("release", "배포", "ok", f"배포: 나간 판 {tag}" + tail)
+
+
 def repo_verdict(r):
     """s9 는 자기 저장소 안에서 돈다 — 그 자리가 커밋을 받을 수 있어야 한다.
 
@@ -1546,6 +1592,49 @@ def sweep_stale_tmp(base="/tmp", now=None, age=TMP_STALE_AGE):
     return {"dirs": gone, "bytes": freed}
 
 
+def release_info(root=None):
+    """나간 판과 지금 코드의 거리 (REQ-20260918-006-62x6).
+
+    실제 사고 2026-09-18: 태그 v0.9.1(9/14) 뒤로 코드 commit 147 개가
+    나흘 쌓이는 동안 VERSION 은 0.9.1 그대로였다. 그 사이에 들어온
+    section9.cmd 를 가이드는 「두 번 누르라」고 적었지만 나간 배포판에는
+    없었고, 받은 사람이 그것을 먼저 발견했다. 판을 낼 때를 사람의
+    기억에 맡기면 이 거리는 어느 화면에도 안 보인다 — 여기서 보인다.
+
+    받아서 쓰는 설치에는 태그가 없다(첫 실행이 git init 으로 세운다) —
+    그때는 tag=None 이 돼 판정이 「판을 낸 적이 없다」로 조용히 선다."""
+    root = root or ROOT
+
+    def g(*args):
+        try:
+            r = subprocess.run(["git", *args], cwd=root, capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=10)
+        except Exception:
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    try:
+        with open(os.path.join(root, "VERSION"), encoding="utf-8") as f:
+            ver = f.read().strip()
+    except OSError:
+        ver = None
+    # `--sort=-v:refname` 이 판 순서를 준다 — 글자 순서로 보면 v0.10.0 이
+    # v0.9.1 보다 앞에 온다.
+    tags = [t.strip() for t in (g("tag", "-l", "v[0-9]*", "--sort=-v:refname") or "").splitlines() if t.strip()]
+    tag = tags[0] if tags else None
+    out = {"tag": tag, "version": ver, "commits": 0, "days": None, "tagged": False}
+    if not tag:
+        return out
+    out["tagged"] = bool(ver) and tag == f"v{ver}"
+    ex = [f":(exclude){d}" for d in RELEASE_DATA_DIRS]
+    log = g("log", "--oneline", f"{tag}..HEAD", "--", ".", *ex)
+    out["commits"] = len([l for l in (log or "").splitlines() if l.strip()])
+    when = g("log", "-1", "--format=%ct", tag)
+    if when and when.isdigit():
+        out["days"] = max(0.0, (time.time() - int(when)) / 86400.0)
+    return out
+
+
 def repo_info():
     def g(*args):
         try:
@@ -1950,6 +2039,7 @@ def system_checks():
             serve_verdict(serve_info()),
             watcher_verdict(watcher_info()),
             repo_verdict(repo_info()),
+            release_verdict(release_info()),
             sync_verdict(sync_info()),
             jira_verdict(jira_info()),
             project_verdict(project_info()),
