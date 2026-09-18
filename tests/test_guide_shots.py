@@ -127,7 +127,7 @@ class TestGuideShots(unittest.TestCase):
         u = S9MOD._guide_shot_url("?noscroll#settings/display",
                                   "http://127.0.0.1:9909", "anon&skin=calm")
         self.assertEqual(
-            u, "http://127.0.0.1:9909/?anon&skin=calm&noscroll#settings/display")
+            u, "http://127.0.0.1:9909/?noscroll&anon&skin=calm#settings/display")
         # 제 인자가 없는 그림도 공통 인자를 받는다
         self.assertEqual(
             S9MOD._guide_shot_url("#board", "http://x:1/", "anon"),
@@ -135,6 +135,26 @@ class TestGuideShots(unittest.TestCase):
         # 공통 인자가 비면 `?` 도 서지 않는다
         self.assertEqual(S9MOD._guide_shot_url("#board", "http://x:1", ""),
                          "http://x:1/#board")
+
+    def test_a_picture_can_override_the_common_query(self):
+        """알림 줄을 일부러 세워 찍는 그림이 공통값 `notices=0` 을 덮을 수 있어야
+        한다 — 화면은 `/[?&]notices=(\\d+)/` 의 **첫 짝**을 읽는다."""
+        u = S9MOD._guide_shot_url("?notices=3&nopen=1#board", "http://x:1",
+                                  S9MOD.GUIDE_SHOT_QUERY)
+        self.assertLess(u.index("notices=3"), u.index("notices=0"))
+
+    def test_the_common_query_empties_the_notice_row(self):
+        """알림 줄은 사고가 난 몇 분에만 선다 — 찍는 순간에 무엇이 떠 있었느냐로
+        가이드의 그림이 갈리면 안 된다 (실측 2026-09-18: Settings 판에 「서버
+        재시작 필요」가 함께 들어왔다)."""
+        self.assertIn("notices=0", S9MOD.GUIDE_SHOT_QUERY)
+        self.assertIn("anon", S9MOD.GUIDE_SHOT_QUERY)
+        self.assertIn("skin=calm", S9MOD.GUIDE_SHOT_QUERY)
+        js = io.open(os.path.join(ROOT, "web", "app", "notice.js"),
+                     encoding="utf-8").read()
+        self.assertIn("notices=(\\d+)", js,
+                      "화면이 `?notices=` 를 더는 읽지 않는다 — 공통 인자도 "
+                      "함께 고쳐야 한다")
 
     def test_session_placeholder_is_resolved(self):
         """Stream 판은 세션 하나를 골라야 오른쪽이 찬다 — 그 한 자리만 판마다
@@ -207,12 +227,17 @@ class TestGuideShots(unittest.TestCase):
                         query="anon&skin=calm", retry=2, no_build=True))
             finally:
                 S9MOD.GUIDE_HTML, S9MOD._guide_capture = prev_html, prev_cap
-            self.assertEqual([u for u, _s, _w, _e in asked],
-                             ["http://x:1/?anon&skin=calm#board",
-                              "http://x:1/?anon&skin=calm&noscroll"
-                              "#settings/display"])
+            # 기대값은 **그림 옆의 찍는 법**에서 온다 — 여기에 숫자를 베껴
+            # 두면 높이를 실측으로 한 칸 고칠 때마다 이 시험이 거짓으로 진다.
+            want = [self.slots[0], self.slots[7]]
+            self.assertEqual(
+                [u for u, _s, _w, _e in asked],
+                [S9MOD._guide_shot_url(s["shot"], "http://x:1",
+                                       "anon&skin=calm") for s in want])
             self.assertEqual([s for _u, s, _w, _e in asked],
-                             ["1440,760", "1440,860"])
+                             [s["size"] for s in want])
+            self.assertIn("#board", asked[0][0])
+            self.assertIn("#settings/display", asked[1][0])
             after = S9MOD._guide_slots(io.open(copy, encoding="utf-8").read())
             small = base64.b64encode(_png(2, 2)).decode("ascii")
             for s in after:

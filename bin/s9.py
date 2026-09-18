@@ -5046,6 +5046,51 @@ def _capture_target(b, session):
     return "", lr
 
 
+# 이어 친 말을 앞 요청에 붙이는 창 (REQ-20260918-017-62x6). 실측: 사람이 한 생각을
+# 두 줄로 나눠 친 두 쌍이 각각 16초·17초 차였다(015·016 / 017·018). 창을 넓히면
+# 리드가 오래 일하는 동안 사람이 치는 **새 주제**까지 삼킨다 — 좁게 두고, 창 밖은
+# 리드가 `s9 link --parent` 로 잇는다. 삼킨 것을 되돌리는 것보다 못 삼킨 것을 잇는
+# 쪽이 싸다.
+CONTINUATION_WINDOW_SEC = 120
+
+
+def _continuation_target(machine, session, window_sec=CONTINUATION_WINDOW_SEC):
+    """사람이 이어 친 말을 받을 자리 — 방금 선 그 요청의 id, 없으면 "".
+
+    조건 다섯: ① 이 세션의 last_req 가 ② 사람이 낸 요청이고 ③ 이 세션이 세웠고
+    ④ 아직 열려 있고(open·in-progress) ⑤ 창 안에 섰는데 **리드가 아직 응답하지
+    않았다**. ⑤ 의 뒤쪽이 핵심이다 — 리드가 답하기 전에 또 온 말은 앞 말을 잇는
+    것이고, 답한 뒤에 온 말은 새 요청이거나 그 답에 대한 피드백이다. 자리를 묻는
+    곳(훅·서버)이 여럿이어도 답은 이 한 곳에서 나온다.
+    """
+    b = read_binding(machine, session) or {}
+    lr = (b.get("last_req") or "").strip()
+    if not lr:
+        return ""
+    lr = canon_id(lr)
+    path = locate(lr)
+    if not path:
+        return ""
+    try:
+        meta, body = read_doc(path)
+    except (OSError, ValueError):
+        return ""
+    if meta.get("type") != "request" or meta.get("origin") != "human":
+        return ""
+    if meta.get("status") not in ("open", "in-progress"):
+        return ""
+    if str(meta.get("session") or "")[:8] != (session or "")[:8]:
+        return ""
+    dt = _ts_delta(meta.get("created") or "", now_iso())
+    if dt is None or dt < 0 or dt > window_sec:
+        return ""
+    # 리드가 이미 답했나 — 응답 노트 헤더 하나면 충분하다. 노트 본문 안의
+    # 'response' 라는 낱말에 걸리지 않게 노트 헤더 모양으로만 찾는다.
+    if re.search(r"(?m)^### \d{4}-\S+ response\b", body):
+        return ""
+    return lr
+
+
 def _log_capture_reject(machine, session, rejected, target):
     """오귀속 차단 사유를 세션 로그(SES)에 남긴다. stale 포인터는 세션이 새 클레임을
     할 때까지 유지되므로 매 턴 반복 기록되지 않게 바인딩에 마지막 거부 대상을
@@ -22436,6 +22481,12 @@ def cmd_last(args):
         # 소유면 id를, 아니면 빈 줄을 출력한다 (REQ-20260825-066).
         print(args.owns if _session_owns(args.owns, session) else "")
         return
+    if getattr(args, "continuation", False):
+        # 이어 친 말이 붙을 자리 조회 (REQ-20260918-017-62x6) — 부작용 없음.
+        # `--owns` 와 같은 결의 얇은 표면이다: 판정은 _continuation_target 한 곳이
+        # 하고, 훅은 id 를 받아 붙이기만 한다.
+        print(_continuation_target(machine, session))
+        return
     if getattr(args, "add", False):
         # --add: last_req는 두고 active_reqs에 병행 REQ를 실행 등록 (live 직접 증거,
         # REQ-20260823-082). 떠나는 상태 전이가 자동 제거한다.
@@ -31059,7 +31110,12 @@ GUIDE_GEN = os.path.join(S9_CODE_ROOT, "bin", "s9-guide-md")
 # 주인이 고른 것 둘 (2026-09-18): 가이드는 GitHub 릴리스로 나가는 공개 문서라
 # 머리글의 계정 메일·컴퓨터 이름을 가리고(`anon`), 판은 밝은 쪽(`skin=calm`)
 # 하나로 통일한다 — 한 문서에서 화면이 두 얼굴이면 같은 제품으로 안 보인다.
-GUIDE_SHOT_QUERY = "anon&skin=calm"
+# `notices=0` 은 알림 줄을 비운다: 그 줄은 사고가 난 몇 분에만 서는 것이라,
+# 찍는 순간에 무엇이 떠 있었느냐로 가이드의 그림이 갈리면 안 된다(실측
+# 2026-09-18: Settings 판을 찍었더니 「서버 재시작 필요」가 함께 들어왔다).
+# 알림 줄 자체를 보여 주는 그림은 제 `data-shot` 에 `?notices=3&nopen=1` 을
+# 적어 이 값을 덮는다 — 그림의 인자가 앞에 서므로 그쪽이 이긴다.
+GUIDE_SHOT_QUERY = "anon&skin=calm&notices=0"
 GUIDE_SHOT_RETRY = 6
 
 _GUIDE_IMG_RE = re.compile(r"<img\b[^>]*>", re.I)
@@ -31116,13 +31172,17 @@ def _guide_shot_url(spec, base, query):
     """그림 옆의 `data-shot` 을 실제 주소로 — 공통 인자를 겹쳐 얹는다.
 
     `?noscroll#settings/display` + `anon&skin=calm`
-      → `http://127.0.0.1:9909/?anon&skin=calm&noscroll#settings/display`
+      → `http://127.0.0.1:9909/?noscroll&anon&skin=calm#settings/display`
+
+    그림이 제 인자를 **앞에** 세운다: 화면의 읽는 자리들이 `/[?&]x=(\\d+)/` 로
+    첫 짝을 집으므로, 앞선 것이 이긴다. 알림 줄을 일부러 세워 찍는 그림은
+    `?notices=3` 으로 공통값 `notices=0` 을 덮을 수 있어야 한다.
     """
     if "{session}" in spec:
         spec = spec.replace("{session}", _guide_newest_session())
     path, _, frag = spec.partition("#")
     head, _, own = path.partition("?")
-    q = "&".join([p for p in (query, own) if p])
+    q = "&".join([p for p in (own, query) if p])
     return (base.rstrip("/") + "/" + head.lstrip("/")
             + ("?" + q if q else "") + ("#" + frag if frag else ""))
 
@@ -40945,6 +41005,9 @@ def main():
     la.add_argument("--clear", action="store_true")
     la.add_argument("--pause", action="store_true",
                     help="last_req는 유지하되 응답 캡처만 일시중지 (Question/Nothing 턴)")
+    la.add_argument("--continuation", action="store_true",
+                    help="사람이 이어 친 말을 받을 요청의 id — 방금 선 요청이 아직 "
+                         "열려 있고 리드가 답하기 전이면 그 id, 아니면 빈 줄")
     cl = sub.add_parser("claim",
                         help="REQ 클레임 + 위임 에이전트 transcript 등록 "
                              "(--release 로 해제)")
