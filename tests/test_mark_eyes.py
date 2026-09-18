@@ -21,6 +21,12 @@
      구운 산출물이라 SVG 를 고쳐도 따라올 길이 없었고, 브라우저가 실제로 탭에
      띄우는 것은 그중 favicon.ico 일 때가 많다. `bin/s9-mark-icons` 가 굽고,
      이 시험이 낡았는지 본다.
+  E9 그중 **favicon.ico 는 투명**이고 앱 아이콘 셋은 불투명이다. 처음 구울 때
+     넷을 다 바탕색 위에 찍어 favicon.ico 가 RGBA 에서 RGB 로 바뀌었고, 탭과
+     북마크 줄에서 렌즈가 검은 사각형을 달고 앉았다(주인 지적 2026-09-18 20:22:
+     「파비콘과 북마크에 들어갈 이미지 로고가 실제 로고와 다르게 검은 배경이다」).
+     앱 아이콘 셋은 반대다 — 홈 화면·앱 목록이 투명을 제 맘대로 메우므로 불투명이
+     맞고, 옛 파일도 그랬다.
 
 실행: python3 tests/ mark_eyes
 """
@@ -146,6 +152,39 @@ class MarkEyes(unittest.TestCase):
         r = subprocess.run([sys.executable, gen, "--check"],
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout.strip() or r.stderr.strip())
+
+    def test_e9_the_tab_icon_is_transparent_the_app_icons_are_not(self):
+        """E9. favicon.ico 의 세 장은 RGBA 에 모서리가 비어 있고, 앱 아이콘 셋은 불투명이다."""
+        import struct
+
+        def colortype(blob):
+            pos = 8
+            while pos < len(blob):
+                ln = struct.unpack(">I", blob[pos:pos + 4])[0]
+                if blob[pos + 4:pos + 8] == b"IHDR":
+                    w, h, _bd, ct = struct.unpack(">IIBB", blob[pos + 8:pos + 18])
+                    return w, h, ct
+                pos += ln + 12
+            return 0, 0, -1
+
+        ico = open(os.path.join(WEB, "assets", "favicon.ico"), "rb").read()
+        _, _, n = struct.unpack("<HHH", ico[:6])
+        self.assertEqual(n, 3, "favicon.ico 에 16·32·48 세 장이 아니다")
+        for i in range(n):
+            _w, _h, _r, _x, _p, _bpp, size, off = struct.unpack(
+                "<BBBBHHII", ico[6 + 16 * i:22 + 16 * i])
+            blob = ico[off:off + size]
+            self.assertEqual(blob[:8], b"\x89PNG\r\n\x1a\n")
+            w, h, ct = colortype(blob)
+            self.assertEqual(ct, 6,
+                             "favicon.ico 의 %dx%d 가 투명이 아니다(colortype %d) — "
+                             "탭과 북마크에서 검은 사각형이 따라붙는다" % (w, h, ct))
+        for name in ("apple-touch-icon.png", "icon-192.png", "icon-512.png"):
+            with open(os.path.join(WEB, "assets", name), "rb") as f:
+                _w, _h, ct = colortype(f.read())
+            self.assertEqual(ct, 2,
+                             "%s 는 불투명이어야 한다 — 홈 화면이 투명을 제 맘대로 "
+                             "메운다 (colortype %d)" % (name, ct))
 
 
 if __name__ == "__main__":

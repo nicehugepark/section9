@@ -24,13 +24,20 @@ import subprocess
 import sys
 import tempfile
 import threading
+import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(ROOT, "web", "assets")
 S9 = os.path.join(ROOT, "bin", "s9")
 SRC = os.path.join(ASSETS, "favicon.svg")
-BG = "#141518"                       # 아이콘의 바탕 — 렌즈의 테와 같은 색
+# 앱 아이콘 셋의 바탕 — 렌즈의 테와 같은 색. 이 셋은 예나 지금이나 **불투명**이다
+# (홈 화면·앱 목록은 투명을 제 맘대로 메운다).
+BG = "#141518"
 PNGS = (("apple-touch-icon.png", 180), ("icon-192.png", 192), ("icon-512.png", 512))
+# **favicon.ico 는 투명이다** (REQ-20260918-019-62x6, 주인 지적 2026-09-18 20:22:
+# 「파비콘과 북마크에 들어갈 이미지 로고가 실제 로고와 다르게 검은 배경이다」).
+# 탭과 북마크 줄은 제 바탕색 위에 이 그림을 얹으므로, 바탕을 함께 구우면 렌즈가
+# 검은 사각형을 달고 앉는다. 옛 favicon.ico 는 RGBA 였고 이 자리가 그것을 지킨다.
 ICO_SIZES = (16, 32, 48)
 STAMP = os.path.join(ASSETS, ".icons-from")   # 어느 얼굴에서 구웠는지
 
@@ -48,14 +55,14 @@ def baked_fingerprint():
         return ""
 
 
-def shoot(size, out, host):
+def shoot(size, out, host, tag=""):
     """favicon.svg 를 size x size 로 띄워 찍는다.
 
     **file:// 로는 못 찍는다** — 윈도우 쪽 Playwright 는 WSL 의 /tmp 를 못 읽는다.
     그래서 굽는 동안만 작은 서버를 세우고 http:// 로 부른다.
     """
     r = subprocess.run(
-        [sys.executable, S9, "shot", "%s/icon-%d.html" % (host, size),
+        [sys.executable, S9, "shot", "%s/icon%s-%d.html" % (host, tag, size),
          "--size", "%d,%d" % (size, size), "--wait", "400",
          "--dpr", "1", "--out", out],
         capture_output=True, text=True)
@@ -64,16 +71,16 @@ def shoot(size, out, host):
                          % (size, r.stderr.strip() or r.stdout.strip()))
 
 
-def pages(dirname, sizes):
-    """크기마다 한 장씩 — 바탕은 렌즈의 테와 같은 색이다."""
+def pages(dirname, sizes, bg=BG, tag=""):
+    """크기마다 한 장씩. bg 가 바탕색이고 tag 는 파일 이름에 붙는 꼬리다."""
     with open(SRC, encoding="utf-8") as f:
         svg = f.read()
     for size in sizes:
         html = ("<!doctype html><meta charset=\"utf-8\">"
                 "<style>html,body{margin:0;padding:0;background:%s;"
                 "overflow:hidden}svg{display:block;width:%dpx;height:%dpx}"
-                "</style>%s" % (BG, size, size, svg))
-        with open(os.path.join(dirname, "icon-%d.html" % size), "w",
+                "</style>%s" % (bg, size, size, svg))
+        with open(os.path.join(dirname, "icon%s-%d.html" % (tag, size)), "w",
                   encoding="utf-8") as f:
             f.write(html)
 
@@ -109,21 +116,113 @@ def write_ico(pairs, out):
         f.write(head + entries + body)
 
 
+def _read_png(path):
+    """PNG 하나를 (너비, 높이, 채널수, 픽셀) 로 — stdlib 만으로 읽는다."""
+    d = open(path, "rb").read()
+    pos, idat, w, h, ct = 8, b"", 0, 0, 0
+    while pos < len(d):
+        ln = struct.unpack(">I", d[pos:pos + 4])[0]
+        typ = d[pos + 4:pos + 8]
+        if typ == b"IHDR":
+            w, h, _bd, ct = struct.unpack(">IIBB", d[pos + 8:pos + 18])
+        elif typ == b"IDAT":
+            idat += d[pos + 8:pos + 8 + ln]
+        pos += ln + 12
+    raw = zlib.decompress(idat)
+    ch = {0: 1, 2: 3, 4: 2, 6: 4}[ct]
+    stride, i = w * ch, 0
+    out, prev = bytearray(w * h * ch), bytearray(stride)
+    for y in range(h):
+        f = raw[i]; i += 1
+        line = bytearray(raw[i:i + stride]); i += stride
+        for x in range(stride):
+            a = line[x - ch] if x >= ch else 0
+            b = prev[x]
+            c = prev[x - ch] if x >= ch else 0
+            if f == 1:
+                line[x] = (line[x] + a) & 255
+            elif f == 2:
+                line[x] = (line[x] + b) & 255
+            elif f == 3:
+                line[x] = (line[x] + (a + b) // 2) & 255
+            elif f == 4:
+                pp = a + b - c
+                pa, pb, pc = abs(pp - a), abs(pp - b), abs(pp - c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[x] = (line[x] + pr) & 255
+        out[y * stride:(y + 1) * stride] = line
+        prev = line
+    return w, h, ch, bytes(out)
+
+
+def _write_rgba(path, w, h, px):
+    raw = b"".join(b"\x00" + px[y * w * 4:(y + 1) * w * 4] for y in range(h))
+
+    def chunk(t, d):
+        return (struct.pack(">I", len(d)) + t + d
+                + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff))
+
+    open(path, "wb").write(
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + chunk(b"IEND", b""))
+
+
+def unmix(on_white, on_black, out):
+    """흰 바탕과 검은 바탕에 각각 찍은 두 장에서 **투명도를 되찾는다**.
+
+    브라우저 캡처에는 알파가 없다 — 찍으면 언제나 불투명한 한 장이다. 그런데
+    같은 그림을 흰 바탕과 검은 바탕에 얹어 찍으면 두 값이 알파를 말해 준다:
+        검은 바탕 B = C·a          흰 바탕 W = C·a + 255·(1−a)
+        따라서 a = 1 − (W − B)/255 이고, 색 C = B/a 다.
+    합성이 source-over 인 한 이 되돌리기는 근사가 아니라 정확하다.
+    """
+    w, h, ch1, pw = _read_png(on_white)
+    w2, h2, ch2, pb = _read_png(on_black)
+    if (w, h) != (w2, h2):
+        raise SystemExit("두 장의 크기가 다르다 — 되돌릴 수 없다")
+    px = bytearray(w * h * 4)
+    for i in range(w * h):
+        sw, sb = i * ch1, i * ch2
+        # 알파는 세 채널이 같은 말을 한다 — 평균으로 잡음을 줄인다.
+        a = 0.0
+        for k in range(3):
+            a += 1.0 - (pw[sw + k] - pb[sb + k]) / 255.0
+        a = min(1.0, max(0.0, a / 3.0))
+        o = i * 4
+        if a <= 0.0:
+            px[o:o + 4] = b"\x00\x00\x00\x00"
+            continue
+        for k in range(3):
+            px[o + k] = min(255, max(0, int(round(pb[sb + k] / a))))
+        px[o + 3] = int(round(a * 255))
+    _write_rgba(out, w, h, bytes(px))
+
+
 def bake():
     with tempfile.TemporaryDirectory() as tmp:
-        pages(tmp, [n for _, n in PNGS] + list(ICO_SIZES))
+        pages(tmp, [n for _, n in PNGS])
+        # 투명을 되찾으려면 같은 크기를 두 바탕에 각각 찍어야 한다
+        pages(tmp, ICO_SIZES, bg="#ffffff", tag="w")
+        pages(tmp, ICO_SIZES, bg="#000000", tag="b")
         srv, host = serve(tmp)
         try:
             for name, size in PNGS:
                 shoot(size, os.path.join(ASSETS, name), host)
-                print("  %s  %dpx" % (name, size))
+                print("  %s  %dpx (불투명)" % (name, size))
             pairs = []
             for n in ICO_SIZES:
+                pw = os.path.join(tmp, "w%d.png" % n)
+                pb = os.path.join(tmp, "b%d.png" % n)
+                shoot(n, pw, host, tag="w")
+                shoot(n, pb, host, tag="b")
                 p = os.path.join(tmp, "ico%d.png" % n)
-                shoot(n, p, host)
+                unmix(pw, pb, p)
                 pairs.append((n, p))
             write_ico(pairs, os.path.join(ASSETS, "favicon.ico"))
-            print("  favicon.ico  %s" % " ".join("%dpx" % n for n in ICO_SIZES))
+            print("  favicon.ico  %s (투명)"
+                  % " ".join("%dpx" % n for n in ICO_SIZES))
         finally:
             srv.shutdown()
             srv.server_close()
