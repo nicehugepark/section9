@@ -28,10 +28,24 @@ function ccFetch(url, ms){
    REQ-20260829-019): 상한(큐)은 듣지 않고 **재시도만** 듣는다. 그림(attImg)과
    부트 보급(loadSupply)은 그 처방을 받고 있었는데 고르는 창들만 밖에 있었다.
 
-   폴(5초 termTargetLoop)은 여기를 안 지난다 — 폴의 재시도는 다음 tick 이고,
-   못 받은 한 번은 `offline` 이라는 설계된 얼굴이 있다. 여기는 **사람이 눌러
-   기다리는 자리**라 얼굴이 없다: 다시 거는 값이 그만큼 크다. */
+   폴(5초 termTargetLoop)은 여기를 안 지난다 — 폴의 재시도는 다음 tick 이다.
+   여기는 **사람이 눌러 기다리는 자리**라 얼굴이 없다: 다시 거는 값이 그만큼 크다.
+
+   **다만 폴에는 문턱이 필요했다** (REQ-20260918-001-62x6). 위 문단이 「못 받은
+   한 번은 offline 이라는 설계된 얼굴이 있다」로 끝나던 자리다. 그 전제는 한 번
+   못 받아도 다음 tick 이 메운다는 것이었는데, 이 기계의 실패율이 그 전제를
+   넘어섰다 — 실측 2026-09-18: /api/chat/target 40회 중 26회 실패(65%), 같은
+   시각 임시 서버 대조군은 40/40 성공. 65% 면 두 tick 연속 실패가 42% 라
+   「대시보드 연결 끊김」이 거의 상시로 선다.
+
+   고친 것은 재시도가 아니라 얼굴이 뜨는 문턱이다. 폴에 재시도를 붙이면 왕복과
+   취소가 늘고, 이 환경에서 리셋을 만드는 것이 바로 그 취소다(REQ-20260909-067)
+   — 고치려다 원인을 키운다. 왕복 수는 그대로 두고 연속 실패만 센다. */
 const CC_TRY_BACKOFF = [120, 320];   // ms — attach.js 가 실측으로 정한 그 자
+/* 연속으로 이만큼 못 받아야 「대시보드 연결 끊김」을 보인다 (REQ-20260918-001-62x6).
+   2 는 폴 간격 5초로 약 10초다 — 서버가 정말 내려갔으면 그 안에 드러나고,
+   지나가는 리셋 한 번은 다음 tick 이 메운다. */
+const CC_MISS_MAX = 2;
 /* 손 없이 이 상황을 만드는 스위치 — `?apifail=accounts[:once|:N]`. 끊긴 연결은
    같은 순간에 열 개가 도착해야 나므로 손으로는 재현할 수 없다. 새 스위치를
    짓지 않고 boot.js 의 `?apifail` 어휘를 그대로 쓴다 — 배울 것을 늘리지 않는다.
@@ -188,7 +202,14 @@ async function termTargetLoop(T){
       if (TERM !== T) return;
     }
     if (nt && nt.hint) T.hint = nt.hint;   // 빈 상태 안내용 실행 명령(실경로)
-    if (!nt){ termStatus(T, null, "offline"); return; }   // 서버 무응답
+    if (!nt){
+      // 서버 무응답 — 연속으로 문턱만큼 못 받았을 때만 얼굴을 세운다.
+      // 첫 왕복부터 못 받았으면 화면에 아직 아무것도 없으니 그때는 바로 보인다.
+      T.miss = (T.miss || 0) + 1;
+      if (T.miss >= CC_MISS_MAX || !T.gotOnce) termStatus(T, null, "offline");
+      return;
+    }
+    T.miss = 0; T.gotOnce = true;   // 응답이 왔다 — 센 것을 되돌린다
     if (nt.sid && nt.sid !== T.sid){ termAttach(T, nt); return; }
     termStatus(T, nt.sid ? nt : null);
   };
