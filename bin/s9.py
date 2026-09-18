@@ -29586,6 +29586,16 @@ SHOT_FAIL_HINTS = (
      r"|Could not connect to server|ERR_CONNECTION_RESET",
      "그 주소가 답하지 않는다 — 서버가 떠 있나 보라(`s9 serve --restart`). "
      "엔진 문제가 아니다."),
+    # 연결은 됐는데 **받는 도중에** 끊긴 것 — 서버가 죽은 것과 다르다
+    # (REQ-20260918-002-62x6). WebKit 이 이 자리를 제 말로 적어, 위 무늬로는
+    # 안 잡혀 「못 읽었다」가 나왔다. 뿌리는 REQ-20260909-067-62x6 의 WSL
+    # 루프백 중계 리셋이다.
+    (r"Failure when receiving data from the peer"
+     r"|The network connection was lost"
+     r"|Connection terminated unexpectedly",
+     "연결이 도중에 끊겼다 — WSL 루프백 중계가 간헐적으로 끊는 자리다"
+     "(REQ-20260909-067-62x6). s9 가 이미 {retries}번 다시 시도했으니, "
+     "다시 걸면 대개 찍힌다. 엔진 문제가 아니다."),
     (r"net::ERR_FILE_NOT_FOUND|ERR_ACCESS_DENIED",
      "그 파일에 닿지 못한다 — 윈도우 쪽 브라우저는 WSL 경로(/tmp/…)를 못 읽는다. "
      "서버로 띄워 http:// 로 찍어라."),
@@ -29600,7 +29610,8 @@ def _shot_fail_hint(tail, engine="webkit"):
     """실패한 글에서 **무엇이 없는지** 한 줄. 못 읽으면 솔직히 모른다고 한다."""
     for pat, say in SHOT_FAIL_HINTS:
         if re.search(pat, str(tail or ""), re.I):
-            return "→ " + say.format(runner=SHOT_WEBKIT_RUNNER_WIN, engine=engine)
+            return "→ " + say.format(runner=SHOT_WEBKIT_RUNNER_WIN, engine=engine,
+                                     retries=SHOT_NAV_RETRIES)
     return ("→ 무엇이 없어서인지 위 글로는 못 읽었다. 러너 자체가 없으면 이 명령이 "
             "설치 절차를 낸다 — 지금은 러너는 있고 실행이 졌다.")
 
@@ -29744,12 +29755,42 @@ def _shot_webkit_cmd(url, size, wait, win_out, runner=None, browser="webkit", dp
 def _shot_nav_retryable(stderr):
     """탐색 단계의 연결 오류인가 — Windows 쪽 localhost 중계가 연결을 간헐적으로
     끊는다(2026-09-07 실측: 같은 url 이 `net::ERR_SOCKET_NOT_CONNECTED` 로 섰다가
-    다음 번엔 200). 페이지 쪽 오류(404·JS)가 아니라 소켓 오류만 다시 시도한다."""
+    다음 번엔 200). 페이지 쪽 오류(404·JS)가 아니라 소켓 오류만 다시 시도한다.
+
+    **두 엔진은 같은 실패를 다른 말로 적는다** (REQ-20260918-002-62x6, 실측
+    2026-09-18): 뿌리는 REQ-20260909-067-62x6 이 규명한 WSL virtioproxy 루프백
+    중계의 리셋 하나인데, Chromium 은 `net::ERR_…` 로 적고 WebKit 은
+    `Failure when receiving data from the peer` 로 적는다. 아래 무늬가 Chromium 의
+    말만 알아들어, 같은 리셋을 맞고도 chromium 은 다시 시도해 찍히고 webkit 은
+    첫 판에 끝났다 — 「엔진에 따라 갈린다」로 보이던 것의 실체가 이 한 줄이다.
+    그러니 엔진의 말이 아니라 **소켓이 끊겼다는 뜻**을 무늬로 삼는다."""
     t = (stderr or b"").decode("utf-8", "replace") if isinstance(stderr, bytes) else str(stderr or "")
-    return bool(re.search(r"net::ERR_(SOCKET|CONNECTION|EMPTY_RESPONSE|NETWORK)|ECONNRESET|ECONNREFUSED", t))
+    return bool(re.search(
+        # Chromium 계열
+        r"net::ERR_(SOCKET|CONNECTION|EMPTY_RESPONSE|NETWORK)|ECONNRESET|ECONNREFUSED"
+        # WebKit 계열 — 같은 뜻을 제 말로 적는다
+        r"|Failure when receiving data from the peer"
+        r"|The network connection was lost"
+        r"|Connection terminated unexpectedly"
+        r"|Could not connect to (?:the )?server",
+        t))
 
 
-SHOT_NAV_RETRIES = 3
+SHOT_NAV_RETRIES = 6
+SHOT_NAV_BACKOFF_MAX = 6.0
+
+
+def _shot_nav_backoff(attempt):
+    """몇 초 쉬었다 다시 걸 것인가 (REQ-20260918-002-62x6).
+
+    **리셋은 뭉쳐서 온다** — REQ-20260909-067-62x6 의 실측대로 WSL 루프백 중계는
+    윈도우 쪽 클라이언트의 중도 취소를 처리하는 동안 같은 포트의 다른 연결을
+    끊는다. 1.5초 고정으로 3번 거는 것은 4.5초 창 안을 두드리는 것이라 그 묶음을
+    못 벗어난다 — 실측 2026-09-18: chromium 이 세 판을 `ERR_CONNECTION_ABORTED` ·
+    `ERR_CONNECTION_RESET` · `ERR_CONNECTION_RESET` 로 내리 졌다. 그래서 간격을
+    늘려 판을 넓게 편다(1.5·3·4.5·6·6 = 21초).
+    """
+    return min(1.5 * attempt, SHOT_NAV_BACKOFF_MAX)
 
 
 def _shot_webkit(url, size, wait, out, browser="webkit", dpr=1.0):
@@ -29805,7 +29846,7 @@ def _shot_webkit(url, size, wait, out, browser="webkit", dpr=1.0):
             first = next((ln for ln in first if "Error" in ln), first[0] if first else "")
             print(f"s9 shot: 탐색 연결 오류 — 다시 시도 {attempt}/{SHOT_NAV_RETRIES}: {first[:120]}",
                   file=sys.stderr)
-            time.sleep(1.5)
+            time.sleep(_shot_nav_backoff(attempt))
     except subprocess.TimeoutExpired:
         print(f"s9 shot: {browser} 캡처가 {SHOT_WEBKIT_TIMEOUT}초 안에 끝나지 않았다: "
               f"{' '.join(cmd)}", file=sys.stderr)
