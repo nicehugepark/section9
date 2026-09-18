@@ -132,19 +132,25 @@ class MarkEyes(unittest.TestCase):
                              "transform-origin 이 점의 자리와 다르다")
 
     def test_e7_favicon_url_carries_the_file_fingerprint(self):
-        """E7. index.html·guide.html 의 파비콘 주소가 그 파일의 지문을 달고 있다."""
-        want = hashlib.sha256(
-            open(os.path.join(WEB, "assets", "favicon.svg"), "rb").read()
-        ).hexdigest()[:8]
-        for page in ("index.html", "guide.html"):
-            m = re.search(r'href="assets/favicon\.svg\?v=([0-9a-f]+)"',
-                          read(os.path.join(WEB, page)))
-            self.assertIsNotNone(
-                m, "%s 의 파비콘 주소에 ?v= 지문이 없다 — 얼굴을 고쳐도 탭은 안 바뀐다" % page)
-            self.assertEqual(
-                m.group(1), want,
-                "%s 의 파비콘 지문이 낡았다 — 얼굴을 고쳤으면 주소의 ?v= 도 %s 로 옮겨라"
-                % (page, want))
+        """E7. 아이콘 link 셋의 주소가 각각 **그 파일의** 지문을 달고 있다.
+
+        svg 만 달았을 때 한 번 더 물렸다 — .ico 를 고쳐도 주소가 그대로라 북마크
+        줄은 옛 그림을 쥐고 있었다(2026-09-18 20:22). 지문은 파일마다 제 것이다.
+        """
+        for name in ("favicon.svg", "favicon.ico", "apple-touch-icon.png"):
+            want = hashlib.sha256(
+                open(os.path.join(WEB, "assets", name), "rb").read()
+            ).hexdigest()[:8]
+            for page in ("index.html", "guide.html"):
+                m = re.search(r'href="assets/%s\?v=([0-9a-f]+)"' % re.escape(name),
+                              read(os.path.join(WEB, page)))
+                self.assertIsNotNone(
+                    m, "%s 의 %s 주소에 ?v= 지문이 없다 — 고쳐도 탭·북마크는 안 바뀐다"
+                    % (page, name))
+                self.assertEqual(
+                    m.group(1), want,
+                    "%s 의 %s 지문이 낡았다 — 파일을 고쳤으면 ?v= 도 %s 로 옮겨라"
+                    % (page, name, want))
 
     def test_e8_raster_icons_are_baked_from_this_face(self):
         """E8. 래스터 아이콘 넷이 지금의 favicon.svg 에서 구운 것이다."""
