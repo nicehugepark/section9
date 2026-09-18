@@ -7132,7 +7132,7 @@ def _pull_if_stale():
         pass
     try:
         before = _sync_git("rev-parse", "HEAD").stdout.strip()
-        r = _sync_pull_cmd(timeout=8)
+        r = _sync_pull_cmd()
         if r.returncode != 0:
             # 충돌이면 되돌리기 전에 적는다 (REQ-20260915-009-2n7g) — 충돌한
             # 자리가 없으면 빈 사전을 돌려주고 아무것도 쓰지 않는다. 전송
@@ -13632,7 +13632,24 @@ def _sync_git(*argv, timeout=6):
                           encoding="utf-8", errors="replace", timeout=timeout)
 
 
-def _sync_pull_cmd(timeout=8):
+# 당기기가 기다려 주는 시간 (REQ-20260917-001-2n7g · REQ-20260918-002-2n7g).
+# 8초였는데 이 저장소의 fetch 가 그 자를 넘나든다 — 맥미니 실측 2026-09-17,
+# `git fetch origin` 다섯 번: 7.34 · 3.23 · 2.00 · 4.81 · 5.30 초. 당기기는 그
+# fetch 위에 앞으로 감기(폴) 또는 rebase(전송 경로)까지 얹으므로, fetch 만으로
+# 7.34 초가 나온 회차는 상한을 넘겼다. 다섯 중 하나가 상한에서 0.7 초 안에 들었다.
+# 20 초인 까닭: 잰 값의 최댓값에 약 2.7 배다. 더 늘리지 않는 것은 당기기가
+# 동기화 잠금을 쥐고 도는 동안 `s9 commit` 이 기다리기 때문이다 — 자를 늘리는
+# 것과 남을 세워 두는 것을 맞바꾸는 자리라, 실측을 덮는 선에서 멈춘다.
+#
+# **값은 여기 하나다** (REQ-20260918-002-2n7g): 처음에는 폴만 고치고 전송 경로와
+# 리스 갱신용 당기기는 8초로 남겨 두었는데, 2026-09-18 11:59~12:07 에 바로 그
+# 자리가 네 번 연속 시간 초과로 물러나(간격이 배로 늘어 480초까지) 갈래가 갈린
+# 채 있었다. 전송 경로는 rebase 까지 하니 폴보다 시간이 **더** 든다 — 폴만
+# 늘린 것은 반쪽이었다. 숫자를 자리마다 적으면 그 반쪽이 또 생긴다.
+SYNC_PULL_TIMEOUT_SEC = 20
+
+
+def _sync_pull_cmd(timeout=SYNC_PULL_TIMEOUT_SEC):
     """당겨서 얹는다 — `pull --rebase` 가 아니라 **fetch 뒤 원격 추적 가지에 rebase**.
 
     pull 은 FETCH_HEAD 를 읽는다. 같은 저장소에서 fetch 둘이 겹치면(대시보드의
@@ -14458,7 +14475,7 @@ def sync_run(reason="", transport=True):
 
             def _pull(attempt):
                 t0 = _time.time()
-                pl = _sync_pull_cmd(timeout=8)
+                pl = _sync_pull_cmd()
                 kind = "" if pl.returncode == 0 else _sync_fail_kind(pl.stderr)
                 _sync_event(reason, "pull", t0, pl, attempt=attempt, kind=kind)
                 if pl.returncode == 0:
@@ -14619,18 +14636,7 @@ def _sync_poll_record(result, now=None, ms=0, path=None):
     return rec
 
 
-# 폴이 기다려 주는 시간 (REQ-20260917-001-2n7g). 8초였는데 이 저장소의 fetch 가
-# 그 자를 넘나든다 — 맥미니 실측 2026-09-17, `git fetch origin` 다섯 번:
-# 7.34 · 3.23 · 2.00 · 4.81 · 5.30 초. 폴이 부르는 `pull --ff-only` 는 그 fetch 에
-# 앞으로 감기까지 더한 것이라, fetch 만으로 7.34 초가 나온 회차는 상한을 넘겼다.
-# 다섯 중 하나가 상한에서 0.7 초 안에 들었다.
-# 20 초인 까닭: 잰 값의 최댓값에 약 2.7 배다. 더 늘리지 않는 것은 폴이 동기화
-# 잠금을 쥐고 도는 동안 `s9 commit` 이 기다리기 때문이다 — 자를 늘리는 것과
-# 남을 세워 두는 것을 맞바꾸는 자리라, 실측을 덮는 선에서 멈춘다.
-SYNC_POLL_TIMEOUT_SEC = 20
-
-
-def sync_poll(timeout=SYNC_POLL_TIMEOUT_SEC):
+def sync_poll(timeout=SYNC_PULL_TIMEOUT_SEC):
     """수신 — fetch + fast-forward 만 (REQ-20260902-023). 쓰지 않는 머신도 남의
     변경을 본다. 로컬 커밋이 앞서 있어 ff 가 안 되면 조용히 건너뛴다(전송 루프의
     rebase 가 푼다). 화면의 pull 손잡이와 **같은 git 명령**을 쓴다.
@@ -14749,7 +14755,7 @@ def _sync_reattach_clear(path=None):
         pass
 
 
-def _sync_poll_once(timeout=SYNC_POLL_TIMEOUT_SEC):
+def _sync_poll_once(timeout=SYNC_PULL_TIMEOUT_SEC):
     """폴 한 번의 알맹이 — 기록은 sync_poll 이 한다."""
     import time as _time
     if sync_mode() != "remote":

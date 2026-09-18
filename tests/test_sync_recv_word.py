@@ -131,16 +131,35 @@ class WhatStillCounts(unittest.TestCase):
             self.assertEqual(self.m.sync_poll(), "timeout")
         self.assertEqual(called, [], "못 받은 회차를 받았다고 올렸다")
 
+    def test_every_pull_uses_the_same_limit(self):
+        """자는 한 곳에만 산다 (REQ-20260918-002-2n7g).
+
+        처음에는 폴만 20초로 올리고 전송 경로(commit→pull→push)와 리스 갱신용
+        당기기는 8초로 남겨 두었다. 2026-09-18 11:59~12:07 에 바로 그 자리가
+        네 번 연속 시간 초과로 물러났고(간격이 배로 늘어 480초까지) 갈래가
+        갈린 채 있었다 — 전송 경로는 rebase 까지 하니 폴보다 시간이 **더** 든다.
+        숫자를 자리마다 적으면 그 반쪽이 또 생긴다.
+        """
+        with open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertNotIn("_sync_pull_cmd(timeout=8)", src,
+                         "당기기 한 자리에 8초가 다시 박혔다")
+        self.assertNotIn("def _sync_pull_cmd(timeout=8)", src,
+                         "당기기의 기본값이 다시 8초다")
+        self.assertIn("def _sync_pull_cmd(timeout=SYNC_PULL_TIMEOUT_SEC)", src)
+        self.assertEqual(src.count("SYNC_PULL_TIMEOUT_SEC = "), 1,
+                         "자를 정하는 자리가 둘 이상이다")
+
     def test_the_limit_covers_what_we_measured(self):
         """⑥ 잰 값(최대 7.34초)을 덮는 자라야 이 사고가 안 난다.
 
         자를 8초로 되돌리면 실측의 최댓값이 상한에서 0.7초 안에 들어와,
         다섯 중 하나가 다시 시간 초과가 된다.
         """
-        self.assertGreaterEqual(self.m.SYNC_POLL_TIMEOUT_SEC, 15)
+        self.assertGreaterEqual(self.m.SYNC_PULL_TIMEOUT_SEC, 15)
         # 끝없이 늘리는 것도 답이 아니다 — 폴은 동기화 잠금을 쥐고 돌고,
         # 그동안 `s9 commit` 이 기다린다.
-        self.assertLessEqual(self.m.SYNC_POLL_TIMEOUT_SEC, 60)
+        self.assertLessEqual(self.m.SYNC_PULL_TIMEOUT_SEC, 60)
 
 
 if __name__ == "__main__":
