@@ -187,6 +187,24 @@ function renderTerminal(){
   termTargetLoop(T);
 }
 
+/* **폴은 한 줄로 선다** (REQ-20260918-014-62x6, 실측 2026-09-18).
+
+   이 기계의 127.0.0.1 은 WSL 미러 네트워킹의 중계를 지나고, 그 중계에는 **같은
+   순간에 받아 주는 연결 수의 천장**이 있다. 동시 16연결을 걸면 우리 서버든 방금
+   띄운 임시 서버든 똑같이 60/160 이 거부됐다 — 받아들이기 큐가 25배 다른데 같은
+   비율이니 끊는 것은 서버가 아니다. 그리고 기계가 바쁘면 그 천장이 한둘까지
+   내려온다: CLI 를 분당 2196회 돌린 직후에는 동시 2연결에서 회차마다 하나가
+   사라졌다.
+
+   천장은 우리 것이 아니지만 **한꺼번에 거는 것**은 우리 것이다. 3초 폴과 5초 폴은
+   서로 다른 시계라 15초마다 같은 초에 겹쳤고(초 10/25/40/55), 그 자리가 정확히
+   요청이 사라지던 자리였다. 그래서 한 터미널의 폴은 이 줄에 매달아 차례로 건다.
+   한 폴이 예외로 끝나도 줄은 안 끊긴다 — 성공과 실패 둘 다 다음으로 넘긴다. */
+function termSerial(T, fn){
+  T.chain = (T.chain || Promise.resolve()).then(fn, fn);
+  return T.chain;
+}
+
 /* 대상 감시: 최초 즉시 + 5s 주기 — live/stale은 텍스트 노드만 patch,
    sid가 바뀌면(대격변) 타임라인만 교체. 입력줄은 어떤 경우에도 불변(L0). */
 async function termTargetLoop(T){
@@ -222,12 +240,12 @@ async function termTargetLoop(T){
     termModelChange(T);
   T.timers.push(setInterval(() => {
     if (document.hidden || tab !== "terminal") return;
-    tick();
+    termSerial(T, tick);
   }, 5000));
   // 수신함 로그(보낸 메시지 echo·전이 이벤트) 3s 폴 — append 전용
   T.timers.push(setInterval(() => {
     if (document.hidden || tab !== "terminal" || !T.sid) return;
-    refreshTermChat(T);
+    termSerial(T, () => refreshTermChat(T));
   }, 3000));
   // 에이전트 스트립(이름·실시간 라벨·경과·토큰) 10s 폴 (REQ-044)
   const agTick = async () => {
@@ -450,16 +468,23 @@ async function termAttach(T, nt){
   if (tab === "terminal" && !document.hidden) ta.focus();
   termMeta(T);
   // 초기 로드: 수신함 로그 + transcript 병합(동초는 chat 먼저 — 안정 정렬)
-  const retry = async url => {   // 간헐 연결 reset — 1회 재시도
-    const v = await ccFetch(url);
-    if (v) return v;
-    await new Promise(r => setTimeout(r, 400));
+  /* **차례로 부른다 — 한꺼번에 걸지 않는다** (REQ-20260918-014-62x6).
+     이 둘은 이 화면에서 가장 무거운 응답이고(실측 87KB·288KB), 예전엔
+     `Promise.all` 로 같은 순간에 걸었다. 그런데 중계의 천장은 바쁜 구간에
+     한둘까지 내려와, 둘을 같이 걸면 회차마다 하나가 사라졌다 — 사람에게는
+     「로컬 터미널에서 친 프롬프트가 대시보드에 안 뜬다」로 보인다.
+     재시도도 1회로는 모자랐다(성공률이 그 수준이면 대부분 빈손이다). */
+  const retry = async url => {   // 간헐 연결 거절 — 물러나며 세 번
+    for (let i = 0; i < 3; i++){
+      const v = await ccFetch(url);
+      if (v) return v;
+      await new Promise(r => setTimeout(r, 300 * (i + 1)));
+    }
     return ccFetch(url);
   };
-  const [logR, evR] = await Promise.all([
-    retry("/api/chat/log?sid=" + encodeURIComponent(sid)),
-    retry("/api/stream?session=" + encodeURIComponent(sid)),
-  ]);
+  const logR = await retry("/api/chat/log?sid=" + encodeURIComponent(sid));
+  if (TERM !== T || T.sid !== sid) return;
+  const evR = await retry("/api/stream?session=" + encodeURIComponent(sid));
   if (TERM !== T || T.sid !== sid) return;
   const log = logR || {lines: []}, ev = evR || {events: [], offset: 0};
   T.chatCount = (log.lines || []).length;
