@@ -143,14 +143,41 @@ class TheShortcuts(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def fake_run(self, rc=0, make=True):
+        """가짜 PowerShell — 본문의 규칙을 그대로 흉내 낸다.
+
+        쓴 것만 stdout 에 찍는다(REQ-20260918-008-62x6): 있는 파일은 그 대상이
+        살아 있을 때만 두고, 죽었으면 지금 폴더로 고쳐 쓴다. 가짜 .lnk 의 본문이
+        곧 그 바로 가기의 TargetPath 다(TheShortcutsGoAwayToo 와 같은 약속)."""
         def run(argv, **kw):
             self.calls.append((argv, kw))
+            out = []
             if make:
-                for p in re.findall(r"'([^']+\.lnk)'", self.script(argv)):
+                body = self.script(argv)
+                target = re.search(r"\$s\.TargetPath = '([^']+)'", body).group(1)
+                for p in re.findall(r"'([^']+\.lnk)'", body):
+                    if os.path.isfile(p):
+                        try:
+                            with open(p, encoding="utf-8") as f:
+                                old = f.read().strip()
+                        except OSError:
+                            continue                     # 못 읽는 것은 건드리지 않는다
+                        if old and os.path.exists(old):
+                            continue                     # 살아 있다 — 사람의 것이니 둔다
                     os.makedirs(os.path.dirname(p), exist_ok=True)
-                    open(p, "wb").close()
-            return subprocess.CompletedProcess(argv, rc, b"", b"boom\r\n" if rc else b"")
+                    with open(p, "w", encoding="utf-8") as f:
+                        f.write(target)
+                    out.append(p)
+            stdout = ("\n".join(out) + "\n").encode() if out else b""
+            return subprocess.CompletedProcess(argv, rc, stdout, b"boom\r\n" if rc else b"")
         return run
+
+    def lnk(self, where, points_at):
+        """가짜 .lnk 를 미리 놓는다 — 본문이 그 바로 가기의 TargetPath."""
+        os.makedirs(where, exist_ok=True)
+        p = os.path.join(where, "section9.lnk")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(points_at)
+        return p
 
     @staticmethod
     def script(argv):
@@ -185,20 +212,26 @@ class TheShortcuts(unittest.TestCase):
         self.assertEqual(dirs["시작 메뉴"], r"C:\Temp\s9exp\home\AppData\Roaming\Microsoft\Windows\Start Menu\Programs")
         self.assertEqual(self.fr._ps_quote("C:\\it's"), "'C:\\it''s'")
 
-    def test_s6_existing_ones_are_left_alone(self):
-        """S6. 둘 다 있으면 PowerShell 을 부르지 않고(exists), 하나만 없으면 그것만; 최상위 section9.cmd 가 없는 자리는 no-launcher."""
-        os.makedirs(self.desk)
-        open(os.path.join(self.desk, "section9.lnk"), "wb").close()
+    def test_s6_living_ones_are_left_alone(self):
+        """S6. 살아 있는 것은 두고 없는 것만 만든다; 둘 다 살아 있으면 만드는 것이 없다
+        (exists); 최상위 section9.cmd 가 없는 자리는 no-launcher.
+
+        PowerShell 은 **경로 둘을 다 받는다** — 있는 것을 둘지 고칠지는 그 대상이
+        살아 있는지로 갈리고, 그것은 .lnk 를 읽어야 안다(REQ-20260918-008-62x6).
+        예전에는 있는 것을 Python 이 미리 걸러 냈고, 그래서 죽은 것이 영영 남았다."""
+        self.lnk(self.desk, os.path.join(self.root, "section9.cmd"))     # 살아 있다
         res = self.fr.ensure_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
         self.assertEqual(res["created"], ["시작 메뉴"], res)
         self.assertEqual(len(self.calls), 1)
-        self.assertNotIn(os.path.join(self.desk, "section9.lnk"), self.script(self.calls[0][0]))
+        self.assertIn(os.path.join(self.desk, "section9.lnk"), self.script(self.calls[0][0]),
+                      "있는 것도 넘겨야 그 대상이 죽었는지 볼 수 있다")
         res = self.fr.ensure_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
-        self.assertEqual((res["skipped"], res["created"], len(self.calls)), ("exists", [], 1), res)
+        self.assertEqual((res["skipped"], res["created"]), ("exists", []), res)
         os.remove(os.path.join(self.root, "section9.cmd"))
+        calls = len(self.calls)
         res = self.fr.ensure_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
         self.assertEqual(res["skipped"], "no-launcher")
-        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(len(self.calls), calls, "no-launcher 면 PowerShell 을 부르지 않는다")
 
     def test_s7_failures_come_back_as_one_line_and_other_platforms_skip(self):
         """S7. powershell 없음 · rc≠0 · timeout 은 예외 없이 error 한 줄; Windows 가 아니면 not-windows."""
@@ -231,6 +264,47 @@ class TheShortcuts(unittest.TestCase):
         self.assertLess(body.index("s9-install"), body.index("ensure_shortcuts(ROOT)"))
         self.assertIn("바로 가기를 만들지 못했다", body)
         self.assertNotIn('die(f"바로 가기', body)
+
+
+    def test_s14_a_shortcut_whose_target_is_alive_is_left_alone(self):
+        """S14. 정상: 이미 있고 그 대상이 살아 있으면 건드리지 않는다 — 다른 폴더의
+        section9 을 가리켜도 그것은 사람의 것이다 (REQ-20260918-008-62x6)."""
+        other = os.path.join(self.tmp, "other", "section9")
+        os.makedirs(other)
+        alive = os.path.join(other, "section9.cmd")
+        open(alive, "wb").close()
+        self.lnk(self.desk, alive)
+        self.lnk(self.menu, alive)
+        res = self.fr.ensure_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
+        self.assertEqual(res["created"], [])
+        self.assertEqual(res["skipped"], "exists")
+        with open(os.path.join(self.desk, "section9.lnk"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), alive, "살아 있는 바로 가기를 덮어썼다")
+
+    def test_s15_a_shortcut_pointing_at_a_gone_folder_is_repaired(self):
+        """S15. 실패: 대상이 사라졌으면 지금 폴더로 고친다.
+
+        실제 사고 2026-09-18 — 바탕화면의 「section9」이 9/15 시험 때 푼 Downloads
+        폴더를 가리킨 채 남아 있었고 그 폴더는 지워져 있었다. 두 번 눌러도 아무
+        일이 나지 않는데, 첫 실행은 「이미 있다」며 그냥 지나갔다."""
+        dead = os.path.join(self.tmp, "Downloads", "section9-try", "section9", "section9.cmd")
+        self.lnk(self.desk, dead)
+        self.lnk(self.menu, dead)
+        res = self.fr.ensure_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
+        self.assertEqual(res["created"], ["바탕화면", "시작 메뉴"])
+        self.assertEqual(res["error"], "")
+        for d in (self.desk, self.menu):
+            with open(os.path.join(d, "section9.lnk"), encoding="utf-8") as f:
+                self.assertEqual(f.read(), os.path.join(self.root, "section9.cmd"))
+
+    def test_s16_only_the_dead_one_is_repaired(self):
+        """S16. 경계: 둘 중 하나만 죽었으면 그 하나만 고친다."""
+        alive = os.path.join(self.root, "section9.cmd")          # setUp 이 만든 것
+        self.lnk(self.desk, alive)
+        self.lnk(self.menu, os.path.join(self.tmp, "gone", "section9.cmd"))
+        res = self.fr.ensure_shortcuts(self.root, run=self.fake_run(), is_windows=True, dirs=self.dirs)
+        self.assertEqual(res["created"], ["시작 메뉴"])
+        self.assertEqual(res["paths"], [os.path.join(self.menu, "section9.lnk")])
 
 
 class TheShortcutsGoAwayToo(unittest.TestCase):

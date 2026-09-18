@@ -454,12 +454,28 @@ def _ps_quote(text):
 
 def shortcut_script(root, paths):
     """바로 가기를 만드는 PowerShell 본문. 대상은 <root>/section9.cmd, 작업 폴더는 <root>,
-    아이콘은 web/assets/favicon.ico(마크). 없는 상위 폴더는 만든다(시험의 임시 바탕화면)."""
+    아이콘은 web/assets/favicon.ico(마크). 없는 상위 폴더는 만든다(시험의 임시 바탕화면).
+    쓴 것은 경로를 한 줄씩 찍는다 — 부르는 쪽이 무엇을 만들었는지 그 줄로 안다.
+
+    **이미 있는 것은 대상이 살아 있을 때만 둔다** (REQ-20260918-008-62x6, 실제 사고
+    2026-09-18): 바탕화면의 「section9」이 9/15 시험 때 푼 Downloads 폴더를 가리킨 채
+    남아 있었고 그 폴더는 지워져 있었다 — 두 번 눌러도 아무 일이 나지 않는다. 「이미
+    있으면 다시 만들지 않는다」의 뜻은 **사람이 지운 것을 되살리지 않는다**이지 죽은
+    것을 그대로 둔다가 아니다. 그래서 가르는 물음은 하나다 — 그 대상이 실제로 있는가.
+    있으면(다른 폴더의 section9 이어도) 사람의 것이니 두고, 없으면 지금 폴더로 고친다.
+    읽지 못하는 파일은 건드리지 않는다 — 모르는 것을 덮어쓰지 않는다."""
     target = os.path.join(root, LAUNCHER)
     icon = os.path.join(root, *ICON_REL) + ",0"
     lines = ["$ErrorActionPreference = 'Stop'",
              "$sh = New-Object -ComObject WScript.Shell",
              "foreach ($p in @(" + ", ".join(_ps_quote(p) for p in paths) + ")) {",
+             "  if (Test-Path -LiteralPath $p) {",
+             "    $keep = $true",
+             "    try { $t = $sh.CreateShortcut($p).TargetPath;"
+             " if (-not $t -or -not (Test-Path -LiteralPath $t)) { $keep = $false } }"
+             " catch { $keep = $true }",
+             "    if ($keep) { continue }",
+             "  }",
              "  $d = Split-Path -Parent $p",
              "  if (-not (Test-Path -LiteralPath $d)) {"
              " New-Item -ItemType Directory -Path $d -Force | Out-Null }",
@@ -469,6 +485,7 @@ def shortcut_script(root, paths):
              "  $s.IconLocation = " + _ps_quote(icon),
              "  $s.Description = 'section9'",
              "  $s.Save()",
+             "  Write-Output $p",
              "}"]
     return "\n".join(lines) + "\n"
 
@@ -560,10 +577,11 @@ def ensure_shortcuts(root, run=None, is_windows=None, dirs=None, timeout=60):
         res["skipped"] = "no-launcher"
         return res
     want = [(label, os.path.join(d, SHORTCUT_NAME)) for label, d in (dirs or shortcut_dirs())]
-    want = [(label, p) for label, p in want if not os.path.isfile(p)]
     if not want:
         res["skipped"] = "exists"
         return res
+    # 부르기 전에 있던 것 — 「PowerShell 은 끝났는데 파일이 없다」 를 가리는 기준선이다.
+    before = {p for _, p in want if os.path.isfile(p)}
     argv = powershell_argv(shortcut_script(root, [p for _, p in want]))
     run = run or subprocess.run
     try:
@@ -581,10 +599,20 @@ def ensure_shortcuts(root, run=None, is_windows=None, dirs=None, timeout=60):
         err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
         res["error"] = f"powershell rc={r.returncode}" + (f": {err[-1].strip()}" if err else "")
         return res
-    made = [(label, p) for label, p in want if os.path.isfile(p)]
+    # 무엇을 썼는지는 PowerShell 이 찍은 줄로 안다 — 파일이 있는지로는 「내가 방금
+    # 만든 것」과 「원래 있던 것」을 가를 수 없다(REQ-20260918-008-62x6).
+    wrote = {ln.strip() for ln in (r.stdout or b"").decode("utf-8", "replace").splitlines()
+             if ln.strip()}
+    made = [(label, p) for label, p in want if p in wrote]
     res["created"] = [label for label, _ in made]
     res["paths"] = [p for _, p in made]
-    missing = [p for label, p in want if not os.path.isfile(p)]
+    # 없던 자리가 부른 뒤에도 비어 있으면 PowerShell 이 조용히 아무것도 안 한 것이다 —
+    # 쓴 것을 찍게 해 두었으니 「찍지도 않고 만들지도 않았다」가 곧 그 신호다.
+    missing = [p for _, p in want if p not in before and not os.path.isfile(p)]
+    missing += [p for _, p in made if os.path.isfile(p) is False and p not in missing]
     if missing:
-        res["error"] = "powershell 은 끝났는데 파일이 없다: " + ", ".join(missing)
+        res["error"] = "powershell 은 끝났는데 파일이 없다: " + ", ".join(sorted(set(missing)))
+        return res
+    if not made:
+        res["skipped"] = "exists"
     return res
