@@ -14,6 +14,9 @@
   ⑤ **글은 명령이 아니다** (REQ-20260902-003): 따옴표·heredoc 안의 글에 그
      이름이 적혀 있어도 지나간다 — 다만 그 글자를 셸·인터프리터가 받으면
      그것은 명령이니 그대로 막힌다.
+  ⑤' **떨어져 있는 낱말은 글이다** (REQ-20260918-009-62x6): 재는 자리가 줄글이
+     아니라 argv 라, `git` 다음 낱말이 하위명령일 때만 막는다 — 인터프리터가
+     받는 본문이라 지워지지 않는 글도 이 규칙으로 갈린다.
   ⑥ **커밋 검사를 끄는 한 줄도 막힌다** (REQ-20260916-005): worktree 작업자의
      프롬프트 템플릿에 든 `Bash(git commit:*)` 는 뒤에 오는 무엇이든 받아, 옵션 하나로
      s9-guard(비밀·보호 경로·role·동시 작업·파일 크기)가 통째로 지나갔다.
@@ -146,6 +149,38 @@ class TheGateStands(unittest.TestCase):
                 r = run(cmd)
                 self.assertEqual(0, r.returncode,
                                  "글을 명령으로 읽었다: %s\n%s" % (cmd, r.stderr))
+        # ---- 낱말이 떨어져 있으면 글이다 (REQ-20260918-009-62x6) -----------
+        # 실사고 2026-09-18: 릴리스 노트 본문에 「망을 타는 git 셋」과
+        # 「s9 stash」가 **따로** 적혀 있었을 뿐인데 그 글을 파일에 쓰는 명령이
+        # 거부됐다 — 무늬의 틈(`[^|;&]*`)이 줄바꿈까지 건너뛰어 아무리 멀리
+        # 떨어진 두 낱말도 한 명령으로 읽었다. 인터프리터가 받는 본문이라
+        # 글로 지워지지도 않는다: 그래서 재는 자리를 줄글에서 argv 로 옮겼다.
+        with self.subTest("g15_words_apart_in_a_body_are_prose"):
+            body = ("python3 - <<'PY'\n"
+                    "open('docs/RELEASE-NOTES.md','a').write('%s')\n"
+                    "PY")
+            for line in ("망을 타는 git 셋 — s9 %s 로 대신한다" % BAD.split()[1],
+                         "git 의 reset 은 --hard 를 쓰지 마라",
+                         "git 에서 checkout -- 로 되돌리지 마라",
+                         "git 의 restore 는 작업 트리를 지운다",
+                         "git 의 clean -fd 는 금지다",
+                         "git 으로 commit 할 때 --no-verify 금지",
+                         "git 의 설정(core.hooksPath)은 건드리지 마라"):
+                r = run(body % line)
+                self.assertEqual(0, r.returncode,
+                                 "글을 명령으로 읽었다: %s\n%s" % (line, r.stderr))
+        with self.subTest("g16_argv_reading_does_not_lose_the_real_commands"):
+            # argv 로 읽어도 파이프·서브셸·전역 옵션·경로 뒤의 명령은 그대로.
+            for cmd in ("echo x | %s" % BAD,
+                        "(cd sub && %s)" % BAD,
+                        "git -C . stash",
+                        "git --no-pager stash pop",
+                        "/usr/bin/git stash",
+                        "git clean --force",
+                        # 인터프리터 본문에 **붙어 있는** 두 낱말은 명령이다
+                        "python3 - <<'PY'\nrun('%s')\nPY" % BAD):
+                r = run(cmd)
+                self.assertEqual(2, r.returncode, "안 막혔다: %s" % cmd)
         with self.subTest("g13_lookalike_names_are_not_interpreters"):
             # 이름 끝을 못박기 전에는 `shred`·`shutdown` 까지 인터프리터였다.
             self.assertEqual(0, run('shred -u "%s"' % BAD).returncode)
