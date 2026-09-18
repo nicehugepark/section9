@@ -35,6 +35,16 @@ python·node…)가 받으면 그것은 명령이니 그대로 재고, 그 밖�
 막히고(따옴표가 방패가 되면 검사는 한 줄로 무력해진다), `s9 note` 의
 heredoc 본문은 지나간다. 파싱이 안 되면(따옴표 안 닫힘 등) 옛 판정으로
 되돌아간다 — 모르는 것을 통과시키지 않는다.
+
+그리고 재는 자리는 줄글이 아니라 **argv** 다 (REQ-20260918-009-62x6). 처음의
+무늬는 `git ... stash` 사이를 `[^|;&]*` 로 비워 두었는데, 그 틈은 줄바꿈까지
+건너뛰어 아무리 멀리 떨어진 두 낱말도 한 명령으로 읽었다 — 실사고 2026-09-18:
+릴리스 노트 본문에 「망을 타는 git 셋」과 「s9 stash」가 각각 적혀 있었을 뿐인데
+그 글을 파일에 쓰는 명령이 거부됐다. 틈을 좁히는 대신 읽는 법을 바꿨다: 셸이
+명령을 시작하는 자리로 잘라 토막을 만들고, 토막 안의 `git` 뒤를 전역 옵션 ·
+하위명령 하나 · 그 인자로 읽는다. 그래서 `git` 다음 낱말이 `셋` 이면 그것은
+하위명령이 아니라 글이고, `echo x | git stash` 는 파이프 뒤의 토막에서 그대로
+걸린다.
 """
 import json
 import os
@@ -72,33 +82,86 @@ WHY_BYPASS = (
     " 로 드러내고, 정말 필요하면 사람의 확인을 받아 명령 앞에"
     " `S9_GIT_OK=1 ` 을 붙여라.")
 
-BLOCK = [
-    # (정규식, 사람이 읽을 이름, 사유). 명령 문자열 전체에 대해 재므로 체인
-    # (`a && git stash`)·서브셸도 걸린다. stash 는 list/show 만 살린다.
-    # stash 하위명령으로 판정한다 — 인자 `stash@{0}` 의 둘째 stash 나 뒤쪽
-    # 어딘가의 show 낱말에 속지 않게, stash 바로 다음 낱말만 본다.
-    (r"\bgit\b[^|;&]*\bstash\b(?![@\w])(?!\s+(list|show)\b)", "git stash",
-     WHY_WORKTREE),
-    (r"\bgit\b[^|;&]*\breset\b[^|;&]*(--hard|--merge)", "git reset --hard",
-     WHY_WORKTREE),
-    (r"\bgit\b[^|;&]*\bcheckout\b[^|;&]*(\s--(\s|$)|\s-f\b|\s--force\b|\s\.(\s|$))",
-     "git checkout(작업 트리 되돌림)", WHY_WORKTREE),
-    (r"\bgit\b[^|;&]*\brestore\b(?![^|;&]*--staged(?![^|;&]*--worktree))",
-     "git restore(작업 트리)", WHY_WORKTREE),
-    (r"\bgit\b[^|;&]*\bclean\b[^|;&]*\s-[a-zA-Z]*[fdx]", "git clean",
-     WHY_WORKTREE),
+# `git` 이라는 **명령 이름** — 경로가 붙어도(`/usr/bin/git`) 같은 것이다.
+GIT = re.compile(r"^(?:.*/)?git(?:\.exe)?$", re.I)
+
+# 다음 낱말을 값으로 받는 git 전역 옵션 — 값이 하위명령으로 읽히지 않게 건넌다.
+GLOBAL_TAKES_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
+                      "--exec-path"}
+
+# 값을 받지 않는 commit 짧은 옵션 (REQ-20260916-005). `-n` 은 묶일 수 있어
+# (`-an`) 묶음 안에서 찾되, 이 글자들로만 이뤄진 묶음에서만 본다 —
+# `-mnope`(메시지 "nope")처럼 값이 붙는 `-m` 묶음을 잘못 잡지 않으려는 좁힘이다.
+COMMIT_SHORT = set("aeinopqsuv")
+
+
+def _tokens(seg):
+    """토막을 낱말로 가른다 — 따옴표는 구분자가 아니라 글자에 붙은 껍질이다.
+
+    여기 닿는 글자는 이미 `data_stripped` 를 지났다: 글로 판정된 따옴표 안은
+    공백으로 지워져 있고, 남은 따옴표는 실행되는 글자를 감싼 껍질뿐이다
+    (`sh -c "git stash"` · 파이썬 본문의 `run('git stash')`)."""
+    return [t for t in re.split(r"\s+", seg.replace('"', " ").replace("'", " "))
+            if t]
+
+
+def _short(tok):
+    """짧은 옵션 묶음의 글자들 — 짧은 옵션이 아니면 빈 집합."""
+    if len(tok) < 2 or not tok.startswith("-") or tok.startswith("--"):
+        return set()
+    return set(tok[1:])
+
+
+def _subcommand_verdict(sub, rest):
+    """하위명령과 그 인자로 판정한다 — (사람이 읽을 이름, 사유) 또는 None.
+
+    stash 는 list/show 만 살린다. restore 는 `--staged` 만 있을 때 살린다
+    (`--worktree` 가 함께 있으면 작업 트리도 되돌린다)."""
+    if sub == "stash" and (not rest or rest[0] not in ("list", "show")):
+        return "git stash", WHY_WORKTREE
+    if sub == "reset" and ({"--hard", "--merge"} & set(rest)):
+        return "git reset --hard", WHY_WORKTREE
+    if sub == "checkout" and ({"--", "-f", "--force", "."} & set(rest)):
+        return "git checkout(작업 트리 되돌림)", WHY_WORKTREE
+    if sub == "restore" and not ("--staged" in rest and "--worktree" not in rest):
+        return "git restore(작업 트리)", WHY_WORKTREE
+    if sub == "clean" and any(_short(t) & set("fdx") or t == "--force"
+                              for t in rest):
+        return "git clean", WHY_WORKTREE
     # 커밋 검사 우회 (REQ-20260916-005). worktree 작업자의 프롬프트 템플릿에는
     # `Bash(git commit:*)` 가 들어 있고 그 무늬는 뒤에 오는 무엇이든 받는다 —
     # 옵션 하나로 s9-guard 전체가 지나가는데, 그 자리에 서 있는 검사가 없었다.
-    # `-n` 은 짧은 옵션이라 묶일 수 있다(`-an`). 값을 받지 않는 commit 짧은
-    # 옵션만으로 이뤄진 묶음에서 n 을 찾는다 — `-mnope`(메시지 "nope")처럼
-    # 값이 붙는 `-m` 묶음을 잘못 잡지 않으려는 좁힘이다.
-    (r"\bgit\b[^|;&]*\bcommit\b[^|;&]*"
-     r"(\s--no-verify\b|\s-[aeinopqsuv]*n[aeinopqsuv]*(\s|$))",
-     "git commit --no-verify", WHY_BYPASS),
-    (r"\bgit\b[^|;&]*\bcore\.hooksPath\b", "git -c core.hooksPath",
-     WHY_BYPASS),
-]
+    if sub == "commit" and ("--no-verify" in rest or any(
+            "n" in _short(t) and _short(t) <= COMMIT_SHORT for t in rest)):
+        return "git commit --no-verify", WHY_BYPASS
+    return None
+
+
+def verdict(scan):
+    """실행되는 글자에서 막을 명령을 찾는다 — 없으면 None.
+
+    토막(셸이 명령을 시작하는 자리로 자른 것)마다, `git` 이라는 낱말 뒤를
+    **argv 로** 읽는다: 전역 옵션을 걷어내고 하위명령 하나와 그 인자를 본다."""
+    for seg in _BREAK.split(scan):
+        toks = _tokens(seg)
+        for i, t in enumerate(toks):
+            if not GIT.match(t):
+                continue
+            opts, j = [], i + 1
+            while j < len(toks) and toks[j].startswith("-"):
+                opts.append(toks[j])
+                if toks[j] in GLOBAL_TAKES_VALUE and j + 1 < len(toks):
+                    j += 1
+                    opts.append(toks[j])
+                j += 1
+            if any("core.hooksPath" in o for o in opts):
+                return "git -c core.hooksPath", WHY_BYPASS
+            if j >= len(toks):
+                continue
+            hit = _subcommand_verdict(toks[j], toks[j + 1:])
+            if hit:
+                return hit
+    return None
 
 
 # 셸·인터프리터 — 이 이름들이 받는 글자는 **실행된다**. 따옴표·heredoc 안이라도
@@ -249,22 +312,22 @@ def main():
     if not targets_this_repo(cmd, payload.get("cwd", "")):
         return 0
     # 재는 것은 **실행되는 글자**다 — 글은 지우고 잰다 (REQ-20260902-003).
-    scan = data_stripped(cmd)
-    for pat, name, why in BLOCK:
-        if re.search(pat, scan):
-            # 사유는 **BLOCK 표의 것을 그대로** 쓴다 (REQ-20260916-005 와
-            # -004 가 이 자리에서 부딪혔다): 004 는 작업 트리 되돌림의 사유를
-            # 여기 글자로 박아 두었는데, 005 가 더한 두 항목(commit
-            # --no-verify · core.hooksPath)은 사유가 다르다 — 박아 둔 글자를
-            # 쓰면 검사 우회를 막으면서 「작업 트리를 되돌린다」고 말하게 된다.
-            # 004 가 더한 것은 사유가 아니라 **꼬리 한 줄**이라 그대로 살린다.
-            sys.stderr.write(
-                f"[s9-git-gate] {name} 거부 — {why}"
-                + (" — 다만 이 세션은 사람이 없는 자리(백그라운드 작업자)라"
-                   " `S9_GIT_OK=1` 이 듣지 않는다: 그대로 두고 blocked 로"
-                   " 올려라.\n"
-                   if os.environ.get("S9_AUTO_RESUME") else "\n"))
-            return 2
+    hit = verdict(data_stripped(cmd))
+    if hit:
+        name, why = hit
+        # 사유는 **갈래마다 제 것을** 쓴다 (REQ-20260916-005 와 -004 가 이
+        # 자리에서 부딪혔다): 004 는 작업 트리 되돌림의 사유를 여기 글자로 박아
+        # 두었는데, 005 가 더한 두 항목(commit --no-verify · core.hooksPath)은
+        # 사유가 다르다 — 박아 둔 글자를 쓰면 검사 우회를 막으면서 「작업 트리를
+        # 되돌린다」고 말하게 된다. 004 가 더한 것은 사유가 아니라 **꼬리 한
+        # 줄**이라 그대로 살린다.
+        sys.stderr.write(
+            f"[s9-git-gate] {name} 거부 — {why}"
+            + (" — 다만 이 세션은 사람이 없는 자리(백그라운드 작업자)라"
+               " `S9_GIT_OK=1` 이 듣지 않는다: 그대로 두고 blocked 로"
+               " 올려라.\n"
+               if os.environ.get("S9_AUTO_RESUME") else "\n"))
+        return 2
     return 0
 
 
