@@ -548,6 +548,51 @@ def run(env, *argv, inp=None):
                           encoding="utf-8", errors="replace", env=env, timeout=15)
 
 
+# 이어 친 말의 자리를 고르는 일은 **이 훅의 몫이 아니다** (REQ-20260918-017-62x6,
+# 주인 반려 2026-09-18 19:36: 「같은 맥락을 보고 하나로 해야지. 몇개 건너띄더라도」).
+# 훅은 맥락을 못 읽는다 — 읽을 수 있는 것은 「누가·언제·어느 세션에서」뿐이다.
+# 그래서 요청을 세우지도, 앞 요청에 붙이지도 않고 **붙들어 둔 채 리드에게 후보를
+# 건넨다.** 리드가 고르지 않으면 턴 끝에서 Stop 훅이 세운다(bin/s9-audit-response)
+# — 사람의 말이 사라지는 경우는 없고, 늦어질 뿐이다.
+
+
+def _age(sec):
+    """후보가 얼마나 묵었나 — 사람이 읽는 말로."""
+    try:
+        n = int(sec)
+    except (TypeError, ValueError):
+        return "?"
+    return f"{n}초" if n < 60 else (f"{n // 60}분" if n < 3600 else f"{n // 3600}시간")
+
+
+def continuation_candidates(env):
+    """이 말이 붙을 만한 앞 요청들 — [(id, status, 나이초, 제목), …]. 판정은 안 한다."""
+    out = run(env, "last", "--continuation")
+    if out.returncode != 0:
+        return []
+    rows = []
+    for line in (out.stdout or "").splitlines():
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) >= 4 and REQ_ID_ONLY.match(parts[0].strip()):
+            rows.append(tuple(p.strip() for p in parts[:4]))
+    return rows
+
+
+def hold_prompt(env, draft):
+    """붙들 말을 적는다 — 앞서 붙들던 것이 밀려나면 그 사실을 돌려준다."""
+    out = run(env, "last", "--pending-hold", inp=json.dumps(draft, ensure_ascii=False))
+    if out.returncode != 0:
+        return None
+    return (out.stdout or "").strip()
+
+
+# 받은 것이 id 인가 — 통째로 맞아떨어질 때만 쓴다. 문장 안에서 찾는 자리
+# (auto-resume 분기)와 달리 여기는 **전체 일치**다: 한 줄이 통째로 id 가
+# 아니면 그것은 id 가 아니라 다른 말이고, 다른 말을 id 로 읽으면 사람의 말이
+# 엉뚱한 문서에 붙는다.
+REQ_ID_ONLY = re.compile(r"^REQ-\d{8}-\d{3,}(?:-[0-9a-z]{4})?$")
+
+
 # 프롬프트 첫 줄의 프로젝트 표기 (REQ-20260906-052): `[프로젝트: slug]` · `[project: slug]`.
 # 훅은 이것을 **신호로만** 넘긴다(--project-tag) — 판정은 cmd_new 의 resolve_project
 # 한 곳이 한다. `#slug` 는 마크다운 제목·이슈 번호와 충돌해 쓰지 않는다(architect).
@@ -1026,6 +1071,37 @@ def main():
     atts = attachment_paths(prompt, data.get("session_id") or "")
     if atts:
         body += "\n\n" + asset_marks(atts)
+    # 앞선 요청이 열려 있으면 **세우지 말고 붙들어 둔다** (REQ-20260918-017-62x6).
+    # 이 말이 그중 하나를 잇는 말인지, 새 주제인지는 맥락이 정하고 맥락은 리드가
+    # 읽는다. 프로젝트를 스스로 지목한 말(`[프로젝트: slug]`)은 새 요청을 세우겠다는
+    # 표시라 붙들지 않는다.
+    cands = [] if ptag else continuation_candidates(env)
+    if cands:
+        prev = hold_prompt(env, {"title": title, "body": body,
+                                 "atts": list(atts or []), "first": first_line[:80]})
+        if prev is not None:
+            run(env, "log", f"이 말을 붙들었다(자리 미정): {first_line[:40]}")
+            lines = "\n".join(
+                f"      {i + 1}. {c[0]}  [{c[1]}]  {_age(c[2])} 전  {c[3]}"
+                for i, c in enumerate(cands))
+            pushed = ("\n    ※ 앞서 붙들고 있던 말이 밀려났다 — Stop 훅이 그것을 요청으로 "
+                      "세운다.\n" if prev.startswith("PREV") else "")
+            emit(pend +
+                 "[section9 audit] 이 말은 **아직 요청으로 세우지 않았다.** 훅은 맥락을 "
+                 "못 읽고, 붙어 있다는 이유로 앞 요청에 붙이는 것은 주인이 반려했다 "
+                 "(2026-09-18: 「같은 맥락을 보고 하나로 해야지. 몇개 건너띄더라도」). "
+                 "이 말이 아래 중 하나를 잇는 말인지 **네가 읽고** 정하라 — 바로 앞의 "
+                 "것이 아니어도 되고, 아무것도 아니어도 된다.\n"
+                 f"{lines}{pushed}\n"
+                 "    잇는 말이면: `s9 note <그 id> --from-pending --label addendum` 로 "
+                 "붙이고, 그 요청의 summary·goal 을 이 말까지 담게 "
+                 "`s9 set <그 id> --summary '...' --goal '...'` 로 넓혀라 — 넓히지 않으면 "
+                 "이 말은 노트에만 남고 완료 판정에서 빠진다.\n"
+                 "    새 주제면: `s9 new request --from-pending --title '20자 이내 명사구' "
+                 "--summary '...' --size S|M|L [--parent <그 id>]` 로 세우고 착수하라.\n"
+                 "    둘 다 아니면 두어라 — 턴이 끝날 때 Stop 훅이 요청으로 세운다. "
+                 "s9 = ~/section9/bin/s9")
+            return
     # 원문은 stdin으로 전달 (s9 new가 비-tty stdin을 body로 읽음 — /dev/stdin 불요, Windows 호환)
     out = run(env, "new", "request", "--title", title,
               "--tag", "auto-audit", "--origin", "human",   # 사람 입구 (REQ-20260902-018)

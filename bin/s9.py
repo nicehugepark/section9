@@ -3853,6 +3853,16 @@ def cmd_new(args):
     session = os.environ.get("S9_SESSION", "")
     ts = now_iso()
     original = read_body_arg(args)
+    # 붙들어 둔 말을 그대로 세운다 (REQ-20260918-017-62x6). 훅은 요청을 세우지 않고
+    # 초안을 붙들고, 리드가 맥락을 읽어 「이건 새 요청이다」로 판정하면 여기로 온다.
+    # 본문은 초안에서 오고 제목은 부른 쪽이 준다 — 원문을 옮겨 적다 달라지는 일이
+    # 없고, 제목은 사람이 읽을 명사구로 새로 짓게 된다.
+    if getattr(args, "from_pending", False):
+        _draft = read_pending(machine, session)
+        if not (_draft.get("body") or "").strip():
+            die("붙들고 있는 말이 없다 — `s9 last --pending` 으로 확인하라")
+        original = original or _draft.get("body")
+        write_pending(machine, session, None)
     # 누가 만들었나 — 사람인가, 에이전트인가, 누구의 요청을 처리하다 나왔나
     # (REQ-20260902-018, DOC-20260902-001 D2). `user` 는 담당자다(코드 전반이
     # 이미 그 뜻으로 읽는다); 생성 시 확정되는 넷은 따로 적고 바꾸지 않는다.
@@ -5046,49 +5056,105 @@ def _capture_target(b, session):
     return "", lr
 
 
-# 이어 친 말을 앞 요청에 붙이는 창 (REQ-20260918-017-62x6). 실측: 사람이 한 생각을
-# 두 줄로 나눠 친 두 쌍이 각각 16초·17초 차였다(015·016 / 017·018). 창을 넓히면
-# 리드가 오래 일하는 동안 사람이 치는 **새 주제**까지 삼킨다 — 좁게 두고, 창 밖은
-# 리드가 `s9 link --parent` 로 잇는다. 삼킨 것을 되돌리는 것보다 못 삼킨 것을 잇는
-# 쪽이 싸다.
-CONTINUATION_WINDOW_SEC = 120
+# 이어 친 말이 붙을 **후보**를 고르는 창 (REQ-20260918-017-62x6).
+#
+# 처음에는 120초였고 붙는 자리도 하나였다 — 「방금 선 요청」. 주인이 그것을 반려했다
+# (2026-09-18 19:36): 「이어서 친 말을 무조건 한 요청이 아니고 같은 맥락을 보고 하나로
+# 해야지. 몇개 건너띄더라도」. 두 가지가 틀렸던 것이다.
+#   ① 가를 것은 **인접**이 아니라 **맥락**이다. 붙어 있다고 같은 말이 아니고,
+#      떨어져 있다고 다른 말이 아니다.
+#   ② 붙을 상대가 바로 앞 요청이라는 보장이 없다. 사람은 둘을 세워 놓고 첫째로
+#      돌아와 한 줄을 더 친다 — 사이에 몇이 끼어도 그 말은 첫째의 것이다.
+#
+# 맥락은 기계가 못 읽는다. 그래서 역할을 가른다: **기계는 후보를 좁히고, 뜻은 리드가
+# 읽는다.** 이 창은 그 후보의 폭이지 판정이 아니다. 판정이 아니므로 넓게 잡는다 —
+# 좁혀서 놓치면 사람의 말이 엉뚱한 자리에 새 요청으로 서고, 넓혀서 더 보여도
+# 리드가 안 고르면 그만이다.
+CONTINUATION_WINDOW_SEC = 1800
+CONTINUATION_MAX = 8            # 리드에게 한 번에 보이는 후보 수
 
 
-def _continuation_target(machine, session, window_sec=CONTINUATION_WINDOW_SEC):
-    """사람이 이어 친 말을 받을 자리 — 방금 선 그 요청의 id, 없으면 "".
+def _continuation_candidates(machine, session, window_sec=CONTINUATION_WINDOW_SEC):
+    """이어 친 말이 붙을 만한 **후보**들 — 최신 것부터, 없으면 빈 목록.
 
-    조건 다섯: ① 이 세션의 last_req 가 ② 사람이 낸 요청이고 ③ 이 세션이 세웠고
-    ④ 아직 열려 있고(open·in-progress) ⑤ 창 안에 섰는데 **리드가 아직 응답하지
-    않았다**. ⑤ 의 뒤쪽이 핵심이다 — 리드가 답하기 전에 또 온 말은 앞 말을 잇는
-    것이고, 답한 뒤에 온 말은 새 요청이거나 그 답에 대한 피드백이다. 자리를 묻는
-    곳(훅·서버)이 여럿이어도 답은 이 한 곳에서 나온다.
+    거르는 것은 넷뿐이고 전부 기계가 아는 사실이다: ① 사람이 낸 요청이고
+    ② 이 세션이 세웠고 ③ 아직 열려 있고(open·in-progress) ④ 창 안에 섰다.
+    **무엇에 대한 말인지는 여기서 묻지 않는다** — 그것이 리드의 몫이다
+    (REQ-20260918-017-62x6, 주인 반려 2026-09-18 19:36).
+
+    예전에는 여기가 「방금 선 요청」 하나를 돌려주고 훅이 거기 붙였다. 그러면
+    사람이 첫째 요청으로 돌아와 한 줄을 더 쳐도 말은 둘째에 붙는다 — 붙어
+    있다는 이유만으로. 이제 자리를 고르는 일은 이 함수 밖에 있다.
     """
     b = read_binding(machine, session) or {}
-    lr = (b.get("last_req") or "").strip()
-    if not lr:
-        return ""
-    lr = canon_id(lr)
-    path = locate(lr)
-    if not path:
-        return ""
+    sid = (session or "")[:8]
+    if not sid:
+        return []
+    seen, out, now = set(), [], now_iso()
+    # 이 세션이 만지던 것부터 본다(last_req · active_reqs), 그 다음 목록을 훑는다 —
+    # 목록만 보면 이 세션이 방금 세운 것이 아직 안 실렸을 수 있다.
+    ids = [(b.get("last_req") or "").strip()]
+    ids += [str(x) for x in (b.get("active_reqs") or [])]
+    ids += [str(r.get("id") or "") for r in reversed(load_catalog())
+            if str(r.get("type") or "") == "request"]
+    for rid in ids:
+        if not rid:
+            continue
+        rid = canon_id(rid)
+        if rid in seen:
+            continue
+        seen.add(rid)
+        path = locate(rid)
+        if not path:
+            continue
+        try:
+            meta, _ = read_doc(path)
+        except (OSError, ValueError):
+            continue
+        if meta.get("type") != "request" or meta.get("origin") != "human":
+            continue
+        if meta.get("status") not in ("open", "in-progress"):
+            continue
+        if str(meta.get("session") or "")[:8] != sid:
+            continue
+        dt = _ts_delta(meta.get("created") or "", now)
+        if dt is None or dt < 0 or dt > window_sec:
+            continue
+        out.append({"id": rid, "status": meta.get("status") or "",
+                    "age": int(dt), "title": str(meta.get("title") or "").strip(),
+                    "summary": str(meta.get("summary") or "").strip()})
+        if len(out) >= CONTINUATION_MAX:
+            break
+    out.sort(key=lambda r: r["age"])
+    return out
+
+
+def read_pending(machine, session):
+    """이 세션이 아직 자리를 못 정해 붙들고 있는 말 — 없으면 {}.
+
+    훅은 요청을 세우지 않고 여기에 **완성된 초안**을 적어 둔다(제목·본문·태그·
+    첨부). 리드가 `--from-pending` 으로 그 초안을 앞 요청에 붙이거나 제 요청으로
+    세우면 자리가 비고, 리드가 아무것도 안 하면 턴이 끝날 때 Stop 훅이 세운다 —
+    **사람의 말이 사라지는 경우는 없다**, 늦어질 뿐이다.
+    """
+    return dict((read_binding(machine, session) or {}).get("pending_prompt") or {})
+
+
+def write_pending(machine, session, draft):
+    """붙들 말을 적는다(또는 draft 가 비면 지운다). 앞서 붙들던 것이 있으면 돌려준다."""
+    acquire_lock()
     try:
-        meta, body = read_doc(path)
-    except (OSError, ValueError):
-        return ""
-    if meta.get("type") != "request" or meta.get("origin") != "human":
-        return ""
-    if meta.get("status") not in ("open", "in-progress"):
-        return ""
-    if str(meta.get("session") or "")[:8] != (session or "")[:8]:
-        return ""
-    dt = _ts_delta(meta.get("created") or "", now_iso())
-    if dt is None or dt < 0 or dt > window_sec:
-        return ""
-    # 리드가 이미 답했나 — 응답 노트 헤더 하나면 충분하다. 노트 본문 안의
-    # 'response' 라는 낱말에 걸리지 않게 노트 헤더 모양으로만 찾는다.
-    if re.search(r"(?m)^### \d{4}-\S+ response\b", body):
-        return ""
-    return lr
+        b = read_binding(machine, session) or {
+            "machine": machine, "session": session, "user": "", "history": []}
+        prev = dict(b.get("pending_prompt") or {})
+        if draft:
+            b["pending_prompt"] = dict(draft)
+        else:
+            b.pop("pending_prompt", None)
+        write_binding(b)
+        return prev
+    finally:
+        release_lock()
 
 
 def _log_capture_reject(machine, session, rejected, target):
@@ -21966,6 +22032,15 @@ def cmd_note(args):
     for a in atts:
         if not os.path.isfile(a):
             die(f"첨부할 파일이 없다: {a}")
+    if getattr(args, "from_pending", False):
+        # 붙들어 둔 말을 앞 요청에 붙인다 (REQ-20260918-017-62x6) — 리드가 맥락을
+        # 읽고 「이건 그 요청의 말이다」로 판정한 자리다. 붙이고 나면 자리를 비운다.
+        _m, _sid = current_machine(), os.environ.get("S9_SESSION", "")
+        _draft = read_pending(_m, _sid)
+        if not (_draft.get("body") or "").strip():
+            die("붙들고 있는 말이 없다 — `s9 last --pending` 으로 확인하라")
+        text = text or _draft.get("body")
+        write_pending(_m, _sid, None)
     if not text and not atts and not sys.stdin.isatty():
         text = sys.stdin.read()
     if (not text or not text.strip()) and not atts:
@@ -22482,10 +22557,33 @@ def cmd_last(args):
         print(args.owns if _session_owns(args.owns, session) else "")
         return
     if getattr(args, "continuation", False):
-        # 이어 친 말이 붙을 자리 조회 (REQ-20260918-017-62x6) — 부작용 없음.
-        # `--owns` 와 같은 결의 얇은 표면이다: 판정은 _continuation_target 한 곳이
-        # 하고, 훅은 id 를 받아 붙이기만 한다.
-        print(_continuation_target(machine, session))
+        # 이어 친 말이 붙을 만한 **후보** 조회 (REQ-20260918-017-62x6) — 부작용 없음.
+        # 한 줄에 하나, 탭으로 나눈다: id · status · 나이(초) · 제목 · 요약.
+        # 고르는 일은 이 명령이 하지 않는다 — 맥락은 리드가 읽는다.
+        for r in _continuation_candidates(machine, session):
+            print("\t".join([r["id"], r["status"], str(r["age"]),
+                             r["title"], r["summary"]]))
+        return
+    if getattr(args, "pending_hold", False):
+        # 훅이 붙들 말을 적는다 — stdin 으로 온 JSON 초안 하나. 앞서 붙들던
+        # 것이 있으면 **그 id 를 찍어** 부른 쪽이 먼저 세우게 한다(두 말이 한
+        # 자리를 다투면 오래된 쪽이 밀려나므로, 밀려나는 쪽을 알려야 한다).
+        try:
+            draft = json.loads(sys.stdin.read() or "{}")
+        except ValueError as e:
+            die(f"보류 초안을 읽지 못했다: {e}")
+        if not isinstance(draft, dict) or not (draft.get("body") or "").strip():
+            die("보류 초안에 body 가 없다")
+        draft.setdefault("ts", now_iso())
+        prev = write_pending(machine, session, draft)
+        if prev.get("body"):
+            print("PREV\t" + (prev.get("title") or "")[:60])
+        return
+    if getattr(args, "pending", False):
+        # 붙들고 있는 말이 있나 — Stop 훅과 리드가 묻는 자리. 있으면 한 줄.
+        d = read_pending(machine, session)
+        if d.get("body"):
+            print("\t".join([d.get("ts") or "", (d.get("title") or "")[:60]]))
         return
     if getattr(args, "add", False):
         # --add: last_req는 두고 active_reqs에 병행 REQ를 실행 등록 (live 직접 증거,
@@ -40688,6 +40786,9 @@ def main():
     np = sub.add_parser("new", help="create a document")
     np.add_argument("doc_type", choices=sorted(TYPES))
     np.add_argument("--title", required=True)
+    np.add_argument("--from-pending", dest="from_pending", action="store_true",
+                    help="이 세션이 붙들고 있는 말을 본문으로 삼아 세운다 — "
+                         "세우고 나면 보류 자리를 비운다 (REQ-20260918-017-62x6)")
     np.add_argument("--summary")
     np.add_argument("--goal")
     np.add_argument("--status")
@@ -40964,6 +41065,9 @@ def main():
     tm.set_defaults(fn=cmd_terms)
     nt = sub.add_parser("note", help="append work note to a document's Notes")
     nt.add_argument("id")
+    nt.add_argument("--from-pending", dest="from_pending", action="store_true",
+                    help="이 세션이 붙들고 있는 말을 본문으로 삼아 붙인다 — "
+                         "붙이고 나면 보류 자리를 비운다 (REQ-20260918-017-62x6)")
     # nargs="*" 인 이유 (REQ-20260826-041): "?" 였을 때
     # `s9 note <id> --label response "본문"` 이 **조용히 실패**했다 —
     # argparse 가 옵션 뒤의 위치 인자를 못 붙이고 "unrecognized arguments: <본문>"
@@ -41006,8 +41110,14 @@ def main():
     la.add_argument("--pause", action="store_true",
                     help="last_req는 유지하되 응답 캡처만 일시중지 (Question/Nothing 턴)")
     la.add_argument("--continuation", action="store_true",
-                    help="사람이 이어 친 말을 받을 요청의 id — 방금 선 요청이 아직 "
-                         "열려 있고 리드가 답하기 전이면 그 id, 아니면 빈 줄")
+                    help="이어 친 말이 붙을 만한 후보 목록 — 이 세션이 세운 열린 "
+                         "요청을 최신순으로 (id·status·나이·제목·요약). 고르는 것은 "
+                         "리드다")
+    la.add_argument("--pending-hold", action="store_true",
+                    help="훅 전용 — stdin 의 JSON 초안 하나를 이 세션의 보류 자리에 "
+                         "적는다 (앞서 붙들던 것이 있으면 PREV 줄로 알린다)")
+    la.add_argument("--pending", action="store_true",
+                    help="보류 중인 말이 있으면 한 줄(ts·제목), 없으면 빈 출력")
     cl = sub.add_parser("claim",
                         help="REQ 클레임 + 위임 에이전트 transcript 등록 "
                              "(--release 로 해제)")

@@ -337,6 +337,19 @@ def share_turn_tokens(env, agent, plan, primary):
     return done
 
 
+def flush_pending(env):
+    """리드가 자리를 안 정한 말을 요청으로 세운다 — 없으면 아무것도 안 한다."""
+    out = run(env, "last", "--pending")
+    line = (out.stdout or "").strip() if out.returncode == 0 else ""
+    if not line:
+        return
+    title = (line.split("\t") + ["", ""])[1].strip() or "제목 없는 말"
+    r = run(env, "new", "request", "--from-pending", "--title", title[:60],
+            "--tag", "auto-audit", "--origin", "human")
+    if r.returncode == 0:
+        run(env, "log", f"붙들고 있던 말을 턴 끝에 요청으로 세웠다: {title[:40]}")
+
+
 def main():
     if os.environ.get("S9_AUDIT", "").lower() == "off":
         return
@@ -355,6 +368,13 @@ def main():
     mirror_transcript(tp)  # 분류와 무관하게 매 턴 스트림 미러링 (전체SID 파일명)
     run(env, "bind", "transcript_path", tp)  # live tail 경로 갱신
     run(env, "bind", "cwd", data.get("cwd", ""))  # resume용 cwd
+
+    # **붙들고 있던 말을 흘리지 않는다** (REQ-20260918-017-62x6). 프롬프트 훅은
+    # 맥락을 못 읽어 요청을 세우지 않고 붙들어 둔 뒤 리드에게 후보를 건넨다.
+    # 리드가 골랐으면 그 자리는 이미 비어 있다 — 아직 남아 있다는 것은 리드가
+    # 자리를 정하지 않았다는 뜻이고, 그러면 여기서 요청으로 세운다. 늦어질 뿐
+    # 사람의 말이 사라지지는 않는다.
+    flush_pending(env)
 
     text, model = last_assistant_text(tp)
     if not text:
