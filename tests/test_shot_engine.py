@@ -152,3 +152,47 @@ class ShotNavRetry(unittest.TestCase):
         self.assertFalse(m._shot_nav_retryable(b"Error: page.goto: 404"))
         self.assertFalse(m._shot_nav_retryable(b""))
         self.assertGreaterEqual(m.SHOT_NAV_RETRIES, 2)
+
+    def test_webkit_says_the_same_failure_in_its_own_words(self):
+        """두 엔진이 같은 리셋을 다른 말로 적는다 (REQ-20260918-002-62x6).
+
+        실측 2026-09-18: 같은 주소를 chromium 은 첫 판에 찍고 webkit 은 6회 모두
+        `Failure when receiving data from the peer` 로 졌다. 뿌리는 하나(WSL
+        루프백 중계 리셋, REQ-20260909-067-62x6)인데 재시도 무늬가 Chromium 의
+        말만 알아들어 webkit 에서는 재시도가 한 번도 돌지 않았다."""
+        import importlib.machinery, importlib.util
+        loader = importlib.machinery.SourceFileLoader("s9shotretrywk", S9)
+        spec = importlib.util.spec_from_loader("s9shotretrywk", loader)
+        m = importlib.util.module_from_spec(spec); loader.exec_module(m)
+        for t in ("Error: Failure when receiving data from the peer",
+                  b"Error: Failure when receiving data from the peer\nCall log:",
+                  "Error: The network connection was lost.",
+                  "Error: Connection terminated unexpectedly",
+                  "Error: Could not connect to server"):
+            with self.subTest(t=t):
+                self.assertTrue(m._shot_nav_retryable(t))
+        # 소켓이 아닌 것은 그대로 한 판에 끝낸다 — 되풀이는 대기만 늘린다
+        for t in ("Error: Timeout 30000ms exceeded",
+                  "browserType.launch: Executable doesn't exist",
+                  "Error: page.goto: net::ERR_FILE_NOT_FOUND"):
+            with self.subTest(t=t):
+                self.assertFalse(m._shot_nav_retryable(t))
+
+    def test_retries_spread_wide_enough_to_leave_a_burst(self):
+        """리셋은 뭉쳐서 온다 — 판을 넓게 펴야 그 묶음을 벗어난다
+        (REQ-20260918-002-62x6).
+
+        실측 2026-09-18: 1.5초 고정 3판은 4.5초 창 안을 두드리는 것이라
+        chromium 이 세 판을 내리 졌다(ABORTED · RESET · RESET)."""
+        import importlib.machinery, importlib.util
+        loader = importlib.machinery.SourceFileLoader("s9shotbackoff", S9)
+        spec = importlib.util.spec_from_loader("s9shotbackoff", loader)
+        m = importlib.util.module_from_spec(spec); loader.exec_module(m)
+        self.assertGreaterEqual(m.SHOT_NAV_RETRIES, 5)
+        waits = [m._shot_nav_backoff(i) for i in range(1, m.SHOT_NAV_RETRIES)]
+        # 간격이 늘어난다(같은 자리를 같은 박자로 두드리지 않는다)
+        self.assertLess(waits[0], waits[-1])
+        for w in waits:
+            self.assertLessEqual(w, m.SHOT_NAV_BACKOFF_MAX)
+        # 전체 창이 15초는 넘어야 묶음 하나를 벗어난다
+        self.assertGreaterEqual(sum(waits), 15.0)

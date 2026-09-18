@@ -57,6 +57,21 @@ class ItSaysWhatIsMissing(unittest.TestCase):
         self.assertIn("WSL 경로", h)
         self.assertIn("http://", h)
 
+    # 연결이 **받는 도중에** 끊긴 것 — WebKit 이 제 말로 적는 자리다
+    # (REQ-20260918-002-62x6, 실측 2026-09-18: 6회 모두 이 글로 졌는데
+    # 진단은 「못 읽었다」였다)
+    def test_a_mid_transfer_reset_is_named(self):
+        for t in ("Error: Failure when receiving data from the peer",
+                  "Error: The network connection was lost.",
+                  "Error: Connection terminated unexpectedly"):
+            with self.subTest(t=t):
+                h = self.hint(t)
+                self.assertNotIn("못 읽었다", h)
+                self.assertIn("도중에 끊겼다", h)
+                self.assertIn("다시 걸면", h)
+                self.assertEqual(1, len(h.strip().splitlines()),
+                                 "진단이 한 줄이 아니다: %r" % h)
+
     def test_a_timeout_says_to_wait_longer(self):
         h = self.hint("TimeoutError: Timeout 30000ms exceeded.")
         self.assertIn("--wait", h)
