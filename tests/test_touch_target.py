@@ -36,7 +36,7 @@ import unittest
 import urllib.request
 
 from cdpreal import WS, chrome_path, reclaim, skip_reason
-from webasset import parts
+from webasset import anon_helper, parts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -80,7 +80,7 @@ def fixture_html():
     usage = open(os.path.join(WEB, "app", "usage.js"), encoding="utf-8").read()
     const = open(os.path.join(WEB, "app", "const.js"), encoding="utf-8").read()
     notice = open(os.path.join(WEB, "app", "notice.js"), encoding="utf-8").read()
-    js = (_fn(const, "mk") + "\n" + _fn(usage, "renderUsageChip") + "\n"
+    js = (anon_helper() + _fn(const, "mk") + "\n" + _fn(usage, "renderUsageChip") + "\n"
           + _fn(notice, "renderWhoami") + "\n" + r"""
 const esc = s => String(s ?? "").replace(/[&<>"]/g,
   c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));

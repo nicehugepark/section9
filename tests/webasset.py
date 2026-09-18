@@ -121,3 +121,24 @@ def part(name):
     한 장을 봐야 하는 계약(순서·캐스케이드·전체 존재)은 `source()` 그대로다.
     """
     return _read(os.path.join(WEB, *name.split("/")))
+
+
+def anon_helper():
+    """format.js 의 `?anon` 조각 (const ANON · anonize) — REQ-20260918-013-62x6.
+
+    화면 함수를 잘라 싣는 하니스는 그 함수가 부르는 자유 이름도 함께 실어야 한다.
+    흉내 내지 않고 **실물을 싣는다** — 흉내 낸 규칙이 실제와 달라지면 시험이
+    거짓으로 통과한다(`mk` 를 실물로 싣는 것과 같은 규율).
+    """
+    src = _read(os.path.join(WEB, "app", "format.js"))
+    i = src.index("const ANON = (")
+    k = src.index("function anonize(", i)
+    depth = 0
+    for j in range(k, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i:j + 1] + "\n"
+    raise AssertionError("anonize 를 못 찾았다")

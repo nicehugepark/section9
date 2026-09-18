@@ -95,7 +95,7 @@ function usageRows(){
 function usageTitle(){
   if (!usageLast) return "클로드 계정과 사용량 — 아직 받지 못했습니다";
   const d = usageLast;
-  return `${d.email || "?"} 사용량. `
+  return `${anonize(d.email, "?")} 사용량. `
     + usageRows().map(([x, name]) => {
         const when = fmtWhen(x.resets_at);
         return `${name} ${x.percent}%, ${fmtUntil(x.resets_at)} 초기화${when ? `, ${when}` : ""}`;
@@ -114,7 +114,7 @@ function showUsageHover(el){
   if (!rows.length){
     const d = usageLast || {};
     hovercard.innerHTML = `<div class="hid ucap">클로드 사용량</div>`
-      + (d.email ? `<div class="ht umail">${esc(d.email)}</div>` : "")
+      + (d.email ? `<div class="ht umail">${esc(anonize(d.email))}</div>` : "")
       + `<div class="hs">${d.error ? esc(d.error) + " " : ""}아직 받지 못했다 — 60초마다 다시 물어본다.</div>`;
     placeHover(el); return;
   }
@@ -128,7 +128,7 @@ function showUsageHover(el){
       + `<span class="ua">${esc(when)}</span>`;
   }).join("");
   hovercard.innerHTML = `<div class="hid ucap">클로드 사용량</div>
-    <div class="ht umail">${esc(d.email || "?")}${d.subscription
+    <div class="ht umail">${esc(anonize(d.email, "?"))}${d.subscription
       ? ` <span>${esc(d.subscription)}</span>` : ""}</div>
     <div class="ug"><span class="uh">한도</span><span class="uh ur">사용</span>`
     + `<span class="uh">남은 시간</span><span class="uh ur">초기화 시각</span>`
@@ -225,7 +225,7 @@ function renderUsageChip(el, d){
      없어진다. 글자를 제 상자(`.addr`)에 넣어 두면 규칙이 글자만 빼고 마크는
      남길 수 있다. 여기서 폭을 보지 않는 까닭은 접는 자리가 CSS 한 곳이기
      때문이다 — 화면 크기를 JS 가 다시 세면 창을 끌 때마다 두 벌이 어긋난다. */
-  const segs = [`<span class="addr">${esc(d.email || "?")}</span>${d.stale ? " " + mk("clock") : ""}`,
+  const segs = [`<span class="addr">${esc(anonize(d.email, "?"))}</span>${d.stale ? " " + mk("clock") : ""}`,
                 `5h ${pct(L.session)}`,
                 `wk ${pct(L.weekly_all)}`];
   if (L.weekly_scoped)

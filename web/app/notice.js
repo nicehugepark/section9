@@ -69,14 +69,14 @@ function renderWhoami(){
      자리가 있어야 한다 — 같은 컴퓨터를 말하는 「@ 컴퓨터」 덩이의 title 이
      OS 와 저장소 경로를 함께 든다 (REQ-20260916-012-2n7g). 넓은 폭에서는
      OS 가 글자로 서고 경로가 title 에 남는 종전 그대로다. */
-  const spot = esc([w.os, w.root].filter(Boolean).join(" · "));
-  const where = w.os ? ` <span class="wseg where" title="${esc(w.root || "")}">${esc(w.os)}</span>` : "";
+  const spot = ANON ? "" : esc([w.os, w.root].filter(Boolean).join(" · "));
+  const where = w.os ? ` <span class="wseg where" title="${ANON ? "" : esc(w.root || "")}">${esc(w.os)}</span>` : "";
   /* 신원 줄도 **덩이 단위로 접힌다** (REQ-20260915-001-2n7g) — 바로 위 사용량
      칩과 같은 기둥(.idcol)에 서고, 같은 이유(줄 전체가 nowrap)로 좁은 폭에서
      머리글을 밀어냈다. 이름 · 「@ 컴퓨터」 · 권한이 각각 한 덩이라 「@」가
      홀로 줄 끝에 남지 않는다. */
   el.innerHTML = `<span class="wseg"><b>${esc(w.user)}</b></span> `
-    + `<span class="wseg at"${spot ? ` title="${spot}"` : ""}>@ ${esc(w.machine || "")}</span>${where} `
+    + `<span class="wseg at"${spot ? ` title="${spot}"` : ""}>@ ${esc(anonize(w.machine))}</span>${where} `
     /* 덩이마다 이름이 있어야 무엇을 물릴지 고를 수 있다 (REQ-20260916-012-2n7g) —
        손전화 폭에서는 권한(`role`)과 OS(`where`)가 물러난다. 권한은 Settings 에,
        OS 와 저장소 경로는 이 줄의 title 에 그대로 있다. */

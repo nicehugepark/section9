@@ -192,6 +192,30 @@ async function setUIDim(d, v){
   }catch(e){}
 })();
 
+/* ?anon — **캡처에서 사람을 지우는 스위치** (REQ-20260918-013-62x6).
+   진단·헤드리스 캡처용이라 저장 경로에는 불관여다 (?noscroll·?nosse 와 같은 어휘).
+
+   가이드는 GitHub 릴리스로 나가는 공개 문서인데, 머리글에는 이 컴퓨터를 쓰는
+   사람의 계정 메일(사용량 칩)과 컴퓨터 이름(#whoami)이 선다. 2026-09-18 에 그
+   그림을 다시 찍으려다 주인이 「가려서 찍는다」로 판정했다.
+
+   가리는 자리는 **그림이 아니라 화면이다.** 찍은 PNG 의 화소를 덧칠하면 글자
+   수가 시각마다 달라져 판을 낼 때마다 자를 다시 맞춰야 한다 — 화면에서 지우고
+   찍으면 다음 판의 재촬영도 같은 한 줄이다.
+
+   가리는 것은 **메일과 컴퓨터 이름 둘뿐**이다. 사람 이름(nicehugepark)은 저장소
+   주소에 이미 공개돼 있어 그대로 둔다 — 주인이 고른 것이 그 둘이다.
+
+   길이를 드러내지 않는다: 원래 값이 몇 글자였는지가 곧 단서다. 그래서 값과
+   무관한 **같은 길이의 덩이**로 바꾼다. */
+const ANON = (() => {
+  try{ return /[?&]anon\b/.test(location.search); }catch(e){ return false; }
+})();
+const ANON_MASK = "\u2588".repeat(8);
+function anonize(text, fallback){
+  return ANON ? ANON_MASK : (text || (fallback === undefined ? "" : fallback));
+}
+
 /* 신원 = 서버 파생 whoami (REQ-20260824-027) — me 셀렉터·localStorage s9me 폐기.
    대시보드는 127.0.0.1 전용: 브라우저 사용자 = 서버 기동 OS 계정이므로 클라이언트는
    신원을 보내지 않는다 (쓰기 actor·열람 격리 모두 서버가 파생). 유일한 예외는

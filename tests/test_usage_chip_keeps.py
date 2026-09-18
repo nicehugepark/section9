@@ -35,6 +35,8 @@ CONST_SRC = open(os.path.join(HERE, "..", "web", "app", "const.js"), encoding="u
 import glob
 import shutil
 
+import webasset
+
 
 def find_node():
     n = shutil.which("node") or shutil.which("nodejs")
@@ -93,6 +95,9 @@ def _fn(src, name):
 # 흉내가 아니라 실물 — 화면이 부르는 그 `mk()` 를 실어야 마크가 바뀔 때 잡힌다.
 # (STUBS 를 쓰는 자리가 넷이라 여기 한 번만 얹는다.)
 STUBS += _fn(CONST_SRC, "mk") + "\n"
+# `?anon` 조각도 실물로 (REQ-20260918-013-62x6) — 사용량 칩의 계정 자리가
+# anonize 를 지난다. 없으면 잘라 실은 함수가 그 이름에서 터진다.
+STUBS += webasset.anon_helper()
 
 
 def _fail_branch(src):
