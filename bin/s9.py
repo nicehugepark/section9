@@ -3852,17 +3852,35 @@ def cmd_new(args):
     machine = current_machine()
     session = os.environ.get("S9_SESSION", "")
     ts = now_iso()
-    original = read_body_arg(args)
     # 붙들어 둔 말을 그대로 세운다 (REQ-20260918-017-62x6). 훅은 요청을 세우지 않고
     # 초안을 붙들고, 리드가 맥락을 읽어 「이건 새 요청이다」로 판정하면 여기로 온다.
     # 본문은 초안에서 오고 제목은 부른 쪽이 준다 — 원문을 옮겨 적다 달라지는 일이
     # 없고, 제목은 사람이 읽을 명사구로 새로 짓게 된다.
+    #
+    # **본문을 읽는 순서가 중요하다** — `read_body_arg` 는 --body 도 --body-file 도
+    # 없으면 stdin 을 끝까지 읽는다. 붙들어 둔 말을 세우는 자리는 사람이 손으로
+    # 치는 자리라 stdin 이 터미널이고, 먼저 부르면 그 자리에서 멎는다(실측
+    # 2026-09-18: 모래상자 왕복이 여기서 멈췄다). 그래서 --from-pending 이면
+    # **명시된 본문만** 보고 stdin 은 건드리지 않는다.
     if getattr(args, "from_pending", False):
         _draft = read_pending(machine, session)
         if not (_draft.get("body") or "").strip():
             die("붙들고 있는 말이 없다 — `s9 last --pending` 으로 확인하라")
+        original = (getattr(args, "body", None) or "")
+        if not original and getattr(args, "body_file", None):
+            with open(args.body_file, encoding="utf-8") as f:
+                original = f.read()
         original = original or _draft.get("body")
+        # **사람의 말은 사람의 것으로 선다** (실측 2026-09-18, 모래상자 왕복에서
+        # 드러났다): 붙들어 둔 말을 리드가 새 요청으로 세우면 `origin` 이 기본값인
+        # agent 로 찍혔고, 그러면 그 요청은 **다음 말의 후보가 못 된다** — 후보는
+        # 사람이 낸 열린 요청만 세기 때문이다. 사람이 친 말이 리드의 손을 거쳤다는
+        # 이유로 사람의 것이 아니게 되면, 세 번째 줄부터 계보가 끊긴다.
+        if not getattr(args, "origin", None):
+            args.origin = "human"
         write_pending(machine, session, None)
+    else:
+        original = read_body_arg(args)
     # 누가 만들었나 — 사람인가, 에이전트인가, 누구의 요청을 처리하다 나왔나
     # (REQ-20260902-018, DOC-20260902-001 D2). `user` 는 담당자다(코드 전반이
     # 이미 그 뜻으로 읽는다); 생성 시 확정되는 넷은 따로 적고 바꾸지 않는다.

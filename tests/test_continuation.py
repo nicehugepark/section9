@@ -17,6 +17,10 @@
   C3 훅은 후보가 있으면 **요청을 세우지 않고** 붙들어 둔 뒤 후보를 리드에게 건넨다.
   C4 후보가 없으면 종전대로 요청이 선다.
   C5 리드가 자리를 안 정하면 턴 끝에 Stop 훅이 세운다 — 말이 사라지지는 않는다.
+  C6 `--from-pending` 으로 세운 요청은 **사람의 것**이고, 그 명령은 stdin 을 안
+     기다린다. 둘 다 모래상자 왕복(실제 훅 두 개를 실행)에서 드러난 결함이다:
+     stdin 을 먼저 읽어 사람이 손으로 치는 자리에서 멎었고, origin 이 agent 로
+     찍혀 그 요청이 **다음 말의 후보가 못 됐다** — 세 번째 줄부터 계보가 끊긴다.
 
 실행: python3 tests/ continuation
 """
@@ -245,6 +249,56 @@ class TheTurnEndDoesNotDropIt(unittest.TestCase):
 
     def test_c5b_nothing_held_nothing_filed(self):
         self.assertFalse([a for a in self.flush("") if a[0] == "new"])
+
+class TheLeadsOwnHandDoesNotBreakTheChain(unittest.TestCase):
+    """C6 — `s9 new request --from-pending` 의 두 자리. 진짜 s9 를 돌려 잰다."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        import subprocess
+        import tempfile
+        cls.root = tempfile.mkdtemp(prefix="s9cont-")
+        cls.s9 = os.path.normpath(os.path.join(HERE, "..", "bin", "s9"))
+        cls.env = dict(os.environ)
+        cls.env["S9_ROOT"] = cls.root
+        cls.env["S9_SESSION"] = "cccc3333"
+        cls._rm = lambda: shutil.rmtree(cls.root, ignore_errors=True)
+        for argv in (["init"], ["user", "add", "tester"]):
+            subprocess.run([sys.executable, cls.s9, *argv], env=cls.env,
+                           capture_output=True, timeout=120)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._rm()
+
+    def test_c6_from_pending_is_human_and_never_waits_on_stdin(self):
+        import json as _json
+        import subprocess
+        subprocess.run([sys.executable, self.s9, "last", "--pending-hold"],
+                       input=_json.dumps({"title": "붙들린 말", "body": "사람이 친 말"}),
+                       env=self.env, capture_output=True, text=True, timeout=120)
+        # stdin 을 **열어 둔 채** 부른다 — 사람이 터미널에서 치는 모양이다.
+        # 본문을 stdin 에서 읽으려 들면 여기서 영영 멎는다.
+        p = subprocess.Popen(
+            [sys.executable, self.s9, "new", "request", "--from-pending",
+             "--title", "붙들린 말 세우기", "--summary", "요약",
+             "--size", "S", "--goal", "판별 가능한 한 문장", "--user", "tester"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=self.env, text=True)
+        try:
+            out, _err = p.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            self.fail("--from-pending 이 stdin 을 기다린다 — 사람이 손으로 치면 멎는다")
+        rid = (out or "").split()[0] if out.strip() else ""
+        self.assertTrue(rid.startswith("REQ-"), out)
+        doc = subprocess.run([sys.executable, self.s9, "show", rid, "--meta"],
+                             env=self.env, capture_output=True, text=True,
+                             timeout=120).stdout
+        self.assertIn("origin: human", doc,
+                      "리드의 손을 거쳤다고 사람의 말이 아니게 되면 그 요청은 "
+                      "다음 말의 후보가 못 된다 — 세 번째 줄부터 계보가 끊긴다")
 
 
 if __name__ == "__main__":
