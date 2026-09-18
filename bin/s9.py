@@ -11514,7 +11514,8 @@ WORKER_DENIED_SUBCOMMANDS = (
 WORKER_ALLOWED_SUBCOMMANDS = (
     "agents", "approvals", "archive", "assets", "assign", "bind", "blocked",
     "callname", "claim", "commit", "commit-note", "contrib", "delegate-target",
-    "digest", "doctor", "handoff", "inbox", "index", "init", "jira", "last",
+    "digest", "doctor", "guide", "handoff", "inbox", "index", "init", "jira",
+    "last",
     "link", "linkcheck", "log", "loose", "ls", "merge-doc", "metrics", "new",
     "next", "normalize", "note", "now", "peer", "perf", "preview", "project",
     "reopened",
@@ -31037,6 +31038,228 @@ def cmd_shot(args):
         sys.exit(3)
 
 
+# ── 가이드의 그림 — 찍는 법을 그림 옆에 둔다 (REQ-20260918-013-62x6) ─────────
+#
+# `web/guide.html` 의 그림은 base64 로 박혀 있다. 판이 바뀌면 다시 찍어 심고
+# `docs/guide.md` 를 재생성해야 하는데, 그 길(`bin/s9-guide-md`)이 `s9` 밖에
+# 서 있어 **백그라운드 작업자는 부를 수 없었다** — 그 봉투에 든 것은 `s9`
+# 하위명령뿐이다(WORKER_ALLOWED_SUBCOMMANDS).
+# 2026-09-18 에 재촬영 요청을 집은 세션 셋이 모두 같은 자리에서 막혔고, 그
+# 요청은 사람이 켠 세션만 할 수 있는 일이 되어 사흘을 기다렸다. 여기서 셋을
+# 한 이름 아래 세운다: 찍기 · 심기 · 재생성.
+#
+# 찍는 법(주소·뷰포트·엔진·대기)은 코드가 아니라 **그림 옆**에 둔다:
+# `<img data-shot="?noscroll#settings/display" data-size="1440,860">`. 표를
+# 코드에 두면 그림과 표가 따로 늙고, 다음 판을 찍는 사람이 어느 그림이 어느
+# 줄인지 다시 세어야 한다.
+# 가이드와 생성기는 **코드**다 — `S9_ROOT`(데이터 자리)가 아니라 이 스크립트가
+# 속한 저장소에서 찾는다. `bin/s9-guide-md` 도 제 위치로 같은 자리를 짚는다.
+GUIDE_HTML = os.path.join(S9_CODE_ROOT, "web", "guide.html")
+GUIDE_GEN = os.path.join(S9_CODE_ROOT, "bin", "s9-guide-md")
+# 주인이 고른 것 둘 (2026-09-18): 가이드는 GitHub 릴리스로 나가는 공개 문서라
+# 머리글의 계정 메일·컴퓨터 이름을 가리고(`anon`), 판은 밝은 쪽(`skin=calm`)
+# 하나로 통일한다 — 한 문서에서 화면이 두 얼굴이면 같은 제품으로 안 보인다.
+GUIDE_SHOT_QUERY = "anon&skin=calm"
+GUIDE_SHOT_RETRY = 6
+
+_GUIDE_IMG_RE = re.compile(r"<img\b[^>]*>", re.I)
+_GUIDE_ATTR_RE = re.compile(r'([-\w]+)\s*=\s*"([^"]*)"', re.S)
+
+
+def _guide_slots(html):
+    """가이드에 박힌 그림 자리 — 번호는 문서에 선 차례 그대로(1부터).
+
+    `docs/guide-assets/NN.png` 의 NN 이 이 번호다(`s9-guide-md` 가 같은 차례로
+    센다). 그래야 「08 이 낡았다」가 두 벌에서 같은 그림을 가리킨다.
+    """
+    slots = []
+    for m in _GUIDE_IMG_RE.finditer(html):
+        tag = m.group(0)
+        attr = dict(_GUIDE_ATTR_RE.findall(tag))
+        if not attr.get("src", "").startswith("data:image/"):
+            continue          # 마크·아이콘처럼 파일로 선 그림은 이 자리가 아니다
+        vs = m.start() + re.search(r'src\s*=\s*"', tag).end()
+        ve = html.index('"', vs)
+        slots.append({"n": len(slots) + 1, "alt": attr.get("alt", ""),
+                      "shot": attr.get("data-shot", ""),
+                      "size": attr.get("data-size", ""),
+                      "wait": attr.get("data-wait", ""),
+                      "engine": attr.get("data-engine", ""),
+                      "span": (vs, ve), "bytes": ve - vs})
+    return slots
+
+
+def _guide_newest_session():
+    """가장 최근 세션의 여덟 자 — Stream 판을 찍으려면 세션 하나를 골라야 한다.
+
+    세션 id 는 판마다 다르니 그림 옆에 적을 수 없다. 그래서 `{session}` 한
+    글자만 적어 두고 찍을 때 푼다 — 그러지 않으면 열한 장 중 한 장만 사람이
+    손으로 주소를 지어야 하고, 「한 줄로 다시 찍는다」가 거기서 끊긴다.
+    """
+    newest, path = "", ""
+    for dirpath, _dirs, files in os.walk(os.path.join(ROOT, "vault", "sessions")):
+        for fn in files:
+            if fn.startswith("SES-") and fn.endswith(".md") and fn > newest:
+                newest, path = fn, os.path.join(dirpath, fn)
+    if not path:
+        return ""
+    with open(path, encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if line.startswith("session:"):
+                return line.split(":", 1)[1].strip()
+            if i and line.startswith("---"):
+                break      # 프론트매터가 닫혔다 — 이 문서에는 세션 id 가 없다
+    return ""
+
+
+def _guide_shot_url(spec, base, query):
+    """그림 옆의 `data-shot` 을 실제 주소로 — 공통 인자를 겹쳐 얹는다.
+
+    `?noscroll#settings/display` + `anon&skin=calm`
+      → `http://127.0.0.1:9909/?anon&skin=calm&noscroll#settings/display`
+    """
+    if "{session}" in spec:
+        spec = spec.replace("{session}", _guide_newest_session())
+    path, _, frag = spec.partition("#")
+    head, _, own = path.partition("?")
+    q = "&".join([p for p in (query, own) if p])
+    return (base.rstrip("/") + "/" + head.lstrip("/")
+            + ("?" + q if q else "") + ("#" + frag if frag else ""))
+
+
+def _guide_embed(by_n):
+    """{번호: PNG 경로} 를 그림 자리에 심는다 — 한 번 읽고 한 번 쓴다.
+
+    **뒤에서부터** 갈아 끼운다: 앞을 먼저 갈면 그 뒤 자리들의 위치가 밀린다.
+    """
+    import base64
+    with open(GUIDE_HTML, encoding="utf-8") as f:
+        html = f.read()
+    slots = {s["n"]: s for s in _guide_slots(html)}
+    for n in sorted(by_n, reverse=True):
+        if n not in slots:
+            die(f"s9 guide: {n:02d} 번 그림 자리가 없다 (지금 {len(slots)}장)")
+        with open(by_n[n], "rb") as f:
+            raw = f.read()
+        kind = "png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else "jpeg"
+        uri = "data:image/%s;base64,%s" % (kind,
+                                           base64.b64encode(raw).decode("ascii"))
+        a, b = slots[n]["span"]
+        html = html[:a] + uri + html[b:]
+    with open(GUIDE_HTML, "w", encoding="utf-8") as f:
+        f.write(html)
+
+
+def _guide_build():
+    """`docs/guide.md` 와 `docs/guide-assets/` 를 html 에서 다시 짓는다."""
+    r = subprocess.run([sys.executable, GUIDE_GEN], capture_output=True,
+                       text=True)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    if r.returncode:
+        sys.exit(r.returncode)
+
+
+def _guide_capture(url, out, size, wait, engine, tries):
+    """한 장을 찍는다 — 진 횟수를 돌려준다(0 이면 끝내 못 찍었다).
+
+    되걸기를 세는 이유는 REQ-20260918-014-62x6 이다: 이 기계의 대시보드가
+    연결을 자주 끊어 한 장에 재시도 1~5회가 흔했다. 세지 않는 재시도는
+    결함을 가린다 — 몇 번 만에 붙었는지가 그 결함의 크기다.
+    """
+    for i in range(1, tries + 1):
+        try:
+            os.remove(out)
+        except OSError:
+            pass
+        a = argparse.Namespace(url=url, out=out, size=size, wait=wait,
+                               dpr="1", engine=engine)
+        try:
+            cmd_shot(a)
+            code = 0
+        except SystemExit as e:
+            code = e.code or 0
+        if not code and os.path.exists(out):
+            return i
+        if i < tries:
+            time.sleep(1.5)
+    return 0
+
+
+def cmd_guide(args):
+    action = getattr(args, "action", "ls") or "ls"
+    with open(GUIDE_HTML, encoding="utf-8") as f:
+        slots = _guide_slots(f.read())
+
+    if action == "ls":
+        print("%s — 그림 %d장" % (GUIDE_HTML, len(slots)))
+        for s in slots:
+            print("  %02d  %-36s %-10s %-9s %5dKB  %s"
+                  % (s["n"], s["alt"][:36], s["size"] or "-",
+                     s["engine"] or "-", s["bytes"] // 1024,
+                     s["shot"] or "(찍는 법 없음)"))
+        miss = [s["n"] for s in slots if not s["shot"]]
+        if miss:
+            print("찍는 법이 없는 자리: %s — `<img data-shot=…>` 로 그림 옆에 "
+                  "적어라" % ", ".join("%02d" % n for n in miss),
+                  file=sys.stderr)
+        return
+
+    if action == "build":
+        return _guide_build()
+
+    if action == "embed":
+        try:
+            n = int(args.which)
+        except (TypeError, ValueError):
+            die("s9 guide embed <번호> <파일>")
+        if not args.file or not os.path.exists(args.file):
+            die("s9 guide embed: 그 파일이 없다 — %s" % (args.file or "(없음)"))
+        _guide_embed({n: args.file})
+        print("%02d ← %s" % (n, args.file))
+        if not args.no_build:
+            _guide_build()
+        return
+
+    # shots — data-shot 이 적힌 자리를 다시 찍어 심고, 한 번에 재생성한다.
+    want = [s for s in slots if s["shot"]]
+    if args.which and args.which != "all":
+        pick = {int(x) for x in re.findall(r"\d+", args.which)}
+        want = [s for s in want if s["n"] in pick]
+    if not want:
+        die("s9 guide shots: 찍을 자리가 없다 — `s9 guide ls` 로 보라")
+    base = args.base or "http://127.0.0.1:%d" % s9_port()
+    outdir = os.path.join(ROOT, "state", "shots", "guide")
+    os.makedirs(outdir, exist_ok=True)
+    got, lost = {}, []
+    for s in want:
+        url = _guide_shot_url(s["shot"], base, args.query)
+        out = os.path.join(outdir, "%02d.png" % s["n"])
+        print("%02d %s" % (s["n"], url))
+        tries = _guide_capture(url, out, s["size"] or SHOT_SIZE_DEFAULT,
+                               s["wait"] or "3000",
+                               s["engine"] or "chromium", args.retry)
+        if tries:
+            got[s["n"]] = out
+            print("   ✓ %s%s" % (out, " (%d번째에 붙었다)" % tries
+                                 if tries > 1 else ""))
+        else:
+            lost.append(s["n"])
+            print("   ✗ %d번 다 졌다 — 서버가 연결을 끊는다" % args.retry,
+                  file=sys.stderr)
+    if got:
+        _guide_embed(got)
+        print("심었다: %s" % ", ".join("%02d" % n for n in sorted(got)))
+        if not args.no_build:
+            _guide_build()
+    if lost:
+        print("못 찍은 자리: %s — 다시 부르면 그 자리만 찍는다: "
+              "`s9 guide shots %s`"
+              % (", ".join("%02d" % n for n in lost),
+                 ",".join(str(n) for n in lost)), file=sys.stderr)
+        sys.exit(1)
+
+
 # 공개는 왕복으로 끝난다 (REQ-20260904-015). 되걸기 예산은 실측에서 왔다:
 # 창은 0.5초에 닫히고 실패는 12~16ms 다. `wait_server` 의 40초/30회를 베끼지
 # 않는다 — 그건 「서버가 아직 없을 수 있다」용이다.
@@ -40954,6 +41177,25 @@ def main():
                          "REQ-20260906-096/-098; 없으면 설치 안내). chrome = 종전 "
                          "Chrome --screenshot 경로")
     sh.set_defaults(fn=cmd_shot)
+
+    gd = sub.add_parser("guide", help="가이드의 그림 — ls: 자리와 찍는 법 · "
+                                      "shots: 다시 찍어 심기 · embed: 한 장 심기 · "
+                                      "build: docs/guide.md 재생성 "
+                                      "(REQ-20260918-013-62x6)")
+    gd.add_argument("action", nargs="?", default="ls",
+                    choices=["ls", "shots", "embed", "build"])
+    gd.add_argument("which", nargs="?", default="",
+                    help="shots: 번호 목록(1,8,9) 또는 all(기본) · embed: 번호")
+    gd.add_argument("file", nargs="?", default="", help="embed: 심을 PNG")
+    gd.add_argument("--base", default="",
+                    help="shots: 대시보드 주소 (기본 http://127.0.0.1:<이 워크스페이스의 포트>)")
+    gd.add_argument("--query", default=GUIDE_SHOT_QUERY,
+                    help="shots: 모든 그림에 겹쳐 얹는 인자 (기본 %s)" % GUIDE_SHOT_QUERY)
+    gd.add_argument("--retry", type=int, default=GUIDE_SHOT_RETRY,
+                    help="shots: 한 장당 되걸기 횟수 (기본 %d)" % GUIDE_SHOT_RETRY)
+    gd.add_argument("--no-build", dest="no_build", action="store_true",
+                    help="심기만 하고 docs/guide.md 재생성은 미룬다")
+    gd.set_defaults(fn=cmd_guide)
 
     dc = sub.add_parser("doctor",
                         help="네트워크·자원 진단과 정리 (REQ-20260825-099)")
