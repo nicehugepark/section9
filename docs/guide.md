@@ -2,7 +2,7 @@
 
 # section9 사용자 가이드
 
-verified 2026-09-14 · 0.9.1 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서(판정 버튼 「승인 done」「반려 in-progress」와 안내 요청 일곱 편은 2026-09-14 재확인, REQ-20260914-011), 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측    
+verified 2026-09-14 · 0.9.2 · 화면 사용법은 0.9.1 판(2026-09-14)에서 실측한 것이고, 그 뒤 더해진 휴지통·알림 줄·좁은 폭 화면은 아직 이 문서에 없습니다 · dashboard http://127.0.0.1:9909 · 캡처는 실제 화면(개발 인스턴스, 2026-09-06) · 화면 글자는 그 화면의 문구 표(web/app)에서(판정 버튼 「승인 done」「반려 in-progress」와 안내 요청 일곱 편은 2026-09-14 재확인, REQ-20260914-011), 명령 출력은 릴리스 모양으로 푼 임시 자리에서 실행해 옮김(2026-09-13) · 맥은 2026-09-13 맥 미니(macOS, 기본 python 3.9.6)에서 s9 doctor --live·브라우저 열기를 실측    
 
 ## 1. section9이 뭔가요
 
@@ -1226,4 +1226,4 @@ pay ↔ https://acme.atlassian.net PAY  (direction=push create_on=open export=al
 - section9 자체 저장소를 연동하지 마십시오 — 하루 수십 건이 그대로 티켓이 됩니다. 시험은 별도 프로젝트(예: `s9 project add mp1`)로. 
 - 401 이 났다고 여러 번 다시 누르지 마십시오 — 새 token 을 만들어 넣은 뒤 「연결 확인」 한 번. 
 
- section9 user guide · verified 2026-09-14 · 0.9.1 (dashboard/CLI 현행 main 기준 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥은 세션 감지·브라우저 열기 실측) · 캡처: 실제 화면(개발 인스턴스, 2026-09-06 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md) · Windows·WSL: docs/guide-windows.md
+ section9 user guide · verified 2026-09-14 · 0.9.2 (화면 사용법은 0.9.1 판에서 실측 · 리눅스/WSL 실측 — 첫 실행·GitHub 잇기·초대·합류는 릴리스 모양의 임시 자리에서 실행해 옮김 · 맥은 세션 감지·브라우저 열기 실측) · 캡처: 실제 화면(개발 인스턴스, 2026-09-06 · 계정 표시는 가림) · 이 문서: web/guide.html — http://127.0.0.1:9909/guide.html · 생성물: docs/guide.md (bin/s9-guide-md) · Windows·WSL: docs/guide-windows.md
