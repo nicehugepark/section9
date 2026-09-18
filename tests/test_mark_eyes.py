@@ -12,11 +12,23 @@
   E4 무게중심이 (32, 41.50) 에 머문다 — web/app/mark.js 의 HIDE·MAX_DOWN 이
      「무리가 렌즈 중심보다 10.6 아래」를 전제로 맞춰져 있다.
   E5 정삼각형이고, 잉크까지 렌즈(반지름 28.9) 안에 있다.
+  E7 탭 아이콘의 주소에 **그 파일의 지문**이 실려 있다 — 브라우저는 파비콘을 따로
+     담아 두고 주소가 바뀔 때만 다시 가져간다. `Cache-Control: no-store` 도 그 장에는
+     닿지 않아, 얼굴만 고치면 탭은 옛 얼굴 그대로다(실제 반려 2026-09-18 19:01,
+     주인: 「파비콘은 그대로다」). 지문이 주소에 있으면 얼굴이 바뀔 때 주소도 바뀐다.
+  E8 래스터 아이콘 넷(favicon.ico · apple-touch-icon · icon-192 · icon-512)이 **지금
+     얼굴에서 구운 것**이다. 같은 반려의 나머지 절반이 여기였다 — 이 넷은 손으로
+     구운 산출물이라 SVG 를 고쳐도 따라올 길이 없었고, 브라우저가 실제로 탭에
+     띄우는 것은 그중 favicon.ico 일 때가 많다. `bin/s9-mark-icons` 가 굽고,
+     이 시험이 낡았는지 본다.
 
 실행: python3 tests/ mark_eyes
 """
+import hashlib
 import math
 import os
+import subprocess
+import sys
 import re
 import unittest
 
@@ -112,6 +124,28 @@ class MarkEyes(unittest.TestCase):
         for ox, oy, cx, cy in pairs:
             self.assertEqual((ox, oy), (cx, cy),
                              "transform-origin 이 점의 자리와 다르다")
+
+    def test_e7_favicon_url_carries_the_file_fingerprint(self):
+        """E7. index.html·guide.html 의 파비콘 주소가 그 파일의 지문을 달고 있다."""
+        want = hashlib.sha256(
+            open(os.path.join(WEB, "assets", "favicon.svg"), "rb").read()
+        ).hexdigest()[:8]
+        for page in ("index.html", "guide.html"):
+            m = re.search(r'href="assets/favicon\.svg\?v=([0-9a-f]+)"',
+                          read(os.path.join(WEB, page)))
+            self.assertIsNotNone(
+                m, "%s 의 파비콘 주소에 ?v= 지문이 없다 — 얼굴을 고쳐도 탭은 안 바뀐다" % page)
+            self.assertEqual(
+                m.group(1), want,
+                "%s 의 파비콘 지문이 낡았다 — 얼굴을 고쳤으면 주소의 ?v= 도 %s 로 옮겨라"
+                % (page, want))
+
+    def test_e8_raster_icons_are_baked_from_this_face(self):
+        """E8. 래스터 아이콘 넷이 지금의 favicon.svg 에서 구운 것이다."""
+        gen = os.path.normpath(os.path.join(HERE, "..", "bin", "s9-mark-icons"))
+        r = subprocess.run([sys.executable, gen, "--check"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout.strip() or r.stderr.strip())
 
 
 if __name__ == "__main__":

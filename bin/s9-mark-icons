@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""얼굴의 래스터 아이콘을 SVG 에서 다시 굽는다 (REQ-20260918-015-62x6).
+
+왜 있는가: 2026-09-18 에 마크의 눈을 고쳤더니 대시보드 머리글과 가이드는 따라왔는데
+**탭 아이콘은 옛 얼굴 그대로**였다(주인 반려 19:01: 「파비콘은 그대로다」). 까닭은
+둘이었다 — 브라우저가 파비콘을 주소로만 다시 가져간다는 것, 그리고 `favicon.ico`·
+`apple-touch-icon.png`·`icon-192.png`·`icon-512.png` 넷이 **손으로 구운 산출물**이라
+SVG 를 고쳐도 따라올 길이 없다는 것. 원천은 `web/assets/favicon.svg` 하나이고, 이
+스크립트가 거기서 넷을 굽는다.
+
+쓰는 법:  bin/s9-mark-icons            — 넷을 다시 굽는다
+          bin/s9-mark-icons --check    — 굽지 않고 낡았는지만 본다 (시험이 쓴다)
+
+굽는 법은 실브라우저다 — 이 저장소에 래스터라이저를 들이지 않으려고, 이미 있는
+`s9 shot` 으로 SVG 를 그 크기의 화면에 띄워 찍는다.
+"""
+import functools
+import hashlib
+import http.server
+import os
+import socketserver
+import struct
+import subprocess
+import sys
+import tempfile
+import threading
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ASSETS = os.path.join(ROOT, "web", "assets")
+S9 = os.path.join(ROOT, "bin", "s9")
+SRC = os.path.join(ASSETS, "favicon.svg")
+BG = "#141518"                       # 아이콘의 바탕 — 렌즈의 테와 같은 색
+PNGS = (("apple-touch-icon.png", 180), ("icon-192.png", 192), ("icon-512.png", 512))
+ICO_SIZES = (16, 32, 48)
+STAMP = os.path.join(ASSETS, ".icons-from")   # 어느 얼굴에서 구웠는지
+
+
+def face_fingerprint():
+    with open(SRC, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:16]
+
+
+def baked_fingerprint():
+    try:
+        with open(STAMP, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def shoot(size, out, host):
+    """favicon.svg 를 size x size 로 띄워 찍는다.
+
+    **file:// 로는 못 찍는다** — 윈도우 쪽 Playwright 는 WSL 의 /tmp 를 못 읽는다.
+    그래서 굽는 동안만 작은 서버를 세우고 http:// 로 부른다.
+    """
+    r = subprocess.run(
+        [sys.executable, S9, "shot", "%s/icon-%d.html" % (host, size),
+         "--size", "%d,%d" % (size, size), "--wait", "400",
+         "--dpr", "1", "--out", out],
+        capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.exists(out):
+        raise SystemExit("찍지 못했다 (%d px): %s"
+                         % (size, r.stderr.strip() or r.stdout.strip()))
+
+
+def pages(dirname, sizes):
+    """크기마다 한 장씩 — 바탕은 렌즈의 테와 같은 색이다."""
+    with open(SRC, encoding="utf-8") as f:
+        svg = f.read()
+    for size in sizes:
+        html = ("<!doctype html><meta charset=\"utf-8\">"
+                "<style>html,body{margin:0;padding:0;background:%s;"
+                "overflow:hidden}svg{display:block;width:%dpx;height:%dpx}"
+                "</style>%s" % (BG, size, size, svg))
+        with open(os.path.join(dirname, "icon-%d.html" % size), "w",
+                  encoding="utf-8") as f:
+            f.write(html)
+
+
+def serve(dirname):
+    """굽는 동안만 서는 서버 — 주소를 돌려주고, 닫는 일은 부른 쪽이 한다."""
+    handler = functools.partial(QuietFiles, directory=dirname)
+    srv = socketserver.TCPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, "http://127.0.0.1:%d" % srv.server_address[1]
+
+
+class QuietFiles(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+
+def write_ico(pairs, out):
+    """PNG 여러 장을 한 .ico 로 묶는다 — 항목마다 PNG 를 그대로 싣는다."""
+    blobs = []
+    for n, p in pairs:
+        with open(p, "rb") as f:
+            blobs.append((n, f.read()))
+    head = struct.pack("<HHH", 0, 1, len(blobs))
+    off = 6 + 16 * len(blobs)
+    entries, body = b"", b""
+    for n, blob in blobs:
+        entries += struct.pack("<BBBBHHII", n % 256, n % 256, 0, 0, 1, 32,
+                               len(blob), off)
+        body += blob
+        off += len(blob)
+    with open(out, "wb") as f:
+        f.write(head + entries + body)
+
+
+def bake():
+    with tempfile.TemporaryDirectory() as tmp:
+        pages(tmp, [n for _, n in PNGS] + list(ICO_SIZES))
+        srv, host = serve(tmp)
+        try:
+            for name, size in PNGS:
+                shoot(size, os.path.join(ASSETS, name), host)
+                print("  %s  %dpx" % (name, size))
+            pairs = []
+            for n in ICO_SIZES:
+                p = os.path.join(tmp, "ico%d.png" % n)
+                shoot(n, p, host)
+                pairs.append((n, p))
+            write_ico(pairs, os.path.join(ASSETS, "favicon.ico"))
+            print("  favicon.ico  %s" % " ".join("%dpx" % n for n in ICO_SIZES))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+    with open(STAMP, "w", encoding="utf-8") as f:
+        f.write(face_fingerprint() + "\n")
+
+
+def main():
+    want = face_fingerprint()
+    if "--check" in sys.argv[1:]:
+        have = baked_fingerprint()
+        if have == want:
+            print("래스터 아이콘이 지금 얼굴에서 구운 것이다 (%s)" % want)
+            return 0
+        print("래스터 아이콘이 낡았다 — 구운 얼굴 %s, 지금 얼굴 %s\n"
+              "  bin/s9-mark-icons 로 다시 구워라" % (have or "(없음)", want))
+        return 1
+    print("favicon.svg (%s) 에서 굽는다" % want)
+    bake()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
