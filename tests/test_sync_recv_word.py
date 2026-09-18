@@ -131,24 +131,82 @@ class WhatStillCounts(unittest.TestCase):
             self.assertEqual(self.m.sync_poll(), "timeout")
         self.assertEqual(called, [], "못 받은 회차를 받았다고 올렸다")
 
-    def test_every_pull_uses_the_same_limit(self):
-        """자는 한 곳에만 산다 (REQ-20260918-002-2n7g).
+    def test_every_network_git_gets_the_same_limit(self):
+        """망을 타는 git 셋이 한 자를 쓴다 (REQ-20260918-002 · -003).
 
-        처음에는 폴만 20초로 올리고 전송 경로(commit→pull→push)와 리스 갱신용
-        당기기는 8초로 남겨 두었다. 2026-09-18 11:59~12:07 에 바로 그 자리가
-        네 번 연속 시간 초과로 물러났고(간격이 배로 늘어 480초까지) 갈래가
-        갈린 채 있었다 — 전송 경로는 rebase 까지 하니 폴보다 시간이 **더** 든다.
-        숫자를 자리마다 적으면 그 반쪽이 또 생긴다.
+        세 번 반쪽으로 고친 자리다: 폴만 → 당기기 셋만 → push. 그래서 **부르는
+        자리마다** 재지 않고, 실제로 git 에 넘어가는 자를 받아 본다.
         """
-        with open(os.path.join(HERE, "..", "bin", "s9.py"), encoding="utf-8") as f:
-            src = f.read()
-        self.assertNotIn("_sync_pull_cmd(timeout=8)", src,
-                         "당기기 한 자리에 8초가 다시 박혔다")
-        self.assertNotIn("def _sync_pull_cmd(timeout=8)", src,
-                         "당기기의 기본값이 다시 8초다")
-        self.assertIn("def _sync_pull_cmd(timeout=SYNC_PULL_TIMEOUT_SEC)", src)
-        self.assertEqual(src.count("SYNC_PULL_TIMEOUT_SEC = "), 1,
-                         "자를 정하는 자리가 둘 이상이다")
+        import inspect
+        sig = inspect.signature(self.m._sync_pull_cmd)
+        self.assertEqual(sig.parameters["timeout"].default,
+                         self.m.SYNC_NET_TIMEOUT_SEC,
+                         "당기기의 기본 자가 망의 자와 다르다")
+
+        seen = []
+
+        def rec(*argv, timeout=6):
+            seen.append((argv[0] if argv else "", timeout))
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(self.m, "_sync_git", rec):
+            self.m._sync_pull_cmd()
+        got = {name: t for name, t in seen}
+        self.assertEqual(got.get("fetch"), self.m.SYNC_NET_TIMEOUT_SEC,
+                         f"fetch 가 다른 자를 받는다: {seen}")
+        self.assertEqual(got.get("rebase"), self.m.SYNC_NET_TIMEOUT_SEC,
+                         f"위쪽으로 rebase 가 다른 자를 받는다: {seen}")
+
+    def test_a_whole_transport_round_hands_both_the_same_limit(self):
+        """당기기만 늘리면 회차는 여전히 통째로 물러난다 (REQ-20260918-003-2n7g).
+
+        실측 2026-09-18: pull 이 12.3~17.0초로 성공하게 된 그 회차가, 8초로
+        남아 있던 push(잰 값 5.0~5.8초) 때문에 시간 초과로 물러났다. 그래서
+        한 자리씩 보지 않고 **회차를 실제로 돌려** 넘어가는 자를 받아 본다.
+        """
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix="s9netlimit-")
+        try:
+            os.makedirs(os.path.join(tmp, "state"), exist_ok=True)
+            old = os.environ.get("S9_ROOT")
+            os.environ["S9_ROOT"] = tmp
+            try:
+                m = _load()          # 임시 뿌리로 다시 읽는다 (잠금·큐가 거기 선다)
+            finally:
+                if old is None:
+                    os.environ.pop("S9_ROOT", None)
+                else:
+                    os.environ["S9_ROOT"] = old
+
+            seen = []
+
+            def rec(*argv, timeout=6):
+                seen.append((argv[0] if argv else "", timeout))
+                return mock.Mock(returncode=0, stdout="", stderr="")
+
+            with mock.patch.object(m, "sync_mode", lambda: "remote"), \
+                 mock.patch.object(m, "_sync_git", rec), \
+                 mock.patch.object(m, "_sync_pull_cmd",
+                                   lambda timeout=m.SYNC_NET_TIMEOUT_SEC:
+                                   rec("pull", timeout=timeout)), \
+                 mock.patch.object(m, "_sync_event", lambda *a, **k: None), \
+                 mock.patch.object(m, "_sync_log", lambda *a, **k: None), \
+                 mock.patch.object(m, "_sync_pull_stamp", lambda: None):
+                self.assertEqual(m.sync_run(reason="probe", transport=True), "ok")
+            got = [x for x in seen if x[0] in ("pull", "push")]
+            self.assertEqual(got, [("pull", m.SYNC_NET_TIMEOUT_SEC),
+                                   ("push", m.SYNC_NET_TIMEOUT_SEC)],
+                             f"회차가 당기기와 밀기에 같은 자를 주지 않는다: {seen}")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_local_git_keeps_its_own_limit(self):
+        """지역 명령까지 늘리지 않는다 — 늘리는 것과 남을 세워 두는 것은 맞바꿈이다."""
+        import inspect
+        sig = inspect.signature(self.m._sync_git)
+        self.assertEqual(sig.parameters["timeout"].default, 6)
+        self.assertLess(6, self.m.SYNC_NET_TIMEOUT_SEC)
 
     def test_the_limit_covers_what_we_measured(self):
         """⑥ 잰 값(최대 7.34초)을 덮는 자라야 이 사고가 안 난다.
@@ -156,10 +214,10 @@ class WhatStillCounts(unittest.TestCase):
         자를 8초로 되돌리면 실측의 최댓값이 상한에서 0.7초 안에 들어와,
         다섯 중 하나가 다시 시간 초과가 된다.
         """
-        self.assertGreaterEqual(self.m.SYNC_PULL_TIMEOUT_SEC, 15)
+        self.assertGreaterEqual(self.m.SYNC_NET_TIMEOUT_SEC, 15)
         # 끝없이 늘리는 것도 답이 아니다 — 폴은 동기화 잠금을 쥐고 돌고,
         # 그동안 `s9 commit` 이 기다린다.
-        self.assertLessEqual(self.m.SYNC_PULL_TIMEOUT_SEC, 60)
+        self.assertLessEqual(self.m.SYNC_NET_TIMEOUT_SEC, 60)
 
 
 if __name__ == "__main__":

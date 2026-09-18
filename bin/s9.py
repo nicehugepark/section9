@@ -13632,7 +13632,7 @@ def _sync_git(*argv, timeout=6):
                           encoding="utf-8", errors="replace", timeout=timeout)
 
 
-# 당기기가 기다려 주는 시간 (REQ-20260917-001-2n7g · REQ-20260918-002-2n7g).
+# **망을 타는 git 이 기다려 주는 시간** (REQ-20260917-001 · -20260918-002 · -003).
 # 8초였는데 이 저장소의 fetch 가 그 자를 넘나든다 — 맥미니 실측 2026-09-17,
 # `git fetch origin` 다섯 번: 7.34 · 3.23 · 2.00 · 4.81 · 5.30 초. 당기기는 그
 # fetch 위에 앞으로 감기(폴) 또는 rebase(전송 경로)까지 얹으므로, fetch 만으로
@@ -13641,15 +13641,20 @@ def _sync_git(*argv, timeout=6):
 # 동기화 잠금을 쥐고 도는 동안 `s9 commit` 이 기다리기 때문이다 — 자를 늘리는
 # 것과 남을 세워 두는 것을 맞바꾸는 자리라, 실측을 덮는 선에서 멈춘다.
 #
-# **값은 여기 하나다** (REQ-20260918-002-2n7g): 처음에는 폴만 고치고 전송 경로와
-# 리스 갱신용 당기기는 8초로 남겨 두었는데, 2026-09-18 11:59~12:07 에 바로 그
-# 자리가 네 번 연속 시간 초과로 물러나(간격이 배로 늘어 480초까지) 갈래가 갈린
-# 채 있었다. 전송 경로는 rebase 까지 하니 폴보다 시간이 **더** 든다 — 폴만
-# 늘린 것은 반쪽이었다. 숫자를 자리마다 적으면 그 반쪽이 또 생긴다.
-SYNC_PULL_TIMEOUT_SEC = 20
+# **값은 여기 하나이고, 망을 타는 것은 전부 이 값을 쓴다.** 이 한 줄을 세우기까지
+# 같은 결함을 세 번 반쪽으로 고쳤다: 폴만(001) → 당기기 셋만(002) → push(003).
+# 자리마다 숫자가 적혀 있어 한 자리씩 쫓아간 탓이다. 2026-09-18 11:59~12:21 의
+# 실측이 그 값을 말한다 — 당기기를 20초로 늘려 pull 이 12.3·12.7·17.0초로
+# **성공**하게 된 바로 그 회차가, 8초로 남아 있던 push(잰 값 5.0~5.8초) 때문에
+# 여전히 통째로 물러났다(「다시 붙이기 실패(timeout) — 480s」).
+#
+# 망을 타는 git 은 셋뿐이다 — fetch · 위쪽으로 rebase · push. 그 밖(rev-parse ·
+# update-ref · symbolic-ref · 되돌리기 · 보관함 되살리기)은 지역 명령이라
+# `_sync_git` 의 기본 6초가 맞다. 망을 타는 자리에 숫자를 적지 마라.
+SYNC_NET_TIMEOUT_SEC = 20
 
 
-def _sync_pull_cmd(timeout=SYNC_PULL_TIMEOUT_SEC):
+def _sync_pull_cmd(timeout=SYNC_NET_TIMEOUT_SEC):
     """당겨서 얹는다 — `pull --rebase` 가 아니라 **fetch 뒤 원격 추적 가지에 rebase**.
 
     pull 은 FETCH_HEAD 를 읽는다. 같은 저장소에서 fetch 둘이 겹치면(대시보드의
@@ -14517,7 +14522,7 @@ def sync_run(reason="", transport=True):
             # (REQ-20260902-022). 네트워크·인증 실패만 백오프한다.
             for attempt in range(SYNC_PUSH_RETRIES + 1):
                 t0 = _time.time()
-                ps = _sync_git("push", "-q", timeout=8)
+                ps = _sync_git("push", "-q", timeout=SYNC_NET_TIMEOUT_SEC)
                 kind = "" if ps.returncode == 0 else _sync_fail_kind(ps.stderr)
                 _sync_event(reason, "push", t0, ps, attempt=attempt, kind=kind)
                 if ps.returncode == 0:
@@ -14636,7 +14641,7 @@ def _sync_poll_record(result, now=None, ms=0, path=None):
     return rec
 
 
-def sync_poll(timeout=SYNC_PULL_TIMEOUT_SEC):
+def sync_poll(timeout=SYNC_NET_TIMEOUT_SEC):
     """수신 — fetch + fast-forward 만 (REQ-20260902-023). 쓰지 않는 머신도 남의
     변경을 본다. 로컬 커밋이 앞서 있어 ff 가 안 되면 조용히 건너뛴다(전송 루프의
     rebase 가 푼다). 화면의 pull 손잡이와 **같은 git 명령**을 쓴다.
@@ -14755,7 +14760,7 @@ def _sync_reattach_clear(path=None):
         pass
 
 
-def _sync_poll_once(timeout=SYNC_PULL_TIMEOUT_SEC):
+def _sync_poll_once(timeout=SYNC_NET_TIMEOUT_SEC):
     """폴 한 번의 알맹이 — 기록은 sync_poll 이 한다."""
     import time as _time
     if sync_mode() != "remote":
