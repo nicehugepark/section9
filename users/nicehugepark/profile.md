@@ -308,3 +308,4 @@ display: nicehugepark
 - 2026-09-15T20:44:45+09:00 config trash_keep_days=(삭제) (by nicehugepark)
 - 2026-09-15T20:50:43+09:00 config trash_keep_days=10 (by nicehugepark)
 - 2026-09-15T20:51:18+09:00 config trash_keep_days=(삭제) (by nicehugepark)
+- 2026-09-18T13:57:45+09:00 config auto_resume_global_per_hour=10 (by nicehugepark via dashboard)
