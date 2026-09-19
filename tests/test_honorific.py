@@ -126,6 +126,64 @@ class Honorific(unittest.TestCase):
         r = subprocess.run([S9, "speech", "pending"], env=env, capture_output=True, text=True)
         self.assertEqual(r.stdout.strip(), "")
 
+    # ── 우선순위: 개인 설정이 이긴다 (규약 「말과 태도」 머리말 · REQ-20260919-005-62x6)
+    def test_t13_personal_setting_wins(self):
+        """T13. 그 사용자가 pref_* 로 말투를 달리 말했으면 경고가 서지 않는다."""
+        env = {**self.env, "S9_USER": "banmal"}
+        subprocess.run([S9, "user", "add", "banmal"], env=env, capture_output=True, text=True)
+        r = subprocess.run([S9, "speech", "check"], input="검사를 세웠다",
+                           env=env, capture_output=True, text=True)
+        self.assertIn("존댓말", r.stderr, "설정 전에는 규약의 기본값이 선다")
+        subprocess.run([S9, "user", "config", "banmal", "pref_말투", "편하게 반말로 말해라"],
+                       env=env, capture_output=True, text=True)
+        r = subprocess.run([S9, "speech", "check"], input="검사를 세웠다",
+                           env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("존댓말", r.stderr, "개인 설정이 이겨야 한다")
+        r = subprocess.run([S9, "speech", "check", "--json"], input="검사를 세웠다",
+                           env=env, capture_output=True, text=True)
+        self.assertEqual(json.loads(r.stdout), [])
+
+    def test_t14_clearing_the_setting_restores_the_default(self):
+        """T14. 개인 설정을 지우면(빈 값) 규약의 기본값으로 돌아온다."""
+        env = {**self.env, "S9_USER": "banmal2"}
+        subprocess.run([S9, "user", "add", "banmal2"], env=env, capture_output=True, text=True)
+        subprocess.run([S9, "user", "config", "banmal2", "pref_말투", "반말로 해라"],
+                       env=env, capture_output=True, text=True)
+        r = subprocess.run([S9, "speech", "check"], input="검사를 세웠다",
+                           env=env, capture_output=True, text=True)
+        self.assertNotIn("존댓말", r.stderr)
+        subprocess.run([S9, "user", "config", "banmal2", "pref_말투", ""],
+                       env=env, capture_output=True, text=True)
+        r = subprocess.run([S9, "speech", "check"], input="검사를 세웠다",
+                           env=env, capture_output=True, text=True)
+        self.assertIn("존댓말", r.stderr, "지웠으면 기본값으로 돌아와야 한다")
+
+    def test_t15_unrelated_or_agreeing_settings_do_not_stand_it_down(self):
+        """T15. 말투와 무관한 설정·존댓말을 거드는 설정은 검사를 눕히지 않는다."""
+        env = {**self.env, "S9_USER": "polite"}
+        subprocess.run([S9, "user", "add", "polite"], env=env, capture_output=True, text=True)
+        for key, val in (("pref_보고", "판정할 것을 맨 앞에 적어라"),
+                         ("pref_말투", "존댓말로 쓰고 반말은 쓰지 마라")):
+            subprocess.run([S9, "user", "config", "polite", key, val],
+                           env=env, capture_output=True, text=True)
+        r = subprocess.run([S9, "speech", "check"], input="검사를 세웠다",
+                           env=env, capture_output=True, text=True)
+        self.assertIn("존댓말", r.stderr)
+
+    def test_t16_note_follows_the_same_order(self):
+        """T16. 노트의 경고도 같은 순서를 따른다 — 검사가 아니라 그 사람이 정한다."""
+        env = {**self.env, "S9_USER": "banmal3"}
+        subprocess.run([S9, "user", "add", "banmal3"], env=env, capture_output=True, text=True)
+        subprocess.run([S9, "user", "config", "banmal3", "pref_말투", "반말이 편하다"],
+                       env=env, capture_output=True, text=True)
+        r = subprocess.run([S9, "new", "request", "--title", "t", "--summary", "s", "--size", "S",
+                            "--goal", "g", "--body", "b"], env=env, capture_output=True, text=True)
+        doc = [t for t in r.stdout.split() if t.startswith("REQ-")][0]
+        r = subprocess.run([S9, "note", doc, "검사를 세웠다"], env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("존댓말", r.stderr)
+
     def test_t12_hooks_carry_it_to_the_next_turn(self):
         """T12. 응답 훅이 기록하고 프롬프트 훅이 되비춘다 — 훅을 실제로 이어 돌려 본다."""
         env = {**self.env, "S9_SESSION": "speechss", "S9_PORT": "1"}
