@@ -645,7 +645,7 @@ class Visible(Repo):
         # 제목은 한 절 — 갈래 문장이 섞여 들어오지 않는다.
         self.assertEqual(res["message"], self.m.WAKE_SPAWNED_KO, res)
         self.assertNotIn("note", res,
-                         "말할 것이 없는 갈래(main)가 부가 칸을 실었다 — "
+                         "말할 것이 없는 갈래(main)가 부가 칸을 실었습니다 — "
                          "빈 칸 하나가 창을 세운다")
         for word in ("본 저장소", "worktree"):
             self.assertNotIn(word, res["message"],

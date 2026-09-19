@@ -147,11 +147,11 @@ class NoteIntegrationTest(unittest.TestCase):
         self.assertEqual(c[0]["item"], "N1")
 
     def test_note_without_item_uses_first_line(self):
-        self.s9run("note", self.doc, "첫 줄이 항목이 된다\n둘째 줄", "--agent",
+        self.s9run("note", self.doc, "첫 줄이 항목이 됩니다\n둘째 줄", "--agent",
                  "sub:qa:cccc3333")
         c = self.doc_meta().get("contributions")
         self.assertTrue(c)
-        self.assertIn("첫 줄이 항목이 된다", c[0]["item"])
+        self.assertIn("첫 줄이 항목이 됩니다", c[0]["item"])
 
     def test_note_without_agent_records_nothing(self):
         """actor 없는 노트는 기여로 세지 않는다 — 사람이 남긴 메모까지

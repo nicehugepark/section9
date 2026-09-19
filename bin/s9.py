@@ -22317,10 +22317,13 @@ def speech_warn_path(session=""):
 
 # 사람이 친 글자를 그대로 싣는 노트 라벨 — 말투 검사가 서지 않는다
 # (REQ-20260919-012-62x6). 사람의 말은 거부 대상이 아니다.
-# `commit` 은 commit 메시지를 그대로 나르는 자리다 — 그 글은 에이전트가 읽는
-# 지시문이라 명령형이 맞고(규약 2조 1의 경계), 여기서 고칠 수도 없다.
-SPEECH_HUMAN_LABELS = frozenset({"ask", "addendum", "answer", "question",
-                                 "commit"})
+# 말투 가드가 서지 않는 라벨 — 그 자리의 글은 **여기서 지어진 것이 아니다**.
+#   ask·addendum·answer·question  사람이 친 글자
+#   commit                        commit 메시지를 그대로 나른다 (명령형이 맞다)
+#   agent-answer                  빈손 표식이 제품이 정한 글자다
+#                                 (AGENT_ANSWER_MISS_MARK — 화면이 그 글자로 갈린다)
+SPEECH_SKIP_LABELS = frozenset({"ask", "addendum", "answer", "question",
+                                "commit", "agent-answer"})
 
 
 def warn_plain_speech(text, where="", user=""):
@@ -22418,7 +22421,7 @@ def cmd_note(args):
     # 말투는 다음 턴의 되비춤이 맡는다(`s9 speech pending`).
     if not getattr(args, "force", False) \
             and not getattr(args, "capture", False) \
-            and (args.label or "") not in SPEECH_HUMAN_LABELS \
+            and (args.label or "") not in SPEECH_SKIP_LABELS \
             and not getattr(args, "from_pending", False) \
             and not speech_pref_override(args.user):
         _plain = plain_speech_in(text, limit=3)

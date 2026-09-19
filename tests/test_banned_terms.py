@@ -38,7 +38,7 @@ class BannedTerms(unittest.TestCase):
         r = subprocess.run([S9, "new", "request", "--title", "t", "--summary", "s", "--size", "S",
                             "--goal", "g", "--body", "b"], env=self.env, capture_output=True, text=True)
         doc = [t for t in r.stdout.split() if t.startswith("REQ-")][0]
-        r = subprocess.run([S9, "note", doc, "작업 나무가 더럽다 — 배경에서 돌린다"], env=self.env,
+        r = subprocess.run([S9, "note", doc, "작업 나무가 더럽습니다 — 배경에서 돌립니다"], env=self.env,
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("note appended", r.stdout)

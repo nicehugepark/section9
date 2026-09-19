@@ -136,12 +136,12 @@ class ReleasedHand(unittest.TestCase):
     # ------------------------------------------------ N. 도장이 남는다
     def test_release_leaves_a_mark_on_the_document(self):
         doc = self.started("놓을 것")
-        self.cli(SID, "claim", doc, "--release", "--reason", "여기선 못 고친다")
+        self.cli(SID, "claim", doc, "--release", "--reason", "여기선 못 고칩니다")
         meta = self.mod.read_doc(self.doc_path(doc))[0]
         mark = self.mod.release_mark(meta)
         self.assertIsNotNone(mark, "놓았는데 문서에 아무것도 안 남았다")
         self.assertEqual(mark["session"], SID)
-        self.assertIn("못 고친다", mark["reason"])
+        self.assertIn("못 고칩니다", mark["reason"])
         # 카드가 문서를 다시 열지 않고 읽는다
         self.assertTrue(self.row(doc).get("released"))
 
@@ -169,7 +169,7 @@ class ReleasedHand(unittest.TestCase):
         놓으면서 남긴 노트가 문서의 마지막 손길이 되게 만든다: 종전 시계
         (마지막 손길로부터 15분)로 재면 이 요청은 뜨지 않는다."""
         doc = self.started("놓인 채 남은 것")
-        self.cli(SID, "note", doc, "여기선 못 고친다", "--label", "blocked")
+        self.cli(SID, "note", doc, "여기선 못 고칩니다", "--label", "blocked")
         self.cli(SID, "claim", doc, "--release", "--reason", "자리를 옮겨야 한다")
         with self.subTest("w1_within_the_grace_it_holds"):
             # 방금 놓았다 — 살아 있는 세션이 먼저 집을 30초는 그대로다.
@@ -257,7 +257,7 @@ class ReleasedHand(unittest.TestCase):
         with open(bp, "w", encoding="utf-8") as f:
             json.dump(b, f, ensure_ascii=False)
         # 남이 문서를 고친다 — 이것으로는 안 살아난다
-        self.cli("77776666", "note", doc, "남이 쓴다", "--label", "response")
+        self.cli("77776666", "note", doc, "남이 씁니다", "--label", "response")
         with open(bp, encoding="utf-8") as f:
             b = json.load(f)
         self.assertTrue(m.claim_dead(b, doc))
@@ -265,7 +265,7 @@ class ReleasedHand(unittest.TestCase):
         # 워처의 물음은 다르다 — 두 번째 손을 붙이지 않으려 넓게 본다
         self.assertIn(doc, m.binding_req_ids(b, stale_ok=True))
         # 제 손이 닿으면 되살아난다
-        self.cli(SID, "note", doc, "내가 이어서 한다", "--label", "response")
+        self.cli(SID, "note", doc, "제가 이어서 합니다", "--label", "response")
         with open(bp, encoding="utf-8") as f:
             b = json.load(f)
         self.assertFalse(m.claim_dead(b, doc))

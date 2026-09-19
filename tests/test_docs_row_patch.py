@@ -266,7 +266,7 @@ class TheClientMarkRidesThePerfLog(unittest.TestCase):
         self.assertEqual([r["ms"] for r in cli], [412.5, 9.0, 7.0],
                          "범위 밖 ms 나 수가 아닌 ms 가 그대로 들어갔다")
         self.assertNotIn("<", cli[1]["name"], "이름이 온 그대로 적힌다")
-        self.assertNotIn("note", cli[2], "모르는 딸림값을 그대로 싣는다")
+        self.assertNotIn("note", cli[2], "모르는 딸림값을 그대로 싣습니다")
 
 
 if __name__ == "__main__":

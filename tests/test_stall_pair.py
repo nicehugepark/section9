@@ -412,6 +412,9 @@ class StallRendersTheSame(unittest.TestCase):
             g("deedBeltHTML"), g("holdLockHTML"), g("stallHTML"),
             g("tokensLineHTML"),   # REQ-20260907-009 — cardHTML 이 부른다
             g("xrefRowHTML"),      # REQ-20260909-064 — 제목 아래의 밖의 서비스 참조 줄, 없으면 render 가 멎는다
+            # 자식 칩 (REQ-20260919-010-62x6) — cardHTML 이 부른다. 목록에서
+            # 빠지면 node 가 `kidsHTML is not defined` 로 죽고 이 반이 함께 진다.
+            g("kidsOf"), g("kidsHTML"),
             g("cardHTML"),
             # 리스는 벽시계를 본다 — `@-N`(N초 전)을 렌더 직전에 실제 시각으로
             # 바꾼다. 고정 문자열로 적으면 내일 이 시험이 다른 갈래를 본다.

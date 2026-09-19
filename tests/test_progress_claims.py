@@ -128,11 +128,11 @@ class ProgressWriteIsAClaim(unittest.TestCase):
         mode = os.stat(ro).st_mode
         os.chmod(ro, 0o500)            # 바인딩을 못 쓰게 만든다
         try:
-            self.cli("note", self.rid, "그래도 남아야 한다", sess="newsess1")
+            self.cli("note", self.rid, "그래도 남아야 합니다", sess="newsess1")
         finally:
             os.chmod(ro, mode)
         p = self.cli("show", self.rid)
-        self.assertIn("그래도 남아야 한다", p, "계기가 기록을 막았다")
+        self.assertIn("그래도 남아야 합니다", p, "계기가 기록을 막았다")
 
     # R1. 전이 경로는 그대로다 — 들어가면 등록, 떠나면 제거.
     def test_r1_transition_path_unchanged(self):

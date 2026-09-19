@@ -2075,21 +2075,25 @@ function xrefRowHTML(r){
 
    자식이 있는 요청은 그 수를 말한다. 새 시각 언어를 들이지 않고 TDD 칩과 같은
    모양·같은 자리를 쓴다 — 같은 것을 세는 칩이 둘이면 눈이 한 번에 읽는다. */
-let _kidsIdx = null, _kidsFor = null;
 function kidsOf(id){
-  if (_kidsFor !== catalog){          // 카탈로그가 갈리면 다시 센다
-    _kidsIdx = new Map();
-    for (const row of catalog){
+  /* 셈은 이 함수가 제 안에 들고 있는다 — 조각 밖의 `let` 을 쓰면 카드를 node 로
+     떼어 재는 시험(test_stash_pair)이 그 줄을 못 싣고 죽는다. 그리고 카탈로그가
+     아직 없는 자리(그 시험의 조각)에서는 셀 것이 없다: 없으면 없다고 답한다. */
+  const cat = (typeof catalog === "undefined" || !catalog) ? [] : catalog;
+  if (kidsOf._for !== cat){          // 카탈로그가 갈리면 다시 센다
+    const idx = new Map();
+    for (const row of cat){
       const p = row.parent;
       if (!p || row.type !== "request") continue;
-      const c = _kidsIdx.get(p) || {done: 0, total: 0};
+      const c = idx.get(p) || {done: 0, total: 0};
       c.total++;
       if (TERMINAL.has(row.status)) c.done++;
-      _kidsIdx.set(p, c);
+      idx.set(p, c);
     }
-    _kidsFor = catalog;
+    kidsOf._idx = idx;
+    kidsOf._for = cat;
   }
-  return _kidsIdx.get(id) || null;
+  return kidsOf._idx.get(id) || null;
 }
 function kidsHTML(r){
   if (r.type !== "request") return "";
@@ -2907,8 +2911,8 @@ function renderBoard(rows){
     const b = catFind(dbk.top[0]);
     if (b) html += `<div class="bneck"><span class="bcap">병목</span> `
       + `${dlink(b.id, esc(shortId(b.id)))} `
-      + `<b>${esc(b.title)}</b> 이(가) ${dbk.top[1]}건을 붙잡고 있다 · `
-      + `전체 ${dbk.groups.length}건이 선행을 기다린다`
+      + `<b>${esc(b.title)}</b> 이(가) ${dbk.top[1]}건을 붙잡고 있습니다 · `
+      + `전체 ${dbk.groups.length}건이 선행을 기다립니다`
       + `<button class="bgo" data-goto="graph">선행 대기 현황 →</button></div>`;
   }
   // 열은 판 안쪽의 .cols 가 세운다 — 판 자체는 스크롤 상자다 (board.css, REQ-20260910-002)

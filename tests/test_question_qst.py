@@ -109,7 +109,7 @@ class Cli(unittest.TestCase):
         self.assertFalse(self.row(qid)["answered"])
         self.assertIn(qid, self.s9run("ls", "--type", "question",
                                       "--unanswered").stdout)
-        self.s9run("note", qid, "30초마다 스캔한다",
+        self.s9run("note", qid, "30초마다 스캔합니다",
                    "--label", "answer", "--user", "tester")
         self.assertTrue(self.row(qid)["answered"])
         self.assertNotIn(qid, self.s9run("ls", "--type", "question",

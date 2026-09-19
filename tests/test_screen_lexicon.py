@@ -25,19 +25,18 @@
 
 실행: python3 tests/ screen_lexicon
 """
-import ast
-import glob
 import os
 import re
+import sys
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WEB = os.path.join(HERE, "..", "web")
-S9 = os.path.join(HERE, "..", "bin", "s9")
-S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
-# 커밋 검사의 경고도 사람이 읽는 글이다 (REQ-20260919-007-62x6) — 화면이 아니라
-# 터미널에 뜨지만, 읽고 다음 행동을 정하는 것은 사람이다. 파이썬이라 같은 눈으로 본다.
-S9_GUARD = os.path.join(HERE, "..", "bin", "s9-guard")
+sys.path.insert(0, HERE)
+# 훑는 눈은 한 벌이고, 이제 그 한 벌은 모듈 하나다 (REQ-20260919-013-62x6) —
+# 말투를 재는 test_screen_speech 가 같은 자리를 읽어야 해서 옮겼다. 읽는 자리와
+# 무엇을 걷어내는지는 screensurf.py 머리에 적혀 있다.
+from screensurf import (DIAG_FILES, S9_NOT_SCREEN, WEB,   # noqa: F401,E402
+                        _html_text, _py_strings, _strings, surfaces)
 
 # 낱말 → 왜 반려됐고 무엇으로 바뀌었나. 메시지가 곧 다음 사람이 읽을 판정문이다.
 BANNED = {
@@ -94,9 +93,6 @@ BANNED_WEB = {
     "브랜치": "git 이 지은 이름의 음차 — `branch` 로",
     "리모트": "git 이 지은 이름의 음차 — `remote` 로",
 }
-# 낱말 하나가 두 표면에 살면 안 되는 것은 아니다 — 개발자만 보는 진단 출력은
-# 이 검사 밖이다(진단은 코드 말이 오히려 정확하다). 파일 단위로 뺀다.
-DIAG_FILES = {"boot.js", "graph.js", "diag.js"}
 # 대시보드가 아닌 표면. 여기 실린 이름은 BANNED_WEB 의 잣대를 받지 않는다.
 NOT_THE_DASHBOARD = {"bin/s9", "bin/s9-guard"}
 
@@ -136,109 +132,12 @@ KEPT_AUTO = {
 }
 
 
-def _strings(src):
-    """주석을 걷고 **따옴표 안**만 남긴다 — 화면에 나가는 것은 그것뿐이다.
-
-    블록/줄 주석을 먼저 지운다. 남은 코드에서 홑·겹따옴표와 백틱 문자열을
-    모아 한 덩어리로 잇는다(어느 줄에 있었는지는 아래에서 다시 찾는다)."""
-    src = re.sub(r"/\*[\s\S]*?\*/", " ", src)
-    src = re.sub(r"(?m)^\s*//.*$", " ", src)
-    src = re.sub(r"(?m)\s//[^\"'`]*$", " ", src)
-    out = []
-    for m in re.finditer(r'"((?:[^"\\\n]|\\.)*)"'
-                         r"|'((?:[^'\\\n]|\\.)*)'"
-                         r"|`((?:[^`\\]|\\.)*)`", src):
-        out.append(m.group(1) or m.group(2) or m.group(3) or "")
-    return "\n".join(out)
-
-
-def _html_text(src):
-    """HTML 은 태그 밖의 글자와 title·placeholder 같은 사람 읽는 속성만 본다."""
-    src = re.sub(r"<!--[\s\S]*?-->", " ", src)
-    src = re.sub(r"<script[\s\S]*?</script>", " ", src, flags=re.I)
-    keep = " ".join(re.findall(
-        r'(?:title|placeholder|aria-label|alt|value)="([^"]*)"', src))
-    return re.sub(r"<[^>]*>", " ", src) + "\n" + keep
-
-
-# `bin/s9` 안에서 **사람이 읽지 않는** 문자열. 파일 단위로 뺄 수 없어(한
-# 파일에 서버 문장과 기계 글자가 함께 산다) 자리마다 근거를 적어 뺀다 —
-# KEPT_AUTO 와 같은 방식이다. 오탐 하나가 목록째 지워지게 만들기 때문에
-# 넓힐 때 이 자리를 먼저 채운다.
-S9_NOT_SCREEN = {
-    "자동 ?재작업|무인|워커|스폰":
-        "분류기의 정규식이다 — 옛 낱말로 적힌 지난 요청을 계속 맞혀야 하므로"
-        " 폐기어가 **패턴 안에 살아 있어야** 한다 (bin/s9 topic 분류)",
-}
-
-
-def _py_strings(src):
-    """`bin/s9` 는 파이썬이라 **AST 로** 문자열만 뽑는다.
-
-    정규식으로 따옴표를 세면 주석 안의 인용을 문자열로 오인한다 — 이 저장소의
-    주석에는 반려어가 근거로 인용돼 있고(위 BANNED 주석이 그 예다), 그것을
-    걸면 다음 사람이 근거를 지우게 된다. docstring 도 뺀다: 그것은 다음
-    개발자에게 하는 말이지 사용자에게 하는 말이 아니다.
-
-    **용어를 다루는 표 자신도 뺀다** (REQ-20260919-007-62x6): `BANNED_TERMS` 는
-    반려된 말을 왼쪽에 적어 둬야 성립하는 자료라, 그것을 화면 문장으로 세면 표가
-    제 검사에 걸린다. 종전에는 글자를 `"무인 " + "작업자"` 로 나눠 피했는데, 그
-    수법은 읽기 어렵고 나눈 조각(「작업자」)이 다음 검사에 다시 걸린다 — 표를
-    통째로 빼는 것이 자리에 맞는 답이다. 규칙은 **이름**이다: 대입문의 이름이
-    `BANNED_` 로 시작하면 그 아래 글자는 화면 문장이 아니다."""
-    tree = ast.parse(src)
-    not_screen = set()
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Assign)
-                and any(isinstance(t, ast.Name) and t.id.startswith("BANNED_")
-                        for t in node.targets)):
-            for sub in ast.walk(node.value):
-                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                    not_screen.add(id(sub))
-        body = getattr(node, "body", None)
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
-                             ast.ClassDef)) and body:
-            first = body[0]
-            if (isinstance(first, ast.Expr)
-                    and isinstance(first.value, ast.Constant)
-                    and isinstance(first.value.value, str)):
-                not_screen.add(id(first.value))
-    out = []
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
-                and id(node) not in not_screen):
-            text = node.value
-            for skip in S9_NOT_SCREEN:
-                if skip in text:
-                    text = ""
-                    break
-            if text:
-                out.append(text)
-    return "\n".join(out)
-
-
 def _surfaces():
-    """표시 이름 → 사람이 읽는 글자만. **훑는 눈은 한 벌이다** — 검사가
-    둘로 늘 때 읽는 자리까지 복사하면 한 벌만 고쳐진다.
+    """훑는 눈 한 벌 — screensurf.surfaces() 그대로다.
 
-    `bin/s9` 도 화면이다 (REQ-20260902-005). 「서버의 문장이 곧 팝업이다」 —
-    스폰 거부 사유·중단 결과는 서버가 지어 화면이 그대로 띄운다. 여기를 안
-    훑던 동안 폐기어가 서버 문장으로 계속 샜다."""
-    out = {}
-    for p in sorted(glob.glob(os.path.join(WEB, "app", "*.js"))):
-        name = os.path.basename(p)
-        if name in DIAG_FILES:
-            continue
-        with open(p, encoding="utf-8") as f:
-            out["app/" + name] = _strings(f.read())
-    for p in sorted(glob.glob(os.path.join(WEB, "*.html"))):
-        with open(p, encoding="utf-8") as f:
-            out[os.path.basename(p)] = _html_text(f.read())
-    with open(S9_SRC, encoding="utf-8") as f:
-        out["bin/s9"] = _py_strings(f.read())
-    with open(S9_GUARD, encoding="utf-8") as f:
-        out["bin/s9-guard"] = _py_strings(f.read())
-    return out
+    이 이름을 남겨 두는 까닭은 아래 검사 넷이 저마다 이 이름을 부르기 때문이다.
+    읽는 자리와 무엇을 걷어내는지는 screensurf.py 머리에 적혀 있다."""
+    return surfaces()
 
 
 class ScreenLexicon(unittest.TestCase):

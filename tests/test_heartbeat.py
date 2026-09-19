@@ -135,7 +135,7 @@ class TheStamp(Base):
         shutil.rmtree(self.hbdir, ignore_errors=True)
         with open(self.hbdir, "w") as f:    # 디렉토리 자리를 파일로 막는다
             f.write("x")
-        r = self.cli("note", rid, "그래도 된다")   # expect=0 이 곧 검증(C9)
+        r = self.cli("note", rid, "그래도 됩니다")   # expect=0 이 곧 검증(C9)
         self.assertEqual(r.returncode, 0)
 
 
