@@ -3,6 +3,11 @@
 .tdd{font-family:var(--mono);font-size:10px;color:var(--c-inprogress);border:1px solid currentColor;
   padding:0 4px;border-radius:2px}
 .tdd.full{color:var(--c-done)}
+/* 자식 칩 — 일이 자식에 있는 부모 요청이 제 몫을 말한다 (REQ-20260919-010-62x6).
+   TDD 칩과 같은 모양·같은 자리다: 새 시각 언어를 들이지 않는다. */
+.kids{font-family:var(--mono);font-size:10px;color:var(--c-inprogress);
+  border:1px solid currentColor;padding:0 4px;border-radius:2px}
+.kids.full{color:var(--c-done)}
 /* ---- 점의 어휘 (REQ-20260831-005 designer 개정) --------------------------
 
    사용자: "지금 열심히 동작중인데 카드에는 멈춤으로 나온다. 워커 입장에서는

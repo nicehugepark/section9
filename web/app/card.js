@@ -2054,6 +2054,43 @@ function xrefRowHTML(r){
   return `<div class="xref">${bits.join(`<span class="xsep">·</span>`)}</div>`;
 }
 
+/* **부모 요청은 제 일이 없다 — 일은 자식에 있다** (REQ-20260919-010-62x6,
+   주인 물음 2026-09-19 11:31: 「왜 004만 돌아? 002는 뭐해?」).
+
+   그때 진행 중 칸에 둘이 나란히 서 있었다 — 부모 하나와 자식 하나. 카드만 보면
+   둘 다 도는 것으로 읽히는데, 부모는 처음부터 제 손으로 할 일이 없었고 자식마저
+   그 사이 클레임을 놓아 실제로는 아무것도 돌고 있지 않았다.
+
+   자식이 있는 요청은 그 수를 말한다. 새 시각 언어를 들이지 않고 TDD 칩과 같은
+   모양·같은 자리를 쓴다 — 같은 것을 세는 칩이 둘이면 눈이 한 번에 읽는다. */
+let _kidsIdx = null, _kidsFor = null;
+function kidsOf(id){
+  if (_kidsFor !== catalog){          // 카탈로그가 갈리면 다시 센다
+    _kidsIdx = new Map();
+    for (const row of catalog){
+      const p = row.parent;
+      if (!p || row.type !== "request") continue;
+      const c = _kidsIdx.get(p) || {done: 0, total: 0};
+      c.total++;
+      if (TERMINAL.has(row.status)) c.done++;
+      _kidsIdx.set(p, c);
+    }
+    _kidsFor = catalog;
+  }
+  return _kidsIdx.get(id) || null;
+}
+function kidsHTML(r){
+  if (r.type !== "request") return "";
+  const k = kidsOf(r.id);
+  if (!k) return "";
+  const all = k.done === k.total;
+  const tip = all
+    ? `이 요청의 일은 자식 ${k.total}개에 있고 모두 끝났습니다`
+    : `이 요청의 일은 자식 ${k.total}개에 있습니다 — ${k.done}개가 끝났습니다`;
+  return `<span class="kids${all ? " full" : ""}" title="${esc(tip)}">`
+    + `자식 ${k.done}/${k.total}</span>`;
+}
+
 function cardHTML(r){
   const isReq = r.type === "request";
   // "무엇을 기다리는가" 한 줄 (REQ-20260826-009). blocked 전용이 아니다 —
@@ -2281,6 +2318,7 @@ function cardHTML(r){
      사례 0 · 초과 기록 0 · 값으로 분기하는 코드 0. 읽는 자리는 문서 메타 표
      하나이고, 거기서는 값에 뜻이 붙는다(const.js `sizeText`). */
   const mwhatBits = prioHTML(r)
+    + kidsHTML(r)
     + (r.tdd ? `<span class="tdd${r.tdd.passed === r.tdd.total ? " full" : ""}"`
         + ` title="TDD 시나리오 ${r.tdd.passed}/${r.tdd.total} 통과">`
         + `TDD ${r.tdd.passed}/${r.tdd.total}</span>` : "")
