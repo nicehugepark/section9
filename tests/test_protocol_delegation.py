@@ -55,6 +55,24 @@ class TestProtocolDelegation(unittest.TestCase):
                 self.assertIn("무차별 원어", proto,
                               "반대편(무차별 원어도 결함)이 빠지면 조항이 한쪽으로 기운다")
 
+            # P6. 존댓말의 경계가 규약에 서고 생성물까지 내려온다
+            #     (REQ-20260919-005-62x6). 실측 2026-09-19: 가이드 화면은 존댓말
+            #     93.5% 인데 요청 문서의 노트는 6.1%, 규약 자신은 1.6% 였다.
+            #     「어디서나 존댓말」로 넓히면 규약·스킬의 명령형까지 흔들리므로,
+            #     사람이 읽는 자리와 에이전트가 읽는 자리를 갈라 적는다.
+        with self.subTest("p6_honorific_boundary_is_stated"):
+                proto = read("harness", "common", "PROTOCOL.md")
+                claude = read("CLAUDE.md")
+                for kw in ["사람이 읽는 글은 존댓말이다",
+                           "에이전트가 읽는 지시문은 명령형이다",
+                           "이 글을 읽는 것이 사람인가, 에이전트인가"]:
+                    self.assertIn(kw, proto, f"PROTOCOL.md에 '{kw}' 누락")
+                    self.assertIn(kw, claude, f"CLAUDE.md에 '{kw}' 누락 — 재동기화 필요")
+                # 경계는 자리를 이름으로 짚어야 한다 — 추상적인 한 줄이면
+                # 읽는 에이전트가 제 글이 어느 쪽인지 못 고른다.
+                for kw in ["확인 포인트", "스킬 문서", "위임 지시문", "코드 주석"]:
+                    self.assertIn(kw, proto, f"PROTOCOL.md 경계 목록에 '{kw}' 누락")
+
             # P3. 시각화 3 에이전트 정의가 s9-design 스킬을 참조한다 (U계약 유지)
         with self.subTest("p3_agents_reference_ux_craft"):
             for name in ["designer", "ux-writer", "frontend-developer"]:
