@@ -143,6 +143,29 @@ class TheScreenSpeaksPolitely(unittest.TestCase):
         self.assertEqual(
             len(_s9.plain_speech_in(screensurf._strings(src, code_blind=True))), 1)
 
+    def test_a_closing_tag_does_not_hide_the_ending(self):
+        """태그가 종결을 가리지 못한다 (실측 2026-09-19: 여섯 자리가 새어 나갔다).
+
+        이 화면의 문장은 `…집힌다.</div>` 꼴로 끝난다. 태그를 남겨 두면 문장이
+        「다」로 끝나지 않는 것처럼 보여 검사가 통째로 지나간다."""
+        src = 'const s = `<div class="hs">눌러서 바꾼다.</div>`;\n'
+        self.assertEqual(
+            len(_s9.plain_speech_in(screensurf._strings(src, code_blind=True))), 1)
+
+    def test_a_sentence_inside_a_template_expression_is_counted(self):
+        """`${…}` 안에 든 문장도 센다 — 코드는 버리고 글자만 꺼낸다.
+
+        바깥 백틱이 통째로 한 덩어리로 잡히는 탓에 안쪽 따옴표는 따로 꺼내지지
+        않고, 문장 검사는 그것을 「인용」으로 보고 건너뛰었다. 그 자리에 실제로
+        문장이 산다(터미널 판의 조건부 툴팁이 그렇다)."""
+        src = 'const s = `title="${q ? "시간이 지났다. " : ""}눌러서 봅니다">`;\n'
+        self.assertEqual(
+            len(_s9.plain_speech_in(screensurf._strings(src, code_blind=True))), 1)
+        self.assertEqual(
+            _s9.plain_speech_in(screensurf._strings(
+                'const s = `${esc(r.title)} 에 남겼습니다`;\n', code_blind=True)), [],
+            "표현식을 버리며 멀쩡한 문장까지 걸려서는 안 된다")
+
     def test_the_eye_does_not_count_code_or_imperatives(self):
         """코드 글자와 명령형 지시문은 세지 않는다."""
         for text in ("state/speech-warn-<sid>.json", "aria-describedby=pol-fore",
