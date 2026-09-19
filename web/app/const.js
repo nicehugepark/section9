@@ -76,7 +76,7 @@ function prioTier(p){ return p >= 90 ? "urgent" : p >= 75 ? "high" : p >= 50 ? "
 function prioHTML(r, full){
   if (!r || r.type !== "request") return "";
   const p = prioOf(r), tier = prioTier(p), name = PRIO_TIERS[tier];
-  const tip = `우선순위 ${name} · ${p}/${PRIO_MAX} — 숫자가 클수록 먼저 맡는다`
+  const tip = `우선순위 ${name} · ${p}/${PRIO_MAX} — 숫자가 클수록 먼저 맡습니다`
     + ` (기본 ${PRIO_DEFAULT}) · 눌러서 바꾸기`;
   // 문서 뷰어 표기는 hovercard로 척도를 여는 손잡이이기도 하다 — 그림 대신
   // 문장을 읽는 도구에는 aria-label로 답한다. 훑는 자리는 title 한 문장이다.

@@ -121,14 +121,14 @@ const UI_DIMS = [
   // 길이는 48칸(한글 2칸)까지 — 넘으면 닫힌 선택 상자에서 설명이 잘려 나간다.
   {key:"s9skin", attr:"skin", cfg:"ui_skin", def:"ledger", label:"skin — 모양과 배치",
    opts:[["ledger","ledger · 선 — 선으로만 나눈 각진 화면 (기본)"],
-         ["calm","calm · 카드 — 넓은 여백에 둥근 카드가 떠 있다"],
-         ["soft","soft · 왼쪽 메뉴 — 탭이 왼쪽 세로줄에 선다"],
-         ["glass","glass · 반투명 — 판이 비치고 뒤가 흐려진다"],
-         ["terminal","terminal · 고정폭 글꼴 — 고르면 흑백이 뒤집힌다"],
+         ["calm","calm · 카드 — 넓은 여백에 뜬 둥근 카드"],
+         ["soft","soft · 왼쪽 메뉴 — 왼쪽 세로줄에 선 탭"],
+         ["glass","glass · 반투명 — 뒤가 비쳐 흐릿한 판"],
+         ["terminal","terminal · 고정폭 글꼴 — 흑백이 뒤집힌 화면"],
          ["grid","grid · 표 — 여백 없이 끝까지 채운 촘촘한 표"],
          ["slate","slate · 회청 바탕 — 흰 판이 얹히고 강조는 파랑"],
-         ["cobalt","cobalt · 남색 띠 — 맨 위 띠만 짙고 아래는 밝다"],
-         ["field","field · 색 바탕 — 색이 크게 번지고 판은 납작하다"],
+         ["cobalt","cobalt · 남색 띠 — 맨 위 띠만 짙고 아래는 밝은 판"],
+         ["field","field · 색 바탕 — 크게 번진 색과 납작한 판"],
          ["cork","cork · 보드 — 옅은 색 바탕에 회색 칸과 흰 카드"]]},
   {key:"s9theme", attr:"theme", cfg:"ui_tone", def:"system", label:"tone — 색",
    opts:[["system","system · 자동 — 컴퓨터 설정을 따라감 (기본)"],
@@ -139,7 +139,7 @@ const UI_DIMS = [
          ["phosphor","phosphor · 초록 — 어두움. 검은 바탕에 초록 글자"]]},
   {key:"s9density", attr:"density", cfg:"ui_density", def:"normal", label:"density — 여백",
    opts:[["normal","normal · 보통 — 글자와 여백이 기본 크기 (기본)"],
-         ["compact","compact · 촘촘 — 여백을 줄여 더 많이 담는다"]]},
+         ["compact","compact · 촘촘 — 여백을 줄여 더 많이 담는 배치"]]},
 ];
 
 // 개명된 skin의 저장값 구제 (localStorage·user config 공통). 제거된 skin은 아래 opts 검증에서 기본으로 폴백.

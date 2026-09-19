@@ -851,7 +851,7 @@ function gwDemo(kind){
                "MemoryError"];
   const died = n => ({ts: iso(3e5 + n * 9e5), event: "died", rc: -15,
                       reason: "signal SIGTERM", ran_sec: 47.2, fails: 1,
-                      retry_in: 12, tail: out, msg: "서버가 멈춰 되살렸다"});
+                      retry_in: 12, tail: out, msg: "서버가 멈춰 되살렸습니다"});
   const hist = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(died)
     .concat([{ts: iso(7.2e6), event: "start", msg: "9909 감시 시작 (pid 545741)"}]);
   const keep = d => (gwDemoCache = {kind, d}).d;

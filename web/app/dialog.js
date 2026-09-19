@@ -39,9 +39,9 @@ function showPrioHover(el){
     }).join(" · ");
   hovercard.innerHTML = `<div class="hid">우선순위</div>
     <div class="ht">${PRIO_TIERS[cur]} · ${p}/${PRIO_MAX}</div>
-    <div class="hs">숫자가 클수록 먼저 맡는다. 값을 적지 않으면 ${PRIO_DEFAULT}(보통)이다.</div>
+    <div class="hs">숫자가 클수록 먼저 맡습니다. 값을 적지 않으면 ${PRIO_DEFAULT}(보통)입니다.</div>
     <div class="pscale">${bands}</div>
-    <div class="hs" style="margin-top:5px">눌러서 바꾼다 — 올린 것이 다음에 집힌다.</div>`;
+    <div class="hs" style="margin-top:5px">눌러서 바꿉니다 — 올린 것이 다음에 집힙니다.</div>`;
   placeHover(el);
 }
 /* 순서를 바꾸는 창 (REQ-20260829-029).

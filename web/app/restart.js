@@ -305,7 +305,7 @@ async function termInterrupt(T){
       // 전달은 수신함 큐잉 한 길이다 — 프로세스 신호(SIGINT 즉시 중단)는
       // 세션을 통째로 죽여서 제거됐다 (REQ-20260830-047). 서버 응답에도
       // signal 필드가 더는 없다.
-      const body = `<span style="color:var(--cc-dim)">중단 요청 큐잉 — 세션은 다음 도구 경계에서 멈춘다</span>`;
+      const body = `<span style="color:var(--cc-dim)">중단 요청을 전했습니다 — 세션은 다음 도구 경계에서 멈춥니다</span>`;
       w.insertAdjacentHTML("beforebegin", ccLine("⨯", "var(--cc-dim)", body));
       out.scrollTop = out.scrollHeight;
     }
@@ -384,7 +384,7 @@ async function sendChat(){
     if (d.agent && out && w){
       w.insertAdjacentHTML("beforebegin",
         ccLine("→", "var(--cc-green)",
-          `<span style="color:var(--cc-dim)">${esc(d.agent_type || d.agent)} 에게 전달 — 리드가 중계한다</span>`, "sub"));
+          `<span style="color:var(--cc-dim)">${esc(d.agent_type || d.agent)} 에게 전달했습니다 — 리드가 중계합니다</span>`, "sub"));
       out.scrollTop = out.scrollHeight;
     }
     // 서버측 audit가 REQ를 만들었으면 표시 — 세션 유휴여도 기록은 남았다는 확증.
@@ -395,10 +395,10 @@ async function sendChat(){
       const end = toDoc && (dt.status === "done" || dt.status === "cancelled");
       w.insertAdjacentHTML("beforebegin",
         ccLine("⎿", null, `<span style="color:var(--cc-dim)">${esc(d.req)} `
-          + (toDoc ? "에 노트로 남았다" : "로 기록됨")
+          + (toDoc ? "에 노트로 남았습니다" : "로 기록됐습니다")
           // 끝난 요청은 노트만 남고 다시 열리지 않는다 — 한 줄로 말한다
-          + (end ? ` — 이미 ${esc(dt.status)} 라 다시 열리지는 않는다`
-                 + `<span style="color:var(--cc-faint)"> (열려면 상태를 옮겨라)</span>` : "")
+          + (end ? ` — 이미 ${esc(dt.status)} 라 다시 열리지는 않습니다`
+                 + `<span style="color:var(--cc-faint)"> (열려면 상태를 옮기십시오)</span>` : "")
           + `</span>`, "sub"));
       out.scrollTop = out.scrollHeight;
     }

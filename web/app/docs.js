@@ -720,7 +720,7 @@ async function loadDoc(id, bg, force){
   // 라인에 남는다 (DOC-20260826-001 규칙 4) — 그래서 목록이 과거로 안 늘어난다.
   const blk = liveBlockers({status: m.status, blocked_by: m.blocked_by});
   const depRow = blk.length
-    ? `<span class="depcap">${blk.length > 1 ? `이 ${blk.length}건이 모두` : "이 문서가"} 끝나야 풀린다</span>` + blk.map(b =>
+    ? `<span class="depcap">${blk.length > 1 ? `이 ${blk.length}건이 모두` : "이 문서가"} 끝나야 풀립니다</span>` + blk.map(b =>
         `<div class="depitem"><span class="cdot" style="background:${SCOLOR[b.status] || "var(--muted)"}"></span>`
         + `${dlink(b.id, esc(shortId(b.id)))} ${esc(b.title)}`
         + `<span class="path"> ${esc(b.status)}</span></div>`).join("")

@@ -963,7 +963,7 @@ function termAgentsRender(T){
       const qs = quiet
         ? `${AGENT_QUIET_MARK} <span data-base="${now - (a.quiet || 0) * 1000}">${fmtDur(a.quiet || 0)}</span> · `
         : "";
-      return `<div class="ag sub ccagrow${sel ? " sel" : ""}${quiet ? " agquiet" : ""}" data-agent="${esc(a.id)}" title="${quiet ? "마지막 기록에서 시간이 지났다 — 긴 도구 하나를 붙잡고 있는 중일 수 있다. " : ""}클릭 또는 ← 키로 이 에이전트의 작업 내용을 터미널에서 본다">` +
+      return `<div class="ag sub ccagrow${sel ? " sel" : ""}${quiet ? " agquiet" : ""}" data-agent="${esc(a.id)}" title="${quiet ? "마지막 기록에서 시간이 지났습니다 — 긴 도구 하나를 붙잡고 있는 중일 수 있습니다. " : ""}클릭 또는 ← 키로 이 에이전트의 작업 내용을 터미널에서 봅니다">` +
         `<span class="g"${sel ? ' style="color:var(--cc-green)"' : ""}>${dot}</span> <b>${esc(a.type)}</b> ` +
         `<span class="aglab">${esc(a.label || a.desc)}</span>` +
         `<button class="agtgt${tgt ? " on" : ""}" data-target="${esc(a.id)}" title="이 에이전트를 전송 대상으로 지목 — 다음 메시지를 리드가 중계합니다">→</button>` +

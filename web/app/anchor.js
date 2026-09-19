@@ -462,7 +462,7 @@ async function attachTexts(root, docId){
     const full = body.slice(0, ATT_MAX);
     const cut = body.length - full.length;
     const cutNote = cut
-      ? `<div class="attcut">…여기까지만 보여준다 — ${cut.toLocaleString("ko-KR")}자가 더 있다. 전부 읽으려면 위의 파일을 열면 된다.</div>`
+      ? `<div class="attcut">…여기까지만 보입니다 — ${cut.toLocaleString("ko-KR")}자가 더 있습니다. 전부 읽으시려면 위의 파일을 여십시오.</div>`
       : "";
     const box = document.createElement("div");
     box.className = "attext";

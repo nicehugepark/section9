@@ -35,9 +35,9 @@ const CC_BUILTINS = [     // CC CLI 빌트인 — 대시보드에선 실행 불�
    보이는 칩에는 넣지 않는다: 헤더는 2행 고정 구조라 칩이 길어지면 툴바가
    접힌다. 그래서 이 정보는 호버의 자리다(사용자도 호버로 요청했다). */
 function fmtUntil(iso){
-  if (!iso) return "모른다";
+  if (!iso) return "알 수 없음";
   const t = Date.parse(iso);
-  if (isNaN(t)) return "모른다";
+  if (isNaN(t)) return "알 수 없음";
   const s = Math.floor((t - Date.now()) / 1000);
   if (s <= 60) return "곧";
   const m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
@@ -102,7 +102,7 @@ function usageTitle(){
       }).join(". ")
     + ". 60초마다 갱신"
     // 마크는 그림이라 스크린리더에 닿지 않는다 — 같은 사실을 칩 이름에도 적는다
-    + (d.stale ? ". 지금은 마지막으로 받은 값이다" : "");
+    + (d.stale ? ". 지금은 마지막으로 받은 값입니다" : "");
 }
 /* 사용량 카드 (REQ-20260827-056 재작업). 새 팝오버를 만들지 않고 doclink
    미리보기·우선순위 척도와 **같은 카드**를 쓴다 — 점선/칩에 손을 얹으면 뜬다는
@@ -115,7 +115,7 @@ function showUsageHover(el){
     const d = usageLast || {};
     hovercard.innerHTML = `<div class="hid ucap">클로드 사용량</div>`
       + (d.email ? `<div class="ht umail">${esc(anonize(d.email))}</div>` : "")
-      + `<div class="hs">${d.error ? esc(d.error) + " " : ""}아직 받지 못했다 — 60초마다 다시 물어본다.</div>`;
+      + `<div class="hs">${d.error ? esc(d.error) + " " : ""}아직 받지 못했습니다 — 60초마다 다시 물어봅니다.</div>`;
     placeHover(el); return;
   }
   const d = usageLast;
@@ -133,7 +133,7 @@ function showUsageHover(el){
     <div class="ug"><span class="uh">한도</span><span class="uh ur">사용</span>`
     + `<span class="uh">남은 시간</span><span class="uh ur">초기화 시각</span>`
     + `<span class="urule"></span>${cells}</div>
-    <div class="hs">60초마다 갱신${d.stale ? " · 지금은 마지막으로 받은 값이다" : ""}
+    <div class="hs">60초마다 갱신${d.stale ? " · 지금은 마지막으로 받은 값입니다" : ""}
       · 눌러서 계정 바꾸기</div>`;
   placeHover(el);
 }

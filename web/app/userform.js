@@ -639,7 +639,7 @@ function showUserForm(u, host, isAdminEdit){
             ? dlg.textContent.replace(/\s+/g, " ").trim().slice(0, 90) : "안 떴다 ✕"}`);
           if (yes) yes.click();
           await wait(1100);
-          line.push(`되돌림: ${rows().some(r => r.includes(K)) ? "실패 ✕" : "지웠다"}`,
+          line.push(`되돌림: ${rows().some(r => r.includes(K)) ? "실패 ✕" : "지움"}`,
                     `알림 "${msg()}"`);
         }
         pick("internal");
