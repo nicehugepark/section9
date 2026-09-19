@@ -73,6 +73,23 @@ class TestProtocolDelegation(unittest.TestCase):
                 for kw in ["확인 포인트", "스킬 문서", "위임 지시문", "코드 주석"]:
                     self.assertIn(kw, proto, f"PROTOCOL.md 경계 목록에 '{kw}' 누락")
 
+            # P7. 생성물이 원천과 글자까지 같다 (REQ-20260919-005-62x6).
+            #     `s9-install --agents-md` 는 PROTOCOL.md 전문을 마커 사이에
+            #     넣는 단순 치환이다 — 블록이 원천과 같으면 그 명령을 다시
+            #     돌려도 파일이 바뀌지 않는다(멱등). 키워드 몇 개만 세면
+            #     원천을 고치고 생성을 안 돌린 드리프트가 그대로 지나간다.
+        with self.subTest("p7_claude_md_block_equals_protocol"):
+                proto = read("harness", "common", "PROTOCOL.md").strip()
+                claude = read("CLAUDE.md")
+                begin, end = "<!-- section9:begin -->", "<!-- section9:end -->"
+                self.assertIn(begin, claude, "CLAUDE.md 에 section9 블록 마커가 없다")
+                self.assertIn(end, claude, "CLAUDE.md 에 section9 블록 끝 마커가 없다")
+                block = claude.split(begin, 1)[1].split(end, 1)[0].strip()
+                self.assertEqual(block, proto,
+                                 "CLAUDE.md 의 블록이 PROTOCOL.md 와 다르다 — "
+                                 "원천을 고쳤으면 `bin/s9-install --agents-md CLAUDE.md` 로 "
+                                 "생성물을 갱신하라")
+
             # P3. 시각화 3 에이전트 정의가 s9-design 스킬을 참조한다 (U계약 유지)
         with self.subTest("p3_agents_reference_ux_craft"):
             for name in ["designer", "ux-writer", "frontend-developer"]:
