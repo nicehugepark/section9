@@ -29,7 +29,6 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S9 = os.path.normpath(os.path.join(HERE, "..", "bin", "s9"))
-RID = "REQ-20260919-001-62x6"
 
 
 class TransitionSpeechGate(unittest.TestCase):
@@ -42,9 +41,13 @@ class TransitionSpeechGate(unittest.TestCase):
         cls.env.pop("S9_AUTO_RESUME", None)
         cls.s9("init")
         cls.s9("user", "add", "tester")
-        cls.s9("new", "request", "--title", "말투 가드 시험", "--summary", "요약",
-                "--goal", "판별 가능한 한 문장", "--size", "S", "--user", "tester",
-                "--body", "본문")
+        # id 는 **받아 적는다** — 끝자리는 그 컴퓨터마다 다르다(실측 2026-09-19:
+        # 원격 실행기에서 하드코딩한 62x6 이 없어 다섯 건이 한꺼번에 무너졌다).
+        r = cls.s9("new", "request", "--title", "말투 가드 시험", "--summary", "요약",
+                   "--goal", "판별 가능한 한 문장", "--size", "S", "--user", "tester",
+                   "--body", "본문")
+        cls.rid = (r.stdout or "").split()[0]
+        assert cls.rid.startswith("REQ-"), (r.stdout, r.stderr)
 
     @classmethod
     def tearDownClass(cls):
@@ -57,7 +60,7 @@ class TransitionSpeechGate(unittest.TestCase):
                               text=True, timeout=120)
 
     def status(self, new, note, *extra):
-        return self.s9("status", RID, new, "--note", note, "--user", "tester", *extra)
+        return self.s9("status", self.rid, new, "--note", note, "--user", "tester", *extra)
 
     def test_t1_plain_note_is_refused(self):
         r = self.status("in-progress", "이 메모는 반말이다 — 막혀야 한다")
@@ -83,10 +86,10 @@ class TransitionSpeechGate(unittest.TestCase):
                 "s9_speech_gate", os.path.normpath(os.path.join(HERE, "..", "bin", "s9.py"))))
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
-        m.do_transition(RID, "in-progress",
+        m.do_transition(self.rid, "in-progress",
                         note="반려: 파비콘은 그대로다. [via dashboard]",
                         user="tester", judge=True)
-        m.do_transition(RID, "review", note="[auto] 이 머신의 워처가 집었다",
+        m.do_transition(self.rid, "review", note="[auto] 이 머신의 워처가 집었다",
                         user="tester", auto=True)
 
     def test_t6_t7_personal_setting_wins_and_delete_restores(self):

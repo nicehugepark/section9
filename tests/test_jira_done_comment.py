@@ -222,10 +222,10 @@ class JiraDoneComment(unittest.TestCase):
 
     def test_d7_cancelled_is_symmetric(self):
         rid, key = self.issued()
-        self.go(rid, "cancelled", "다른 요청이 이미 이뤘다")
+        self.go(rid, "cancelled", "다른 요청이 이미 이뤘습니다")
         self.tick()
         self.assertEqual(len(Stub.comments), 1)
-        self.assertEqual(adf_texts(Stub.comments[0])[0], "취소: 다른 요청이 이미 이뤘다")
+        self.assertEqual(adf_texts(Stub.comments[0])[0], "취소: 다른 요청이 이미 이뤘습니다")
 
 
 if __name__ == "__main__":

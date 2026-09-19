@@ -22086,6 +22086,20 @@ _POLITE_TAIL = re.compile(r"(?:니다|니까|읍시다|십시다|요)$")
 _PLAIN_TAIL = re.compile(r"[가-힣]다$")
 
 
+def _propositive(s):
+    """「…ㅂ시다」인가 — 갑시다·봅시다·합시다 (합쇼체 청유형이라 존댓말이다).
+
+    `_POLITE_TAIL` 의 「읍시다」는 으가 들어간 꼴(먹읍시다)만 잡는다. 받침 없는
+    어간은 ㅂ 이 앞 글자에 붙어 「갑시다」가 되므로 글자로는 안 잡히고, 「…다」로
+    끝나니 반말로 세어졌다 (실측 2026-09-19: tests/test_judge_dialog.py 의
+    「이대로 갑시다」가 그렇게 걸렸다). 종성을 직접 본다.
+    """
+    if len(s) < 3 or not s.endswith("시다"):
+        return False
+    ch = s[-3]
+    return "가" <= ch <= "힣" and (ord(ch) - 0xAC00) % 28 == 17   # 종성 ㅂ
+
+
 def _speech_tail(sent):
     """문장 끝에 붙은 참조·부호를 걷어내고 종결어미가 드러나게 한다 —
     「…세웠다 (REQ-…)」의 종결은 괄호가 아니라 「세웠다」다."""
@@ -22110,7 +22124,8 @@ def plain_speech_in(text, limit=8):
             continue
         for raw in re.split(r"(?<=[.!?…])\s+", line):
             s = _speech_tail(raw)
-            if len(s) < 3 or not _PLAIN_TAIL.search(s) or _POLITE_TAIL.search(s):
+            if len(s) < 3 or not _PLAIN_TAIL.search(s) or _POLITE_TAIL.search(s) \
+                    or _propositive(s):
                 continue
             hits.append(s[-14:])
             if len(hits) >= limit:
