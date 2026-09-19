@@ -11664,40 +11664,6 @@ def worker_s9_tools(s9bin):
     return [f"Bash({s9bin} {c}:*)" for c in WORKER_ALLOWED_SUBCOMMANDS]
 
 
-def worker_add_dir_args(cfg, wt_name, root=None):
-    """worktree 작업자에게 **본 저장소의 데이터 한 벌**을 열어 주는 인자.
-
-    실제 사고 2026-09-19 (REQ-20260919-006-62x6): 「9/18 이후 문서를 존댓말로
-    고쳐라」가 worktree 작업자에게 갔는데 한 글자도 못 고쳤다. 적용 모드가 주는
-    Write·Edit(acceptEdits)는 **작업 디렉터리 안에서만** 묻지 않는데, worktree
-    작업자의 작업 디렉터리는 `state/worktrees/<이름>` 이고 문서는 본 저장소의
-    `vault/` 아래다. 바깥 경로는 사람에게 묻고, 사람이 없는 세션에서는 그대로
-    거부된다 — 작업자는 거부만 받고 멈췄고 사람에게는 「왜 안 끝났나」로만 보였다.
-
-    봉투를 세울 때 상정한 것은 **코드를 고치는 작업자**였다. 산출물이 문서 자체인
-    요청은 그 상정 밖이었다. 자리는 이미 정해져 있다 — 「코드는 갈리고 데이터는
-    하나다」(REQ-20260828-011): 코드는 worktree 사본이고 데이터(vault·users·
-    projects)는 본 저장소 한 벌이다. 그 한 벌을 고칠 손을 여기서 준다.
-
-    경계가 넓어지지는 않는다. ① 적용 모드일 때만 붙인다 — 기본 봉투에는 Write·
-    Edit 자체가 없어 열어도 여는 것이 없다. ② 여는 것은 데이터 경로뿐이고
-    `bin/`·`~/.claude` 같은 자리는 종전대로 바깥이다. ③ 본 저장소에서 도는
-    작업자는 이 셋이 이미 작업 디렉터리 안이라 지금도 고친다 — worktree 자리만
-    못 하던 것을 맞추는 것이지 없던 능력을 만드는 것이 아니다.
-
-    인자는 `--allowedTools` **앞**에 놓는다: 그쪽이 값을 여럿 받는 자리라
-    뒤에 붙이면 도구 이름으로 새어 들어간다."""
-    if not wt_name or not (cfg or {}).get("auto_resume_apply"):
-        return []
-    base = root or ROOT
-    out = []
-    for d in SYNC_DATA_PATHS:
-        p = os.path.join(base, d)
-        if os.path.isdir(p):
-            out += ["--add-dir", p]
-    return out
-
-
 # 리스가 막았을 때 **사람 앞에 나가는 문장** (REQ-20260909-099).
 #
 # 리스 판정이 돌려주는 `why` 는 터미널의 말이다 — "…가 쥐고 있다" ·
@@ -11969,9 +11935,6 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
     # worktree는 소실 장치다** — 거두는 순간 다 사라진다.
     if wt_name:
         perm = perm + WORKTREE_GIT_TOOLS
-    # 코드는 갈리고 데이터는 하나다 — 그 한 벌을 고칠 손 (REQ-20260919-006-62x6).
-    # 까닭은 worker_add_dir_args 의 주석에 있다.
-    perm = worker_add_dir_args(cfg, wt_name) + perm
     # 충돌 규율은 봉투와 같은 자리에 둔다 — 프롬프트마다 따로 적으면 갈린다.
     # 실사고 2026-08-26: 워커가 남의 미커밋 편집 위에 덮어써 테스트 파일 하나가
     # 디스크에서 사라졌고(커밋 전이라 git 복구 불가), 다른 건에서는 리드의
@@ -11984,9 +11947,6 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
             f"\n\n[작업 자리] 너는 이 요청 전용 worktree 에서 실행된다 — 코드 파일은 "
             f"여기 사본이고 남의 commit 안 한 편집은 보이지도 닿지도 않는다. 문서·상태는 "
             f"본 저장소 하나를 함께 쓴다(S9_ROOT 가 그리로 못박혀 있다). "
-            f"**문서를 고칠 때는 본 저장소의 `{ROOT}/vault/…` 를 고쳐라** — 이 자리에도 "
-            f"같은 이름의 사본이 있지만 그것은 가지를 딸 때의 옛 판이라, 고치면 두 벌이 "
-            f"갈리고 거둘 때 살아 있는 문서가 옛 판으로 되돌아간다. "
             f"① 일이 끝나면 **이 worktree 의 가지(wt/{wt_name})에 commit 하라** — "
             f"commit 하지 않은 것은 이 자리를 거둘 때 사라진다. ② 가지에 담은 것은 "
             f"아직 main 에 없다 — 사람이 보는 자리는 main 이다. 옮기는 것은 네 손이 "
