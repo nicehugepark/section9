@@ -40232,6 +40232,20 @@ _DATA_RE = re.compile(
 _DOC_TARGET_RE = re.compile(r"(문서|노트|확인 ?포인트|vault|REQ-|DOC-|QST-)")
 _DOC_EDIT_RE = re.compile(
     r"(백필|고친|고치|고쳐|다듬|바로잡|손보|덧붙|옮겨 ?적|말투|존댓말|오탈자|번역)")
+# **만들어 내는 것이 코드면 문서 작업이 아니다** (REQ-20260919-006-62x6 반려,
+# 리드 실측 2026-09-19 10:09). 앞 판은 「문서를 말하는가」만 보아 그날 선 요청
+# 넷(003 검사 세우기 · 004 백필 · 006 자리 판정 · 007 용어)을 **전부** 문서
+# 작업으로 읽었다. goal 은 거의 언제나 「시험이 …를 지킨다」로 끝나므로
+# `문서|REQ-` 와 `고치|다듬` 이 한 문장에서 함께 맞아떨어진다. 그러면 이 계열의
+# 요청이 죄다 worktree 를 잃고 본 저장소 한 자리에 몰린다 — 동시 작업 검사가
+# 감당하려던 그 상황이다.
+#
+# 가르는 축은 **무엇을 말하느냐가 아니라 무엇을 만들어 내느냐**다. 코드 산출물을
+# 말하는 요청은 먼저 잘라 낸다. 「시험」 한 낱말이 가장 세게 가른다 — 코드를 남기는
+# 요청의 goal 은 거의 다 그것으로 끝나고, 문서만 고치는 요청은 그 말을 쓰지 않는다.
+_CODE_OUTPUT_RE = re.compile(
+    r"(시험|테스트|검사|가드|명령|커맨드|훅|스크립트|API|화면|대시보드|"
+    r"bin/|web/|tests/|harness/|\.py\b|\.js\b)")
 
 
 def doc_work(doc_id, fields=None):
@@ -40257,6 +40271,10 @@ def doc_work(doc_id, fields=None):
             rel = m.group(1).rstrip(".,)`'\"·")
             if os.path.isfile(os.path.join(ROOT, rel)):
                 return True      # 데이터 경로를 이름으로 댔다 — 더 물을 것이 없다
+    # 코드를 만들어 내는 요청은 문서 작업이 아니다 — 세 줄 어디서든 말하면 자른다.
+    if any(_CODE_OUTPUT_RE.search(line or "") for line in fields):
+        return False
+    for line in fields:
         if _DOC_TARGET_RE.search(line or "") and _DOC_EDIT_RE.search(line or ""):
             return True
     return False

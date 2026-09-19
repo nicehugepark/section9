@@ -151,6 +151,12 @@ class Repo(unittest.TestCase):
         cls.doc_datapath = req_full(
             "손잡이 문서 손보기", "vault/handbook.md 의 낡은 절차를 고친다",
             "그 문서의 절차가 지금 명령과 맞는다")
+        # 코드를 만들어 내는 요청인데 경로를 이름으로 대지 않은 것 — goal 이
+        # 「시험이 …를 지킨다」로 끝나는 흔한 모양이다 (REQ-20260919-006-62x6 반려).
+        cls.code_nopath = req_full(
+            "존댓말 검사 세우기",
+            "문서에 적히는 글이 존댓말인지 s9 가 검사한다",
+            "사람이 읽는 자리의 글이 반말이면 경고가 서고, 시험이 그 검사를 지킨다")
         cls.doc_meta = req_full(
             "문서 작업자의 손", "문서를 고치는 요청이 낡은 자리로 가지 않게 한다",
             "tests/test_x.py 가 그 갈림을 지킨다")
@@ -355,6 +361,15 @@ class Decision(Repo):
         d = self.decide(self.doc_backfill)
         self.assertEqual(d["kind"], "main", d)
         self.assertEqual(d["reason"], "doc-work", d)
+
+    # W13a. **코드를 만들어 내는 요청은 문서 낱말이 섞여도 worktree 를 지킨다**
+    #        (REQ-20260919-006-62x6 반려, 리드 실측 2026-09-19 10:09). 앞 판은
+    #        「문서를 말하는가」만 보아 그날 선 요청 넷을 전부 문서 작업으로 읽었다 —
+    #        goal 이 거의 언제나 「시험이 …를 지킨다」로 끝나기 때문이다. 그러면 이
+    #        계열이 죄다 본 저장소 한 자리에 몰린다.
+    def test_w13a_code_work_keeps_its_worktree(self):
+        d = self.decide(self.code_nopath)
+        self.assertNotEqual(d["reason"], "doc-work", d)
 
     # W13b. 데이터 경로를 이름으로 댄 요청도 같다 — 더 물을 것이 없다.
     def test_w13b_a_named_data_path_stays_home(self):
