@@ -330,6 +330,19 @@ async function renderDocs(rows){
                                   && agentAnswer(r) === "found").length;
   const qAnswered = pool.filter(r => r.type === "question"
                                   && isAnswered(r) === true).length;
+  /* 분수의 분자는 **답이 붙은 것**이다 — 확정된 답과 찾은 답을 함께 센다
+     (REQ-20260919-001-62x6, 주인 반려 2026-09-19 09:37: 「여전히 안줄어들었잖아」).
+
+     손잡이(「답 없음 N장만 보기」)를 셋으로 가른 뒤에도 사람이 보는 수는 그대로였다.
+     사람이 읽는 수는 띠의 분수이고, 그 분자가 확정된 답만 세면 답찾기가 다섯 장을
+     다 찾아도 321/326 이 움직이지 않는다 — 분수의 틈이 곧 「남은 것」으로 읽히는데
+     그 틈이 줄지 않으니 화면이 거짓말을 한다.
+
+     분자를 「답이 붙은 것」으로 두면 틈은 언제나 `qUnanswered` 와 같고, 화면의 수
+     하나가 한 가지만 말한다. 확정과 찾은 답의 갈림은 잃지 않는다 — 줄의 뱃지가
+     그것을 말하고, 도움말이 둘을 따로 센다. (REQ-20260907-040 은 이 분자를
+     확정된 답만으로 두었는데, 그때는 찾은 답이라는 셋째 상태가 화면에 없었다.) */
+  const qHandled = qAnswered + qFound;
   const bar = TYPE_ORDER.filter(t => tcount[t] || t === curType).map(t => {
     const n = tcount[t] || 0;
     /* 질문만 두 수를 갖는다 — **답한 장수 / 전체** (REQ-20260828-018).
@@ -341,14 +354,14 @@ async function renderDocs(rows){
     const frac = t === "question" && n > 0;
     const left = frac ? qUnanswered : 0;
     const num = frac
-      ? `<b class="qf${left ? " left" : ""}">${qAnswered}<span>/</span>${n}</b>`
+      ? `<b class="qf${left ? " left" : ""}">${qHandled}<span>/</span>${n}</b>`
       : `<b>${n}</b>`;
     // 분수는 눈으로는 한 덩이지만 소리로는 "43 슬래시 46" 이다 — 읽어 줄 말을
     // 따로 준다. 다른 타입도 같은 규칙으로 이름을 갖는다.
     const tip = `${t} 문서만 보기 (다시 누르면 전체)` + (frac
-      ? ` · ${n}장 중 ${qAnswered}장 답 있음`
-        + (qFound ? ` · 찾은 답 ${qFound}장` : "")
-        + (left ? ` · ${left}장 남음` : " · 남은 것 없음")
+      ? ` · ${n}장 중 ${qHandled}장 답이 붙었습니다`
+        + (qFound ? ` (확정 ${qAnswered}장 · 찾은 답 ${qFound}장)` : "")
+        + (left ? ` · ${left}장 남았습니다` : " · 남은 것이 없습니다")
       : ` · ${n}장`);
     return `<button class="tb${curType===t?" on":""}" data-typef="${t}"
       title="${tip}" aria-label="${tip}">${t}${num}</button>`;

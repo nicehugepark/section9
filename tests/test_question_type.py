@@ -260,13 +260,21 @@ class TestQuestionOnScreen(unittest.TestCase):
                 # 한 덩이로 그린다: 질문에만, 0장이면 분수 없음(0/0 은 뜻이 없다)
                 self.assertIn('const frac = t === "question" && n > 0;', self.web,
                               "분수가 question 외 타입에도 붙거나 0장에도 붙는다")
+                # 분자는 **답이 붙은 것**이다 — 확정된 답과 찾은 답을 함께 센다
+                # (REQ-20260919-001-62x6, 주인 반려 2026-09-19 09:37: 「여전히
+                # 안줄어들었잖아」). 분자가 확정된 답만 세면 답찾기가 다섯 장을 다
+                # 찾아도 분수가 안 움직이고, 사람은 그 틈을 「남은 것」으로 읽는다.
                 self.assertIn('`<b class="qf${left ? " left" : ""}">'
-                              '${qAnswered}<span>/</span>${n}</b>`', self.web,
-                              "답한 장수 / 전체 꼴이 아니다")
+                              '${qHandled}<span>/</span>${n}</b>`', self.web,
+                              "답이 붙은 장수 / 전체 꼴이 아니다")
+                h = re.search(r"const qHandled = ([^\n;]+);", self.web)
+                self.assertIsNotNone(h, "답이 붙은 장수를 세지 않는다")
+                self.assertIn("qAnswered + qFound", h.group(1),
+                              "분수의 틈이 남은 것과 어긋난다")
                 # 소리로는 "43 슬래시 46" 이다 — 읽어 줄 말을 따로 준다
                 self.assertIn('aria-label="${tip}"', self.web,
                               "분수를 읽어 줄 이름이 없다")
-                self.assertIn("장 남음", self.web, "몇 장 남았는지 말해 주지 않는다")
+                self.assertIn("장 남았습니다", self.web, "몇 장 남았는지 말해 주지 않는다")
                 # 강조는 면이 아니라 글자다 (s9-design: 색면 하이라이트 금지).
                 # 그리고 다 찼을 때(46/46)는 색을 거두어 저절로 물러난다.
                 css = re.search(r"\.typebar \.tb b\.qf\.left\{([^}]+)\}", self.web)
