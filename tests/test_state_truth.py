@@ -161,15 +161,36 @@ class StateTruth(unittest.TestCase):
                 self.assertTrue(self.m.claim_dead(b, rid))
                 self.assertNotIn(rid, self.m.binding_req_ids(b))
 
-            # B2. 클레임 뒤 문서가 움직였으면 살아 있는 클레임이다
-        with self.subTest("b2_moved_after_claim_is_alive"):
+            # B2. 클레임을 살려 두는 것은 **제 손**이다 (REQ-20260919-011-62x6)
+        with self.subTest("b2_own_hand_keeps_the_claim_alive"):
                 rid = self.mk("일하는 중인 것")
                 b = self.binding()
                 b["active_reqs"] = [rid]
                 b["claim_at"] = {rid: _ago(self.m.CLAIM_GRACE + 600)}
                 self.write_binding(b)
-                self.cli("note", rid, "진행 중")          # 문서가 움직인다
-                self.assertFalse(self.m.claim_dead(b, rid))
+                self.cli("note", rid, "진행 중")   # 이 세션이 제 손으로 쓴다
+                self.assertFalse(self.m.claim_dead(self.binding(), rid),
+                                 "제 손으로 쓴 노트가 제 클레임을 못 살렸다")
+
+            # B2b. 남의 손이 쓴 것은 남의 클레임을 살리지 못한다
+            #      — 실제 사고 2026-09-19 11:21 이 이 자리였다.
+        with self.subTest("b2b_other_hand_does_not_renew"):
+                rid = self.mk("남이 쓰는 것")
+                b = self.binding()
+                b["active_reqs"] = [rid]
+                b["claim_at"] = {rid: _ago(self.m.CLAIM_GRACE + 600)}
+                self.write_binding(b)
+                other = {**self.env, "S9_SESSION": "99997777"}
+                r = subprocess.run([S9, "note", rid, "남이 쓴다"],
+                                   capture_output=True, text=True,
+                                   env=other, timeout=30)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertTrue(self.m.claim_dead(self.binding(), rid),
+                                "남이 쓴 노트가 남의 클레임을 되살렸다")
+                self.assertNotIn(rid, self.m.binding_req_ids(self.binding()))
+                # 다만 워처의 물음(두 번째 손을 붙여도 되나)에는 여전히 쥔 것이다
+                self.assertIn(rid, self.m.binding_req_ids(self.binding(),
+                                                          stale_ok=True))
 
             # B3. 방금 잡은 것은 놓지 않는다
         with self.subTest("b3_fresh_claim_kept"):

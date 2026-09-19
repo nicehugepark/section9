@@ -1887,7 +1887,7 @@ CATALOG_WIRE_SPARSE = frozenset((
     "lease", "tags", "blocked_by", "relates", "derived_from", "needs_machine",
     "jira", "review_point", "block_reason", "tdd", "tokens", "answered",
     "agent_answer", "archived", "origin", "origin_req", "origin_actor",
-    "parent", "root", "slug"))
+    "parent", "root", "slug", "released"))
 
 
 def _catalog_bucket(now=None):
@@ -2422,8 +2422,20 @@ def claim_dead(b, req_id, now=None):
     그린다. REQ-20260827-078 은 클레임 뒤 7시간 반 동안 아무 일도 없었고 화면은
     내내 일하는 중이라고 말했다. 상태가 거짓이면 보드 전체가 거짓이 된다.
 
-    **문서가 클레임 이후에 한 번이라도 바뀌었으면 살아 있는 클레임이다** —
-    노트·전이·수정이 모두 거기 찍힌다. 아무것도 없이 유예가 지나면 놓는다.
+    **클레임을 살려 두는 것은 그 세션 자신의 손길이다** (REQ-20260919-011-62x6).
+
+    종전의 생존 신호는 "문서가 클레임 이후에 한 번이라도 바뀌었나" 였다. 그
+    물음은 **누가 바꿨는지를 묻지 않아서**, 남이 쓴 노트 한 줄이 남의 클레임을
+    영영 살려 두었다. 실제 사고 2026-09-19 11:21: REQ-20260919-004-62x6 을 맡던
+    백그라운드 작업자가 클레임을 놓으면서 노트를 남겼는데, 그 노트가 09:37 에
+    잡아만 두고 손을 뗀 다른 클레임의 시계를 되감았다. 카드는 그 뒤 10분 동안
+    「지금 이 요청을 맡아 일하고 있습니다」라고 적었고, 실제로는 아무도 없었다
+    (주인 물음 11:31 「왜 004만 돌아?」). 클레임 시각은 한 번 찍히고 갱신되지
+    않으므로, 클레임 뒤 한 번이라도 문서가 움직이면 그 클레임은 불사가 됐다.
+
+    그래서 시계를 **제 손**에 묶는다: `claim_renew()` 가 그 세션이 이 문서를
+    고치는 s9 명령을 칠 때마다 `claim_at` 을 다시 감고, 여기서는 그 시계 하나만
+    본다. 유예(CLAIM_GRACE) 동안 제 손이 한 번도 없었으면 놓은 것이다.
     클레임 시각을 모르면(옛 바인딩) 판정하지 않는다 — 근거 없이 남의 클레임을
     빼앗지 않는다.
     """
@@ -2436,29 +2448,57 @@ def claim_dead(b, req_id, now=None):
         claimed = datetime.datetime.fromisoformat(at).timestamp()
     except (ValueError, TypeError):
         return False
-    if now - claimed < CLAIM_GRACE:
-        return False
-    row = next((r for r in load_catalog() if r["id"] == req_id), None)
-    if not row:
+    return (now - claimed) >= CLAIM_GRACE
+
+
+def claim_renew(doc_id, session, machine=None):
+    """이 세션이 이 문서에 손을 댔다 — 제 클레임의 시계를 다시 감는다.
+
+    새 클레임을 만들지는 않는다: 이미 잡고 있는 것의 시계만 감는다. 그러지
+    않으면 조회 한 번이 클레임이 되고, 그것은 `heartbeat_touch` 가 읽기 명령을
+    손길로 치지 않는 이유와 같은 구멍이다. 어떤 실패도 원 명령을 죽이지 않는다.
+    반환: 감았는가."""
+    session = (session or "")[:8]
+    if not session or not doc_id:
         return False
     try:
-        moved = datetime.datetime.fromisoformat(
-            row.get("updated") or "").timestamp()
-    except (ValueError, TypeError):
+        machine = machine or current_machine()
+        b = read_binding(machine, session)
+        if not b or b.get("ended"):
+            return False
+        rid = canon_id(doc_id)
+        held = [canon_id(x) for x in
+                ([b.get("last_req")] if b.get("last_req") else [])
+                + list(b.get("active_reqs") or [])]
+        if rid not in held:
+            return False
+        cat = dict(b.get("claim_at") or {})
+        if rid not in cat:
+            return False
+        cat[rid] = now_iso()
+        b["claim_at"] = cat
+        write_binding(b)
+        return True
+    except Exception:
         return False
-    return moved <= claimed
 
 
-def binding_req_ids(b, alias=None):
+def binding_req_ids(b, alias=None, stale_ok=False):
     """이 바인딩이 실행 등록한 REQ id들 (정식 id로 정규화).
     last_req + active_reqs — 진행 판정·클레임 판정이 공유하는 단일 정의.
 
     잡아만 놓고 유예가 지난 것은 빼고 준다 (REQ-20260828-005) — 여기가 단일
-    지점이라, 화면의 live 표시·워처의 클레임 판정·멈춤 목록이 함께 정직해진다."""
+    지점이라, 화면의 live 표시·워처의 클레임 판정·멈춤 목록이 함께 정직해진다.
+
+    `stale_ok=True` 는 **손이 식었어도 세어 달라**는 뜻이다 (REQ-20260919-011-62x6).
+    두 물음이 다르기 때문이다: 화면은 「지금 누가 이 요청을 맡아 일하나」를 묻고,
+    워처는 「여기에 두 번째 손을 붙여도 되나」를 묻는다. 뒤쪽은 틀렸을 때의 값이
+    **일하는 파일 위의 두 번째 손**이라, 식은 클레임이라도 살아 있는 세션이
+    쥐고 있으면 넓게 잡는 쪽이 맞다."""
     lr = b.get("last_req") or ""
     ids = ([lr] if lr else []) + list(b.get("active_reqs") or [])
     out = [canon_id(x, alias) for x in ids if x]
-    return [i for i in out if not claim_dead(b, i)]
+    return out if stale_ok else [i for i in out if not claim_dead(b, i)]
 
 
 def locate(doc_id):
@@ -3055,6 +3095,9 @@ def catalog_row(meta, path, body=""):
         # 생성 출처 (REQ-20260902-018) — 카드가 "만든 사람·맡은 사람·기원"을
         # 문서를 열지 않고 그린다. 옛 문서는 읽기 규칙(doc_creator)으로 같은 답.
         "lease": doc_lease(meta),          # 리스 판정 원재료 (REQ-20260902-020)
+        # 맡던 손이 놓았다는 도장 (REQ-20260919-011-62x6) — 카드가 「아무도 안
+        # 붙어 있습니다」를 곧바로 말하고 워처가 유예를 30초로 줄이는 근거다.
+        "released": release_mark(meta) or "",
         "creator": doc_creator(meta),
         # 권한 판정이 읽는 **원 필드** (REQ-20260908-026): 위의 `creator` 는 옛 문서를
         # 담당(user)으로 대신 읽는 표시값이라 가시성·이동 판정에 쓸 수 없다. 두 값을
@@ -4103,6 +4146,7 @@ def update_active_reqs(doc_id, new_status):
                 write_binding(b)
         finally:
             release_lock()
+        release_mark_clear(rid)   # 새 손이 잡았다 (REQ-20260919-011-62x6)
         res = {"registered": True, "lease": "", "why": ""}
         try:
             _ok, _code, _why = doc_lease_acquire(doc_id, "claim", session=sess)   # REQ-20260902-020
@@ -4959,6 +5003,16 @@ def release_doc_session(doc_id, session, user="", reason=""):
         meta.pop("lease", None)
         entry += (f"- {ts} lease release {_ls.get('user')}@{_ls.get('machine')} "
                   f"(by {user}) — 클레임 해제와 함께 걷었다\n")
+    # **놓았다는 사실을 문서가 기억한다** (REQ-20260919-011-62x6).
+    # 여태 이 사실은 History 의 글줄로만 남아, 읽는 기계가 하나도 없었다.
+    # 그래서 실제 사고 2026-09-19 11:21 의 요청은 손이 떠난 뒤로도 11분간
+    # 「진행 중」으로 서 있었고 아무도 집지 않았다. 손을 놓은 것은 **확실한**
+    # 사실이라(조용한 것과는 다르다), 이 도장을 워처가 읽어 유예를 반려와 같은
+    # 30초로 줄이고 카드가 「아무도 안 붙어 있습니다」를 곧바로 말한다.
+    # 다시 집으면(`_claim_req`·`update_active_reqs`) 저절로 걷힌다.
+    meta["released"] = {"at": ts, "session": session, "by": user,
+                        "reason": (reason or "").strip(),
+                        "owners": list(owners)}
     if "## History" in body:
         body = body.rstrip("\n") + "\n" + entry
     else:
@@ -5006,6 +5060,36 @@ def _release_binding_claim(doc_id, session):
         b["active_reqs"], b["claim_at"] = ar, cat
         b["last_req"] = last
         write_binding(b)
+
+
+def release_mark(meta):
+    """이 문서에 남은 「손을 놓았다」 도장 — 없으면 None (REQ-20260919-011-62x6)."""
+    rm = meta.get("released") if isinstance(meta, dict) else None
+    return rm if isinstance(rm, dict) and rm.get("at") else None
+
+
+def release_mark_clear(doc_id):
+    """새 손이 잡았으니 놓은 도장을 걷는다 — 걷었으면 True.
+
+    `updated` 는 건드리지 않는다 (`stamp_doc_session` 과 같은 규율): 다시
+    잡는 것은 진전이 아니다. 어떤 실패도 원 명령을 죽이지 않는다."""
+    try:
+        path = locate(doc_id)
+        if not path:
+            return False
+        meta, body = read_doc(path)
+        if not release_mark(meta):
+            return False
+        meta.pop("released", None)
+        acquire_lock()
+        try:
+            write_doc(path, meta, body)
+            rebuild_index(quiet=True)
+        finally:
+            release_lock()
+        return True
+    except Exception:
+        return False
 
 
 def stamp_doc_session(doc_id, session):
@@ -6325,7 +6409,8 @@ def _session_claims(doc_id, session):
     b = read_binding(current_machine(), session)
     if not b or b.get("ended"):
         return False
-    return canon_id(doc_id) in binding_req_ids(b)
+    # 손이 식었어도 쥔 것은 쥔 것이다 — 이 물음은 「누가 들고 있나」다
+    return canon_id(doc_id) in binding_req_ids(b, stale_ok=True)
 
 
 def _stop_note(doc_id, text):
@@ -7455,6 +7540,13 @@ def rework_claimed(req_id, win=120):
     생존 판정은 chat_live 하나로 모은다 (REQ-20260826-016 단일화) — 수신 대기
     tail · attach_pid · 활동 신선도를 이미 함께 본다. 종료(ended)된 세션의
     클레임은 인정하지 않는다: 끝난 세션이 붙잡고 있으면 아무도 이어받지 못한다.
+
+    **식은 클레임도 여기서는 클레임이다** (`stale_ok=True`, REQ-20260919-011-62x6).
+    화면은 「지금 누가 맡아 일하나」를 묻지만 이 함수는 「여기에 두 번째 손을
+    붙여도 되나」를 묻는다 — 틀렸을 때의 값이 **일하는 파일 위의 두 번째 손**
+    이라, 손이 식었어도 살아 있는 세션이 쥐고 있으면 넓게 잡는다. 그 자리가
+    영영 안 풀리는 것은 아니다: 세션이 끝나면 `ended`·`chat_live` 가 걷고,
+    손을 놓았으면 `released` 도장이 워처의 유예를 30초로 줄인다.
     """
     import glob as _glob
     alias = id_alias()          # 짧은 id로 등록한 클레임도 인식 (REQ-20260825-086)
@@ -7472,7 +7564,8 @@ def rework_claimed(req_id, win=120):
                 b = json.load(f)
         except (OSError, ValueError):
             continue
-        if canon_id(req_id, alias) not in binding_req_ids(b, alias):
+        if canon_id(req_id, alias) not in binding_req_ids(b, alias,
+                                                          stale_ok=True):
             continue
         if b.get("ended"):
             continue
@@ -9439,7 +9532,7 @@ def _active_stream_sids():
                 b = json.load(f)
         except (OSError, ValueError):
             continue
-        if binding_req_ids(b):
+        if binding_req_ids(b, stale_ok=True):
             sid = b.get("session", "")
             tp = b.get("transcript_path", "")
             if sid:
@@ -11599,7 +11692,8 @@ def chat_notify_transition(doc_id, old, new, note, actor):
                 b = json.load(f)
         except (OSError, ValueError):
             continue
-        if canon_id(doc_id, alias) not in binding_req_ids(b, alias) \
+        if canon_id(doc_id, alias) not in binding_req_ids(b, alias,
+                                                          stale_ok=True) \
                 and b.get("session", "") != owner_sid:
             continue
         fresh = any(now - os.path.getmtime(p) < 3600
@@ -12719,7 +12813,7 @@ def _stop_claim_map(alias=None):
         if not sid8:
             continue
         live = (not b.get("worker")) and chat_live(b)
-        for rid in binding_req_ids(b, alias):
+        for rid in binding_req_ids(b, alias, stale_ok=True):
             slot = out.setdefault(rid, {"live": [], "dead": []})
             slot["live" if live else "dead"].append(sid8)
     return out
@@ -13330,9 +13424,19 @@ def rework_watch_tick(grace=None, now=None):
         # 좁혀 둔 것이 안전장치였던 것도 아니다. 겹침을 막는 것은 바로 아래
         # `rework_claimed()` 이고(프로세스 생존·위임·세션 바인딩을 본다),
         # 그 검사는 그대로 서 있다. 좁힌 자리는 안전이 아니라 구멍이었다.
+        # **놓은 손은 확실하다** (REQ-20260919-011-62x6). 조용한 것과 사라진
+        # 것이 밖에서 같아 보이기 때문에 이어받기의 유예가 15분인데, 손을 놓는
+        # 것은 그 세션이 **스스로 적은 사실**이라 그 불확실함이 없다. 그래서
+        # 놓은 도장이 있으면 반려와 같은 시계(30초)를 쓰고, 기준 시각도 문서에
+        # 마지막으로 손이 닿은 때가 아니라 **놓은 때**다 — 놓으면서 남긴 노트가
+        # 제 경보를 15분 끄던 자리가 실제 사고 2026-09-19 11:21 이었다.
+        _rel = release_mark(meta)
         if rework_candidate(lt):
             g = grace if grace is not None else rework_grace(meta)
             quiet_from = ts
+        elif _rel:
+            g = grace if grace is not None else rework_grace(meta)
+            quiet_from = max(ts, _iso_epoch(_rel.get("at")))
         else:
             g = grace if grace is not None else abandon_grace(meta)
             # 기준은 마지막 **손길**이다. 전이 시각으로 재면 아침에 착수해
@@ -13365,7 +13469,9 @@ def rework_watch_tick(grace=None, now=None):
             # (stop_mark)을 기계가 되살리지 않는 규율도 그 갈래에 함께 붙어 있다.
             done_it = _spawn_wake(
                 r["id"], meta, mins=int((nowt - quiet_from) // 60), kind="resume",
-                why="맡고 있던 세션이 사라졌다 — 워처가 이어받게 띄웠다.")
+                why=("맡고 있던 손이 이 요청을 놓았다 — 워처가 이어받게 띄웠다."
+                     if _rel else
+                     "맡고 있던 세션이 사라졌다 — 워처가 이어받게 띄웠다."))
         if done_it:
             spawned.append(r["id"])
     # 이 자리에서 해야 할 open 요청을 집는다 (REQ-20260909-012 · REQ-20260910-016 ·
@@ -19358,6 +19464,19 @@ def stall_verdict(r, now, win, hands=None, assigned=None):
                     why="이 요청을 나눠 맡은 일손이 "
                         f"{int(ah.get('age') or 0)}초 전까지 움직였습니다 — "
                         f"문서에는 {v['quiet_mins']}분째 새 기록이 없습니다")
+    # **놓았다는 도장은 조용함보다 세다** (REQ-20260919-011-62x6).
+    #
+    # 멈춤은 「문서가 얼마나 조용한가」로 재므로, 손을 놓으면서 노트를 남기면
+    # 그 노트가 제 경보를 15분 끈다 — 실제 사고 2026-09-19 11:21 이 그 자리였다.
+    # 놓은 것은 짐작이 아니라 그 세션이 스스로 적은 사실이라, 조용한 시간을
+    # 기다리지 않고 곧바로 말한다. 다만 **실제로 붙은 손은 이긴다**: 위에서
+    # 워커·잡·위임·지명 손이 이미 걸러졌고, 여기서는 살아 있는 클레임(live)이
+    # 남은 경우를 비켜 간다 — 도장을 지우는 것은 다시 잡는 손이다.
+    _rel = r.get("released") if isinstance(r.get("released"), dict) else None
+    if _rel and not r.get("live"):
+        return dict(v, state="stalled", mins=v["quiet_mins"],
+                    why="맡았던 손이 이 요청을 놓았습니다 — 아무도 붙어 "
+                        "있지 않습니다")
     if age is not None and age < win:
         # 방금 착수한 것 — 아직 멈춘 게 아니다
         return dict(v, state="moving", why="방금 움직였습니다")
@@ -19519,7 +19638,7 @@ def loose_requests(now=None):
     그래서 넓게 알리는 대신 **좁게, 손에 잡히는 것만** 낸다.
 
       committed  구현 커밋은 있는데 아직 in-progress — 남은 것은 전이 한 줄
-      idle       잡아만 놓고 문서가 한 번도 안 움직임 — 착수하거나 놓거나
+      idle       잡아만 놓고 제 손이 유예 동안 없었음 — 착수하거나 놓거나
 
     반환: [{"id", "title", "kind", "fix"}] — fix 는 그대로 붙여 넣을 명령이다.
     """
@@ -19774,7 +19893,7 @@ def handoff_rows(local=None, session=None):
     if b:
         alias = id_alias()
         by_id = {c["id"]: c for c in cat}
-        for rid in binding_req_ids(b, alias):
+        for rid in binding_req_ids(b, alias, stale_ok=True):
             c = by_id.get(canon_id(rid, alias)) or {}
             lease = c.get("lease") if isinstance(c.get("lease"), dict) else {}
             if not lease or c.get("status") != "in-progress":
@@ -22549,6 +22668,8 @@ def _claim_req(machine, session, doc_id, agent_transcript="",
     finally:
         release_lock()
     stamp_doc_session(doc_id, session)
+    if not doc_id_terminal:
+        release_mark_clear(doc_id)   # 새 손이 잡았다 (REQ-20260919-011-62x6)
     # 문서 리스 (REQ-20260902-020): 바인딩은 이 머신의 사실, 리스는 모든 머신이
     # 보는 사실이다. 거부되면 말하되 사람의 클레임을 막지는 않는다.
     if not doc_id_terminal:
@@ -42058,8 +42179,12 @@ def main():
         _hb_id = getattr(args, "id", None)
         for _i in (_hb_id if isinstance(_hb_id, list) else [_hb_id]):
             if _i:
-                heartbeat_touch(_i, cmd=sys.argv[1],
-                                session=getattr(args, "session", "") or "")
+                _sid = (getattr(args, "session", "")
+                        or os.environ.get("S9_SESSION", "") or "")
+                heartbeat_touch(_i, cmd=sys.argv[1], session=_sid)
+                # 제 클레임의 시계를 다시 감는다 (REQ-20260919-011-62x6) —
+                # 클레임을 살려 두는 것은 남의 손이 아니라 제 손이다.
+                claim_renew(_i, _sid)
     _t0 = time.perf_counter()
     try:
         args.fn(args)

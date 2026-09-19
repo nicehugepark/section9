@@ -1132,11 +1132,23 @@ function stallHTML(r){
      빠지면 버튼만 다른 이름으로 서는 근거 없는 손잡이가 되기 때문이고,
      「마지막 HH:MM」이 맨 뒤인 것은 바로 앞의 「N분째」와 같은 사실을 다른
      꼴로 되풀이하기 때문이다. */
-  const row = `<div class="rvpt stall" title="이 문서가 마지막으로 바뀐 지 `
-    + `${st.mins}분 됐습니다 — 그동안 이 문서에 아무것도 적히지 않았습니다`
-    // 죽음이 기록돼 있으면 그 말을 함께 싣는다 — 점의 툴팁과 같은 문장이다.
-    + (st.face === "dead" && st.reason ? ` (${esc(st.reason)})` : "") + `">`
-    + `<span class="rvcap">멈춤</span>${fmtStall(st.mins)} 진전 없음`
+  /* 맡던 손이 **놓았다고 적어 둔** 카드는 수가 아니라 그 사실을 말한다
+     (REQ-20260919-011-62x6). 「멈춤 방금 진전 없음」은 틀린 말은 아니지만,
+     사람이 그 줄에서 읽어야 할 것은 조용한 시간이 아니라 「아무도 안 붙어
+     있다」이고, 놓은 직후에는 수가 0 이라 그 사실을 아예 못 나른다. 새 시각
+     언어를 들이지 않는다 — 같은 줄·같은 자리·같은 손잡이이고 문장만 갈린다. */
+  const let_go = r.released && typeof r.released === "object";
+  const row = `<div class="rvpt stall" title="`
+    + (let_go
+       ? `맡던 손이 이 요청을 놓았습니다 — 그 뒤로 아무도 붙어 있지 않습니다`
+         + (r.released.reason ? ` (${esc(r.released.reason)})` : "")
+       : `이 문서가 마지막으로 바뀐 지 ${st.mins}분 됐습니다 — 그동안 이 `
+         + `문서에 아무것도 적히지 않았습니다`
+         // 죽음이 기록돼 있으면 그 말을 함께 싣는다 — 점의 툴팁과 같은 문장이다.
+         + (st.face === "dead" && st.reason ? ` (${esc(st.reason)})` : "")) + `">`
+    + `<span class="rvcap">멈춤</span>`
+    + (let_go ? "아무도 붙어 있지 않습니다"
+              : `${fmtStall(st.mins)} 진전 없음`)
     + factTail(r.commit_drift ? "고친 것 있음" : "", jobBit(r),
                last ? `마지막 ${esc(last)}` : "") + `</div>`;
   if (!r.commit_drift) return row;
