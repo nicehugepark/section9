@@ -40657,6 +40657,31 @@ def worker_workspace(doc_id, cfg, cwd, dec=None):
             blocking = dec.get("blocking") or []
             _auto_log(f"WT-SKIP(dirty) {doc_id} commit 안 한 코드 {len(blocking)}건 "
                       f"({', '.join(blocking[:3])}) — 본 저장소에 앉힌다")
+        # 「본 저장소」라고 판정했으면 **정말로 본 저장소에 앉힌다**
+        # (REQ-20260919-004-62x6, 실제 사고 2026-09-19 11:08).
+        #
+        # 여기 들어오는 cwd 는 담당 세션의 바인딩이 적어 둔 자리다. 그 세션이
+        # 앞 회차에 worktree 에서 돌았으면 바인딩의 cwd 는 그 worktree 이고,
+        # 이 자리는 그것을 그대로 돌려줬다 — 판정은 main 인데 실제 자리는
+        # worktree 인 어긋남이다. 프롬프트는 본 저장소 갈래(동시 작업 규율·
+        # 네 차례)로 나가는데 작업자가 실제로 선 곳은 사본이라, 문서를 고치러
+        # 온 작업자가 또 `vault/` 밖에 서서 한 글자도 못 고쳤다(004 가 두 번).
+        #
+        # 판정이 worktree 를 떠나라고 했으면 떠나는 것이 그 판정의 뜻이다.
+        # 저장소 밖의 다른 자리(다른 프로젝트의 디렉터리)는 건드리지 않는다 —
+        # 되돌리는 것은 **이 저장소의 worktree 자리**일 때뿐이다.
+        try:
+            # 빈 자리는 판정하지 않는다 — `realpath("")` 는 **지금 프로세스의
+            # 작업 디렉터리**를 내주므로, 워처가 worktree 안에서 돌면 빈 값이
+            # worktree 로 읽힌다(시험 B4 가 그것을 잡았다).
+            here = os.path.realpath(cwd) if cwd else ""
+            home = os.path.realpath(WORKTREE_HOME)
+            if here and (here == home or here.startswith(home + os.sep)):
+                _auto_log(f"WT-LEAVE {doc_id} reason={dec['reason']} "
+                          f"바인딩의 자리가 worktree 라 본 저장소로 되돌린다")
+                cwd = ROOT
+        except Exception:
+            pass
         return cwd, {}, ""
     name = worker_worktree_name(doc_id)
     old, _own = _doc_worktree(doc_id)
