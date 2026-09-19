@@ -16486,7 +16486,7 @@ def cmd_status(args):
         die(f"{e}")
     print(f"{args.id}: {old} -> {args.new_status}")
     warn_banned_terms(args.note or "", f"status {args.id}")   # 전이 노트도 기록이다 (REQ-20260906-064)
-    warn_plain_speech(args.note or "", f"status {args.id}")   # 확인 포인트는 사람이 카드에서 읽는다 (REQ-20260919-003-62x6)
+    warn_plain_speech(args.note or "", f"status {args.id}", user=args.user)   # 확인 포인트는 사람이 카드에서 읽는다 (REQ-20260919-003-62x6)
     # parent 없는 사람 요청은 착수·전이 때 짚는다 — 막지 않는다 (REQ-20260909-073)
     if args.new_status in ("in-progress", "review", "done"):
         try:
@@ -22098,6 +22098,40 @@ def plain_speech_in(text, limit=8):
     return hits
 
 
+# 규약의 기본값과 그 사람의 `pref_*` 가 같은 것을 두고 다른 말을 하면 **개인 설정이
+# 이긴다**(규약 「말과 태도」 머리말, 주인 지시 2026-09-19 09:52 · REQ-20260919-005-62x6).
+# 존댓말은 아무도 말하지 않았을 때의 답이지 사람이 한 말을 덮는 규칙이 아니다. 그래서
+# 이 검사는 그 사용자의 pref_* 를 먼저 읽고, 말투를 달리 말했으면 **서지 않는다**.
+# 설정을 지우면(빈 값) 그 줄이 사라지므로 기본값으로 저절로 돌아간다 — 값을 캐시하지
+# 않는 이유가 이것이다(프롬프트 훅의 turn_prefs 와 같은 까닭).
+# 물리는 말을 「말」 한 글자로 잡지 않는다 — 「반말로 **말해라**」가 부정으로 읽혔다.
+_NEGATION = r"(?:금지|쓰지|하지|말고|말라|말아|마라|마세요|없이|안\s|않)"
+_PREF_WANTS_PLAIN = re.compile(r"반말")
+_PREF_PLAIN_NEGATED = re.compile(r"반말(?:은|을|로|로는|도)?\s*" + _NEGATION)
+_PREF_DROPS_POLITE = re.compile(r"존댓말(?:은|을|로|로는|도)?\s*" + _NEGATION)
+
+
+def speech_pref_override(user=""):
+    """이 사용자가 pref_* 로 말투를 달리 말했으면 (키, 값) — 없으면 None.
+    있으면 존댓말 검사가 서지 않는다."""
+    try:
+        name = resolve_user(user or None)
+        cfg = user_config(name) or {}
+    except Exception:
+        return None
+    for k in sorted(cfg):
+        if not str(k).startswith("pref_"):
+            continue
+        v = str(cfg.get(k) or "").strip()
+        if not v:
+            continue                         # 지운 설정 — 규약의 기본값으로 돌아간다
+        if _PREF_DROPS_POLITE.search(v):
+            return (k, v)
+        if _PREF_WANTS_PLAIN.search(v) and not _PREF_PLAIN_NEGATED.search(v):
+            return (k, v)
+    return None
+
+
 def speech_warn_path(session=""):
     """직전 응답의 반말 경고를 다음 턴까지 나르는 파일 — 용어 경고와 같은 구조다.
     Stop 훅이 적고 UserPromptSubmit 훅이 읽어 지운다. 세션 단위."""
@@ -22105,7 +22139,9 @@ def speech_warn_path(session=""):
     return os.path.join(ROOT, "state", f"speech-warn-{sid}.json")
 
 
-def warn_plain_speech(text, where=""):
+def warn_plain_speech(text, where="", user=""):
+    if speech_pref_override(user):
+        return []                            # 개인 설정이 이긴다 — 검사가 서지 않는다
     hits = plain_speech_in(text)
     if hits:
         print(f"⚠ 존댓말 {len(hits)}건 — 규약 2조 1: 사람이 읽는 자리의 글은 존댓말입니다: "
@@ -22126,14 +22162,15 @@ def cmd_speech(args):
         except OSError:
             pass
         hits = rec.get("hits") if isinstance(rec, dict) else None
-        if hits:
+        if hits and not speech_pref_override():   # 개인 설정이 이긴다 — 되비추지 않는다
             print("직전 응답의 반말 " + str(len(hits)) + "건 — "
                   + " · ".join(f"「…{h}」" for h in hits[:4])
                   + " (규약 2조 1: 사람이 읽는 자리의 글은 존댓말입니다 — "
                     "명령형 지시문은 그대로 둡니다)")
         return 0
     text = sys.stdin.read()
-    hits = plain_speech_in(text)
+    # 개인 설정이 이긴다 — 그 사람이 말투를 달리 말했으면 아무것도 세지 않는다.
+    hits = [] if speech_pref_override() else plain_speech_in(text)
     if args.json:
         print(json.dumps(hits, ensure_ascii=False))
     elif hits:
@@ -22281,7 +22318,7 @@ def cmd_note(args):
     print(f"{args.id}: note appended ({len(text)} chars)"
           + (f" · 첨부 {moved}개 이전" if moved else ""))
     warn_banned_terms(text, f"note {args.id}")
-    warn_plain_speech(text, f"note {args.id}")
+    warn_plain_speech(text, f"note {args.id}", user=args.user)
     try:
         maybe_sync(f"note {args.id}")
     except Exception:
