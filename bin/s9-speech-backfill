@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""노트의 반말 평서문을 존댓말로 옮긴다 (REQ-20260919-004-62x6).
+
+**사람이 쓴 글자는 건드리지 않는다** — 이 일의 가장 큰 위험이 그것이다. `## Original`
+(사람이 친 원문) · `ask` 라벨 노트(사람의 채팅 줄) · 인용부호 「」 안 · 코드 담장 ·
+백틱 · 표 · 제목 · 체크박스는 그대로 둔다. 옮기지 못하는 꼴은 억지로 바꾸지 않고
+남겨 센다 — 우리말이 깨지는 것이 반말로 남는 것보다 나쁘다.
+
+쓰는 법:  bin/s9-speech-backfill <파일…>          — 옮긴다
+          bin/s9-speech-backfill --dry <파일…>     — 바꿀 것만 보여 준다
+"""
+import re
+import sys
+
+JAMO_BASE, JONG = 0xAC00, 28
+JONG_N, JONG_B = 4, 17          # 종성 ㄴ · ㅂ
+
+
+def _jong(ch):
+    if not ("가" <= ch <= "힣"):
+        return -1
+    return (ord(ch) - JAMO_BASE) % JONG
+
+
+def _set_jong(ch, j):
+    return chr(JAMO_BASE + ((ord(ch) - JAMO_BASE) // JONG) * JONG + j)
+
+
+# 사람의 말이 사는 자리 — 손대지 않는다
+SKIP_LINE = re.compile(r"^\s*(?:#{1,6}\s|\||>|-\s*\[|\d+\.\s*$|```|~~~)")
+KEEP_SPAN = re.compile(r"`[^`]*`|「[^」]*」|\"[^\"]*\"|'[^']*'")
+# 문장이 끝나는 자리 — **줄을 쪼개지 않고 제자리에서** 찾는다. 쪼개서 다시 이으면
+# 표의 칸 맞춤(공백 여러 칸)이 무너진다 (실측 2026-09-19: 측정 표의 줄이 한 칸으로
+# 붙었다). 종결 뒤에 오는 참조 괄호는 함께 넘긴다.
+SENT_END = re.compile(
+    r"(?P<pre>[*_」』\)\]]*)(?P<w>[가-힣]+다)"
+    r"(?P<junk>(?:\s*[(\[（][^)\]）]*[)\]）])*)"
+    r"(?P<end>[.!?…)）]| —|$)")
+# **다」·**다 처럼 강조·인용이 어간을 감싼 자리 — 어간이 그 안에 있어 낱말로는 「다」
+# 하나만 남는다. 이때의 「다」는 계사라 「입니다」로 편다.
+WRAPPED = re.compile(r"(?P<pre>[*_」』\)\]])다(?P<end>[.!?…)）]| —|$)")
+
+
+def politen(word):
+    """평서형 종결 한 낱말을 합쇼체로. 못 옮기면 None."""
+    if len(word) < 2 or not word.endswith("다"):
+        return None
+    # **이미 존댓말이면 손대지 않는다** (실측 2026-09-19, 실제 사고): 이 규칙을
+    # 빼고 같은 파일에 두 번 돌렸더니 「했습니다」가 「했습니입니다」로 망가졌다 —
+    # 「습니다」도 「다」로 끝나므로 계사 규칙에 그대로 걸린다. 36개 문서에서
+    # 1792 자리가 그렇게 됐고 되돌리는 데 따로 손이 갔다. 옮기는 도구는
+    # **여러 번 돌려도 같은 결과여야 한다.**
+    if re.search(r"(?:니다|니까|세요|어요|아요|에요|예요|지요|군요|네요)$", word):
+        return None
+    stem, last = word[:-1], word[-2]
+    # 모음으로 끝나는 어간은 **명사+이다(계사)**일 때만 「입니다」다. 용언이면
+    # 「ㅂ니다」인데(아니다→아닙니다), 기계는 명사인지 용언인지 못 가른다. 이 문서들의
+    # 모음 종결은 거의 다 계사이므로(자리다·그대로다·때문이다·뿐이다) 계사로 보되,
+    # 자주 나오는 용언은 이름을 대어 먼저 가른다 — 못 가르는 것은 남겨 센다.
+    IRREGULAR = {"아니다": "아닙니다", "크다": "큽니다", "그러다": "그럽니다",
+                 "아프다": "아픕니다", "바쁘다": "바쁩니다", "나쁘다": "나쁩니다"}
+    for a, b in IRREGULAR.items():
+        if word.endswith(a):
+            return word[:-len(a)] + b
+    if word.endswith("이다"):                      # 것이다 → 것입니다
+        return word[:-2] + "입니다"
+    if word.endswith("는다"):                      # 받는다 → 받습니다
+        return word[:-2] + "습니다"
+    j = _jong(last)
+    if j == JONG_N:                                # 한다 → 합니다 · 세운다 → 세웁니다
+        return stem[:-1] + _set_jong(last, JONG_B) + "니다"
+    if j > 0:                                      # 했다 → 했습니다 · 있다 → 있습니다
+        return stem + "습니다"
+    if j == 0:                                     # 그대로다 → 그대로입니다
+        return stem + "입니다"
+    return None
+
+
+def convert_line(line):
+    """한 줄을 옮긴다 — (새 줄, 옮긴 수, 못 옮긴 수). 공백은 건드리지 않는다."""
+    if not line.strip() or SKIP_LINE.match(line):
+        return line, 0, 0
+    holes = []
+
+    def stash(m):
+        holes.append(m.group(0))
+        return "\x00%d\x00" % (len(holes) - 1)
+
+    work = KEEP_SPAN.sub(stash, line)
+    cnt = [0, 0]
+
+    def one(m):
+        new = politen(m.group("w"))
+        if new is None or re.search(r"[이으아어]입니다$", new):
+            cnt[1] += 1                   # 못 옮겼다 — 그대로 둔다
+            return m.group(0)
+        cnt[0] += 1
+        return m.group("pre") + new + m.group("junk") + m.group("end")
+
+    work = SENT_END.sub(one, work)
+
+    def wrapped(m):
+        cnt[0] += 1
+        return m.group("pre") + "입니다" + m.group("end")
+
+    work = WRAPPED.sub(wrapped, work)
+    work = re.sub(r"\x00(\d+)\x00", lambda m: holes[int(m.group(1))], work)
+    return work, cnt[0], cnt[1]
+
+
+# 사람이 친 원문이 사는 자리 — 통째로 건너뛴다
+HUMAN_SECTION = re.compile(r"^## (Original|원문)\s*$")
+HUMAN_NOTE = re.compile(r"^### \S+ (ask|question)\b")
+ANY_HEAD = re.compile(r"^(## |### )")
+
+
+def convert_doc(text):
+    lines = text.split("\n")
+    out, done, miss = [], 0, 0
+    skip, fence = False, False
+    for ln in lines:
+        if ln.startswith("```") or ln.startswith("~~~"):
+            fence = not fence
+            out.append(ln)
+            continue
+        if ANY_HEAD.match(ln):
+            skip = bool(HUMAN_SECTION.match(ln) or HUMAN_NOTE.match(ln))
+        if skip or fence:
+            out.append(ln)
+            continue
+        new, d, mi = convert_line(ln)
+        out.append(new)
+        done += d
+        miss += mi
+    return "\n".join(out), done, miss
+
+
+def main(argv):
+    dry = "--dry" in argv
+    paths = [a for a in argv if not a.startswith("--")]
+    tot_d = tot_m = 0
+    for p in paths:
+        with open(p, encoding="utf-8") as f:
+            src = f.read()
+        # 프론트매터는 명사구·서술형이라 그대로 둔다
+        head, body = "", src
+        if src.startswith("---\n"):
+            end = src.find("\n---\n", 4)
+            if end > 0:
+                head, body = src[:end + 5], src[end + 5:]
+        new, d, mi = convert_doc(body)
+        tot_d += d
+        tot_m += mi
+        if d and not dry:
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(head + new)
+        if d or mi:
+            print("  %-42s 옮김 %3d · 못 옮김 %2d" % (p.split("/")[-1], d, mi))
+    print("모두 %d 문장을 옮겼고 %d 개는 그대로 두었습니다%s"
+          % (tot_d, tot_m, " (미리보기)" if dry else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
