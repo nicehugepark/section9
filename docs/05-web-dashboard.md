@@ -108,7 +108,7 @@ CLI와 **동일한 함수(do_transition)** 를 호출한다 — 쓰기 코드 �
   History에는 `[via dashboard]` 표기가 붙어 CLI 전이와 구분된다.
 - UI: review 카드의 **✓ 승인 · ↺ 반려** 버튼, 문서 뷰어의 **모든 허용 전이 버튼**
   (→ done 등, cancelled는 confirm), **카드 드래그** — 허용 전이 컬럼만 하이라이트.
-- **작업자(me)**: header의 me select에서 등록 사용자를 고르면 웹 전이가 그
+- **전이한 사람(me)**: header의 me select에서 등록 사용자를 고르면 웹 전이가 그
   이름으로 History에 기록된다 (`by <me> … [via dashboard]`). 미등록 이름은
   서버가 400으로 거부. 미선택 시 서버 기동 사용자로 귀속. 인증은 없다 —
   자기신고 신원이지만 등록 강제 + append-only History로 추적성 확보.

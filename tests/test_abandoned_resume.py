@@ -110,7 +110,7 @@ class AbandonedResume(unittest.TestCase):
             prompt = [s for s in argv[0] if isinstance(s, str) and doc in s][0]
             # 이어받기지 새 출발이 아니다 — 프롬프트가 그렇게 말해야 한다.
             self.assertIn("이어서 끝내는 일", prompt)
-            self.assertIn("작업자가 사라졌다", prompt)
+            self.assertIn("세션이 사라졌다", prompt)
             # 반려 봉투를 씌우지 않는다 — 반려 사유가 없는 자리다.
             self.assertNotIn("반려 사유다", prompt)
             self.assertIn(f"last {doc}", prompt, "클레임 지시가 빠졌다")

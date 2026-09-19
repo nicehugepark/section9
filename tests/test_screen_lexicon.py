@@ -35,6 +35,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(HERE, "..", "web")
 S9 = os.path.join(HERE, "..", "bin", "s9")
 S9_SRC = S9 + ".py"   # 본체 소스 — bin/s9 는 발사대다 (REQ-20260905-003)
+# 커밋 검사의 경고도 사람이 읽는 글이다 (REQ-20260919-007-62x6) — 화면이 아니라
+# 터미널에 뜨지만, 읽고 다음 행동을 정하는 것은 사람이다. 파이썬이라 같은 눈으로 본다.
+S9_GUARD = os.path.join(HERE, "..", "bin", "s9-guard")
 
 # 낱말 → 왜 반려됐고 무엇으로 바뀌었나. 메시지가 곧 다음 사람이 읽을 판정문이다.
 BANNED = {
@@ -95,7 +98,7 @@ BANNED_WEB = {
 # 이 검사 밖이다(진단은 코드 말이 오히려 정확하다). 파일 단위로 뺀다.
 DIAG_FILES = {"boot.js", "graph.js", "diag.js"}
 # 대시보드가 아닌 표면. 여기 실린 이름은 BANNED_WEB 의 잣대를 받지 않는다.
-NOT_THE_DASHBOARD = {"bin/s9"}
+NOT_THE_DASHBOARD = {"bin/s9", "bin/s9-guard"}
 
 # ── 「자동 작업」 — **낱말이 아니라 자리가 걸렸다** (DOC-20260831-005) ────────
 #
@@ -175,10 +178,23 @@ def _py_strings(src):
     정규식으로 따옴표를 세면 주석 안의 인용을 문자열로 오인한다 — 이 저장소의
     주석에는 반려어가 근거로 인용돼 있고(위 BANNED 주석이 그 예다), 그것을
     걸면 다음 사람이 근거를 지우게 된다. docstring 도 뺀다: 그것은 다음
-    개발자에게 하는 말이지 사용자에게 하는 말이 아니다."""
+    개발자에게 하는 말이지 사용자에게 하는 말이 아니다.
+
+    **용어를 다루는 표 자신도 뺀다** (REQ-20260919-007-62x6): `BANNED_TERMS` 는
+    반려된 말을 왼쪽에 적어 둬야 성립하는 자료라, 그것을 화면 문장으로 세면 표가
+    제 검사에 걸린다. 종전에는 글자를 `"무인 " + "작업자"` 로 나눠 피했는데, 그
+    수법은 읽기 어렵고 나눈 조각(「작업자」)이 다음 검사에 다시 걸린다 — 표를
+    통째로 빼는 것이 자리에 맞는 답이다. 규칙은 **이름**이다: 대입문의 이름이
+    `BANNED_` 로 시작하면 그 아래 글자는 화면 문장이 아니다."""
     tree = ast.parse(src)
-    docs = set()
+    not_screen = set()
     for node in ast.walk(tree):
+        if (isinstance(node, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id.startswith("BANNED_")
+                        for t in node.targets)):
+            for sub in ast.walk(node.value):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                    not_screen.add(id(sub))
         body = getattr(node, "body", None)
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
                              ast.ClassDef)) and body:
@@ -186,11 +202,11 @@ def _py_strings(src):
             if (isinstance(first, ast.Expr)
                     and isinstance(first.value, ast.Constant)
                     and isinstance(first.value.value, str)):
-                docs.add(id(first.value))
+                not_screen.add(id(first.value))
     out = []
     for node in ast.walk(tree):
         if (isinstance(node, ast.Constant) and isinstance(node.value, str)
-                and id(node) not in docs):
+                and id(node) not in not_screen):
             text = node.value
             for skip in S9_NOT_SCREEN:
                 if skip in text:
@@ -220,6 +236,8 @@ def _surfaces():
             out[os.path.basename(p)] = _html_text(f.read())
     with open(S9_SRC, encoding="utf-8") as f:
         out["bin/s9"] = _py_strings(f.read())
+    with open(S9_GUARD, encoding="utf-8") as f:
+        out["bin/s9-guard"] = _py_strings(f.read())
     return out
 
 
@@ -403,6 +421,60 @@ class TheAutoNameOnlyStandsWhereItIsTrue(unittest.TestCase):
         for name, text in self.surfaces.items():
             self.assertNotIn("누군가", text,
                              "%s 에 모르는 주어가 남았다 — 「사람이」로" % name)
+
+
+# ── 홀로 선 「작업자」 (REQ-20260919-007-62x6) ─────────────────────────────
+#
+# 주인 물음 2026-09-19 10:06: 「작업자가 뭘 말하는거야. 사람을 말하는거야.
+# 백그라운드 워커를 말하는거야? 이것도 번역된거 아니야?」
+#
+# 「무인 작업자 → 백그라운드 작업자」는 용어표에 이미 있는데, 그 한 줄이
+# **홀로 선** 「작업자」는 못 막았다. 홀로 서면 한 낱말이 서로 다른 둘을 가리킨다:
+#
+#   · 기계가 띄운 백그라운드 실행 세션        → 「백그라운드 작업자」
+#   · 이 저장소를 함께 고치고 있는 다른 실행 주체 → 「다른 세션」
+#     (사람이 켠 세션일 수도, 위임 에이전트일 수도 있어 「작업자」로는 안 갈린다)
+#
+# 어느 쪽인지 화면에서 읽을 수 없으면 사람은 "내가 안 시킨 일이 돈다"와
+# "내 편집이 남과 부딪힌다"를 구분하지 못한다 — 둘의 다음 행동이 다르다.
+_WORKER_ALONE = re.compile(r"(?<!백그라운드 )작업자(?!리)")
+
+
+class TheWorkerNameNeverStandsAlone(unittest.TestCase):
+    """화면·서버 문장에서 「작업자」는 홀로 서지 않는다 (REQ-20260919-007-62x6).
+
+    읽는 자리는 `_surfaces()` 한 벌을 그대로 쓴다 — 훑는 눈이 둘이면 한 벌만
+    고쳐진다(위 검사들이 세운 그 규율). 주석·docstring 은 이 눈 밖이라 근거로
+    인용한 「작업자」는 그대로 남는다."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.surfaces = _surfaces()
+
+    def test_no_bare_worker_on_any_screen(self):
+        hits = []
+        for name, text in self.surfaces.items():
+            for line in text.splitlines():
+                if _WORKER_ALONE.search(line):
+                    hits.append("%s: %s" % (name, line.strip()[:90]))
+        self.assertEqual(
+            [], hits,
+            "홀로 선 「작업자」가 남았다 — 기계가 띄운 것은 「백그라운드 "
+            "작업자」, 이 저장소를 함께 고치는 남은 「다른 세션」이다 "
+            "(용어표 DOC-20260906-002):\n  " + "\n  ".join(hits))
+
+    def test_the_kept_name_still_stands(self):
+        """채택어가 화면에 살아 있다 — 지우기만 하고 안 채우면 문장이 사라진다."""
+        joined = "\n".join(self.surfaces.values())
+        for kept in ("백그라운드 작업자", "다른 세션"):
+            self.assertIn(kept, joined,
+                          "채택어 「%s」가 화면 어디에도 없다" % kept)
+
+    def test_the_workspace_word_is_not_swallowed(self):
+        """「작업자리」는 다른 낱말이다 — 원격에서 테스트를 도는 자리를 말한다."""
+        self.assertIsNone(_WORKER_ALONE.search("원격 작업자리를 못 만듦"))
+        self.assertIsNone(_WORKER_ALONE.search("백그라운드 작업자가 띄웠다"))
+        self.assertIsNotNone(_WORKER_ALONE.search("다른 작업자가 붙어 있는 중"))
 
 
 if __name__ == "__main__":
