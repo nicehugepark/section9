@@ -6043,6 +6043,8 @@ WORKSPACE_WHY = {
     "dirty-overlap": "이 요청이 만질 파일이 아직 commit 되지 않았다 — 사본에는 그것이 없다",
     "live-verify": "화면 작업이라 실행 중인 서버가 읽는 자리에서 해야 한다",
     "self-edit": "자기 도구를 고치는 일이라 샌드박스가 사본에서 범위를 자른다",
+    "doc-work": "산출물이 vault 문서라 worktree 에서는 고칠 손이 없다 — "
+                "그 자리의 작업자는 작업 디렉터리 밖을 못 고친다",
     "worktree-exists": "이 요청의 worktree 에 아직 합치지 않은 것이 남아 있다",
     "worktree-pile": "worktree 가 천장까지 쌓였다 — 먼저 거둬야 한다",
 }
@@ -6077,8 +6079,11 @@ def _workspace_note(doc_id, kind, reason, dec):
             json.dump(p, f)
     except OSError:
         pass
-    text = (f"본 저장소에서 이어받는다 — {why}. commit 하면 다음 라운드부터 "
-            f"백그라운드 작업이 다시 자기 worktree 를 받는다.")
+    # 풀 것이 없는 자리에 할 일을 지어내지 않는다 — 「commit 하면」은 미커밋
+    # 코드가 자리를 바꾼 때만 참이다(화면의 WS_FIX_COMMIT 과 같은 갈림).
+    fix = ("commit 하면 다음 라운드부터 백그라운드 작업이 다시 자기 worktree 를 "
+           "받는다." if reason.startswith("dirty-") else "")
+    text = (f"본 저장소에서 이어받는다 — {why}." + (f" {fix}" if fix else ""))
     try:
         r = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "s9"), "note", doc_id,
                             text, "--label", "workspace"],
@@ -11953,7 +11958,13 @@ def _spawn_worker(doc_id, meta, prompt, reason, allow_resume=False, out=None):
             f"아니라 전이가 한다: `{s9bin} status {doc_id} review` 가 이 가지의 코드 "
             f"commit 을 main 으로 옮기고, 충돌해 못 옮기면 그 사실을 짚어 거절한다 — "
             f"그때는 blocked 로 올려라(사유: 충돌). 직접 merge 하지 마라. "
-            f"③ `git checkout`·`git stash`·`git reset` 은 여기서도 쓰지 마라.")
+            f"③ `git checkout`·`git stash`·`git reset` 은 여기서도 쓰지 마라. "
+            f"④ **문서 본문(vault/ 아래)은 이 자리에서 고칠 수 없다** — 네 손은 "
+            f"작업 디렉터리 안에서만 들고, 여기 있는 vault 사본은 가지를 딸 때의 "
+            f"옛 판이라 고치면 두 벌이 갈린다. 문서 본문을 고쳐야 하는 일을 만나면 "
+            f"우회하지 말고 `{s9bin} status {doc_id} blocked --note '문서 본문을 "
+            f"고쳐야 하는데 worktree 에는 그 손이 없다 — 본 저장소 세션이 집으면 "
+            f"된다'` 로 올려라. `{s9bin} note` 로 문서에 글을 남기는 것은 된다.")
     else:
         prompt = prompt + (
             "\n\n[동시 작업 규율] 이 워크스페이스에는 다른 주체(리드·서브에이전트·"
@@ -40029,6 +40040,55 @@ def declared_scope(doc_id, text=None):
     return got or None
 
 
+# ---- 산출물이 문서인 요청 — 그 일은 worktree 에서 안 된다 -------------------
+# 실제 사고 2026-09-19 09:40 (REQ-20260919-006-62x6): 「9/18 이후 문서를 존댓말로
+# 백필하라」가 전용 worktree 로 떴고 그 작업자는 한 글자도 고치지 못했다. 까닭은
+# 봉투가 아니라 **자리**다 — 적용 모드가 주는 손(`acceptEdits`)은 작업 디렉터리
+# 안에서만 묻지 않는데, worktree 작업자의 작업 디렉터리는 state/worktrees/<이름>
+# 이고 문서는 본 저장소 vault/ 아래라 바깥 경로의 Edit 가 사람에게 묻고 사람이
+# 없어 거부됐다. worktree 안의 사본은 가지를 딸 때의 옛 판이라 그것을 고치면 두
+# 벌이 갈리고, 거두면 살아 있는 문서가 옛 판으로 되돌아간다.
+#
+# 갈래는 둘이었다: ① 자리를 바꾼다(문서가 산출물이면 본 저장소로), ② 무인
+# 작업자에게 vault/ 를 열어 준다. **①을 골랐다** — ②는 사람이 없는 자리의
+# 작업자가 감사 없이 어떤 문서든 고칠 수 있게 하는 보안 경계 변경이고, ①은
+# 봉투를 그대로 둔 채 같은 일을 되게 한다.
+DATA_DIRS = ("vault", "users", "projects")
+_DATA_RE = re.compile(
+    r"(?<![\w/.-])((?:" + "|".join(DATA_DIRS) + r")/[A-Za-z0-9_./-]+)")
+_DOC_TARGET_RE = re.compile(r"(문서|노트|확인 ?포인트|vault|REQ-|DOC-|QST-)")
+_DOC_EDIT_RE = re.compile(
+    r"(백필|고친|고치|고쳐|다듬|바로잡|손보|덧붙|옮겨 ?적|말투|존댓말|오탈자|번역)")
+
+
+def doc_work(doc_id, fields=None):
+    """이 요청의 산출물이 vault 문서인가 — **제목·요약·goal 만 읽는다**.
+
+    노트는 작업 기록이라 「문서를 고친다」가 스쳐 지나간다. 그것까지 세면 자리
+    판정이 제가 남긴 노트를 먹고(`_strip_label_notes` 주석의 그 병), 이 저장소
+    자신을 고치는 요청(자리 판정을 고치는 이 요청 같은 것)이 전부 문서 작업으로
+    읽힌다. 무엇을 만들 것인가는 사람이 짧게 적은 세 줄이 말한다.
+    """
+    if fields is None:
+        p = locate(doc_id) or locate(canon_id(doc_id))
+        if not p:
+            return False
+        try:
+            meta, _body = read_doc(p)
+        except (OSError, ValueError):
+            return False
+        fields = [meta.get("title") or "", meta.get("summary") or "",
+                  meta.get("goal") or ""]
+    for line in fields:
+        for m in _DATA_RE.finditer(line or ""):
+            rel = m.group(1).rstrip(".,)`'\"·")
+            if os.path.isfile(os.path.join(ROOT, rel)):
+                return True      # 데이터 경로를 이름으로 댔다 — 더 물을 것이 없다
+        if _DOC_TARGET_RE.search(line or "") and _DOC_EDIT_RE.search(line or ""):
+            return True
+    return False
+
+
 def _doc_worktree(doc_id, rows=None):
     """이 문서가 **이미 가진** worktree — (이름, 주인정보). 없으면 ("", {}).
 
@@ -40055,7 +40115,7 @@ def _doc_worktree(doc_id, rows=None):
     return "", {}
 
 
-def workspace_decision(doc_id, cfg, scope=None, dirty=None):
+def workspace_decision(doc_id, cfg, scope=None, dirty=None, docwork=None):
     """worktree냐 본 저장소냐 — **판정은 여기 한 곳에만 있다**.
 
     반환 {"kind": "main"|"worktree", "reason": 코드, "scope": set|None,
@@ -40097,6 +40157,13 @@ def workspace_decision(doc_id, cfg, scope=None, dirty=None):
         return M("live-verify")
     if scope and any(p == "bin/s9" or p.startswith("bin/s9-") for p in scope):
         return M("self-edit")          # 샌드박스가 자기 도구를 자른다
+    if not scope and (doc_work(doc_id) if docwork is None else docwork):
+        # 산출물이 vault 문서인 요청 — worktree 작업자에게는 그것을 고칠 손이
+        # 없다(위 doc_work 주석의 2026-09-19 사고). 코드 파일을 이름으로 댄
+        # 요청은 여기서 걸러진다: 그 일의 산출물은 코드이고, 문서까지 함께
+        # 고쳐야 하는 섞인 요청은 worktree 프롬프트가 「그 손이 없다」고 일러
+        # blocked 로 올리게 한다 — 조용히 실패하지는 않는다.
+        return M("doc-work")
     dirty = repo_code_dirty() if dirty is None else dirty
     if not dirty:
         return W("fresh")

@@ -133,6 +133,27 @@ class Repo(unittest.TestCase):
                       "--body", body).split()[0]
             cli("status", doc, "in-progress", "--note", "t")
             return doc
+        # 문서가 산출물인 요청 — 제목·요약·goal 이 그것을 말한다 (W13).
+        def req_full(title, summary, goal, body="본문"):
+            doc = cli("new", "request", "--title", title, "--summary", summary,
+                      "--goal", goal, "--size", "S", "--user", "alice",
+                      "--body", body).split()[0]
+            cli("status", doc, "in-progress", "--note", "t")
+            return doc
+        p = os.path.join(cls.root, "vault", "handbook.md")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write("# 손잡이\n")
+        cls.doc_backfill = req_full(
+            "9/18 이후 문서 백필",
+            "9/18 부터의 요청·지식 문서 노트를 존댓말로 고친다",
+            "9/18 이후 문서의 존댓말 비율이 90% 이상이 된다")
+        cls.doc_datapath = req_full(
+            "손잡이 문서 손보기", "vault/handbook.md 의 낡은 절차를 고친다",
+            "그 문서의 절차가 지금 명령과 맞는다")
+        cls.doc_meta = req_full(
+            "문서 작업자의 손", "문서를 고치는 요청이 낡은 자리로 가지 않게 한다",
+            "tests/test_x.py 가 그 갈림을 지킨다")
         cls.doc_none = req("scope-none", "무엇을 고칠지 말하지 않은 요청이다.")
         cls.doc_tests = req("scope-tests", "tests/test_x.py 를 고쳐라.")
         cls.doc_web = req("scope-web", "web/index.html 의 카드를 고쳐라.")
@@ -324,6 +345,49 @@ class Decision(Repo):
         d = self.decide(self.doc_side)
         self.assertEqual(d["kind"], "main", d)
         self.assertEqual(d["reason"], "dirty-overlap", d)
+
+    # W13. 산출물이 문서인 요청은 깨끗해도 본 저장소다 (REQ-20260919-006-62x6).
+    #
+    # 실사고 2026-09-19: 「9/18 이후 문서를 존댓말로 백필하라」가 전용 worktree 로
+    # 떴고 그 작업자는 한 글자도 못 고쳤다 — 문서는 본 저장소 vault/ 아래이고
+    # 작업자의 손은 제 작업 디렉터리 안에서만 든다.
+    def test_w13_document_work_stays_home(self):
+        d = self.decide(self.doc_backfill)
+        self.assertEqual(d["kind"], "main", d)
+        self.assertEqual(d["reason"], "doc-work", d)
+
+    # W13b. 데이터 경로를 이름으로 댄 요청도 같다 — 더 물을 것이 없다.
+    def test_w13b_a_named_data_path_stays_home(self):
+        d = self.decide(self.doc_datapath)
+        self.assertEqual(d["kind"], "main", d)
+        self.assertEqual(d["reason"], "doc-work", d)
+
+    # W13c. 코드 파일을 이름으로 댄 요청은 문서 낱말이 섞여도 갈라 준다 —
+    #       자리 판정 자신을 고치는 요청이 바로 그 모양이라(이 요청이 그랬다),
+    #       낱말만 세면 코드 작업이 통째로 격리를 잃는다.
+    def test_w13c_a_code_request_that_mentions_documents_still_splits(self):
+        d = self.decide(self.doc_meta)
+        self.assertEqual(d["kind"], "worktree", d)
+
+    # W13d. 그래도 worktree 로 간 작업자는 그 손이 없다는 것을 듣는다 —
+    #       조용히 거부만 받고 멈추면 사람은 왜 안 끝났는지 알 수 없다.
+    def test_w13d_the_worktree_worker_is_told_it_cannot_edit_documents(self):
+        meta = {"user": "alice", "machine": "testbox", "title": "t"}
+        seen = {}
+        with _spawn_patch(seen):
+            self.assertTrue(self.m._spawn_worker(self.doc_tests, meta, "p",
+                                                 "rework"))
+        self.assertTrue(seen["cwd"].startswith(
+            os.path.join(self.root, "state", "worktrees")),
+            f"worktree 에 앉지 않았다: {seen['cwd']}")
+        prompt = seen["argv"][seen["argv"].index("-p") + 1]
+        self.assertIn("문서 본문(vault/ 아래)은 이 자리에서 고칠 수 없다", prompt)
+        self.assertIn(f"status {self.doc_tests} blocked --note", prompt,
+                      "넘기는 길(blocked)을 그 문서의 id 로 주지 않았다")
+
+    # W13e. 사유에는 사람 말이 붙는다 — 문서에 남는 한 줄이 그것으로 지어진다.
+    def test_w13e_the_reason_has_words(self):
+        self.assertIn("doc-work", self.m.WORKSPACE_WHY)
 
 
 class Leases(Repo):
