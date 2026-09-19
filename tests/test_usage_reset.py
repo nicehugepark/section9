@@ -129,7 +129,7 @@ class UsageReset(unittest.TestCase):
         # 시각을 모르면 괄호째 빠져야 한다 — 빈 괄호 "()"를 남기지 않는다
         self.assertRegex(blk, r"when\s*\?",
                          "초기화 시각이 없을 때 괄호를 접지 않는다")
-        self.assertIn("모른다", self._fn("fmtUntil"),
+        self.assertIn("알 수 없음", self._fn("fmtUntil"),
                       "모르는 것을 모른다고 말하지 않는다")
 
     def test_failure_falls_back_to_the_plain_notice(self):

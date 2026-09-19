@@ -109,11 +109,11 @@ class DocTarget(unittest.TestCase):
             fn = self._fn("termTargetRender")
             self.assertRegex(fn, r'docTarget\.status === "done" \|\| docTarget\.status === "cancelled"',
                              "끝난 요청인지 보지 않는다")
-            self.assertIn("다시 열리지는 않는다", fn, "무슨 뜻인지 말하지 않는다")
+            self.assertIn("다시 열리지는 않습니다", fn, "무슨 뜻인지 말하지 않는다")
             # 보낸 뒤에도 한 줄 — "새 요청이 생겼다"로 읽히지 않게 말을 가른다
             send = self._fn("sendChat")
-            self.assertIn("에 노트로 남았다", send, "어디에 붙었는지 말하지 않는다")
-            self.assertIn('"로 기록됨"', send, "새 요청일 때의 말이 사라졌다")
+            self.assertIn("에 노트로 남았습니다", send, "어디에 붙었는지 말하지 않는다")
+            self.assertIn('"로 기록됐습니다"', send, "새 요청일 때의 말이 사라졌다")
         # ---------- ⑦ 보낸 뒤에도 남는 표시 (REQ-20260913-032-62x6) ----------
         with self.subTest("the_mark_survives_a_redraw"):
             # 낙관 줄은 곧 수신함 echo 로 갈린다 — 다시 그리는 손(ccChatLine)이
