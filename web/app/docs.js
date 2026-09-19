@@ -287,7 +287,11 @@ async function renderDocs(rows){
      말하는데 그 다섯이 한도(GRP_LIMIT) 밖에 묻혀 있으면 사람은 숫자만 보고 목록에서는
      못 찾는다 — 실제 발생 2026-09-06: 미답 5장이 전부 8월 것이라 접힌 자리에 있었다.
      순서는 안정 정렬이라 답한 것들 사이의 순서는 그대로다. */
-  groups.question.sort((a, b) => (isAnswered(a) === false ? 0 : 1) - (isAnswered(b) === false ? 0 : 1));
+  /* 줄 순서도 셋이다 — 아무 답도 없는 것 · 찾은 답이 기다리는 것 · 답이 붙은 것
+     (REQ-20260919-001-62x6). 앞의 둘을 한 덩이로 올리면 사람이 할 일이 다른 둘이
+     섞여 선다. */
+  const qRank = r => (isUnresolved(r) ? 0 : (isAnswered(r) === false ? 1 : 2));
+  groups.question.sort((a, b) => qRank(a) - qRank(b));
   /* 답 없는 것만 보는 자리 (REQ-20260907-042 · 설계 REQ-20260907-037 designer).
 
      타입 띠는 **수**를 말하고(43/46), 이 줄은 **행동**을 준다 — 「6장 남음」을
@@ -299,9 +303,9 @@ async function renderDocs(rows){
      좁혀 본 채로 마지막 한 장이 답을 얻으면 좁힘이 **스스로 풀린다**: 아무것도
      없는 목록 앞에서 되돌리기 글자만 남기지 않는다. */
   const qTotal = groups.question.length;
-  const qLeftInGrp = groups.question.filter(r => isAnswered(r) === false).length;
+  const qLeftInGrp = groups.question.filter(r => isUnresolved(r)).length;
   if (unansOnly && !qLeftInGrp) unansOnly = false;
-  if (unansOnly) groups.question = groups.question.filter(r => isAnswered(r) === false);
+  if (unansOnly) groups.question = groups.question.filter(r => isUnresolved(r));
   /* 한 번 편 만큼은 **줄지 않는다**. 한도 밖 문서를 열어 무리를 폈다가 다음
      선택에서 도로 짧아지면, 뽑아 올리기를 걷어내고도 목록이 다시 흔들린다.
      조건이 바뀌거나 판을 새로 세울 때만 초기화한다(얼음과 같은 시점). */
@@ -318,7 +322,12 @@ async function renderDocs(rows){
   // 뒤엣것을 아무도 묻지 않는다 (REQ-20260826-019). 판정은 목록 행과 같은 함수를
   // 쓴다. 판정은 3상이라(답함·미답·모름) 답한 장수를 "전체 빼기 미답"으로
   // 어림잡지 않고 따로 센다 — 모르는 것을 답한 것으로 세면 분수가 거짓말한다.
-  const qUnanswered = pool.filter(r => isAnswered(r) === false).length;
+  // 남은 것은 **아무 답도 없는 것**만 센다 (REQ-20260919-001-62x6) — 찾은 답이
+  // 붙은 질문은 줄에서 「찾은 답 있음」이라 말하므로 여기서 답 없음에 넣으면 한
+  // 화면이 같은 문서를 두고 서로 다른 말을 한다. 찾은 답은 따로 센다.
+  const qUnanswered = pool.filter(r => isUnresolved(r)).length;
+  const qFound = pool.filter(r => isAnswered(r) === false
+                                  && agentAnswer(r) === "found").length;
   const qAnswered = pool.filter(r => r.type === "question"
                                   && isAnswered(r) === true).length;
   const bar = TYPE_ORDER.filter(t => tcount[t] || t === curType).map(t => {
@@ -338,6 +347,7 @@ async function renderDocs(rows){
     // 따로 준다. 다른 타입도 같은 규칙으로 이름을 갖는다.
     const tip = `${t} 문서만 보기 (다시 누르면 전체)` + (frac
       ? ` · ${n}장 중 ${qAnswered}장 답 있음`
+        + (qFound ? ` · 찾은 답 ${qFound}장` : "")
         + (left ? ` · ${left}장 남음` : " · 남은 것 없음")
       : ` · ${n}장`);
     return `<button class="tb${curType===t?" on":""}" data-typef="${t}"

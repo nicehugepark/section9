@@ -240,9 +240,16 @@ class TestQuestionOnScreen(unittest.TestCase):
             #      43 ≠ 46 이 그 말을 하고, 색이 그 위에 얹힌다.
         with self.subTest("v11_typebar_shows_answered_over_total"):
                 m = re.search(r"const qUnanswered = ([^\n;]+);", self.web)
-                self.assertIsNotNone(m, "타입바가 미답 건수를 세지 않는다")
-                self.assertIn("isAnswered(r) === false", m.group(1),
-                              "미답 판정이 목록·뷰어와 다른 규칙을 쓴다")
+                self.assertIsNotNone(m, "타입바가 남은 건수를 세지 않는다")
+                # **남은 것은 아무 답도 없는 것만** 센다 (REQ-20260919-001-62x6,
+                # 주인 지적 2026-09-19: 「답찾기를 해서 찾은 후에도 갯수가 그대로다」).
+                # 줄의 뱃지는 셋을 말하는데(답 있음·찾은 답 있음·답 없음) 세는 자리가
+                # 둘만 보아, 답찾기가 답을 찾아도 「답 없음 5장」이 5 그대로였다.
+                self.assertIn("isUnresolved(r)", m.group(1),
+                              "남은 건수가 「찾은 답 있음」까지 답 없음으로 센다")
+                f = re.search(r"const qFound = ([\s\S]{0,140}?);", self.web)
+                self.assertIsNotNone(f, "찾은 답을 따로 세지 않는다")
+                self.assertIn('agentAnswer(r) === "found"', f.group(1))
                 a = re.search(r"const qAnswered = ([\s\S]{0,120}?);", self.web)
                 self.assertIsNotNone(a, "답한 장수를 세지 않는다")
                 self.assertIn("isAnswered(r) === true", a.group(1),

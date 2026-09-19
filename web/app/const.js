@@ -282,6 +282,23 @@ function isAnswered(r, body){
   if (typeof body === "string") return ANSWER_NOTE_RE.test(body);
   return r.answered !== undefined ? !!r.answered : null;
 }
+/* **아무 답도 없는가** — 세는 자리와 좁히는 자리가 함께 쓰는 판정
+   (REQ-20260919-001-62x6, 주인 지적 2026-09-19 09:31: 「답찾기를 해서 찾은 후에도
+   갯수가 그대로다」).
+
+   줄의 뱃지는 셋을 말하는데(답 있음 · 찾은 답 있음 · 답 없음) 세는 자리는 둘만
+   보았다: `isAnswered(r) === false` 하나로 「찾은 답 있음」까지 답 없음에 넣었다.
+   그래서 답찾기가 답을 찾아 그 줄이 「찾은 답 있음」으로 바뀌어도 「답 없음 5장」은
+   5 그대로였다 — 같은 화면이 같은 문서를 두고 서로 다른 말을 한다.
+
+   `isAnswered` 는 그대로 둔다: 찾아 온 답은 사람이 확정하기 전까지 답이 아니고,
+   타입 띠의 분수는 지금처럼 확정된 답만 센다 (REQ-20260907-040). 여기서 가르는
+   것은 **남은 것**이다 — 아무도 손대지 않은 질문과, 답을 찾아 놓고 확인을 기다리는
+   질문은 사람이 할 일이 다르다. */
+function isUnresolved(r, body){
+  if (isAnswered(r, body) !== false) return false;
+  return agentAnswer(r, body) !== "found";
+}
 function statusLabel(r, body){
   if (!r) return "";
   if (r.type !== "question") return r.status || "";
