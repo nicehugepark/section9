@@ -58,7 +58,7 @@ class LeaseFollowsTheMachine(unittest.TestCase):
     def test_l1_other_machines_request_is_not_leased_by_this_session(self):
         """정상: 담당이 otherbox 인 요청을 이 세션이 in-progress 로 전이해도 점유가 생기지 않는다."""
         rid = self.new("--needs-machine", "otherbox")
-        r = self.cli("status", rid, "in-progress", "--note", "저쪽 몫을 열었다")
+        r = self.cli("status", rid, "in-progress", "--note", "저쪽 몫을 열었습니다")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIsNone(self.lease(rid), "담당 컴퓨터가 다른 요청에 이 세션의 점유가 생겼다")
         self.assertIn("담당 컴퓨터", r.stderr + r.stdout)

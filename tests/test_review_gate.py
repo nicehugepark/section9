@@ -89,7 +89,7 @@ class TestReviewGate(unittest.TestCase):
         cli("status", rid, "in-progress", "--note", "착수")
         note1 = "확인 포인트 v1: (1) A안 채택 여부 — 예: 201 점프 허용?"
         cli("status", rid, "review", "--note", note1)
-        cli("status", rid, "in-progress", "--note", "반려: 예시가 부족하다")
+        cli("status", rid, "in-progress", "--note", "반려: 예시가 부족합니다")
         note2 = "확인 포인트 v2: 예시 보강판"
         cli("status", rid, "review", "--note", note2)
         with open(docs[0], encoding="utf-8") as f:

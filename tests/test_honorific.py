@@ -103,13 +103,22 @@ class Honorific(unittest.TestCase):
                            env=self.env, capture_output=True, text=True)
         self.assertNotIn("존댓말", r.stderr)
 
-    def test_t10_status_note_warns_too(self):
-        """T10. 전이 노트(확인 포인트)도 같은 검사를 받는다 — 사람이 카드에서 읽는 자리다."""
+    def test_t10_status_note_is_refused(self):
+        """T10. 전이 노트(확인 포인트)는 **막는다** — 사람이 카드에서 읽는 자리다.
+
+        처음에는 여기도 경고였는데, 그러면 반말이 그대로 History 에 남는다 (실측
+        9/18~9/19: 전이 메모 75건 중 48건). 같은 전이 경로가 확인 포인트 길이·담기지
+        않은 코드는 이미 거부하므로 말투만 경고로 둘 까닭이 없다
+        (REQ-20260919-008-62x6). 갈림의 나머지는 tests/test_transition_speech.py 다.
+        """
         doc = self._new_req()
         r = subprocess.run([S9, "status", doc, "in-progress", "--note", "검사를 세웠다"],
                            env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("반말", r.stderr)
+        r = subprocess.run([S9, "status", doc, "in-progress", "--note", "검사를 세웠습니다."],
+                           env=self.env, capture_output=True, text=True)
         self.assertIn("in-progress", r.stdout)
-        self.assertIn("존댓말", r.stderr)
 
     # ── 회귀
     def test_t11_record_and_pending_roundtrip(self):

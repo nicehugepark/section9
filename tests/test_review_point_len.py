@@ -129,7 +129,7 @@ class ReviewPointLen(unittest.TestCase):
         """`1) 2) 3) 4)` 도 같은 갈래다 — 기호만 바꿔 빠져나가지 못한다."""
         doc = self.mk()
         out = self.cli("status", doc, "review", "--note",
-                       "확인은 넷이다. 1) 하나 2) 둘 3) 셋 4) 넷", expect=1)
+                       "확인은 넷입니다. 1) 하나 2) 둘 3) 셋 4) 넷", expect=1)
         self.assertIn("갈래 4개", out)
 
     def test_f4_error_says_where_the_rest_goes(self):

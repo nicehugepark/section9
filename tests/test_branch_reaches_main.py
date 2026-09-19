@@ -250,7 +250,7 @@ class BranchReachesMain(unittest.TestCase):
         doc = self.mk()
         wt = self.mkwt(doc)
         self.wt_commit(wt, "bin/tool.py", "print(6)\n", "가지에서 고쳤다")
-        self.cli("status", doc, "blocked", "--note", "충돌해 못 옮겼다", cwd=wt)
+        self.cli("status", doc, "blocked", "--note", "충돌해 못 옮겼습니다", cwd=wt)
         self.assertIn("-> blocked", self.body(doc))
 
     # --- R. 회귀 ---

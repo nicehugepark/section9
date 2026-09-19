@@ -141,7 +141,7 @@ class ReviewAgeCommands(unittest.TestCase):
                       "--body", "x", "--root").stdout.split()[0]
         cls.cli("status", doc, "in-progress", "--note", "착수")
         cls.cli("status", doc, "review", "--note",
-                "무엇이 달라졌나: 목록에 나이가 실린다. 어디서 보나: s9 review. "
+                "무엇이 달라졌나: 목록에 나이가 실립니다. 어디서 보나: s9 review. "
                 "무엇이 보이면 승인인가: 분이 보이면 승인.", "--force")
         path = cls.m.locate(doc)
         at = (datetime.datetime.now().astimezone()

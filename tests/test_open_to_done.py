@@ -79,7 +79,7 @@ class WhatCountsAsAReference(unittest.TestCase):
         self.assertFalse(sha)
 
     def test_plain_sentence_is_not_a_reference(self):
-        ids, sha = mod.already_done_refs("이미 다 되어 있었다")
+        ids, sha = mod.already_done_refs("이미 다 되어 있었습니다")
         self.assertEqual((ids, sha), ([], False))
 
 
@@ -105,7 +105,7 @@ class Transition(unittest.TestCase):
     def test_open_to_done_with_a_reference(self):
         other = self._new("먼저 한 요청")
         did = self._new()
-        r = self._s9("status", did, "done", "--note", f"{other} 가 이미 이뤘다")
+        r = self._s9("status", did, "done", "--note", f"{other} 가 이미 이뤘습니다")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("open -> done", r.stdout)
         # 지목한 문서가 derived_from 에 적힌다
@@ -113,7 +113,7 @@ class Transition(unittest.TestCase):
 
     def test_open_to_done_without_a_reference_is_refused(self):
         did = self._new()
-        r = self._s9("status", did, "done", "--note", "이미 다 되어 있었다")
+        r = self._s9("status", did, "done", "--note", "이미 다 되어 있었습니다")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("지목", r.stdout + r.stderr)
 
@@ -127,7 +127,7 @@ class Transition(unittest.TestCase):
         did = self._new()
         self.assertEqual(self._s9("status", did, "in-progress",
                                   "--note", "착수").returncode, 0)
-        r = self._s9("status", did, "done", "--note", "끝냈다")
+        r = self._s9("status", did, "done", "--note", "끝냈습니다")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 

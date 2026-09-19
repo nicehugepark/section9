@@ -94,7 +94,7 @@ class TestDepEdges(unittest.TestCase):
         self.cli("status", b, "in-progress", "--note", "t")
         self.cli("status", b, "done", "--note", "goal 충족: g")
         self.cli("status", a, "in-progress", "--note", "t")
-        self.cli("status", a, "blocked", "--note", f"{b} 뒤에 하려 했으나 이미 끝났다")
+        self.cli("status", a, "blocked", "--note", f"{b} 뒤에 하려 했으나 이미 끝났습니다")
         self.assertEqual(self.meta(a).get("blocked_by") or [], [],
                          "끝난 요청이 선행으로 잡혔다")
 

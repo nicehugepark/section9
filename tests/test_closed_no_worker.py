@@ -165,7 +165,7 @@ class ApprovalFollowupIsNotAWorker(Base):
         cli(self.env, "status", rid, "in-progress", "--note", "t")
         cli(self.env, "status", rid, "review", "--note", "확인해 주세요")
         cli(self.env, "status", rid, "done", "--note",
-            "충족 근거: 다 됐다. 그리고 다음엔 이것도 해 달라")
+            "충족 근거: 다 됐습니다. 그리고 다음엔 이것도 해 주세요")
         seen = [r["id"] for r in self.m.approvals_unseen()]
         self.assertIn(rid, seen,
                       "승인 메모 자체가 사라지면 안 된다 — 사람이 받아야 한다")

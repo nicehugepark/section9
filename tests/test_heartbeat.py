@@ -219,7 +219,7 @@ class TheGC(Base):
     def test_h8_terminal_transition_collects_the_touch(self):
         rid = self.mkreq()
         self.assertTrue(os.path.exists(self.hb(rid)))
-        self.cli("status", rid, "done", "--note", "goal 충족: g 를 확인했다")
+        self.cli("status", rid, "done", "--note", "goal 충족: g 를 확인했습니다")
         self.assertFalse(os.path.exists(self.hb(rid)),
                          "done 문서에 손길이 남았다 — 뜻 없는 attached 신호")
 

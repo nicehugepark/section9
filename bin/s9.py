@@ -4707,6 +4707,26 @@ def do_transition(doc_id, new_status, note="", user=None, force=False, auto=Fals
         if faults:
             raise ValueError(
                 "확인 포인트 " + " / ".join(faults) + ". " + REVIEW_POINT_HELP)
+    # 전이 메모의 말투 가드 (REQ-20260919-008-62x6). 같은 자리의 다른 검사
+    # (확인 포인트 길이·담기지 않은 코드·가지가 main 에 닿았나)는 이미 막는데
+    # 존댓말만 알리고 지나갔다 — 실측 9/18~9/19 전이 메모 75건 중 48건(64%)이
+    # 반말이었고 그대로 History 에 남았다. 카드에서 사람이 먼저 읽는 글이 그것이다.
+    #
+    # **사람의 말은 거부 대상이 아니다.** 대시보드의 승인·반려(judge)는 사람이 친
+    # 글자를 그대로 메모에 싣고(「반려: 파비콘은 그대로다 [via dashboard]」), 워처가
+    # 지은 메모(auto)는 사람이 쓴 것이 아니다. 둘 다 걸리지 않는다.
+    # 개인 설정이 이기는 것도 그대로다 — speech_pref_override 가 서면 이 검사는
+    # 아예 서지 않는다 (규약 「말과 태도」 머리말 · REQ-20260919-005-62x6).
+    if note and not force and not judge and not auto \
+            and not speech_pref_override(user):
+        _plain = plain_speech_in(note, limit=3)
+        if _plain:
+            raise ValueError(
+                "전이 메모가 반말이다 — "
+                + " · ".join(f"「…{h}」" for h in _plain)
+                + ". 카드에서 사람이 먼저 읽는 글이라 존댓말로 쓴다 "
+                  "(규약 2조 1). 명령형 지시문은 그대로 두고, 사람이 친 말을 "
+                  "옮기는 자리면 --force 에 그 사실을 적어라")
     # 담기지 않은 코드 가드 (REQ-20260915-044-62x6): 사람이 판정하러 온 자리에
     # 그 고침이 없으면 판정할 것이 없다. 사람 판정(judge)은 걸리지 않는다 —
     # 승인·반려는 올리는 전이가 아니다.
