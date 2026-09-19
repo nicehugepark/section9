@@ -837,6 +837,18 @@ def terms_feedback():
         return ""
 
 
+def speech_feedback():
+    """직전 응답에 반말 평서문이 있었으면 한 줄 (REQ-20260919-003-62x6) — 용어 경고와
+    같은 구조·같은 자리다. Stop 훅이 적어 둔 것을 읽어 지운다."""
+    try:
+        env = _EMIT_ENV or dict(os.environ)
+        r = run(env, "speech", "pending")
+        line = (r.stdout or "").strip() if r.returncode == 0 else ""
+        return f" ◈ {line} " if line else ""
+    except Exception:
+        return ""
+
+
 def handoff_context(env):
     """다른 컴퓨터와 오간 이관 (REQ-20260909-010) — 이 컴퓨터가 이어받을 것과
     이 세션이 놓아야 할 것. 판정·문장은 `s9 handoff` 가 짓고 여기는 싣기만 한다.
@@ -857,7 +869,8 @@ def emit(context):
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
             "additionalContext": (stamp_context(*_stamp_who())
-                                  + turn_prefs() + terms_feedback() + context),
+                                  + turn_prefs() + terms_feedback()
+                                  + speech_feedback() + context),
         },
     }, ensure_ascii=False))
 
