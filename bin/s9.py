@@ -11655,6 +11655,7 @@ WORKER_ALLOWED_SUBCOMMANDS = (
     "reopened",
     "resume-item", "restore", "review", "rm", "safaridriver", "search",
     "serve", "serve-stale", "set", "shapes", "shot", "show", "snapshot",
+    "speech",
     "stalled", "stash", "status", "stream", "sync", "tag", "terms", "tokens",
     "trash", "unarchive", "untitled", "workers", "worktree",
 )
@@ -16485,6 +16486,7 @@ def cmd_status(args):
         die(f"{e}")
     print(f"{args.id}: {old} -> {args.new_status}")
     warn_banned_terms(args.note or "", f"status {args.id}")   # 전이 노트도 기록이다 (REQ-20260906-064)
+    warn_plain_speech(args.note or "", f"status {args.id}")   # 확인 포인트는 사람이 카드에서 읽는다 (REQ-20260919-003-62x6)
     # parent 없는 사람 요청은 착수·전이 때 짚는다 — 막지 않는다 (REQ-20260909-073)
     if args.new_status in ("in-progress", "review", "done"):
         try:
@@ -22045,6 +22047,104 @@ def warn_banned_terms(text, where=""):
     return hits
 
 
+# ── 존댓말 검사 (REQ-20260919-003-62x6): 사람이 읽는 자리의 글은 존댓말이다(규약 2조 1).
+# 비유·용어는 표(BANNED_TERMS)·훅·시험 셋이 함께 지키는데 존댓말은 규약의 문장 한 줄뿐이었다.
+# 그래서 지켜지는 정도가 자리마다 갈렸다 — 실측 2026-09-19(REQ-20260919-002-62x6):
+# 가이드 화면 93.5% · 요청 문서의 노트 6.1%. 사람이 대시보드 카드에서 읽는 자리가 가장 낮다.
+# 용어와 같은 자리에서 같은 방식으로 건다: 경고만 하고 막지 않는다 — 막으면 기록이 사라진다.
+#
+# 세는 것은 **평서문의 종결**뿐이다. 명령형(「…하라」·「…마라」)은 규약·지시문의 말투라 세지
+# 않고, 코드·인용·표·제목·체크박스도 보지 않는다 — 잡음이 섞이면 나머지 경고까지 안 읽힌다
+# (BANNED_TERMS 가 「낱말」을 표에서 뺀 것과 같은 이유다). 판정은 한 글자로 갈린다:
+# 우리말 평서문은 「다」로 끝나고, 그중 존댓말은 「니다」(합쇼체)이거나 「요」(해요체)다.
+_SPEECH_FENCE = re.compile(r"```.*?```|~~~.*?~~~", re.S)
+_SPEECH_QUOTED = re.compile(r"「[^」]*」|『[^』]*』|“[^”]*”|‘[^’]*’|\"[^\"\n]*\"|'[^'\n]*'")
+_SPEECH_SKIP_LINE = re.compile(r"^\s*(?:#{1,6}\s|>|\||```|~~~|[-*+]\s*\[[ xX]\]|\d+\.\s*\[[ xX]\])")
+_SPEECH_PAREN_TAIL = re.compile(r"\s*[\(\[（【][^\)\]）】]*[\)\]）】]\s*$")
+_SPEECH_TRIM_TAIL = re.compile(r"[\s\)\]\}»”’\"'*_~`,;:·\-—…!?.]+$")
+_POLITE_TAIL = re.compile(r"(?:니다|니까|읍시다|십시다|요)$")
+_PLAIN_TAIL = re.compile(r"[가-힣]다$")
+
+
+def _speech_tail(sent):
+    """문장 끝에 붙은 참조·부호를 걷어내고 종결어미가 드러나게 한다 —
+    「…세웠다 (REQ-…)」의 종결은 괄호가 아니라 「세웠다」다."""
+    s = (sent or "").strip()
+    for _ in range(3):
+        s2 = _SPEECH_TRIM_TAIL.sub("", _SPEECH_PAREN_TAIL.sub("", s))
+        if s2 == s:
+            break
+        s = s2
+    return s
+
+
+def plain_speech_in(text, limit=8):
+    """본문에서 반말로 끝나는 평서문 — [문장 꼬리…]. 코드·인용·표·제목·체크박스는 보지
+    않고, 명령형 지시문은 세지 않는다 (REQ-20260919-003-62x6)."""
+    src = _SPEECH_FENCE.sub(" ", str(text or ""))
+    src = re.sub(r"`[^`]*`", " ", src)
+    src = _SPEECH_QUOTED.sub(" ", src)
+    hits = []
+    for line in src.splitlines():
+        if not line.strip() or _SPEECH_SKIP_LINE.search(line):
+            continue
+        for raw in re.split(r"(?<=[.!?…])\s+", line):
+            s = _speech_tail(raw)
+            if len(s) < 3 or not _PLAIN_TAIL.search(s) or _POLITE_TAIL.search(s):
+                continue
+            hits.append(s[-14:])
+            if len(hits) >= limit:
+                return hits
+    return hits
+
+
+def speech_warn_path(session=""):
+    """직전 응답의 반말 경고를 다음 턴까지 나르는 파일 — 용어 경고와 같은 구조다.
+    Stop 훅이 적고 UserPromptSubmit 훅이 읽어 지운다. 세션 단위."""
+    sid = safe_name((session or os.environ.get("S9_SESSION") or "unknown")[:8])
+    return os.path.join(ROOT, "state", f"speech-warn-{sid}.json")
+
+
+def warn_plain_speech(text, where=""):
+    hits = plain_speech_in(text)
+    if hits:
+        print(f"⚠ 존댓말 {len(hits)}건 — 규약 2조 1: 사람이 읽는 자리의 글은 존댓말입니다: "
+              + " · ".join(f"「…{h}」" for h in hits[:4])
+              + (f" ({where})" if where else ""), file=sys.stderr)
+    return hits
+
+
+def cmd_speech(args):
+    """`s9 speech check [--json] [--record]` — 표준입력의 글에서 반말 평서문을 찾는다.
+    `--record` 는 세션 파일에 남긴다(응답 훅). `s9 speech pending` 은 그 파일을 읽어
+    한 줄로 내고 지운다(프롬프트 훅). 검사 자체는 늘 0 으로 끝난다 — 막지 않는다."""
+    if args.what == "pending":
+        path = speech_warn_path()
+        rec = _read_json(path)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        hits = rec.get("hits") if isinstance(rec, dict) else None
+        if hits:
+            print("직전 응답의 반말 " + str(len(hits)) + "건 — "
+                  + " · ".join(f"「…{h}」" for h in hits[:4])
+                  + " (규약 2조 1: 사람이 읽는 자리의 글은 존댓말입니다 — "
+                    "명령형 지시문은 그대로 둡니다)")
+        return 0
+    text = sys.stdin.read()
+    hits = plain_speech_in(text)
+    if args.json:
+        print(json.dumps(hits, ensure_ascii=False))
+    elif hits:
+        warn_plain_speech(text, args.where or "")
+    if args.record and hits:
+        os.makedirs(os.path.join(ROOT, "state"), exist_ok=True)
+        with open(speech_warn_path(), "w", encoding="utf-8") as f:
+            json.dump({"at": now_iso(), "hits": hits}, f, ensure_ascii=False)
+    return 0
+
+
 def cmd_note(args):
     """문서의 ## Notes 섹션 끝에 타임스탬프 붙은 내용 append (작업 기록용)."""
     path = find_path(args.id)
@@ -22181,6 +22281,7 @@ def cmd_note(args):
     print(f"{args.id}: note appended ({len(text)} chars)"
           + (f" · 첨부 {moved}개 이전" if moved else ""))
     warn_banned_terms(text, f"note {args.id}")
+    warn_plain_speech(text, f"note {args.id}")
     try:
         maybe_sync(f"note {args.id}")
     except Exception:
@@ -41148,6 +41249,12 @@ def main():
     tm.add_argument("--record", action="store_true")
     tm.add_argument("--where", default="")
     tm.set_defaults(fn=cmd_terms)
+    sp = sub.add_parser("speech", help="존댓말 검사: speech check [--json] [--record] (stdin) · speech pending")
+    sp.add_argument("what", choices=["check", "pending"])
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--record", action="store_true")
+    sp.add_argument("--where", default="")
+    sp.set_defaults(fn=cmd_speech)
     nt = sub.add_parser("note", help="append work note to a document's Notes")
     nt.add_argument("id")
     nt.add_argument("--from-pending", dest="from_pending", action="store_true",
