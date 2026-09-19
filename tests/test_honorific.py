@@ -89,19 +89,27 @@ class Honorific(unittest.TestCase):
                            env=self.env, capture_output=True, text=True)
         self.assertEqual(len(json.loads(r.stdout)), 1)
 
-    def test_t9_note_warns_but_still_records(self):
-        """T9. s9 note 는 경고를 stderr 로 내고 노트 본문은 그대로 남긴다."""
+    def test_t9_note_is_refused(self):
+        """T9. `s9 note` 도 **막는다** — 전이 메모와 같은 자리다.
+
+        처음에는 여기가 경고였다(「막으면 기록이 사라진다」). 그런데 경고는 읽는
+        쪽의 성실함에 기대고, 그 성실함은 모델과 노력에 따라 갈린다 — 실제로
+        리드가 10:05 에 선 경고를 10:09 에 그대로 지나갔다(REQ-20260919-012-62x6,
+        주인 물음 13:17: 「모델이 바뀌들, 노력정도가 바뀌든 상관없나?」). 기록이
+        사라지는 것도 아니다: 같은 글을 존댓말로 다시 쓰면 그대로 남는다.
+        갈림의 나머지는 tests/test_transition_speech.py 다.
+        """
         doc = self._new_req()
         r = subprocess.run([S9, "note", doc, "검사를 세웠다. 시험도 붙였다"],
                            env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("반말", r.stderr)
+        r = subprocess.run([S9, "note", doc, "검사를 세웠습니다. 시험도 붙였습니다."],
+                           env=self.env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("note appended", r.stdout)
-        self.assertIn("존댓말", r.stderr)
         r = subprocess.run([S9, "show", doc], env=self.env, capture_output=True, text=True)
-        self.assertIn("검사를 세웠다", r.stdout)
-        r = subprocess.run([S9, "note", doc, "검사를 세웠습니다"],
-                           env=self.env, capture_output=True, text=True)
-        self.assertNotIn("존댓말", r.stderr)
+        self.assertIn("검사를 세웠습니다", r.stdout)
 
     def test_t10_status_note_is_refused(self):
         """T10. 전이 노트(확인 포인트)는 **막는다** — 사람이 카드에서 읽는 자리다.

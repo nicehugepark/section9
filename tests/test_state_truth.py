@@ -181,7 +181,7 @@ class StateTruth(unittest.TestCase):
                 b["claim_at"] = {rid: _ago(self.m.CLAIM_GRACE + 600)}
                 self.write_binding(b)
                 other = {**self.env, "S9_SESSION": "99997777"}
-                r = subprocess.run([S9, "note", rid, "남이 쓴다"],
+                r = subprocess.run([S9, "note", rid, "남이 씁니다."],
                                    capture_output=True, text=True,
                                    env=other, timeout=30)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

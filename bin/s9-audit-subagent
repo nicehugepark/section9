@@ -247,7 +247,7 @@ def main():
     # 위임 에이전트 귀속: 노트 헤더(agent: <type>)와 REQ 프론트매터 agents에 누적
     atp = data.get("agent_transcript_path") or ""
     started = first_event_ts(atp) if atp else ""
-    out = run(env, "note", req, "--label", "subagent", "--agent", actor,
+    out = run(env, "note", req, "--capture", "--label", "subagent", "--agent", actor,
               "--result", "done",
               *(["--transcript", atp] if atp else []),
               *(["--started", started] if started else []),

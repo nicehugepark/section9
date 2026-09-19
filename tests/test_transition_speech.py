@@ -1,4 +1,5 @@
-"""전이 메모가 반말이면 전이를 막는다 (REQ-20260919-008-62x6).
+"""반말은 사람이 읽는 자리에 못 들어간다 — 전이 메모와 노트 본문
+(REQ-20260919-008-62x6 · REQ-20260919-012-62x6).
 
 주인 물음 2026-09-19 10:20: 「그렇다면 부분 백필을 해서는 말투가 회귀될 수 밖에
 없다는 뜻인가?」 — 그렇지 않습니다. 매 턴 읽는 것은 옛 문서가 아니라 CLAUDE.md
@@ -17,6 +18,9 @@
   T5 워처가 지은 메모(auto)는 걸리지 않는다
   T6 개인 설정이 이긴다 — pref_* 가 반말을 말하면 검사가 서지 않는다
   T7 그 설정을 지우면 규약의 기본값으로 돌아간다
+  N1 노트 본문이 반말이면 거부된다 — 전이 메모와 같은 모양이다
+  N2 사람이 친 말을 싣는 노트(ask·addendum·answer)는 거부하지 않는다
+  N3 --force 와 개인 설정은 여기서도 이긴다
 
 실행: python3 tests/ transition_speech
 """
@@ -101,6 +105,31 @@ class TransitionSpeechGate(unittest.TestCase):
         r = self.status("review", "설정을 지웠으니 이 반말은 막혀야 한다")
         self.assertNotEqual(r.returncode, 0, r.stdout)
         self.assertIn("전이 메모가 반말이다", r.stderr)
+
+    def note(self, text, *extra):
+        return self.s9("note", self.rid, text, "--user", "tester", *extra)
+
+    def test_n1_plain_note_is_refused(self):
+        r = self.note("이것은 반말이다")
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("노트 본문이 반말이다", r.stderr)
+        self.assertEqual(self.note("이것은 존댓말입니다.").returncode, 0)
+
+    def test_n2_a_note_that_carries_human_words_is_not_gated(self):
+        """N2. 사람이 친 글자를 싣는 라벨은 거부 대상이 아니다."""
+        for label in ("ask", "addendum", "answer"):
+            r = self.note("이것은 반말이다", "--label", label)
+            self.assertEqual(r.returncode, 0, "%s: %s" % (label, r.stderr))
+        # 에이전트가 쓰는 보고는 걸린다
+        r = self.note("이것은 반말이다", "--label", "subagent")
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+
+    def test_n3_force_and_preference_win_here_too(self):
+        self.assertEqual(self.note("이것은 반말이다", "--force").returncode, 0)
+        self.s9("user", "config", "tester", "pref_말투", "반말로 해라")
+        self.assertEqual(self.note("이것은 반말이다").returncode, 0)
+        self.s9("user", "config", "tester", "pref_말투", "")
+        self.assertNotEqual(self.note("이것은 반말이다").returncode, 0)
 
 
 if __name__ == "__main__":

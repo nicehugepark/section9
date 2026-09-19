@@ -22315,6 +22315,14 @@ def speech_warn_path(session=""):
     return os.path.join(ROOT, "state", f"speech-warn-{sid}.json")
 
 
+# 사람이 친 글자를 그대로 싣는 노트 라벨 — 말투 검사가 서지 않는다
+# (REQ-20260919-012-62x6). 사람의 말은 거부 대상이 아니다.
+# `commit` 은 commit 메시지를 그대로 나르는 자리다 — 그 글은 에이전트가 읽는
+# 지시문이라 명령형이 맞고(규약 2조 1의 경계), 여기서 고칠 수도 없다.
+SPEECH_HUMAN_LABELS = frozenset({"ask", "addendum", "answer", "question",
+                                 "commit"})
+
+
 def warn_plain_speech(text, where="", user=""):
     if speech_pref_override(user):
         return []                            # 개인 설정이 이긴다 — 검사가 서지 않는다
@@ -22396,6 +22404,30 @@ def cmd_note(args):
     # H1/H2가 문서 구조(## Notes/## History)와 충돌하지 않게 H3로 강등
     text = re.sub(r"(?m)^#{1,2} ", "### ", text.strip())
     text, _ = normalize_ids(text)  # short REQ-id → full-id 자동 확장
+    # 노트 본문의 말투 가드 (REQ-20260919-012-62x6). 전이 메모는 이미 막는데
+    # (REQ-20260919-008-62x6) 노트는 알리기만 했다 — 경고는 읽는 쪽의 성실함에
+    # 기대므로 모델과 노력에 따라 갈린다. 실제로 리드가 10:05 에 선 경고를
+    # 10:09 에 그대로 지나갔고, 그것을 막은 것은 10:41 의 거부였다.
+    #
+    # **사람이 친 말을 싣는 노트는 거부하지 않는다** — `ask`(채팅 줄) ·
+    # `addendum`(붙들어 둔 말) · `answer`(사람이 준 답)는 그 사람의 글자이고,
+    # `--from-pending` 으로 온 본문도 같다. 개인 설정이 이기는 것도 그대로다.
+    # **옮겨 적는 자리는 막지 않는다** — 훅이 서브에이전트의 보고나 리드의 응답을
+    # 문서로 나르는 자리다(`--capture`). 그 글은 이미 말해진 것이라 여기서 고칠
+    # 수 없고, 막으면 감사 기록이 통째로 사라진다. 경고는 그대로 뜨고, 응답의
+    # 말투는 다음 턴의 되비춤이 맡는다(`s9 speech pending`).
+    if not getattr(args, "force", False) \
+            and not getattr(args, "capture", False) \
+            and (args.label or "") not in SPEECH_HUMAN_LABELS \
+            and not getattr(args, "from_pending", False) \
+            and not speech_pref_override(args.user):
+        _plain = plain_speech_in(text, limit=3)
+        if _plain:
+            die("노트 본문이 반말이다 — "
+                + " · ".join(f"「…{h}」" for h in _plain)
+                + ". 사람이 문서에서 읽는 글이라 존댓말로 쓴다 (규약 2조 1). "
+                  "명령형 지시문은 그대로 두고, 사람이 친 말을 옮기는 자리면 "
+                  "--label ask|addendum|answer 를 쓰거나 --force 에 사유를 적어라")
     # 첨부는 절대경로로 적어 둔다 — 아래 ingest_assets 가 문서 옆 assets/로
     # 옮기면서 상대경로로 고쳐 쓰고, 그때부터 문서 화면이 그림으로 그린다.
     if atts:
@@ -41515,6 +41547,12 @@ def main():
     sp.set_defaults(fn=cmd_speech)
     nt = sub.add_parser("note", help="append work note to a document's Notes")
     nt.add_argument("id")
+    nt.add_argument("--capture", action="store_true",
+                    help="훅이 남의 말을 옮겨 적는 자리 — 말투 가드를 경고로 낮춘다. "
+                         "막으면 기록이 사라진다 (REQ-20260919-012-62x6)")
+    nt.add_argument("--force", action="store_true",
+                    help="말투 가드를 지나간다 — 사람이 친 말을 옮기는 자리처럼 "
+                         "존댓말로 고칠 수 없는 글일 때만 (REQ-20260919-012-62x6)")
     nt.add_argument("--from-pending", dest="from_pending", action="store_true",
                     help="이 세션이 붙들고 있는 말을 본문으로 삼아 붙인다 — "
                          "붙이고 나면 보류 자리를 비운다 (REQ-20260918-017-62x6)")

@@ -290,7 +290,7 @@ class StallTrust(unittest.TestCase):
                              "판정이 두 벌이면 한 벌만 고쳐진다")
         with self.subTest("c7b_live_delegation_is_attached"):
                 self.clear_hands("lead1234")
-                self.cli("note", self.B, "붙었다", "--agent", "sub:designer:aaaa1111",
+                self.cli("note", self.B, "붙었습니다.", "--agent", "sub:designer:aaaa1111",
                          "--item", "화면", "--result", "running", sess="lead1234")
                 self.backdate(self.B, 3600)
                 self.cli("index", "rebuild")

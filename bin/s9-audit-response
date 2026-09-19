@@ -427,7 +427,7 @@ def main():
         # 버리지 않는다 — 하나라도 붙으면 그 턴은 성공이다.
         ok = 0
         for q in pend:
-            r = run(env, "note", q, "--label", label, "--agent", agent,
+            r = run(env, "note", q, "--capture", "--label", label, "--agent", agent,
                     *tok, inp=text)
             if r.returncode == 0:
                 ok += 1
@@ -446,7 +446,7 @@ def main():
     plan = turn_token_plan(env, tp, started, req)
     if req in (plan.get("shares") or {}):
         tok = ["--tokens", json.dumps(plan["shares"][req])]
-    out = run(env, "note", req, "--label", label, "--agent", agent, *tok,
+    out = run(env, "note", req, "--capture", "--label", label, "--agent", agent, *tok,
               inp=text)
     if out.returncode == 0:
         run(env, "log", f"{label} → {req} by {agent} ({len(text)}자)")
