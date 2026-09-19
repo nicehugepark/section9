@@ -99,8 +99,23 @@ class BannedTerms(unittest.TestCase):
                            env={**env, "S9_PORT": "1"}, capture_output=True, text=True, timeout=60)
         self.assertTrue(os.path.exists(path), r.stdout + r.stderr)
 
-    def test_t6_commit_message_hook_warns(self):
-        """T6. commit-msg 훅은 메시지의 용어를 경고한다 — 막지는 않는다."""
+    def test_t6_the_worker_word_is_only_caught_when_it_stands_alone(self):
+        """T6. 「작업자」는 홀로 설 때만 잡는다 (REQ-20260919-007-62x6).
+
+        주인 물음 2026-09-19 10:06: 「작업자가 뭘 말하는거야. 사람을 말하는거야.
+        백그라운드 워커를 말하는거야?」 — 채택어 안에 든 것과 「작업자리」(원격에서
+        테스트를 도는 자리)까지 잡으면 경고가 잡음이 되어 아무도 안 읽는다."""
+        alone = self.m.banned_terms_in("다른 작업자가 붙어 있는 중이다")
+        self.assertEqual([a for a, _ in alone], ["작업자"])
+        self.assertIn("다른 세션", dict(alone)["작업자"])
+        self.assertEqual(self.m.banned_terms_in("백그라운드 작업자가 이어받았다"), [])
+        self.assertEqual(self.m.banned_terms_in("원격 작업자리를 못 만들었다"), [])
+        # 「무인 ○○」은 종전 항목이 잡는다 — 같은 자리를 두 번 세지 않는다
+        self.assertEqual([a for a, _ in self.m.banned_terms_in("무인 작업자가 떴다")],
+                         ["무인 작업자"])
+
+    def test_t7_commit_message_hook_warns(self):
+        """T7. commit-msg 훅은 메시지의 용어를 경고한다 — 막지는 않는다."""
         GUARD = os.path.join(HERE, "..", "bin", "s9-guard")
         msg = os.path.join(self.root, "COMMIT_EDITMSG")
         with open(msg, "w", encoding="utf-8") as f:
