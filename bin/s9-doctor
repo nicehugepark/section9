@@ -1918,6 +1918,70 @@ def sync_verdict(s):
               f"동기화: {mode}" + (f" · origin {origin}" if origin else ""))
 
 
+def ident_info(root=None):
+    """이 컴퓨터의 git 이름·메일 (REQ-20260920-001-2n7g).
+
+    실제 결함 2026-09-20: 한 컴퓨터에 user.name·user.email 이 없어 git 이 OS
+    계정과 호스트명으로 지어낸 값(`<계정>@<호스트>.local`)으로 commit 했다. 그
+    주소는 어느 GitHub 계정에도 등록할 수 없어 같은 사람이 둘로 갈려 보였고,
+    commit 166건이 쌓인 뒤에야 사람이 목록을 눈으로 보고 알아챘다. git 은 이
+    경우 오류를 내지 않는다 — 아무 증상 없이 이력만 갈리므로 진단이 센다.
+
+    `config --get` 은 사람이 정해 둔 값을, `var GIT_AUTHOR_IDENT` 는 실제로
+    찍힐 값을 말한다. 둘을 함께 읽어야 「정해 두지 않았다」와 「지금 무엇으로
+    찍히고 있나」를 한 줄에 적을 수 있다.
+    """
+    base = root or ROOT
+
+    def g(*args):
+        try:
+            r = subprocess.run(["git", *args], cwd=base, capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=10)
+        except Exception:
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    ident = g("var", "GIT_AUTHOR_IDENT") or ""
+    m = re.match(r"^(.*?)\s*<([^>]*)>", ident)
+    return {"name": g("config", "--get", "user.name") or "",
+            "email": g("config", "--get", "user.email") or "",
+            "used_name": m.group(1) if m else "",
+            "used_email": m.group(2) if m else "",
+            "resolved": bool(m)}
+
+
+# 기계가 호스트명으로 지어 붙이는 꼬리 — 이 컴퓨터 안에서만 닿는 주소라
+# 어느 계정에도 등록할 수 없다.
+IDENT_DEAD_MAIL = (".local", ".localdomain", ".lan", ".home", "(none)")
+
+IDENT_FIX = ("`git config --global user.name '<이름>'` 과 "
+             "`git config --global user.email '<계정에 등록한 메일>'` 을 한 번 "
+             "실행하면 이 컴퓨터의 다음 commit 부터 그 이름으로 찍힌다. 이미 "
+             "쌓인 commit 은 그대로다 — 이력을 다시 쓰지 않는 한 바뀌지 않는다.")
+
+
+def ident_verdict(d):
+    name, email = (d.get("name") or ""), (d.get("email") or "")
+    used_n, used_e = (d.get("used_name") or ""), (d.get("used_email") or "")
+    if not d.get("resolved"):
+        return _v("ident", "git 이름", "critical",
+                  "git 이름: 이 컴퓨터의 git 이 누구로 commit 할지 정해지지 "
+                  "않았다 — commit 이 거부된다", IDENT_FIX)
+    if not (name and email):
+        miss = ("이름과 메일" if not (name or email)
+                else "이름" if not name else "메일")
+        return _v("ident", "git 이름", "warn",
+                  f"git 이름: {miss}을 정해 두지 않아 git 이 지어낸 값으로 "
+                  f"commit 한다 — 지금은 {used_n} <{used_e}>", IDENT_FIX)
+    low = used_e.lower()
+    if any(low.endswith(tail) for tail in IDENT_DEAD_MAIL):
+        return _v("ident", "git 이름", "warn",
+                  f"git 이름: 메일 {used_e} 은 이 컴퓨터 안에서만 닿는 주소다 — "
+                  f"GitHub 의 commit 목록에서 다른 사람으로 갈려 보인다",
+                  IDENT_FIX)
+    return _v("ident", "git 이름", "ok", f"git 이름: {used_n} <{used_e}>")
+
+
 def jira_info(root=None):
     """Jira 발신함과 준비물 (REQ-20260914-013-62x6) — 판정은 bin/s9 의 jira_block_info
     한 곳이라 여기서는 `s9 jira outbox --json` 을 부른다(doctor 는 s9 를 import 하지
@@ -2041,6 +2105,7 @@ def system_checks():
             repo_verdict(repo_info()),
             release_verdict(release_info()),
             sync_verdict(sync_info()),
+            ident_verdict(ident_info()),
             jira_verdict(jira_info()),
             project_verdict(project_info()),
             hooks_verdict(hooks_info()),
