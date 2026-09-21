@@ -956,6 +956,11 @@ def select_related_tests(staged, diff_text, tests_dir=None, times=None,
     **그대로** 담은 시험, ③ 담긴 소스 파일의 이름(`card.js`)을 글자로 담은
     시험(tests/ 의 보조 모듈은 그 모듈 이름 `async_notify` 를 단어로). 넓은 파일
     (WIDE: bin/s9.py 등)의 이름은 ③에서 뺀다 — 그 이름은 어디에나 있다.
+    ③ 의 자리는 bin/·web/·harness/ 의 소스인데, **판 번호(VERSION)와 docs/ 의
+    문서도 같은 자격으로 든다** (REQ-20260921-010-62x6). 그 둘은 짝이다 —
+    VERSION 을 올리고 가이드 머리를 그대로 둔 커밋(실제 사고 ff1ff60e3)이 검사를
+    지나가, 어긋남이 한 시간 뒤 백그라운드 전체 실행에서야 드러났다. 이름을 후보로
+    들이면 그 짝을 보는 시험(test_release_guide_match.py)이 그 커밋에서 불린다.
     담긴 시험 파일의 diff 는 증거로 읽지 않고 그 파일은 후보에서도 뺀다.
     `common` 파일보다 많은 시험에 있는 조각은 계약이 아니라 상용구라 버린다.
     상한 `cap` 파일·`budget` 초(state/test-times.json 의 파일별 실측 합)를 넘으면
@@ -968,6 +973,12 @@ def select_related_tests(staged, diff_text, tests_dir=None, times=None,
     names = [os.path.basename(f) for f in staged
              if f.startswith(("bin/", "web/", "harness/")) and f not in WIDE
              and not f.endswith((".md", ".txt"))]
+    # 판 번호와 가이드는 짝이다 — 한쪽만 담은 커밋도 그 짝을 보는 시험을 불러야
+    # 한다. .md 를 빼는 위 줄은 bin/·web/·harness/ 에만 걸리므로 여기서는 걸지
+    # 않는다: docs/ 는 문서가 곧 계약인 자리다 (REQ-20260921-010-62x6).
+    names += [os.path.basename(f) for f in staged
+              if f == "VERSION" or f.startswith("docs/")]
+    names = list(dict.fromkeys(names))          # 같은 이름은 한 번만 재 본다
     for f in staged:            # tests/ 의 보조 모듈 — 시험은 그 이름을 import 한다
         if (f.startswith("tests/") and f.endswith(".py") and f not in WIDE
                 and not _TEST_FILE_RE.match(f)):
