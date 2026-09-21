@@ -487,9 +487,8 @@ def user_profile(name):
 # frontmatter 한 줄에 그대로 실리므로 줄바꿈·제어문자는 경계에서 막는다 — 안 막으면
 # 이름 한 칸이 문서의 다른 키를 만들어 낸다.
 PERSON_NAME_MAX = 64
-# 성이 앞에 서는 말들(한글·한자·가나). 이 글자가 하나라도 있으면 그 사람의 말
-# 순서는 「성이름」이다 — 로마자 표기를 짐작해 만들지 않는다.
-_CJK_NAME_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힣]")
+# 성이 앞에 서는 말들(한글·한자·가나)을 가리는 자리는 bin/s9_firstrun.py 의
+# person_full_name 하나다 — 이어 부르는 규칙이 거기 있다(REQ-20260921-017-62x6).
 
 
 def person_name_ok(v):
@@ -518,20 +517,15 @@ def user_full_name(profile):
     「성이름」, 로마자면 「이름 성」). ③ 하나도 없으면 **빈 문자열** — 그 자리에
     id 를 대신 세울지는 부르는 쪽의 몫이다(카드는 id 를, 어떤 화면은 아무것도 안 보일 수 있다).
 
+    **규칙의 몸은 `bin/s9_firstrun.py` 의 person_full_name 에 있다** (REQ-20260921-017-62x6):
+    commit 의 이름 칸을 고르는 자리(pick_identity)가 같은 규칙을 써야 하는데 그 모듈은
+    여기를 실어 읽을 수 없다. 규칙을 두 벌로 두면 화면의 이름과 commit 의 이름이 갈린다.
+
     profile: 프로필 frontmatter dict, 또는 사람의 id(그러면 여기서 읽는다)."""
     p = profile or {}
     if not isinstance(p, dict):
         p = user_profile(str(p))
-    disp = str(p.get("display") or "").strip()
-    if disp:
-        return disp
-    first = str(p.get("first_name") or "").strip()
-    last = str(p.get("last_name") or "").strip()
-    if not (first and last):
-        return first or last
-    if _CJK_NAME_RE.search(first + last):
-        return f"{last}{first}"
-    return f"{first} {last}"
+    return _firstrun_module().person_full_name(p)
 
 
 def user_names():
@@ -27933,14 +27927,25 @@ def cmd_release(args):
     sys.exit(0 if ok else 1)
 
 
+_FIRSTRUN_MOD = None
+
+
 def _firstrun_module():
-    """압축을 푼 자리의 첫 실행 — 저장소 세우기 (REQ-20260913-007). 곁의 bin/s9_firstrun.py."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "s9_firstrun", os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_firstrun.py"))
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
+    """압축을 푼 자리의 첫 실행 — 저장소 세우기 (REQ-20260913-007). 곁의 bin/s9_firstrun.py.
+
+    한 번 실어 두고 다시 쓴다 — 사람의 이름을 짓는 규칙(person_full_name)이 이 모듈에
+    있어 사람 수만큼 불리는 자리가 생겼다(user_names, REQ-20260921-017-62x6). 부를
+    때마다 파일을 읽어 실행하면 그 목록 한 번이 파일 읽기 여러 번이 된다."""
+    global _FIRSTRUN_MOD
+    if _FIRSTRUN_MOD is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "s9_firstrun",
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_firstrun.py"))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        _FIRSTRUN_MOD = m
+    return _FIRSTRUN_MOD
 
 
 def cmd_uninstall(args):
@@ -28528,7 +28533,8 @@ def cmd_code(args):
                     else "GitHub 이 이 계정에 이어 주는 주소다")
             print(f"◌ 이 저장소의 git 이름을 {_id['name']} <{_id['email']}> 로 두었다 — "
                   f"{_why}. 이 컴퓨터에 정해 둔 이름이 없어 commit 이 거부되던 자리다. "
-                  f"다른 값으로 찍으려면 `git config --global user.email '<메일>'`")
+                  f"다른 값으로 찍으려면 `git config --global user.name '<이름>'` 과 "
+                  f"`git config --global user.email '<메일>'`")
         elif _id.get("error"):
             print(f"◌ git 이름을 세우지 못했다({_id['error']}) — `s9 doctor` 가 그 줄을 짚는다")
     except Exception as e:

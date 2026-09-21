@@ -90,6 +90,52 @@ _MAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 # 지으면 보내지지도 이어지지도 않는 메일이 commit 에 박힌다.
 _GITHUB_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
 
+# 한글·한자·가나 이름인가 — 말 순서가 「성이름」이다(로마자는 「이름 성」).
+_CJK_NAME_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힣]")
+# commit 의 작성자 줄은 `이름 <메일>` 이라 꺾쇠와 제어문자가 그 줄을 깨뜨린다.
+_NAME_BAD_RE = re.compile(r"[<>\x00-\x1f\x7f]")
+
+
+def person_full_name(profile):
+    """사람을 부르는 한 이름 — **짓는 자리는 이 함수 하나다** (REQ-20260915-029-62x6).
+
+    규칙은 셋이다: ① 사람이 직접 쓴 `display` 가 있으면 그것이 이긴다 — 스스로 정한
+    표기가 조립한 것보다 낫다. ② 없으면 성·이름을 그 사람의 말 순서로 잇는다
+    (한글·한자·가나면 「성이름」, 로마자면 「이름 성」). ③ 하나도 없으면 빈
+    문자열 — 그 자리에 id 를 세울지는 부르는 쪽의 몫이다.
+
+    **이 규칙이 s9.py 가 아니라 여기 있는 까닭** (REQ-20260921-017-62x6): commit 의
+    이름 칸을 고르는 pick_identity 가 이 규칙을 써야 하는데, 이 모듈은 s9.py 를 실어
+    읽을 수 없다(서로 부르는 모양이 된다 — 위 모듈 설명). 규칙을 두 벌로 두면 화면의
+    이름과 commit 의 이름이 갈리므로, 규칙은 여기 하나로 두고 `bin/s9.py` 의
+    `user_full_name` 이 이 함수를 지난다.
+
+    profile: 프로필 frontmatter dict."""
+    p = profile if isinstance(profile, dict) else {}
+    disp = str(p.get("display") or "").strip()
+    if disp:
+        return disp
+    first = str(p.get("first_name") or "").strip()
+    last = str(p.get("last_name") or "").strip()
+    if not (first and last):
+        return first or last
+    if _CJK_NAME_RE.search(first + last):
+        return f"{last}{first}"
+    return f"{first} {last}"
+
+
+def commit_name(name):
+    """commit 의 작성자 줄에 그대로 넣어도 되는 이름인가 — 아니면 빈 문자열.
+
+    `이름 <메일>` 의 꺾쇠를 이름이 품으면 git 이 메일 자리를 잘못 읽고, 줄바꿈이
+    섞이면 작성자 줄 자체가 두 줄이 된다. 그런 값은 고치지 말고 **버리고 다음
+    칸으로 내려간다** — 사람이 쓴 글자를 도구가 손보면 그 사람이 정하지 않은 표기가
+    이력에 박힌다."""
+    raw = str(name or "")
+    if not raw.strip() or _NAME_BAD_RE.search(raw):
+        return ""
+    return " ".join(raw.split())
+
 
 def is_dead_mail(email):
     """이 컴퓨터 안에서만 닿는 주소인가 — IDENT_DEAD_MAIL 을 읽는 단 하나의 판정."""
@@ -124,21 +170,35 @@ def pick_identity(profile=None, account=None, user=""):
     붙고, 한 번 원격 이력에 박히면 빼는 길이 이력 재작성뿐이다. 프로필이 없거나
     아무것도 못 고르면 지금까지대로 임시값이다(temp_identity 와 같은 값).
 
-    이름은 그 사람이 GitHub 에서 불리는 글자(github)를 먼저 쓰고, 없으면 section9 의
-    id 다. 임시 칸만 `s9 <계정>` 꼴을 지킨다 — `s9 doctor` 가 그 모양으로 「우리가
-    넣은 값」을 가른다(REQ-20260921-006-62x6).
+    **이름 칸은 그 사람의 이름이다** (REQ-20260921-017-62x6). 화면이 「박성진」이라
+    부르는 사람이 commit 에서는 `nicehugepark` 으로 서면, 같은 사람이 자리마다 다른
+    이름으로 보인다 — 이 제품은 사람이 읽는 자리에 이름을, 기계가 읽는 자리에 id 를
+    세운다(REQ-20260915-032-62x6). GitHub 이 commit 을 계정에 잇는 것은 이름이 아니라
+    **메일**이라, 이름을 사람의 글자로 두어도 이어짐은 그대로다. 로마자로 적고 싶은
+    사람은 프로필의 `display` 에 제 표기를 적으면 그것이 이긴다 — 도구가 로마자를
+    짐작해 짓지 않는다. 칸은 넷이다:
+
+        person_full_name(프로필) → github → section9 의 id → 계정
+
+    임시 칸만 `s9 <계정>` 꼴을 지킨다 — `s9 doctor` 가 그 모양으로 「우리가 넣은 값」을
+    가른다(REQ-20260921-006-62x6).
     """
     prof = profile or {}
     account = account or os_account()
     github = str(prof.get("github") or "").strip()
     if not _GITHUB_RE.fullmatch(github):
         github = ""
-    name = github or str(user or "").strip()
+    name = ""
+    for cand in (person_full_name(prof), github, str(user or "").strip(), account):
+        name = commit_name(cand)
+        if name:
+            break
+    name = name or "s9"     # 넷 다 쓸 수 없는 글자면 — 빈 이름으로는 commit 이 안 선다
     mails = profile_mails(prof)
     if mails:
-        return (name or account, mails[0], "profile")
+        return (name, mails[0], "profile")
     if github:
-        return (github, f"{github}@{GITHUB_NOREPLY}", "noreply")
+        return (name, f"{github}@{GITHUB_NOREPLY}", "noreply")
     return temp_identity(account) + ("temp",)
 
 

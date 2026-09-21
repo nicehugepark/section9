@@ -564,6 +564,79 @@ class IdentityLadder(unittest.TestCase):
         self.assertEqual((self.local(d, "user.name"), self.local(d, "user.email")),
                          self.fr.temp_identity(self.acct))
 
+    # ── commit 에 설 이름 (REQ-20260921-017-62x6) ──────────────────────────
+    # 화면이 「박성진」이라 부르는 사람이 commit 에서는 id 로 서면 같은 사람이
+    # 자리마다 다른 이름이 된다. 사람이 읽는 자리에는 이름이 선다.
+
+    def test_c1_the_persons_name_stands_in_the_commit(self):
+        """N1·N2. 성·이름이 있으면 그 이름이, display 를 적었으면 그 글자가 선다."""
+        self.assertEqual(
+            self.fr.pick_identity({"emails": ["hong@corp.example"], "github": "hong-gildong",
+                                   "first_name": "길동", "last_name": "홍"}, user="hong"),
+            ("홍길동", "hong@corp.example", "profile"))
+        self.assertEqual(
+            self.fr.pick_identity({"github": "hong-gildong", "display": "Gildong Hong",
+                                   "first_name": "길동", "last_name": "홍"}, user="hong"),
+            ("Gildong Hong", "hong-gildong@users.noreply.github.com", "noreply"))
+
+    def test_c2_no_name_falls_to_github_then_id(self):
+        """N3. 이름이 없으면 지금까지대로 github → id 다 — 회귀."""
+        self.assertEqual(
+            self.fr.pick_identity({"emails": ["hong@corp.example"], "github": "hong-gildong"},
+                                  user="hong")[0], "hong-gildong")
+        self.assertEqual(
+            self.fr.pick_identity({"emails": ["hong@corp.example"]}, user="hong")[0], "hong")
+
+    def test_c3_the_repo_gets_the_same_name(self):
+        """N4. 실제 저장소에 박히는 값도 같은 이름이다."""
+        d = self.repo("ladder-c3")
+        res = self.fr.ensure_identity(d, env=self.env, user="hong",
+                                      profile={"emails": ["hong@corp.example"],
+                                               "github": "hong-gildong",
+                                               "first_name": "길동", "last_name": "홍"})
+        self.assertEqual((res["set"], res["source"], res["error"]), (True, "profile", ""), res)
+        self.assertEqual(self.local(d, "user.name"), "홍길동")
+
+    def test_c4_one_half_of_a_name_still_stands(self):
+        """B1·B2. 성만·이름만 있어도 그 글자가 서고, 로마자는 「이름 성」이다."""
+        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
+                                                "first_name": "길동"}, user="hong")[0], "길동")
+        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
+                                                "last_name": "홍"}, user="hong")[0], "홍")
+        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
+                                                "first_name": "Gildong",
+                                                "last_name": "Hong"}, user="hong")[0],
+                         "Gildong Hong")
+
+    def test_c5_a_name_that_breaks_the_author_line_is_dropped(self):
+        """B3. 꺾쇠·줄바꿈·제어문자가 섞인 이름은 버리고 다음 칸으로 내려간다."""
+        for bad in ("홍 <a@b.c>", "홍\n길동", "홍\x00길동"):
+            with self.subTest(display=bad):
+                self.assertEqual(
+                    self.fr.pick_identity({"emails": ["a@corp.example"], "display": bad},
+                                          user="hong")[0], "hong")
+        # 앞뒤 공백과 사이의 겹공백은 다듬는다 — 버릴 값은 아니다.
+        self.assertEqual(
+            self.fr.pick_identity({"emails": ["a@corp.example"], "display": "  Gildong   Hong "},
+                                  user="hong")[0], "Gildong Hong")
+
+    def test_c6_the_temp_rung_keeps_its_shape(self):
+        """B4. 임시 칸은 `s9 <계정>` 그대로다 — doctor 가 그 모양으로 우리 값을 가른다."""
+        self.assertEqual(
+            self.fr.pick_identity({"first_name": "길동", "last_name": "홍"},
+                                  account=self.acct, user="hong"),
+            self.fr.temp_identity(self.acct) + ("temp",))
+
+    def test_c7_the_name_is_built_in_one_place(self):
+        """F2. 화면의 이름과 commit 의 이름은 같은 함수에서 나온다 — 두 벌이 아니다."""
+        s9 = _load("s9_for_name", os.path.join(os.path.dirname(FIRSTRUN), "s9.py"))
+        for prof in ({"display": "타치코마", "first_name": "길동", "last_name": "홍"},
+                     {"first_name": "길동", "last_name": "홍"},
+                     {"first_name": "Gildong", "last_name": "Hong"},
+                     {"last_name": "홍"}, {}):
+            with self.subTest(profile=prof):
+                self.assertEqual(s9.user_full_name(prof), self.fr.person_full_name(prof))
+
     def test_f3_join_does_not_carry_a_dead_mail_into_the_profile(self):
         """F3. 합류가 이 컴퓨터의 git 메일을 프로필로 옮길 때 죽은 주소는 옮기지 않는다.
 
