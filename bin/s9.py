@@ -977,19 +977,36 @@ def _git_identity():
     for path in files:
         try:
             with open(path, encoding="utf-8", errors="replace") as f:
-                in_user = False
-                for ln in f:
-                    t = ln.strip()
-                    if t.startswith("["):
-                        in_user = t.lower().replace(" ", "") == "[user]"
-                        continue
-                    if in_user and "=" in t and not t.startswith(("#", ";")):
-                        k, _, v = t.partition("=")
-                        k = k.strip().lower()
-                        if k in ("name", "email") and k not in ident:
-                            ident[k] = v.strip().strip('"')
+                text = f.read()
         except OSError:
             continue
+        # **section9 이 박은 값은 사람의 증거가 아니다** (REQ-20260921-012-62x6).
+        # 이 함수를 읽는 쪽(`_user_by_git_identity` · `user_name_from_src`)은 git
+        # 신원을 「이 사람이 누구인지」의 증거로 쓴다. 그런데 신원이 없던 컴퓨터에는
+        # section9 자신이 값을 박아 두었으므로, 그것을 되읽으면 우리가 지어낸 이름이
+        # 사람의 이름으로 승격한다 — 증거가 아니라 메아리다. `.git/config` 에 우리
+        # 표(`[section9] identity = auto`)가 있으면 **그 파일의 user 절만** 건너뛰고
+        # 전역 설정은 그대로 읽는다(그쪽은 사람이 정한 것이다).
+        found = {}
+        section = ""
+        auto = False
+        for ln in text.splitlines():
+            t = ln.strip()
+            if t.startswith("["):
+                section = t.lower().replace(" ", "").strip("[]")
+                continue
+            if "=" not in t or t.startswith(("#", ";")):
+                continue
+            k, _, v = t.partition("=")
+            k, v = k.strip().lower(), v.strip().strip('"')
+            if section == "user" and k in ("name", "email"):
+                found.setdefault(k, v)
+            elif section == "section9" and k == "identity" and v == "auto":
+                auto = True
+        if auto:
+            continue
+        for k, v in found.items():
+            ident.setdefault(k, v)
     _GIT_IDENTITY_CACHE = ident
     return ident
 
@@ -13890,7 +13907,45 @@ def sync_autoraise(now=None):
     sync_set_mode("remote", chosen=False)
     _sync_log("mode local→remote: origin 이 있고 아무도 고른 적이 없다 "
               "(REQ-20260908-050) — 되돌리려면 `s9 sync --off`")
+    warn_auto_identity_going_remote()
     return "remote"
+
+
+_IDENT_REMOTE_WARNED = [False]
+
+
+def warn_auto_identity_going_remote():
+    """이 저장소가 바깥과 오가기 **시작하는 그 순간** 한 번, 임시 이름을 알린다
+    (REQ-20260921-012-62x6).
+
+    security-engineer 가 부모 요청에서 짚은 자리다: 신원을 박을 때는 origin 이 없어
+    「로컬에만 남는 값」이었는데, 나중에 origin 이 생기면 그때까지 쌓인 commit 전부가
+    아무 확인 없이 밖으로 나간다. 위험을 모를 때 내린 허용이 위험이 생긴 뒤에도
+    그대로 유효한 구조다.
+
+    **막지는 않는다**(product-owner 판정) — 사다리가 선 뒤로는 대부분 GitHub 에
+    이어지는 주소를 갖고, 막으면 고칠 필요가 없는 사람까지 세운다. 한 번 알리고
+    사람이 정하게 한다. 되돌릴 수 없는 지점은 commit 이 아니라 push 이고, 이 줄이
+    그 직전이다.
+    """
+    if _IDENT_REMOTE_WARNED[0]:
+        return ""
+    _IDENT_REMOTE_WARNED[0] = True
+    try:
+        fr = _firstrun_module()
+        res = fr.ensure_identity(ROOT, profile=user_profile(resolve_user()),
+                                 user=resolve_user(), upgrade=True)
+    except Exception:
+        return ""
+    if not res.get("auto") or res.get("source") not in ("", "temp"):
+        return ""                       # 사람이 정했거나, 사다리가 이어지는 주소를 골랐다
+    msg = ("이 저장소가 이제 바깥과 오갑니다 — 지금 commit 에 찍히는 이름은 "
+           "section9 이 임시로 지은 것이라 GitHub 의 내 계정으로 이어지지 않습니다. "
+           "바꾸려면 `git config --global user.name`·`user.email` 두 줄이고, "
+           "그대로 두어도 기록은 정상으로 쌓입니다. `s9 doctor` 가 그 줄을 짚습니다.")
+    _sync_log("ident: " + msg)
+    print("◌ " + msg)
+    return msg
 
 
 def default_sync_mode(has_origin=None):
@@ -24727,6 +24782,31 @@ def cmd_user_rename(old, new):
     print("   다음: s9 index rebuild")
 
 
+
+def reidentify_after_profile_change(name):
+    """등록·프로필 수정으로 사다리의 재료가 늘었을 수 있다 — 다시 재 본다
+    (REQ-20260921-012-62x6).
+
+    section9 이 박아 둔 값만 갱신한다(사람이 정한 값은 건드리지 않는다). 재료가
+    없어 임시값으로 내려갔던 신원이, 등록하며 적은 메일이나 github 로 올라서는
+    자리다 — 그러지 않으면 「나중에 고치세요」가 영영 안 고쳐진다(실제 사고
+    2026-09-20: 계정에 안 이어지는 commit 166건).
+
+    실패는 조용히 삼킨다 — 등록이 이것 때문에 죽으면 안 된다.
+    """
+    global _GIT_IDENTITY_CACHE
+    try:
+        res = _firstrun_module().ensure_identity(
+            ROOT, profile=user_profile(name), user=name, upgrade=True)
+    except Exception:
+        return None
+    if res.get("set"):
+        _GIT_IDENTITY_CACHE = None       # 방금 바꾼 값을 이 프로세스가 되읽지 않게
+        print(f"◌ 이 저장소의 git 이름을 {res['name']} <{res['email']}> 로 올렸다 — "
+              f"등록하며 적은 것에서 왔다")
+    return res
+
+
 def cmd_user(args):
     machine = args.machine or current_machine()
 
@@ -24828,6 +24908,7 @@ def cmd_user(args):
         except ValueError as e:
             die(str(e))
         print(f"user registered: {name}  ({os.path.relpath(udir, ROOT)}/)")
+        reidentify_after_profile_change(name)
 
     elif args.action == "attach":
         name = args.name or die("usage: s9 user attach <name>")
@@ -24838,6 +24919,7 @@ def cmd_user(args):
             die(str(e))
         print(f"{name}: attached {acct}@{mach}"
               + ("" if changed else " (already attached)"))
+        reidentify_after_profile_change(name)
         if sync_on:
             print("두 번째 컴퓨터가 붙었다 — 이 저장소는 이제 바깥과 오간다(동기화 remote, "
                   "표식 .s9-sync). 문서 이벤트마다 commit→pull→push. 끄려면 `s9 sync --off`")

@@ -270,12 +270,30 @@ def _identity_scope(_git):
     return "local" if _has("--local") else "global"
 
 
+# section9 이 제 손으로 박은 값이라는 표 (REQ-20260921-012-62x6). 이것이 없으면
+# **section9 이 쓴 값을 section9 이 되읽는 고리**가 생긴다: `_user_by_git_identity` 와
+# `user_name_from_src` 는 git 신원을 「이 사람의 증거」로 읽는데, 그 값이 우리가 방금
+# 지어낸 것이면 증거가 아니라 메아리다. architect 와 security-engineer 가 부모 요청
+# (REQ-20260921-004-62x6)에서 서로 모르는 채 같은 고리를 짚었다.
+#
+# 표는 값의 모양이 아니라 사실을 적는다 — 사다리가 프로필 메일을 골라 사람 것과
+# 똑같이 생긴 값이 박혀도, 그것을 **고른 것은 우리**다.
+IDENT_MARK = ("section9.identity", "auto")
+
+
 def _set_identity(_git, profile=None, account=None, user=""):
-    """저장소 로컬에 신원을 박는다 — 사다리가 고른 (이름, 메일, 갈래)."""
+    """저장소 로컬에 신원을 박고, 우리가 박았다는 표를 함께 남긴다."""
     name, mail, src = pick_identity(profile, account, user)
     _git("config", "user.name", name)
     _git("config", "user.email", mail)
+    _git("config", *IDENT_MARK, check=False)
     return name, mail, src
+
+
+def is_auto_identity(_git):
+    """이 저장소의 신원을 section9 이 박았나 — 표 한 줄로 판정한다."""
+    key, val = IDENT_MARK
+    return _git("config", "--local", "--get", key, check=False).stdout.strip() == val
 
 
 def _ensure_identity(_git, account=None, profile=None, user=""):
@@ -287,7 +305,7 @@ def _ensure_identity(_git, account=None, profile=None, user=""):
 
 
 def ensure_identity(root, env=None, account=None, git="git", run=None,
-                    profile=None, user=""):
+                    profile=None, user="", upgrade=False):
     """이 자리의 git 이 누구로 commit 할지 정해져 있게 한다 (REQ-20260921-003-62x6).
 
     세 입구(압축을 푼 배포판 · git clone · 초대 합류)가 이 한 자리를 지난다. 그전에는
@@ -307,23 +325,47 @@ def ensure_identity(root, env=None, account=None, git="git", run=None,
         name/mail 박은 값 (set 일 때만)
         source    어느 칸을 썼나 — "profile" · "noreply" · "temp" (set 일 때만)
         scope     신원이 있는 자리 — "global" · "local"(이번에 박은 것 포함)
-        skipped   안 한 이유 — "no-repo"(.git 이 없다) · "global" · "local"
+        auto      지금 선 값을 section9 이 박았나 (IDENT_MARK 표)
+        skipped   안 한 이유 — "no-repo"(.git 이 없다) · "global" · "local" · "same"
         error     실패 사유 한 줄 — 예외를 밖으로 내지 않는다
+
+    `upgrade=True` 는 **다시 재라**는 뜻이다 (REQ-20260921-012-62x6): 우리가 박은
+    값이면 사다리를 다시 돌려 더 높은 칸이 나왔는지 본다. 사람이 등록하거나 프로필에
+    메일·github 를 적은 순간이 그 자리다 — 그전에는 사다리에 재료가 없어 임시값으로
+    내려갔을 뿐이고, 재료가 생겼는데도 옛 값을 그대로 두면 「나중에 고치세요」가
+    영영 안 고쳐진다(실제 사고 2026-09-20: commit 166건).
+    사람이 손으로 정한 값은 `upgrade` 로도 덮지 않는다.
     """
     root = os.path.abspath(root)
     out = {"set": False, "name": "", "email": "", "source": "", "scope": "",
-           "skipped": "", "error": ""}
+           "skipped": "", "error": "", "auto": False}
     if not os.path.exists(os.path.join(root, ".git")):
         out["skipped"] = "no-repo"          # 저장소가 없으면 로컬에 쓸 자리도 없다
         return out
     _git = _git_runner(root, env=env, git=git, run=run)
     try:
         scope = _identity_scope(_git)
-        if scope:
+        out["auto"] = bool(scope) and is_auto_identity(_git)
+        if scope and not (upgrade and out["auto"]):
+            # 사람이 정해 둔 값은 덮지 않는다. 우리가 박은 값만, 그것도 다시 재라고
+            # 부른 자리(upgrade)에서만 갱신한다 — 등록·프로필 수정으로 사다리의
+            # 재료가 늘어난 순간이 그 자리다 (REQ-20260921-012-62x6).
             out["scope"] = out["skipped"] = scope
             return out
+        if scope:
+            # 다시 재기: 사다리가 같은 값을 고르면 아무것도 쓰지 않는다 — 쓰면
+            # `.git/config` 의 mtime 만 흔들려 동시 작업 검사가 남의 것을 본 것처럼 군다.
+            name, mail, src = pick_identity(profile, account, user)
+            cur = [_git("config", "--local", "--get", k, check=False).stdout.strip()
+                   for k in IDENT_KEYS]
+            if cur == [name, mail]:
+                out["scope"] = "local"
+                out["skipped"] = "same"
+                out["name"], out["email"], out["source"] = name, mail, src
+                return out
         out["name"], out["email"], out["source"] = _set_identity(_git, profile, account, user)
         out["set"] = True
+        out["auto"] = True
         out["scope"] = "local"
     except (OSError, subprocess.SubprocessError, RuntimeError) as e:
         out["error"] = str(e) or e.__class__.__name__
