@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -71,15 +72,29 @@ class ProgressWriteIsAClaim(unittest.TestCase):
         self.assertIn(self.rid, self.active("newsess1"),
                       "일하고 있는데 보드에는 아무도 안 붙은 것으로 보인다")
 
-    # S2. 두 번 남겨도 중복되지 않고 처음 잡은 시각이 보존된다.
-    def test_s2_second_note_keeps_the_first_claim_time(self):
+    # S2. 두 번 남겨도 등록은 하나이고, 시계는 제 손을 따라 다시 감긴다.
+    def test_s2_second_note_renews_the_claim_clock(self):
+        """`claim_at` 은 **마지막으로 제 손이 닿은 때**다 (REQ-20260921-026-62x6).
+
+        이 시험은 본래 「처음 잡은 시각이 보존된다」를 재고 있었다
+        (REQ-20260828-005). 그 뒤 클레임의 뜻이 바뀌었다 — 실사고 2026-09-19
+        11:21 로 `claim_renew` 가 들어와, 그 세션이 이 문서를 고치는 명령을 칠
+        때마다 시계를 다시 감고 유예 동안 손길이 없으면 놓은 것으로 본다
+        (REQ-20260919-011-62x6). 두 뜻이 부딪힌 채로 남아, 두 노트가 **초 경계를
+        넘을 때만** 이 시험이 섰다 — 같은 초에 떨어지면 통과해 간헐 실패로 보였다.
+
+        지금의 계약을 잰다: 등록은 하나, 시계는 다시 감긴다. 「언제부터 맡았나」는
+        문서의 History 와 contributions 가 말하고, 이 시계가 말하는 것은
+        「지금도 붙어 있나」다.
+        """
         self.cli("note", self.rid, "첫 줄", sess="newsess1")
         first = self.binding("newsess1")["claim_at"][self.rid]
+        time.sleep(1.1)          # 초 경계를 반드시 넘긴다 — 시계는 초까지만 적는다
         self.cli("note", self.rid, "둘째 줄", sess="newsess1")
         b = self.binding("newsess1")
         self.assertEqual(b["active_reqs"].count(self.rid), 1, "중복 등록")
-        self.assertEqual(b["claim_at"][self.rid], first,
-                         "다시 쓸 때마다 잡은 시각이 밀리면 '언제부터' 를 잃는다")
+        self.assertGreater(b["claim_at"][self.rid], first,
+                           "제 손이 닿았는데 시계가 그대로면 놓은 클레임과 구별되지 않는다")
 
     # B1. 끝난 문서는 노트로도 되살아나지 않는다.
     def test_b1_a_closed_doc_is_never_claimed(self):
