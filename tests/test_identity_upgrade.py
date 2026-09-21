@@ -387,5 +387,59 @@ class SharedRepoDoesNotMaskTheGlobal(Base):
         self.assertEqual(res["error"], "")
 
 
+class EditingTheProfileRaisesTheIdentity(unittest.TestCase):
+    """프로필을 고치는 **모든 길**에서 신원이 다시 선다 (REQ-20260921-021-62x6).
+
+    앞 요청(REQ-20260921-012-62x6)은 `s9 user add`·`attach` 두 자리에만 재평가를
+    붙였다. 그래서 나중에 Settings 에서 github 를 적은 사람은 임시 이름 그대로였다 —
+    새로 설치한 사람은 첫 실행에서 github 도 메일도 묻지 않으므로 바로 그 자리에
+    있게 된다. 프로필을 고치는 자리는 `do_user_update` 하나이고 대시보드도 CLI 도
+    그것을 지난다."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="s9ident-edit-")
+        self.home = os.path.join(self.root, "home")
+        os.makedirs(self.home)
+        with open(os.path.join(self.home, ".gitconfig"), "w", encoding="utf-8") as f:
+            f.write("[init]\n\tdefaultBranch = main\n")
+        self.env = {k: v for k, v in os.environ.items() if k not in GIT_IDENT_ENV}
+        self.env.update(HOME=self.home, S9_ROOT=self.root, S9_SESSION="ffff6666")
+        subprocess.run(["git", "init", "-q", "-b", "main", self.root],
+                       env=self.env, check=True, capture_output=True)
+        subprocess.run([sys.executable, S9, "init"], env=self.env,
+                       capture_output=True, timeout=120)
+        subprocess.run([sys.executable, S9, "user", "add", "tester"],
+                       env=self.env, capture_output=True, timeout=120)
+        self.git = fr._git_runner(self.root, env=self.env)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def local(self, key):
+        return self.git("config", "--local", "--get", key, check=False).stdout.strip()
+
+    def test_setting_github_later_raises_the_identity(self):
+        """github 를 나중에 적으면 그때 신원이 올라선다."""
+        fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        self.assertEqual(self.local("user.email"), "sjpark1@local")
+        r = subprocess.run([sys.executable, S9, "user", "update", "tester",
+                            "--github", "nicehugepark"],
+                           env=self.env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.local("user.email"),
+                         "nicehugepark@users.noreply.github.com",
+                         "Settings 에서 github 를 적어도 신원이 그대로입니다:\n"
+                         + r.stdout + r.stderr)
+
+    def test_an_unrelated_edit_does_not_touch_the_identity(self):
+        """사다리의 재료가 아닌 것을 고치면 신원을 건드리지 않는다."""
+        fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        before = self.local("user.email")
+        subprocess.run([sys.executable, S9, "user", "update", "tester",
+                        "--first-name", "길동"],
+                       env=self.env, capture_output=True, timeout=120)
+        self.assertEqual(self.local("user.email"), before)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

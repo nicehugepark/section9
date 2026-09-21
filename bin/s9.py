@@ -24529,6 +24529,13 @@ def do_user_update(name, display=None, email=None, role=None, actor="",
     body = body.rstrip("\n") + f"\n- {now_iso()} updated {', '.join(changed)}" \
            + (f" (by {actor})" if actor else "") + "\n"
     write_doc(ppath, meta, body)
+    # 사다리의 재료가 바뀌었으면 신원을 다시 잰다 (REQ-20260921-021-62x6).
+    # **프로필을 고치는 자리는 이 함수 하나다** — 대시보드 Settings 도 CLI 도 여기를
+    # 지나므로, 붙일 자리도 여기 하나다. 앞 요청(REQ-20260921-012-62x6)은 `s9 user
+    # add`·`attach` 두 자리에만 붙여, 나중에 Settings 에서 github 를 적은 사람은
+    # 임시 이름 그대로였다.
+    if any(k in ("emails", "github") for k in changed):
+        reidentify_after_profile_change(name, quiet=True)
     return changed
 
 
@@ -24777,7 +24784,7 @@ def cmd_user_rename(old, new):
 
 
 
-def reidentify_after_profile_change(name):
+def reidentify_after_profile_change(name, quiet=False):
     """등록·프로필 수정으로 사다리의 재료가 늘었을 수 있다 — 다시 재 본다
     (REQ-20260921-012-62x6).
 
@@ -24796,8 +24803,9 @@ def reidentify_after_profile_change(name):
         return None
     if res.get("set"):
         _GIT_IDENTITY_CACHE = None       # 방금 바꾼 값을 이 프로세스가 되읽지 않게
-        print(f"◌ 이 저장소의 git 이름을 {res['name']} <{res['email']}> 로 올렸다 — "
-              f"등록하며 적은 것에서 왔다")
+        if not quiet:                    # 서버 안에서 부를 때는 조용히 — 사람은 화면을 본다
+            print(f"◌ 이 저장소의 git 이름을 {res['name']} <{res['email']}> 로 올렸다 — "
+                  f"등록하며 적은 것에서 왔다")
     return res
 
 
