@@ -72,6 +72,30 @@ class PortPin(unittest.TestCase):
         self.assertFalse(self.s9._forget_auto_port(self.root))
         self.assertEqual(self.s9.s9_port(self.root), 9915)
 
+    def test_an_automatic_move_clears_an_old_pin(self):
+        """정상: 기계가 자리를 옮기면 옛 못박음은 걷힌다 (REQ-20260921-023-62x6).
+
+        실측 2026-09-21: 9/15 에 찍힌 `port.pinned` 하나가 엿새를 살아남아,
+        그 사이 기계가 9910·9911 …로 옮겨 앉는 동안에도 `_forget_auto_port` 를
+        물러나게 했다. `--stop` 이 자리를 잊지 못하니 9909 가 비어도 영영 돌아오지
+        않는다. 못박을 때 자동 표식을 지우는 길(`_pin_port`)은 있었는데 그 반대가
+        없었다 — 한쪽만 있는 대칭은 언젠가 이렇게 갈린다.
+        """
+        auto = os.path.join(self.st, "port.auto")
+        self.assertTrue(self.s9._pin_port(9915, self.root))
+        self.assertTrue(os.path.exists(os.path.join(self.st, "port.pinned")))
+        self.s9._port_remember(9912, "busy", self.root, auto)
+        self.assertFalse(os.path.exists(os.path.join(self.st, "port.pinned")),
+                         "기계가 옮겨 앉았는데 옛 못박음이 남으면 돌아올 길이 막힌다")
+        self.assertTrue(self.s9._forget_auto_port(self.root))
+        self.assertEqual(self.s9.s9_port(self.root), 9909)
+
+    def test_a_fresh_pin_still_wins(self):
+        """회귀: 사람이 다시 못박으면 그 결정은 그대로 이긴다."""
+        self.assertTrue(self.s9._pin_port(9920, self.root))
+        self.assertFalse(self.s9._forget_auto_port(self.root))
+        self.assertEqual(self.s9.s9_port(self.root), 9920)
+
 
 if __name__ == "__main__":
     unittest.main()

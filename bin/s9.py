@@ -27778,6 +27778,17 @@ def _port_remember(new, why, root, auto):
             f.write(str(new))
         with open(auto, "w", encoding="utf-8") as f:
             f.write(f"{why} {now_iso()}\n")
+        # 사람의 못박음은 여기서 걷는다 (REQ-20260921-023-62x6, 실측 2026-09-21).
+        # `_pin_port` 는 못박을 때 자동 표식을 지우는데 그 반대가 없어서, 한 번
+        # 못박힌 저장소는 기계가 자리를 옮긴 뒤에도 `port.pinned` 를 이고 다녔다 —
+        # `_forget_auto_port` 가 그 표식을 보고 물러나므로 `--stop` 이 자리를 잊지
+        # 않고, 9909 가 비어도 영영 돌아오지 못한다(9/15 의 표식 하나가 9/21 까지).
+        # 기계가 방금 옮겨 앉았다면 그 자리가 지금의 사실이고, 옛 못박음은 아무
+        # 곳도 가리키지 않는다. 사람이 다시 정하는 길은 `--port --pin` 그대로다.
+        try:
+            os.remove(os.path.join(root, "state", "port.pinned"))
+        except OSError:
+            pass
     except OSError:
         pass
 
