@@ -88,6 +88,18 @@ class IdentVerdict(unittest.TestCase):
                 self.assertEqual(v["level"], "warn")
                 self.assertIn("GitHub", v["line"])
 
+    # G5a. 닿지 않는 까닭이 다르면 말도 다르다 (REQ-20260921-020-62x6) — `.local` 은
+    # 이 컴퓨터 안에서만 닿고, RFC 2606 이 예약한 도메인은 어디에도 닿지 않는다.
+    def test_reserved_mail_warns_with_its_own_wording(self):
+        for mail in ("me@x.invalid", "me@corp.example", "me@x.test", "me@box.localhost"):
+            with self.subTest(mail=mail):
+                v = doctor.ident_verdict(_d("hong", mail, "hong", mail))
+                self.assertEqual(v["level"], "warn")
+                self.assertIn("어디에도 닿지 않는", v["line"])
+                self.assertNotIn("이 컴퓨터 안에서만", v["line"])
+        local = doctor.ident_verdict(_d("hong", "me@mac.local", "hong", "me@mac.local"))
+        self.assertIn("이 컴퓨터 안에서만", local["line"])
+
     # G5b. 비슷하지만 멀쩡한 주소는 건드리지 않는다
     def test_normal_mail_is_not_flagged(self):
         for mail in ("me@gmail.com", "me@local.example.com", "me@lan.dev.io"):

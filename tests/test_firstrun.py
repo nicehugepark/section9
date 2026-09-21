@@ -379,7 +379,7 @@ class ClonedPlace(unittest.TestCase):
         os.makedirs(prof, exist_ok=True)
         with open(os.path.join(prof, "profile.md"), "w", encoding="utf-8") as f:
             f.write("---\nname: hong\nrole: admin\n"
-                    'emails: ["hong@corp.example"]\ngithub: hong-gildong\n'
+                    'emails: ["hong@corp.co.kr"]\ngithub: hong-gildong\n'
                     f'os_accounts: ["{acct}"]\n---\n\n## Notes\n')
         port = free_port()
         cfg = os.path.join(self.base, "claude-n4")
@@ -394,7 +394,7 @@ class ClonedPlace(unittest.TestCase):
             self.assertEqual(
                 (_git(d, "config", "--local", "user.name", env=env).stdout.strip(),
                  _git(d, "config", "--local", "user.email", env=env).stdout.strip()),
-                ("hong-gildong", "hong@corp.example"),
+                ("hong-gildong", "hong@corp.co.kr"),
                 "프로필에 메일이 있는데 그 주소를 세우지 않았다")
             self.assertNotIn("임시로", r.stdout, "프로필 메일을 두고 임시값이라고 말했다")
             self.assertIn("프로필에 적어 둔 메일이다", r.stdout,
@@ -485,12 +485,12 @@ class IdentityLadder(unittest.TestCase):
     def test_n1_a_profile_mail_stands(self):
         """N1. 프로필에 쓸 수 있는 메일이 있으면 그 주소 — 이름은 github, 없으면 id."""
         self.assertEqual(
-            self.fr.pick_identity({"emails": ["hong@corp.example"], "github": "hong-gildong"},
+            self.fr.pick_identity({"emails": ["hong@corp.co.kr"], "github": "hong-gildong"},
                                   user="hong"),
-            ("hong-gildong", "hong@corp.example", "profile"))
+            ("hong-gildong", "hong@corp.co.kr", "profile"))
         self.assertEqual(
-            self.fr.pick_identity({"emails": ["hong@corp.example"]}, user="hong"),
-            ("hong", "hong@corp.example", "profile"))
+            self.fr.pick_identity({"emails": ["hong@corp.co.kr"]}, user="hong"),
+            ("hong", "hong@corp.co.kr", "profile"))
 
     def test_n2_github_gives_a_noreply_mail(self):
         """N2. 메일이 없고 github 가 있으면 GitHub 이 그 계정에 이어 주는 주소."""
@@ -508,12 +508,12 @@ class IdentityLadder(unittest.TestCase):
         """N4. 실제 저장소에 박히는 값과 `source` 가 사다리의 칸을 말한다."""
         d = self.repo("ladder-n4")
         res = self.fr.ensure_identity(d, env=self.env, user="hong",
-                                      profile={"emails": ["hong@corp.example"],
+                                      profile={"emails": ["hong@corp.co.kr"],
                                                "github": "hong-gildong"})
         self.assertEqual((res["set"], res["source"], res["scope"], res["error"]),
                          (True, "profile", "local", ""), res)
         self.assertEqual((self.local(d, "user.name"), self.local(d, "user.email")),
-                         ("hong-gildong", "hong@corp.example"))
+                         ("hong-gildong", "hong@corp.co.kr"))
         d2 = self.repo("ladder-n4b")
         res = self.fr.ensure_identity(d2, env=self.env, user="hong",
                                       profile={"github": "hong-gildong"})
@@ -531,13 +531,36 @@ class IdentityLadder(unittest.TestCase):
                 self.assertEqual(
                     self.fr.pick_identity({"emails": [mail]}, account=self.acct)[2], "temp")
 
+    def test_b1b_a_reserved_domain_mail_drops_to_the_next_rung(self):
+        """B1b. RFC 2606 이 예약한 도메인도 건너뛴다 (REQ-20260921-020-62x6).
+
+        `.invalid` 는 「어디에도 닿지 않는다」고 못박힌 자리라 GitHub 계정에 등록할 수
+        없고 메일도 가지 않는다 — 프로필에 그것이 적혀 있어도 「그 사람이 정해 둔
+        주소」가 아니다."""
+        for mail in ("me@x.invalid", "me@corp.example", "me@x.test", "me@box.localhost"):
+            with self.subTest(mail=mail):
+                self.assertEqual(
+                    self.fr.pick_identity({"emails": [mail], "github": "hong-gildong"}),
+                    ("hong-gildong", "hong-gildong@users.noreply.github.com", "noreply"))
+                self.assertEqual(
+                    self.fr.pick_identity({"emails": [mail]}, account=self.acct)[2], "temp")
+
+    def test_b1c_a_reachable_lookalike_is_kept(self):
+        """B1c. 예약된 것은 최상위 도메인 넷뿐이다 — 닮은 주소는 그대로 쓴다."""
+        for mail in ("me@example.com", "me@example.org", "me@invalid.co.kr",
+                     "me@local.example.com", "me@testing.io"):
+            with self.subTest(mail=mail):
+                self.assertEqual(
+                    self.fr.pick_identity({"emails": [mail], "github": "hong-gildong"}),
+                    ("hong-gildong", mail, "profile"))
+
     def test_b2_the_first_usable_mail_wins(self):
         """B2. 메일 꼴이 아닌 값은 건너뛰고, 여럿이면 쓸 수 있는 첫 번째를 쓴다."""
         self.assertEqual(
             self.fr.pick_identity({"emails": ["", "홍길동", "me@box.local",
-                                              "hong@corp.example", "second@corp.example"]},
+                                              "hong@corp.co.kr", "second@corp.co.kr"]},
                                   user="hong"),
-            ("hong", "hong@corp.example", "profile"))
+            ("hong", "hong@corp.co.kr", "profile"))
 
     def test_b3_a_github_name_that_cannot_be_one_is_skipped(self):
         """B3. GitHub 계정 이름의 꼴이 아니면 noreply 칸을 건너뛴다 — 안 닿는 주소를 짓지 않는다."""
@@ -552,7 +575,7 @@ class IdentityLadder(unittest.TestCase):
         _git(d, "config", "--local", "user.name", "Someone", env=self.env)
         _git(d, "config", "--local", "user.email", "someone@example.org", env=self.env)
         res = self.fr.ensure_identity(d, env=self.env, user="hong",
-                                      profile={"emails": ["hong@corp.example"]})
+                                      profile={"emails": ["hong@corp.co.kr"]})
         self.assertEqual((res["set"], res["scope"], res["source"]), (False, "local", ""), res)
         self.assertEqual(self.local(d, "user.email"), "someone@example.org")
 
@@ -574,9 +597,9 @@ class IdentityLadder(unittest.TestCase):
     def test_c1_the_github_login_stands_in_the_commit(self):
         """N1·N2. github 이 있으면 그것이 선다 — 사람 이름이 함께 있어도."""
         self.assertEqual(
-            self.fr.pick_identity({"emails": ["hong@corp.example"], "github": "hong-gildong",
+            self.fr.pick_identity({"emails": ["hong@corp.co.kr"], "github": "hong-gildong",
                                    "first_name": "길동", "last_name": "홍"}, user="hong"),
-            ("hong-gildong", "hong@corp.example", "profile"))
+            ("hong-gildong", "hong@corp.co.kr", "profile"))
         # `display` 는 화면 이름의 칸이라 commit 이름을 가로채지 않는다
         self.assertEqual(
             self.fr.pick_identity({"github": "hong-gildong", "display": "Gildong Hong",
@@ -586,17 +609,17 @@ class IdentityLadder(unittest.TestCase):
     def test_c2_without_github_the_persons_name_stands(self):
         """N3. GitHub 을 쓰지 않는 사람은 제 이름으로, 그것도 없으면 id 로 선다."""
         self.assertEqual(
-            self.fr.pick_identity({"emails": ["hong@corp.example"],
+            self.fr.pick_identity({"emails": ["hong@corp.co.kr"],
                                    "first_name": "길동", "last_name": "홍"},
                                   user="hong")[0], "홍길동")
         self.assertEqual(
-            self.fr.pick_identity({"emails": ["hong@corp.example"]}, user="hong")[0], "hong")
+            self.fr.pick_identity({"emails": ["hong@corp.co.kr"]}, user="hong")[0], "hong")
 
     def test_c3_the_repo_gets_the_same_name(self):
         """N4. 실제 저장소에 박히는 값도 같은 이름이다."""
         d = self.repo("ladder-c3")
         res = self.fr.ensure_identity(d, env=self.env, user="hong",
-                                      profile={"emails": ["hong@corp.example"],
+                                      profile={"emails": ["hong@corp.co.kr"],
                                                "github": "hong-gildong",
                                                "first_name": "길동", "last_name": "홍"})
         self.assertEqual((res["set"], res["source"], res["error"]), (True, "profile", ""), res)
@@ -605,11 +628,11 @@ class IdentityLadder(unittest.TestCase):
     def test_c4_one_half_of_a_name_still_stands(self):
         """B1·B2. github 이 없을 때 — 성만·이름만 있어도 그 글자가 서고,
         로마자는 「이름 성」이다."""
-        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
+        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.co.kr"],
                                                 "first_name": "길동"}, user="hong")[0], "길동")
-        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
+        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.co.kr"],
                                                 "last_name": "홍"}, user="hong")[0], "홍")
-        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
+        self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.co.kr"],
                                                 "first_name": "Gildong",
                                                 "last_name": "Hong"}, user="hong")[0],
                          "Gildong Hong")
@@ -619,11 +642,11 @@ class IdentityLadder(unittest.TestCase):
         for bad in ("홍 <a@b.c>", "홍\n길동", "홍\x00길동"):
             with self.subTest(display=bad):
                 self.assertEqual(
-                    self.fr.pick_identity({"emails": ["a@corp.example"], "display": bad},
+                    self.fr.pick_identity({"emails": ["a@corp.co.kr"], "display": bad},
                                           user="hong")[0], "hong")
         # 앞뒤 공백과 사이의 겹공백은 다듬는다 — 버릴 값은 아니다.
         self.assertEqual(
-            self.fr.pick_identity({"emails": ["a@corp.example"], "display": "  Gildong   Hong "},
+            self.fr.pick_identity({"emails": ["a@corp.co.kr"], "display": "  Gildong   Hong "},
                                   user="hong")[0], "Gildong Hong")
 
     def test_c6_the_temp_rung_keeps_its_shape(self):
@@ -656,7 +679,7 @@ class IdentityLadder(unittest.TestCase):
               "user_role": lambda u: "member",
               "do_user_attach": lambda u: ("acct", "machine", False),
               "EMAIL_RE": r"[^@\s]+@[^@\s]+\.[^@\s]+",
-              "user_profile": lambda u: {"emails": ["bob@corp.example"]},
+              "user_profile": lambda u: {"emails": ["bob@corp.co.kr"]},
               "do_user_update": lambda u, **kw: updated.append(kw),
               "user_config": lambda u: {"default_project": "mp"},
               "do_user_config_set": lambda *a, **kw: None,
@@ -664,9 +687,9 @@ class IdentityLadder(unittest.TestCase):
               "now_iso": lambda: "2026-09-21T11:00:00+09:00"}
         self.fr.join_project(ns, "mp", "bob", f"{self.acct}@local")
         self.assertEqual(updated, [], "임시 주소가 프로필 emails 에 박혔다")
-        self.fr.join_project(ns, "mp", "bob", "bob-new@corp.example")
+        self.fr.join_project(ns, "mp", "bob", "bob-new@corp.co.kr")
         self.assertEqual([kw.get("emails") for kw in updated],
-                         [["bob@corp.example", "bob-new@corp.example"]],
+                         [["bob@corp.co.kr", "bob-new@corp.co.kr"]],
                          "멀쩡한 주소까지 막았다")
 
 

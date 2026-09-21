@@ -75,10 +75,21 @@ def temp_identity(account=None):
 
 # ── 신원의 사다리 (REQ-20260921-011-62x6) ────────────────────────────────────
 # 기계가 호스트명으로 지어 붙이는 메일 꼬리 — 이 컴퓨터 안에서만 닿는 주소라 어느
-# 계정에도 등록할 수 없다. **이 목록의 자리는 여기 하나다**: 신원을 세우는 쪽(아래
-# 사다리)과 진단하는 쪽(bin/s9-doctor 의 「git 이름」)이 같은 목록을 본다. 두 벌로
-# 두면 한쪽에 꼬리를 더한 날 다른 쪽이 그 주소를 멀쩡한 것으로 읽는다.
-IDENT_DEAD_MAIL = (".local", ".localdomain", ".lan", ".home", "(none)")
+# 계정에도 등록할 수 없다.
+IDENT_LOCAL_MAIL = (".local", ".localdomain", ".lan", ".home", "(none)")
+
+# RFC 2606 이 「어디에도 닿지 않는다」고 예약한 최상위 도메인 — 문서·예시가 쓰라고
+# 비워 둔 자리다(REQ-20260921-020-62x6). 앞의 갈래와 닿지 않는 까닭이 다르다: 저쪽은
+# 이 컴퓨터 안에서만 닿고, 이쪽은 어느 컴퓨터에서도 닿지 않는다. GitHub 계정에
+# 등록할 수 없는 것은 같아, 사다리는 둘을 함께 건너뛴다. `example.com`·`example.net`·
+# `example.org` 는 넣지 않는다 — 같은 RFC 가 예약했지만 둘째 자리라 `local.example.com`
+# 같은 멀쩡한 주소를 함께 걸러 낸다. 최상위 도메인 넷만 꼬리로 가른다.
+IDENT_RESERVED_MAIL = (".invalid", ".example", ".test", ".localhost")
+
+# **이 목록의 자리는 여기 하나다**: 신원을 세우는 쪽(아래 사다리)과 진단하는 쪽
+# (bin/s9-doctor 의 「git 이름」)이 같은 목록을 본다. 두 벌로 두면 한쪽에 꼬리를 더한
+# 날 다른 쪽이 그 주소를 멀쩡한 것으로 읽는다.
+IDENT_DEAD_MAIL = IDENT_LOCAL_MAIL + IDENT_RESERVED_MAIL
 
 # GitHub 이 계정마다 내주는 주소. 비밀이 아니고 사람에게 묻지 않아도 되는데 GitHub 이
 # 실제로 그 계정에 이어 준다 — 사다리의 둘째 칸이 이것인 까닭이다.
@@ -137,10 +148,25 @@ def commit_name(name):
     return " ".join(raw.split())
 
 
-def is_dead_mail(email):
-    """이 컴퓨터 안에서만 닿는 주소인가 — IDENT_DEAD_MAIL 을 읽는 단 하나의 판정."""
+def dead_mail_kind(email):
+    """닿지 않는 주소면 그 까닭을 말한다 — `local` · `reserved`, 닿으면 빈 문자열.
+
+    까닭이 갈리는 자리는 사람에게 내는 말 하나다(bin/s9-doctor): `.local` 은 이
+    컴퓨터 안에서만 닿고 `.invalid` 는 어느 컴퓨터에서도 닿지 않는다. 사다리는 둘을
+    똑같이 건너뛰므로 고르는 쪽은 is_dead_mail 만 본다."""
     low = str(email or "").strip().lower()
-    return bool(low) and any(low.endswith(tail) for tail in IDENT_DEAD_MAIL)
+    if not low:
+        return ""
+    if any(low.endswith(tail) for tail in IDENT_LOCAL_MAIL):
+        return "local"
+    if any(low.endswith(tail) for tail in IDENT_RESERVED_MAIL):
+        return "reserved"
+    return ""
+
+
+def is_dead_mail(email):
+    """어느 계정에도 등록할 수 없는 주소인가 — IDENT_DEAD_MAIL 을 읽는 단 하나의 판정."""
+    return bool(dead_mail_kind(email))
 
 
 def profile_mails(profile=None):
@@ -481,7 +507,13 @@ def ensure_identity(root, env=None, account=None, git="git", run=None,
             out["skipped"] = "cleared"
             out["auto"] = False
             return out
-        if scope and not ((upgrade or out["foreign"]) and out["auto"]):
+        # 우리가 박아 둔 값이 닿지 않는 주소면 다시 잰다 (REQ-20260921-020-62x6).
+        # 죽은 메일 목록이 늘어난 날, 어제 사다리가 고른 값이 오늘은 건너뛸 것이 된다 —
+        # 그대로 두면 이미 박힌 컴퓨터만 영영 닿지 않는 주소로 commit 한다. 사람이
+        # 정해 둔 값은 이 갈래로 오지 않는다(auto 표가 가른다).
+        stale = out["auto"] and is_dead_mail(
+            _git("config", "--local", "--get", "user.email", check=False).stdout.strip())
+        if scope and not ((upgrade or out["foreign"] or stale) and out["auto"]):
             # 사람이 정해 둔 값은 덮지 않는다. 우리가 박은 값만, 그것도 다시 재라고
             # 부른 자리(upgrade)에서만 갱신한다 — 등록·프로필 수정으로 사다리의
             # 재료가 늘어난 순간이 그 자리다 (REQ-20260921-012-62x6).
@@ -679,7 +711,7 @@ def join_project(ns, slug, user, email="", via=" (s9 code --join)"):
         return out
     _acct, _machine, out["attached"] = h("do_user_attach")(user)
     email = (email or "").strip().lower()
-    # 이 컴퓨터 안에서만 닿는 주소는 프로필로 옮기지 않는다 (REQ-20260921-011-62x6):
+    # 닿지 않는 주소는 프로필로 옮기지 않는다 (REQ-20260921-011-62x6):
     # 넘어오는 값은 이 컴퓨터의 `git config user.email` 인데, 신원이 없던 자리에서는
     # 그 값이 방금 우리가 박은 임시 주소(`<계정>@local`)다. 그것을 프로필에 적으면
     # 기계가 지어낸 주소가 사람의 회사 메일 옆에 영영 남고, 뒤에 서는 사다리가 그것을

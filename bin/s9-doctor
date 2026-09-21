@@ -2025,6 +2025,7 @@ try:
     _ident = _ident_module()
     IDENT_DEAD_MAIL = _ident.IDENT_DEAD_MAIL
     is_dead_mail = _ident.is_dead_mail
+    dead_mail_kind = _ident.dead_mail_kind
     GITHUB_NOREPLY = _ident.GITHUB_NOREPLY
 except Exception:                       # 그 파일이 없거나 실리지 않는 자리
     IDENT_DEAD_MAIL = ()
@@ -2033,6 +2034,9 @@ except Exception:                       # 그 파일이 없거나 실리지 않�
     def is_dead_mail(_email):
         """목록을 읽지 못하면 이 한 줄만 쉰다 — 나머지 진단은 그대로 돈다."""
         return False
+
+    def dead_mail_kind(_email):
+        return ""
 
 # 고치는 명령은 한 줄에 하나씩 세우고, 꺾쇠 자리표시자 대신 그대로 붙여 넣을 수
 # 있는 예시 값을 넣는다 — 꺾쇠는 셸이 리디렉션으로 읽기도 하고, 사람이 괄호째
@@ -2107,13 +2111,17 @@ def ident_verdict(d):
         return _v("ident", "git 이름", "warn",
                   f"git 이름: {miss}이 없어 git 이 임시로 지어낸 값으로 "
                   f"기록하고 있습니다 — 지금은 {used_n} <{used_e}>", IDENT_FIX)
-    if is_dead_mail(used_e):
+    kind = dead_mail_kind(used_e)
+    if kind:
         # 「다른 사람으로 갈려 보인다」가 아니다 — 다른 사람이 되는 것이 아니라
-        # 아무 계정에도 안 붙는다 (ux-writer 판정).
+        # 아무 계정에도 안 붙는다 (ux-writer 판정). 닿지 않는 까닭은 둘로 갈린다
+        # (REQ-20260921-020-62x6): `.local` 은 이 컴퓨터 안에서만 닿고, `.invalid`
+        # 처럼 RFC 2606 이 예약한 주소는 어느 컴퓨터에서도 닿지 않는다.
+        why = ("이 컴퓨터 안에서만 쓰는 주소입니다" if kind == "local"
+               else "어디에도 닿지 않는 예시용 주소입니다")
         return _v("ident", "git 이름", "warn",
-                  f"git 이름: 메일 {used_e} 은 이 컴퓨터 안에서만 쓰는 "
-                  f"주소입니다 — GitHub 에서 이 commit 들이 내 계정으로 "
-                  f"이어지지 않습니다", IDENT_FIX)
+                  f"git 이름: 메일 {used_e} 은 {why} — GitHub 에서 이 commit 들이 "
+                  f"내 계정으로 이어지지 않습니다", IDENT_FIX)
     return _v("ident", "git 이름", "ok", f"git 이름: {used_n} <{used_e}>")
 
 
