@@ -303,5 +303,89 @@ class TheIdentityDoesNotTravelByCopy(Base):
         self.assertEqual(res["error"], "")
 
 
+class SharedRepoDoesNotMaskTheGlobal(Base):
+    """N1~N3·B1~B3·F1. 한 저장소를 둘이 쓸 때 (REQ-20260921-016-62x6).
+
+    `.git/config` 는 그 저장소에 하나뿐이고 git 은 로컬을 전역보다 앞세운다. 공용
+    경로에 A 의 신원이 박히면 제 `~/.gitconfig` 를 올바로 맞춰 둔 B 의 commit 까지
+    A 의 이름으로 나간다 — 그 메일이 실주소면 GitHub 이 A 의 계정으로 귀속하므로,
+    임시값보다 이쪽이 더 나쁘다(security-engineer 판정).
+
+    자국(REQ-20260921-018-62x6)이 「남이 박았다」까지 갈라 냈다. 이 시험은 그다음
+    한 걸음을 지킨다 — 그때 무엇으로 바꾸는가."""
+
+    def with_global(self, name="hong", email="hong@example.com"):
+        """이 컴퓨터의 사람이 제 이름을 정해 둔 상태를 만든다."""
+        with open(os.path.join(self.home, ".gitconfig"), "w", encoding="utf-8") as f:
+            f.write(f"[init]\n\tdefaultBranch = main\n"
+                    f"[user]\n\tname = {name}\n\temail = {email}\n")
+
+    def as_someone_else(self):
+        self.git("config", fr.IDENT_HOST_KEY, "other-box/someone")
+
+    # N1·N3. 전역이 있으면 남의 로컬을 걷는다 — 표와 자국까지 함께
+    def test_n1_foreign_local_is_cleared_so_the_global_shows(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker",
+                           profile={"emails": ["maker@company.com"]}, user="maker")
+        self.as_someone_else()
+        self.with_global()
+        res = fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertEqual(res["skipped"], "cleared")
+        self.assertEqual(res["scope"], "global")
+        self.assertEqual(self.local("user.email"), "")
+        self.assertEqual(self.local("section9.identity"), "")
+        self.assertEqual(self.local(fr.IDENT_HOST_KEY), "")
+        # 걷고 나면 git 이 실제로 이 사람의 이름으로 commit 한다
+        ident = self.git("var", "GIT_AUTHOR_IDENT").stdout
+        self.assertIn("hong@example.com", ident)
+
+    # N2. 전역이 없으면 지금까지대로 사다리가 다시 고른다
+    def test_n2_without_a_global_the_ladder_picks_again(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker",
+                           profile={"emails": ["maker@company.com"]}, user="maker")
+        self.as_someone_else()
+        res = fr.ensure_identity(self.root, env=self.env, account="taker",
+                                 profile={"emails": ["taker@company.com"]},
+                                 user="taker")
+        self.assertTrue(res["set"])
+        self.assertEqual(self.local("user.email"), "taker@company.com")
+
+    # B1. 사람이 손으로 박은 로컬은 전역이 있어도 걷지 않는다
+    def test_b1_a_hand_written_local_is_kept(self):
+        self.git("config", "user.name", "hong-at-work")
+        self.git("config", "user.email", "work@company.com")
+        self.with_global()
+        res = fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertNotEqual(res["skipped"], "cleared")
+        self.assertEqual(self.local("user.email"), "work@company.com")
+
+    # B2. 같은 컴퓨터·같은 계정이 박은 값은 남의 것이 아니다
+    def test_b2_my_own_mark_is_not_foreign(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.with_global()
+        res = fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.assertNotEqual(res["skipped"], "cleared")
+        self.assertEqual(self.local("user.email"), "maker@local")
+
+    # B3. 전역에 반쪽만 있으면 온전한 신원이 아니라 사다리로 간다
+    def test_b3_half_a_global_is_not_enough(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.as_someone_else()
+        with open(os.path.join(self.home, ".gitconfig"), "w", encoding="utf-8") as f:
+            f.write("[init]\n\tdefaultBranch = main\n[user]\n\tname = hong\n")
+        res = fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertNotEqual(res["skipped"], "cleared")
+        self.assertTrue(res["set"])
+        self.assertEqual(self.local("user.email"), "taker@local")
+
+    # F1. 무슨 일이 있어도 예외를 밖으로 내지 않는다
+    def test_f1_no_exception_escapes(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.as_someone_else()
+        self.with_global()
+        res = fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertEqual(res["error"], "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

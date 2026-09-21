@@ -251,6 +251,24 @@ def _init_main(_git):
 IDENT_KEYS = ("user.name", "user.email")
 
 
+def _has_global_identity(_git):
+    """전역·시스템에 **온전한** 신원이 있나 — 이름과 메일 둘 다 (REQ-20260921-016-62x6).
+
+    `_identity_scope` 는 로컬이 있으면 거기서 멈춰 전역을 보지 않는다. 남이 박아 둔
+    로컬을 걷어 낼지 판정하려면 「걷어 내면 무엇이 드러나는가」를 알아야 한다.
+    """
+    def _has(scope):
+        return all(_git("config", scope, "--get", k, check=False).stdout.strip()
+                   for k in IDENT_KEYS)
+    return _has("--global") or _has("--system")
+
+
+def _clear_local_identity(_git):
+    """우리가 박아 둔 로컬 신원과 그 표·자국을 걷는다 — 전역이 드러나게."""
+    for key in (*IDENT_KEYS, IDENT_MARK[0], IDENT_HOST_KEY):
+        _git("config", "--local", "--unset", key, check=False)
+
+
 def _identity_scope(_git):
     """신원이 어디에 있나 — "global"(전역·시스템) · "local"(이 저장소) · ""(아무 데도 없다).
 
@@ -359,7 +377,9 @@ def ensure_identity(root, env=None, account=None, git="git", run=None,
         source    어느 칸을 썼나 — "profile" · "noreply" · "temp" (set 일 때만)
         scope     신원이 있는 자리 — "global" · "local"(이번에 박은 것 포함)
         auto      지금 선 값을 section9 이 박았나 (IDENT_MARK 표)
+        foreign   지금 선 값을 **다른 컴퓨터·다른 계정**이 박았나
         skipped   안 한 이유 — "no-repo"(.git 이 없다) · "global" · "local" · "same"
+                  · "cleared"(남의 로컬을 걷어 전역이 드러나게 했다)
         error     실패 사유 한 줄 — 예외를 밖으로 내지 않는다
 
     `upgrade=True` 는 **다시 재라**는 뜻이다 (REQ-20260921-012-62x6): 우리가 박은
@@ -384,6 +404,16 @@ def ensure_identity(root, env=None, account=None, git="git", run=None,
         # 전역에 사람의 신원이 있으면 그쪽이 먼저다(scope 가 "global" 이면 auto 가
         # 서지 않으므로 아래 조건도 서지 않는다).
         out["foreign"] = out["auto"] and is_foreign_identity(_git, account)
+        if out["foreign"] and _has_global_identity(_git):
+            # **남의 로컬이 이 사람의 전역을 가리고 있다** (REQ-20260921-016-62x6).
+            # 사다리로 새 값을 고르는 것보다 걷어 내는 쪽이 옳다 — 이 컴퓨터의 사람은
+            # 제 이름을 이미 정해 두었고, 그것이 드러나는 것이 그 사람이 바라는
+            # 바다. 우리가 박은 값만 걷는다(표가 그것을 가른다).
+            _clear_local_identity(_git)
+            out["scope"] = "global"
+            out["skipped"] = "cleared"
+            out["auto"] = False
+            return out
         if scope and not ((upgrade or out["foreign"]) and out["auto"]):
             # 사람이 정해 둔 값은 덮지 않는다. 우리가 박은 값만, 그것도 다시 재라고
             # 부른 자리(upgrade)에서만 갱신한다 — 등록·프로필 수정으로 사다리의
