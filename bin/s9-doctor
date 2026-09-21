@@ -1943,21 +1943,46 @@ def ident_info(root=None):
 
     ident = g("var", "GIT_AUTHOR_IDENT") or ""
     m = re.match(r"^(.*?)\s*<([^>]*)>", ident)
-    return {"name": g("config", "--get", "user.name") or "",
-            "email": g("config", "--get", "user.email") or "",
+    name = g("config", "--get", "user.name") or ""
+    email = g("config", "--get", "user.email") or ""
+    return {"name": name, "email": email,
             "used_name": m.group(1) if m else "",
             "used_email": m.group(2) if m else "",
-            "resolved": bool(m)}
+            "resolved": bool(m),
+            "auto": (g("config", "--local", "--get", "section9.identity") or "") == "auto"
+                    or is_s9_identity(name, email)}
+
+
+# section9 이 제 손으로 박은 임시 신원의 모양 — `bin/s9_firstrun.py` 의
+# `temp_identity()` 가 만드는 `s9 <계정>` / `<계정>@local` 이다
+# (REQ-20260921-006-62x6). 사람이 손으로 넣은 `.local` 메일과 갈라야 한다:
+# 그쪽은 사람이 고칠 일이고 이쪽은 우리가 넣은 값이라, 말이 달라야 한다.
+# 4단계(REQ-20260921-004-62x6)가 `.git/config` 에 `section9.identity = auto`
+# 표를 세우면 그 표가 이 모양 판정을 대신한다 — ident_info 가 둘 다 읽는다.
+def is_s9_identity(name, email):
+    return bool(name) and name.startswith("s9 ") and (email or "").endswith("@local")
 
 
 # 기계가 호스트명으로 지어 붙이는 꼬리 — 이 컴퓨터 안에서만 닿는 주소라
 # 어느 계정에도 등록할 수 없다.
 IDENT_DEAD_MAIL = (".local", ".localdomain", ".lan", ".home", "(none)")
 
-IDENT_FIX = ("`git config --global user.name '<이름>'` 과 "
-             "`git config --global user.email '<계정에 등록한 메일>'` 을 한 번 "
-             "실행하면 이 컴퓨터의 다음 commit 부터 그 이름으로 찍힌다. 이미 "
-             "쌓인 commit 은 그대로다 — 이력을 다시 쓰지 않는 한 바뀌지 않는다.")
+# 고치는 명령은 한 줄에 하나씩 세우고, 꺾쇠 자리표시자 대신 그대로 붙여 넣을 수
+# 있는 예시 값을 넣는다 — 꺾쇠는 셸이 리디렉션으로 읽기도 하고, 사람이 괄호째
+# 남겨 치기도 한다 (ux-writer 판정, REQ-20260921-006-62x6).
+IDENT_FIX = ("고치기 — 아래 두 줄을 한 번 실행하십시오(따옴표 안을 내 것으로 바꿉니다).\n"
+             "  git config --global user.name \"hong-gildong\"\n"
+             "  git config --global user.email \"hong@example.com\"\n"
+             "메일은 GitHub 에 등록한 것과 같아야 여기서 쌓인 commit 이 GitHub 의 "
+             "내 계정으로 이어집니다. 이미 쌓인 commit 의 이름은 바뀌지 않습니다.")
+
+# 임시 신원으로 도는 것은 혼자 쓰는 자리의 **정상**이다 — 잃는 것이 없으므로 먼저
+# 안심시키고, 「나중에」가 아니라 사건으로 시한을 못박는다(GitHub 에 잇기 전에).
+IDENT_TEMP_FIX = ("기록은 정상으로 쌓이고 있습니다 — 잃는 것은 없습니다.\n"
+                  "다만 이 이름은 이 컴퓨터 밖에서는 내 것으로 이어지지 않으니, "
+                  "GitHub 에 잇기 전에 한 번 바꿔 두십시오.\n"
+                  "  git config --global user.name \"hong-gildong\"\n"
+                  "  git config --global user.email \"hong@example.com\"")
 
 
 def ident_verdict(d):
@@ -1965,20 +1990,29 @@ def ident_verdict(d):
     used_n, used_e = (d.get("used_name") or ""), (d.get("used_email") or "")
     if not d.get("resolved"):
         return _v("ident", "git 이름", "critical",
-                  "git 이름: 이 컴퓨터의 git 이 누구로 commit 할지 정해지지 "
-                  "않았다 — commit 이 거부된다", IDENT_FIX)
+                  "git 이름: 이 컴퓨터의 git 에 user.name 과 user.email 이 "
+                  "없습니다 — section9 이 문서를 남길 때 거는 commit 이 "
+                  "거부됩니다", IDENT_FIX)
+    # section9 이 박은 값을 먼저 가른다 — 아래 죽은 메일 갈래가 `@local` 을 잡으므로
+    # 순서를 뒤집으면 우리가 넣은 값을 사람이 잘못 둔 것처럼 말하게 된다.
+    if d.get("auto"):
+        return _v("ident", "git 이름", "warn",
+                  f"git 이름: 지금은 section9 이 임시로 지은 이름 "
+                  f"{used_n} <{used_e}> 으로 기록하고 있습니다", IDENT_TEMP_FIX)
     if not (name and email):
         miss = ("이름과 메일" if not (name or email)
                 else "이름" if not name else "메일")
         return _v("ident", "git 이름", "warn",
-                  f"git 이름: {miss}을 정해 두지 않아 git 이 지어낸 값으로 "
-                  f"commit 한다 — 지금은 {used_n} <{used_e}>", IDENT_FIX)
+                  f"git 이름: {miss}이 없어 git 이 임시로 지어낸 값으로 "
+                  f"기록하고 있습니다 — 지금은 {used_n} <{used_e}>", IDENT_FIX)
     low = used_e.lower()
     if any(low.endswith(tail) for tail in IDENT_DEAD_MAIL):
+        # 「다른 사람으로 갈려 보인다」가 아니다 — 다른 사람이 되는 것이 아니라
+        # 아무 계정에도 안 붙는다 (ux-writer 판정).
         return _v("ident", "git 이름", "warn",
-                  f"git 이름: 메일 {used_e} 은 이 컴퓨터 안에서만 닿는 주소다 — "
-                  f"GitHub 의 commit 목록에서 다른 사람으로 갈려 보인다",
-                  IDENT_FIX)
+                  f"git 이름: 메일 {used_e} 은 이 컴퓨터 안에서만 쓰는 "
+                  f"주소입니다 — GitHub 에서 이 commit 들이 내 계정으로 "
+                  f"이어지지 않습니다", IDENT_FIX)
     return _v("ident", "git 이름", "ok", f"git 이름: {used_n} <{used_e}>")
 
 

@@ -30,9 +30,10 @@ doctor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(doctor)
 
 
-def _d(name="", email="", used_name="", used_email="", resolved=True):
+def _d(name="", email="", used_name="", used_email="", resolved=True,
+       auto=False):
     return {"name": name, "email": email, "used_name": used_name,
-            "used_email": used_email, "resolved": resolved}
+            "used_email": used_email, "resolved": resolved, "auto": auto}
 
 
 class IdentVerdict(unittest.TestCase):
@@ -63,12 +64,12 @@ class IdentVerdict(unittest.TestCase):
         v = doctor.ident_verdict(_d("hong", "",
                                     "hong", "x@host.local"))
         self.assertEqual(v["level"], "warn")
-        self.assertIn("메일을", v["line"])
+        self.assertIn("메일이", v["line"])
         self.assertNotIn("이름과 메일", v["line"])
         v = doctor.ident_verdict(_d("", "me@example.com",
                                     "hong", "me@example.com"))
         self.assertEqual(v["level"], "warn")
-        self.assertIn("이름을", v["line"])
+        self.assertIn("이름이", v["line"])
 
     # G4. git 이 누구로 commit 할지 전혀 못 정하면 critical — commit 이 거부된다
     def test_unresolved_is_critical(self):
@@ -131,6 +132,101 @@ class IdentInfo(unittest.TestCase):
         self.assertEqual(d["used_email"], "tester@example.com")
         self.assertTrue(d["resolved"])
         self.assertEqual(doctor.ident_verdict(d)["level"], "ok")
+
+
+class S9TempIdentity(unittest.TestCase):
+    """N1·N2·B1·B2. section9 이 제 손으로 박은 임시 신원은 사람이 잘못 둔 값과
+    다르게 말해야 한다 (REQ-20260921-006-62x6).
+
+    실제 사고 2026-09-20 의 값은 macOS 가 지어낸 것이었고, 그것과 우리가 박는
+    `s9 <계정> <계정@local>` 은 고칠 사람도 할 말도 다르다 — 앞은 사람이 정해
+    두지 않아 난 것이고 뒤는 우리가 넣은 것이다."""
+
+    def _temp(self, **kw):
+        return _d("s9 sjpark1", "sjpark1@local",
+                  "s9 sjpark1", "sjpark1@local", **kw)
+
+    # N1. 전용 갈래 — 오류가 아니라 알림이고, 누가 넣었는지 밝힌다
+    def test_s9_written_identity_is_its_own_branch(self):
+        v = doctor.ident_verdict(self._temp(auto=True))
+        self.assertEqual(v["level"], "warn")
+        self.assertNotEqual(v["level"], "critical")
+        self.assertIn("section9 이 임시로", v["line"])
+        self.assertIn("s9 sjpark1", v["line"])
+
+    # N2. 먼저 안심시키고, 시한을 사건으로 못박는다
+    def test_temp_advice_reassures_then_sets_a_deadline(self):
+        a = doctor.ident_verdict(self._temp(auto=True))["advice"]
+        self.assertIn("잃는 것은 없습니다", a)
+        self.assertIn("GitHub 에 잇기 전에", a)
+        self.assertNotIn("나중에", a)
+
+    # B1. 사람이 손으로 넣은 .local 은 이 갈래로 오지 않는다
+    def test_human_local_mail_keeps_the_dead_mail_branch(self):
+        v = doctor.ident_verdict(_d("hong", "me@mac.local",
+                                    "hong", "me@mac.local"))
+        self.assertEqual(v["level"], "warn")
+        self.assertNotIn("section9 이 임시로", v["line"])
+        self.assertIn("이어지지 않습니다", v["line"])
+
+    # B2. 값의 모양이 아니라 표로도 가른다 — 4단계가 세울 자리를 미리 읽는다
+    def test_auto_flag_alone_is_enough(self):
+        v = doctor.ident_verdict(_d("Hong", "hong@example.com",
+                                    "Hong", "hong@example.com", auto=True))
+        self.assertIn("section9 이 임시로", v["line"])
+
+    # B2b. 모양 판정은 이름과 메일 둘 다 맞아야 선다
+    def test_shape_needs_both_halves(self):
+        self.assertTrue(doctor.is_s9_identity("s9 sjpark1", "sjpark1@local"))
+        self.assertFalse(doctor.is_s9_identity("s9 sjpark1", "me@example.com"))
+        self.assertFalse(doctor.is_s9_identity("hong", "hong@local"))
+        self.assertFalse(doctor.is_s9_identity("", ""))
+
+
+class IdentSpeech(unittest.TestCase):
+    """B3·F1·F2. 사람이 읽는 자리의 말씨와 모양 (규약 2조 1 · ux-writer 판정)."""
+
+    ALL = (
+        _d(resolved=False),
+        _d("", "", "Hong", "hong@x.local"),
+        _d("hong", "", "hong", "x@host.local"),
+        _d("hong", "me@mac.local", "hong", "me@mac.local"),
+        _d("s9 a", "a@local", "s9 a", "a@local", auto=True),
+        _d("hong", "me@example.com", "hong", "me@example.com"),
+    )
+
+    # B3. 모든 줄과 advice 가 존댓말이다
+    def test_every_line_is_polite(self):
+        for d in self.ALL:
+            v = doctor.ident_verdict(d)
+            for text in (v["line"], v["advice"] or ""):
+                for sent in text.split("\n"):
+                    sent = sent.strip().rstrip(".")
+                    if not sent or sent.startswith("git config"):
+                        continue
+                    self.assertFalse(
+                        sent.endswith("한다") or sent.endswith("된다")
+                        or sent.endswith("이다") or sent.endswith("는다"),
+                        f"반말: {sent}")
+
+    # F1. 신원이 없어 commit 이 거부되는 줄은 「무엇이 없는지 → 그래서 무엇이
+    #     안 되는지」 순으로 말한다
+    def test_unresolved_line_says_what_then_why(self):
+        line = doctor.ident_verdict(_d(resolved=False))["line"]
+        self.assertLess(line.index("없습니다"), line.index("거부됩니다"))
+        self.assertIn("user.name", line)
+        self.assertIn("user.email", line)
+
+    # F2. 고치는 명령은 한 줄에 하나씩, 꺾쇠가 아니라 붙여 넣을 수 있는 예시로
+    def test_fix_commands_stand_one_per_line(self):
+        for advice in (doctor.IDENT_FIX, doctor.IDENT_TEMP_FIX):
+            cmds = [ln.strip() for ln in advice.split("\n")
+                    if ln.strip().startswith("git config")]
+            self.assertEqual(len(cmds), 2, advice)
+            self.assertTrue(any("user.name" in c for c in cmds))
+            self.assertTrue(any("user.email" in c for c in cmds))
+            self.assertNotIn("<", advice)
+            self.assertNotIn(">", advice)
 
 
 class IdentIsOnTheBoard(unittest.TestCase):
