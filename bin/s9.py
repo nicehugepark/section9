@@ -28465,6 +28465,7 @@ def cmd_code(args):
     # 팀 저장소에 잇고 문서·사람·프로젝트를 받는다 — 혼자 쓰는 저장소를 세우는 대신이다.
     # 실패면 여기서 선다: 합류하려던 자리에 혼자 쓰는 저장소가 서면 다음 --join 이 거부된다.
     _join = (getattr(args, "join", "") or "").strip()
+    _seeded = []                # 이 실행이 심은 안내 요청 — 아래 기본 프로젝트가 읽는다
     if _join:
         _fr = _firstrun_module().join_repo(ROOT, _join, INSTANCE_TRACK_GITIGNORE,
                                            sync_marker_body("remote"))
@@ -28499,7 +28500,6 @@ def cmd_code(args):
         # 「section9 첫 실행」에 함께 담긴다(아직 .git 이 없어 문서마다 commit 이 서지 않는다).
         # 맥·Windows 실측(2026-09-14): 등록 뒤에만 심던 옛 길은 이름 물음 전의 보드가 비어
         # 있었고, 안내 2편(나를 등록하기)은 바로 그때 읽혀야 하는 글이다.
-        _seeded = []
         if onboarding_first_run_place():
             try:
                 _seeded = seed_onboarding_requests(DEFAULT_PROJECT_SLUG, resolve_user())
@@ -28689,26 +28689,6 @@ def cmd_code(args):
                             print(f"◌ 이름을 저장하지 못했습니다 — {e}")
                             print("  나중에 다시 넣으려면:")
                             print(f"    {s9_cmd('user update ' + name + ' --last-name 홍 --first-name 길동')}")
-                # 사람이 생겼으니 이제 기본 프로젝트가 설 수 있다 (REQ-20260908-031).
-                # `s9-install` 은 `s9 init` 을 부르지만 그때는 등록된 사람이 없어
-                # 프로젝트가 서지 않는다 — 그리고 사람이 실제로 치는 것은
-                # `s9-install` 과 `s9 code` 둘뿐이다(주인 2026-09-08). 그래서 이
-                # 자리다: 신원이 정해지는 그 순간이 프로젝트가 설 수 있는 첫
-                # 순간이고, 여기 말고는 사람이 다시 무언가를 쳐야 한다.
-                # 이미 프로젝트가 있으면 아무 일도 하지 않는다(멱등).
-                try:
-                    made = ensure_default_project()
-                    if made:
-                        print(f"◌ 기본 프로젝트 '{made}' 를 만들었습니다.")
-                        print("  프로젝트를 고르지 않은 새 문서는 여기에 담깁니다.")
-                        print(f"  바꾸려면: {s9_cmd('project default <slug>')}")
-                        _st = onboarding_state()
-                        if _st.get("reason") == "seeded" and _st.get("ids") and not _seeded:
-                            print(f"◌ 사용법 안내 {len(_st['ids'])}건을 Board 의 open 열에 "
-                                  f"넣어 두었습니다.")
-                            print("  처음이시면 그것부터 읽어 보세요.")
-                except Exception:
-                    pass
             else:
                 known = registered_users()
                 # 새 사람에게 권하는 이름은 **id 로 쓸 수 있는 것**이어야 한다
@@ -28726,6 +28706,32 @@ def cmd_code(args):
                 print(f"    {s9_cmd('user attach ' + (known[0] if known else '<그 이름>'))}")
                 print("  새로 등록하려면:")
                 print(f"    {_add}")
+    except Exception:
+        pass
+    # 사람이 생겼으니 이제 기본 프로젝트가 설 수 있다 (REQ-20260908-031).
+    # `s9-install` 은 `s9 init` 을 부르지만 그때는 등록된 사람이 없어 프로젝트가
+    # 서지 않는다 — 그리고 사람이 실제로 치는 것은 `s9-install` 과 `s9 code`
+    # 둘뿐이다(주인 2026-09-08). 그래서 이 자리다.
+    #
+    # **등록이 어느 길로 끝났든 여기서 선다** (REQ-20260921-025-62x6, 실측
+    # 2026-09-21): 예전에는 이 호출이 바로 위 이름 물음의 등록 갈래 **안**에
+    # 있었다. 그래서 그 물음을 지나친 자리 — 터미널이 아닌 곳에서 돌려 물음이
+    # 뜨지 않았거나, 안내를 읽고 `s9 user add` 를 손으로 친 자리 — 는 users/ 에
+    # 이름만 남고 vault/projects 가 빈 채로 일이 시작됐다. `s9 init` 은 「다음
+    # s9 init 에서 선다」고 말하지만 그 두 번째 init 을 아무도 돌리지 않는다.
+    # 코드만 담긴 시드를 clone 해 `s9 code` 를 돌린 자리가 그렇게 비어 있었다.
+    # 멱등이다 — 프로젝트가 하나라도 있으면, 등록된 사람이 없으면 아무 일도 없다.
+    try:
+        made = ensure_default_project()
+        if made:
+            print(f"◌ 기본 프로젝트 '{made}' 를 만들었습니다.")
+            print("  프로젝트를 고르지 않은 새 문서는 여기에 담깁니다.")
+            print(f"  바꾸려면: {s9_cmd('project default <slug>')}")
+            _st = onboarding_state()
+            if _st.get("reason") == "seeded" and _st.get("ids") and not _seeded:
+                print(f"◌ 사용법 안내 {len(_st['ids'])}건을 Board 의 open 열에 "
+                      f"넣어 두었습니다.")
+                print("  처음이시면 그것부터 읽어 보세요.")
     except Exception:
         pass
     # 초대받은 프로젝트에 선다 (REQ-20260913-013-62x6) — 신원이 정해진 뒤라야 초대
@@ -41426,8 +41432,11 @@ def cmd_init(_args):
     elif not all_projects() and not registered_users():
         # 신원이 먼저다 — 등록 전에는 프로젝트를 만들어도 그 사람이 문서를
         # 붙일 수 없다(contribute 가 거짓).
-        print("  ↳ 사용자를 먼저 등록하면(s9 user add <이름>) 다음 s9 init 에서 "
-              "기본 프로젝트가 선다")
+        # 다음 걸음을 정직하게 적는다 (REQ-20260921-025-62x6): 사람이 실제로 다시
+        # 치는 것은 `s9 code` 이지 `s9 init` 이 아니다. 둘 다 적어 두면 어느 쪽으로
+        # 가도 기본 프로젝트가 선다.
+        print("  ↳ 사용자를 먼저 등록하면(s9 user add <이름>) 다음 s9 code 또는 "
+              "s9 init 에서 기본 프로젝트가 선다")
 
 
 # -------------------------------------------------------------------- main
