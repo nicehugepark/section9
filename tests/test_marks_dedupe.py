@@ -55,7 +55,7 @@ class MarksDedupe(unittest.TestCase):
 
     def test_d4_a_rewrite_is_not_a_loss(self):
         """경계 — 같은 시각의 줄이 글자만 바뀐 것(이름 바꾸기 등)은 유실이 아니다."""
-        self.assertEqual(self._lost(N1, N1.replace("by hong", "by nicehugepark")), [])
+        self.assertEqual(self._lost(N1, N1.replace("by hong", "by hong")), [])
 
 
 if __name__ == "__main__":

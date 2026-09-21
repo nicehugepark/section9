@@ -169,8 +169,8 @@ class S9TempIdentity(unittest.TestCase):
     두지 않아 난 것이고 뒤는 우리가 넣은 것이다."""
 
     def _temp(self, **kw):
-        return _d("s9 sjpark1", "sjpark1@local",
-                  "s9 sjpark1", "sjpark1@local", **kw)
+        return _d("s9 hgpark", "hgpark@local",
+                  "s9 hgpark", "hgpark@local", **kw)
 
     # N1. 전용 갈래 — 오류가 아니라 알림이고, 누가 넣었는지 밝힌다
     def test_s9_written_identity_is_its_own_branch(self):
@@ -178,7 +178,7 @@ class S9TempIdentity(unittest.TestCase):
         self.assertEqual(v["level"], "warn")
         self.assertNotEqual(v["level"], "critical")
         self.assertIn("section9 이 임시로", v["line"])
-        self.assertIn("s9 sjpark1", v["line"])
+        self.assertIn("s9 hgpark", v["line"])
 
     # N2. 먼저 안심시키고, 시한을 사건으로 못박는다
     def test_temp_advice_reassures_then_sets_a_deadline(self):
@@ -206,8 +206,8 @@ class S9TempIdentity(unittest.TestCase):
 
     # B2b. 모양 판정은 이름과 메일 둘 다 맞아야 선다
     def test_shape_needs_both_halves(self):
-        self.assertTrue(doctor.is_s9_identity("s9 sjpark1", "sjpark1@local"))
-        self.assertFalse(doctor.is_s9_identity("s9 sjpark1", "me@example.com"))
+        self.assertTrue(doctor.is_s9_identity("s9 hgpark", "hgpark@local"))
+        self.assertFalse(doctor.is_s9_identity("s9 hgpark", "me@example.com"))
         self.assertFalse(doctor.is_s9_identity("hong", "hong@local"))
         self.assertFalse(doctor.is_s9_identity("", ""))
 
@@ -217,7 +217,7 @@ class IdentLadderRung(unittest.TestCase):
     (REQ-20260921-019-62x6).
 
     실제 결함 2026-09-21: clone 한 자리에서 사다리가 프로필 메일을 골라
-    `nicehugepark <claude01.pfe@example.invalid>` 를 박았는데, 진단은 「section9 이
+    `hong <agent01.pfe@example.invalid>` 를 박았는데, 진단은 「section9 이
     임시로 지은 이름」이라고 말했다. 그 값은 임시가 아니라 그 사람이 프로필에 적어
     둔 주소이고, 고칠 까닭도 다르다 — 사람에게 거짓을 말하는 자리였다."""
 
@@ -245,7 +245,7 @@ class IdentLadderRung(unittest.TestCase):
 
     # L3. 임시 칸은 지금 그대로 — warn 이고 안심시키는 advice 가 붙는다
     def test_temp_rung_keeps_its_warning(self):
-        v = doctor.ident_verdict(self._auto("s9 sjpark1", "sjpark1@local"))
+        v = doctor.ident_verdict(self._auto("s9 hgpark", "hgpark@local"))
         self.assertEqual(v["level"], "warn")
         self.assertIn("section9 이 임시로", v["line"])
         self.assertIn("잃는 것은 없습니다", v["advice"])
@@ -256,7 +256,7 @@ class IdentLadderRung(unittest.TestCase):
         v = doctor.ident_verdict(self._auto("hong", "hong@example.com",
                                             source="temp"))
         self.assertIn("section9 이 임시로", v["line"])
-        v = doctor.ident_verdict(self._auto("s9 sjpark1", "sjpark1@local",
+        v = doctor.ident_verdict(self._auto("s9 hgpark", "hgpark@local",
                                             source="profile"))
         self.assertNotIn("임시", v["line"])
 
@@ -276,7 +276,7 @@ class IdentLadderRung(unittest.TestCase):
     # L6. 우리 값인데 닿지 않는 주소면 임시 칸으로 본다 — 사다리는 그런 주소를 고르지
     #     않으므로, 사람을 탓하는 죽은 메일 갈래로 보내지 않는다
     def test_our_unreachable_mail_is_the_temp_rung(self):
-        v = doctor.ident_verdict(self._auto("s9 sjpark1", "sjpark1@box.local"))
+        v = doctor.ident_verdict(self._auto("s9 hgpark", "hgpark@box.local"))
         self.assertEqual(v["level"], "warn")
         self.assertIn("section9 이 임시로", v["line"])
 
@@ -379,8 +379,8 @@ class TheAccidentEndToEnd(unittest.TestCase):
                     SourceFileLoader("s9_firstrun_for_e2e",
                                      os.path.join(HERE, "..", "bin", "s9_firstrun.py"))))
             firstrun.__loader__.exec_module(firstrun)
-            res = firstrun.ensure_identity(root, env=env, account="sjpark1",
-                                           profile=profile, user="nicehugepark")
+            res = firstrun.ensure_identity(root, env=env, account="hgpark",
+                                           profile=profile, user="hong")
             return res, doctor.ident_verdict(doctor.ident_info(root=root))
         finally:
             for k, v in saved.items():

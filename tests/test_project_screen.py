@@ -300,8 +300,8 @@ PROBE = r"""
         pNoUser = byTitle("등록 사용자도 0"), strip = byTitle("32px 한 줄"),
         listArc = byTitle("보관 펼침"), stripArc = byTitle("보관됨");
   const rows = qa(".pjrow", listN);
-  const ownerTr = q('[data-pjmem="nicehugepark"]', pOwner);
-  const maintOwnerTr = q('[data-pjmem="nicehugepark"]', pMaint);
+  const ownerTr = q('[data-pjmem="hong"]', pOwner);
+  const maintOwnerTr = q('[data-pjmem="hong"]', pMaint);
   const stripEl = q(".pjstrip", strip);
   const expTr = qa(".pmem tr.exp", pOwner)[0];
   const soonInp = q('[data-pjmem="e7test"] [data-pjuntil]', pOwner);
@@ -397,14 +397,14 @@ TYPE = r"""
 FAIL = r"""
 (() => {
   const p = document.querySelector('#failhost .pjpanel');
-  const sel = p.querySelector('[data-pjmem="nicehugepark"] [data-pjrole]');
+  const sel = p.querySelector('[data-pjmem="hong"] [data-pjrole]');
   const was = sel.value;
   sel.value = "maintainer";
   sel.dispatchEvent(new Event("change", {bubbles: true}));
   return new Promise(r => setTimeout(() => {
     const now = document.querySelector('#failhost .pjpanel');
     const line = now.querySelector(".pjerr");
-    r({was, back: now.querySelector('[data-pjmem="nicehugepark"] [data-pjrole]').value,
+    r({was, back: now.querySelector('[data-pjmem="hong"] [data-pjrole]').value,
        shown: !line.hidden, text: line.textContent});
   }, 160));
 })()

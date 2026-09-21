@@ -181,7 +181,7 @@
       ok:"지우기", cancel:"그만두기"},
     // 서버가 거부한 얼굴 — 고장이 아니라 설명이라 눈썹을 안 붉힌다
     acctkeep: {kind:"alert", cap:"지우지 않음", stop:false,
-      title:"로그인이 끝난 자리라 지우지 않았습니다 (claude02.pfe@dev.itcen.com)",
+      title:"로그인이 끝난 자리라 지우지 않았습니다 (agent02.pfe@dev.example.com)",
       ok:"닫기"},
     /* 다시 시작이 낼 수 있는 창들 (REQ-20260827-079 반려). 셋 다 **그 순간이
        와야만** 보이는 화면이라 캡처로 재현할 수 없다: 세션이 일하는 중이어야
@@ -215,21 +215,21 @@
        **서버가 주는 답 모양**을 넣고 실제 함수(sessShape → sessItems)가 창을
        짓는다 — 그림을 따로 그리면 보고 고친 것이 화면이 아니게 된다. */
     sessions: sessShape({sessions: [
-      {sid:"05dfaa02", user:"nicehugepark", live:true, ended:false,
+      {sid:"05dfaa02", user:"hong", live:true, ended:false,
        listening:true, worker:false, model:"opus-5", account:"first@example.invalid",
        reqs:["REQ-20260829-023-62x6"], last:"2026-08-29T18:40:11+09:00"},
-      {sid:"8d8203c2", user:"nicehugepark", live:true, ended:false,
+      {sid:"8d8203c2", user:"hong", live:true, ended:false,
        listening:false, worker:false, model:"sonnet", account:"first@example.invalid",
        reqs:[], last:"2026-08-29T18:12:03+09:00"},
-      {sid:"d3d60fdc", user:"nicehugepark", live:true, ended:false,
+      {sid:"d3d60fdc", user:"hong", live:true, ended:false,
        listening:false, worker:true, model:"opus-5", account:"second@example.invalid",
        reqs:["REQ-20260829-019-62x6"], last:"2026-08-29T17:58:40+09:00"},
-      {sid:"02e5bc69", user:"nicehugepark", live:false, ended:true,
+      {sid:"02e5bc69", user:"hong", live:false, ended:true,
        listening:false, worker:false, model:"opus-5", account:"first@example.invalid",
        reqs:[], last:"2026-08-29T16:29:37+09:00"}]}, "05dfaa02"),
     // 붙잡은 것이 죽었고 갈 곳도 없는 처지 — 이 요청이 시작된 그 화면이다
     sessdead: sessShape({sessions: [
-      {sid:"02e5bc69", user:"nicehugepark", live:false, ended:true,
+      {sid:"02e5bc69", user:"hong", live:false, ended:true,
        listening:false, worker:false, model:"opus-5", account:"first@example.invalid",
        reqs:[], last:"2026-08-29T16:29:37+09:00"}]}, "02e5bc69"),
     sessnone: sessShape({sessions: []}, ""),

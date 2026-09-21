@@ -116,8 +116,8 @@ C:\Users\<이름>\.local\bin is not in your PATH」라고 했다 — 사용자 P
 - ② PATH 앞에 `.local\bin`: `claude 는 설치됐지만 로그인이 없다 — 터미널에서 `claude` 를 한 번 띄워 /login
   으로 로그인. 그다음 `s9 code`` · `◌ Claude Code 로그인이 없다 — 이어서 뜨는 Claude Code 화면의 안내대로
   로그인하면 그대로 세션이 시작된다(…)` · base_cmd `["claude", …]`. 맞다.
-- 고친 뒤 ①: `agent_cli_path()` 가 `C:\Users\박성진\.local\bin\claude.exe` 를 찾아 ② 의 두 줄에
-  `claude 는 PATH 밖에 있다(C:\Users\박성진\.local\bin\claude.exe) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라 — `s9 code` 는 이 경로로 띄운다` 가 더해지고 base_cmd[0] 이 그 전체 경로다. 표(`LOGIN_MARKS`)는
+- 고친 뒤 ①: `agent_cli_path()` 가 `C:\Users\홍길동\.local\bin\claude.exe` 를 찾아 ② 의 두 줄에
+  `claude 는 PATH 밖에 있다(C:\Users\홍길동\.local\bin\claude.exe) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라 — `s9 code` 는 이 경로로 띄운다` 가 더해지고 base_cmd[0] 이 그 전체 경로다. 표(`LOGIN_MARKS`)는
   세 벌(s9·s9-install·s9-doctor)이 같아야 하므로 `dirs` 도 셋에 넣었고 `tests/test_login_check.py` L9·L10·L11 이 지킨다.
 - 로그인 없는 `claude.exe -p hi`(임시 `CLAUDE_CONFIG_DIR`) 는 `Not logged in · Please run /login` 한 줄, rc=1.
   브라우저 인증은 사람 몫이라 그 뒤(첫 세션 화면·훅 발화)는 재지 않았다. 주인의 `%USERPROFILE%\.claude` 는

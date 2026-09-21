@@ -420,7 +420,7 @@ function shortRefDiag(){
      ?codepeek=peek   열리는 경로의 카드를 연다
      ?codepeek=fail   모양만 맞는 경로의 카드를 연다(못 여는 자리) */
 const CODE_DIAG = "web/index.html:4016 을 보라. "
-  + "users/nicehugepark/config/settings.json 은 내주지 않기로 한 자리다. "
+  + "users/hong/config/settings.json 은 내주지 않기로 한 자리다. "
   + "tests/test_nope.py:12 는 모양만 맞다. `bin/s9` 와 README.md 도 열린다.";
 function codePeekDiag(){
   if (!/[?&]codepeek/.test(location.search)) return;
@@ -433,7 +433,7 @@ function codePeekDiag(){
   if (!linked.length) lines.push("  (없음)");
   const said = linked.map(a => a.textContent);
   lines.push("— 맨 글자로 남은 것 —");
-  ["users/nicehugepark/config/settings.json"].forEach(x =>
+  ["users/hong/config/settings.json"].forEach(x =>
     lines.push(`  ${x}${said.includes(x) ? "  ✗ 링크가 섰다" : "  ✓"}`));
   const pre = document.createElement("pre");
   pre.id = "codepeek-diag";

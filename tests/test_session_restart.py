@@ -217,14 +217,14 @@ class TestWorkerModel(unittest.TestCase):
     def test_r13_model_args(self):
         with mock.patch.object(mod, "user_config",
                                lambda n: {"auto_resume_model": "opus"}):
-            self.assertEqual(mod._spawn_model_args("sjpark1"),
+            self.assertEqual(mod._spawn_model_args("hgpark"),
                              ["--model", "opus"])
         with mock.patch.object(mod, "user_config", lambda n: {}):
-            self.assertEqual(mod._spawn_model_args("sjpark1"), [])
+            self.assertEqual(mod._spawn_model_args("hgpark"), [])
         # 설정 읽기 실패가 스폰을 막아선 안 된다
         with mock.patch.object(mod, "user_config",
                                mock.Mock(side_effect=OSError)):
-            self.assertEqual(mod._spawn_model_args("sjpark1"), [])
+            self.assertEqual(mod._spawn_model_args("hgpark"), [])
 
     # R14. 모든 워커 스폰 경로가 이 인자를 통과한다 (한 군데라도 빠지면 재발)
     def test_r14_all_spawn_sites_covered(self):

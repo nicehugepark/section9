@@ -40,7 +40,7 @@ hook이 넣는 첫-줄-잘라내기 제목은 임시값이며, LLM이 `s9 set --
   "UserPromptSubmit": [{
     "hooks": [{
       "type": "command",
-      "command": "/home/sjpark1/section9/bin/s9-audit-prompt 2>/dev/null || true",
+      "command": "/home/hgpark/section9/bin/s9-audit-prompt 2>/dev/null || true",
       "timeout": 20
     }]
   }]

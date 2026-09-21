@@ -24,7 +24,7 @@
 <script>
 /* 서버가 실을 모양 그대로: {user, first_name, last_name, full} */
 window.__users = [
-  {user: "nicehugepark", first_name: "성진", last_name: "박", full: "박성진"},
+  {user: "hong", first_name: "길동", last_name: "박", full: "홍길동"},
   {user: "user2", first_name: "Sujin", last_name: "Lee", full: "Sujin Lee"},
   {user: "user1"},                       /* 이름을 아직 안 적은 사람 */
 ];
@@ -33,7 +33,7 @@ window.__users = [
 <script src="app/state.js"></script>
 <script src="app/card.js"></script>
 <script>
-const WHO = ["nicehugepark", "user2", "user1", "e7test"];
+const WHO = ["hong", "user2", "user1", "e7test"];
 const rows = WHO.map(u =>
   `<div class="m mwho"><span${badgeAttrs(u)} title="${esc(personTitle(u))}">${badgeFace(u)}</span>`
   + `<span class="ttl">맡은 사람 — 올리면 ${esc(personTitle(u))}</span></div>`).join("");

@@ -83,9 +83,9 @@ class ProjectJira(unittest.TestCase):
     def test_k4_site_is_trimmed_and_key_shape_is_checked(self):
         res = self.m.do_project_jira_set(
             "pay", actor="hong",
-            site="https://nicehugepark.atlassian.net/jira/software/projects/MP1/boards/1",
+            site="https://hong.atlassian.net/jira/software/projects/MP1/boards/1",
             project_key="MP1")
-        self.assertEqual(res["jira"]["site"], "https://nicehugepark.atlassian.net")
+        self.assertEqual(res["jira"]["site"], "https://hong.atlassian.net")
         with self.assertRaises(ValueError):
             self.m.do_project_jira_set("pay", actor="hong", site="https://x.atlassian.net",
                                        project_key="not a key")

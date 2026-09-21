@@ -91,10 +91,10 @@ class CallerEnvelopeIsScrubbed(unittest.TestCase):
         os.environ.update(self._saved)
 
     def test_i1_the_whole_worker_envelope_is_taken_out(self):
-        env = {"S9_USER": "nicehugepark", "S9_JOB_REQ": "REQ-20260910-004",
+        env = {"S9_USER": "hong", "S9_JOB_REQ": "REQ-20260910-004",
                "S9_AUTO_RESUME": "1", "PATH": "/x"}
         taken = R.scrub_caller_envelope(env)
-        self.assertEqual(taken, {"S9_USER": "nicehugepark",
+        self.assertEqual(taken, {"S9_USER": "hong",
                                  "S9_JOB_REQ": "REQ-20260910-004",
                                  "S9_AUTO_RESUME": "1"})
         self.assertEqual(env, {"PATH": "/x"})

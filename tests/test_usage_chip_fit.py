@@ -2,7 +2,7 @@
 
 주인이 맥 Safari 26.4 에서 본 것: 창을 400px 로 줄이면 문서에 9px 가로 넘침이
 생기고(innerWidth 400 · scrollWidth 409), 머리글 오른쪽의
-「claude01.pfe@dev.itcen.com · 5h 29% · wk 34% · fable 37%」 끝이 잘렸다.
+「agent01.pfe@dev.example.com · 5h 29% · wk 34% · fable 37%」 끝이 잘렸다.
 
 뿌리는 `.usagechip{white-space:nowrap}` 이다. nowrap 인 조각의 min-content 폭은
 **글자 전체 폭**(393px)이고, flex 항목의 `min-width:auto` 가 그 아래로 줄이는
@@ -48,7 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 WEB = os.path.join(REPO, "web")
 
-MAIL = "claude01.pfe@dev.itcen.com"
+MAIL = "agent01.pfe@dev.example.com"
 # 실제로 온 적 있는 가장 긴 꼴 — 덩이 하나가 홀로 폭을 넘는 마지막 갈래
 LONG_MAIL = "a-very-long-service-account-name@some.department.example.co.kr"
 NARROW = (400, 820)    # 주인이 잰 그 창
@@ -96,8 +96,8 @@ window.__draw = (mail, stale) => {
     {kind: "weekly_scoped", percent: 37, scope_name: "Fable"}]});
   // 신원 줄도 실물이 그린다 — 같은 기둥을 나눠 쓰는 이웃이고, 좁은 폭에서
   // 밀려 나가는 까닭도 같다. 흉내 낸 글자로 채우면 그 갈래를 못 잡는다.
-  window.__whoami = {user: "nicehugepark", machine: "Seongjinui-Macmini.local",
-                     os: "macOS", root: "/Users/seongjinpark/section9", role: "owner"};
+  window.__whoami = {user: "hong", machine: "Mac-mini.local",
+                     os: "macOS", root: "/Users/hgpark/section9", role: "owner"};
   renderWhoami();
 };
 """)
@@ -175,8 +175,8 @@ CASES = (
 PHONE = ("narrow", "tight", "narrow_long_mail", "narrow_soft", "narrow_stale")
 # 신원 줄이 설 수 있는 줄 수. soft 만 2 인 까닭은 **셸이 다르기 때문**이다 —
 # 이 스킨은 머리글이 창 폭이 아니라 왼쪽 세로 띠이고, 400px 창에서 그 띠가
-# 232px 다(실측 2026-09-16, 맥 Safari · 안쪽 203px). 「nicehugepark」 79px +
-# 「@ Seongjinui-Macmini.local」 171px 은 그 안에 못 든다. 여기서 한 줄을
+# 232px 다(실측 2026-09-16, 맥 Safari · 안쪽 203px). 「hong」 79px +
+# 「@ Mac-mini.local」 171px 은 그 안에 못 든다. 여기서 한 줄을
 # 받아 내려면 컴퓨터 이름을 잘라야 하는데, 그러면 어느 컴퓨터의 화면인지가
 # 사라진다 — 덩이 사이에서 접히는 것이 맞는 갈래다(REQ-20260915-001-2n7g).
 WHO_LINES = {"narrow": 1, "tight": 1, "narrow_long_mail": 1,

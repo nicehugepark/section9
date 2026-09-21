@@ -79,7 +79,7 @@ const P_MAIN = {
   summary: "프롬프트 audit·외부기억 하네스", status: "active", customer: "내부(자체)",
   contact_name: "", contact_org: "", contact_email: "", contact_phone: "",
   members: [
-    {user: "nicehugepark", role: "owner", since: "2026-08-23", until: "", position: "PM/오너", active: true},
+    {user: "hong", role: "owner", since: "2026-08-23", until: "", position: "PM/오너", active: true},
     {user: "e7test", role: "maintainer", since: "2026-08-25", until: "2026-09-08", position: "", active: true},
     {user: "hkim", role: "contributor", since: "2026-08-20", until: "2026-08-28", position: "QA", active: false},
   ],
@@ -88,7 +88,7 @@ const P_MAIN = {
 const P_PORTAL = {
   id: "PRJ-20260901-002", slug: "portal", title: "고객사 포털 개편",
   summary: "", status: "active", customer: "ACME",
-  members: [{user: "nicehugepark", role: "owner", since: "2026-08-30", until: "", position: "", active: true}],
+  members: [{user: "hong", role: "owner", since: "2026-08-30", until: "", position: "", active: true}],
   member_active: 1, member_total: 1,
 };
 const P_OLD = {
@@ -100,7 +100,7 @@ const P_EMPTY = {
   id: "PRJ-20260901-004", slug: "newthing", title: "이름 없는 새 일감",
   summary: "", status: "active", customer: "", members: [], member_active: 0, member_total: 0,
 };
-const USERS = [{name: "nicehugepark"}, {name: "e7test"}, {name: "hkim"}];
+const USERS = [{name: "hong"}, {name: "e7test"}, {name: "hkim"}];
 const STATS = {
   section9: {open: 12, total: 431, last: "2026-08-31T21:56:00+09:00", when: "4분 전"},
   portal: {open: 3, total: 3, last: "2026-08-30T10:00:00+09:00", when: "어제"},
@@ -143,16 +143,16 @@ if (want("dlg")) parts.push(box("② 새 프로젝트 — 네 필드(담당자 4
   `<div id="dlghost"></div>`));
 
 if (want("panel")) parts.push(box("③ 문서 패널 — owner (전부 고칠 수 있음)",
-  viewer(prjPanelHTML(P_MAIN, {...base, me: "nicehugepark"})))
+  viewer(prjPanelHTML(P_MAIN, {...base, me: "hong"})))
   + box("문서 패널 — maintainer (owner 행만 잠김)",
       viewer(prjPanelHTML(P_MAIN, {...base, me: "e7test"})))
   + box("문서 패널 — 뷰어 (컨트롤을 그리지 않는다)",
       viewer(prjPanelHTML(P_MAIN, {...base, me: "hkim"})))
   + `<div class="grid2">`
   + box("멤버 0 · 넣을 사람 있음 (추가 행이 표 자리에)",
-      viewer(prjPanelHTML(P_EMPTY, {...base, me: "nicehugepark", isAdmin: true})))
+      viewer(prjPanelHTML(P_EMPTY, {...base, me: "hong", isAdmin: true})))
   + box("멤버 0 · 등록 사용자도 0 (막다른 길 대신 갈 자리)",
-      viewer(prjPanelHTML(P_EMPTY, {...base, users: [], me: "nicehugepark", isAdmin: true})))
+      viewer(prjPanelHTML(P_EMPTY, {...base, users: [], me: "hong", isAdmin: true})))
   + `</div>`
   // 저장 실패 — 서버가 거부한 판. 컨트롤이 원복되고 사유는 **서버의 말**로 선다
   + box("문서 패널 — 저장 실패 (원복 + 서버가 준 사유)",
@@ -169,7 +169,7 @@ document.getElementById("out").innerHTML = parts.join("");
    창은 화면 한가운데 뜨는 부품이라 대조표에서는 제 자리로 옮겨 눕힌다. */
 const dlgHost = document.getElementById("dlghost");
 if (dlgHost && typeof s9dlg === "function"){
-  prjCreateDlg({taken: ["section9", "portal"], me: "nicehugepark",
+  prjCreateDlg({taken: ["section9", "portal"], me: "hong",
     post: async (path, body) => {
       dlgHost.insertAdjacentHTML("beforeend",
         `<div class="pjerr" style="color:var(--muted)">[mock] POST ${path} `
@@ -186,7 +186,7 @@ document.querySelectorAll(".pjpanel").forEach(el => {
   if (el.closest("#failhost")) return;          // 아래 mountFail 이 맡는다
   const slug = el.dataset.pjslug;
   const p = [P_MAIN, P_PORTAL, P_OLD, P_EMPTY].find(x => x.slug === slug);
-  prjWire(el, p, {...base, me: "nicehugepark", isAdmin: true,
+  prjWire(el, p, {...base, me: "hong", isAdmin: true,
     post: async (path, body) => {
       const line = el.querySelector(".pjerr");
       line.hidden = false;
@@ -203,7 +203,7 @@ document.querySelectorAll(".pjpanel").forEach(el => {
 const failHost = document.getElementById("failhost");
 function mountFail(){
   if (!failHost) return;
-  const o = {...base, me: "nicehugepark", isAdmin: true};
+  const o = {...base, me: "hong", isAdmin: true};
   failHost.innerHTML = prjPanelHTML(P_PORTAL, o);
   prjWire(failHost.querySelector(".pjpanel"), P_PORTAL, {...o,
     post: async () => ({ok: false, error: "maintainer 이상이 필요합니다"}),

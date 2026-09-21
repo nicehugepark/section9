@@ -129,7 +129,7 @@ class TheScreenContract(unittest.TestCase):
         self.m._auto_dir = lambda: self.tmp
 
     def test_s1_the_shape_matches_wake(self):
-        r = self.m.stop_request("REQ-does-not-exist-0000", actor="nicehugepark")
+        r = self.m.stop_request("REQ-does-not-exist-0000", actor="hong")
         self.assertEqual(set(("ok", "id", "action", "message")) - set(r), set())
         self.assertFalse(r["ok"])
         self.assertEqual(r["action"], "missing")
@@ -139,14 +139,14 @@ class TheScreenContract(unittest.TestCase):
         self.m.locate = lambda _i: "/fake/doc.md"
         self.m.read_doc = lambda _p: ({"id": DOC, "type": "request",
                                        "status": "in-progress"}, "")
-        r = self.m.stop_request(DOC, actor="nicehugepark")
+        r = self.m.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "none")
 
     def test_s2b_only_requests_are_stopped(self):
         self.m.locate = lambda _i: "/fake/doc.md"
         self.m.read_doc = lambda _p: ({"id": "DOC-x", "type": "knowledge"}, "")
-        r = self.m.stop_request("DOC-x", actor="nicehugepark")
+        r = self.m.stop_request("DOC-x", actor="hong")
         self.assertFalse(r.get("ok"))
         self.assertEqual(r.get("action"), "not-request")
 
@@ -172,11 +172,11 @@ class TheScreenContract(unittest.TestCase):
         self.m.locate = lambda _i: "/fake/doc.md"
         self.m.read_doc = lambda _p: ({"id": DOC, "type": "request",
                                        "status": "in-progress"}, "")
-        r = self.m.stop_request(DOC, actor="nicehugepark")
+        r = self.m.stop_request(DOC, actor="hong")
         self.assertTrue(seen.get("owner"), "소유 갈래로 부르지 않았다")
         self.assertTrue((seen.get("why") or "").strip(),
                         "이유 없이 불렀다 — worker_stop 이 거부한다")
-        self.assertIn("nicehugepark", seen.get("why", ""),
+        self.assertIn("hong", seen.get("why", ""),
                       "누가 눌렀는지가 사유에 없다")
         self.assertEqual(r.get("action"), "stopped")
 
@@ -203,7 +203,7 @@ class ManyAtOnce(unittest.TestCase):
             return {"ok": True, "stopped": True, "pid": 9, "reason": "",
                     "message": "세웠다"}
         self.m.worker_stop = fake
-        r = self.m.stop_all_workers(actor="nicehugepark", why="계정을 바꾼다")
+        r = self.m.stop_all_workers(actor="hong", why="계정을 바꾼다")
         self.assertTrue(r.get("ok"))
         self.assertEqual(sorted(r.get("ids") or []), ["REQ-a", "REQ-b"])
         self.assertEqual(r.get("count"), 2)
@@ -211,7 +211,7 @@ class ManyAtOnce(unittest.TestCase):
 
     def test_s6b_nothing_running_is_not_an_error(self):
         self.m.live_workers = lambda: []
-        r = self.m.stop_all_workers(actor="nicehugepark", why="계정을 바꾼다")
+        r = self.m.stop_all_workers(actor="hong", why="계정을 바꾼다")
         self.assertTrue(r.get("ok"))
         self.assertEqual(r.get("count"), 0)
         self.assertTrue(r.get("message"))

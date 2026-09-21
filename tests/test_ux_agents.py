@@ -140,7 +140,7 @@ class TestSkinAudit(unittest.TestCase):
             self.html = f.read()
 
     # A1. 담당자 이니셜(.av)은 calm 전용 링 마크다. 베이스에서 켜져 있으면
-    #     "@이름" 표기를 쓰는 스킨에서 "@Ssjpark1"처럼 붙어 오타로 읽힌다.
+    #     "@이름" 표기를 쓰는 스킨에서 "@Shgpark"처럼 붙어 오타로 읽힌다.
     def test_a1_avatar_hidden_by_default(self):
         self.assertIn(".av{display:none}", self.html)
         self.assertIn('[data-skin="calm"] .card .av{', self.html)

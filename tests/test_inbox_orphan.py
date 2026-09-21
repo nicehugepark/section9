@@ -48,7 +48,7 @@ class TestInboxOrphan(unittest.TestCase):
         return p
 
     def chat(self, text, ago=3600, kind="chat"):
-        return {"ts": iso(-ago), "from": "sjpark1", "kind": kind, "text": text}
+        return {"ts": iso(-ago), "from": "hgpark", "kind": kind, "text": text}
 
     def inbox(self, sid="me", *extra):
         r = subprocess.run([S9, "inbox", "--sid", sid, *extra],

@@ -63,9 +63,9 @@ class RemoteRun(unittest.TestCase):
         """
         sha = "0123456789abcdef0123456789abcdef01234567"
         line = remote_run.remote_script(sha, "~/section9-ci/x",
-                                        16, ["test_a.py"], user="nicehugepark")
+                                        16, ["test_a.py"], user="hong")
         for part in ("cat > ", "refs/ci/0123456", "-q -f " + sha,
-                     "index rebuild", "user attach 'nicehugepark'", "--jobs 16", "'test_a.py'"):
+                     "index rebuild", "user attach 'hong'", "--jobs 16", "'test_a.py'"):
             self.assertIn(part, line)
         # 커밋은 남을 거쳐 오지 않는다 — 원격의 키는 다른 저장소의 것이라
         # GitHub 이 「없는 저장소」로 답했다 (REQ-20260907-049).

@@ -80,9 +80,9 @@ class JiraSettings(unittest.TestCase):
         m = self.m
         m.do_user_config_set(
             "hong", "jira_site",
-            "https://nicehugepark.atlassian.net/jira/software/projects/MP1/boards/1")
+            "https://hong.atlassian.net/jira/software/projects/MP1/boards/1")
         self.assertEqual(m.user_config("hong")["jira_site"],
-                         "https://nicehugepark.atlassian.net")
+                         "https://hong.atlassian.net")
         m.do_user_config_set("hong", "jira_site", "ex.atlassian.net/")
         self.assertEqual(m.user_config("hong")["jira_site"], "https://ex.atlassian.net")
         with self.assertRaises(ValueError):

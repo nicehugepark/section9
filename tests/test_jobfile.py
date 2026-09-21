@@ -234,7 +234,7 @@ class TheAttribution(Base):
         env["S9_SESSION"] = sess
         r = subprocess.run([S9, "new", "request", "--title", "잡 붙는 곳",
                             "--summary", "s", "--size", "S", "--user",
-                            "nicehugepark", "--goal", "g", "--body", "x"],
+                            "hong", "--goal", "g", "--body", "x"],
                            capture_output=True, text=True, env=env, timeout=30)
         rid = r.stdout.split()[0]
         subprocess.run([S9, "status", rid, "in-progress", "--note", "t"],
@@ -242,7 +242,7 @@ class TheAttribution(Base):
         return rid
 
     def test_j4_declared_session_reaches_the_card(self):
-        subprocess.run([S9, "user", "add", "nicehugepark"],
+        subprocess.run([S9, "user", "add", "hong"],
                        capture_output=True, env=self.env, timeout=30)
         rid = self.mkreq("cafe9999")
         self.put_job(session="cafe9999")
@@ -256,7 +256,7 @@ class TheAttribution(Base):
         """REQ-20260830-040 실측: 훅이 매 프롬프트 회전시키는 last_req 를 잡
         귀속이 믿어, 한 테스트 런이 대화만 스친 카드에도 「테스트 4분째」로
         섰다(스크린샷: 037·039 두 카드 동시). 클레임(active_reqs)만 귀속 근거다."""
-        subprocess.run([S9, "user", "add", "nicehugepark"],
+        subprocess.run([S9, "user", "add", "hong"],
                        capture_output=True, env=self.env, timeout=30)
         mine = self.mkreq("cafe9999")            # cafe9999 의 클레임
         other = self.mkreq("beef8888")           # 남의 클레임 — 대화만 스친 카드
@@ -271,7 +271,7 @@ class TheAttribution(Base):
                          "last_req 만으로 잡이 남의 카드에 붙었다 — 오귀속")
 
     def test_j4b_anonymous_job_stays_global(self):
-        subprocess.run([S9, "user", "add", "nicehugepark"],
+        subprocess.run([S9, "user", "add", "hong"],
                        capture_output=True, env=self.env, timeout=30)
         rid = self.mkreq("cafe9999")
         self.put_job(session="")                 # 무명 잡

@@ -41,8 +41,8 @@ import subprocess
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 
-RELEASE_URL = "https://github.com/nicehugepark/section9/releases/latest"
-GUIDE_URL = "https://github.com/nicehugepark/section9/blob/main/docs/guide.md"
+RELEASE_PATH = "/releases/latest"
+GUIDE_PATH = "/blob/main/docs/guide.md"
 TEMPLATE_DIR = ("harness", "common", "email")
 LOGO_CANDIDATES = ("web/assets/logo.svg", "web/assets/mark.svg")
 LOGO_MAX_BYTES = 64 * 1024            # 메일에 싣는 그림 — 이보다 크면 글자 마크로
@@ -130,6 +130,23 @@ def repo_origin(root):
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def web_origin(origin):
+    """git remote 주소를 사람이 브라우저로 여는 https 주소로 — 못 옮기면 빈 문자열.
+
+    개인 계정을 코드에 박지 않는다 (REQ-20260921-024-62x6). 내려받을 자리와 안내
+    문서는 **이 저장소의 origin** 에 있다 — 상수로 박아 두면 포크해 쓰는 팀에게
+    열리지도 않는 남의 저장소 주소가 나간다.
+    """
+    o = (origin or "").strip()
+    if not o:
+        return ""
+    m = re.match(r"^(?:ssh://)?git@([^:/]+)[:/](.+?)(?:\.git)?/?$", o)
+    if m:
+        return "https://%s/%s" % (m.group(1), m.group(2))
+    o = re.sub(r"\.git/?$", "", o)
+    return o if o.startswith(("http://", "https://")) else ""
+
+
 def join_commands(origin, slug):
     """합류 명령 두 줄 — origin 이 없으면 둘 다 빈 문자열(반쪽 명령을 내보내지 않는다)."""
     if not origin:
@@ -194,12 +211,17 @@ def compose_invite(root, slug, email, role, position, inviter):
     inviter_name = str((_h("user_profile")(inviter) or {}).get("display") or inviter or "")
     origin = repo_origin(root)
     posix, windows = join_commands(origin, slug)
+    web = web_origin(origin)
     raw = {"project": title, "inviter": inviter_name, "repo_url": origin,
            "join_cmd_posix": posix, "join_cmd_windows": windows,
-           "release_url": RELEASE_URL, "guide_url": GUIDE_URL}
+           "release_url": (web + RELEASE_PATH) if web else "",
+           "guide_url": (web + GUIDE_PATH) if web else ""}
     text_vals = {**raw, "logo": "section9"}
     if not origin:
         text_vals["repo_url"] = f"({NOT_LINKED})"
+    for k in ("release_url", "guide_url"):
+        if not text_vals[k]:
+            text_vals[k] = f"({NOT_LINKED})"
     html_vals = {k: _html.escape(v, quote=True) for k, v in text_vals.items()}
     html_vals["logo"] = _logo_html(root)
     text = render(_template(root, "invite.txt") or FALLBACK_TEXT, text_vals)

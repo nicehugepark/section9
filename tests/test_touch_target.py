@@ -43,7 +43,7 @@ REPO = os.path.dirname(HERE)
 WEB = os.path.join(REPO, "web")
 CSS = os.path.join(WEB, "css")
 
-MAIL = "claude01.pfe@dev.itcen.com"
+MAIL = "agent01.pfe@dev.example.com"
 PHONE = (400, 820)      # 주인이 잰 그 창
 DESK = (1440, 900)
 
@@ -91,8 +91,8 @@ window.__draw = () => {
   renderUsageChip(document.getElementById("usage-chip"), {email: %s, stale: false,
     limits: [{kind: "session", percent: 29}, {kind: "weekly_all", percent: 34},
              {kind: "weekly_scoped", percent: 37, scope_name: "Fable"}]});
-  window.__whoami = {user: "nicehugepark", machine: "Seongjinui-Macmini.local",
-                     os: "macOS", root: "/Users/seongjinpark/section9", role: "owner"};
+  window.__whoami = {user: "hong", machine: "Mac-mini.local",
+                     os: "macOS", root: "/Users/hgpark/section9", role: "owner"};
   renderWhoami();
 };
 """ % json.dumps(MAIL))

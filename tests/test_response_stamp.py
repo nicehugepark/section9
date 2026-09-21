@@ -54,7 +54,7 @@ def hook(prompt, session="stampses"):
         return ""
     finally:
         if not (r.stdout or "").strip():
-            with open("/tmp/claude-1000/-home-sjpark1-section9/d15c553b-8362-411a-a4f7-ed7f1d8e2b4b/scratchpad/why.log", "a") as _f:
+            with open("/tmp/claude-1000/-home-hgpark-section9/d15c553b-8362-411a-a4f7-ed7f1d8e2b4b/scratchpad/why.log", "a") as _f:
                 _f.write(f"rc={r.returncode}\nOUT={r.stdout!r}\nERR={r.stderr[-3000:]!r}\n---\n")
 
 

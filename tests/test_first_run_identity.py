@@ -28,28 +28,28 @@ class FirstRunIdentity(unittest.TestCase):
         남긴다(REQ-20260915-013-62x6 재작업, ux-writer·tech-writer 소집)."""
         asked, said = [], []
         verb, name = self.m.first_run_identity(
-            "seongjinpark", ["nicehugepark", "bob"],
-            lambda q: asked.append(q) or "nicehugepark", out=said.append)
-        self.assertEqual((verb, name), ("attach", "nicehugepark"))
+            "hgpark", ["hong", "bob"],
+            lambda q: asked.append(q) or "hong", out=said.append)
+        self.assertEqual((verb, name), ("attach", "hong"))
         head = "\n".join(said)
-        self.assertIn("nicehugepark", head); self.assertIn("bob", head)
+        self.assertIn("hong", head); self.assertIn("bob", head)
         self.assertIn("그대로 적으세요", head,
                       "이미 있는 이름이 무엇에 쓰는 값인지 말하지 않는다")
 
     # F2. 없는 이름이면 add
     def test_f2_new_name_adds(self):
-        self.assertEqual(self.m.first_run_identity("me", ["nicehugepark"], lambda q: "carol"),
+        self.assertEqual(self.m.first_run_identity("me", ["hong"], lambda q: "carol"),
                          ("add", "carol"))
 
     # F3. Enter 는 OS 계정 이름의 새 사람 — 그 이름이 이미 있으면 attach
     def test_f3_enter_means_the_os_account(self):
-        self.assertEqual(self.m.first_run_identity("me", ["nicehugepark"], lambda q: ""), ("add", "me"))
-        self.assertEqual(self.m.first_run_identity("nicehugepark", ["nicehugepark"], lambda q: "  "),
-                         ("attach", "nicehugepark"))
+        self.assertEqual(self.m.first_run_identity("me", ["hong"], lambda q: ""), ("add", "me"))
+        self.assertEqual(self.m.first_run_identity("hong", ["hong"], lambda q: "  "),
+                         ("attach", "hong"))
 
     # ── 못 쓸 이름을 기본값으로 내밀지 않는다 (REQ-20260915-013-62x6) ────────────
     #
-    # 실제 사고 2026-09-15: 한글 OS 계정(박성진)에서 그냥 Enter 를 쳤더니 그 이름이
+    # 실제 사고 2026-09-15: 한글 OS 계정(홍길동)에서 그냥 Enter 를 쳤더니 그 이름이
     # 그대로 등록으로 가 「한글은 안 된다」는 오류만 남기고 화면은 다음 걸음(Claude
     # 로그인)으로 넘어갔다 — 사람은 왜 막혔는지도 무엇을 쳐야 하는지도 모른 채
     # 미등록으로 남았다. 주인 물음: 「한글을 못 쓰는게 맞는건가?」
@@ -57,19 +57,19 @@ class FirstRunIdentity(unittest.TestCase):
         """F4. 기본값은 쓸 수 있는 이름일 때만 — 없으면 git 이메일의 앞부분."""
         asked = []
         verb, name = self.m.first_run_identity(
-            "박성진", [], lambda q: asked.append(q) or "",
-            email="nicehugepark@example.com")
-        self.assertEqual((verb, name), ("add", "nicehugepark"))
-        self.assertIn("Enter 를 누르면 nicehugepark", asked[0])
-        self.assertNotIn("박성진", asked[0], "물음 줄에 못 쓸 이름이 기본값으로 섰다")
+            "홍길동", [], lambda q: asked.append(q) or "",
+            email="hong@example.com")
+        self.assertEqual((verb, name), ("add", "hong"))
+        self.assertIn("Enter 를 누르면 hong", asked[0])
+        self.assertNotIn("홍길동", asked[0], "물음 줄에 못 쓸 이름이 기본값으로 섰다")
 
     def test_f5_no_english_anywhere_means_the_rule_is_shown_and_asked_again(self):
         """F5. 이메일도 한글 계정이면 기본값이 없다 — 규칙을 보이고 다시 묻는다."""
         asked, said = [], []
         verb, name = self.m.first_run_identity(
-            "박성진", [], lambda q: asked.append(q) or (["", "sjpark"][len(asked) - 1]),
+            "홍길동", [], lambda q: asked.append(q) or (["", "hgpark"][len(asked) - 1]),
             email="", out=said.append)
-        self.assertEqual((verb, name), ("add", "sjpark"))
+        self.assertEqual((verb, name), ("add", "hgpark"))
         self.assertEqual(len(asked), 2, "빈 Enter 뒤에 다시 묻지 않았다")
         head = "\n".join(said)
         self.assertIn(self.m.USER_NAME_RULE_SHORT, head, "규칙이 머리말에 없다")
@@ -80,20 +80,20 @@ class FirstRunIdentity(unittest.TestCase):
 
     def test_f6_it_never_hands_back_a_name_that_cannot_be_registered(self):
         """F6. 끝내 못 정하면 skip — 못 쓸 이름을 등록으로 넘기지 않는다."""
-        verb, name = self.m.first_run_identity("박성진", [], lambda q: "김철수",
+        verb, name = self.m.first_run_identity("홍길동", [], lambda q: "김철수",
                                                email="", out=lambda s: None)
         self.assertEqual((verb, name), ("skip", ""))
 
     def test_f7_the_rule_lives_in_one_place(self):
         """F7. 판정은 한 곳(user_name_ok)이고 등록도 그것을 쓴다."""
         self.assertTrue(self.m.user_name_ok("nice.hugepark-1_2"))
-        for bad in ("박성진", "", "  ", "nice hugepark", "a/b", "a@b"):
+        for bad in ("홍길동", "", "  ", "nice hugepark", "a/b", "a@b"):
             self.assertFalse(self.m.user_name_ok(bad), bad)
-        self.assertEqual(self.m.user_name_from("박성진", "nicehugepark@x.com"), "nicehugepark")
-        self.assertEqual(self.m.user_name_from("박성진", "박성진@x.com"), "")
+        self.assertEqual(self.m.user_name_from("홍길동", "hong@x.com"), "hong")
+        self.assertEqual(self.m.user_name_from("홍길동", "홍길동@x.com"), "")
         self.assertEqual(self.m.user_name_from("bob", "other@x.com"), "bob")
         with self.assertRaises(ValueError) as e:
-            self.m.do_user_add("박성진")
+            self.m.do_user_add("홍길동")
         self.assertIn("display", str(e.exception), "한글 이름이 갈 자리를 말하지 않는다")
 
 
@@ -108,22 +108,22 @@ class TheDefaultSaysWhereItCameFrom(unittest.TestCase):
 
     """기본값 옆에 출처가 선다 (REQ-20260915-013-62x6 반려, 주인 물음 2026-09-15).
 
-    「enter=nicehugepark 은 뭘 기준으로 띄워주는거야? 모든 사람들이 설치할 때
+    「enter=hong 은 뭘 기준으로 띄워주는거야? 모든 사람들이 설치할 때
     기본적으로 내 계정을 넣어주는거야? 실수로 엔터만 치면 다 내가 되어버리는건가?」
     — 배포판에는 계정도 저장소도 들어 있지 않고 값은 그 컴퓨터의 것인데, 물음에는
     결과만 보이고 어디서 왔는지가 안 보였다."""
 
     def test_an_ascii_account_comes_from_the_account(self):
-        self.assertEqual(self.m.user_name_from_src("sjpark1", "who@ever.com"),
-                         ("sjpark1", "이 컴퓨터의 계정 이름"))
+        self.assertEqual(self.m.user_name_from_src("hgpark", "who@ever.com"),
+                         ("hgpark", "이 컴퓨터의 계정 이름"))
 
     def test_a_korean_account_falls_back_to_the_git_email(self):
-        name, src = self.m.user_name_from_src("박성진", "nicehugepark@example.com")
-        self.assertEqual(name, "nicehugepark")
+        name, src = self.m.user_name_from_src("홍길동", "hong@example.com")
+        self.assertEqual(name, "hong")
         self.assertIn("git", src)
 
     def test_with_neither_there_is_no_default_and_no_source(self):
-        self.assertEqual(self.m.user_name_from_src("박성진", ""), ("", ""))
+        self.assertEqual(self.m.user_name_from_src("홍길동", ""), ("", ""))
 
     def test_the_question_carries_the_source(self):
         asked, said = [], []
@@ -132,9 +132,9 @@ class TheDefaultSaysWhereItCameFrom(unittest.TestCase):
             asked.append(q)
             return "gildong"
 
-        self.m.first_run_identity("박성진", [], ask, email="nicehugepark@example.com",
+        self.m.first_run_identity("홍길동", [], ask, email="hong@example.com",
                                   out=said.append)
-        self.assertIn("Enter 를 누르면 nicehugepark", asked[0])
+        self.assertIn("Enter 를 누르면 hong", asked[0])
         self.assertIn("git 이메일", "\n".join(said),
                       "기본값이 어디서 왔는지를 아무 데서도 말하지 않는다 — 남의 계정으로 읽힌다")
 
@@ -143,16 +143,16 @@ class TheDefaultSaysWhereItCameFrom(unittest.TestCase):
         이름이 폴더 이름이 될 수 없으면 내밀 값이 아무것도 없다. 규칙만 적으면
         사람은 제 계정 이름이 왜 안 되는지 모른 채 Enter 만 친다(2026-09-15 실제)."""
         said = []
-        self.m.first_run_identity("박성진", [], lambda q: "gildong",
+        self.m.first_run_identity("홍길동", [], lambda q: "gildong",
                                   email="", out=said.append)
         head = "\n".join(said)
-        self.assertIn("박성진", head, "무엇이 안 되는지가 머리말에 없다")
+        self.assertIn("홍길동", head, "무엇이 안 되는지가 머리말에 없다")
         self.assertIn("한글은 쓸 수 없습니다", head, "왜 id 로 못 쓰는지가 없다")
 
     def test_without_a_default_the_question_asks_for_the_id_alone(self):
         """기본값이 없으면 물음 줄은 「◌ id: 」 하나다 — 규칙은 머리말이 말했다."""
         asked, said = [], []
-        self.m.first_run_identity("박성진", [], lambda q: (asked.append(q), "gildong")[1],
+        self.m.first_run_identity("홍길동", [], lambda q: (asked.append(q), "gildong")[1],
                                   email="", out=said.append)
         self.assertEqual(asked[0].strip(), "◌ id:")
         self.assertIn(self.m.USER_NAME_RULE_SHORT, "\n".join(said))

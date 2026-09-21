@@ -717,7 +717,7 @@ button.asgnb:focus-visible{outline:1px solid var(--text);outline-offset:2px}
 .depitem{line-height:1.75}
 .depitem .cdot{display:inline-block;width:7px;height:7px;margin-right:7px}
 /* 담당자 이니셜 링(.av)은 calm 전용 마크다. @이름 표기를 쓰는 스킨에서는
-   "@Ssjpark1"처럼 이름에 붙어 오타로 읽힌다 — 기본은 숨기고, 담당자 식별은
+   "@Shgpark"처럼 이름에 붙어 오타로 읽힌다 — 기본은 숨기고, 담당자 식별은
    그 스킨의 기존 수단(@마크·이름 pill)이 그대로 맡는다. */
 .av{display:none}
 .judge{margin-top:9px;padding-top:9px;border-top:1px solid var(--hairline)}

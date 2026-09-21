@@ -116,8 +116,8 @@ class PollKind(unittest.TestCase):
         다음 문서 이벤트까지(유휴면 몇 시간) 막혔다 — 맥 실측 5시간.
         """
         m = self.m
-        os.makedirs(os.path.join(self.root, "users", "nicehugepark"), exist_ok=True)
-        p = os.path.join(self.root, "users", "nicehugepark", "profile.md")
+        os.makedirs(os.path.join(self.root, "users", "hong"), exist_ok=True)
+        p = os.path.join(self.root, "users", "hong", "profile.md")
         with open(p, "w") as f:
             f.write("# base\n")
         git(self.root, "add", "-f", p); git(self.root, "commit", "-q", "-m", "profile")
@@ -125,7 +125,7 @@ class PollKind(unittest.TestCase):
         other = os.path.join(self.tmp, "other5")
         git(self.tmp, "clone", "-q", self.bare, other)
         git(other, "config", "user.email", "o@example.com"); git(other, "config", "user.name", "o")
-        with open(os.path.join(other, "users", "nicehugepark", "profile.md"), "w") as f:
+        with open(os.path.join(other, "users", "hong", "profile.md"), "w") as f:
             f.write("# base\n남의 줄\n")
         git(other, "commit", "-qam", "남의 문서 변경"); git(other, "push", "-q", "origin", "main")
         with open(p, "w") as f:
@@ -138,7 +138,7 @@ class PollKind(unittest.TestCase):
         finally:
             m.sync_run = real
         self.assertEqual(kind, "dirty")
-        self.assertEqual(m._SYNC_POLL_LAST["paths"], ["users/nicehugepark/profile.md"])
+        self.assertEqual(m._SYNC_POLL_LAST["paths"], ["users/hong/profile.md"])
         self.assertEqual(calls, ["poll-dirty"], "문서만 걸린 dirty 도 전송 루프로 풀어야 한다")
 
     def test_r6_dirty_code_is_not_recovered(self):

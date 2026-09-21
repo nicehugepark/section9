@@ -541,7 +541,7 @@ class TestInstallHooksEntry(unittest.TestCase):
         # 리눅스 파일 이름에는 백슬래시가 허용된다 — ROOT 를 윈도우 경로 **모양**으로
         # 만들고 그 아래에 실제 hooks.json 을 둔다(없으면 설치가 조용히 돌아가 시험이 헛돈다).
         base = tempfile.mkdtemp(prefix="s9w13-")
-        root = os.path.join(base, "C:\\Users\\박성진\\section9")
+        root = os.path.join(base, "C:\\Users\\홍길동\\section9")
         home = os.path.join(base, "cfg")
         try:
             os.makedirs(os.path.join(root, "harness", "claude"))
@@ -558,7 +558,7 @@ class TestInstallHooksEntry(unittest.TestCase):
             cmds = [h["command"] for es in settings["hooks"].values()
                     for e in es for h in e["hooks"]]
             self.assertTrue(cmds)
-            self.assertTrue(all("\\Users\\박성진\\section9" in c for c in cmds), cmds)
+            self.assertTrue(all("\\Users\\홍길동\\section9" in c for c in cmds), cmds)
         finally:
             import shutil
             shutil.rmtree(base, ignore_errors=True)
@@ -571,7 +571,7 @@ class TestInstallHooksEntry(unittest.TestCase):
         `"…\\sp" ace\\section9/bin/s9-audit-session start` 가 됐다 — 훅이 없는 파일을 가리켰다.
         """
         base = tempfile.mkdtemp(prefix="s9w13b-")
-        root = os.path.join(base, "C:\\Users\\박 성진\\sp ace\\section9")
+        root = os.path.join(base, "C:\\Users\\홍 길동\\sp ace\\section9")
         home = os.path.join(base, "cfg")
         try:
             os.makedirs(os.path.join(root, "harness", "claude"))

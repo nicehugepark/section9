@@ -355,7 +355,7 @@ async function svOpen(btn){
    어떤 운영체제로, 어떤 OS 계정으로 이 계정을 썼는지 + 처음 본 때 · 마지막 본 때.
 
    열 이름은 `OS 계정` 이 아니라 그냥 `계정` 이다 (2026-08-27 반려: "이 머신에
-   nicehugepark 이라는 os 계정은 없다. 그냥 하네스 아이디를 내가 자주 쓰는 순수
+   hong 이라는 os 계정은 없다. 그냥 하네스 아이디를 내가 자주 쓰는 순수
    개인 아이디로서 정한거다"). 이 칸에는 그 머신의 OS 계정이 올 수도 있고 사람이
    정한 하네스 이름이 올 수도 있다 — 둘 중 하나라고 이름 붙이면 절반은 거짓말이
    된다. 화면이 모르는 것을 아는 척하지 않는다.
@@ -384,7 +384,7 @@ function machineDemo(rows){
   /* 받음 칸의 세 모습을 여기서 다 볼 수 있게 둔다 (REQ-20260910-002-t8rc):
      주의(45분) · 사고(나흘) · 적힌 적 없음. 화면을 눈으로 못 보면 고칠 수도 없다. */
   return rows.concat([
-    {machine: "MACBOOK-AIR", os: "macOS", account: "sjpark", first: ago(9), last: ago(9),
+    {machine: "MACBOOK-AIR", os: "macOS", account: "hgpark", first: ago(9), last: ago(9),
      last_recv: mago(45)},
     {machine: "BUILD-BOX-02", os: "Linux", account: "runner", first: ago(31), last: ago(4),
      last_recv: ago(4)},

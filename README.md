@@ -44,7 +44,7 @@ GitHub Releases 의 압축 파일을 받아 풀고, 그 안에서 `bin/s9 code` 
 
 ```bash
 cd ~
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+curl -fsSLO https://github.com/hong/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
 tar xzf section9-0.9.1-linux-macos.tar.gz     # 최상위가 section9/ 라 홈에서 풀면 그대로 ~/section9 (실행 권한 포함)
 cd ~/section9
 bin/s9 code

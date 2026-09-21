@@ -122,20 +122,20 @@ class SyncClassify(unittest.TestCase):
         self.assertTrue(self.backoff())
 
     UNTRACKED = ("error: The following untracked working tree files would be overwritten by merge:\n"
-                 "\tusers/sjpark/machines.json\n"
+                 "\tusers/hgpark/machines.json\n"
                  "Please move or remove them before you merge.\nAborting\n")
 
     # C10. 추적 안 되는 파일이 pull 을 막으면 비켜 세우고 한 번 더 당긴다 (원격 리눅스 실사고 2026-09-06)
     def test_c10_untracked_file_is_rescued_and_pull_retried(self):
-        os.makedirs(os.path.join(self.root, "users", "sjpark"))
-        with open(os.path.join(self.root, "users", "sjpark", "machines.json"), "w") as f:
+        os.makedirs(os.path.join(self.root, "users", "hgpark"))
+        with open(os.path.join(self.root, "users", "hgpark", "machines.json"), "w") as f:
             f.write("{}")
         r = self.run_sync({"pull": [CP(1, self.UNTRACKED), CP(0)]})
         self.assertEqual(r, "ok")
         pulls = [e for e in self.events() if e["stage"] == "pull"]
         self.assertEqual([e["attempt"] for e in pulls], [0, 1])
         self.assertEqual(pulls[0]["kind"], "untracked")
-        self.assertFalse(os.path.exists(os.path.join(self.root, "users", "sjpark", "machines.json")),
+        self.assertFalse(os.path.exists(os.path.join(self.root, "users", "hgpark", "machines.json")),
                          "막던 파일이 제자리에 그대로다")
         rescued = [p for p, _, fs in os.walk(os.path.join(self.root, "state", "sync-rescue"))
                    if "machines.json" in fs]

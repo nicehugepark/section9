@@ -226,7 +226,7 @@ class TestUserPrefs(unittest.TestCase):
             calls.append(argv)
             out = ""
             if argv[:2] == ("user", "current"):
-                out = "sjpark1 [source: binding X/y]"
+                out = "hgpark [source: binding X/y]"
             elif argv[:2] == ("user", "config"):
                 out = cfg_json
             elif argv[0] == "new":
@@ -235,7 +235,7 @@ class TestUserPrefs(unittest.TestCase):
                 out = ("- REQ-20260824-025 신원 자동 파생 검토 — 승인 메모: "
                        "자동으로 다음 요청이 생성되고 진행이 된다는건가")
             elif argv[0] == "blocked":
-                out = ("- REQ-20260823-078 그래프 (sjpark1, updated ...)\n"
+                out = ("- REQ-20260823-078 그래프 (hgpark, updated ...)\n"
                        "    사유: 패치 적용 대기(리드)")
             return mock.Mock(returncode=0, stdout=out)
 

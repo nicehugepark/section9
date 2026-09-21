@@ -101,7 +101,7 @@ class OnlyTheMachineMadeAndUntouchedGoes(unittest.TestCase):
     # 본문 판정 — 노트 한 줄이나 전이 한 줄이면 손댄 것이다
     def test_the_body_tells_whether_anyone_touched_it(self):
         bare = ("## Original\n\nx\n\n## Notes\n\n## History\n"
-                "- 2026-09-15T17:38:36+09:00 created by nicehugepark\n")
+                "- 2026-09-15T17:38:36+09:00 created by hong\n")
         self.assertTrue(self.m._untouched_body(bare))
         noted = bare.replace("## Notes\n", "## Notes\n\n### 2026-09-15 노트\n\n내용\n")
         self.assertFalse(self.m._untouched_body(noted), "노트가 있는데 안 손댔다고 한다")

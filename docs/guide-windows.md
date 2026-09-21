@@ -52,7 +52,7 @@ Claude Code 설치 명령은 **어느 터미널에서 치느냐에 따라 다릅
 
 실행 디렉토리: `%USERPROFILE%\Downloads` (cmd.exe: `cd /d %USERPROFILE%\Downloads` · PowerShell: `cd $env:USERPROFILE\Downloads`).
 
-배포판은 GitHub 릴리스에 붙습니다: `https://github.com/nicehugepark/section9/releases` **(2026-09-14 실측 — v0.9.0 릴리스에서 받은 zip 을 Windows 11 native 에서 풀어 첫 실행까지 확인)**. 파일 셋 중 이름이 `-windows.zip` 으로 끝나는 것을 받습니다.
+배포판은 GitHub 릴리스에 붙습니다: `https://github.com/hong/section9/releases` **(2026-09-14 실측 — v0.9.0 릴리스에서 받은 zip 을 Windows 11 native 에서 풀어 첫 실행까지 확인)**. 파일 셋 중 이름이 `-windows.zip` 으로 끝나는 것을 받습니다.
 
 | 파일 | 누가 받나 |
 | --- | --- |
@@ -63,7 +63,7 @@ Claude Code 설치 명령은 **어느 터미널에서 치느냐에 따라 다릅
 브라우저에서 받아도 되고, 터미널에서 받아도 됩니다. Windows 10 1803 이후에는 `curl.exe` 와 `tar.exe` 가 기본으로 들어 있습니다(이 컴퓨터 실측: curl 8.21.0 · bsdtar 3.8.8).
 
 ```
-curl.exe -L -o section9-0.9.1-windows.zip https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-windows.zip
+curl.exe -L -o section9-0.9.1-windows.zip https://github.com/hong/section9/releases/download/v0.9.1/section9-0.9.1-windows.zip
 ```
 
 **하지 말 것**
@@ -93,7 +93,7 @@ dir %USERPROFILE%\section9\bin\s9.cmd
 
 **경로에 대해 알아 둘 것**
 
-- **계정 이름에 한글이 있어도 됩니다.** `C:\Users\박성진\…` 같은 경로에서 문서 쓰기·읽기·목록이 전부 실측됐습니다(REQ-20260903-005).
+- **계정 이름에 한글이 있어도 됩니다.** `C:\Users\홍길동\…` 같은 경로에서 문서 쓰기·읽기·목록이 전부 실측됐습니다(REQ-20260903-005).
 - 경로에 **공백**이 있어도 됩니다 — 실측 2026-09-13(REQ-20260913-016): `…\section9-test-0913\sp ace\section9` 에서 `bin\s9 --version` 과 `bin\s9 code` 첫 실행(git init · 훅 · 대시보드)이 그대로 됐습니다. 그날 고친 결함 하나: 그 전 코드는 훅 명령을 경로 안의 공백에서 갈라 `"…\sp" ace\section9/bin/s9-audit-session` 처럼 없는 파일을 가리켰습니다 — 0.9.0 배포판을 그 commit 전에 받았다면 `bin\s9-install.cmd` 를 한 번 더 실행합니다. 다만 공백·한글 없는 `%USERPROFILE%\section9` 가 가장 문제가 적은 자리이고, 이 문서의 모든 예시가 그 자리를 전제합니다.
 - **OneDrive 가 동기화하는 폴더(바탕 화면·문서)에는 두지 마십시오.** `state\` 아래 파일이 실행 중에 계속 바뀌어 동기화가 그때마다 다시 올리고, 잠금 파일이 충돌합니다.
 - `C:\Program Files` 아래에는 두지 마십시오. 쓰기에 관리자 권한이 필요한 자리입니다.
@@ -146,12 +146,12 @@ section9 install 완료
 ◌ section9 훅 미설치 감지 — s9-install 을 먼저 실행한다…
 ◌ 설치 완료 — 지금 시작하는 세션부터 자동 audit이 적용된다.
 ◌ 바로 가기 「section9」를 만들었다: 바탕화면 · 시작 메뉴 — 다음부터는 그것을 두 번 누르면 된다
-◌ 이 컴퓨터의 계정(박성진)은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 잇는다: s9 user attach <이름> · 새 사람이면: s9 user add 박성진
+◌ 이 컴퓨터의 계정(홍길동)은 section9 에 등록돼 있지 않다 — 이미 있는 이름에 잇는다: s9 user attach <이름> · 새 사람이면: s9 user add 홍길동
 ```
 
 그 실행이 남긴 것(같은 실측): `C:\Temp\s9exp\section9\.git`(가지 `main`, commit 「section9 첫 실행」 하나) · `.s9-sync` 첫 줄 `local — 문서 이벤트마다 로컬 commit 만 (혼자 쓰는 자리)` · 바로 가기 둘 `…\home\Desktop\section9.lnk` 와 `…\home\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\section9.lnk`(둘 다 대상 `C:\temp\s9exp\section9\section9.cmd`, 작업 폴더 `C:\temp\s9exp\section9`, 아이콘 `…\web\assets\favicon.ico,0`, 설명 `section9`) · 콘솔 창이 저절로 닫힌 뒤에도 `http://127.0.0.1:9931/api/serveinfo` 가 답했습니다(감시자와 서버는 창과 함께 죽지 않습니다). 이어서 `section9-dashboard.cmd` 를 같은 방식으로 실행하면 `대시보드 실행 중: http://127.0.0.1:9931/` 한 줄 뒤 창이 닫히고 대시보드는 그대로 답합니다(http 200). 그 뒤 `bin\s9 serve --stop --port 9931` 로 내리고 시험 폴더를 지웠습니다.
 
-위 6번(이름을 묻는 줄)은 창이 사람의 입력을 받을 수 있을 때만 나옵니다 — 탐색기에서 두 번 누른 창은 받을 수 있고, 시험은 입력이 파일이라 대신 `s9 user attach/add` 안내 한 줄이 나왔습니다. 7번은 `claude.exe`(2.1.270) 를 설치한 뒤 쟀습니다(2026-09-13, REQ-20260913-024). PATH 에 `claude` 가 있으면 설치 줄에 `claude 는 설치됐지만 로그인이 없다 — 터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인. 그다음 `s9 code`` 가, 실행 줄에 `◌ Claude Code 로그인이 없다 — 이어서 뜨는 Claude Code 화면의 안내대로 로그인하면 그대로 세션이 시작된다(붙여넣은 코드는 끝 몇 자만 보이게 가려진다).` 가 나옵니다. 설치 직후라 PATH 에 아직 없으면(WSL 이 띄운 cmd.exe 도 그렇습니다) `claude 는 PATH 밖에 있다(C:\Users\박성진\.local\bin\claude.exe) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라 — `s9 code` 는 이 경로로 띄운다` 가 더해지고 실제로 그 경로로 띄웁니다 — 고치기 전에는 「에이전트 CLI 가 없다」로 잘못 읽고 `claude 명령을 찾을 수 없다 — Claude Code 설치 확인` 으로 끝났습니다. `claude.exe` 가 아예 없으면 그 한 줄이 맞는 안내입니다 — A-0 표대로 먼저 설치합니다. 훅은 `settings.json` 에 `"C:\Users\박성진\section9-test-0913\sp ace\section9\bin\s9-audit-prompt.cmd"` 처럼 **`.cmd` 경로**로 9개 이벤트에 들어갔고, 출력은 UTF-8, `bin\*.cmd` 는 CRLF 였습니다.
+위 6번(이름을 묻는 줄)은 창이 사람의 입력을 받을 수 있을 때만 나옵니다 — 탐색기에서 두 번 누른 창은 받을 수 있고, 시험은 입력이 파일이라 대신 `s9 user attach/add` 안내 한 줄이 나왔습니다. 7번은 `claude.exe`(2.1.270) 를 설치한 뒤 쟀습니다(2026-09-13, REQ-20260913-024). PATH 에 `claude` 가 있으면 설치 줄에 `claude 는 설치됐지만 로그인이 없다 — 터미널에서 `claude` 를 한 번 띄워 /login 으로 로그인. 그다음 `s9 code`` 가, 실행 줄에 `◌ Claude Code 로그인이 없다 — 이어서 뜨는 Claude Code 화면의 안내대로 로그인하면 그대로 세션이 시작된다(붙여넣은 코드는 끝 몇 자만 보이게 가려진다).` 가 나옵니다. 설치 직후라 PATH 에 아직 없으면(WSL 이 띄운 cmd.exe 도 그렇습니다) `claude 는 PATH 밖에 있다(C:\Users\홍길동\.local\bin\claude.exe) — 새 터미널을 열거나 PATH 에 그 폴더를 더하라 — `s9 code` 는 이 경로로 띄운다` 가 더해지고 실제로 그 경로로 띄웁니다 — 고치기 전에는 「에이전트 CLI 가 없다」로 잘못 읽고 `claude 명령을 찾을 수 없다 — Claude Code 설치 확인` 으로 끝났습니다. `claude.exe` 가 아예 없으면 그 한 줄이 맞는 안내입니다 — A-0 표대로 먼저 설치합니다. 훅은 `settings.json` 에 `"C:\Users\홍길동\section9-test-0913\sp ace\section9\bin\s9-audit-prompt.cmd"` 처럼 **`.cmd` 경로**로 9개 이벤트에 들어갔고, 출력은 UTF-8, `bin\*.cmd` 는 CRLF 였습니다.
 
 **처음 뜨는 화면**
 
@@ -342,7 +342,7 @@ git config --global user.email "<GitHub 에 등록한 이메일>"
 
 ```
 cd ~
-curl -L -o section9-0.9.1-linux-macos.tar.gz https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+curl -L -o section9-0.9.1-linux-macos.tar.gz https://github.com/hong/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
 tar -xzf section9-0.9.1-linux-macos.tar.gz
 cd ~/section9 && bin/s9 code
 ```

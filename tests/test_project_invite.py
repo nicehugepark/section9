@@ -28,6 +28,7 @@ S9 = os.path.join(HERE, "..", "bin", "s9")
 from portpool import free_port, pool_socket, wait_server  # noqa: E402
 
 ORIGIN = "https://github.com/acme/team.git"
+WEB = "https://github.com/acme/team"      # origin 에서 지은 브라우저 주소
 
 
 class SmtpStub(threading.Thread):
@@ -207,9 +208,10 @@ class TestProjectInvite(unittest.TestCase):
             self.assertIn(ORIGIN, body)
             self.assertIn(posix, body)
             self.assertIn(win, body)
-            self.assertIn(self.inv.RELEASE_URL, body)
-            self.assertIn(self.inv.GUIDE_URL, body)
-        self.assertIn("nicehugepark/section9/releases/latest", self.inv.RELEASE_URL)
+            # 내려받을 자리와 안내는 **이 저장소의 origin** 에서 짓는다
+            # (REQ-20260921-024-62x6) — 상수로 박은 남의 계정이 아니다.
+            self.assertIn(WEB + self.inv.RELEASE_PATH, body)
+            self.assertIn(WEB + self.inv.GUIDE_PATH, body)
         self.assertEqual(mail["said"], "")
 
     # ── S2 정상: 템플릿이 있으면 그것을 읽고 html 은 escape ───────────────

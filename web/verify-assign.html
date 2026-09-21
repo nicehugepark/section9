@@ -67,7 +67,7 @@ const Q = new URLSearchParams(location.search);
 /* ── mock 계정 — 서버 /api/users 의 모양 그대로 ── */
 const U_ALL = [
   {name: "e7test",       role: "member", display: "E7 Test"},
-  {name: "nicehugepark", role: "admin",  display: ""},
+  {name: "hong", role: "admin",  display: ""},
   {name: "user1",        role: "member", display: "User One"},
   {name: "user2",        role: "member", display: ""},
   {name: "eve",          role: "viewer", display: "관찰"},
@@ -82,11 +82,11 @@ const PRJ = (slug, title, members) =>
     member_total: members.length});
 
 const P_ONE  = PRJ("section9", "Section9 하네스 시스템",
-                   [mem("nicehugepark", "owner", true)]);
+                   [mem("hong", "owner", true)]);
 const P_TWO  = PRJ("portal", "고객 포털",
                    [mem("e7test", "maintainer", true), mem("user1", "contributor", true)]);
 const P_EXP  = PRJ("atlas", "아틀라스",
-                   [mem("nicehugepark", "owner", true), mem("user2", "contributor", false)]);
+                   [mem("hong", "owner", true), mem("user2", "contributor", false)]);
 const P_NONE = PRJ("empty", "빈 프로젝트", []);
 
 const REQ = (id, user, project) =>
@@ -96,15 +96,15 @@ const REQ = (id, user, project) =>
 /* 갈래마다 [제목, 무엇이 옳은가, 재료]. `users`·`projects`·`row` 가 그 순간의
    화면 재료이고, 창은 늘 같은 함수(assignDoc)가 연다. */
 const CASES = [
-  ["멤버 한 사람", "nicehugepark 한 줄 — 미참여 e7test·user1·user2 는 없다",
-   {users: U_ALL, projects: [P_ONE], row: REQ("REQ-20260902-035", "nicehugepark", "section9")}],
-  ["admin 도 멤버가 아니면 없다", "e7test·user1 두 줄 — admin nicehugepark 는 없다",
+  ["멤버 한 사람", "hong 한 줄 — 미참여 e7test·user1·user2 는 없다",
+   {users: U_ALL, projects: [P_ONE], row: REQ("REQ-20260902-035", "hong", "section9")}],
+  ["admin 도 멤버가 아니면 없다", "e7test·user1 두 줄 — admin hong 는 없다",
    {users: U_ALL, projects: [P_TWO], row: REQ("REQ-20260902-036", "e7test", "portal")}],
-  ["만료된 멤버", "nicehugepark 한 줄 — 기한이 지난 user2 는 없다",
-   {users: U_ALL, projects: [P_EXP], row: REQ("REQ-20260902-037", "nicehugepark", "atlas")}],
+  ["만료된 멤버", "hong 한 줄 — 기한이 지난 user2 는 없다",
+   {users: U_ALL, projects: [P_EXP], row: REQ("REQ-20260902-037", "hong", "atlas")}],
   ["프로젝트 미지정", "관찰 계정만 뺀 네 줄 — 정책 부재는 금지가 아니다",
    {users: U_ALL, projects: [P_ONE, P_TWO], row: REQ("REQ-20260902-038", "user1", "")}],
-  ["지금 맡은 사람이 멤버가 아니다", "user1「지금 이것」 + nicehugepark",
+  ["지금 맡은 사람이 멤버가 아니다", "user1「지금 이것」 + hong",
    {users: U_ALL, projects: [P_ONE], row: REQ("REQ-20260902-039", "user1", "section9")}],
   ["멤버가 없는 프로젝트", "빈 목록 — Projects 탭에서 멤버를 더하라",
    {users: U_ALL, projects: [P_NONE], row: REQ("REQ-20260902-040", "", "empty")}],

@@ -200,7 +200,7 @@ def _type(tokens):
              'font-size:13.5px;letter-spacing:-.01em">카드 제목 13.5px · 600 (.card .t)</p>',
              '<div class="lab">--mono</div>',
              f'<p class="sample" style="font-family:{esc(t.get("mono", ""))};font-size:11px;'
-             'letter-spacing:.02em;color:var(--muted)">REQ-20260913-015 · 17:35 · @nicehugepark '
+             'letter-spacing:.02em;color:var(--muted)">REQ-20260913-015 · 17:35 · @hong '
              '(메타는 mono 10~11px)</p>',
              f'<p class="sample" style="font-family:{esc(t.get("mono", ""))};font-size:10.5px;'
              'letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">group label · '
@@ -250,7 +250,7 @@ def _components():
         '<div class="lab">칩 (.svchip · .usagechip · .badge · .count)</div>',
         '<div class="row2"><span class="svchip"><button><span class="sv-m">↻</span> 전체 테스트 2분째 · '
         '120/3,120건</button></span><span class="usagechip">5h 42% · 7d 12%</span>'
-        '<span class="badge">@nicehugepark</span></div>',
+        '<span class="badge">@hong</span></div>',
         '<div class="count">요청 12 · 지식 3</div>',
         '<div class="lab">상태 점 (.stat .cdot) — 7px 사각, 색은 글자와 점에만</div>',
         '<div class="row2">'
@@ -262,7 +262,7 @@ def _components():
         '<div class="lab">카드 (.card) — 리스트 행, border-bottom, hover 는 배경 틴트만</div>',
         '<div class="card"><div class="id">REQ-20260913-015 · 17:35</div>'
         '<div class="t">Claude Design 연동</div>'
-        '<div class="m"><span class="badge">@nicehugepark</span><span>section9</span>'
+        '<div class="m"><span class="badge">@hong</span><span>section9</span>'
         '<span>size M</span></div></div>',
         '<div class="lab">표 행 (.doclist .row) · 무리 머리 (.grp)</div>',
         '<div class="doclist"><div class="grp">requests</div>'

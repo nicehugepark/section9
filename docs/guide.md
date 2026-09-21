@@ -75,12 +75,12 @@ claude --version     # 2.x.x (Claude Code)
 
 ```
 cd ~
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/SHA256SUMS
+curl -fsSLO https://github.com/hong/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+curl -fsSLO https://github.com/hong/section9/releases/download/v0.9.1/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing     # section9-0.9.1-linux-macos.tar.gz: OK 가 보이면 받은 파일이 온전한 것입니다
 ```
 
-브라우저로 받아도 됩니다 — [github.com/nicehugepark/section9/releases](https://github.com/nicehugepark/section9/releases) 의 **Assets** 에서 그 파일. 받은 자리로 `cd` 한 뒤 다음 단계로.
+브라우저로 받아도 됩니다 — [github.com/hong/section9/releases](https://github.com/hong/section9/releases) 의 **Assets** 에서 그 파일. 받은 자리로 `cd` 한 뒤 다음 단계로.
 
 2 **풉니다 — `section9/` 디렉토리가 생깁니다** 
 
@@ -167,11 +167,11 @@ git 과 python3 가 없으면 `xcode-select --install` 한 번(Apple 의 Command
 
 1 **릴리스 파일을 받습니다** 
 
-Safari 로 [github.com/nicehugepark/section9/releases](https://github.com/nicehugepark/section9/releases) 의 **Assets** 에서 `section9-0.9.1-linux-macos.tar.gz` 를 받으면 `~/Downloads` 에 놓입니다. 터미널로는 리눅스와 같은 한 줄입니다.
+Safari 로 [github.com/hong/section9/releases](https://github.com/hong/section9/releases) 의 **Assets** 에서 `section9-0.9.1-linux-macos.tar.gz` 를 받으면 `~/Downloads` 에 놓입니다. 터미널로는 리눅스와 같은 한 줄입니다.
 
 ```
 cd ~/Downloads
-curl -fsSLO https://github.com/nicehugepark/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
+curl -fsSLO https://github.com/hong/section9/releases/download/v0.9.1/section9-0.9.1-linux-macos.tar.gz
 ```
 
 2 **풀고, `~/section9` 로 옮깁니다** 
@@ -208,7 +208,7 @@ bin/s9 code
 
 ### 2.3 Windows 와 WSL
 
-Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/nicehugepark/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.1-windows.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
+Windows 는 별도 문서입니다 — [docs/guide-windows.md](https://github.com/hong/section9/blob/main/docs/guide-windows.md). **Windows native**(파일 `section9-0.9.1-windows.zip` · `bin\s9.cmd code`)와 **WSL** 을 나눠, Python · Git · Claude Code 설치부터 흔한 실패(스토어 python 스텁 · PATH · 코드페이지)까지 다룹니다.
 
 WSL 은 리눅스입니다 — WSL 셸 안에서 2.1 을 그대로 따르되, 파일을 WSL 의 홈(`~`) 안에 두고 Windows 드라이브(`/mnt/c/…`)에 두지 마십시오. 그 자리의 git 은 느리고 파일 권한 표시가 어긋납니다. 브라우저는 Windows 쪽 것이 저절로 열립니다.
 
@@ -381,7 +381,7 @@ Board — open · in-progress · blocked · review · done · cancelled 여섯 �
 
 - 상태별 열(open → in-progress → blocked → review → done · cancelled)에 요청 카드가 놓입니다. 열 머리의 숫자가 건수이고, 넘치면 **+ N개 더 보기**. **open · in-progress · review · done 넷은 비어도 섭니다** — 「판정 대기 0」이 사람이 확인하러 오는 값이기 때문입니다. blocked 는 담긴 것이 있을 때만, cancelled 는 하루 안에 취소된 것이 있을 때만 한 칸을 받습니다. 
 - 카드 한 장: 제목 · 담당(**N** 아이콘 + 이름) · 만든이(사람 또는 타치코마) · 우선순위 · TDD n/n · #태그 · REQ 번호 · 그 상태에 머문 시간. 
-- **사람은 이름으로 섭니다** — Settings › 내 계정에 **성**·**이름** 을 넣어 두면 카드·목록·멤버 표·알림이 전부 그 이름(「박성진」)으로 서고, 비어 있으면 종전처럼 계정 id(`@nicehugepark`)로 섭니다. 이름 위에 마우스를 올리면 「이름 (id)」 이 함께 보입니다 — 같은 사람을 자리마다 다른 글자로 부르지 않으려는 것입니다. 
+- **사람은 이름으로 섭니다** — Settings › 내 계정에 **성**·**이름** 을 넣어 두면 카드·목록·멤버 표·알림이 전부 그 이름(「홍길동」)으로 서고, 비어 있으면 종전처럼 계정 id(`@hong`)로 섭니다. 이름 위에 마우스를 올리면 「이름 (id)」 이 함께 보입니다 — 같은 사람을 자리마다 다른 글자로 부르지 않으려는 것입니다. 
 - **review 카드에서 바로 판정합니다**: **승인 done** 을 누르면 done 으로 가고, **반려 in-progress** 를 누르면 사유를 적어 재작업으로 돌립니다. 창 머리가 「판정」이면 판정이고 「상태 옮기기」면 판정이 아닌 이동입니다. 카드의 보라색 글이 "무엇을 확인해 달라는지"(확인 포인트)입니다. 
 - 카드를 **드래그**해 다른 열에 놓아도 상태가 바뀝니다 — 허용되는 열만 점선으로 표시됩니다. 
 - 담당 이름을 누르면 담당을 바꿀 수 있습니다. 멈춘 카드에는 **▶ 이어가기**·**깨우기** 버튼이 붙습니다. 
@@ -790,7 +790,7 @@ section9 은 AI 와 함께 일한 내용을 문서로 남기는 도구입니다.
 
 1. 압축 파일을 받으세요.
    Linux 와 macOS 는 tar.gz, Windows 는 zip 입니다.
-   https://github.com/nicehugepark/section9/releases/latest
+   https://github.com/hong/section9/releases/latest
 
 2. 압축을 풀면 나오는 폴더에서, 쓰시는 컴퓨터에 맞는 명령을 그대로 붙여 넣고 실행하세요.
 
@@ -806,7 +806,7 @@ section9 은 AI 와 함께 일한 내용을 문서로 남기는 도구입니다.
 ------------------------------------------------------------
 
 저장소   <주소>
-가이드   https://github.com/nicehugepark/section9/blob/main/docs/guide.md
+가이드   https://github.com/hong/section9/blob/main/docs/guide.md
 
 자세한 설치 방법은 가이드에 있습니다.
 막히면 이 메일에 그대로 답장해 주세요. <초대한 사람> 님에게 갑니다.

@@ -511,7 +511,7 @@ function lineageTell(r){
   const o = String((r && r.origin) || "");
   const owner = String((r && r.user) || "");
   /* 손 위의 글은 칩과 **같은 얼굴**을 쓴다 (REQ-20260911-016) — 종전에는 칩이
-     「designer」, 손 위의 글이 「nicehugepark … (에이전트 designer)」라 한 문서가
+     「designer」, 손 위의 글이 「hong … (에이전트 designer)」라 한 문서가
      두 이름으로 불렸다. 사람이 만든 문서에서는 그 계정이 곧 만든이다. */
   const face = (o && o !== "human") ? originFace(r) : personTitle(docCreator(r));
   const bits = [];
@@ -687,7 +687,7 @@ function badgeFace(u){
 /* 배지의 **겉**도 한 곳에서 난다 (REQ-20260915-031-62x6). 이름으로 설 때와 id 로
    설 때는 같은 옷을 입지 않는다: id 는 계정 손잡이라 `@`+고정폭이 맞지만(디자인
    언어 「사용자 표시 = @이름」), 이름은 사람이 쓴 글자다 — 한글에 고정폭을 주면
-   대체 글꼴로 떨어져 한 줄에 얼굴이 두 벌이 되고(s9-design 표 1절), `@박성진` 은
+   대체 글꼴로 떨어져 한 줄에 얼굴이 두 벌이 되고(s9-design 표 1절), `@홍길동` 은
    계정 아이디처럼 읽힌다. 색조는 **id 로 잰다** — 이름으로 키를 삼으면 이름이
    바뀌는 날 사람과 색이 갈린다. */
 function badgeAttrs(u, extra){
@@ -1519,7 +1519,7 @@ function heldProbe(rows){
   for (const r of rows){
     if (r.type !== "request" || r.status !== "in-progress") continue;
     if (!r.stopped)
-      r.stopped = {at: Date.now() / 1000 - mins * 60, by: "nicehugepark",
+      r.stopped = {at: Date.now() / 1000 - mins * 60, by: "hong",
                    age: mins * 60 + 41 * n};
     // 서버는 이 셋을 함께 싣지 않는다 — 진단도 그 규칙을 지킨다.
     delete r.worker;

@@ -48,7 +48,7 @@ S9 = os.path.join(HERE, "..", "bin", "s9")
 # 반려를 부른 그 메시지 — 대시보드 수신함(inbox-8e60e4af.jsonl, 00:18:23)의 원문
 REJECTED_MSG = (
     "이거 시킨대로 하는건데 이렇게 하는거 맞아?\n"
-    "[Image: /home/sjpark1/section9/state/terminal/uploads/sjpark1/"
+    "[Image: /home/hgpark/section9/state/terminal/uploads/hgpark/"
     "20260827T001811-image.png]")
 
 
@@ -96,7 +96,7 @@ class AttachmentClassify(unittest.TestCase):
         with self.subTest("t6_length_is_measured_without_attachments"):
                 self.assertFalse(self.h.is_durable_question(
                     "이거 맞아?\n[Image: /home/user/section9/state/terminal/uploads/"
-                    "sjpark1/20260826T224537-image.png]"))
+                    "hgpark/20260826T224537-image.png]"))
 
             # ---------------------------------------------------------------- E7
         with self.subTest("e7_the_utterance_that_caused_the_rejection"):

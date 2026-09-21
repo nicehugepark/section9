@@ -61,7 +61,7 @@ class TheMark(Base):
 
     # N1. 박을 때 표가 함께 선다
     def test_n1_writing_identity_leaves_the_mark(self):
-        res = fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        res = fr.ensure_identity(self.root, env=self.env, account="hgpark")
         self.assertTrue(res["set"])
         self.assertEqual(self.local("section9.identity"), "auto")
         self.assertTrue(fr.is_auto_identity(self.git))
@@ -70,7 +70,7 @@ class TheMark(Base):
     def test_n1b_human_identity_gets_no_mark(self):
         self.git("config", "user.name", "hong")
         self.git("config", "user.email", "hong@example.com")
-        res = fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        res = fr.ensure_identity(self.root, env=self.env, account="hgpark")
         self.assertFalse(res["set"])
         self.assertEqual(self.local("section9.identity"), "")
         self.assertFalse(fr.is_auto_identity(self.git))
@@ -78,7 +78,7 @@ class TheMark(Base):
     # N2·N3. 표가 있으면 그 파일의 user 절을 사람의 증거로 세지 않는다.
     #        전역은 표와 무관하게 그대로 읽는다.
     def test_n2_marked_identity_is_not_evidence(self):
-        body = ("[user]\n\tname = s9 sjpark1\n\temail = sjpark1@local\n"
+        body = ("[user]\n\tname = s9 hgpark\n\temail = hgpark@local\n"
                 "[section9]\n\tidentity = auto\n")
         self.assertEqual(self._read_ident(body), {})
         plain = "[user]\n\tname = hong\n\temail = hong@example.com\n"
@@ -110,23 +110,23 @@ class TheUpgrade(Base):
 
     # N4. 임시값으로 섰던 자리가 프로필이 생기자 올라선다
     def test_n4_temp_rises_when_the_profile_arrives(self):
-        first = fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        first = fr.ensure_identity(self.root, env=self.env, account="hgpark")
         self.assertEqual(first["source"], "temp")
-        self.assertEqual(self.local("user.email"), "sjpark1@local")
+        self.assertEqual(self.local("user.email"), "hgpark@local")
 
-        prof = {"github": "nicehugepark", "emails": []}
-        again = fr.ensure_identity(self.root, env=self.env, account="sjpark1",
+        prof = {"github": "hong", "emails": []}
+        again = fr.ensure_identity(self.root, env=self.env, account="hgpark",
                                    profile=prof, user="tester", upgrade=True)
         self.assertTrue(again["set"])
         self.assertEqual(again["source"], "noreply")
         self.assertEqual(self.local("user.email"),
-                         "nicehugepark@users.noreply.github.com")
+                         "hong@users.noreply.github.com")
 
     # N5. 사람이 손으로 정한 값은 upgrade 로도 덮지 않는다
     def test_n5_human_identity_survives_upgrade(self):
         self.git("config", "user.name", "hong")
         self.git("config", "user.email", "hong@example.com")
-        res = fr.ensure_identity(self.root, env=self.env, account="sjpark1",
+        res = fr.ensure_identity(self.root, env=self.env, account="hgpark",
                                  profile={"emails": ["other@company.com"]},
                                  user="tester", upgrade=True)
         self.assertFalse(res["set"])
@@ -135,28 +135,28 @@ class TheUpgrade(Base):
     # N6. 같은 칸이 다시 나오면 아무것도 쓰지 않는다
     def test_n6_same_rung_writes_nothing(self):
         prof = {"emails": ["me@company.com"]}
-        fr.ensure_identity(self.root, env=self.env, account="sjpark1",
+        fr.ensure_identity(self.root, env=self.env, account="hgpark",
                            profile=prof, user="tester")
-        res = fr.ensure_identity(self.root, env=self.env, account="sjpark1",
+        res = fr.ensure_identity(self.root, env=self.env, account="hgpark",
                                  profile=prof, user="tester", upgrade=True)
         self.assertFalse(res["set"])
         self.assertEqual(res["skipped"], "same")
 
     # B1. 표만 남고 값이 지워진 자리에서도 멎지 않는다
     def test_b1_mark_without_value_still_writes(self):
-        fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        fr.ensure_identity(self.root, env=self.env, account="hgpark")
         self.git("config", "--unset", "user.name", check=False)
         self.git("config", "--unset", "user.email", check=False)
-        res = fr.ensure_identity(self.root, env=self.env, account="sjpark1",
+        res = fr.ensure_identity(self.root, env=self.env, account="hgpark",
                                  upgrade=True)
         self.assertTrue(res["set"])
-        self.assertEqual(self.local("user.email"), "sjpark1@local")
+        self.assertEqual(self.local("user.email"), "hgpark@local")
 
     # B2. .git 이 없는 자리는 그대로 물러난다
     def test_b2_no_repo_is_unchanged(self):
         empty = tempfile.mkdtemp(prefix="s9ident-none-")
         try:
-            res = fr.ensure_identity(empty, env=self.env, account="sjpark1",
+            res = fr.ensure_identity(empty, env=self.env, account="hgpark",
                                      upgrade=True)
             self.assertEqual(res["skipped"], "no-repo")
         finally:
@@ -186,17 +186,17 @@ class RegisteringRaisesTheIdentity(unittest.TestCase):
 
     def test_user_add_with_github_raises_the_identity(self):
         git = fr._git_runner(self.root, env=self.env)
-        fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        fr.ensure_identity(self.root, env=self.env, account="hgpark")
         self.assertEqual(
             git("config", "--local", "--get", "user.email").stdout.strip(),
-            "sjpark1@local")
+            "hgpark@local")
         r = subprocess.run([sys.executable, S9, "user", "add", "tester",
-                            "--github", "nicehugepark"],
+                            "--github", "hong"],
                            env=self.env, capture_output=True, text=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(
             git("config", "--local", "--get", "user.email").stdout.strip(),
-            "nicehugepark@users.noreply.github.com",
+            "hong@users.noreply.github.com",
             "등록하며 적은 github 로 신원이 올라서지 않았습니다:\n" + r.stdout + r.stderr)
 
 
@@ -420,20 +420,20 @@ class EditingTheProfileRaisesTheIdentity(unittest.TestCase):
 
     def test_setting_github_later_raises_the_identity(self):
         """github 를 나중에 적으면 그때 신원이 올라선다."""
-        fr.ensure_identity(self.root, env=self.env, account="sjpark1")
-        self.assertEqual(self.local("user.email"), "sjpark1@local")
+        fr.ensure_identity(self.root, env=self.env, account="hgpark")
+        self.assertEqual(self.local("user.email"), "hgpark@local")
         r = subprocess.run([sys.executable, S9, "user", "update", "tester",
-                            "--github", "nicehugepark"],
+                            "--github", "hong"],
                            env=self.env, capture_output=True, text=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.local("user.email"),
-                         "nicehugepark@users.noreply.github.com",
+                         "hong@users.noreply.github.com",
                          "Settings 에서 github 를 적어도 신원이 그대로입니다:\n"
                          + r.stdout + r.stderr)
 
     def test_an_unrelated_edit_does_not_touch_the_identity(self):
         """사다리의 재료가 아닌 것을 고치면 신원을 건드리지 않는다."""
-        fr.ensure_identity(self.root, env=self.env, account="sjpark1")
+        fr.ensure_identity(self.root, env=self.env, account="hgpark")
         before = self.local("user.email")
         subprocess.run([sys.executable, S9, "user", "update", "tester",
                         "--first-name", "길동"],

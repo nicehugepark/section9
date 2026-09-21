@@ -118,7 +118,7 @@ class ThreeWaysToStand(unittest.TestCase):
         """세션은 죽이지 않는다 — 지시가 그 수신함에 닿고 표시가 선다."""
         sid = "aabb0002"
         self.binding(sid, doc=DOC)
-        r = self.m.stop_request(DOC, actor="nicehugepark")
+        r = self.m.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "signaled")
         self.assertTrue(self.m.stop_mark(DOC), "세운 표시가 없다 — 워처가 되살린다")
@@ -134,7 +134,7 @@ class ThreeWaysToStand(unittest.TestCase):
     def test_s2b_the_screen_reads_a_human_sentence(self):
         sid = "aabb0002"
         self.binding(sid, doc=DOC)
-        r = self.m.stop_request(DOC, actor="nicehugepark")
+        r = self.m.stop_request(DOC, actor="hong")
         self.assertNotIn("signaled", r.get("message", ""),
                          "액션 낱말이 사람 문장에 샜다")
         self.assertTrue(r.get("message", "").strip())
@@ -144,7 +144,7 @@ class ThreeWaysToStand(unittest.TestCase):
         """지시 받을 창이 없으면 세워 두기만 한다 — 화면은 그 문장을 그대로 쓴다."""
         sid = "aabb0003"
         self.binding(sid, doc=DOC, ended="2026-08-30T00:00:00+09:00")
-        r = self.m.stop_request(DOC, actor="nicehugepark")
+        r = self.m.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "no-recipient")
         # 문장은 REQ-20260901-005 로 개정 — 「세워 두다」 잔재가 「자동
@@ -160,7 +160,7 @@ class ThreeWaysToStand(unittest.TestCase):
         """위임은 리드 세션의 자식이다 — 같은 줄에 agent 필드를 실어 보낸다."""
         sid = "aabb0004"
         self.binding(sid, doc=DOC, agent_doc=DOC)   # 클레임+위임 — 위임이 이긴다
-        r = self.m.stop_request(DOC, actor="nicehugepark")
+        r = self.m.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "relayed")
         lines = self.inbox(sid)
@@ -176,11 +176,11 @@ class ThreeWaysToStand(unittest.TestCase):
     # ---- S5. idle 갈래 ----------------------------------------------------
     def test_s5_nobody_home_means_mark_only(self):
         """아무도 없으면 되살아나지 않게 세워 둔다 — 두 번 눌러도 오류가 아니다."""
-        r = self.m.stop_request(DOC, actor="nicehugepark")
+        r = self.m.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "none")
         self.assertTrue(self.m.stop_mark(DOC), "idle 갈래가 표시를 안 세운다")
-        r2 = self.m.stop_request(DOC, actor="nicehugepark")
+        r2 = self.m.stop_request(DOC, actor="hong")
         self.assertTrue(r2.get("ok"), "두 번 누른 것이 오류가 됐다")
 
     # ---- S6. 감사 ---------------------------------------------------------
@@ -190,12 +190,12 @@ class ThreeWaysToStand(unittest.TestCase):
         self.m._auto_log = lambda msg: logged.append(msg)
         try:
             self.binding("aabb0006", doc=DOC)
-            self.m.stop_request(DOC, actor="nicehugepark")     # session
+            self.m.stop_request(DOC, actor="hong")     # session
             self.m.stop_mark_clear(DOC)
             for p in glob.glob(os.path.join(self.root, "state", "sessions",
                                             "*.json")):
                 os.remove(p)
-            self.m.stop_request(DOC, actor="nicehugepark")     # idle
+            self.m.stop_request(DOC, actor="hong")     # idle
         finally:
             self.m._auto_log = real
         press = [l for l in logged if "STOP-PRESS" in l]

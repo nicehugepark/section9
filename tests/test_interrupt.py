@@ -158,7 +158,7 @@ class StopNeverShootsTheSession(unittest.TestCase):
         calls = []
         with mock.patch.object(mod.os, "kill",
                                lambda pid, sig: sig and calls.append((pid, sig))):
-            r = mod.stop_request(DOC, actor="nicehugepark")
+            r = mod.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "signaled")
         self.assertEqual(calls, [],
@@ -185,7 +185,7 @@ class StopNeverShootsTheSession(unittest.TestCase):
              mock.patch("time.sleep", lambda s: None), \
              mock.patch.object(mod.os, "kill",
                                lambda pid, sig: sig and calls.append((pid, sig))):
-            r = mod.stop_request(DOC, actor="nicehugepark")
+            r = mod.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "stopped")
         self.assertEqual(calls, [(wpid, signal.SIGTERM)],
@@ -201,7 +201,7 @@ class StopNeverShootsTheSession(unittest.TestCase):
         with mock.patch.object(mod, "chat_send", boom), \
              mock.patch.object(mod.os, "kill",
                                lambda pid, sig: sig and calls.append((pid, sig))):
-            r = mod.stop_request(DOC, actor="nicehugepark")
+            r = mod.stop_request(DOC, actor="hong")
         self.assertTrue(r.get("ok"), r.get("message"))
         self.assertEqual(r.get("action"), "no-recipient")
         self.assertEqual(calls, [], "전달 실패가 프로세스 신호로 격상됐다")

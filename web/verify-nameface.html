@@ -23,7 +23,7 @@
 <div id="out"></div>
 <script>
 window.__users = [
-  {user: "nicehugepark", first_name: "성진", last_name: "박", full: "박성진"},
+  {user: "hong", first_name: "길동", last_name: "박", full: "홍길동"},
   {user: "user2", first_name: "Sujin", last_name: "Lee", full: "Sujin Lee"},
   {user: "user1"},
 ];
@@ -49,5 +49,5 @@ const places = u => `
     <div class="urow"><span class="st">owner</span> <b>${nameHTML(u)}</b></div></div>`;
 document.getElementById("out").innerHTML =
   ["ledger", "calm"].map(sk => `<div class="col" data-skin="${sk}">
-     <h2>${sk}</h2>${["nicehugepark", "user2", "user1"].map(places).join("")}</div>`).join("");
+     <h2>${sk}</h2>${["hong", "user2", "user1"].map(places).join("")}</div>`).join("");
 </script>

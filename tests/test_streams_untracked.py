@@ -105,7 +105,7 @@ class StreamsUntracked(unittest.TestCase):
             #     옮기고 나서 막으면 옮긴 경로가 또 한 번 이력에 실린다
         with self.subTest("n4_both_locations_ignored"):
                 for rel in ("streams/abc.jsonl",
-                            "users/sjpark1/streams/abc.jsonl"):
+                            "users/hgpark/streams/abc.jsonl"):
                     with self.subTest(rel=rel):
                         self.assertEqual(git("check-ignore", "-q", rel).returncode, 0,
                                          f"{rel} 이 ignore 밖이다")
@@ -124,7 +124,7 @@ class StreamsUntracked(unittest.TestCase):
             #     users/ 를 track 하므로 이 줄이 사라지면 그대로 올라간다
         with self.subTest("b2_secrets_still_ignored"):
             self.assertEqual(
-                git("check-ignore", "-q", "users/sjpark1/secrets/token").returncode,
+                git("check-ignore", "-q", "users/hgpark/secrets/token").returncode,
                 0)
 
 class MirrorWriterStaysIgnored(unittest.TestCase):
@@ -182,7 +182,7 @@ class MirrorWriterStaysIgnored(unittest.TestCase):
 
     # B1. 지금 자리와 옮겨 갈 자리 둘 다, 파일을 놓아도 담기지 않는다
     def test_b1_both_locations_stay_out(self):
-        rels = ["streams/x.jsonl", "users/sjpark1/streams/x.jsonl"]
+        rels = ["streams/x.jsonl", "users/hgpark/streams/x.jsonl"]
         for rel in rels:
             p = os.path.join(self.root, rel)
             os.makedirs(os.path.dirname(p), exist_ok=True)

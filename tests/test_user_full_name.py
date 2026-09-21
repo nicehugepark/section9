@@ -65,7 +65,7 @@ class FullNamePure(unittest.TestCase):
         self.assertEqual(self.m.user_full_name({"first_name": "길동"}), "길동")
         self.assertEqual(self.m.user_full_name({"last_name": "Hong"}), "Hong")
         self.assertEqual(self.m.user_full_name({}), "")
-        self.assertEqual(self.m.user_full_name({"name": "nicehugepark"}), "")
+        self.assertEqual(self.m.user_full_name({"name": "hong"}), "")
         self.assertEqual(self.m.user_full_name(None), "")
 
     # S7. 줄바꿈·제어문자·길이 — frontmatter 를 훼손할 값은 경계에서 막는다
@@ -102,10 +102,10 @@ class FullNamePure(unittest.TestCase):
 
     # S3. 한글은 한글 그대로 (id 규칙은 id 에만 적용된다)
     def test_030_s3_hangul_kept(self):
-        answers = iter(["박", "성진"])          # 성 → 이름 순으로 묻는다
+        answers = iter(["박", "길동"])          # 성 → 이름 순으로 묻는다
         first, last = self.m.first_run_person_name(lambda _q: next(answers))
-        self.assertEqual((first, last), ("성진", "박"))
-        self.assertFalse(self.m.user_name_ok("성진"))   # id 로는 여전히 못 쓴다
+        self.assertEqual((first, last), ("길동", "박"))
+        self.assertFalse(self.m.user_name_ok("길동"))   # id 로는 여전히 못 쓴다
 
     # S5. 이미 불릴 이름이 있는 사람(attach)에게는 다시 묻지 않는다
     def test_030_s5_known_person_not_asked(self):

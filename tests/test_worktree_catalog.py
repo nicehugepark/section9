@@ -65,7 +65,7 @@ class WorktreeCatalog(unittest.TestCase):
                         "type: request\n"
                         f"title: 카탈로그 시험 {i}\n"
                         "status: open\n"
-                        "user: nicehugepark\n"
+                        "user: hong\n"
                         "created: 2026-09-10T00:00:00+09:00\n"
                         "---\n\n## Original\n\n색인 대상 한 건.\n")
         return self.tmp

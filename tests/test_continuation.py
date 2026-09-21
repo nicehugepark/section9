@@ -182,7 +182,7 @@ class TheHookHoldsInsteadOfFiling(unittest.TestCase):
             if argv[0] == "new":
                 return mock.Mock(returncode=0, stdout="REQ-20260918-019-62x6  x.md")
             if argv[0] == "user":
-                return mock.Mock(returncode=0, stdout="nicehugepark")
+                return mock.Mock(returncode=0, stdout="hong")
             return mock.Mock(returncode=0, stdout="")
 
         payload = json.dumps({"prompt": prompt, "session_id": "983ee0e9aa"})

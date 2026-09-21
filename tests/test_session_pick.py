@@ -137,9 +137,9 @@ class TestSessionRows(unittest.TestCase):
 
     # P7. 줄마다 사람이 고를 근거가 붙는다 — 누구의 세션인지·언제 움직였는지.
     def test_p7_row_carries_who_and_when(self):
-        _write("withwho", attach_pid=str(os.getpid()), user="nicehugepark")
+        _write("withwho", attach_pid=str(os.getpid()), user="hong")
         r = [x for x in mod.session_rows() if x["sid"] == "withwho"][0]
-        self.assertEqual(r["user"], "nicehugepark")
+        self.assertEqual(r["user"], "hong")
         self.assertTrue(r["last"])          # ISO 시각 — 빈 문자열이 아니다
 
 

@@ -1,7 +1,7 @@
 """?anon — 캡처에서 사람을 지우는 스위치 (REQ-20260918-013-62x6).
 
 주인 판정 2026-09-18: 가이드에 실을 화면을 다시 찍는데 머리글에 계정 메일
-(`claude01.pfe@…`)과 컴퓨터 이름(`DESKTOP-TEHV1KR`)이 그대로 선다. 가이드는
+(`claude01.pfe@…`)과 컴퓨터 이름(`DESKTOP-1A2B3C`)이 그대로 선다. 가이드는
 GitHub 릴리스로 나가는 공개 문서다 — 「가려서 찍는다」로 정했다.
 
 가리는 자리는 **그림이 아니라 화면이다.** 찍은 PNG 의 화소를 덧칠하면 글자 수가
@@ -68,7 +68,7 @@ class TheSwitchHidesOnlyTheTwo(unittest.TestCase):
                 + 'console.log(el.innerHTML);')
         return run_js(body, search)
 
-    def who(self, search, machine="DESKTOP-TEHV1KR", user="nicehugepark"):
+    def who(self, search, machine="DESKTOP-1A2B3C", user="hong"):
         """#whoami 의 신원 줄 (notice.js renderWhoami 가 세우는 innerHTML)."""
         body = ('const $ = () => el;\n'
                 'const el = mkEl();\n'
@@ -76,7 +76,7 @@ class TheSwitchHidesOnlyTheTwo(unittest.TestCase):
                 'const asUser = "";\n'
                 'const s9cmdq = () => "";\n'
                 f'const window = {{__whoami: {{user: {json.dumps(user)}, '
-                f'machine: {json.dumps(machine)}, os: "WSL", root: "/home/sjpark1/section9"}}}};\n'
+                f'machine: {json.dumps(machine)}, os: "WSL", root: "/home/hgpark/section9"}}}};\n'
                 + _fn(NOTICE_SRC, "renderWhoami")
                 + '\nrenderWhoami();\nconsole.log(el.innerHTML);')
         return run_js(body, search)
@@ -87,7 +87,7 @@ class TheSwitchHidesOnlyTheTwo(unittest.TestCase):
         self.assertIn("someone@example.com", chip)
         self.assertNotIn(MASK, chip)
         who = self.who("")
-        self.assertIn("DESKTOP-TEHV1KR", who)
+        self.assertIn("DESKTOP-1A2B3C", who)
         self.assertNotIn(MASK, who)
 
     def test_a2_the_account_mail_is_hidden(self):
@@ -100,19 +100,19 @@ class TheSwitchHidesOnlyTheTwo(unittest.TestCase):
     def test_a3_the_machine_name_is_hidden(self):
         """정상 ③ — ?anon 이면 컴퓨터 이름이 가려진다."""
         who = self.who("?anon")
-        self.assertNotIn("DESKTOP-TEHV1KR", who)
+        self.assertNotIn("DESKTOP-1A2B3C", who)
         self.assertIn(MASK, who)
 
     def test_a4_the_person_stays(self):
         """경계 ④ — 사람 이름은 ?anon 에서도 그대로 남는다 (주인이 고른 것이 둘뿐이다)."""
-        self.assertIn("nicehugepark", self.who("?anon"))
+        self.assertIn("hong", self.who("?anon"))
 
     def test_a5_the_home_path_does_not_leak_in_the_tooltip(self):
         """경계 ④' — 계정 폴더 이름이 든 경로(title)도 함께 지운다.
 
         화면에 안 보이지만 같은 것을 가리키는 값이다 — 하나만 지우면 반쪽이다."""
-        self.assertNotIn("sjpark1", self.who("?anon"))
-        self.assertIn("sjpark1", self.who(""), "?anon 이 없을 때는 종전 그대로여야 한다")
+        self.assertNotIn("hgpark", self.who("?anon"))
+        self.assertIn("hgpark", self.who(""), "?anon 이 없을 때는 종전 그대로여야 한다")
 
     def test_a6_the_mask_does_not_reveal_the_length(self):
         """경계 ⑤ — 가린 글자는 원래 길이를 드러내지 않는다. 길이가 곧 단서다."""

@@ -44,9 +44,9 @@ function showUserForm(u, host, isAdminEdit){
       <tr><td>display</td><td><input class="uf" id="uf-display" value="${esc(u.display)}"
         placeholder="비우면 성·이름으로 부릅니다"></td></tr>
       <tr><td>성</td><td><input class="uf" id="uf-last" value="${esc(u.last_name||"")}"
-        placeholder="예: 박"></td></tr>
+        placeholder="예: 홍"></td></tr>
       <tr><td>이름</td><td><input class="uf" id="uf-first" value="${esc(u.first_name||"")}"
-        placeholder="예: 성진"></td></tr>
+        placeholder="예: 길동"></td></tr>
       <tr><td>부르는 이름</td><td><span class="path" id="uf-full">${esc(u.full || "—")}</span>
         <span class="path">— 카드와 목록에 이 이름이 섭니다. 비면 id(@${esc(u.name)})로 섭니다</span></td></tr>
       <tr><td>회사 이메일</td><td id="uf-emails">
