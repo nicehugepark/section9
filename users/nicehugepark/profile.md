@@ -309,3 +309,4 @@ display: nicehugepark
 - 2026-09-15T20:50:43+09:00 config trash_keep_days=10 (by nicehugepark)
 - 2026-09-15T20:51:18+09:00 config trash_keep_days=(삭제) (by nicehugepark)
 - 2026-09-18T13:57:45+09:00 config auto_resume_global_per_hour=10 (by nicehugepark via dashboard)
+- 2026-09-21T10:25:57+09:00 config pref_진행=말한 것은 그 턴에 실행한다 — 「~하겠습니다」로 끝내고 멈추지 마라. 사람의 판정이 필요하면 「~할까요?」로 묻거나 review 로 올리고, 그게 아니면 직접이든 위임이든 그 자리에서 진행한다 (주인 지시 2026-09-21 10:25) (by nicehugepark)
