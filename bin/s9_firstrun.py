@@ -170,15 +170,22 @@ def pick_identity(profile=None, account=None, user=""):
     붙고, 한 번 원격 이력에 박히면 빼는 길이 이력 재작성뿐이다. 프로필이 없거나
     아무것도 못 고르면 지금까지대로 임시값이다(temp_identity 와 같은 값).
 
-    **이름 칸은 그 사람의 이름이다** (REQ-20260921-017-62x6). 화면이 「박성진」이라
-    부르는 사람이 commit 에서는 `nicehugepark` 으로 서면, 같은 사람이 자리마다 다른
-    이름으로 보인다 — 이 제품은 사람이 읽는 자리에 이름을, 기계가 읽는 자리에 id 를
-    세운다(REQ-20260915-032-62x6). GitHub 이 commit 을 계정에 잇는 것은 이름이 아니라
-    **메일**이라, 이름을 사람의 글자로 두어도 이어짐은 그대로다. 로마자로 적고 싶은
-    사람은 프로필의 `display` 에 제 표기를 적으면 그것이 이긴다 — 도구가 로마자를
-    짐작해 짓지 않는다. 칸은 넷이다:
+    **이름 칸은 GitHub 계정 이름이 먼저다** (REQ-20260921-017-62x6, 주인 지적
+    2026-09-21 13:01: 「설정에 개인 github 이름이 있는데 왜 display_name 을 사용할지
+    말지 고민하는거지?」).
 
-        person_full_name(프로필) → github → section9 의 id → 계정
+    처음 판은 사람 이름(`person_full_name`)을 첫 칸에 두고, 로마자로 적고 싶으면
+    프로필의 `display` 에 적으라고 했다. 그것이 반려됐다 — `display` 는 **화면
+    이름**을 위한 칸이고(REQ-20260915-029-62x6), 그 사람이 GitHub 에서 불리는 이름은
+    이미 `github` 에 적혀 있다. 있는 것을 두고 다른 칸을 우회로로 쓰게 하는 것은
+    한 사실에 자리를 둘 만드는 일이다.
+
+    commit 은 GitHub·터미널에서 **다시 만나는** 자리라 그 도구가 아는 이름으로 선다
+    (규약 2조). 메일이 이미 `<github>@users.noreply.github.com` 인데 이름만 한글이면
+    한 쌍이 어긋나기도 한다. GitHub 을 쓰지 않는 사람은 그다음 칸인 제 이름으로
+    선다. 칸은 넷이다:
+
+        github → person_full_name(프로필) → section9 의 id → 계정
 
     임시 칸만 `s9 <계정>` 꼴을 지킨다 — `s9 doctor` 가 그 모양으로 「우리가 넣은 값」을
     가른다(REQ-20260921-006-62x6).
@@ -189,7 +196,7 @@ def pick_identity(profile=None, account=None, user=""):
     if not _GITHUB_RE.fullmatch(github):
         github = ""
     name = ""
-    for cand in (person_full_name(prof), github, str(user or "").strip(), account):
+    for cand in (github, person_full_name(prof), str(user or "").strip(), account):
         name = commit_name(cand)
         if name:
             break

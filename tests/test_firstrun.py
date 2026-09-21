@@ -565,25 +565,30 @@ class IdentityLadder(unittest.TestCase):
                          self.fr.temp_identity(self.acct))
 
     # ── commit 에 설 이름 (REQ-20260921-017-62x6) ──────────────────────────
-    # 화면이 「박성진」이라 부르는 사람이 commit 에서는 id 로 서면 같은 사람이
-    # 자리마다 다른 이름이 된다. 사람이 읽는 자리에는 이름이 선다.
+    # commit 은 GitHub·터미널에서 **다시 만나는** 자리라 그 도구가 아는 이름으로 선다
+    # (규약 2조). 첫 판은 사람 이름을 첫 칸에 두고 로마자가 필요하면 `display` 에
+    # 적으라고 했다가 반려됐다 — 주인 지적 2026-09-21 13:01: 「설정에 개인 github
+    # 이름이 있는데 왜 display_name 을 사용할지말지 고민하는거지?」. `display` 는
+    # 화면 이름의 칸이고, 그 사람이 GitHub 에서 불리는 이름은 이미 `github` 에 있다.
 
-    def test_c1_the_persons_name_stands_in_the_commit(self):
-        """N1·N2. 성·이름이 있으면 그 이름이, display 를 적었으면 그 글자가 선다."""
+    def test_c1_the_github_login_stands_in_the_commit(self):
+        """N1·N2. github 이 있으면 그것이 선다 — 사람 이름이 함께 있어도."""
         self.assertEqual(
             self.fr.pick_identity({"emails": ["hong@corp.example"], "github": "hong-gildong",
                                    "first_name": "길동", "last_name": "홍"}, user="hong"),
-            ("홍길동", "hong@corp.example", "profile"))
+            ("hong-gildong", "hong@corp.example", "profile"))
+        # `display` 는 화면 이름의 칸이라 commit 이름을 가로채지 않는다
         self.assertEqual(
             self.fr.pick_identity({"github": "hong-gildong", "display": "Gildong Hong",
                                    "first_name": "길동", "last_name": "홍"}, user="hong"),
-            ("Gildong Hong", "hong-gildong@users.noreply.github.com", "noreply"))
+            ("hong-gildong", "hong-gildong@users.noreply.github.com", "noreply"))
 
-    def test_c2_no_name_falls_to_github_then_id(self):
-        """N3. 이름이 없으면 지금까지대로 github → id 다 — 회귀."""
+    def test_c2_without_github_the_persons_name_stands(self):
+        """N3. GitHub 을 쓰지 않는 사람은 제 이름으로, 그것도 없으면 id 로 선다."""
         self.assertEqual(
-            self.fr.pick_identity({"emails": ["hong@corp.example"], "github": "hong-gildong"},
-                                  user="hong")[0], "hong-gildong")
+            self.fr.pick_identity({"emails": ["hong@corp.example"],
+                                   "first_name": "길동", "last_name": "홍"},
+                                  user="hong")[0], "홍길동")
         self.assertEqual(
             self.fr.pick_identity({"emails": ["hong@corp.example"]}, user="hong")[0], "hong")
 
@@ -595,10 +600,11 @@ class IdentityLadder(unittest.TestCase):
                                                "github": "hong-gildong",
                                                "first_name": "길동", "last_name": "홍"})
         self.assertEqual((res["set"], res["source"], res["error"]), (True, "profile", ""), res)
-        self.assertEqual(self.local(d, "user.name"), "홍길동")
+        self.assertEqual(self.local(d, "user.name"), "hong-gildong")
 
     def test_c4_one_half_of_a_name_still_stands(self):
-        """B1·B2. 성만·이름만 있어도 그 글자가 서고, 로마자는 「이름 성」이다."""
+        """B1·B2. github 이 없을 때 — 성만·이름만 있어도 그 글자가 서고,
+        로마자는 「이름 성」이다."""
         self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
                                                 "first_name": "길동"}, user="hong")[0], "길동")
         self.assertEqual(self.fr.pick_identity({"emails": ["a@corp.example"],
