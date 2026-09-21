@@ -178,16 +178,79 @@ def _init_main(_git):
         _git("symbolic-ref", "HEAD", "refs/heads/" + DEFAULT_BRANCH)
 
 
-def _ensure_identity(_git, account=None):
-    """전역·시스템에 신원이 없으면 저장소 로컬에 임시 신원 — 했으면 True."""
-    have = all(_git("config", k, check=False).stdout.strip()
-               for k in ("user.name", "user.email"))
-    if have:
-        return False
+IDENT_KEYS = ("user.name", "user.email")
+
+
+def _identity_scope(_git):
+    """신원이 어디에 있나 — "global"(전역·시스템) · "local"(이 저장소) · ""(아무 데도 없다).
+
+    `git config user.name` 한 번으로는 가를 수 없다: `.git` 이 이미 있는 자리에서는
+    로컬도 함께 읽혀 「전역에 정해 두었다」와 「이 저장소에 박혀 있다」가 한 값이 된다
+    (REQ-20260921-003-62x6). ensure_repo 는 갓 만든 빈 `.git` 에서만 이것을 물어 그
+    차이가 드러나지 않았는데, clone 으로 온 자리를 같은 함수가 지나면서 뜻이 갈렸다.
+
+    `--local` 은 저장소 밖에서 rc≠0 이고, `--system` 은 없으면 빈 값이다 — 둘 다
+    check=False 로 읽어 빈 문자열로 받는다. 이름은 로컬에 메일은 전역에 있는
+    섞인 자리는 "global" 로 본다(임시 신원을 박을 까닭이 없다는 뜻만 쓰인다)."""
+    def _has(*scope):
+        return all(_git("config", *scope, "--get", k, check=False).stdout.strip()
+                   for k in IDENT_KEYS)
+    if not _has():
+        return ""
+    return "local" if _has("--local") else "global"
+
+
+def _set_temp_identity(_git, account=None):
+    """저장소 로컬에 임시 신원을 박는다 — (이름, 메일)."""
     name, mail = temp_identity(account)
     _git("config", "user.name", name)
     _git("config", "user.email", mail)
+    return name, mail
+
+
+def _ensure_identity(_git, account=None):
+    """신원이 아무 데도 없으면 저장소 로컬에 임시 신원 — 했으면 True."""
+    if _identity_scope(_git):
+        return False
+    _set_temp_identity(_git, account)
     return True
+
+
+def ensure_identity(root, env=None, account=None, git="git", run=None):
+    """이 자리의 git 이 누구로 commit 할지 정해져 있게 한다 (REQ-20260921-003-62x6).
+
+    세 입구(압축을 푼 배포판 · git clone · 초대 합류)가 이 한 자리를 지난다. 그전에는
+    임시 신원이 ensure_repo 와 join_repo 안에만 있어, **clone 으로 온 자리**는 어느
+    갈래도 타지 않았다 — `.git` 이 이미 있어 ensure_repo 가 skipped=repo 로 빠지고
+    `--join` 도 아니다. 그 컴퓨터에 user.name 이 없으면 문서 commit 이 통째로 거부되고
+    `s9 doctor` 가 「git 이름」을 ✗ 로 짚는다(실측 2026-09-21).
+
+    사람이 정해 둔 값은 덮지 않고(멱등), `~/.gitconfig` 는 건드리지 않는다 — 폭발
+    반경이 이 저장소 밖이라 도구가 말없이 고칠 자리가 아니다.
+
+        set       True 면 이번 호출이 저장소 로컬에 임시 신원을 박았다
+        name/mail 박은 값 (set 일 때만)
+        scope     신원이 있는 자리 — "global" · "local"(이번에 박은 것 포함)
+        skipped   안 한 이유 — "no-repo"(.git 이 없다) · "global" · "local"
+        error     실패 사유 한 줄 — 예외를 밖으로 내지 않는다
+    """
+    root = os.path.abspath(root)
+    out = {"set": False, "name": "", "email": "", "scope": "", "skipped": "", "error": ""}
+    if not os.path.exists(os.path.join(root, ".git")):
+        out["skipped"] = "no-repo"          # 저장소가 없으면 로컬에 쓸 자리도 없다
+        return out
+    _git = _git_runner(root, env=env, git=git, run=run)
+    try:
+        scope = _identity_scope(_git)
+        if scope:
+            out["scope"] = out["skipped"] = scope
+            return out
+        out["name"], out["email"] = _set_temp_identity(_git, account)
+        out["set"] = True
+        out["scope"] = "local"
+    except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+        out["error"] = str(e) or e.__class__.__name__
+    return out
 
 
 # ── 초대 명령의 첫 실행 (REQ-20260913-013-62x6) ──────────────────────────────

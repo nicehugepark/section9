@@ -28353,6 +28353,22 @@ def cmd_code(args):
         if _seeded:
             print(f"◌ 사용법 안내 요청 {len(_seeded)}건이 Board 의 open 열에 섰다 — "
                   f"처음이면 그것부터 읽는다(안내 2편이 이름 등록이다)")
+    # 신원은 세 입구가 모두 지나는 한 자리다 (REQ-20260921-003-62x6): 압축을 푼 배포판은
+    # 위의 ensure_repo 가, 초대는 join_repo 가 세우는데 **git clone 으로 온 자리**는 어느
+    # 갈래도 타지 않았다 — `.git` 이 이미 있어 ensure_repo 가 skipped=repo 로 빠진다.
+    # user.name 이 없는 컴퓨터에서 문서 commit 이 통째로 거부되던 자리다. 여기서 한 번
+    # 더 부르는 것은 멱등이다(이미 정해 둔 값은 덮지 않는다).
+    try:
+        _id = _firstrun_module().ensure_identity(ROOT)
+        if _id.get("set"):
+            print(f"◌ 이 저장소의 git 이름을 임시로 {_id['name']} <{_id['email']}> 로 두었다 — "
+                  f"이 컴퓨터에 정해 둔 이름이 없어 commit 이 거부되던 자리다. 제 이름으로 "
+                  f"찍으려면 `git config --global user.name '<이름>'` 과 "
+                  f"`git config --global user.email '<계정에 등록한 메일>'`")
+        elif _id.get("error"):
+            print(f"◌ git 이름을 세우지 못했다({_id['error']}) — `s9 doctor` 가 그 줄을 짚는다")
+    except Exception as e:
+        print(f"◌ git 이름을 확인하지 못했다({e}) — 계속한다")
     # 옮기기 **전**의 포트를 먼저 읽는다 — pick 이 state/port 를 고쳐 쓴 뒤에 s9_port() 를
     # 읽으면 옮긴 포트가 나온다 (실측 2026-09-13: 「포트 9910 는 … 9910 로 띄운다」).
     _base = s9_port()

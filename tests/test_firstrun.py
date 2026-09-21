@@ -249,5 +249,164 @@ class FirstRun(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(d, ".git")))
 
 
+class ClonedPlace(unittest.TestCase):
+    """git clone 으로 온 자리의 git 신원 (REQ-20260921-003-62x6).
+
+    실측 2026-09-21: 임시 신원을 박는 자리는 ensure_repo(저장소를 새로 세울 때)와
+    join_repo(초대로 합류할 때) 둘뿐이었다. clone 으로 온 자리는 `.git` 이 이미 있어
+    ensure_repo 가 skipped=repo 로 빠지고 `--join` 도 아니라 어느 갈래도 타지 않는다 —
+    user.name 을 정해 두지 않은 컴퓨터에서 문서 commit 이 통째로 거부되고 `s9 doctor`
+    가 「git 이름」을 ✗ 로 짚었다.
+
+    이 시험의 컴퓨터에는 git 신원이 없다: HOME 을 빈 임시 자리로 돌리고
+    GIT_CONFIG_NOSYSTEM 으로 시스템 설정도 끊는다 — 그래야 실제 결함의 자리가 된다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fr = _load("s9_firstrun_clone", FIRSTRUN)
+        cls.base = os.path.realpath(tempfile.mkdtemp(prefix="s9clone-"))
+        cls.home = os.path.join(cls.base, "home")
+        os.makedirs(cls.home)
+        cls.env = _clean_env()
+        cls.env.update({"HOME": cls.home, "GIT_CONFIG_NOSYSTEM": "1",
+                        "GIT_CONFIG_GLOBAL": os.path.join(cls.home, ".gitconfig")})
+        # 클론의 원본 — 배포판 모양에 저장소를 세운 자리(ensure_repo 갈래는 그대로다)
+        cls.src = os.path.join(cls.base, "section9-0.9.0")
+        os.makedirs(cls.src)
+        release_shape(cls.src)
+        res = cls.fr.ensure_repo(cls.src, "state/\nindex/\n.claude/\n",
+                                 "local\n", env=cls.env)
+        assert res["created"], res
+        cls.port = free_port()
+        cls.ran = None                       # N3 이 `s9 code` 를 돌린 자리
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.ran:
+            subprocess.run([sys.executable, os.path.join(cls.ran, "bin", "s9"),
+                            "serve", "--stop", "--port", str(cls.port)],
+                           capture_output=True, env=cls.env, cwd=cls.ran,
+                           stdin=subprocess.DEVNULL, timeout=90)
+            deadline = time.monotonic() + 10
+            while cls._serve_procs() and time.monotonic() < deadline:
+                time.sleep(0.5)
+            left = sorted(cls._serve_procs(),
+                          key=lambda p: 0 if "--supervise" in p["argv"] else 1)
+            for p in left:                   # 감시자 먼저 — 자식만 죽이면 되살린다
+                try:
+                    os.kill(p["pid"], signal.SIGKILL)
+                except OSError:
+                    pass
+            if left:
+                time.sleep(1.0)
+        _rmtree(cls.base)
+
+    @classmethod
+    def _serve_procs(cls):
+        return [p for p in _proc_snapshot()
+                if "serve" in p["argv"] and any(cls.base in a for a in p["argv"])]
+
+    @classmethod
+    def clone(cls, name):
+        """원본을 clone 한 자리 — `.git` 은 있고 로컬 신원은 없다(clone 은 설정을 옮기지 않는다)."""
+        dst = os.path.join(cls.base, name)
+        r = subprocess.run(["git", "clone", "--quiet", cls.src, dst], capture_output=True,
+                           encoding="utf-8", errors="replace", env=cls.env, timeout=120)
+        assert r.returncode == 0, r.stdout + r.stderr
+        return dst
+
+    def test_n1_a_clone_gets_a_local_identity(self):
+        """N1. clone 한 자리에 ensure_identity 를 부르면 저장소 로컬에 임시 신원이 선다."""
+        d = self.clone("clone-n1")
+        self.assertEqual(_git(d, "config", "--local", "user.name", env=self.env).stdout.strip(),
+                         "", "clone 한 자리에 이미 신원이 있다 — 이 시험의 전제가 깨졌다")
+        res = self.fr.ensure_identity(d, env=self.env)
+        self.assertEqual((res["set"], res["scope"], res["error"]), (True, "local", ""), res)
+        want = self.fr.temp_identity(getpass.getuser())
+        got = (_git(d, "config", "--local", "user.name", env=self.env).stdout.strip(),
+               _git(d, "config", "--local", "user.email", env=self.env).stdout.strip())
+        self.assertEqual(got, want)
+        again = self.fr.ensure_identity(d, env=self.env)
+        self.assertEqual((again["set"], again["scope"]), (False, "local"), again)
+
+    def test_n2_a_commit_stands_with_that_identity(self):
+        """N2. 그 자리에서 문서 commit 이 선다 — 신원 부재로 거부되지 않는다."""
+        d = self.clone("clone-n2")
+        self.fr.ensure_identity(d, env=self.env)
+        with open(os.path.join(d, "note.md"), "w", encoding="utf-8") as f:
+            f.write("문서 하나\n")
+        self.assertEqual(_git(d, "add", "note.md", env=self.env).returncode, 0)
+        r = _git(d, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "문서 하나",
+                 env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(_git(d, "log", "-1", "--format=%an", env=self.env).stdout.strip(),
+                         self.fr.temp_identity(getpass.getuser())[0])
+
+    def test_n3_s9_code_in_a_clone_stands_the_identity(self):
+        """N3. clone 한 자리에서 `s9 code` 한 번 — 로컬 신원이 서고 doctor 의 「git 이름」이 ✗ 가 아니다."""
+        d = self.clone("clone-n3")
+        type(self).ran = d
+        cfg = os.path.join(self.base, "claude-n3")
+        os.makedirs(cfg)
+        env = {**self.env, "CLAUDE_CONFIG_DIR": cfg, "S9_PORT": str(self.port),
+               "S9_CODE_DRYRUN": "1", "S9_REWORK_WATCH": "off", "S9_PORT_GUARD": "off"}
+        r = subprocess.run([sys.executable, os.path.join(d, "bin", "s9"), "code", "--no-open"],
+                           capture_output=True, encoding="utf-8", errors="replace",
+                           env=env, cwd=d, stdin=subprocess.DEVNULL, timeout=240)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("저장소를 새로 세웠다", r.stdout, "clone 한 자리에 저장소를 또 세웠다")
+        want = self.fr.temp_identity(getpass.getuser())
+        self.assertEqual(_git(d, "config", "--local", "user.name", env=env).stdout.strip(),
+                         want[0], "`s9 code` 가 clone 한 자리의 신원을 세우지 않았다")
+        self.assertIn("git 이름을 임시로", r.stdout, "무엇을 했는지 화면에서 말하지 않았다")
+        doctor = _load("s9doctor_for_clone", os.path.join(ROOT, "bin", "s9-doctor"))
+        with mock.patch.dict(os.environ, {k: env[k] for k in
+                                          ("HOME", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL")}):
+            verdict = doctor.ident_verdict(doctor.ident_info(d))
+        self.assertNotEqual(verdict["level"], "critical", verdict)
+
+    def test_b1_a_global_identity_is_left_alone(self):
+        """B1. 전역에 신원이 있으면 아무것도 쓰지 않는다 — 로컬은 비어 있다."""
+        d = self.clone("clone-b1")
+        home2 = os.path.join(self.base, "home-global")
+        os.makedirs(home2)
+        with open(os.path.join(home2, ".gitconfig"), "w", encoding="utf-8") as f:
+            f.write("[user]\n\tname = Someone\n\temail = someone@example.org\n")
+        env = {**self.env, "HOME": home2,
+               "GIT_CONFIG_GLOBAL": os.path.join(home2, ".gitconfig")}
+        res = self.fr.ensure_identity(d, env=env)
+        self.assertEqual((res["set"], res["scope"], res["skipped"]),
+                         (False, "global", "global"), res)
+        self.assertEqual(_git(d, "config", "--local", "user.name", env=env).stdout.strip(), "")
+
+    def test_b2_a_local_identity_is_not_overwritten(self):
+        """B2. 이 저장소에 이미 박힌 값은 덮지 않는다 — 전역과 로컬을 나눠 읽어야 갈린다."""
+        d = self.clone("clone-b2")
+        _git(d, "config", "--local", "user.name", "Someone", env=self.env)
+        _git(d, "config", "--local", "user.email", "someone@example.org", env=self.env)
+        res = self.fr.ensure_identity(d, env=self.env)
+        self.assertEqual((res["set"], res["scope"]), (False, "local"), res)
+        self.assertEqual(_git(d, "config", "--local", "user.name", env=self.env).stdout.strip(),
+                         "Someone")
+
+    def test_b3_a_place_without_a_repo_is_left_alone(self):
+        """B3. `.git` 이 없는 자리는 no-repo — 전역 설정에는 손대지 않는다."""
+        d = os.path.join(self.base, "no-repo")
+        os.makedirs(d)
+        res = self.fr.ensure_identity(d, env=self.env)
+        self.assertEqual((res["set"], res["skipped"]), (False, "no-repo"), res)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".gitconfig")),
+                         "저장소가 없는 자리에서 전역 설정을 건드렸다")
+
+    def test_f1_without_git_it_reports_and_raises_nothing(self):
+        """F1. git 실행 파일이 없으면 예외를 내지 않고 error 한 줄을 돌려준다."""
+        d = self.clone("clone-f1")
+        res = self.fr.ensure_identity(d, env=self.env,
+                                      git=os.path.join(self.base, "no-such-git"))
+        self.assertEqual(res["set"], False, res)
+        self.assertTrue(res["error"], res)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
