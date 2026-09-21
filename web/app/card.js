@@ -2096,15 +2096,26 @@ function kidsOf(id){
   return kidsOf._idx.get(id) || null;
 }
 function kidsHTML(r){
+  /* 칩의 글자는 **마우스를 올리기 전에** 뜻을 말해야 한다 (REQ-20260921-007-62x6,
+     주인 물음 2026-09-21 10:36: 「자식 1/2는 뭐야? 무슨 의미야?」). 툴팁은 있었지만
+     사람은 칩만 보고 몰랐고, 막힌 자리가 둘이었다 — **낱말**(무엇의 자식인가)과
+     **분수**(1/2 이 끝난 수인가 남은 수인가). 그래서 둘 다 글자에 넣는다.
+
+     「자식」이 아니라 「파생」인 것은 이 화면이 이미 그렇게 부르고 있기 때문이다
+     (graph.js 의 「미완료 파생 요청 수」·「parent→파생」, const.js 의 「L — 파생
+     요청으로 나눔」, guide.html). 같은 개념에 두 번째 이름을 만들지 않는다.
+     「완료」가 아니라 「끝」인 것은 이 수가 TERMINAL(done·cancelled)을 세기 때문이다 —
+     「완료」로 적으면 취소된 것까지 완료로 말하게 되고, 화면에 그대로 서는 상태 값
+     `done` 과도 겹쳐 읽힌다. */
   if (r.type !== "request") return "";
   const k = kidsOf(r.id);
   if (!k) return "";
   const all = k.done === k.total;
-  const tip = all
-    ? `이 요청의 일은 자식 ${k.total}개에 있고 모두 끝났습니다`
-    : `이 요청의 일은 자식 ${k.total}개에 있습니다 — ${k.done}개가 끝났습니다`;
+  // 툴팁은 한 벌이다 — 끝난 수는 칩이 말하므로, 여기서는 칩이 못 하는 것 하나만
+  // 말한다: 이 부모의 일이 어디에 있는가. 다 끝났을 때도 참인 문장이라 갈래가 없다.
+  const tip = `이 요청의 일은 파생 요청 ${k.total}개에 나뉘어 있습니다`;
   return `<span class="kids${all ? " full" : ""}" title="${esc(tip)}">`
-    + `자식 ${k.done}/${k.total}</span>`;
+    + `파생 ${k.done}/${k.total} 끝</span>`;
 }
 
 function cardHTML(r){
