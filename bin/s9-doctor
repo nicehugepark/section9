@@ -669,6 +669,65 @@ def reap_orphan_servers():
     return n
 
 
+SCRATCH_RE = None          # scratch_dashboards 가 ROOT 를 보고 한 번 짓는다
+
+
+def scratch_dashboards(rows=None, root=None, older_than=ORPHAN_AGE):
+    """이 저장소의 `scratchpad/<이름>` 에서 아직 도는 대시보드를 센다
+    (REQ-20260921-023-62x6).
+
+    주인 물음 2026-09-21: 「대시보드 포트가 9909에서 왜 자꾸 증가하는거야」.
+    실측: 9909 는 비어 있는데 9910~9913 을 임시 작업 자리 셋(scratchpad 아래)과
+    클론 하나가 잡고 있었다. 확인하려고 코드를 푼 자리에서 `s9 code` 를 돌리면
+    감시자까지 서고, 그 자리를 버려도 감시자는 남는다 — 회수는 시험 포트 구간
+    (18800~18863)만 보므로 9910~9949 의 임시 대시보드는 아무도 거두지 않는다.
+    그래서 본 저장소는 다시 뜰 때마다 빈 포트를 찾아 한 칸씩 올라간다.
+
+    `scratchpad/` 는 버리는 자리다 — 그 확인이 끝나면 거기 선 대시보드의 주인은
+    없다. **남의 저장소는 세지 않는다**: 형제 폴더의 클론은 그 사람의 작업
+    자리이지 이 저장소가 흘린 것이 아니다. 갓 뜬 것도 세지 않는다(older_than) —
+    지금 캡처를 찍고 있는 확인을 끊으면 그 확인이 거짓으로 끝난다.
+    """
+    base = os.path.realpath(root or ROOT)
+    pat = re.compile(r"(" + re.escape(os.path.join(base, "scratchpad")) +
+                     r"/[^/\s]+)/bin/s9\b.*\bserve\b")
+    out = []
+    for pid, _ppid, age, cmd in (ps_rows() if rows is None else rows):
+        m = pat.search(cmd)
+        if m and age > older_than:
+            out.append((pid, age, m.group(1)))
+    return out
+
+
+def reap_scratch_dashboards(rows=None, root=None, older_than=ORPHAN_AGE):
+    """임시 작업 자리의 대시보드를 감시자째 내린다.
+
+    pid 하나만 죽이면 감시자가 곧바로 되살린다 — 그 자리의 `s9 serve --stop` 이
+    감시자와 서버를 함께 내리는 제품의 길이다. 그 길이 막히면 pid 로 내린다.
+    """
+    done = []
+    for pid, age, ws in scratch_dashboards(rows, root, older_than):
+        if ws in done:
+            continue
+        tool = os.path.join(ws, "bin", "s9")
+        stopped = False
+        if os.path.exists(tool):
+            try:
+                subprocess.run([sys.executable, tool, "serve", "--stop"],
+                               capture_output=True, timeout=30,
+                               env={**os.environ, "S9_ROOT": ws, "S9_PORT": ""})
+                stopped = True
+            except Exception:
+                stopped = False
+        if not stopped:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+        done.append(ws)
+    return done
+
+
 def kill_win(pids):
     ps = shutil.which("powershell.exe")
     if not pids:
@@ -2490,14 +2549,16 @@ def main():
         # 생략해 싸게 끝낸다. 조용히 실행하고 회수한 게 있을 때만 한 줄 남긴다.
         sw = sweep_stale_shots()
         sw["servers"] = reap_orphan_servers()
+        sw["scratch"] = reap_scratch_dashboards()
         sw["tmp"] = sweep_stale_tmp()
         if args.json:
             print(json.dumps(sw, ensure_ascii=False))
         elif (sw["procs"] or sw["profiles"] or sw["servers"]
-              or sw["tmp"]["dirs"]):
+              or sw["scratch"] or sw["tmp"]["dirs"]):
             print(f"정리: 부모가 사라진 캡처 브라우저 {sw['procs']}개 · "
                   f"프로필 {sw['profiles']}개 · "
                   f"부모가 사라진 테스트 서버 {sw['servers']}개 · "
+                  f"임시 작업 자리의 대시보드 {len(sw['scratch'])}개 · "
                   f"임시 자리 {sw['tmp']['dirs']}개")
         return 0
 
