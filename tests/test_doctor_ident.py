@@ -183,11 +183,14 @@ class S9TempIdentity(unittest.TestCase):
         self.assertNotIn("section9 이 임시로", v["line"])
         self.assertIn("이어지지 않습니다", v["line"])
 
-    # B2. 값의 모양이 아니라 표로도 가른다 — 4단계가 세울 자리를 미리 읽는다
+    # B2. 값의 모양이 아니라 표로도 가른다 — 4단계가 세울 자리를 미리 읽는다.
+    #     다만 표만으로는 「임시」가 아니다 (REQ-20260921-019-62x6): 표는 우리가
+    #     골랐다는 사실만 적고, 프로필 메일로 선 값을 임시라 부르면 거짓말이 된다.
     def test_auto_flag_alone_is_enough(self):
         v = doctor.ident_verdict(_d("Hong", "hong@example.com",
                                     "Hong", "hong@example.com", auto=True))
-        self.assertIn("section9 이 임시로", v["line"])
+        self.assertIn("section9", v["line"])
+        self.assertNotIn("임시", v["line"])
 
     # B2b. 모양 판정은 이름과 메일 둘 다 맞아야 선다
     def test_shape_needs_both_halves(self):
@@ -195,6 +198,98 @@ class S9TempIdentity(unittest.TestCase):
         self.assertFalse(doctor.is_s9_identity("s9 sjpark1", "me@example.com"))
         self.assertFalse(doctor.is_s9_identity("hong", "hong@local"))
         self.assertFalse(doctor.is_s9_identity("", ""))
+
+
+class IdentLadderRung(unittest.TestCase):
+    """L1~L6. 사다리의 어느 칸으로 선 값인지를 진단이 갈라 말한다
+    (REQ-20260921-019-62x6).
+
+    실제 결함 2026-09-21: clone 한 자리에서 사다리가 프로필 메일을 골라
+    `nicehugepark <claude01.pfe@example.invalid>` 를 박았는데, 진단은 「section9 이
+    임시로 지은 이름」이라고 말했다. 그 값은 임시가 아니라 그 사람이 프로필에 적어
+    둔 주소이고, 고칠 까닭도 다르다 — 사람에게 거짓을 말하는 자리였다."""
+
+    def _auto(self, name, mail, source=""):
+        d = _d(name, mail, name, mail, auto=True)
+        if source:
+            d["source"] = source
+        return d
+
+    # L1. 프로필 메일로 선 값은 임시가 아니다 — 출처를 말하고 등급은 ok
+    def test_profile_rung_names_its_source(self):
+        v = doctor.ident_verdict(self._auto("hong-gildong", "hong@example.com"))
+        self.assertEqual(v["level"], "ok")
+        self.assertNotIn("임시", v["line"])
+        self.assertIn("프로필", v["line"])
+        self.assertIn("hong@example.com", v["line"])
+
+    # L2. GitHub 이 내주는 주소로 선 값도 임시가 아니다
+    def test_noreply_rung_names_github(self):
+        mail = "hong-gildong@users.noreply.github.com"
+        v = doctor.ident_verdict(self._auto("hong-gildong", mail))
+        self.assertEqual(v["level"], "ok")
+        self.assertNotIn("임시", v["line"])
+        self.assertIn("GitHub", v["line"])
+
+    # L3. 임시 칸은 지금 그대로 — warn 이고 안심시키는 advice 가 붙는다
+    def test_temp_rung_keeps_its_warning(self):
+        v = doctor.ident_verdict(self._auto("s9 sjpark1", "sjpark1@local"))
+        self.assertEqual(v["level"], "warn")
+        self.assertIn("section9 이 임시로", v["line"])
+        self.assertIn("잃는 것은 없습니다", v["advice"])
+
+    # L4. 표에 칸이 적혀 있으면 값의 모양보다 표가 이긴다 — 세우는 쪽이 칸을 적기
+    #     시작해도 진단은 고칠 것이 없다
+    def test_the_mark_beats_the_shape(self):
+        v = doctor.ident_verdict(self._auto("hong", "hong@example.com",
+                                            source="temp"))
+        self.assertIn("section9 이 임시로", v["line"])
+        v = doctor.ident_verdict(self._auto("s9 sjpark1", "sjpark1@local",
+                                            source="profile"))
+        self.assertNotIn("임시", v["line"])
+
+    # L5. 표를 읽는 쪽은 `auto` 도 `auto:<칸>` 도 같은 뜻으로 읽는다
+    def test_mark_with_and_without_a_rung(self):
+        for mark in ("auto", "auto:profile", "auto:noreply", "auto:temp"):
+            self.assertTrue(doctor.is_auto_mark(mark), mark)
+        for mark in ("", "manual", "autopilot"):
+            self.assertFalse(doctor.is_auto_mark(mark), mark)
+        self.assertEqual(doctor.ident_source("auto:noreply", "hong",
+                                             "hong@example.com"), "noreply")
+        self.assertEqual(doctor.ident_source("auto:없는칸", "hong",
+                                             "hong@example.com"), "profile")
+        # 우리 값이 아니면 칸이 없다 — 사람이 정해 둔 값을 사다리의 것으로 읽지 않는다
+        self.assertEqual(doctor.ident_source("", "hong", "hong@example.com"), "")
+
+    # L6. 우리 값인데 닿지 않는 주소면 임시 칸으로 본다 — 사다리는 그런 주소를 고르지
+    #     않으므로, 사람을 탓하는 죽은 메일 갈래로 보내지 않는다
+    def test_our_unreachable_mail_is_the_temp_rung(self):
+        v = doctor.ident_verdict(self._auto("s9 sjpark1", "sjpark1@box.local"))
+        self.assertEqual(v["level"], "warn")
+        self.assertIn("section9 이 임시로", v["line"])
+
+    # L7. 수집기가 표의 칸을 실제 저장소에서 읽는다
+    def test_info_reads_the_rung_from_the_repo(self):
+        root = tempfile.mkdtemp(prefix="s9ident-rung-")
+        saved = {k: os.environ.pop(k, None) for k in GIT_IDENT_ENV}
+        try:
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True,
+                               capture_output=True)
+            git("init", "-q", "-b", "main")
+            git("config", "user.name", "hong-gildong")
+            git("config", "user.email", "hong@example.com")
+            git("config", "section9.identity", "auto:profile")
+            d = doctor.ident_info(root=root)
+            self.assertTrue(d["auto"])
+            self.assertEqual(d["source"], "profile")
+            self.assertEqual(doctor.ident_verdict(d)["level"], "ok")
+            self.assertNotIn("임시", doctor.ident_verdict(d)["line"])
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+            shutil.rmtree(root, ignore_errors=True)
 
 
 class IdentSpeech(unittest.TestCase):
@@ -207,6 +302,9 @@ class IdentSpeech(unittest.TestCase):
         _d("hong", "me@mac.local", "hong", "me@mac.local"),
         _d("s9 a", "a@local", "s9 a", "a@local", auto=True),
         _d("hong", "me@example.com", "hong", "me@example.com"),
+        _d("hong", "hong@example.com", "hong", "hong@example.com", auto=True),
+        _d("hong", "hong@users.noreply.github.com",
+           "hong", "hong@users.noreply.github.com", auto=True),
     )
 
     # B3. 모든 줄과 advice 가 존댓말이다
@@ -233,7 +331,8 @@ class IdentSpeech(unittest.TestCase):
 
     # F2. 고치는 명령은 한 줄에 하나씩, 꺾쇠가 아니라 붙여 넣을 수 있는 예시로
     def test_fix_commands_stand_one_per_line(self):
-        for advice in (doctor.IDENT_FIX, doctor.IDENT_TEMP_FIX):
+        for advice in (doctor.IDENT_FIX, doctor.IDENT_TEMP_FIX,
+                       doctor.IDENT_AUTO_FIX):
             cmds = [ln.strip() for ln in advice.split("\n")
                     if ln.strip().startswith("git config")]
             self.assertEqual(len(cmds), 2, advice)
@@ -241,6 +340,63 @@ class IdentSpeech(unittest.TestCase):
             self.assertTrue(any("user.email" in c for c in cmds))
             self.assertNotIn("<", advice)
             self.assertNotIn(">", advice)
+
+
+class TheAccidentEndToEnd(unittest.TestCase):
+    """L8. 사고 그대로 — 신원이 없는 컴퓨터에서 사다리가 값을 박고, 그 자리에서
+    진단이 무엇이라 말하나 (REQ-20260921-019-62x6).
+
+    단위 시험은 dict 를 손으로 지어 넣지만, 사고는 **세우는 쪽과 읽는 쪽 사이**에서
+    났다 — 사다리는 프로필 메일을 골랐는데 진단은 임시라고 말했다. 그 이음매는
+    이어 봐야 갈린다(규약 19조)."""
+
+    def _run(self, profile):
+        root = tempfile.mkdtemp(prefix="s9ident-e2e-")
+        saved = {k: os.environ.pop(k, None) for k in GIT_IDENT_ENV}
+        try:
+            home = os.path.join(root, "home")
+            os.makedirs(home)
+            with open(os.path.join(home, ".gitconfig"), "w", encoding="utf-8") as f:
+                f.write("[init]\n\tdefaultBranch = main\n")   # 신원은 없는 컴퓨터
+            env = dict(os.environ, HOME=home)
+            subprocess.run(["git", "init", "-q", "-b", "main", root],
+                           env=env, check=True, capture_output=True)
+            firstrun = importlib.util.module_from_spec(
+                importlib.util.spec_from_loader(
+                    "s9_firstrun_for_e2e",
+                    SourceFileLoader("s9_firstrun_for_e2e",
+                                     os.path.join(HERE, "..", "bin", "s9_firstrun.py"))))
+            firstrun.__loader__.exec_module(firstrun)
+            res = firstrun.ensure_identity(root, env=env, account="sjpark1",
+                                           profile=profile, user="nicehugepark")
+            return res, doctor.ident_verdict(doctor.ident_info(root=root))
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+            shutil.rmtree(root, ignore_errors=True)
+
+    # L8a. 프로필 메일로 선 자리 — 진단이 임시라 말하지 않는다
+    def test_profile_mail_is_not_called_temporary(self):
+        res, v = self._run({"github": "hong-gildong",
+                            "emails": ["hong@example.com"]})
+        self.assertEqual(res["source"], "profile")
+        self.assertNotIn("임시", v["line"])
+        self.assertIn("hong@example.com", v["line"])
+
+    # L8b. GitHub 주소로 선 자리도 마찬가지다
+    def test_noreply_is_not_called_temporary(self):
+        res, v = self._run({"github": "hong-gildong", "emails": []})
+        self.assertEqual(res["source"], "noreply")
+        self.assertNotIn("임시", v["line"])
+        self.assertIn("GitHub", v["line"])
+
+    # L8c. 재료가 없어 임시값으로 선 자리는 그대로 임시라고 말한다
+    def test_temp_is_still_called_temporary(self):
+        res, v = self._run({})
+        self.assertEqual(res["source"], "temp")
+        self.assertEqual(v["level"], "warn")
+        self.assertIn("section9 이 임시로", v["line"])
 
 
 class IdentIsOnTheBoard(unittest.TestCase):
