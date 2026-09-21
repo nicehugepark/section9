@@ -73,6 +73,75 @@ def temp_identity(account=None):
     return (f"s9 {account}", f"{account}@local")
 
 
+# ── 신원의 사다리 (REQ-20260921-011-62x6) ────────────────────────────────────
+# 기계가 호스트명으로 지어 붙이는 메일 꼬리 — 이 컴퓨터 안에서만 닿는 주소라 어느
+# 계정에도 등록할 수 없다. **이 목록의 자리는 여기 하나다**: 신원을 세우는 쪽(아래
+# 사다리)과 진단하는 쪽(bin/s9-doctor 의 「git 이름」)이 같은 목록을 본다. 두 벌로
+# 두면 한쪽에 꼬리를 더한 날 다른 쪽이 그 주소를 멀쩡한 것으로 읽는다.
+IDENT_DEAD_MAIL = (".local", ".localdomain", ".lan", ".home", "(none)")
+
+# GitHub 이 계정마다 내주는 주소. 비밀이 아니고 사람에게 묻지 않아도 되는데 GitHub 이
+# 실제로 그 계정에 이어 준다 — 사다리의 둘째 칸이 이것인 까닭이다.
+GITHUB_NOREPLY = "users.noreply.github.com"
+
+# 메일 꼴 — 프로필에 잘못 적힌 값(빈 칸·이름만·꺾쇠째)을 신원으로 세우지 않는다.
+_MAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+# GitHub 계정 이름 — 영숫자와 붙임표, 39자까지. 이 꼴이 아닌 값으로 noreply 주소를
+# 지으면 보내지지도 이어지지도 않는 메일이 commit 에 박힌다.
+_GITHUB_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
+
+
+def is_dead_mail(email):
+    """이 컴퓨터 안에서만 닿는 주소인가 — IDENT_DEAD_MAIL 을 읽는 단 하나의 판정."""
+    low = str(email or "").strip().lower()
+    return bool(low) and any(low.endswith(tail) for tail in IDENT_DEAD_MAIL)
+
+
+def profile_mails(profile=None):
+    """프로필에 적힌 쓸 수 있는 메일들 — 적힌 차례 그대로, 죽은 주소와 헛것은 뺀다."""
+    prof = profile or {}
+    raw = prof.get("emails") or prof.get("email") or []
+    if not isinstance(raw, list):
+        raw = [raw]
+    out = []
+    for m in raw:
+        m = str(m or "").strip()
+        if m and _MAIL_RE.fullmatch(m) and not is_dead_mail(m) and m not in out:
+            out.append(m)
+    return out
+
+
+def pick_identity(profile=None, account=None, user=""):
+    """신원이 아무 데도 없는 자리에 세울 (이름, 메일, 갈래) — 사다리로 고른다.
+
+    칸은 셋이고 위에서부터 본다 (REQ-20260921-004-62x6 의 설계):
+
+        profile   프로필에 적힌 회사·개인 메일 — 그 사람이 이미 정해 둔 주소다
+        noreply   `<github>@users.noreply.github.com` — 묻지 않아도 GitHub 이 이어 준다
+        temp      `s9 <계정>` / `<계정>@local` — 물을 수 없는 자리의 마지막 칸
+
+    임시값을 첫 칸으로 두지 않는 까닭: 그 값은 이 컴퓨터 밖에서 아무 계정에도 안
+    붙고, 한 번 원격 이력에 박히면 빼는 길이 이력 재작성뿐이다. 프로필이 없거나
+    아무것도 못 고르면 지금까지대로 임시값이다(temp_identity 와 같은 값).
+
+    이름은 그 사람이 GitHub 에서 불리는 글자(github)를 먼저 쓰고, 없으면 section9 의
+    id 다. 임시 칸만 `s9 <계정>` 꼴을 지킨다 — `s9 doctor` 가 그 모양으로 「우리가
+    넣은 값」을 가른다(REQ-20260921-006-62x6).
+    """
+    prof = profile or {}
+    account = account or os_account()
+    github = str(prof.get("github") or "").strip()
+    if not _GITHUB_RE.fullmatch(github):
+        github = ""
+    name = github or str(user or "").strip()
+    mails = profile_mails(prof)
+    if mails:
+        return (name or account, mails[0], "profile")
+    if github:
+        return (github, f"{github}@{GITHUB_NOREPLY}", "noreply")
+    return temp_identity(account) + ("temp",)
+
+
 def _write(path, text):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
@@ -89,7 +158,8 @@ def _rmtree(path):
     shutil.rmtree(path, onerror=_retry)
 
 
-def ensure_repo(root, gitignore, sync_marker, env=None, account=None, git="git", run=None):
+def ensure_repo(root, gitignore, sync_marker, env=None, account=None, git="git", run=None,
+                profile=None, user=""):
     """`.git` 이 없으면 저장소를 세운다. 무엇을 했는지 dict 로 돌려준다.
 
         created   True 면 이번 호출이 저장소를 세웠다
@@ -125,9 +195,9 @@ def ensure_repo(root, gitignore, sync_marker, env=None, account=None, git="git",
             _write(marker, sync_marker)
             made_marker = marker
             out["did"].append("sync-marker")
-        # ④ 신원 — 전역·시스템에 없으면 저장소 로컬에 임시 신원: 첫 commit 도, 그 뒤
-        #    sync 가 거는 commit 도 신원 부재로 거부되지 않게
-        if _ensure_identity(_git, account):
+        # ④ 신원 — 전역·시스템에 없으면 저장소 로컬에 사다리가 고른 신원: 첫 commit 도,
+        #    그 뒤 sync 가 거는 commit 도 신원 부재로 거부되지 않게
+        if _ensure_identity(_git, account, profile, user):
             out["did"].append("identity")
         # ⑤ 첫 commit — 갓 세운 저장소라 담을 것은 이 자리 전부이고, 담기지 않을 것은
         #    방금 쓴 .gitignore 가 가른다(state/·index/·.claude/ …). 서명은 이 한 번만
@@ -200,23 +270,24 @@ def _identity_scope(_git):
     return "local" if _has("--local") else "global"
 
 
-def _set_temp_identity(_git, account=None):
-    """저장소 로컬에 임시 신원을 박는다 — (이름, 메일)."""
-    name, mail = temp_identity(account)
+def _set_identity(_git, profile=None, account=None, user=""):
+    """저장소 로컬에 신원을 박는다 — 사다리가 고른 (이름, 메일, 갈래)."""
+    name, mail, src = pick_identity(profile, account, user)
     _git("config", "user.name", name)
     _git("config", "user.email", mail)
-    return name, mail
+    return name, mail, src
 
 
-def _ensure_identity(_git, account=None):
-    """신원이 아무 데도 없으면 저장소 로컬에 임시 신원 — 했으면 True."""
+def _ensure_identity(_git, account=None, profile=None, user=""):
+    """신원이 아무 데도 없으면 저장소 로컬에 사다리가 고른 신원 — 했으면 True."""
     if _identity_scope(_git):
         return False
-    _set_temp_identity(_git, account)
+    _set_identity(_git, profile, account, user)
     return True
 
 
-def ensure_identity(root, env=None, account=None, git="git", run=None):
+def ensure_identity(root, env=None, account=None, git="git", run=None,
+                    profile=None, user=""):
     """이 자리의 git 이 누구로 commit 할지 정해져 있게 한다 (REQ-20260921-003-62x6).
 
     세 입구(압축을 푼 배포판 · git clone · 초대 합류)가 이 한 자리를 지난다. 그전에는
@@ -228,14 +299,20 @@ def ensure_identity(root, env=None, account=None, git="git", run=None):
     사람이 정해 둔 값은 덮지 않고(멱등), `~/.gitconfig` 는 건드리지 않는다 — 폭발
     반경이 이 저장소 밖이라 도구가 말없이 고칠 자리가 아니다.
 
-        set       True 면 이번 호출이 저장소 로컬에 임시 신원을 박았다
+    박을 값은 사다리가 고른다(pick_identity, REQ-20260921-011-62x6) — `profile` 로
+    그 사람의 프로필(emails·github)을 넘기면 프로필 메일 → GitHub noreply → 임시값
+    차례로 내려간다. 안 넘기면 임시값이다.
+
+        set       True 면 이번 호출이 저장소 로컬에 신원을 박았다
         name/mail 박은 값 (set 일 때만)
+        source    어느 칸을 썼나 — "profile" · "noreply" · "temp" (set 일 때만)
         scope     신원이 있는 자리 — "global" · "local"(이번에 박은 것 포함)
         skipped   안 한 이유 — "no-repo"(.git 이 없다) · "global" · "local"
         error     실패 사유 한 줄 — 예외를 밖으로 내지 않는다
     """
     root = os.path.abspath(root)
-    out = {"set": False, "name": "", "email": "", "scope": "", "skipped": "", "error": ""}
+    out = {"set": False, "name": "", "email": "", "source": "", "scope": "",
+           "skipped": "", "error": ""}
     if not os.path.exists(os.path.join(root, ".git")):
         out["skipped"] = "no-repo"          # 저장소가 없으면 로컬에 쓸 자리도 없다
         return out
@@ -245,7 +322,7 @@ def ensure_identity(root, env=None, account=None, git="git", run=None):
         if scope:
             out["scope"] = out["skipped"] = scope
             return out
-        out["name"], out["email"] = _set_temp_identity(_git, account)
+        out["name"], out["email"], out["source"] = _set_identity(_git, profile, account, user)
         out["set"] = True
         out["scope"] = "local"
     except (OSError, subprocess.SubprocessError, RuntimeError) as e:
@@ -290,7 +367,7 @@ def norm_url(url):
 
 
 def join_repo(root, url, gitignore="", sync_marker="", env=None, account=None,
-              git="git", run=None):
+              git="git", run=None, profile=None, user=""):
     """이 자리를 팀 저장소 `url` 에 잇는다. ensure_repo 와 같은 dict 에 둘을 더한다.
 
         created   True 면 이번 호출이 합류했다(origin·가지·작업 트리가 원격과 같다)
@@ -368,7 +445,7 @@ def join_repo(root, url, gitignore="", sync_marker="", env=None, account=None,
             _write(marker, sync_marker)
             made_marker = marker
             out["did"].append("sync-marker")
-        if _ensure_identity(_git, account):
+        if _ensure_identity(_git, account, profile, user):
             out["did"].append("identity")
         out["commit"] = _git("rev-parse", "HEAD").stdout.strip()
         out["origin"] = url
@@ -423,7 +500,13 @@ def join_project(ns, slug, user, email="", via=" (s9 code --join)"):
         return out
     _acct, _machine, out["attached"] = h("do_user_attach")(user)
     email = (email or "").strip().lower()
-    valid_email = bool(email) and bool(re.fullmatch(h("EMAIL_RE"), email))
+    # 이 컴퓨터 안에서만 닿는 주소는 프로필로 옮기지 않는다 (REQ-20260921-011-62x6):
+    # 넘어오는 값은 이 컴퓨터의 `git config user.email` 인데, 신원이 없던 자리에서는
+    # 그 값이 방금 우리가 박은 임시 주소(`<계정>@local`)다. 그것을 프로필에 적으면
+    # 기계가 지어낸 주소가 사람의 회사 메일 옆에 영영 남고, 뒤에 서는 사다리가 그것을
+    # 「그 사람이 정해 둔 주소」로 읽는다. 목록은 is_dead_mail 한 자리에 있다.
+    valid_email = (bool(email) and bool(re.fullmatch(h("EMAIL_RE"), email))
+                   and not is_dead_mail(email))
     prof = h("user_profile")(user) or {}
     have = prof.get("emails") or []
     have = [str(e) for e in (have if isinstance(have, list) else [have]) if e]

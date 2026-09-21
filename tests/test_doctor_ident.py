@@ -96,6 +96,20 @@ class IdentVerdict(unittest.TestCase):
                     doctor.ident_verdict(_d("n", mail, "n", mail))["level"],
                     "ok")
 
+    # G6. 죽은 메일 목록의 자리는 하나다 (REQ-20260921-011-62x6) — 신원을 세우는 쪽
+    # (bin/s9_firstrun.py)이 그 자리이고 doctor 는 그것을 읽는다. 두 벌로 두면 한쪽에
+    # 꼬리를 더한 날 다른 쪽이 그 주소를 멀쩡한 것으로 읽는다 — 사다리는 걸러 낸
+    # 주소를 doctor 는 ✓ 로 통과시키는 식이다.
+    def test_the_dead_mail_list_has_one_home(self):
+        firstrun = importlib.util.module_from_spec(importlib.util.spec_from_loader(
+            "s9_firstrun_for_doctor_test",
+            SourceFileLoader("s9_firstrun_for_doctor_test",
+                             os.path.join(HERE, "..", "bin", "s9_firstrun.py"))))
+        firstrun.__loader__.exec_module(firstrun)
+        self.assertEqual(tuple(doctor.IDENT_DEAD_MAIL), tuple(firstrun.IDENT_DEAD_MAIL))
+        self.assertEqual(doctor.is_dead_mail.__module__, "s9_firstrun_for_doctor",
+                         "doctor 가 제 목록을 따로 들고 있다")
+
 
 # git 은 설정보다 이 환경변수를 먼저 본다. 커밋 검사(pre-commit 훅) 안에서
 # 시험이 돌면 git 이 이미 채워 둔 값이 들어와, 임시 저장소에 무엇을 설정하든

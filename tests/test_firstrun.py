@@ -366,6 +366,45 @@ class ClonedPlace(unittest.TestCase):
             verdict = doctor.ident_verdict(doctor.ident_info(d))
         self.assertNotEqual(verdict["level"], "critical", verdict)
 
+    def test_n4_s9_code_uses_the_profile_mail_when_there_is_one(self):
+        """N4. 그 자리에 그 사람의 프로필이 있으면 `s9 code` 는 임시값이 아니라 프로필 메일을 세운다.
+
+        clone 으로 온 자리에는 users/ 가 함께 온다 — 그 사람이 이미 정해 둔 주소가 거기
+        있는데도 기계가 지어낸 `<계정>@local` 을 박으면, 이 컴퓨터에서 쌓이는 commit 이
+        그 사람의 GitHub 계정에 이어지지 않는다 (REQ-20260921-011-62x6).
+        """
+        d = self.clone("clone-n4")
+        acct = getpass.getuser()
+        prof = os.path.join(d, "users", "hong")
+        os.makedirs(prof, exist_ok=True)
+        with open(os.path.join(prof, "profile.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: hong\nrole: admin\n"
+                    'emails: ["hong@corp.example"]\ngithub: hong-gildong\n'
+                    f'os_accounts: ["{acct}"]\n---\n\n## Notes\n')
+        port = free_port()
+        cfg = os.path.join(self.base, "claude-n4")
+        os.makedirs(cfg)
+        env = {**self.env, "CLAUDE_CONFIG_DIR": cfg, "S9_PORT": str(port),
+               "S9_CODE_DRYRUN": "1", "S9_REWORK_WATCH": "off", "S9_PORT_GUARD": "off"}
+        r = subprocess.run([sys.executable, os.path.join(d, "bin", "s9"), "code", "--no-open"],
+                           capture_output=True, encoding="utf-8", errors="replace",
+                           env=env, cwd=d, stdin=subprocess.DEVNULL, timeout=240)
+        try:
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(
+                (_git(d, "config", "--local", "user.name", env=env).stdout.strip(),
+                 _git(d, "config", "--local", "user.email", env=env).stdout.strip()),
+                ("hong-gildong", "hong@corp.example"),
+                "프로필에 메일이 있는데 그 주소를 세우지 않았다")
+            self.assertNotIn("임시로", r.stdout, "프로필 메일을 두고 임시값이라고 말했다")
+            self.assertIn("프로필에 적어 둔 메일이다", r.stdout,
+                          "어느 칸의 값인지 화면에서 말하지 않았다")
+        finally:
+            subprocess.run([sys.executable, os.path.join(d, "bin", "s9"),
+                            "serve", "--stop", "--port", str(port)],
+                           capture_output=True, env=env, cwd=d,
+                           stdin=subprocess.DEVNULL, timeout=90)
+
     def test_b1_a_global_identity_is_left_alone(self):
         """B1. 전역에 신원이 있으면 아무것도 쓰지 않는다 — 로컬은 비어 있다."""
         d = self.clone("clone-b1")
@@ -406,6 +445,150 @@ class ClonedPlace(unittest.TestCase):
                                       git=os.path.join(self.base, "no-such-git"))
         self.assertEqual(res["set"], False, res)
         self.assertTrue(res["error"], res)
+
+
+class IdentityLadder(unittest.TestCase):
+    """신원이 아무 데도 없는 자리에 **무엇을** 세우는가 (REQ-20260921-011-62x6).
+
+    임시값(`s9 <계정>` / `<계정>@local`)은 이 컴퓨터 밖에서 어느 계정에도 안 붙고, 한 번
+    원격 이력에 박히면 빼는 길이 이력 재작성뿐이다. 그래서 칸이 셋이다 — 프로필에 적어
+    둔 메일 → `<github>@users.noreply.github.com` → 임시값. 이 시험의 컴퓨터에는 git
+    신원이 없다(HOME 을 빈 임시 자리로, GIT_CONFIG_NOSYSTEM 으로 시스템 설정도 끊는다).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fr = _load("s9_firstrun_ladder", FIRSTRUN)
+        cls.base = os.path.realpath(tempfile.mkdtemp(prefix="s9ladder-"))
+        cls.home = os.path.join(cls.base, "home")
+        os.makedirs(cls.home)
+        cls.env = _clean_env()
+        cls.env.update({"HOME": cls.home, "GIT_CONFIG_NOSYSTEM": "1",
+                        "GIT_CONFIG_GLOBAL": os.path.join(cls.home, ".gitconfig")})
+        cls.acct = getpass.getuser()
+
+    @classmethod
+    def tearDownClass(cls):
+        _rmtree(cls.base)
+
+    def repo(self, name):
+        """신원이 하나도 없는 빈 저장소 하나."""
+        d = os.path.join(self.base, name)
+        os.makedirs(d)
+        r = _git(d, "init", "-q", "-b", "main", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return d
+
+    def local(self, d, key):
+        return _git(d, "config", "--local", "--get", key, env=self.env).stdout.strip()
+
+    def test_n1_a_profile_mail_stands(self):
+        """N1. 프로필에 쓸 수 있는 메일이 있으면 그 주소 — 이름은 github, 없으면 id."""
+        self.assertEqual(
+            self.fr.pick_identity({"emails": ["hong@corp.example"], "github": "hong-gildong"},
+                                  user="hong"),
+            ("hong-gildong", "hong@corp.example", "profile"))
+        self.assertEqual(
+            self.fr.pick_identity({"emails": ["hong@corp.example"]}, user="hong"),
+            ("hong", "hong@corp.example", "profile"))
+
+    def test_n2_github_gives_a_noreply_mail(self):
+        """N2. 메일이 없고 github 가 있으면 GitHub 이 그 계정에 이어 주는 주소."""
+        self.assertEqual(
+            self.fr.pick_identity({"github": "hong-gildong"}, user="hong"),
+            ("hong-gildong", "hong-gildong@users.noreply.github.com", "noreply"))
+
+    def test_n3_nothing_falls_back_to_the_temp_value(self):
+        """N3. 둘 다 없으면 지금까지대로 임시값이다 — 회귀."""
+        want = self.fr.temp_identity(self.acct) + ("temp",)
+        self.assertEqual(self.fr.pick_identity({}, account=self.acct, user="hong"), want)
+        self.assertEqual(self.fr.pick_identity(None, account=self.acct), want)
+
+    def test_n4_ensure_identity_says_which_rung_it_used(self):
+        """N4. 실제 저장소에 박히는 값과 `source` 가 사다리의 칸을 말한다."""
+        d = self.repo("ladder-n4")
+        res = self.fr.ensure_identity(d, env=self.env, user="hong",
+                                      profile={"emails": ["hong@corp.example"],
+                                               "github": "hong-gildong"})
+        self.assertEqual((res["set"], res["source"], res["scope"], res["error"]),
+                         (True, "profile", "local", ""), res)
+        self.assertEqual((self.local(d, "user.name"), self.local(d, "user.email")),
+                         ("hong-gildong", "hong@corp.example"))
+        d2 = self.repo("ladder-n4b")
+        res = self.fr.ensure_identity(d2, env=self.env, user="hong",
+                                      profile={"github": "hong-gildong"})
+        self.assertEqual((res["set"], res["source"]), (True, "noreply"), res)
+        self.assertEqual(self.local(d2, "user.email"),
+                         "hong-gildong@users.noreply.github.com")
+
+    def test_b1_a_dead_profile_mail_drops_to_the_next_rung(self):
+        """B1. 이 컴퓨터 안에서만 닿는 주소는 건너뛴다 — 다음 칸으로 내려간다."""
+        for mail in ("me@box.local", "me@x.localdomain", "me@x.lan", "me@x.home"):
+            with self.subTest(mail=mail):
+                self.assertEqual(
+                    self.fr.pick_identity({"emails": [mail], "github": "hong-gildong"}),
+                    ("hong-gildong", "hong-gildong@users.noreply.github.com", "noreply"))
+                self.assertEqual(
+                    self.fr.pick_identity({"emails": [mail]}, account=self.acct)[2], "temp")
+
+    def test_b2_the_first_usable_mail_wins(self):
+        """B2. 메일 꼴이 아닌 값은 건너뛰고, 여럿이면 쓸 수 있는 첫 번째를 쓴다."""
+        self.assertEqual(
+            self.fr.pick_identity({"emails": ["", "홍길동", "me@box.local",
+                                              "hong@corp.example", "second@corp.example"]},
+                                  user="hong"),
+            ("hong", "hong@corp.example", "profile"))
+
+    def test_b3_a_github_name_that_cannot_be_one_is_skipped(self):
+        """B3. GitHub 계정 이름의 꼴이 아니면 noreply 칸을 건너뛴다 — 안 닿는 주소를 짓지 않는다."""
+        for bad in ("hong gildong", "hong@example.com", "-hong", "hong--" + "x" * 40, "홍길동"):
+            with self.subTest(github=bad):
+                self.assertEqual(
+                    self.fr.pick_identity({"github": bad}, account=self.acct)[2], "temp")
+
+    def test_b4_an_identity_already_there_is_not_touched(self):
+        """B4. 이미 정해 둔 값이 있으면 사다리는 돌지 않는다 — 덮지 않는다(회귀)."""
+        d = self.repo("ladder-b4")
+        _git(d, "config", "--local", "user.name", "Someone", env=self.env)
+        _git(d, "config", "--local", "user.email", "someone@example.org", env=self.env)
+        res = self.fr.ensure_identity(d, env=self.env, user="hong",
+                                      profile={"emails": ["hong@corp.example"]})
+        self.assertEqual((res["set"], res["scope"], res["source"]), (False, "local", ""), res)
+        self.assertEqual(self.local(d, "user.email"), "someone@example.org")
+
+    def test_f1_no_profile_still_stands_an_identity(self):
+        """F1. 프로필을 넘기지 않아도 예외 없이 임시값까지 내려간다."""
+        d = self.repo("ladder-f1")
+        res = self.fr.ensure_identity(d, env=self.env)
+        self.assertEqual((res["set"], res["source"]), (True, "temp"), res)
+        self.assertEqual((self.local(d, "user.name"), self.local(d, "user.email")),
+                         self.fr.temp_identity(self.acct))
+
+    def test_f3_join_does_not_carry_a_dead_mail_into_the_profile(self):
+        """F3. 합류가 이 컴퓨터의 git 메일을 프로필로 옮길 때 죽은 주소는 옮기지 않는다.
+
+        넘어오는 값은 이 컴퓨터의 `git config user.email` 인데, 신원이 없던 자리에서는
+        그것이 방금 우리가 박은 임시 주소다 — 그것을 프로필에 적으면 기계가 지어낸
+        주소가 사람의 회사 메일 옆에 영영 남는다."""
+        updated = []
+        ns = {"load_project": lambda slug: ({"slug": slug, "members":
+                                             [{"user": "bob", "role": "member"}]},
+                                            "본문\n", os.path.join(self.base, "mp.md")),
+              "user_role": lambda u: "member",
+              "do_user_attach": lambda u: ("acct", "machine", False),
+              "EMAIL_RE": r"[^@\s]+@[^@\s]+\.[^@\s]+",
+              "user_profile": lambda u: {"emails": ["bob@corp.example"]},
+              "do_user_update": lambda u, **kw: updated.append(kw),
+              "user_config": lambda u: {"default_project": "mp"},
+              "do_user_config_set": lambda *a, **kw: None,
+              "today_date": lambda: "2026-09-21",
+              "now_iso": lambda: "2026-09-21T11:00:00+09:00"}
+        self.fr.join_project(ns, "mp", "bob", f"{self.acct}@local")
+        self.assertEqual(updated, [], "임시 주소가 프로필 emails 에 박혔다")
+        self.fr.join_project(ns, "mp", "bob", "bob-new@corp.example")
+        self.assertEqual([kw.get("emails") for kw in updated],
+                         [["bob@corp.example", "bob-new@corp.example"]],
+                         "멀쩡한 주소까지 막았다")
 
 
 if __name__ == "__main__":

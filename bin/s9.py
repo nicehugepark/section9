@@ -28406,13 +28406,28 @@ def cmd_code(args):
     # 갈래도 타지 않았다 — `.git` 이 이미 있어 ensure_repo 가 skipped=repo 로 빠진다.
     # user.name 이 없는 컴퓨터에서 문서 commit 이 통째로 거부되던 자리다. 여기서 한 번
     # 더 부르는 것은 멱등이다(이미 정해 둔 값은 덮지 않는다).
+    # 박을 값은 사다리가 고른다 (REQ-20260921-011-62x6): 프로필 메일 → GitHub noreply
+    # → 임시값. 프로필을 신원을 박기 **전에** 읽는 것이 중요하다 — resolve_user 가
+    # 먼저 돌면 _git_identity 의 캐시가 **박기 전 값**으로 차서, section9 이 방금 쓴
+    # 값을 section9 이 이 프로세스 안에서 사람의 증거로 되읽는 고리가 끊긴다.
     try:
-        _id = _firstrun_module().ensure_identity(ROOT)
-        if _id.get("set"):
+        _who = resolve_user(None)
+        _prof = user_profile(_who) or {}
+    except Exception:
+        _who, _prof = "", {}
+    try:
+        _id = _firstrun_module().ensure_identity(ROOT, profile=_prof, user=_who)
+        if _id.get("set") and _id.get("source") == "temp":
             print(f"◌ 이 저장소의 git 이름을 임시로 {_id['name']} <{_id['email']}> 로 두었다 — "
                   f"이 컴퓨터에 정해 둔 이름이 없어 commit 이 거부되던 자리다. 제 이름으로 "
                   f"찍으려면 `git config --global user.name '<이름>'` 과 "
                   f"`git config --global user.email '<계정에 등록한 메일>'`")
+        elif _id.get("set"):
+            _why = ("프로필에 적어 둔 메일이다" if _id["source"] == "profile"
+                    else "GitHub 이 이 계정에 이어 주는 주소다")
+            print(f"◌ 이 저장소의 git 이름을 {_id['name']} <{_id['email']}> 로 두었다 — "
+                  f"{_why}. 이 컴퓨터에 정해 둔 이름이 없어 commit 이 거부되던 자리다. "
+                  f"다른 값으로 찍으려면 `git config --global user.email '<메일>'`")
         elif _id.get("error"):
             print(f"◌ git 이름을 세우지 못했다({_id['error']}) — `s9 doctor` 가 그 줄을 짚는다")
     except Exception as e:

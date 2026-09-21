@@ -1963,9 +1963,31 @@ def is_s9_identity(name, email):
     return bool(name) and name.startswith("s9 ") and (email or "").endswith("@local")
 
 
-# 기계가 호스트명으로 지어 붙이는 꼬리 — 이 컴퓨터 안에서만 닿는 주소라
-# 어느 계정에도 등록할 수 없다.
-IDENT_DEAD_MAIL = (".local", ".localdomain", ".lan", ".home", "(none)")
+# 기계가 호스트명으로 지어 붙이는 꼬리 — 이 컴퓨터 안에서만 닿는 주소라 어느 계정에도
+# 등록할 수 없다. **목록은 여기 있지 않다**: 신원을 세우는 쪽(bin/s9_firstrun.py 의
+# IDENT_DEAD_MAIL)이 그 자리이고 여기서는 그것을 읽는다 (REQ-20260921-011-62x6).
+# 두 벌로 두면 한쪽에 꼬리를 더한 날 다른 쪽이 그 주소를 멀쩡한 것으로 읽는다 —
+# 사다리는 걸러 낸 주소를 doctor 는 ✓ 로 통과시키는 식이다.
+def _ident_module():
+    """신원을 세우는 쪽 — 곁의 bin/s9_firstrun.py (doctor 는 s9 를 import 하지 않는다)."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "s9_firstrun.py")
+    spec = importlib.util.spec_from_file_location("s9_firstrun_for_doctor", path)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+try:
+    _ident = _ident_module()
+    IDENT_DEAD_MAIL = _ident.IDENT_DEAD_MAIL
+    is_dead_mail = _ident.is_dead_mail
+except Exception:                       # 그 파일이 없거나 실리지 않는 자리
+    IDENT_DEAD_MAIL = ()
+
+    def is_dead_mail(_email):
+        """목록을 읽지 못하면 이 한 줄만 쉰다 — 나머지 진단은 그대로 돈다."""
+        return False
 
 # 고치는 명령은 한 줄에 하나씩 세우고, 꺾쇠 자리표시자 대신 그대로 붙여 넣을 수
 # 있는 예시 값을 넣는다 — 꺾쇠는 셸이 리디렉션으로 읽기도 하고, 사람이 괄호째
@@ -2005,8 +2027,7 @@ def ident_verdict(d):
         return _v("ident", "git 이름", "warn",
                   f"git 이름: {miss}이 없어 git 이 임시로 지어낸 값으로 "
                   f"기록하고 있습니다 — 지금은 {used_n} <{used_e}>", IDENT_FIX)
-    low = used_e.lower()
-    if any(low.endswith(tail) for tail in IDENT_DEAD_MAIL):
+    if is_dead_mail(used_e):
         # 「다른 사람으로 갈려 보인다」가 아니다 — 다른 사람이 되는 것이 아니라
         # 아무 계정에도 안 붙는다 (ux-writer 판정).
         return _v("ident", "git 이름", "warn",
