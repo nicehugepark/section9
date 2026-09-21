@@ -3696,14 +3696,51 @@ def print_rows(rows):
 
 # ---------------------------------------------------------------- commands
 
+# stdin 에 **이미 와 있는 것**만 읽는 시한 (REQ-20260921-013-62x6). 0 이면 기다리지
+# 않고, 너무 길면 사람이 멎었다고 느낀다.
+STDIN_PEEK_SEC = 0.4
+
+
+def _stdin_now(timeout=STDIN_PEEK_SEC):
+    """stdin 에 이미 온 것만 읽는다 — 열려 있지만 아무것도 오지 않는 자리에서 멎지 않게.
+
+    실제 사고 2026-09-21 (REQ-20260921-013-62x6): 리드가 백그라운드로 띄운 루프 안의
+    `s9 new request` 가 **한 시간** 동안 끝나지 않았고, 그 프로세스가 잠금을 잡아 뒤이은
+    요청 생성이 세 번 시한에 걸렸다. `isatty()` 는 「사람이 치는 터미널인가」만 가르지
+    「읽을 것이 오는가」를 가르지 못한다 — 백그라운드 실행의 stdin 은 터미널이 아니면서
+    EOF 도 오지 않는다. 같은 모양이 REQ-20260918-020-62x6 에서 `--from-pending` 한
+    갈래로 이미 났고, 그때는 그 갈래만 고쳤다.
+
+    `select` 를 쓰지 않는 것은 Windows 에서 파이프에 듣지 않기 때문이다(0' 하네스
+    무관). daemon 스레드는 남아도 프로세스 종료를 막지 않는다.
+
+    늦게 오는 데이터를 꼭 받아야 하면 `--body -` 로 명시한다 — 그 길은 끝까지 기다린다."""
+    import threading
+    box = []
+
+    def _read():
+        try:
+            box.append(sys.stdin.read())
+        except (OSError, ValueError):
+            pass
+
+    t = threading.Thread(target=_read, daemon=True)
+    t.start()
+    t.join(timeout)
+    return box[0] if box else ""
+
+
 def read_body_arg(args):
-    if getattr(args, "body", None):
-        return args.body
+    body = getattr(args, "body", None)
+    if body == "-":                      # 「-」 는 본문이 아니라 stdin 을 뜻한다
+        return sys.stdin.read()
+    if body:
+        return body
     if getattr(args, "body_file", None):
         with open(args.body_file, encoding="utf-8") as f:
             return f.read()
     if not sys.stdin.isatty():
-        return sys.stdin.read()
+        return _stdin_now()
     return ""
 
 
