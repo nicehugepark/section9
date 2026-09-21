@@ -26917,14 +26917,33 @@ def cmd_instance(args):
     git("remote", "rename", "origin", "upstream")
     git("remote", "set-url", "upstream", upstream_url)
     git("remote", "add", "origin", url)
-    # 저장소 로컬 git 신원 — 업스트림 카피의 설정을 승계(없으면 이후 커밋에서
-    # git이 스스로 안내). merge/커밋이 신원 부재로 실패하지 않게 한다.
-    for k in ("user.name", "user.email"):
-        v = subprocess.run(["git", "config", k], cwd=ROOT,
-                           capture_output=True, encoding="utf-8", errors="replace").stdout.strip()
-        if v:
-            git("config", k, v)
+    # 저장소 로컬 git 신원 — **업스트림의 값을 베끼지 않는다** (REQ-20260921-015-62x6).
+    #
+    # 그전에는 업스트림 카피의 user.name·user.email 을 읽어 그대로 박았다. 인스턴스는
+    # 만든 사람 A 가 남에게 건네는 저장소라, 그 값이 .git/config 에 실려 건너가면 받은
+    # 사람 B 의 commit 이 A 로 선다 — 그 메일이 GitHub 에 등록된 실주소면 GitHub 이 A 의
+    # 계정으로 귀속해 감사 이력이 거짓이 된다(security-engineer 판정 2026-09-21,
+    # REQ-20260921-004-62x6). `git config <키>` 는 전역·시스템까지 합친 값을 돌려주므로
+    # 그 복사는 A 가 제 컴퓨터 전역에 정해 둔 실주소까지 인스턴스 안으로 옮겼다.
+    #
+    # 이제는 이 컴퓨터가 이미 아는 신원이 있으면 **아무것도 박지 않는다** — 그러면
+    # A 의 자리에서는 A 의 전역 설정이, B 의 자리에서는 B 의 것이 그대로 쓰인다.
+    # 아무 데도 없을 때만 사다리(프로필 메일 → GitHub noreply → 임시값)가 고른 값을
+    # 이 저장소에만 둔다(ensure_identity, REQ-20260921-003/011-62x6) — merge·commit 이
+    # 신원 부재로 거부되지 않게 한다는 원래 목적은 그대로다.
+    try:
+        _who = resolve_user(None)
+        _prof = user_profile(_who) or {}
+    except Exception:
+        _who, _prof = "", {}
+    _id = _firstrun_module().ensure_identity(target, profile=_prof, user=_who)
     print(f"② remote: upstream={upstream_url}  origin={url}")
+    if _id.get("set"):
+        print(f"   git 이름: {_id['name']} <{_id['email']}> — 이 컴퓨터에 정해 둔 "
+              f"이름이 없어 이 저장소에만 두었습니다")
+    elif _id.get("error"):
+        print(f"   git 이름을 세우지 못했습니다({_id['error']}) — "
+              f"`s9 doctor` 가 그 줄을 짚습니다")
 
     with open(os.path.join(target, ".gitignore"), "w", encoding="utf-8") as f:
         f.write(INSTANCE_TRACK_GITIGNORE)

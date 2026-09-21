@@ -48,6 +48,102 @@ class DetachedBase(unittest.TestCase):
         self.assertIn("main", sh("git", "--git-dir", origin, "branch").stdout)
 
 
+class IdentityNotCopied(unittest.TestCase):
+    """I8. 인스턴스는 남의 신원을 물려받지 않는다 (REQ-20260921-015-62x6).
+
+    `instance init` 은 업스트림 카피의 user.name·user.email 을 새 저장소로 복사했다.
+    인스턴스는 만든 사람 A 가 남에게 건네는 저장소라, 받은 사람 B 의 commit 이 A 로
+    선다 — 그 메일이 GitHub 에 등록된 실주소면 GitHub 이 A 의 계정으로 귀속해 감사
+    이력이 거짓이 된다(security-engineer 판정 2026-09-21, REQ-20260921-004-62x6).
+
+    복사의 원천이 저장소 **로컬** 값일 때가 특히 그렇다 — 전역 신원이 없는 컴퓨터에
+    사다리가 박아 두는 값이 바로 거기 있다(REQ-20260921-011-62x6). 그래서 이 시험의
+    업스트림 카피는 로컬에 A 의 신원이 박힌 모양으로 세운다.
+
+    신원이 있는 컴퓨터(M1)와 아무 데도 없는 컴퓨터(M2)를 가르려고 `GIT_CONFIG_GLOBAL`·
+    `GIT_CONFIG_SYSTEM` 을 돌려 놓는다 — 이 시험이 사람의 `~/.gitconfig` 를 읽지도
+    쓰지도 않게 하는 자리이기도 하다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        # 물려받은 GIT_* 를 전부 턴다 — 이 시험이 commit 의 저자를 재는데, 커밋 훅
+        # 안에서 도는 회차는 GIT_AUTHOR_*·GIT_INDEX_FILE 을 환경에 달고 온다.
+        # 환경의 값이 `-c user.name=…` 을 이기므로, 털지 않으면 같은 코드가 어디서
+        # 돌았느냐에 따라 결과가 갈린다(실측 2026-09-21: 단독 통과·훅 안에서 실패).
+        cls.genv = {k: v for k, v in os.environ.items()
+                    if not k.startswith(("S9_", "GIT_")) and k != "EMAIL"}
+        cls.base = tempfile.mkdtemp(prefix="s9inst-ident-")
+        cls.up = os.path.join(cls.base, "upstream")
+        sh("git", "clone", "-q", os.path.normpath(os.path.join(HERE, "..")), cls.up,
+           env=cls.genv)
+        sh("git", "checkout", "-q", "-B", "main", cwd=cls.up, env=cls.genv)
+        sh("git", "config", "user.name", "alpha-maker", cwd=cls.up, env=cls.genv)
+        sh("git", "config", "user.email", "alpha@example.com", cwd=cls.up, env=cls.genv)
+
+    def _init(self, name, global_cfg):
+        origin = os.path.join(self.base, name + ".git")
+        sh("git", "init", "-q", "--bare", origin, env=self.genv)
+        target = os.path.join(self.base, name)
+        env = {**self.genv, "S9_ROOT": self.up,
+               "GIT_CONFIG_GLOBAL": global_cfg, "GIT_CONFIG_SYSTEM": os.devnull}
+        # 이 저장소의 bin/s9 로 잰다 — 업스트림 카피 안의 코드는 clone 시점의 것이라
+        # 아직 이 고침을 모른다(실제 사용에서는 새 코드가 이 명령을 돈다).
+        r = sh(S9, "instance", "init", origin, "--dir", target, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return target, r, env
+
+    def _local(self, target, key):
+        return sh("git", "config", "--local", "--get", key, cwd=target,
+                  env=self.genv).stdout.strip()
+
+    def test_m1_upstream_identity_is_not_copied(self):
+        """M1. 전역 신원이 있는 컴퓨터 — 업스트림의 값이 인스턴스로 건너오지 않는다."""
+        gcfg = os.path.join(self.base, "global-beta")
+        with open(gcfg, "w", encoding="utf-8") as f:
+            f.write("[user]\n\tname = beta-user\n\temail = beta@example.com\n")
+        target, _r, env = self._init("beta-work", gcfg)
+        cfg = open(os.path.join(target, ".git", "config"), encoding="utf-8").read()
+        self.assertNotIn("alpha@example.com", cfg, "업스트림의 메일이 복사됐다")
+        self.assertNotIn("alpha-maker", cfg, "업스트림의 이름이 복사됐다")
+        self.assertEqual(self._local(target, "user.email"), "")
+        # 그리고 이 컴퓨터의 신원이 그대로 쓰인다 — 막힌 것은 복사이지 commit 이 아니다
+        self.assertEqual(
+            sh("git", "config", "--get", "user.email", cwd=target, env=env).stdout.strip(),
+            "beta@example.com")
+
+    def test_m2_ladder_fills_the_empty_slot_not_the_upstream_value(self):
+        """M2. 신원이 아무 데도 없는 컴퓨터 — 사다리가 고른 값이 서고, 업스트림의 값은 안 온다.
+
+        박을 것이 없어 이 자리를 비워 두면 인스턴스의 문서 commit 이 신원 부재로
+        거부된다 — 막는 것은 복사이지 commit 이 아니다.
+        """
+        target, r, env = self._init("orphan-work", os.devnull)
+        cfg = open(os.path.join(target, ".git", "config"), encoding="utf-8").read()
+        self.assertNotIn("alpha@example.com", cfg, "업스트림의 메일이 복사됐다")
+        self.assertNotIn("alpha-maker", cfg, "업스트림의 이름이 복사됐다")
+        self.assertTrue(self._local(target, "user.email"), "commit 할 신원이 없다")
+        self.assertTrue(self._local(target, "user.name"), "commit 할 신원이 없다")
+        self.assertIn("git 이름:", r.stdout)
+        self.assertIn("⑤ push 완료", r.stdout)
+        # 첫 commit 은 사람이 아니라 이 명령의 이름으로 선다. HEAD 가 아니라 뿌리
+        # commit 을 묻는다 — init 직후 문서 이벤트가 commit 을 하나 더 얹을 수 있다.
+        self.assertEqual(
+            sh("git", "log", "--max-parents=0", "--format=%an <%ae>",
+               cwd=target, env=self.genv).stdout.strip(),
+            "s9-instance <s9@local>")
+        # 그리고 그 값으로 다음 commit 이 실제로 선다
+        with open(os.path.join(target, "docs", "ident-probe.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("신원 확인용\n")
+        sh("git", "add", "docs/ident-probe.md", cwd=target, env=env)
+        c = sh("git", "commit", "-q", "-m", "ident probe", cwd=target, env=env)
+        self.assertEqual(c.returncode, 0, c.stdout + c.stderr)
+        self.assertNotIn("alpha",
+                         sh("git", "log", "-1", "--format=%an <%ae>",
+                            cwd=target, env=self.genv).stdout)
+
+
 class TestInstanceInit(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
