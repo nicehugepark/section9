@@ -230,5 +230,78 @@ class GoingRemoteSpeaksOnce(unittest.TestCase):
         self.assertNotIn("sys.exit", body)
 
 
+class TheIdentityDoesNotTravelByCopy(Base):
+    """N1~N3·B1~B3·F1. 디렉토리를 통째로 복사해 받은 자리 (REQ-20260921-018-62x6).
+
+    `.git/config` 의 로컬 신원은 clone 으로는 따라가지 않지만 디렉토리 복사에는
+    그대로 간다. 받은 사람은 제 전역 신원이 있어도 만든 사람의 메일로 commit 한다 —
+    git 이 로컬을 전역보다 앞세우기 때문이다."""
+
+    def host_mark(self):
+        return self.local(fr.IDENT_HOST_KEY)
+
+    # N1. 박을 때 이 컴퓨터의 자국이 함께 남는다
+    def test_n1_the_mark_carries_this_machine(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.assertTrue(self.host_mark())
+        self.assertIn("/maker", self.host_mark())
+
+    # N2. 같은 컴퓨터에서 다시 부르면 남의 것이 아니므로 그대로 둔다
+    def test_n2_same_machine_is_left_alone(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker")
+        res = fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.assertFalse(res["set"])
+        self.assertFalse(res["foreign"])
+        self.assertEqual(self.local("user.email"), "maker@local")
+
+    # N3. 다른 컴퓨터에서 부르면 다시 재라고 하지 않아도 사다리가 다시 고른다
+    def test_n3_another_machine_re_picks(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker",
+                           profile={"emails": ["maker@company.com"]}, user="maker")
+        self.assertEqual(self.local("user.email"), "maker@company.com")
+        # 받은 사람의 컴퓨터를 흉내 낸다 — 자국을 남의 것으로 바꿔 둔다
+        self.git("config", fr.IDENT_HOST_KEY, "other-box/someone")
+        res = fr.ensure_identity(self.root, env=self.env, account="taker",
+                                 profile={"emails": ["taker@company.com"]},
+                                 user="taker")
+        self.assertTrue(res["foreign"])
+        self.assertTrue(res["set"])
+        self.assertEqual(self.local("user.email"), "taker@company.com")
+        self.assertIn("/taker", self.host_mark())
+
+    # N3b. 받은 사람에게 아무 재료가 없으면 그 사람의 임시값으로 내려간다 —
+    #      만든 사람의 값이 그대로 남지는 않는다
+    def test_n3b_without_material_it_still_leaves_the_maker(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker",
+                           profile={"emails": ["maker@company.com"]}, user="maker")
+        self.git("config", fr.IDENT_HOST_KEY, "other-box/someone")
+        fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertEqual(self.local("user.email"), "taker@local")
+
+    # B1. 사람이 손으로 정한 값은 어느 컴퓨터에서도 덮지 않는다 — 표가 없다
+    def test_b1_human_value_is_never_foreign(self):
+        self.git("config", "user.name", "hong")
+        self.git("config", "user.email", "hong@example.com")
+        res = fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertFalse(res["foreign"])
+        self.assertFalse(res["set"])
+        self.assertEqual(self.local("user.email"), "hong@example.com")
+
+    # B3. 자국이 없는 옛 표는 남의 것으로 보지 않는다
+    def test_b3_a_mark_without_a_machine_is_not_foreign(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.git("config", "--unset", fr.IDENT_HOST_KEY, check=False)
+        res = fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertFalse(res["foreign"])
+        self.assertFalse(res["set"])
+
+    # F1. 자국을 읽지 못해도 예외를 밖으로 내지 않는다
+    def test_f1_unreadable_mark_does_not_raise(self):
+        fr.ensure_identity(self.root, env=self.env, account="maker")
+        self.git("config", fr.IDENT_HOST_KEY, "")
+        res = fr.ensure_identity(self.root, env=self.env, account="taker")
+        self.assertEqual(res["error"], "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

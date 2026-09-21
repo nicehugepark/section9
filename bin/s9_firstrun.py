@@ -280,13 +280,33 @@ def _identity_scope(_git):
 # 똑같이 생긴 값이 박혀도, 그것을 **고른 것은 우리**다.
 IDENT_MARK = ("section9.identity", "auto")
 
+# 표에 **어느 컴퓨터가** 박았는지를 함께 적는다 (REQ-20260921-018-62x6).
+# `.git/config` 의 로컬 신원은 clone 으로는 따라가지 않지만 **디렉토리를 통째로
+# 복사하면** 그대로 간다. 받은 사람은 제 전역 신원이 있어도 만든 사람의 메일로
+# commit 하게 된다 — git 이 로컬을 전역보다 앞세우기 때문이다. 자국이 있으면
+# 「남이 박은 값」이 기계로 갈린다.
+#
+# `.git/config` 는 추적되지 않으므로 이 값이 저장소 이력에 실려 나가지 않는다.
+IDENT_HOST_KEY = "section9.identityhost"
+
+
+def _this_host(account=None):
+    """이 컴퓨터의 자국 — 사람이 읽을 이름이 아니라 같고 다름을 가르는 값이다."""
+    import socket
+    try:
+        host = socket.gethostname() or "?"
+    except OSError:
+        host = "?"
+    return f"{host}/{account or os_account()}"
+
 
 def _set_identity(_git, profile=None, account=None, user=""):
-    """저장소 로컬에 신원을 박고, 우리가 박았다는 표를 함께 남긴다."""
+    """저장소 로컬에 신원을 박고, 우리가 박았다는 표와 이 컴퓨터의 자국을 남긴다."""
     name, mail, src = pick_identity(profile, account, user)
     _git("config", "user.name", name)
     _git("config", "user.email", mail)
     _git("config", *IDENT_MARK, check=False)
+    _git("config", IDENT_HOST_KEY, _this_host(account), check=False)
     return name, mail, src
 
 
@@ -294,6 +314,19 @@ def is_auto_identity(_git):
     """이 저장소의 신원을 section9 이 박았나 — 표 한 줄로 판정한다."""
     key, val = IDENT_MARK
     return _git("config", "--local", "--get", key, check=False).stdout.strip() == val
+
+
+def is_foreign_identity(_git, account=None):
+    """**다른 컴퓨터**가 박아 둔 값인가 (REQ-20260921-018-62x6).
+
+    자국이 없는 옛 표는 남의 것으로 보지 않는다 — 이 판이 서기 전에 박힌 값이라
+    그 컴퓨터의 것일 수 있고, 모르는 것을 근거로 남의 신원을 갈아 끼우지 않는다.
+    """
+    if not is_auto_identity(_git):
+        return False
+    mark = _git("config", "--local", "--get", IDENT_HOST_KEY,
+                check=False).stdout.strip()
+    return bool(mark) and mark != _this_host(account)
 
 
 def _ensure_identity(_git, account=None, profile=None, user=""):
@@ -338,23 +371,30 @@ def ensure_identity(root, env=None, account=None, git="git", run=None,
     """
     root = os.path.abspath(root)
     out = {"set": False, "name": "", "email": "", "source": "", "scope": "",
-           "skipped": "", "error": "", "auto": False}
+           "skipped": "", "error": "", "auto": False, "foreign": False}
     if not os.path.exists(os.path.join(root, ".git")):
         out["skipped"] = "no-repo"          # 저장소가 없으면 로컬에 쓸 자리도 없다
         return out
     _git = _git_runner(root, env=env, git=git, run=run)
     try:
         scope = _identity_scope(_git)
-        out["auto"] = bool(scope) and is_auto_identity(_git)
-        if scope and not (upgrade and out["auto"]):
+        out["auto"] = scope == "local" and is_auto_identity(_git)
+        # 남이 박아 둔 값은 다시 재라고 부르지 않아도 고쳐 준다 — 디렉토리를 받은
+        # 사람이 제 이름으로 commit 하게 하는 자리다 (REQ-20260921-018-62x6).
+        # 전역에 사람의 신원이 있으면 그쪽이 먼저다(scope 가 "global" 이면 auto 가
+        # 서지 않으므로 아래 조건도 서지 않는다).
+        out["foreign"] = out["auto"] and is_foreign_identity(_git, account)
+        if scope and not ((upgrade or out["foreign"]) and out["auto"]):
             # 사람이 정해 둔 값은 덮지 않는다. 우리가 박은 값만, 그것도 다시 재라고
             # 부른 자리(upgrade)에서만 갱신한다 — 등록·프로필 수정으로 사다리의
             # 재료가 늘어난 순간이 그 자리다 (REQ-20260921-012-62x6).
             out["scope"] = out["skipped"] = scope
             return out
-        if scope:
+        if scope and not out["foreign"]:
             # 다시 재기: 사다리가 같은 값을 고르면 아무것도 쓰지 않는다 — 쓰면
             # `.git/config` 의 mtime 만 흔들려 동시 작업 검사가 남의 것을 본 것처럼 군다.
+            # 남이 박은 값은 이 갈래로 오지 않는다 — 값이 같아도 **자국**을 이
+            # 컴퓨터의 것으로 다시 남겨야 한다.
             name, mail, src = pick_identity(profile, account, user)
             cur = [_git("config", "--local", "--get", k, check=False).stdout.strip()
                    for k in IDENT_KEYS]
