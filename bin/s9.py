@@ -22079,6 +22079,7 @@ def cmd_commit_note(args):
 # 검사(test_screen_lexicon)가 그 아래 상수를 통째로 건너뛴다. 반려된 말을 왼쪽에
 # 적어 둬야 성립하는 자료라, 화면으로 세면 표가 제 검사에 걸린다.
 BANNED_WORKER_ALONE = "작업자"   # 홀로 설 때만 잡는다 — 아래 banned_terms_in 이 앞뒤를 본다
+BANNED_SANDBOX = "모래상자"   # sandbox 의 직역 (REQ-20260921-009-62x6)
 BANNED_TERMS = (
     # 시험 결과의 비유 — 화면 색을 말하는 줄(「붉은 글자」「초록 점」)은 banned_terms_in 이 건너뛴다
     ("붉음", "실패"), ("붉다", "실패"), ("붉었", "실패했"), ("붉으면", "실패하면"), ("붉은", "실패한"),
@@ -22129,6 +22130,13 @@ BANNED_TERMS = (
     # 「문」 한 글자는 문서·문장·질문에 들어 있어 여기서 세지 않는다 — 소스는
     # test_no_metaphors 의 NoGateMetaphor 가 낱말 경계로 잡는다.
     ("게이트", "검사"), ("관문", "경로"), ("커밋 문", "커밋 검사"),
+    # 주인 지적 2026-09-21 11:01 (REQ-20260921-009-62x6): 「모래상자는 샌드박스를
+    # 말하는건가? 기술용어를 억지로 번역하지 않게 하라했을텐데.」 — sandbox 의 직역이다.
+    # 이 낱말이 오래 살아남은 까닭은 **규약 자신이 그것을 쓰고 있었기 때문**이다
+    # (PROTOCOL 19조의 「훅·CLI 의 왕복은 모래상자에서 직접 돌려 본다」). 2조 ④ 의
+    # 「에이전트는 읽은 말을 되쓴다」가 그대로 물린 자리라, 표에 넣는 것만으로는
+    # 모자라고 원천의 글자를 함께 고쳐야 한다.
+    (BANNED_SANDBOX, "샌드박스"),
 )
 
 
@@ -22144,8 +22152,11 @@ def banned_terms_in(text):
     for a, b in BANNED_TERMS:
         for m in re.finditer(re.escape(a), plain):
             around = plain[max(0, m.start() - 6):m.end() + 8]     # 「붉은 글자」「초록 점멸」이 드는 폭
-            if _COLOR_CONTEXT.search(around):
-                continue                     # 「붉은 글자」「초록 점」 — 색이다
+            if _COLOR_CONTEXT.search(around) and a != BANNED_SANDBOX:
+                # 「붉은 글자」「초록 점」 — 색이다. 다만 「모래상자」는 제 안에 「상자」를
+                # 품고 있어 늘 색 맥락으로 읽힌다 — 그래서 이 하나는 건너뛰지 않는다
+                # (실측 2026-09-21: 표에 넣고도 한 건도 안 잡혔다).
+                continue
             if a == "\ub098\ubb34" and plain[m.end():m.end() + 1] == "라":
                 continue                     # 나무라다(꾸짖다) — 우리말 동사, 직역이 아니다
             if a == BANNED_WORKER_ALONE:

@@ -126,6 +126,33 @@ class BannedTerms(unittest.TestCase):
         self.assertIn("「붉음」→「실패」", r.stderr)
         self.assertNotIn("초록", r.stderr)
 
+    def test_t8_sandbox_is_not_translated(self):
+        """T8. sandbox 를 「모래상자」로 옮기지 않는다 (REQ-20260921-009-62x6).
+
+        주인 지적 2026-09-21 11:01: 「모래상자는 샌드박스를 말하는건가? 기술용어를
+        억지로 번역하지 않게 하라했을텐데.」 이 낱말이 오래 산 까닭은 **규약 자신이
+        그것을 쓰고 있었기 때문**이다(PROTOCOL 19조) — 2조 ④ 의 「에이전트는 읽은
+        말을 되쓴다」가 그대로 물린 자리다.
+
+        함정 하나: 「모래상자」는 제 안에 「상자」를 품고 있어 색 맥락 검사에 늘
+        걸린다. 표에 넣기만 하면 한 건도 안 잡힌다 — 실제로 그랬다."""
+        hits = self.m.banned_terms_in("모래상자에서 진짜 훅을 돌려 봤습니다")
+        self.assertEqual([a for a, _ in hits], ["모래상자"])
+        self.assertEqual(dict(hits)["모래상자"], "샌드박스")
+        # 채택어는 지나간다
+        self.assertEqual(self.m.banned_terms_in("샌드박스에서 진짜 훅을 돌려 봤습니다"), [])
+        # 색·마크를 말하는 「상자」는 그대로 지나간다 — 그 자리를 막지 않는다
+        self.assertEqual(self.m.banned_terms_in("상자의 중심이 반 화소에 걸렸다"), [])
+
+    def test_t9_the_protocol_does_not_use_it_either(self):
+        """T9. 원천(규약)에 그 글자가 남아 있으면 표는 진다 — 에이전트는 읽은 말을
+        되쓴다(2조 ④). 생성물 CLAUDE.md 까지 함께 본다."""
+        for rel in ("harness/common/PROTOCOL.md", "CLAUDE.md"):
+            path = os.path.normpath(os.path.join(HERE, "..", rel))
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+            self.assertNotIn("모래상자", text, f"{rel} 에 직역이 남아 있습니다")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
